@@ -2489,6 +2489,8 @@ jobs:
             tests/test_owned_client_ip_acceptance.py \
             tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_postgresql_legacy_group_cutover_without_existing_group_index \
             tests/test_live_stand.py::test_live_reset_registration_v2_accepts_only_finite_failure_observations \
+            tests/test_live_stand.py::test_live_reset_registration_v2_accepts_classified_error_presence \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_classification_without_form_error \
             tests/test_live_stand.py::test_live_reset_registration_v2_rejects_private_fields_and_wrong_types \
             tests/test_live_stand.py::test_live_reset_registration_v2_rejects_inconsistent_observations \
             tests/test_live_stand.py::test_live_reset_registration_v2_rejects_duplicate_keys_and_untrusted_framing \
