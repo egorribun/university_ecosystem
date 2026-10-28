@@ -1,5 +1,8 @@
+import { waitFor } from "@testing-library/react"
 import { CancelledError, QueryClient } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { http, HttpResponse } from "msw"
+import { chatApi } from "@/api/chat"
 import type { Chat, ChatsListResponse, Message, MessagesListResponse } from "@/api/chat"
 import {
   beginMessengerEditRefresh,
@@ -14,6 +17,7 @@ import {
   runMessengerOperation,
 } from "@/hooks/messengerProjection"
 import { acceptBrowserSessionGeneration, invalidateSessionEpoch } from "@/stores/sessionEpoch"
+import { server } from "@/tests/mocks/server"
 
 const generationKey = "ecosystem.session.generation.v1"
 const chat: Chat = {
@@ -674,5 +678,124 @@ describe("receipt retirement and retained clear cutoffs", () => {
     expect(
       projectMessengerMessages(client, accountId, chat.id, stale)?.items.map((item) => item.id)
     ).toEqual(refreshed.fetched.items.map((item) => item.id))
+  })
+})
+
+describe("clear maintenance boundary observations", () => {
+  it("retires a cleared edit receipt while preserving a message arriving before commit", async () => {
+    const target = projectionMessage()
+    const newer = projectionMessage({
+      id: "after-clear-start",
+      content: "new message",
+      created_at: "2026-10-22T12:02:00.000Z",
+    })
+    const client = projectionClient([target])
+    await acceptEdit(client, target.id, "accepted")
+    const confirmed = canonicalMessages(client)
+    const clear = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "clear",
+      refreshChats: async () => page(0),
+    })
+    client.setQueryData(["messages", chat.id], messagesPage([...confirmed.items, newer]))
+
+    expect(finishMessengerOperation(client, clear, true)).toBe(true)
+    expect(canonicalMessages(client).items).toEqual([newer])
+    // Matching restored bytes must not revive the receipt removed by clear.
+    client.setQueryData(["messages", chat.id], confirmed)
+    expect(classifyMessengerServerEdit(client, chat.id, target.id, "accepted")).toEqual({
+      kind: "normal",
+    })
+  })
+
+  it("retains the newer clear cutoff when a stale detail preview supplies the next cutoff", () => {
+    const older = projectionMessage()
+    const newer = projectionMessage({
+      id: "newer-cutoff",
+      created_at: "2026-10-22T12:02:00.000Z",
+    })
+    const between = projectionMessage({
+      id: "unseen-between",
+      created_at: "2026-10-22T12:01:00.000Z",
+    })
+    const after = projectionMessage({
+      id: "after-both-clears",
+      created_at: "2026-10-22T12:03:00.000Z",
+    })
+    const client = projectionClient([newer])
+    acceptClear(client)
+    // A stale detail response can still carry a preview absent from the
+    // cleared messages page. It must not move the retained boundary backward.
+    client.setQueryData(["chats", chat.id], { ...chat, last_message: older })
+    const refresh = acceptClear(client)
+    const stale = messagesPage([older, between, newer, after])
+
+    expect(finishClearRefresh(client, chat.id, refresh, stale)).toEqual({
+      fetched: messagesPage([after]),
+      cleared: true,
+    })
+    expect(projectMessengerMessages(client, accountId, chat.id, stale)?.items).toEqual([after])
+  })
+
+  it("holds a completed clear callback until an earlier edit callback is published", async () => {
+    const target = projectionMessage()
+    const client = projectionClient([target])
+    const edit = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "edit",
+      messageId: target.id,
+      content: "accepted before clear",
+    })
+    await runMessengerOperation(client, edit, async () => undefined)
+    const clear = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "clear",
+      refreshChats: async () => page(0),
+    })
+    await runMessengerOperation(client, clear, async () => undefined)
+
+    expect(finishMessengerOperation(client, clear, true)).toBe(true)
+    expect(canonicalMessages(client).items).toEqual([target])
+    expect(finishMessengerOperation(client, edit, true)).toBe(true)
+    expect(canonicalMessages(client).items).toEqual([])
+  })
+
+  it("keeps canonical chats and invalidates after an HTTP success contains a malformed page", async () => {
+    vi.useRealTimers()
+    const client = projectionClient()
+    client.setQueryData(["chats"], page(10))
+    const responseGate = actionGate()
+    let requests = 0
+    let pendingRequest: Promise<ChatsListResponse> | undefined
+    server.use(
+      http.get("*/chats", async () => {
+        requests += 1
+        await responseGate.promise
+        return HttpResponse.json({ items: null, has_more: false, next_cursor: null })
+      })
+    )
+    try {
+      const clear = beginMessengerOperation(client, accountId, chat.id, {
+        kind: "clear",
+        refreshChats: () => {
+          pendingRequest = chatApi.getChats()
+          return pendingRequest
+        },
+      })
+      expect(finishMessengerOperation(client, clear, true)).toBe(true)
+      await waitFor(() => expect(requests).toBe(1))
+      const retained = client.getQueryData<ChatsListResponse>(["chats"])!
+      expect(retained.items[0]?.unread_count).toBe(0)
+      // Clear's normal invalidation already ran. A real manual cache success
+      // resets it so only malformed-response handling can invalidate again.
+      client.setQueryData(["chats"], retained)
+      expect(client.getQueryState(["chats"])?.isInvalidated).toBe(false)
+
+      responseGate.resolve()
+      await waitFor(() => expect(client.getQueryState(["chats"])?.isInvalidated).toBe(true))
+      expect(client.getQueryData(["chats"])).toBe(retained)
+      expect(requests).toBe(1)
+    } finally {
+      responseGate.resolve()
+      if (pendingRequest) await Promise.allSettled([pendingRequest])
+      vi.useFakeTimers()
+    }
   })
 })

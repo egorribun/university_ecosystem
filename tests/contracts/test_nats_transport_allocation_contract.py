@@ -385,6 +385,16 @@ _CONSUMER_SELECTORS = (
     "tests/test_outbox_worker.py::test_outbox_worker_dlq_transition",
     "tests/test_outbox_worker.py::test_durable_outbox_handler_failure_retries_without_pii",
     "tests/test_grades_api.py",
+    "tests/test_trivy_identity_before_diagnostic.py",
+    "tests/test_workflow_fail_closed_contracts.py::test_trivy_metadata_failure_is_deferred_but_remains_blocking",
+    "tests/test_workflow_fail_closed_contracts.py::test_trivy_reassert_executes_and_rejects_each_non_success_outcome",
+    "tests/test_static_canonical_attachment_urls.py",
+    "tests/test_chat_uploads.py::test_real_static_chat_upload_persists_and_remains_readable",
+    "tests/test_chat_attachment_copy_contracts.py::test_durable_cleanup_accepts_both_exact_static_aliases_and_replays",
+    "tests/test_chat_attachment_copy_contracts.py::test_forward_copy_of_canonical_static_identity_owns_independent_bytes",
+    "tests/test_security_hardening_workflow_contract.py::test_squawk_integrity_contract_rejects_weakening_controls",
+    "tests/test_aud345_444_registration.py",
+    "tests/test_owned_client_ip_probe_layer_contract.py",
     "tests/test_notifications_delivery_coverage.py",
 )
 _DISPATCH_PROBE = """\
