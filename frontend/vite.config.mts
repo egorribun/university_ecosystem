@@ -345,13 +345,10 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      host: true,
-      cors: true,
       headers: { "Service-Worker-Allowed": "/" },
       proxy,
     },
     preview: {
-      host: true,
       headers: { "Service-Worker-Allowed": "/" },
       proxy,
     },

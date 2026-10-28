@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { dehydrate, hydrate, type QueryKey } from "@tanstack/react-query"
-import type { PersistedClient } from "@tanstack/react-query-persist-client"
+import {
+  persistQueryClientRestore,
+  persistQueryClientSave,
+  type PersistedClient,
+} from "@tanstack/react-query-persist-client"
 import { clear, del, get, keys, set } from "idb-keyval"
 import {
   acceptBrowserSessionGeneration,
@@ -1280,6 +1284,105 @@ describe("request-hydrated cache during auth bootstrap", () => {
       expect(active.getQueryData(key)).toBeUndefined()
     } finally {
       active.clear()
+    }
+  })
+})
+
+describe("AUD-472 release-scoped persistence", () => {
+  it.each([
+    {
+      label: "discards a prior release even when the legacy version stays unchanged",
+      initialRelease: "release-a",
+      nextRelease: "release-b",
+      initialVersion: "1.0.0",
+      nextVersion: "1.0.0",
+      restored: false,
+    },
+    {
+      label: "retains the same release across a reload",
+      initialRelease: "release-a",
+      nextRelease: "release-a",
+      initialVersion: "1.0.0",
+      nextVersion: "1.0.0",
+      restored: true,
+    },
+    {
+      label: "uses the release rather than an unrelated legacy version change",
+      initialRelease: "release-a",
+      nextRelease: "release-a",
+      initialVersion: "1.0.0",
+      nextVersion: "2.0.0",
+      restored: true,
+    },
+    {
+      label: "preserves legacy version invalidation when no release is supplied",
+      initialRelease: "",
+      nextRelease: "",
+      initialVersion: "1.0.0",
+      nextVersion: "2.0.0",
+      restored: false,
+    },
+    {
+      label: "keeps the development fallback stable without either build identifier",
+      initialRelease: "",
+      nextRelease: "",
+      initialVersion: "",
+      nextVersion: "",
+      restored: true,
+    },
+  ])("$label", async ({ initialRelease, nextRelease, initialVersion, nextVersion, restored }) => {
+    const storageKey = "aud472:release-cache"
+    const queryKey = ["aud472", "persisted-release-data"] as const
+    const data = { title: "Snapshot from the first build" }
+    const clients: ReturnType<typeof createQueryClient>[] = []
+    const loadBuild = async (release: string, version: string) => {
+      vi.stubEnv("VITE_APP_RELEASE", release)
+      vi.stubEnv("VITE_APP_VERSION", version)
+      vi.resetModules()
+      const build = await import("../queryClient")
+      clients.push(build.queryClient)
+      return build
+    }
+
+    try {
+      const first = await loadBuild(initialRelease, initialVersion)
+      const source = first.createQueryClient()
+      clients.push(source)
+      source.setQueryData(queryKey, data)
+      await persistQueryClientSave({
+        ...first.persistOptions,
+        queryClient: source,
+        persister: first.createIDBPersister(storageKey),
+      })
+      const saved = await get<PersistedClient>(storageKey)
+      expect(saved?.clientState.queries).toHaveLength(1)
+      expect(saved?.clientState.queries[0]?.state.data).toEqual(data)
+
+      const second = await loadBuild(nextRelease, nextVersion)
+      const target = second.createQueryClient()
+      clients.push(target)
+      await persistQueryClientRestore({
+        ...second.persistOptions,
+        queryClient: target,
+        persister: second.createIDBPersister(storageKey),
+      })
+
+      if (restored) {
+        expect(target.getQueryData(queryKey)).toEqual(data)
+        expect(await get<PersistedClient>(storageKey)).toEqual(saved)
+      } else {
+        expect(target.getQueryData(queryKey)).toBeUndefined()
+        expect(target.getQueryCache().getAll()).toEqual([])
+        expect(await get<PersistedClient>(storageKey)).toBeUndefined()
+      }
+    } finally {
+      try {
+        for (const client of clients) client.clear()
+        await del(storageKey)
+      } finally {
+        vi.unstubAllEnvs()
+        vi.resetModules()
+      }
     }
   })
 })

@@ -1,5 +1,16 @@
 # Frontend Architecture & Standards
 
+## Local development access
+
+`npm run dev` and `npm run preview` use Vite's loopback-only host defaults and
+default loopback-origin CORS policy. Existing proxy and service-worker headers
+are unchanged.
+
+Expose a development server to a trusted network only deliberately, for example
+with `npm run dev -- --host 0.0.0.0`. The repository's `make frontend-dev` target
+already selects this explicit LAN override. Do not use development or preview
+servers as public production servers.
+
 ## Design System Standards
 
 ### 1. Token Usage
