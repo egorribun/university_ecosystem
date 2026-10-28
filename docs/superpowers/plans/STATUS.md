@@ -2,6 +2,87 @@
 
 Обновлено: 2026-10-28 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Scoped RED/GREEN checkpoint — source 29711392, 2026-10-28 UTC
+
+Accepted lower bound is **344/512 (67.2%)**; **168 IDs remain unaccepted**.
+The [scoped audit decision](../../audits/AUDIT-2026-10.md#scoped-aud-352-and-aud-372-hosted-acceptance-on-source-29711392-2026-10-28)
+preserves all 342 prior IDs and adds only AUD-352 (online authentication after an
+owned generation-storage write failure) and AUD-372 (fail-closed SPIFFE client
+allowlists). These are hook/unit and generated-SVID verifier receipts, not
+browser storage-failure injection or a live SPIRE deployment. Earlier dated receipts
+below remain historical rather than validation of newer source or lock files.
+
+[Source 29711392](https://github.com/egorribun/university_ecosystem/commit/29711392a2b2e65afa984be6b749ba477bced56d)
+and tested PR merge `9618c8b1dfdf8df533ebf35c1c8684fa57cb66b3` share tree
+`e374338e3d0d53bdcabc6df61466d9539fd8786d`.
+[Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40606958920/job/122548737132)
+completed successfully: 280 source contracts, one runtime adapter test and
+**48 browser passes / two existing skips**, followed by successful Caddy
+redaction, NATS outage and owned cleanup. Receipt metadata and generating logs
+were inspected; the artifact ZIP was not independently decoded.
+
+- **Observed browser RED to scoped GREEN:** the preceding
+  [c5 Core run](https://github.com/egorribun/university_ecosystem/actions/runs/40603644629/job/122539098033)
+  had 44 passes and four failures: CSS computed values and the missing owned DLQ
+  pagination precondition, each in desktop/mobile Chromium. Source 297 fixes six
+  malformed color-mix declarations and seeds 21 inert notification-queue rows.
+  The same browser cases then passed, including actual DLQ Next/Previous
+  interaction. This does not establish all AUD-072 tokens, production-worker
+  delivery, or all visual/accessibility properties.
+- **Frontend and dependency validation:** all four unit shards and
+  [their aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/40606958872/job/122553706095)
+  passed. The merged diagnostic reported 16,503 branch arms, zero uncovered or
+  unlocated arms, and 1,190 eligible differential lines with zero missing.
+  Canonical all-metrics artifact contents were not separately decoded.
+  Frontend lint/format, compiler preflight, inventory, detect-secrets, Python,
+  Node, Go and container security jobs passed. The externally updated ESLint
+  archive pins were synchronized without changing dependency files or gates.
+- **Database and current blockers:** real PostgreSQL integration passed.
+  [Alembic](https://github.com/egorribun/university_ecosystem/actions/runs/40606958872/job/122550726478)
+  reported 13 ordinary Squawk warnings and the new capture contracts produced
+  **21 failures / 90 passes** because the ordinary capture body did not yet exist.
+  Expanded scanning did not execute in this run; the earlier 37-warning
+  inventory must not be presented as a newly executed 297 result.
+  [Bundle Analysis](https://github.com/egorribun/university_ecosystem/actions/runs/40606958872/job/122550987041)
+  remains blocking at **285.83 KiB versus 280 KiB** after the preserved external
+  MapLibre 6.15 update. Backend shard 0 failed 18 existing redaction-contract
+  parameter cases because a positional fixture now selected the admin source
+  instead of password-reset source; the assertions themselves remain valid.
+  Shard 2 reported the same 18 cases plus one stale finite smoke-selection tuple:
+  **19 failures / 6,540 passes / 104 skips**. Shard 1 passed 4,616 tests with
+  47 skips. Shard 3 finished with the same 21 ordinary-capture failures,
+  4,482 passes and 60 skips. The Matrix run completed FAILURE at 01:10 UTC:
+  91 jobs, 67 successful, 18 skipped and six failed (including derived CI Success).
+  No job remained active in the terminal snapshot.
+
+The reviewed continuation repairs that fixture by explicit filename and updates
+only the two missing entries in the exact smoke-selection expectation. It implements
+bounded source-bound ordinary SQL capture, and adds two parent-symlink rejection
+controls. Raw Squawk commands, warning dispositions, historical migration bytes
+and transaction boundaries are unchanged. Generated one-time CI signing keys
+are masked before export in the existing CI and manual-deploy workflows;
+entropy, guards and permissions are preserved. Editing the workflow does not
+dispatch a deployment.
+
+The same packet adds tests first for **AUD-155 edit-only optimistic rollback**
+(overlap, serialization, authoritative writes, query incarnation and missing
+targets) and **AUD-376 cold/orphan conditional-cache behavior**. Their semantic
+RED is expected, not yet observed; no corresponding production fix is included.
+AUD-155 clear/delete/reaction behavior remains outside that narrow packet.
+Additional existing browser cases now contain finite references for all
+45 alpha-dependent custom-property names, including dark-only and real
+Dashboard scopes; source review is not browser acceptance. A temporary bounded
+MapLibre retained-export size probe measures the installed pinned bundle without
+changing canonical output or its budget. No downgrade or budget bypass is used.
+
+Every changed source needs its own exact-SHA Actions result; none of the 297
+passes is inherited by this continuation. AUD-164/AUD-167 trusted-peer,
+two-client and spoof checks and AUD-169 actual CNI reachability remain external
+operational gaps. The historical148 Squawk proposal remains unapproved.
+Policy 347, baseline 319, Gitleaks 26, all 78 required contexts/apps, blocking
+CodeQL, hooks, deadlines and coverage floors are unchanged. No full-CI,
+all-metrics, merge, deployment or release-readiness claim is made.
+
 ## Five scoped hosted closures — source 40bc1fbc, 2026-10-27 UTC
 
 Accepted lower bound: **342/512 (66.8%)**; **170 IDs remain unaccepted**.

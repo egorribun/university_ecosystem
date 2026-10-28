@@ -5309,7 +5309,9 @@ def test_live_e2e_probe_admission_is_bounded_and_keeps_nonprobe_defaults(
         selected_files = live_stand.LIVE_E2E_SMOKE_FILES
         assert selected_files == (
             "tests/e2e-live/auth-roles.live.spec.ts",
+            "tests/e2e-live/admin-notifications-rbac.live.spec.ts",
             "tests/e2e-live/password-reset.live.spec.ts",
+            "tests/e2e-live/pwa-offline-shell.live.spec.ts",
             "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
             "tests/e2e-live/settings-radio-focus.live.spec.ts",
             live_stand.LIVE_CADDY_PROBE_SPEC,
