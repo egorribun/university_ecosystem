@@ -864,3 +864,185 @@ test("the PR Node suite executes release-version regressions exactly once", asyn
 
   assert.deepEqual(matching, ["../scripts/tests/prepare-release-version.test.mjs"])
 })
+
+let viteDevelopmentPolicyPromise
+
+async function resolveViteDevelopmentPolicy(overrides = {}) {
+  const { resolveConfig } = await import("vite")
+  const previousDirectory = process.cwd()
+  const environmentKeys = [
+    "NODE_ENV",
+    "VITE_APP_RELEASE",
+    "VITE_USER_NODE_ENV",
+    "BROWSER",
+    "BROWSER_ARGS",
+  ]
+  const environment = new Map(environmentKeys.map((name) => [name, process.env[name]]))
+  try {
+    process.chdir(fileURLToPath(frontendRoot))
+    const configFile = fileURLToPath(new URL("../vite.config.mts", import.meta.url))
+    const config = await resolveConfig(
+      {
+        root: fileURLToPath(frontendRoot),
+        configFile,
+        configLoader: "runner",
+        logLevel: "silent",
+        ...overrides,
+      },
+      "serve",
+      "development"
+    )
+    assert.equal(typeof config.configFile, "string")
+    assert.equal(
+      resolve(config.configFile),
+      resolve(configFile),
+      "AUD-377 must resolve the real project config"
+    )
+    return config
+  } finally {
+    process.chdir(previousDirectory)
+    for (const [name, value] of environment) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+}
+
+function defaultViteDevelopmentPolicy() {
+  viteDevelopmentPolicyPromise ??= resolveViteDevelopmentPolicy()
+  return viteDevelopmentPolicyPromise
+}
+
+test(
+  "AUD-377 dev and preview use loopback defaults without an explicit host override",
+  { timeout: 60_000 },
+  async () => {
+    const config = await defaultViteDevelopmentPolicy()
+    const loopbackHosts = [undefined, false, "localhost", "127.0.0.1", "::1"]
+    for (const target of ["server", "preview"]) {
+      assert.ok(
+        loopbackHosts.includes(config[target].host),
+        `AUD-377 ${target} must not listen on all network interfaces by default`
+      )
+      assert.notEqual(config[target].allowedHosts, true, "Host checks must not be disabled")
+    }
+  }
+)
+
+test(
+  "AUD-377 an explicit LAN host override remains available without opening a listener",
+  { timeout: 60_000 },
+  async () => {
+    const config = await resolveViteDevelopmentPolicy({
+      server: { host: "0.0.0.0" },
+      preview: { host: "0.0.0.0" },
+    })
+    assert.equal(config.server.host, "0.0.0.0")
+    assert.equal(config.preview.host, "0.0.0.0")
+    assert.equal(config.server.headers["Service-Worker-Allowed"], "/")
+  }
+)
+
+for (const target of ["server", "preview"]) {
+  test(
+    `AUD-377 ${target} CORS rejects remote origins and retains loopback tooling`,
+    { timeout: 60_000 },
+    async () => {
+      const config = await defaultViteDevelopmentPolicy()
+      const { createServer } = await import("vite")
+      const { createServer: createHttpServer } = await import("node:http")
+      const directory = await mkdtemp(join(tmpdir(), "aud377-vite-cors-"))
+      const previousNodeEnvironment = process.env.NODE_ENV
+      let server
+      let httpServer
+      try {
+        const fixture = "AUD-377 owned static CORS fixture"
+        await writeFile(join(directory, "cors-probe.txt"), fixture, "utf8")
+        // Use the real resolved CORS policy, but never expose the RED fixture
+        // to the LAN or load the application's plugins, proxy, or environment.
+        server = await createServer({
+          root: directory,
+          configFile: false,
+          envFile: false,
+          logLevel: "silent",
+          appType: "custom",
+          publicDir: false,
+          plugins: [],
+          optimizeDeps: { noDiscovery: true, include: [] },
+          server: {
+            middlewareMode: true,
+            host: "127.0.0.1",
+            cors: config[target].cors,
+            headers: config[target].headers,
+            allowedHosts: ["127.0.0.1"],
+            hmr: false,
+            ws: false,
+            watch: null,
+          },
+        })
+        // Vite's port allocator probes wildcard interfaces even for port 0.
+        // Own the HTTP socket directly so every bind stays on loopback.
+        httpServer = createHttpServer(server.middlewares)
+        await new Promise((resolve, reject) => {
+          httpServer.once("error", reject)
+          httpServer.listen(0, "127.0.0.1", () => {
+            httpServer.off("error", reject)
+            resolve()
+          })
+        })
+        const address = httpServer.address()
+        assert.ok(
+          address && typeof address === "object",
+          "The owned fixture must have a TCP address"
+        )
+        assert.equal(address.address, "127.0.0.1")
+        assert.ok(address.port > 0 && address.port <= 65535)
+        const cases = [
+          ["https://attacker.invalid", null],
+          ["http://localhost.attacker.invalid", null],
+          ["null", null],
+          ["http://localhost:5173", "http://localhost:5173"],
+          ["http://127.0.0.1:5173", "http://127.0.0.1:5173"],
+          ["http://[::1]:5173", "http://[::1]:5173"],
+        ]
+        for (const [origin, allowedOrigin] of cases) {
+          const response = await fetch(`http://127.0.0.1:${address.port}/cors-probe.txt`, {
+            headers: { Origin: origin },
+            redirect: "error",
+            signal: AbortSignal.timeout(2_000),
+          })
+          assert.equal(response.status, 200)
+          assert.equal(await response.text(), fixture)
+          assert.equal(
+            response.headers.get("access-control-allow-origin"),
+            allowedOrigin,
+            `AUD-377 ${target} must enforce the bounded origin policy for ${origin}`
+          )
+        }
+      } finally {
+        try {
+          if (httpServer) {
+            await new Promise((resolve, reject) => {
+              httpServer.close((error) => {
+                if (error && error.code !== "ERR_SERVER_NOT_RUNNING") reject(error)
+                else resolve()
+              })
+              httpServer.closeAllConnections()
+            })
+          }
+        } finally {
+          try {
+            await server?.close()
+          } finally {
+            try {
+              await rm(directory, { recursive: true, force: true })
+            } finally {
+              if (previousNodeEnvironment === undefined) delete process.env.NODE_ENV
+              else process.env.NODE_ENV = previousNodeEnvironment
+            }
+          }
+        }
+      }
+    }
+  )
+}

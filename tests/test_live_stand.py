@@ -13929,6 +13929,12 @@ def _reset_registration_v2_record(**overrides: object) -> dict[str, object]:
         "formPresent": True,
         "formInvalid": False,
         "formError": False,
+        "nameError": False,
+        "emailError": False,
+        "inviteError": False,
+        "passwordError": False,
+        "confirmError": False,
+        "rootError": False,
         "submitPresent": True,
         "submitDisabled": False,
         "submitBusy": False,
@@ -13988,6 +13994,57 @@ def test_live_reset_registration_v2_accepts_only_finite_failure_observations() -
             assert parser(_reset_registration_v2_row(record)) == [record]
 
 
+@pytest.mark.parametrize(
+    "key",
+    (
+        "nameError",
+        "emailError",
+        "inviteError",
+        "passwordError",
+        "confirmError",
+        "rootError",
+    ),
+)
+def test_live_reset_registration_v2_accepts_classified_error_presence(key: str) -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    record = _reset_registration_v2_record(formError=True, **{key: True})
+    assert parser(_reset_registration_v2_row(record)) == [record]
+
+
+@pytest.mark.parametrize(
+    "key",
+    (
+        "nameError",
+        "emailError",
+        "inviteError",
+        "passwordError",
+        "confirmError",
+        "rootError",
+    ),
+)
+def test_live_reset_registration_v2_rejects_classification_without_form_error(
+    key: str,
+) -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    invalid = [
+        _reset_registration_v2_record(**{key: True}),
+        _reset_registration_v2_record(
+            formPresent=False, submitPresent=False, **{key: True}
+        ),
+        _reset_registration_v2_record(
+            snapshot="unavailable",
+            hydrated=False,
+            formPresent=False,
+            submitPresent=False,
+            **{key: True},
+        ),
+    ]
+    rows = "".join(_reset_registration_v2_row(record) for record in invalid)
+    assert parser(rows) == []
+
+
 def test_live_reset_registration_v2_rejects_private_fields_and_wrong_types() -> None:
     parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
     assert callable(parser), "bounded registration V2 parser is missing"
@@ -13998,6 +14055,8 @@ def test_live_reset_registration_v2_rejects_private_fields_and_wrong_types() -> 
         {**valid, "body": "private-body"},
         {**valid, "cookie": "private-cookie"},
         {**valid, "password": "private-input"},
+        {**valid, "alertText": "private-alert-copy"},
+        {**valid, "errorDetail": "private-error-detail"},
         {**valid, "schema": 2},
     ]
     enums = {

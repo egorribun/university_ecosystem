@@ -492,6 +492,12 @@ const resetV2Expected = {
   formPresent: true,
   formInvalid: false,
   formError: false,
+  nameError: false,
+  emailError: false,
+  inviteError: false,
+  passwordError: false,
+  confirmError: false,
+  rootError: false,
   submitPresent: true,
   submitDisabled: false,
   submitBusy: false,
@@ -647,6 +653,154 @@ test("reset V2 distinguishes form state and aggregates only matching CSRF respon
   ])
   assert.doesNotMatch(output, /private-form-error|503/u)
 })
+
+const resetV2ErrorCases = [
+  ["nameError", "register-name-error"],
+  ["emailError", "register-email-error"],
+  ["inviteError", "register-invite-error"],
+  ["passwordError", "register-password-error"],
+  ["confirmError", "register-confirm-password-error"],
+  ["rootError", null],
+]
+for (const [key, errorId] of resetV2ErrorCases) {
+  test(`reset V2 classifies ${key} without reading alert text`, () => {
+    const output = resetV2InChild(`
+      const page = new ObservationPage();
+      const document = page.dom.window.document;
+      const alert = document.createElement("div");
+      const errorId = ${JSON.stringify(errorId)};
+      alert.setAttribute("role", "alert");
+      if (errorId === null) alert.setAttribute("aria-live", "assertive");
+      else alert.id = errorId;
+      alert.textContent = "PRIVATE_ALERT_COPY";
+      document.querySelector("form").append(alert);
+      Object.defineProperty(alert, "textContent", {
+        get() { throw new Error("private-alert-read"); },
+      });
+      const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+      const original = privateError();
+      await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+        error => error === original);
+      assert.equal(page.evaluations, 1);
+      for (const event of ["request", "response", "requestfailed"]) assert.equal(page.listenerCount(event), 0);
+      page.dom.window.close();
+    `)
+    assert.deepEqual(resetV2Records(output), [
+      {
+        ...resetV2Expected,
+        formError: true,
+        [key]: true,
+        csrfRequested: false,
+        csrfResponse: "not-observed",
+      },
+    ])
+    assert.doesNotMatch(output, /PRIVATE_ALERT_COPY|private-alert-read/u)
+  })
+}
+test("reset V2 ignores foreign forms, inactive field errors and nested root lookalikes", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    const document = page.dom.window.document;
+    const form = document.querySelector("form");
+    for (const id of ["register-name-error", "register-email-error", "register-invite-error",
+      "register-password-error", "register-confirm-password-error"]) {
+      const foreign = document.createElement("div");
+      foreign.id = id;
+      foreign.setAttribute("role", "alert");
+      document.body.append(foreign);
+      const inactive = document.createElement("div");
+      inactive.id = id;
+      form.append(inactive);
+    }
+    const foreignRoot = document.createElement("div");
+    foreignRoot.setAttribute("role", "alert");
+    foreignRoot.setAttribute("aria-live", "assertive");
+    document.body.append(foreignRoot);
+    const wrapper = document.createElement("div");
+    wrapper.append(foreignRoot.cloneNode());
+    form.append(wrapper);
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+    const original = privateError();
+    await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+      error => error === original);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      formError: true,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+})
+test("reset V2 reports absent forms without classifying any field or root error", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    page.dom.window.document.body.replaceChildren();
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+    const original = privateError();
+    await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+      error => error === original);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      formPresent: false,
+      submitPresent: false,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+})
+test("reset V2 rejects malformed classified errors without invoking snapshot getters", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    const errorKeys = ["nameError", "emailError", "inviteError", "passwordError", "confirmError", "rootError"];
+    let getterReads = 0;
+    for (const key of errorKeys) {
+      for (const mode of ["wrong-type", "missing", "getter", "contradictory"]) {
+        page.evaluate = async () => {
+          const snapshot = {
+            hydrated: true, formPresent: true, formInvalid: false, formError: false,
+            nameError: false, emailError: false, inviteError: false,
+            passwordError: false, confirmError: false, rootError: false,
+            submitPresent: true, submitDisabled: false, submitBusy: false,
+          };
+          if (mode === "wrong-type") snapshot[key] = "private-classification";
+          else if (mode === "missing") delete snapshot[key];
+          else if (mode === "contradictory") snapshot[key] = true;
+          else Object.defineProperty(snapshot, key, {
+            enumerable: true,
+            get() { getterReads += 1; throw new Error("private-classification-getter"); },
+          });
+          return snapshot;
+        };
+        const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+        const original = privateError();
+        await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+          error => error === original);
+      }
+    }
+    assert.equal(getterReads, 0);
+    for (const event of ["request", "response", "requestfailed"]) assert.equal(page.listenerCount(event), 0);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      snapshot: "unavailable",
+      hydrated: false,
+      formPresent: false,
+      submitPresent: false,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+  assert.doesNotMatch(output, /private-classification/u)
+})
+
 test("reset V2 ignores foreign, malformed and untracked CSRF events", () => {
   const output = resetV2InChild(`
     const page = new ObservationPage();
@@ -782,6 +936,8 @@ test("reset V2 rejects private DOM snapshots and contains sink failure", () => {
     const page = new ObservationPage();
     page.evaluate = async () => ({
       hydrated: true, formPresent: true, formInvalid: false, formError: false,
+      nameError: false, emailError: false, inviteError: false,
+      passwordError: false, confirmError: false, rootError: false,
       submitPresent: true, submitDisabled: false, submitBusy: false,
       privateField: "private-input",
     });
