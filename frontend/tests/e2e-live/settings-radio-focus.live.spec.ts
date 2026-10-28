@@ -182,6 +182,149 @@ async function readSemanticTokens(page: Page, scheme: "light" | "dark") {
         { name: "grad-nav-dark", property: "background-image", expected: navDark },
         { name: "bg-footer-light", property: "background-image", expected: footerLight },
         { name: "bg-footer-dark", property: "background-image", expected: navDark },
+        // Remaining numeric-alpha inventory in semantics.css; percentages are
+        // independent reference literals, not values read from alpha tokens.
+        {
+          name: "raw-shadow-xs",
+          property: "box-shadow",
+          expected: shadow("0 1px 2px", "black", 5),
+        },
+        {
+          name: "raw-shadow-md",
+          property: "box-shadow",
+          expected: [shadow("0 4px 12px", "black", 10), shadow("0 2px 4px", "black", 5)].join(", "),
+        },
+        {
+          name: "raw-shadow-premium",
+          property: "box-shadow",
+          expected: [
+            shadow("0 20px 50px", "black", 10),
+            shadow("0 8px 16px", "black", 5),
+          ].join(", "),
+        },
+        {
+          name: "raw-shadow-premium-lift",
+          property: "box-shadow",
+          expected: shadow("0 20px 40px -12px", "var(--primary-main)", 20),
+        },
+        {
+          name: "raw-shadow-glass-strong",
+          property: "box-shadow",
+          expected: shadow("0 45px 90px", "black", 50),
+        },
+        {
+          name: "raw-shadow-up",
+          property: "box-shadow",
+          expected: shadow("0 -4px 12px", "black", 5),
+        },
+        {
+          name: "shadow-glow-error",
+          property: "box-shadow",
+          expected: shadow("0 0 12px", "var(--error-text)", 20),
+        },
+        {
+          name: "shadow-glow-warning",
+          property: "box-shadow",
+          expected: shadow("0 0 12px", "var(--warning-text)", 20),
+        },
+        {
+          name: "shadow-glow-success",
+          property: "box-shadow",
+          expected: shadow("0 0 12px", "var(--success-text)", 20),
+        },
+        {
+          name: "bg-nav-light",
+          property: "background-color",
+          expected: mix("var(--color-white)", 90),
+        },
+        {
+          name: "bg-nav-dark",
+          property: "background-color",
+          expected: mix("var(--color-slate-950)", 90),
+        },
+        {
+          name: "msg-online-pulse",
+          property: "background-color",
+          expected: mix(dark ? "var(--color-emerald-400)" : "var(--success-text)", 30),
+        },
+        {
+          name: "glass-bg",
+          property: "background-color",
+          expected: mix(dark ? "var(--color-slate-900)" : "white", 10),
+        },
+        {
+          name: "shadow-glass",
+          property: "box-shadow",
+          expected: shadow(
+            "0 8px 32px 0",
+            dark ? "var(--color-black)" : "var(--color-slate-900)",
+            dark ? 30 : 10
+          ),
+        },
+        {
+          name: "glass-tint1",
+          property: "background-color",
+          expected: mix(dark ? "var(--color-sky-400)" : "white", dark ? 5 : 10),
+        },
+        {
+          name: "glass-tint2",
+          property: "background-color",
+          expected: mix(dark ? "var(--color-indigo-400)" : "white", 5),
+        },
+        {
+          name: "primary-subtle",
+          property: "background-color",
+          expected: dark ? mix("var(--color-sky-400)", 10) : "var(--color-blue-50)",
+        },
+        {
+          name: "success-bg",
+          property: "background-color",
+          expected: dark ? mix("var(--color-emerald-500)", 20) : "var(--color-green-100)",
+        },
+        {
+          name: "warning-bg",
+          property: "background-color",
+          expected: dark ? mix("var(--color-amber-500)", 20) : "var(--color-amber-100)",
+        },
+        {
+          name: "msg-sidebar-active",
+          property: "background-color",
+          expected: dark ? mix("var(--primary-main)", 10) : "var(--color-blue-50)",
+        },
+        // These two numeric-alpha declarations exist only in the dark scope.
+        // The light raw-shadow-glass-strong target is covered separately above.
+        ...(dark
+          ? [
+              {
+                name: "overlay-bg",
+                property: "background-color",
+                expected: mix("black", 80),
+              },
+              {
+                name: "shadow-glass-strong",
+                property: "box-shadow",
+                expected: shadow("0 12px 48px 0", "var(--color-black)", 50),
+              },
+            ]
+          : []),
+      ]
+      // These declarations belong to the real lazy-loaded dashboard scope.
+      const dashboardCases = [
+        {
+          name: "dash-hero-radial-top",
+          property: "background-color",
+          expected: mix("var(--color-sky-400)", dark ? 15 : 20),
+        },
+        {
+          name: "dash-hero-highlight",
+          property: "background-color",
+          expected: mix(dark ? "var(--color-indigo-400)" : "var(--color-indigo-500)", 10),
+        },
+        {
+          name: "dash-hero-highlight-soft",
+          property: "background-color",
+          expected: mix(dark ? "var(--color-sky-400)" : "var(--primary-main)", dark ? 6 : 5),
+        },
       ]
       return {
         cohort: cases.map(({ name, property, expected }) => ({
@@ -190,6 +333,13 @@ async function readSemanticTokens(page: Page, scheme: "light" | "dark") {
           actual: read(property, `var(--${name})`),
           expected: read(property, expected),
         })),
+        dashboardCohort: dashboard
+          ? dashboardCases.map(({ name, property, expected }) => ({
+              name,
+              actual: read(property, `var(--${name})`),
+              expected: read(property, expected),
+            }))
+          : [],
         dashboardOrb: dashboard ? read("background-color", "var(--dash-hero-orb)") : null,
         dashboardOrbExpected: dashboard
           ? read("background-color", mix("var(--color-sky-400)", dark ? 18 : 15))
@@ -235,6 +385,7 @@ test("Semantic tokens preserve percentage alpha in both themes", async ({ page }
       await expect(page.locator("body")).toHaveAttribute("data-color-scheme", scheme)
       await expect(systemRadio).toBeChecked()
       const tokens = await readSemanticTokens(page, scheme)
+      expect(tokens.cohort).toHaveLength(scheme === "dark" ? 39 : 37)
 
       // Controls establish the real stylesheet, theme, and independent expected values.
       expect(tokens.opacity).toBe("0.2")
@@ -278,6 +429,13 @@ test("Semantic tokens preserve percentage alpha in both themes", async ({ page }
       expect(tokens.dashboardOrbExpected, label).not.toBe("")
       expect(tokens.dashboardOrbExpected, label).not.toBe("rgba(0, 0, 0, 0)")
       expect.soft(tokens.dashboardOrb, label).toBe(tokens.dashboardOrbExpected)
+      expect(tokens.dashboardCohort).toHaveLength(3)
+      for (const probe of tokens.dashboardCohort) {
+        const probeLabel = `${scheme} ${probe.name} percentage`
+        expect(probe.expected, probeLabel).not.toBe("")
+        expect(probe.expected, probeLabel).not.toBe("rgba(0, 0, 0, 0)")
+        expect.soft(probe.actual, probeLabel).toBe(probe.expected)
+      }
     }
   } finally {
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" })
