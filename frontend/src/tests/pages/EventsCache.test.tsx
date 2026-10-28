@@ -5,6 +5,8 @@ import { HttpResponse, http } from "msw"
 import type { ContextType } from "react"
 import { QueryClient } from "@tanstack/react-query"
 
+import { resetEtagCache } from "@/api/client"
+import { registerSigningKeyAccessor } from "@/api/interceptors/etagCache"
 import Events from "@/pages/Events"
 import { AuthContext } from "@/contexts/AuthContext"
 import type { Event } from "@/types/Event"
@@ -59,12 +61,17 @@ const authValue: AuthContextValue = {
 
 describe("Events caching", () => {
   beforeEach(() => {
+    resetEtagCache()
+    const signingKey = crypto.randomUUID()
+    registerSigningKeyAccessor(() => signingKey)
     acceptBrowserSessionGeneration()
     useAuthStore.setState({ user: testUser, loading: false })
   })
 
   afterEach(() => {
     cleanup()
+    resetEtagCache()
+    registerSigningKeyAccessor(() => null)
     useAuthStore.setState({ user: null, loading: true })
   })
 
