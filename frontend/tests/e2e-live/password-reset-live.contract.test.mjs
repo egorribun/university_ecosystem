@@ -98,3 +98,26 @@ test("password reset registration keeps admission and observes only a finite fai
     /setTimeout|waitForTimeout|\.message|\.stack|\.post\(|\.evaluate\(/u
   )
 })
+
+test("password reset waits for document hydration before typing after reload", () => {
+  const source = readFileSync(specPath, "utf8")
+  const config = readFileSync(configPath, "utf8")
+  const reloadIndex = source.indexOf("  await page.reload()")
+  const fillIndex = source.indexOf(
+    '  await page.getByLabel("Пароль", { exact: true }).fill(newPassword)',
+    reloadIndex
+  )
+  assert.ok(reloadIndex >= 0 && fillIndex > reloadIndex, "the reset reload precedes its fields")
+  const beforeFill = source.slice(reloadIndex, fillIndex)
+
+  assert.match(
+    beforeFill,
+    /await page\.waitForFunction\(\s*\(\) => window\.__APP_HYDRATED === true,\s*undefined,\s*\{\s*timeout: RESET_REPLAY_ACTION_TIMEOUT_MS,?\s*\}\s*\)/u
+  )
+  assert.match(source, /const RESET_REPLAY_ACTION_TIMEOUT_MS = 15_000/u)
+  assert.doesNotMatch(beforeFill, /waitForTimeout|addInitScript|__APP_HYDRATED\s*=(?!=)/u)
+  assert.doesNotMatch(source, /(?:test|testInfo)\.setTimeout|test\.slow\(/u)
+  assert.match(config, /timeout: 60_000,/u)
+  assert.match(config, /actionTimeout: 15_000,/u)
+  assert.match(config, /failOnFlakyTests: Boolean\(process\.env\.CI\)/u)
+})
