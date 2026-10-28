@@ -274,3 +274,35 @@ async def test_real_static_chat_upload_persists_and_remains_readable(
     ).scalar_one()
     assert stored.url.startswith(("http://", "https://"))
     assert await backend.read_file(stored.url, max_bytes=len(payload)) == payload
+
+    # Exercise the actual endpoint body against the same persisted row and
+    # filesystem, not a mocked download query. Authentication middleware is
+    # outside this direct injected-handler boundary.
+    from app.api import chat as chat_api
+    from tests.conftest import call_injected
+
+    filename = attachment.url.rsplit("/", 1)[-1]
+    response = await call_injected(
+        chat_api.download_chat_attachment,
+        chat.id,
+        filename,
+        current_user=recipient,
+        locale="en",
+        provides={"AsyncDatabaseSession": db_session},
+    )
+    assert response.status_code == 200
+    assert response.body == payload
+    assert response.headers["cache-control"] == "private, no-store"
+    assert "location" not in response.headers
+
+    outsider = await user_factory()
+    with pytest.raises(HTTPException) as denied:
+        await call_injected(
+            chat_api.download_chat_attachment,
+            chat.id,
+            filename,
+            current_user=outsider,
+            locale="en",
+            provides={"AsyncDatabaseSession": db_session},
+        )
+    assert denied.value.status_code == 403

@@ -88,6 +88,12 @@ import {
   type UseChatWebSocketOptions,
 } from "../useChatWebSocket"
 import { peekReplayCheckpoint, writeReplayCheckpoint } from "../chatReplayCheckpoints"
+import {
+  beginMessengerOperation,
+  classifyMessengerServerEdit,
+  finishMessengerOperation,
+  runMessengerOperation,
+} from "../messengerProjection"
 
 const CHAT = "chat-a"
 const OTHER_CHAT = "chat-b"
@@ -2456,4 +2462,92 @@ describe("application heartbeat", () => {
       expect(vi.getTimerCount()).toBe(0)
     }
   )
+})
+
+describe("server edit confirmation with pending local work", () => {
+  it("retires the confirmed receipt and rebases the next edit on the server echo", async () => {
+    const session = await connected({ currentUserId: "me" })
+    const { queryClient, socket } = session
+    let release = () => {}
+    let pending: Promise<void> | undefined
+    try {
+      const key = ["messages", CHAT]
+      const target = message({ edited_at: "2026-08-25T12:00:00.000Z" })
+      queryClient.setQueryData<MessagesListResponse>(key, {
+        items: [target],
+        has_more: false,
+        next_cursor: null,
+      })
+      const first = beginMessengerOperation(queryClient, "me", CHAT, {
+        kind: "edit",
+        messageId: target.id,
+        content: "first accepted edit",
+      })
+      expect(first).toBeDefined()
+      await runMessengerOperation(queryClient, first, async () => undefined)
+      expect(finishMessengerOperation(queryClient, first, true)).toBe(true)
+      const confirmed = queryClient.getQueryData<MessagesListResponse>(key)!
+      expect(
+        classifyMessengerServerEdit(queryClient, CHAT, target.id, "first accepted edit")
+      ).toEqual({
+        kind: "confirmed",
+        before: { content: "first accepted edit", edited_at: target.edited_at },
+      })
+
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const second = beginMessengerOperation(queryClient, "me", CHAT, {
+        kind: "edit",
+        messageId: target.id,
+        content: "second accepted edit",
+      })
+      expect(second).toBeDefined()
+      const secondAction = vi.fn(() => gate)
+      pending = runMessengerOperation(queryClient, second, secondAction)
+      await flush()
+      expect(secondAction).toHaveBeenCalledOnce()
+      act(() =>
+        socket.receive({
+          type: "message_edited",
+          chat_id: CHAT,
+          message_id: target.id,
+          content: "first accepted edit",
+          edited_at: "2026-08-25T12:00:01.000Z",
+        })
+      )
+      const echoed = queryClient.getQueryData<MessagesListResponse>(key)!
+      expect(echoed.items[0]).toMatchObject({
+        content: "first accepted edit",
+        edited_at: "2026-08-25T12:00:01.000Z",
+      })
+
+      // Restoring receipt-matching bytes prevents lazy classifier retirement
+      // from hiding a missing confirmation in the actual socket handler.
+      queryClient.setQueryData(key, confirmed)
+      expect(
+        classifyMessengerServerEdit(queryClient, CHAT, target.id, "first accepted edit")
+      ).toEqual({ kind: "normal" })
+      queryClient.setQueryData(key, echoed)
+
+      release()
+      await pending
+      expect(finishMessengerOperation(queryClient, second, true)).toBe(true)
+      expect(queryClient.getQueryData<MessagesListResponse>(key)?.items[0]).toMatchObject({
+        content: "second accepted edit",
+        edited_at: "2026-08-25T12:00:01.000Z",
+      })
+    } finally {
+      release()
+      try {
+        await pending?.catch(() => undefined)
+      } finally {
+        try {
+          session.unmount()
+        } finally {
+          queryClient.clear()
+        }
+      }
+    }
+  })
 })

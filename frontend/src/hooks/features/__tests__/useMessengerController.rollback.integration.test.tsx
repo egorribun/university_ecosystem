@@ -1,14 +1,20 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import {
+  QueryClient,
+  QueryClientProvider,
+  focusManager,
+  onlineManager,
+} from "@tanstack/react-query"
 import { useEffect, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { Chat, Message, MessagesListResponse } from "@/api/chat"
+import type { Chat, ChatsListResponse, Message, MessagesListResponse } from "@/api/chat"
 import { MessengerProvider } from "@/contexts/MessengerContext"
 import { useMessenger } from "@/contexts/MessengerContextCore"
 import { MessengerShellProvider } from "@/contexts/MessengerShellProvider"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import { WebSocketProvider } from "@/hooks/useChatWebSocket"
 import { createSessionMutationCache } from "@/app/sessionMutationCache"
+import { createQueryClient } from "@/app/queryClient"
 import { invalidateSessionEpoch } from "@/stores/sessionEpoch"
 
 const ids = {
@@ -121,14 +127,16 @@ function ShellProbe() {
   return null
 }
 
-async function setup() {
-  const queryClient = new QueryClient({
-    mutationCache: createSessionMutationCache(),
-    defaultOptions: {
-      queries: { retry: false, staleTime: Infinity },
-      mutations: { retry: false },
-    },
-  })
+async function setup(providedClient?: QueryClient) {
+  const queryClient =
+    providedClient ??
+    new QueryClient({
+      mutationCache: createSessionMutationCache(),
+      defaultOptions: {
+        queries: { retry: false, staleTime: Infinity },
+        mutations: { retry: false },
+      },
+    })
   function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
@@ -1430,4 +1438,124 @@ describe("messenger mutation rollback with live transport", () => {
       else localStorage.setItem(key, previous)
     }
   })
+})
+
+describe("committed clear recovery with production query defaults", () => {
+  it.each(["focus", "reconnect"] as const)(
+    "recovers after a direct chat refresh failure on %s without altering another chat",
+    async (trigger) => {
+      const wasFocused = focusManager.isFocused()
+      const wasOnline = onlineManager.isOnline()
+      focusManager.setFocused(false)
+      onlineManager.setOnline(true)
+      const queryClient = createQueryClient()
+      const heldMarkRead = deferred()
+      const clear = deferred()
+      let session: Awaited<ReturnType<typeof setup>> | undefined
+      try {
+        session = await setup(queryClient)
+        await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+        const { result, socket } = session
+        const otherId = "66666666-6666-4666-8666-666666666666"
+        const otherMessage = {
+          ...message,
+          id: "77777777-7777-4777-8777-777777777777",
+          chat_id: otherId,
+        }
+        const otherChat: Chat = {
+          ...chat,
+          id: otherId,
+          unread_count: 0,
+          last_message: otherMessage,
+        }
+        const beforeClear = {
+          items: [chat, otherChat],
+          has_more: false,
+          next_cursor: null,
+        }
+        act(() => {
+          queryClient.setQueryData(["chats"], beforeClear)
+          queryClient.setQueryData(["messages", otherId], {
+            items: [otherMessage],
+            has_more: false,
+            next_cursor: null,
+          })
+        })
+        const otherMessages = queryClient.getQueryData(["messages", otherId])
+        mocks.chatApi.clearChat.mockReturnValue(clear.promise)
+        mocks.chatApi.markRead.mockReturnValue(heldMarkRead.promise)
+        act(() => result.current.controller.handleClearChat())
+        act(() => result.current.controller.confirmDialog!.onConfirm())
+        await waitFor(() => expect(result.current.controller.messages).toHaveLength(0))
+        act(() => socket.frame({ type: "new_message", chat_id: ids.chat, message: incoming }))
+        await waitFor(() => expect([result.current.unread, shellUnread]).toEqual([1, 1]))
+        mocks.chatApi.getMessages.mockResolvedValue({
+          items: [],
+          has_more: false,
+          next_cursor: null,
+        })
+        const previousFetches = mocks.chatApi.getChats.mock.calls.length
+        mocks.chatApi.getChats.mockRejectedValueOnce(new Error("temporary direct refresh failure"))
+        mocks.chatApi.getChats.mockResolvedValue({
+          items: [{ ...chat, unread_count: 0, last_message: undefined }, otherChat],
+          has_more: false,
+          next_cursor: null,
+        })
+        await act(async () => {
+          clear.resolve({ status: "cleared" })
+          await clear.promise
+        })
+        await waitFor(() =>
+          expect(mocks.chatApi.getChats).toHaveBeenCalledTimes(previousFetches + 1)
+        )
+        await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+        expect(queryClient.getQueryState(["chats"])).toMatchObject({
+          status: "success",
+          error: null,
+          isInvalidated: true,
+        })
+        expect([result.current.unread, shellUnread]).toEqual([1, 1])
+        expect(queryClient.getQueryData(["messages", otherId])).toBe(otherMessages)
+
+        // The direct request does not enter Query's retry/error state. Recovery
+        // here comes from the real production focus/reconnect policy instead.
+        await act(async () => {
+          if (trigger === "focus") focusManager.setFocused(true)
+          else {
+            onlineManager.setOnline(false)
+            onlineManager.setOnline(true)
+          }
+        })
+        await waitFor(() =>
+          expect(mocks.chatApi.getChats.mock.calls.length).toBeGreaterThan(previousFetches + 1)
+        )
+        await waitFor(() => expect([result.current.unread, shellUnread]).toEqual([0, 0]))
+        expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[1]).toEqual(otherChat)
+        expect(queryClient.getQueryData(["messages", otherId])).toBe(otherMessages)
+      } finally {
+        try {
+          try {
+            session?.unmount()
+          } finally {
+            await act(async () => {
+              clear.resolve({ status: "cleared" })
+              heldMarkRead.resolve({ success: true })
+              await clear.promise
+              await heldMarkRead.promise
+            })
+          }
+        } finally {
+          try {
+            queryClient.clear()
+          } finally {
+            try {
+              focusManager.setFocused(wasFocused)
+            } finally {
+              onlineManager.setOnline(wasOnline)
+            }
+          }
+        }
+      }
+    }
+  )
 })

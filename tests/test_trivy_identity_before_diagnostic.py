@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib.util
 import json
 import os
@@ -13,6 +14,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "reusable-security-audit.yml"
@@ -323,3 +325,88 @@ def test_identity_after_rejection_does_not_emit_tracked_change_diagnostic(
     assert result.stdout == ""
     assert PREFIX not in result.stderr
     assert "stage=identity-after; identity-check=tracked-clean" in result.stderr
+
+
+def test_filesystem_metadata_observes_clean_source_before_helm_generation(
+    repo: Path,
+) -> None:
+    # Replaying only these boundaries keeps Git and the metadata program real;
+    # it does not pretend that a synthetic SARIF is an actual Trivy scan.
+    workflow_text = WORKFLOW.read_text(encoding="utf-8")
+    job = yaml.safe_load(workflow_text)["jobs"]["docker-security"]
+    names = [step.get("name") for step in job["steps"]]
+    boundaries = (
+        "Export backend OCI and prepare isolated Helm profiles",
+        "Build Helm dependencies for Trivy",
+        "Run Trivy vulnerability scanner (filesystem)",
+        "Report bounded Trivy filesystem vulnerability metadata",
+    )
+    assert all(names.count(name) == 1 for name in boundaries)
+    copied_workflow = repo / ".github" / "workflows" / "reusable-security-audit.yml"
+    copied_workflow.write_text(workflow_text, encoding="utf-8")
+    _git(repo, "add", str(copied_workflow.relative_to(repo)))
+    _git(repo, "commit", "--quiet", "-m", "use the actual workflow")
+    expected_head = _git(repo, "rev-parse", "HEAD")
+    expected_workflow = _git(
+        repo, "rev-parse", "HEAD:.github/workflows/reusable-security-audit.yml"
+    )
+    generated_archive = b"dependency-generated fixture archive"
+    report_bytes = json.dumps(
+        {
+            "version": "2.1.0",
+            "runs": [
+                {
+                    "tool": {
+                        "driver": {
+                            "name": "Trivy",
+                            "version": "0.75.0",
+                            "rules": [],
+                        }
+                    },
+                    "results": [],
+                }
+            ],
+        }
+    ).encode("utf-8")
+    result = None
+    scan_delta = None
+    visited: list[str] = []
+    for step in job["steps"]:
+        name = step.get("name")
+        if name not in boundaries:
+            continue
+        visited.append(name)
+        if name == boundaries[0]:
+            assert _git(repo, "diff", "--name-only", "HEAD", "--") == ""
+        elif name == boundaries[1]:
+            (repo / REDIS).write_bytes(generated_archive)
+        elif name == boundaries[2]:
+            assert step["with"]["scan-ref"] == "."
+            scan_delta = _git(repo, "diff", "--name-only", "HEAD", "--")
+            (repo / step["with"]["output"]).write_bytes(report_bytes)
+        else:
+            result = _run_diagnostic(repo)
+
+    assert result is not None
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    assert result.stdout.startswith("TRIVY_FS_METADATA ")
+    receipt = json.loads(result.stdout.removeprefix("TRIVY_FS_METADATA "))
+    assert receipt["tested_sha"] == expected_head
+    assert receipt["source_sha"] == expected_head
+    assert receipt["workflow_blob"] == expected_workflow
+    assert receipt["scan_outcome"] == "failure"
+    assert receipt["sarif_sha256"] == hashlib.sha256(report_bytes).hexdigest()
+    assert receipt["finding_count"] == 0
+    assert receipt["records"] == []
+    assert scan_delta == ""
+    assert visited == [
+        boundaries[0],
+        boundaries[2],
+        boundaries[3],
+        boundaries[1],
+    ]
+    # Dependency output still exists afterwards: restoring tracked input would
+    # hide the defect rather than establish identity at the filesystem scan.
+    assert (repo / REDIS).read_bytes() == generated_archive
+    assert _git(repo, "diff", "--name-only", "HEAD", "--") == REDIS

@@ -892,6 +892,11 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
         (
             "reusable-security-audit.yml",
             "docker-security",
+            "Report bounded Trivy filesystem vulnerability metadata",
+        ),
+        (
+            "reusable-security-audit.yml",
+            "docker-security",
             "Run Trivy configuration scanner (IaC)",
         ),
         (
@@ -1617,6 +1622,7 @@ def test_reusable_trivy_scans_upload_evidence_then_fail_closed() -> None:
         "REVOCATION_OUTCOME": "${{ steps.trivy_revocation.outcome }}",
         "UNIVERSITY_OUTCOME": "${{ steps.trivy_university.outcome }}",
         "REDIS_COMPAT_OUTCOME": "${{ steps.trivy_redis_compat.outcome }}",
+        "METADATA_OUTCOME": "${{ steps.trivy_fs_metadata.outcome }}",
     }
     assert 'exit "$failed"' in reassert["run"]
     assert 'if [[ "$outcome" != "success" ]]' in reassert["run"]
@@ -1972,4 +1978,85 @@ def test_trivy_diagnostic_is_failure_only_and_preserves_scan_permissions() -> No
     assert job["permissions"] == {"security-events": "write", "contents": "read"}
     assert step["run"] == (
         'python3 scripts/quality/report_trivy_metadata.py "$SARIF_PATH"'
+    )
+
+
+_TRIVY_REQUIRED_OUTCOMES = (
+    "FILESYSTEM_OUTCOME",
+    "CONFIGURATION_OUTCOME",
+    "REVOCATION_OUTCOME",
+    "UNIVERSITY_OUTCOME",
+    "REDIS_COMPAT_OUTCOME",
+    "METADATA_OUTCOME",
+)
+
+
+def test_trivy_metadata_failure_is_deferred_but_remains_blocking() -> None:
+    job = _workflow(WORKFLOWS / "reusable-security-audit.yml")["jobs"][
+        "docker-security"
+    ]
+    steps = job["steps"]
+    export = _step(job, "Export backend OCI and prepare isolated Helm profiles")
+    scan = _step(job, "Run Trivy vulnerability scanner (filesystem)")
+    metadata = _step(job, "Report bounded Trivy filesystem vulnerability metadata")
+    dependencies = _step(job, "Build Helm dependencies for Trivy")
+    reassert = _step(job, "Re-assert Trivy filesystem and configuration gates")
+
+    assert steps.index(export) < steps.index(scan) < steps.index(metadata)
+    assert steps.index(metadata) < steps.index(dependencies)
+    assert metadata["id"] == "trivy_fs_metadata"
+    assert metadata["continue-on-error"] is True
+    assert metadata["if"] == (
+        "${{ always() && !cancelled() && "
+        "(steps.trivy_fs.outcome == 'success' || "
+        "steps.trivy_fs.outcome == 'failure') }}"
+    )
+    assert metadata["timeout-minutes"] == 1
+    assert metadata["env"] == {
+        "EXPECTED_SOURCE_SHA": (
+            "${{ github.event.pull_request.head.sha || github.sha }}"
+        ),
+        "TRIVY_FS_OUTCOME": "${{ steps.trivy_fs.outcome }}",
+    }
+    assert reassert["env"]["METADATA_OUTCOME"] == (
+        "${{ steps.trivy_fs_metadata.outcome }}"
+    )
+    assert reassert["if"] == "always()"
+    assert "continue-on-error" not in reassert
+    assert steps.index(dependencies) < steps.index(reassert)
+
+
+@pytest.mark.parametrize(
+    ("failed_variable", "outcome"),
+    [(None, "success")]
+    + [
+        (variable, outcome)
+        for variable in _TRIVY_REQUIRED_OUTCOMES
+        for outcome in ("failure", "cancelled", "skipped", "", "unknown")
+    ],
+)
+def test_trivy_reassert_executes_and_rejects_each_non_success_outcome(
+    tmp_path: Path, failed_variable: str | None, outcome: str
+) -> None:
+    job = _workflow(WORKFLOWS / "reusable-security-audit.yml")["jobs"][
+        "docker-security"
+    ]
+    reassert = _step(job, "Re-assert Trivy filesystem and configuration gates")
+    bash = which("bash")
+    assert bash is not None, "Bash is required for the real Trivy gate test"
+    outcomes = dict.fromkeys(_TRIVY_REQUIRED_OUTCOMES, "success")
+    if failed_variable is not None:
+        outcomes[failed_variable] = outcome
+    result = subprocess.run(  # noqa: S603 - fixed gate and finite outcome fixtures
+        [bash, "--noprofile", "--norc", "-euo", "pipefail", "-c", reassert["run"]],
+        cwd=tmp_path,
+        env=outcomes,
+        check=False,
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.returncode == (0 if failed_variable is None else 1), (
+        result.stdout,
+        result.stderr,
     )

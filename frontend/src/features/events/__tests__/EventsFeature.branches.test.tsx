@@ -170,6 +170,7 @@ vi.mock("../components/EventsList", () => ({
       <span data-testid="list-initial-loading">{String(props.isInitialLoading)}</span>
       <span data-testid="list-fetching">{String(props.isFetching)}</span>
       <span data-testid="list-has-next">{String(props.hasNextPage)}</span>
+      <MyPaginationControls value={props.myPagination} />
       <button onClick={() => (props.fetchNextPage as () => void)()}>fetch-next</button>
       <button onClick={() => (props.refreshEvents as () => void)()}>refresh</button>
       <button onClick={() => (props.onAddClick as () => void)()}>list-add</button>
@@ -205,8 +206,50 @@ function evt(over: Partial<Record<string, unknown>> = {}) {
   }
 }
 
-function myPage(items: unknown[]) {
-  return { items, total: null, limit: 12, cursor: null, next_cursor: null, has_more: false }
+function myPage(
+  items: unknown[],
+  cursor: string | null = null,
+  nextCursor: string | null = null
+) {
+  return {
+    items,
+    total: null,
+    limit: 12,
+    cursor,
+    next_cursor: nextCursor,
+    has_more: nextCursor !== null,
+  }
+}
+
+function MyPaginationControls({ value }: { value: unknown }) {
+  if (!value) return null
+  const pagination = value as {
+    atFirst: boolean
+    hasPrevious: boolean
+    hasNext: boolean
+    onPrevious: () => void
+    onNext: () => void
+  }
+  return (
+    <div>
+      <span data-testid="my-at-first">{String(pagination.atFirst)}</span>
+      <button disabled={!pagination.hasPrevious} onClick={pagination.onPrevious}>
+        my-previous
+      </button>
+      <button disabled={!pagination.hasNext} onClick={pagination.onNext}>
+        my-next
+      </button>
+      <button
+        disabled={!pagination.hasNext}
+        onClick={() => {
+          pagination.onNext()
+          pagination.onNext()
+        }}
+      >
+        my-next-twice
+      </button>
+    </div>
+  )
 }
 
 beforeEach(() => {
@@ -718,5 +761,70 @@ describe("EventsFeature — list height hold across filter changes", () => {
 
     expect(screen.getByTestId("list-count")).toHaveTextContent("0")
     expect(screen.getByTestId("events-count")).toHaveTextContent("0")
+  })
+})
+
+describe("EventsFeature — My Events cursor transitions", () => {
+  it("requests the first My page refresh with invalidation refetches disabled", () => {
+    search.params = { tab: "my" }
+    myQuery.data = myPage([evt({ id: "first" })], null, "cursor-1")
+    render(<EventsFeature />)
+
+    fireEvent.click(screen.getByText("refresh"))
+
+    expect(resetEtagSpy.fn).toHaveBeenCalledOnce()
+    expect(invalidateSpy.fn).toHaveBeenCalledExactlyOnceWith({
+      queryKey: ["events"],
+      refetchType: "none",
+    })
+    expect(myQuery.refetch).toHaveBeenCalledOnce()
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: null })
+    expect(screen.getByTestId("my-at-first")).toHaveTextContent("true")
+  })
+
+  it("walks back to the prior cursor and resets a later page when refreshing", () => {
+    search.params = { tab: "my" }
+    myQuery.data = myPage([evt({ id: "first" })], null, "cursor-1")
+    const { rerender } = render(<EventsFeature />)
+
+    fireEvent.click(screen.getByText("my-next"))
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: "cursor-1" })
+    myQuery.data = myPage([evt({ id: "second" })], "cursor-1", "cursor-2")
+    rerender(<EventsFeature />)
+    fireEvent.click(screen.getByText("my-next"))
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: "cursor-2" })
+    myQuery.data = myPage([evt({ id: "third" })], "cursor-2")
+    rerender(<EventsFeature />)
+
+    fireEvent.click(screen.getByText("my-previous"))
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: "cursor-1" })
+    myQuery.data = myPage([evt({ id: "second" })], "cursor-1", "cursor-2")
+    rerender(<EventsFeature />)
+    fireEvent.click(screen.getByText("refresh"))
+
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: null })
+    expect(screen.getByTestId("my-at-first")).toHaveTextContent("true")
+    expect(screen.getByText("my-previous")).toBeDisabled()
+    expect(myQuery.refetch).not.toHaveBeenCalled()
+    expect(invalidateSpy.fn).toHaveBeenCalledExactlyOnceWith({
+      queryKey: ["events"],
+      refetchType: "none",
+    })
+  })
+
+  it("coalesces two next callbacks in one event without adding a duplicate history entry", () => {
+    search.params = { tab: "my" }
+    myQuery.data = myPage([evt({ id: "first" })], null, "cursor-1")
+    const { rerender } = render(<EventsFeature />)
+
+    fireEvent.click(screen.getByText("my-next-twice"))
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: "cursor-1" })
+    myQuery.data = myPage([evt({ id: "second" })], "cursor-1")
+    rerender(<EventsFeature />)
+    fireEvent.click(screen.getByText("my-previous"))
+
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: null })
+    expect(screen.getByTestId("my-at-first")).toHaveTextContent("true")
+    expect(screen.getByText("my-previous")).toBeDisabled()
   })
 })
