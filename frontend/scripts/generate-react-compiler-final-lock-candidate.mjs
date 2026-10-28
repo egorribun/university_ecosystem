@@ -69,7 +69,7 @@ const digest = (bytes) => createHash("sha256").update(bytes).digest("hex")
 function sourceManifestPhase(manifest) {
   assert.equal(manifest.private, true)
   assert.equal(manifest.packageManager, "npm@11.17.0")
-  assert.equal(manifest.devDependencies?.eslint, "^10.12.0")
+  assert.equal(manifest.devDependencies?.eslint, "^10.13.0")
   assert.equal(manifest.devDependencies?.["eslint-plugin-react-compiler"], "^19.1.0-rc.2")
   assert.equal(manifest.devDependencies?.["eslint-plugin-react-hooks"], "^7.1.1")
   const hasLegacy = Object.hasOwn(manifest.devDependencies ?? {}, LEGACY)
@@ -140,7 +140,7 @@ export function prepareStrictManifest(manifest) {
     private: true,
     packageManager: "npm@11.17.0",
     devDependencies: {
-      eslint: "10.12.0",
+      eslint: "10.13.0",
       "eslint-plugin-react-compiler": "19.1.0-rc.2",
       "eslint-plugin-react-hooks": "7.1.1",
       [FACADE]: ARCHIVE_SPEC,
@@ -203,7 +203,7 @@ function assertSharedSourceLock(lock) {
     ["node_modules/undici", "8.12.2"],
     [COMPILER, "19.1.0-rc.2"],
     [HOOKS, "7.1.1"],
-    ["node_modules/eslint", "10.12.0"],
+    ["node_modules/eslint", "10.13.0"],
     ["node_modules/@puppeteer/browsers", "3.2.4"],
     ["node_modules/chromium-bidi", "157.0.8090-0"],
     ["node_modules/puppeteer-core", "25.13.0"],
@@ -680,7 +680,7 @@ export function summarizeStrictNpmFailure(result) {
   ])
   if (codes.has(error.code)) report.errorCode = error.code
   const versions = new Map([
-    ["eslint", ["10.12.0"]],
+    ["eslint", ["10.13.0"]],
     ["eslint-plugin-react-compiler", ["19.1.0-rc.2"]],
     ["eslint-plugin-react-hooks", ["7.1.1"]],
     ["zod", ["1.0.0", "3.25.76", "4.6.7"]],
@@ -785,7 +785,7 @@ export function summarizeStrictListFailure(result) {
     report.errorCode = parsed.error.code
   }
   const versions = new Map([
-    ["eslint", ["10.12.0"]],
+    ["eslint", ["10.13.0"]],
     ["eslint-plugin-react-compiler", ["19.1.0-rc.2"]],
     ["eslint-plugin-react-hooks", ["7.1.1"]],
     ["zod", ["1.0.0", "3.25.76", "4.6.7"]],
@@ -912,7 +912,7 @@ export function assertStrictLock(strict, project, rootFormatterPinned = false) {
   assert.equal(strict.name, "react-compiler-peer-proof")
   assert.equal(strict.version, "1.0.0")
   const expectedDevDependencies = {
-    eslint: "10.12.0",
+    eslint: "10.13.0",
     "eslint-plugin-react-compiler": "19.1.0-rc.2",
     "eslint-plugin-react-hooks": "7.1.1",
     [FACADE]: ARCHIVE_SPEC,
@@ -935,7 +935,7 @@ export function assertStrictLock(strict, project, rootFormatterPinned = false) {
       artifactIdentity(project.packages[path])
     )
   }
-  assert.equal(strict.packages["node_modules/eslint"].version, "10.12.0")
+  assert.equal(strict.packages["node_modules/eslint"].version, "10.13.0")
   assert.equal(strict.packages[COMPILER].version, "19.1.0-rc.2")
   assert.equal(strict.packages[COMPILER].peerDependencies.eslint, ">=7")
   assert.equal(strict.packages[HOOKS].version, "7.1.1")
@@ -1303,7 +1303,7 @@ export function assertFinalInstalledGraph(frontend, mode, controls) {
   assert.equal(formatter.peerDependencies.zod, FORMATTER_PEER)
   assert.equal(createRequire(formatterPath).resolve("zod/package.json"), rootPath)
   for (const [name, version] of [
-    ["eslint", "10.12.0"],
+    ["eslint", "10.13.0"],
     ["eslint-plugin-react-hooks", "7.1.1"],
   ]) {
     const installed = packageMetadata(join(frontend, "node_modules", name, "package.json"))
@@ -1862,7 +1862,7 @@ export async function runFinalCompilerGenerator() {
         wholeProjectStrictResolutionVerified: false,
       },
       strictPeerVersions: {
-        eslint: "10.12.0",
+        eslint: "10.13.0",
         compiler: "19.1.0-rc.2",
         hooks: "7.1.1",
         formatter: "4.0.2",

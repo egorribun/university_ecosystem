@@ -101,7 +101,7 @@ function manifest() {
     packageManager: "npm@11.17.0",
     dependencies: { valibot: "^1.4.0" },
     devDependencies: {
-      eslint: "^10.12.0",
+      eslint: "^10.13.0",
       "eslint-plugin-react-compiler": "^19.1.0-rc.2",
       "eslint-plugin-react-hooks": "^7.1.1",
       [FACADE]: ARCHIVE_SPEC,
@@ -159,7 +159,7 @@ function sourceLock() {
         engines: { node: ">=18.0.0" },
         peerDependencies: { zod: "^3.25.0 || ^4.0.0" },
       }),
-      "node_modules/eslint": packageRecord("eslint", "10.12.0"),
+      "node_modules/eslint": packageRecord("eslint", "10.13.0"),
       "node_modules/eslint-plugin-react-hooks": packageRecord(
         "eslint-plugin-react-hooks",
         "7.1.1",
@@ -254,7 +254,7 @@ function strictLock() {
     name: "react-compiler-peer-proof",
     version: "1.0.0",
     devDependencies: {
-      eslint: "10.12.0",
+      eslint: "10.13.0",
       "eslint-plugin-react-compiler": "19.1.0-rc.2",
       "eslint-plugin-react-hooks": "7.1.1",
       [FACADE]: ARCHIVE_SPEC,
@@ -498,6 +498,49 @@ test("already-final graph requires exact source identity and zero lock delta", (
         name: "AssertionError",
       }
     )
+  }
+})
+
+test("committed final graph and strict fixture use the same current ESLint artifact", () => {
+  const committedManifest = JSON.parse(readFileSync(join(TEST_FRONTEND, "package.json"), "utf8"))
+  const committedLock = JSON.parse(readFileSync(join(TEST_FRONTEND, "package-lock.json"), "utf8"))
+  const snapshot = structuredClone({ committedManifest, committedLock })
+  assert.equal(committedManifest.devDependencies.eslint, "^10.13.0")
+  assert.equal(committedLock.packages["node_modules/eslint"].version, "10.13.0")
+  assert.equal(
+    classifyFinalSourcePhase(committedManifest, committedLock),
+    SOURCE_PHASE.ALREADY_FINAL
+  )
+  assert.deepEqual(prepareFinalManifest(committedManifest), committedManifest)
+  assert.equal(
+    prepareStrictFormatterPlacementManifest(committedManifest).devDependencies.eslint,
+    committedLock.packages["node_modules/eslint"].version
+  )
+  assert.equal(
+    assertFinalLockScope(
+      committedLock,
+      structuredClone(committedLock),
+      formatterMetadata(committedLock.packages[FORMATTER]),
+      SOURCE_PHASE.ALREADY_FINAL
+    ),
+    true
+  )
+  assert.deepEqual({ committedManifest, committedLock }, snapshot)
+})
+
+test("current ESLint guards reject stale, unreviewed and broadened source versions", () => {
+  for (const version of ["^10.12.0", "^10.14.0", ">=10.13.0", "*"]) {
+    const source = prepareFinalManifest(manifest())
+    const lock = expectedFinalLock()
+    source.devDependencies.eslint = version
+    lock.packages[""].devDependencies.eslint = version
+    assert.throws(() => classifyFinalSourcePhase(source, lock), { name: "AssertionError" })
+  }
+  for (const version of ["10.12.0", "10.14.0"]) {
+    const source = prepareFinalManifest(manifest())
+    const lock = expectedFinalLock()
+    lock.packages["node_modules/eslint"].version = version
+    assert.throws(() => classifyFinalSourcePhase(source, lock), { name: "AssertionError" })
   }
 })
 
@@ -903,7 +946,7 @@ test("strict fixture pins real current ESLint and consumers instead of downgradi
     private: true,
     packageManager: "npm@11.17.0",
     devDependencies: {
-      eslint: "10.12.0",
+      eslint: "10.13.0",
       "eslint-plugin-react-compiler": "19.1.0-rc.2",
       "eslint-plugin-react-hooks": "7.1.1",
       [FACADE]: ARCHIVE_SPEC,

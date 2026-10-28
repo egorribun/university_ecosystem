@@ -17,7 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_dnspython_runtime_matches_the_reviewed_lock() -> None:
     lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
-    packages = [package for package in lock["package"] if package["name"] == "dnspython"]
+    packages = [
+        package for package in lock["package"] if package["name"] == "dnspython"
+    ]
     assert len(packages) == 1
     assert packages[0]["version"] == version("dnspython") == "2.9.0"
 

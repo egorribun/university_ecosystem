@@ -183,7 +183,7 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
 # inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
 # diagnostic, configuration-warning, exact Knip, outbox tenant and historical
-# rollback-boundary, reset-URL sink, handler and grade/delivery contracts.
+# rollback-boundary, reset-URL sink, handler, grade/delivery and DNS contracts.
 # Do not shrink this scope.
 _CONSUMER_SELECTORS = (
     "tests/contracts/",
@@ -213,6 +213,7 @@ _CONSUMER_SELECTORS = (
     "tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked",
     "tests/test_quality_configuration.py::test_virtualenv_security_floor_is_dev_only_and_locked",
     "tests/test_dependency_audit_contract.py::test_storybook_security_floor_and_aligned_lock",
+    "tests/test_dnspython_security.py",
     "tests/test_cli_infra_closure.py",
     "tests/test_check_mypy_budget.py",
     "tests/test_periodic_task_metrics.py",

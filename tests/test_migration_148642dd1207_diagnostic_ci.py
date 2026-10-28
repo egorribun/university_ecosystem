@@ -15,6 +15,7 @@ import pytest
 import yaml
 
 from scripts.quality.read_alembic_revision import read_revision_metadata
+from tests.helpers.synthetic_credentials import make_test_marker
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml"
 
@@ -466,7 +467,7 @@ def _ordinary_capture_fixture(tmp_path, monkeypatch):
             "-- ::warning::not a workflow command\n"
             'CREATE TABLE "quoted name" ("λ" TEXT);\n'
             "COMMIT;\n"
-        ).encode("utf-8")
+        ).encode()
     )
     environment = {
         "AUD148_CHECKOUT_SHA": "a" * 40,
@@ -477,7 +478,7 @@ def _ordinary_capture_fixture(tmp_path, monkeypatch):
         "GITHUB_JOB": "alembic-migrations",
         "AUD148_SQUAWK_VERSION": "squawk 2.67.0",
         "AUD148_SQUAWK_BINARY_SHA256": "c" * 64,
-        "SECRET_KEY": "not for publication " + "s" * 12,
+        "SECRET_KEY": make_test_marker(length=32),
         "DATABASE_URL": "postgresql://capture@localhost/private_capture",
         "UNRELATED_PRIVATE_CONTEXT": "not for publication " + "u" * 12,
     }
@@ -507,16 +508,15 @@ def test_ordinary_capture_precedes_the_unchanged_raw_squawk_gate() -> None:
     assert renderer_position < capture_position < scanner_position
     before_capture = run[renderer_position:capture_position]
     assert (
-        'if [[ "$migration" == '
-        '"alembic/versions/148642dd1207_fix_missing_tables.py"'
+        'if [[ "$migration" == "alembic/versions/148642dd1207_fix_missing_tables.py"'
     ) in before_capture
     assert '"$revision" == "148642dd1207"' in before_capture
     assert "/usr/bin/sha256sum --check --strict" in before_capture
     assert "git diff --quiet HEAD --" in before_capture
     assert run.count(scanner_call) == 1
-    assert run.rstrip().endswith(
-        scanner_call + '\ndone <<< "$changed_files"'
-    ), "Raw Squawk must remain the final loop command under set -e."
+    assert run.rstrip().endswith(scanner_call + '\ndone <<< "$changed_files"'), (
+        "Raw Squawk must remain the final loop command under set -e."
+    )
     assert "set -euo pipefail" in run
     assert "|| true" not in run
     assert "continue-on-error" not in original
