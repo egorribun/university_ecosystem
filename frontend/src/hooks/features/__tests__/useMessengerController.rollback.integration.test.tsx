@@ -630,24 +630,56 @@ describe("messenger mutation rollback with live transport", () => {
     await waitFor(() => expect([result.current.unread, shellUnread]).toEqual([1, 1]))
     mocks.chatApi.getMessages.mockResolvedValue({ items: [], has_more: false, next_cursor: null })
     const later = [
-      { ...incoming, id: "66666666-6666-4666-8666-666666666666", created_at: "2026-10-22T12:02:00.000Z" },
-      { ...incoming, id: "77777777-7777-4777-8777-777777777777", created_at: "2026-10-22T12:03:00.000Z" },
-      { ...incoming, id: "88888888-8888-4888-8888-888888888888", created_at: "2026-10-22T12:04:00.000Z" },
+      {
+        ...incoming,
+        id: "66666666-6666-4666-8666-666666666666",
+        created_at: "2026-10-22T12:02:00.000Z",
+      },
+      {
+        ...incoming,
+        id: "77777777-7777-4777-8777-777777777777",
+        created_at: "2026-10-22T12:03:00.000Z",
+      },
+      {
+        ...incoming,
+        id: "88888888-8888-4888-8888-888888888888",
+        created_at: "2026-10-22T12:04:00.000Z",
+      },
     ]
     const previousFetches = mocks.chatApi.getChats.mock.calls.length
     for (const refresh of refreshes) mocks.chatApi.getChats.mockReturnValueOnce(refresh.promise)
-    mocks.chatApi.getChats.mockResolvedValueOnce({ items: [{ ...chat, unread_count: 3, last_message: later[2] }], has_more: false, next_cursor: null })
-    await act(async () => { clear.resolve({ status: "cleared" }); await clear.promise })
+    mocks.chatApi.getChats.mockResolvedValueOnce({
+      items: [{ ...chat, unread_count: 3, last_message: later[2] }],
+      has_more: false,
+      next_cursor: null,
+    })
+    await act(async () => {
+      clear.resolve({ status: "cleared" })
+      await clear.promise
+    })
     for (let index = 0; index < refreshes.length; index += 1) {
-      await waitFor(() => expect(mocks.chatApi.getChats.mock.calls.length).toBeGreaterThan(previousFetches + index), { timeout: 2000 })
+      await waitFor(
+        () =>
+          expect(mocks.chatApi.getChats.mock.calls.length).toBeGreaterThan(previousFetches + index),
+        { timeout: 2000 }
+      )
       act(() => socket.frame({ type: "new_message", chat_id: ids.chat, message: later[index] }))
       await act(async () => {
-        refreshes[index]!.resolve({ items: [{ ...chat, unread_count: 0, last_message: undefined }], has_more: false, next_cursor: null })
+        refreshes[index]!.resolve({
+          items: [{ ...chat, unread_count: 0, last_message: undefined }],
+          has_more: false,
+          next_cursor: null,
+        })
         await refreshes[index]!.promise
       })
     }
-    await waitFor(() => expect(mocks.chatApi.getChats.mock.calls.length).toBeGreaterThan(previousFetches + 3), { timeout: 3000 })
-    await waitFor(() => expect([result.current.unread, shellUnread]).toEqual([3, 3]), { timeout: 3000 })
+    await waitFor(
+      () => expect(mocks.chatApi.getChats.mock.calls.length).toBeGreaterThan(previousFetches + 3),
+      { timeout: 3000 }
+    )
+    await waitFor(() => expect([result.current.unread, shellUnread]).toEqual([3, 3]), {
+      timeout: 3000,
+    })
   })
 
   it("does not resurrect pre-clear messages from a stale post-clear response", async () => {

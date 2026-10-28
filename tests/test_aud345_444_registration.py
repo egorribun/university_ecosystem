@@ -23,7 +23,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 def _payload(email: str, **overrides: str) -> dict[str, str]:
     payload = {
         "email": email,
-        "password": "Complex-" + "Example-345!",
+        "password": f"Aa1!{uuid4().hex}",
         "full_name": "Registration Test",
     }
     payload.update(overrides)
@@ -34,7 +34,9 @@ async def test_registration_response_hides_email_and_preserves_existing_credenti
     async_client, db_session
 ) -> None:
     email = "registration-privacy@example.com"
-    first = await async_client.post("/auth/register", json=_payload(email))
+    payload = _payload(email)
+    different_password = f"Aa1!{uuid4().hex}"
+    first = await async_client.post("/auth/register", json=payload)
     assert first.status_code == 200
     user = (
         await db_session.execute(select(models.User).where(models.User.email == email))
@@ -43,7 +45,7 @@ async def test_registration_response_hides_email_and_preserves_existing_credenti
 
     repeated = await async_client.post(
         "/auth/register",
-        json=_payload(email.upper(), password="Different-" + "Example-345!"),
+        json=_payload(email.upper(), password=different_password),
     )
 
     assert first.status_code == repeated.status_code == 200
@@ -54,12 +56,12 @@ async def test_registration_response_hides_email_and_preserves_existing_credenti
 
     login = await async_client.post(
         "/auth/login/json",
-        json={"email": email, "password": _payload(email)["password"]},
+        json={"email": email, "password": payload["password"]},
     )
     assert login.status_code == 200
     rejected = await async_client.post(
         "/auth/login/json",
-        json={"email": email, "password": "Different-" + "Example-345!"},
+        json={"email": email, "password": different_password},
     )
     assert rejected.status_code == 401
 

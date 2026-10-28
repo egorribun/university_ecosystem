@@ -291,7 +291,7 @@ async def test_aud447_email_change_queues_an_encrypted_link_with_the_record_expi
     user = SimpleNamespace(
         id=uuid.uuid4(),
         email="student@example.test",
-        hashed_password="synthetic-hash",
+        hashed_password=uuid.uuid4().hex,
         profile=SimpleNamespace(full_name="Student"),
         model_dump=lambda: {},
     )
@@ -331,7 +331,7 @@ async def test_aud447_email_change_queues_an_encrypted_link_with_the_record_expi
 
     await service.initiate_email_change(
         user,
-        SimpleNamespace(email="new@example.com", password="synthetic-input"),
+        SimpleNamespace(email="new@example.com", password=uuid.uuid4().hex),
         MagicMock(),
         BackgroundTasks(),
     )

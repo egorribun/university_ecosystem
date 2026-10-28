@@ -223,10 +223,13 @@ async def test_backend_emitters_capture_real_ws_frames(
     typing_manager = SimpleNamespace(broadcast_to_chat=AsyncMock())
     monkeypatch.setattr(command_module, "ws_manager", typing_manager)
     maintenance = command_module.ChatMaintenanceService(
-        SimpleNamespace(chats=repo), None
+        SimpleNamespace(chats=repo, session=session), None
     )
     await maintenance.broadcast_typing(chat_id, user, "en")
-    typing_frame = typing_manager.broadcast_to_chat.await_args.args[1]
+    typing_call = typing_manager.broadcast_to_chat.await_args
+    assert typing_call.kwargs["db_session"] is session
+    assert typing_call.kwargs["exclude_user_id"] == user.id
+    typing_frame = typing_call.args[1]
     assert typing_frame["chat_id"] == str(chat_id)
     assert typing_frame["user_id"] == str(user.id)
     assert typing_frame["user_name"] == "Alice"

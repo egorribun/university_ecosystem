@@ -321,7 +321,7 @@ export function projectMessengerMessages(
   )
 }
 
-export function projectMessengerChats(
+function projectMessengerChats(
   client: QueryClient,
   accountId: string | null,
   data: ChatsListResponse | undefined,

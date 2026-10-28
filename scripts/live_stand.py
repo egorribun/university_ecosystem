@@ -5196,6 +5196,7 @@ _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = (
     "tests/e2e-live/admin-stories-rbac.live.spec.ts",
     "tests/e2e-live/admin-stories-smoke.live.spec.ts",
     "tests/e2e-live/admin-users-rbac.live.spec.ts",
+    "tests/e2e-live/aud178-reset-referer-csp.live.spec.ts",
     "tests/e2e-live/auth-login-lockout.live.spec.ts",
     "tests/e2e-live/auth-roles.live.spec.ts",
     "tests/e2e-live/auth-safe-redirect.live.spec.ts",
@@ -7489,7 +7490,7 @@ _PLAYWRIGHT_SKIPPED_ROW_HEADER = re.compile(
     r"(?P<source>[^ :\t]{1,160}):(?P<line>[1-9][0-9]{0,4}):"
     r"(?P<column>[1-9][0-9]{0,4}) \u203a (?=.)"
 )
-_PLAYWRIGHT_FULL_COLLECTION_COUNT = 220
+_PLAYWRIGHT_FULL_COLLECTION_COUNT = 222
 _PLAYWRIGHT_SKIP_IDENTITY_LIMIT = 216
 _PLAYWRIGHT_SKIP_SCAN_LINE_LIMIT = 8192
 _PLAYWRIGHT_SKIP_LINE_LENGTH_LIMIT = 4096

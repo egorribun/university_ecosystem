@@ -17,7 +17,7 @@ afterEach(() => {
 })
 
 it.each([false, true])(
-  "queues one navigation per click when opening fails and report failure is %s",
+  "queues one navigation per failed click and holds legacy replay when report failure is %s",
   async (reportFails) => {
     const clients = {
       matchAll: vi.fn().mockResolvedValue([]),
@@ -60,11 +60,14 @@ it.each([false, true])(
       })
     }
 
+    expect(clients.openWindow).toHaveBeenCalledExactlyOnceWith(url)
     clients.openWindow.mockClear()
     clients.openWindow.mockResolvedValue({})
     await processPendingNavigations()
 
-    expect(clients.openWindow).toHaveBeenCalledExactlyOnceWith(url)
-    expect(await readPendingNavigations()).toEqual([])
+    // Legacy rows have no owner binding: hold them rather than replay across accounts.
+    expect(clients.openWindow).not.toHaveBeenCalled()
+    expect(await readPendingNavigations()).toEqual([{ id: 1, url, timestamp: 123_456 }])
+    expect(await readPendingReports()).toEqual(reports)
   }
 )

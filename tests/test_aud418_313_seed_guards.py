@@ -258,7 +258,7 @@ async def test_aud418_blank_secret_file_does_not_use_cached_settings(
     monkeypatch.setattr(
         seed_admin_data,
         "settings",
-        SimpleNamespace(audit_log_secret="cached-value"),
+        SimpleNamespace(audit_log_secret=uuid4().hex),
     )
     db = SyntheticAuditStore()
 

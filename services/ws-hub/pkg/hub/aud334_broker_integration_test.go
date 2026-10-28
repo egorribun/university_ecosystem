@@ -71,7 +71,10 @@ func TestIntegrationAUD334RejectedResumeReconnectsAndReplaysFromJetStream(t *tes
 	h.Nats = nc
 	h.js = js
 	h.streamChat = stream
-	h.internalSecret = stream + room
+	var secretBytes [32]byte
+	_, err := rand.Read(secretBytes[:])
+	require.NoError(t, err)
+	h.internalSecret = hex.EncodeToString(secretBytes[:])
 	h.chatStreamIncarnation = created.UTC().Format(time.RFC3339Nano)
 	h.chatReplayAvailable.Store(true)
 	t.Cleanup(h.Stop)

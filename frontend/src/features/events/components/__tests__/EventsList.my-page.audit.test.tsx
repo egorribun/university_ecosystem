@@ -19,7 +19,9 @@ vi.mock("@/components/ui/Button", () => ({
 vi.mock("@/components/ui/EmptyState", () => ({
   EmptyState: ({ title }: { title: ReactNode }) => <div>{title}</div>,
 }))
-vi.mock("@/components/feedback/OfflineFallback", () => ({ OfflineFallback: () => <div>offline</div> }))
+vi.mock("@/components/feedback/OfflineFallback", () => ({
+  OfflineFallback: () => <div>offline</div>,
+}))
 vi.mock("@/components/error", () => ({
   FeatureErrorBoundary: ({ children }: { children: ReactNode }) => <>{children}</>,
 }))

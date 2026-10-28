@@ -478,7 +478,11 @@ async function exerciseOverlappingAttempts(startSecondAfterWrite, sameUrl = fals
   const firstMayFinish = Promise.withResolvers()
   const secondMayFinish = Promise.withResolvers()
   const createdPaths = new Set()
-  const outcome = (promise) => promise.then((value) => ({ value }), (error) => ({ error }))
+  const outcome = (promise) =>
+    promise.then(
+      (value) => ({ value }),
+      (error) => ({ error })
+    )
   const runner = (url, first) => async (_command, args) => {
     const output = reportPath(args)
     createdPaths.add(output)
@@ -559,7 +563,10 @@ test("clearing legacy reports preserves independent attempt directories", async 
     await writeFile(attemptReport, "other attempt", "utf8")
     await writeFile(legacyReport, "legacy report", "utf8")
     await clearLhrDir(directory)
-    await assert.rejects(() => readFile(legacyReport), (error) => error.code === "ENOENT")
+    await assert.rejects(
+      () => readFile(legacyReport),
+      (error) => error.code === "ENOENT"
+    )
     assert.equal(await readFile(attemptReport, "utf8"), "other attempt")
   } finally {
     await rm(root, { recursive: true, force: true })

@@ -736,7 +736,11 @@ def test_configure_event_handlers_registers_global_subscriptions():
         event_handlers.configure_event_handlers()
 
     subscribe_all.assert_called_once_with(event_handlers.log_all_events)
-    assert subscribe.call_count == 32
+    assert subscribe.call_count == 33
+    subscribe.assert_any_call(
+        "chat.participant_cache_invalidation",
+        event_handlers.handle_chat_participant_cache_invalidation,
+    )
     subscribe.assert_any_call(
         "event.created", event_handlers.handle_event_created_notification
     )

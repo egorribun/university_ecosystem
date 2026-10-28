@@ -1806,17 +1806,19 @@
     {
       "dishka_dependencies": [],
       "dishka_signals": [
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
+        "Annotated[ScheduleService, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.routers.schedule:download_schedule_ics:GET:/ics",
       "legacy_dependencies": [],
-      "ownership": "public_no_db"
+      "ownership": "canonical_dishka"
     }
   ],
   "schema_version": 1,
   "summary": {
-    "canonical_dishka": 141,
-    "public_no_db": 12,
+    "canonical_dishka": 142,
+    "public_no_db": 11,
     "worker_internal": 3
   }
 }

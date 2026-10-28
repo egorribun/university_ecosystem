@@ -47,7 +47,8 @@
     "today": "Today",
     "thisWeek": "This week",
     "thisMonth": "This month",
-    "allDates": "All dates"
+    "allDates": "All dates",
+    "timezoneUnavailable": "Date filters are unavailable because the campus timezone could not be loaded."
   },
   "actions": {
     "openCreate": "+ Add event"

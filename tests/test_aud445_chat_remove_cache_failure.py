@@ -164,7 +164,10 @@ async def test_removal_stages_bounded_cache_jobs_for_large_roster(
     repo = ChatRepository(db_session)
     chat = await repo.create_group(owner, "aud445-large", [member])
     additions = [
-        User(email=f"aud445-{uuid.uuid4().hex}@example.test", hashed_password="fixture")
+        User(
+            email=f"aud445-{uuid.uuid4().hex}@example.test",
+            hashed_password=uuid.uuid4().hex,
+        )
         for _ in range(130)
     ]
     db_session.add_all(additions)
@@ -555,7 +558,9 @@ async def test_nats_transport_failure_does_not_hide_committed_removal(
     monkeypatch.setattr(presence, "get_cache", lambda: SimpleCache(strict))
     hub = AsyncMock(side_effect=failure_type())
     monkeypatch.setattr("app.services.ws_hub_client.invalidate_ws_hub_cache", hub)
-    service = ChatMaintenanceService(uow_from_session(db_session), ChatAttachmentService())
+    service = ChatMaintenanceService(
+        uow_from_session(db_session), ChatAttachmentService()
+    )
 
     await service.remove_participant(chat.id, owner, member.id, "en")
 
@@ -578,9 +583,12 @@ async def test_nats_bad_subject_error_is_not_hidden(
     strict = AsyncMock(return_value="process_only")
     monkeypatch.setattr(presence, "get_cache", lambda: SimpleCache(strict))
     monkeypatch.setattr(
-        "app.services.ws_hub_client.invalidate_ws_hub_cache", AsyncMock(side_effect=BadSubjectError())
+        "app.services.ws_hub_client.invalidate_ws_hub_cache",
+        AsyncMock(side_effect=BadSubjectError()),
     )
-    service = ChatMaintenanceService(uow_from_session(db_session), ChatAttachmentService())
+    service = ChatMaintenanceService(
+        uow_from_session(db_session), ChatAttachmentService()
+    )
 
     with pytest.raises(BadSubjectError):
         await service.remove_participant(chat.id, owner, member.id, "en")

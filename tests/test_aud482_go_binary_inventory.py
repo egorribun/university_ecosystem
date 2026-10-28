@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
-import time
+import threading
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -524,9 +524,11 @@ def test_process_timeout_and_missing_executable_fail_closed() -> None:
     producer = load_producer()
     with pytest.raises(producer.InventoryError, match="failed"):
         producer._run(["aud482-executable-does-not-exist", "arg"])
+    # An unset event represents an owned child blocked beyond the producer deadline.
     with pytest.raises(producer.InventoryError, match="failed"):
         producer._run(
-            [sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.01
+            [sys.executable, "-c", "import threading; threading.Event().wait(5)"],
+            timeout=0.01,
         )
 
 
@@ -538,23 +540,23 @@ def test_timed_out_owned_process_does_not_leave_its_child_running(
     child = tmp_path / "child.py"
     parent = tmp_path / "parent.py"
     child.write_text(
-        "from pathlib import Path\nimport sys, time\n"
+        "from pathlib import Path\nimport sys\nfrom threading import Event\n"
         "root = Path(sys.argv[1])\n(root / 'ready').write_text('ready')\n"
-        "time.sleep(1.5)\n(root / 'finished').write_text('still running')\n",
+        "Event().wait(1.5)\n(root / 'finished').write_text('still running')\n",
         encoding="utf-8",
     )
     parent.write_text(
-        "from pathlib import Path\nimport subprocess, sys, time\n"
+        "from pathlib import Path\nimport subprocess, sys\nfrom threading import Event\n"
         "root = Path(sys.argv[1])\n"
         "subprocess.Popen([sys.executable, str(root / 'child.py'), str(root)])\n"
-        "while not (root / 'ready').exists(): time.sleep(0.01)\n"
-        "time.sleep(10)\n",
+        "while not (root / 'ready').exists(): Event().wait(0.01)\n"
+        "Event().wait(10)\n",
         encoding="utf-8",
     )
     with pytest.raises(producer.InventoryError):
         producer._run([sys.executable, str(parent), str(tmp_path)], timeout=0.7)
     assert (tmp_path / "ready").exists()
-    time.sleep(1.6)
+    threading.Event().wait(1.6)
     assert not (tmp_path / "finished").exists()
 
 
@@ -565,9 +567,9 @@ def test_terminated_producer_does_not_leave_its_owned_descendants(
     child = tmp_path / "child.py"
     runner = tmp_path / "runner.py"
     child.write_text(
-        "from pathlib import Path\nimport sys, time\n"
+        "from pathlib import Path\nimport sys\nfrom threading import Event\n"
         "root = Path(sys.argv[1])\n(root / 'ready').write_text('ready')\n"
-        "time.sleep(1.5)\n(root / 'finished').write_text('still running')\n",
+        "Event().wait(1.5)\n(root / 'finished').write_text('still running')\n",
         encoding="utf-8",
     )
     runner.write_text(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -10,6 +11,8 @@ from sqlalchemy.dialects import postgresql
 
 from app.api import chat as chat_api
 from app.models.chat import Attachment, Chat, Message
+from app.services.private_attachments import private_attachment_filename
+from app.services.storage import StaticFSStorage
 from tests.conftest import call_injected
 
 
@@ -114,3 +117,56 @@ async def test_query_decoy_cannot_hide_duplicate_live_storage_keys(
 
     assert denied.value.status_code == 404
     storage.read_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "flat_key", [False, True], ids=["historical-hierarchical", "current-flat"]
+)
+async def test_default_static_storage_attachment_remains_downloadable(
+    db_session, user_factory, monkeypatch, tmp_path, flat_key
+) -> None:
+    member = await user_factory()
+    chat = Chat(participants=[member])
+    db_session.add(chat)
+    await db_session.flush()
+    message = Message(chat_id=chat.id, sender_id=member.id, content="attachment")
+    db_session.add(message)
+    await db_session.flush()
+
+    filename = f"chat_{chat.id}_{uuid4().hex}.pdf" if flat_key else "report.pdf"
+    relative_path = (
+        f"chat_uploads/{filename}"
+        if flat_key
+        else f"chat_uploads/chat_{chat.id}/{filename}"
+    )
+    payload = b"owned local attachment bytes"
+    storage = StaticFSStorage(tmp_path)
+    stored_url = await storage.save_file(relative_path, payload)
+    assert stored_url == f"/static/{relative_path}"
+    assert private_attachment_filename(stored_url, "chat") == filename
+    assert chat_api._chat_attachment_url_matches_resource(stored_url, chat.id, filename)
+    db_session.add(
+        Attachment(
+            message_id=message.id,
+            url=stored_url,
+            file_type="file",
+            filename=filename,
+            size=len(payload),
+        )
+    )
+    await db_session.commit()
+    monkeypatch.setattr(chat_api, "_get_storage_backend", lambda: storage)
+
+    response = await call_injected(
+        chat_api.download_chat_attachment,
+        chat.id,
+        filename,
+        current_user=member,
+        locale="en",
+        provides={"AsyncDatabaseSession": db_session},
+    )
+
+    assert response.body == payload
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"

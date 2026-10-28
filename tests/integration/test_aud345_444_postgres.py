@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import delete, func, select, text
@@ -22,7 +23,7 @@ def _require_postgres() -> None:
 def _payload(email: str, **overrides: str) -> dict[str, str]:
     payload = {
         "email": email,
-        "password": "Complex-" + "Example-345!",
+        "password": f"Aa1!{uuid4().hex}",
         "full_name": "PostgreSQL Registration",
     }
     payload.update(overrides)

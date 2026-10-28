@@ -24,7 +24,11 @@ import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import type { EventDateRange, EventSortMode, EventTabKey } from "./types"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
-import { getCampusClockParts, getCampusDateKey, getCampusDateRangeKeys } from "@/utils/campusTimezone"
+import {
+  getCampusClockParts,
+  getCampusDateKey,
+  getCampusDateRangeKeys,
+} from "@/utils/campusTimezone"
 import { useMinuteClock } from "@/hooks/useMinuteClock"
 import { getBrowserSessionGeneration, getSessionEpoch } from "@/stores/sessionEpoch"
 
@@ -35,7 +39,11 @@ type MyEventsPaging = {
   upcomingAfter: string | undefined
 }
 
-const startMyEventsPaging = (scope: string, sort: EventSortMode, clock: number): MyEventsPaging => ({
+const startMyEventsPaging = (
+  scope: string,
+  sort: EventSortMode,
+  clock: number
+): MyEventsPaging => ({
   scope,
   cursor: null,
   previous: [],
@@ -284,8 +292,7 @@ export const EventsFeature = () => {
     }
   }, [queryClient, tab, myScope, sortMode, clock, currentMyPaging.cursor, refetchMyEvents])
 
-  const firstMyPage = () =>
-    setMyPaging((current) => ({ ...current, cursor: null, previous: [] }))
+  const firstMyPage = () => setMyPaging((current) => ({ ...current, cursor: null, previous: [] }))
   const previousMyPage = () =>
     setMyPaging((current) => {
       if (current.scope !== myScope || current.previous.length === 0) return current
@@ -302,7 +309,8 @@ export const EventsFeature = () => {
         current.cursor !== currentMyPaging.cursor ||
         !hasNextMyPage ||
         nextMyCursor === null
-      ) return current
+      )
+        return current
       const previous = [...current.previous, current.cursor]
       while (previous.filter((cursor) => cursor !== null).length > 19) previous.shift()
       return { ...current, cursor: nextMyCursor, previous }

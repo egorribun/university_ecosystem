@@ -378,6 +378,98 @@ describe("NewsDetail comment pagination", () => {
     }
   })
 
+  it("retires an old article's pending edit when the same account opens a warm article", async () => {
+    const articleA = fixture.newsId
+    const articleB = "019961d3-bb00-7000-8000-000000000021"
+    const commentA = { ...comments[0]!, content: "Article A comment" }
+    const commentB = {
+      ...comments[0]!,
+      id: "019961d3-bb00-7000-8000-000000000098",
+      content: "Article B comment",
+    }
+    fixture.user = {
+      id: commentA.user_id,
+      full_name: "Comment Author",
+      role: "student",
+    }
+    useAuthStore.setState({ user: fixture.user as UserState, loading: false })
+    const edit = deferred()
+    let editStarted = false
+    for (const [id, comment] of [
+      [articleA, commentA],
+      [articleB, commentB],
+    ] as const) {
+      server.use(
+        http.get(`*/news/${id}`, () =>
+          HttpResponse.json({
+            id,
+            title: "Article",
+            content: "Body",
+            created_at: "2026-10-01T12:00:00Z",
+            image_url_optimized: null,
+            likes_count: 0,
+            is_liked: false,
+            comments_count: 1,
+          })
+        ),
+        http.get(`*/news/${id}/interactions`, () =>
+          HttpResponse.json({
+            likes_count: 0,
+            is_liked: false,
+            comments: [comment],
+            comments_count: 1,
+          })
+        )
+      )
+    }
+    server.use(
+      http.patch(`*/news/comments/${commentA.id}`, async () => {
+        editStarted = true
+        await edit.promise
+        return HttpResponse.json({ detail: "Edit rejected" }, { status: 500 })
+      })
+    )
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const renderArticle = () => (
+      <QueryClientProvider client={client}>
+        <NewsDetail />
+      </QueryClientProvider>
+    )
+    const user = userEvent.setup()
+    fixture.newsId = articleB
+    const view = render(renderArticle())
+    try {
+      await screen.findByText(commentB.content)
+      fixture.newsId = articleA
+      view.rerender(renderArticle())
+      await screen.findByText(commentA.content)
+      await user.click(screen.getByRole("button", { name: "news:actions.editComment" }))
+      const editor = screen.getByRole("textbox", { name: "news:form.editCommentAriaLabel" })
+      await user.clear(editor)
+      await user.type(editor, "Pending article A edit")
+      await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(editStarted).toBe(true))
+      expect(screen.getByRole("button", { name: "news:actions.editComment" })).toBeDisabled()
+
+      fixture.newsId = articleB
+      view.rerender(renderArticle())
+      await screen.findByText(commentB.content)
+      expect(screen.getByRole("button", { name: "news:actions.editComment" })).toBeEnabled()
+      expect(screen.getByRole("button", { name: "news:actions.deleteComment" })).toBeEnabled()
+      await act(async () => edit.resolve())
+      await waitFor(() => expect(client.isMutating()).toBe(0))
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    } finally {
+      await act(async () => edit.resolve())
+      view.unmount()
+      await waitFor(() => expect(client.isMutating()).toBe(0))
+      client.clear()
+      fixture.newsId = articleA
+    }
+  })
+
   it("uses the previous page format when reading an existing account cache", async () => {
     fixture.user = {
       id: "019961d3-bb00-7000-8000-000000000010",

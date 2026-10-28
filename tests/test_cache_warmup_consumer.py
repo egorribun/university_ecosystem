@@ -187,7 +187,7 @@ async def test_warm_news_does_not_publish_an_unsafe_database_context(tenant, byp
 async def test_warmed_anonymous_news_is_not_returned_to_a_signed_in_user(
     async_client, db_session, fake_cache, user_factory
 ):
-    password = "TestNewsUser456!"
+    password = f"Aa1!{uuid4().hex}"
     user = await user_factory(hashed_password=await get_password_hash(password))
     news = models.News(title="Headline", content="Content")
     db_session.add(news)

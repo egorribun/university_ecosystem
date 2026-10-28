@@ -68,9 +68,11 @@ const listQuery = vi.hoisted(() => ({
   fetchNextPage: vi.fn(),
 }))
 const myQuery = vi.hoisted(() => ({
-  data: undefined as unknown[] | undefined,
-  isLoading: false,
+  data: undefined as ReturnType<typeof myPage> | undefined,
+  isPending: false,
   isFetching: false,
+  isError: false,
+  refetch: vi.fn(),
 }))
 const queryCalls = vi.hoisted(() => ({
   list: [] as unknown[][],
@@ -82,7 +84,7 @@ vi.mock("@/api/hooks/events", () => ({
     queryCalls.list.push(args)
     return listQuery
   },
-  useMyEventsQuery: (...args: unknown[]) => {
+  useMyEventsPageQuery: (...args: unknown[]) => {
     queryCalls.mine.push(args)
     return myQuery
   },
@@ -203,6 +205,10 @@ function evt(over: Partial<Record<string, unknown>> = {}) {
   }
 }
 
+function myPage(items: unknown[]) {
+  return { items, total: null, limit: 12, cursor: null, next_cursor: null, has_more: false }
+}
+
 beforeEach(() => {
   campusTimezone.current = "Europe/Istanbul"
   search.params = {}
@@ -214,8 +220,10 @@ beforeEach(() => {
   listQuery.hasNextPage = false
   listQuery.fetchNextPage = vi.fn()
   myQuery.data = undefined
-  myQuery.isLoading = false
+  myQuery.isPending = false
   myQuery.isFetching = false
+  myQuery.isError = false
+  myQuery.refetch = vi.fn()
   online.value = true
   queryCalls.list = []
   queryCalls.mine = []
@@ -327,20 +335,26 @@ describe("EventsFeature — tab-driven data + loading flags", () => {
       },
       { enabled: true },
     ])
-    expect(queryCalls.mine.at(-1)).toEqual([{ language: "en", userId: "u1" }, { enabled: false }])
+    expect(queryCalls.mine.at(-1)).toEqual([
+      { language: "en", sort: "newest_desc", cursor: null },
+      { enabled: false },
+    ])
   })
 
   it("uses myEvents data + loading flags when tab is 'my' (156, 159-160)", () => {
     search.params = { tab: "my" }
-    myQuery.data = [evt({ id: "m1" })]
-    myQuery.isLoading = true
+    myQuery.data = myPage([evt({ id: "m1" })])
+    myQuery.isPending = true
     myQuery.isFetching = true
     render(<EventsFeature />)
     expect(screen.getByTestId("list-count")).toHaveTextContent("1")
     expect(screen.getByTestId("list-initial-loading")).toHaveTextContent("true")
     expect(screen.getByTestId("list-fetching")).toHaveTextContent("true")
     expect(queryCalls.list.at(-1)?.[1]).toEqual({ enabled: false })
-    expect(queryCalls.mine.at(-1)).toEqual([{ language: "en", userId: "u1" }, { enabled: true }])
+    expect(queryCalls.mine.at(-1)).toEqual([
+      { language: "en", sort: "newest_desc", cursor: null },
+      { enabled: true },
+    ])
   })
 
   it("falls back to an empty array when myEvents data is undefined", () => {
@@ -461,7 +475,7 @@ describe("EventsFeature — client-side category + date filters", () => {
 })
 
 describe("EventsFeature — sort modes", () => {
-  it("sorts the complete My array by descending dates and IDs without mutating it", () => {
+  it("requests newest My pages and preserves their server order without mutating them", () => {
     search.params = { tab: "my", sort: "newest" }
     const source = [
       evt({ id: "00000000-0000-0000-0000-000000000001", starts_at: "2027-01-01T00:00:00Z" }),
@@ -470,13 +484,16 @@ describe("EventsFeature — sort modes", () => {
       evt({ id: "00000000-0000-0000-0000-000000000004", starts_at: "2027-01-03T00:00:00Z" }),
     ]
     const originalIds = source.map((event) => event.id)
-    myQuery.data = source
+    const serverPage = [...source].reverse()
+    myQuery.data = myPage(serverPage)
     listQuery.events = []
 
     render(<EventsFeature />)
 
     expect(screen.getByTestId("list-order").textContent).toBe([...originalIds].reverse().join(","))
     expect(source.map((event) => event.id)).toEqual(originalIds)
+    expect(serverPage.map((event) => event.id)).toEqual([...originalIds].reverse())
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ sort: "newest_desc" })
     expect(queryCalls.mine.at(-1)?.[1]).toMatchObject({ enabled: true })
     expect(queryCalls.list.at(-1)?.[1]).toMatchObject({ enabled: false })
     expect(listQuery.fetchNextPage).not.toHaveBeenCalled()
@@ -634,7 +651,10 @@ describe("EventsFeature — refresh + dialog + derived flags", () => {
     auth.user = null
     render(<EventsFeature />)
     expect(screen.getByTestId("header-admin")).toHaveTextContent("false")
-    expect(queryCalls.mine.at(-1)).toEqual([{ language: "en", userId: null }, { enabled: false }])
+    expect(queryCalls.mine.at(-1)).toEqual([
+      { language: "en", sort: "newest_desc", cursor: null },
+      { enabled: false },
+    ])
   })
 })
 
