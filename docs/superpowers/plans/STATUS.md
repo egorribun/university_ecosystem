@@ -2,6 +2,75 @@
 
 Обновлено: 2026-10-28 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Post-pause source-bound acceptance — 2026-10-28 UTC
+
+**Current accepted lower bound: 377/512 (73.6%); 135 findings remain unaccepted.**
+The [26 scoped acceptances](../../audits/AUDIT-2026-10.md#post-pause-named-evidence-acceptance-2026-10-28)
+preserve all 351 previous IDs. Two independent evidence/criterion reviews checked
+the exact original findings and named or complete-file runtime receipts.
+This is not all-green CI, comprehensive coverage, production acceptance or release
+readiness. The earlier dated sections retain their historical counts.
+
+The published verification source for this reconciliation is
+[2b9e820248936f61d0a6798b2b0479d37048702a](https://github.com/egorribun/university_ecosystem/commit/2b9e820248936f61d0a6798b2b0479d37048702a);
+tested merge `cee407aedc79cb8dfd69f68d53fc986e0b53bf79` has the same tree
+`d0003151a84717631919a8a804b55c0c42255ee7`. Most accepted receipts are historical
+b095/1c9 case-level evidence, AUD-323 is actual 9fe/3714 PostgreSQL execution,
+and AUD-333 has a fresh complete-file reconnect receipt on 2b9. The appendix
+records all limitations; it does not transfer a full green status between SHAs.
+
+Verified results already available on 2b9:
+- [OpenAPI regeneration/diff](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/122999652173),
+  [Security & Types](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/122997537534)
+  and [read-only pre-commit](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/122997537298): SUCCESS.
+- [Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/122997537336):
+  SUCCESS, populations 2810 + 633 + 41 PASS. The earlier PowerShell timeout did
+  not recur; this is not evidence that a causal PowerShell fix was made.
+- [Frontend shard 1](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/123000064895):
+  2915/2915 PASS, including the formerly failing repeated-collision refresh case.
+  [Shard 2](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/123000064898):
+  2500/2500 PASS, including all seven new quiet-period/ownership/cleanup cases
+  and the 109-case controller file. This does not close all of AUD-155.
+- [Frontend shard 4](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/123000064880):
+  2491/2491 PASS. The formerly failing article-lifetime case is now PASS, and the
+  complete comments-pagination file has six passing cases including the A/B
+  cache assertions. All four frontend unit shards total 10,360 PASS;
+  [merged differential coverage](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/123007333876)
+  is FAILURE at 97% against the unchanged 100% requirement. Missing patch lines
+  are in EventsFeature, useChatWebSocket and messengerProjection; NewsDetail's
+  patch coverage is 100%. This is the full PR diff versus main, not just the
+  latest twelve-file batch.
+- [Pact](https://github.com/egorribun/university_ecosystem/actions/runs/40739668195):
+  all three jobs SUCCESS; actual consumer/provider replay, not a live broker proof.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40739668573/job/122997532560):
+  terminal FAILURE, 46 PASS / 2 FAIL / 2 SKIP. Both failures are desktop/mobile
+  password-reset tests expecting an ID from the intentionally generic
+  registration response. NATS outage is skipped; no Core-wide GREEN claim.
+
+At the 18:22 UTC preparation checkpoint, the reviewed follow-up
+[1310be3c084a08c1e6731d76d9f46f0f73873f9e](https://github.com/egorribun/university_ecosystem/commit/1310be3c084a08c1e6731d76d9f46f0f73873f9e)
+was prepared but not yet published to `egorribun` (candidate tree
+`27fc552db0de4731c8b16ed0910e2bd6d35ce2fa`). It contains four
+fixture-consistency repairs, canonical AST route-ledger
+synchronization, removal of its temporary capture step, a constant unsubscribe
+binding and 39 tests-first registered-AUD tracking cases. The checker change and
+PG tracking comments are not activated by those tests. This follow-up and the
+new documentation commit require their own exact-SHA CI; no GREEN is inherited.
+
+Remaining priorities are real upload-path verification, the strict
+tracking contract, Core's privacy-safe owned-account identity receipt, the
+remaining frontend source-contract/format/dependency-consistency failures,
+filesystem security identity drift, MapLibre and migration/Squawk work.
+MapLibre's approved narrow policy and the temporary greenfield Squawk proposal
+are not active merely because they were discussed. Fresh Squawk JSON now exists
+in the 2b9 Alembic logs; it still reports real warnings and does not prove later
+migrations passed a loop that stopped on the earlier failure.
+
+The exhaustive 256-file post-pause review report remains a distinct unpublished
+deliverable. This section does not reuse its pending upload or missing-link
+STATUS candidate. No gates, scanner inventories or production access boundaries
+are weakened. Continue only on `egorribun`, preserving intervening owner commits.
+
 ## Autonomous audit resumption — 2026-10-28 UTC
 
 По новому поручению владельца автономная работа возобновлена; полный октябрьский
