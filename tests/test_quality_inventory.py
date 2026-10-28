@@ -3230,3 +3230,203 @@ def test_typescript_ownership_fallback_rejects_non_javascript_whitespace(
     monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
 
     assert not matches_source(relative, {"frontend/src/components/Button.tsx"}, [])
+
+
+_AUDIT_TRACKING_REGISTRY = (
+    "# Audit\n\n"
+    "| AUD-999 | reference outside the registry |\n\n"
+    "## 7. Реестр открытых находок\n\n"
+    "| ID | Finding |\n"
+    "|---|---|\n"
+    "| AUD-327 | registered table finding |\n"
+    "- AUD-433 registered observation\n\n"
+    "## 8. Evidence\n\n"
+    "- AUD-998 reference outside the registry\n"
+)
+
+
+def _write_audit_tracking_registry(
+    repository: Path, content: str = _AUDIT_TRACKING_REGISTRY
+) -> Path:
+    audit = repository / "docs" / "audits" / "AUDIT-2026-10.md"
+    audit.parent.mkdir(parents=True)
+    audit.write_text(content, encoding="utf-8")
+    return audit
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# AUD-327 @egorribun\npytest.skip('owned PostgreSQL slot required')\n",
+        "pytest.skip('owned PostgreSQL slot required')  # AUD-327 @egorribun\n",
+        "# AUD-433 @egorribun\npytest.skip('owned PostgreSQL slot required')\n",
+    ],
+)
+def test_audit_tracking_accepts_registered_ids_in_adjacent_comments(
+    tmp_path: Path, monkeypatch, source: str
+) -> None:
+    test_file = _write_repository_contract(tmp_path, monkeypatch, source)
+    _write_audit_tracking_registry(test_file.parent.parent)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert errors == []
+
+
+@pytest.mark.parametrize(
+    "tracking",
+    [
+        "AUD-999 @egorribun",
+        "AUD-998 @egorribun",
+        "AUD-111 @egorribun",
+        "AUD-327",
+        "aud-327 @egorribun",
+        "AUD-32 @egorribun",
+        "AUD-0327 @egorribun",
+        "AUD-327x @egorribun",
+        "AUD-327-extra @egorribun",
+        "prefixAUD-327 @egorribun",
+        "prefix-AUD-327 @egorribun",
+        "AUD-\uff13\uff12\uff17 @egorribun",
+    ],
+)
+def test_audit_tracking_rejects_unregistered_malformed_or_ownerless_ids(
+    tmp_path: Path, monkeypatch, tracking: str
+) -> None:
+    source = f"# {tracking}\npytest.skip('owned PostgreSQL slot required')\n"
+    test_file = _write_repository_contract(tmp_path, monkeypatch, source)
+    _write_audit_tracking_registry(test_file.parent.parent)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert len(errors) == 1
+    assert "dynamic skip" in errors[0]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "pytest.skip('AUD-327 @egorribun')\n",
+        "tracking = 'AUD-327 @egorribun'\npytest.skip('unavailable')\n",
+        "# AUD-327 @egorribun\n\npytest.skip('unavailable')\n",
+    ],
+)
+def test_audit_tracking_requires_real_adjacent_comment_evidence(
+    tmp_path: Path, monkeypatch, source: str
+) -> None:
+    test_file = _write_repository_contract(tmp_path, monkeypatch, source)
+    _write_audit_tracking_registry(test_file.parent.parent)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert len(errors) == 1
+    assert "dynamic skip" in errors[0]
+
+
+@pytest.mark.parametrize(
+    "registry",
+    [
+        None,
+        "",
+        "# Wrong document\n| AUD-327 | not a registry |\n",
+        "## 7. Реестр открытых находок\nNo registered entries.\n## 8. Evidence\n",
+        "## 7. Реестр открытых находок\n| AUD-0327 | malformed ID |\n"
+        "## 8. Evidence\n",
+        "## 7. Реестр открытых находок\n| AUD-327 | valid row |\n"
+        "| AUD-0328 | malformed second row |\n## 8. Evidence\n",
+        "## 7. Реестр открытых находок\n| AUD-327 | incomplete registry |\n",
+        "## 7. Реестр открытых находок\n```text\n"
+        "| AUD-327 | example, not registry data |\n```\n## 8. Evidence\n",
+        "## 7. Реестр открытых находок\n| AUD-327 | first registry |\n"
+        "## 7. Реестр открытых находок\n| AUD-327 | second registry |\n"
+        "## 8. Evidence\n",
+    ],
+)
+def test_audit_tracking_fails_closed_without_a_valid_registry(
+    tmp_path: Path, monkeypatch, registry: str | None
+) -> None:
+    source = "# AUD-327 @egorribun\npytest.skip('owned PostgreSQL slot required')\n"
+    test_file = _write_repository_contract(tmp_path, monkeypatch, source)
+    if registry is not None:
+        _write_audit_tracking_registry(test_file.parent.parent, registry)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert len(errors) == 1
+    assert "dynamic skip" in errors[0]
+
+
+@pytest.mark.parametrize(
+    "family", ["QUALITY", "TD", "FIX", "RZ", "MOD", "DESIGN", "CQ", "INFRA", "A11Y"]
+)
+def test_existing_tracking_families_do_not_depend_on_the_audit_registry(
+    tmp_path: Path, monkeypatch, family: str
+) -> None:
+    source = f"# {family}-123 @egorribun\npytest.skip('unavailable')\n"
+    test_file = _write_repository_contract(tmp_path, monkeypatch, source)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert errors == []
+
+
+def test_audit_tracking_registry_snapshot_is_reused_only_within_its_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = "# AUD-327 @egorribun\npytest.skip('owned PostgreSQL slot required')\n"
+    first = _write_repository_contract(tmp_path / "first", monkeypatch, source)
+    audit = _write_audit_tracking_registry(first.parent.parent)
+    original_read_text = Path.read_text
+    registry_reads: list[Path] = []
+
+    def read_text(path: Path, *args, **kwargs):
+        if path == audit:
+            registry_reads.append(path)
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    for _ in range(2):
+        errors: list[str] = []
+        check_anti_patterns(first, errors, [], [])
+        assert errors == []
+    assert registry_reads == [audit]
+
+    second = _write_repository_contract(tmp_path / "second", monkeypatch, source)
+    _write_audit_tracking_registry(
+        second.parent.parent,
+        _AUDIT_TRACKING_REGISTRY.replace("AUD-327", "AUD-328"),
+    )
+    errors = []
+    check_anti_patterns(second, errors, [], [])
+
+    assert len(errors) == 1
+    assert "dynamic skip" in errors[0]
+
+
+@pytest.mark.parametrize(
+    ("suffix", "source"),
+    [
+        (".go", 't.Skipf("owned PostgreSQL slot required") // AUD-327 @egorribun\n'),
+        (
+            ".mjs",
+            'describe.skip("owned PostgreSQL slot required") // AUD-433 @egorribun\n',
+        ),
+    ],
+)
+def test_audit_tracking_accepts_real_go_and_javascript_comments(
+    tmp_path: Path, monkeypatch, suffix: str, source: str
+) -> None:
+    python_path = _write_repository_contract(tmp_path, monkeypatch, source)
+    test_file = python_path.with_suffix(suffix)
+    python_path.rename(test_file)
+    _write_audit_tracking_registry(test_file.parent.parent)
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert errors == []

@@ -4596,38 +4596,6 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Capture canonical route ownership candidate (diagnostic only)
-        # Temporary source-bound capture; remove after committing the verified ledger.
-        # The AST-only generator imports no application settings or credentials.
-        run: |
-          python - <<'PY'
-          import hashlib
-          import json
-          import re
-          import subprocess
-          from pathlib import Path
-          from scripts.check_route_dependency_inventory import build_inventory
-
-          payload = (
-              json.dumps(build_inventory(Path("app")), indent=2, sort_keys=True) + "\n"
-          ).encode("utf-8")
-          if not 0 < len(payload) <= 131072:
-              raise SystemExit("route inventory candidate exceeded its finite bound")
-          source_sha = subprocess.run(
-              ["git", "rev-parse", "HEAD"], check=True, capture_output=True,
-              text=True, timeout=10,
-          ).stdout.strip()
-          if re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
-              raise SystemExit("route inventory source identity is invalid")
-          print(
-              f"ROUTE_LEDGER_CANDIDATE source_sha={source_sha} "
-              f"sha256={hashlib.sha256(payload).hexdigest()} bytes={len(payload)}"
-          )
-          print("ROUTE_LEDGER_CANDIDATE_BEGIN")
-          print(payload.decode("utf-8"), end="")
-          print("ROUTE_LEDGER_CANDIDATE_END")
-          PY
-
       - name: Set up Node.js for harness TypeScript checks
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

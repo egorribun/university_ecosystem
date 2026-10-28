@@ -559,6 +559,7 @@
         "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.dlq:get_dlq_stats:GET:/stats",
@@ -570,6 +571,7 @@
         "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.dlq:get_dlq_status:GET:/status",
@@ -582,6 +584,7 @@
         "app.api.deps.localization.get_locale"
       ],
       "dishka_signals": [
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.dlq:list_dlq_jobs:GET:/jobs",
@@ -593,6 +596,7 @@
         "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.dlq:list_outbox_failures:GET:/outbox",
@@ -644,6 +648,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[EventService, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.events:all_events:GET:",
@@ -740,6 +745,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "FromDishka[EventService]",
         "inject"
       ],
       "id": "app.api.events:my_events:GET:/my",
@@ -751,6 +757,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "FromDishka[EventService]",
         "inject"
       ],
       "id": "app.api.events:my_events_page:GET:/my/page",
@@ -763,6 +770,8 @@
       ],
       "dishka_signals": [
         "FromDishka[VectorService]",
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
+        "Annotated[EventService, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.events:semantic_search:GET:/search/semantic",
@@ -847,14 +856,14 @@
     {
       "dishka_dependencies": [],
       "dishka_signals": [],
-      "id": "app.api.health:healthz:GET:/healthz",
+      "id": "app.api.health:liveness:GET:/health/live",
       "legacy_dependencies": [],
       "ownership": "public_no_db"
     },
     {
       "dishka_dependencies": [],
       "dishka_signals": [],
-      "id": "app.api.health:liveness:GET:/health/live",
+      "id": "app.api.health:public_healthz:GET:/healthz",
       "legacy_dependencies": [],
       "ownership": "public_no_db"
     },
@@ -949,6 +958,8 @@
         "app.api.deps.auth.get_current_user_optional_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
+        "Annotated[NewsService, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.news:get_news:GET:/{id}",
@@ -960,6 +971,7 @@
         "app.api.deps.auth.get_current_user_optional_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[NewsService, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.news:get_news_interact:GET:/{id}/interactions",
@@ -983,6 +995,7 @@
         "app.api.deps.auth.get_current_user_optional_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[NewsService, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.news:news_list:GET:",
@@ -995,6 +1008,8 @@
       ],
       "dishka_signals": [
         "FromDishka[VectorService]",
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
+        "Annotated[NewsService, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.news:semantic_search:GET:/search/semantic",
@@ -1042,6 +1057,7 @@
         "app.api.deps.auth.get_current_admin_user_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.notification_dead_letters:list_notification_dead_letters:GET:",
@@ -1115,6 +1131,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.notifications:list_notifications:GET:",
@@ -1218,6 +1235,7 @@
       ],
       "dishka_signals": [
         "FromDishka[SessionService]",
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.sessions:list_sessions:GET:",
@@ -1314,6 +1332,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[GetStatsHandler, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.stats:attendance_summary:GET:/attendance",
@@ -1325,6 +1344,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[GetStatsHandler, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.stats:grade_summary:GET:/grades",
@@ -1336,6 +1356,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[GetStatsHandler, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.stats:participation_summary:GET:/participation",
@@ -1347,6 +1368,7 @@
         "app.api.deps.auth.get_current_user_from_dishka"
       ],
       "dishka_signals": [
+        "Annotated[GetStatsHandler, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.stats:stats_summary:GET:/summary",
@@ -1380,11 +1402,12 @@
     {
       "dishka_dependencies": [],
       "dishka_signals": [
+        "Annotated[StoryService, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.stories:list_stories:GET:",
       "legacy_dependencies": [],
-      "ownership": "public_no_db"
+      "ownership": "canonical_dishka"
     },
     {
       "dishka_dependencies": [
@@ -1500,6 +1523,7 @@
       ],
       "dishka_signals": [
         "FromDishka[AuditService]",
+        "Annotated[AsyncDatabaseSession, FromComponent(READ_COMPONENT)]",
         "inject"
       ],
       "id": "app.api.users:export_access_audit:GET:/audit/export",
@@ -1817,8 +1841,8 @@
   ],
   "schema_version": 1,
   "summary": {
-    "canonical_dishka": 142,
-    "public_no_db": 11,
+    "canonical_dishka": 143,
+    "public_no_db": 10,
     "worker_internal": 3
   }
 }

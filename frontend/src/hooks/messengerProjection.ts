@@ -684,13 +684,12 @@ function waitForQuietChatsAfterClear(
   if (!ownsChats(client, operation)) return Promise.resolve(false)
   return new Promise((resolve) => {
     let timer: ReturnType<typeof setTimeout> | undefined
-    let detach: (() => void) | undefined
     let settled = false
     const finish = (current: boolean) => {
       if (settled) return
       settled = true
       if (timer !== undefined) clearTimeout(timer)
-      detach?.()
+      detach()
       resolve(current)
     }
     const restartQuietPeriod = () => {
@@ -698,7 +697,7 @@ function waitForQuietChatsAfterClear(
       if (timer !== undefined) clearTimeout(timer)
       timer = setTimeout(() => finish(ownsChats(client, operation)), CHAT_REFRESH_QUIET_MS)
     }
-    detach = client.getQueryCache().subscribe((event) => {
+    const detach = client.getQueryCache().subscribe((event) => {
       if (!ownsChats(client, operation)) {
         finish(false)
         return
