@@ -781,3 +781,111 @@ test("metadata rejects malformed module lengths before writing any receipt", asy
     })
   }
 })
+
+async function makeAllChunkFixture() {
+  const fixture = await makeFixture()
+  try {
+    const entry = "assets/index-A.js"
+    fixture.contents[entry] = 'export const label = "map-proof-private-π🙂"'
+    fixture.bundle[entry].code = fixture.contents[entry]
+    await writeFile(path.join(fixture.outputDir, entry), fixture.contents[entry])
+
+    const detached = "assets/detached-A.js"
+    fixture.contents[detached] = 'export const unused = "detached-proof-private-🙂"'
+    fixture.bundle[detached] = {
+      type: "chunk",
+      fileName: detached,
+      code: fixture.contents[detached],
+      imports: [],
+      dynamicImports: [],
+      isEntry: false,
+      isDynamicEntry: false,
+      modules: {},
+    }
+    await writeFile(path.join(fixture.outputDir, detached), fixture.contents[detached])
+    return fixture
+  } catch (error) {
+    await rm(fixture.root, { recursive: true, force: true })
+    throw error
+  }
+}
+
+async function writeAllChunkFixture(fixture) {
+  const plugin = (await loadProducer())({ outputPath: fixture.reportPath })
+  plugin.configResolved(fixture.config)
+  await plugin.writeBundle.call(
+    { environment: fixture.environment },
+    { dir: fixture.outputDir, format: "es" },
+    fixture.bundle
+  )
+}
+
+test("metadata fingerprints every emitted client chunk without exposing source", async () => {
+  const fixture = await makeAllChunkFixture()
+  try {
+    await writeAllChunkFixture(fixture)
+    const raw = await readFile(fixture.reportPath, "utf8")
+    const report = JSON.parse(raw)
+    const expectedNames = Object.keys(fixture.bundle).sort((left, right) =>
+      left.localeCompare(right)
+    )
+    assert.deepEqual(
+      report.graph.chunks.map((chunk) => chunk.fileName),
+      expectedNames
+    )
+    for (const chunk of report.graph.chunks) {
+      const bytes = await readFile(path.join(fixture.outputDir, chunk.fileName))
+      assert.deepEqual(bytes, Buffer.from(fixture.bundle[chunk.fileName].code))
+      assert.equal(chunk.rawBytes, bytes.byteLength)
+      assert.equal(chunk.sha256, sha256(bytes))
+    }
+    assert.ok(
+      Buffer.byteLength(fixture.contents["assets/index-A.js"]) >
+        fixture.contents["assets/index-A.js"].length
+    )
+    const map = report.mapLibreChunks[0]
+    const graphMap = report.graph.chunks.find((chunk) => chunk.fileName === map.fileName)
+    const mapBytes = Buffer.from(fixture.contents[map.fileName])
+    assert.equal(graphMap.rawBytes, map.rawBytes)
+    assert.equal(graphMap.sha256, map.sha256)
+    assert.equal(map.gzipBytes, gzipSync(mapBytes, { level: 9 }).byteLength)
+    assert.equal(map.gzipSha256, sha256(gzipSync(mapBytes, { level: 9 })))
+    assert.equal(map.staticEntryReachable, false)
+    assert.equal(report.schemaVersion, 3)
+    assert.doesNotMatch(raw, /map-proof-private|detached-proof-private|code-private/u)
+    assert.equal(raw.includes(fixture.root.replaceAll("\\", "/")), false)
+    assert.equal(raw.includes(fixture.root.replaceAll("\\", "\\\\")), false)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test("metadata rejects changed or missing non-Map chunks before writing evidence", async (t) => {
+  for (const fileName of ["assets/index-A.js", "assets/Map-A.js", "assets/detached-A.js"]) {
+    for (const defect of ["changed", "missing"]) {
+      await t.test(fileName + "-" + defect, async () => {
+        const fixture = await makeAllChunkFixture()
+        try {
+          // A successful real capture is the control for each rejection case.
+          await writeAllChunkFixture(fixture)
+          const control = JSON.parse(await readFile(fixture.reportPath, "utf8"))
+          assert.equal(
+            control.mapLibreChunks[0].sha256,
+            sha256(fixture.contents["assets/vendor-map-A.js"])
+          )
+          await rm(fixture.reportPath)
+          const target = path.join(fixture.outputDir, fileName)
+          if (defect === "changed") await writeFile(target, "changed-chunk-private")
+          else await rm(target)
+          await assert.rejects(
+            writeAllChunkFixture(fixture),
+            defect === "changed" ? /emitted bytes differ/u : { code: "ENOENT" }
+          )
+          assert.equal(existsSync(fixture.reportPath), false)
+        } finally {
+          await rm(fixture.root, { recursive: true, force: true })
+        }
+      })
+    }
+  }
+})

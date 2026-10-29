@@ -1573,3 +1573,185 @@ def test_aud447_worker_scope_keeps_batch_private_and_other_diagnostics(
         "a worker event contained the synthetic authentication marker"
     )
     assert outcome["broker_vars_removed"]
+
+
+def _invalid_worker_sentry_probe_child(scenario: str, output: Connection) -> None:
+    try:
+        stream = io.StringIO()
+        with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
+            outcome = asyncio.run(_invalid_worker_sentry_probe(scenario))
+        output.send(outcome)
+    except Exception:
+        # Never send event contents, payload bytes, parser errors or markers.
+        output.send({"completed": False})
+    finally:
+        output.close()
+
+
+async def _invalid_worker_sentry_probe(scenario: str) -> dict[str, bool]:
+    import sentry_sdk
+    from nats.aio.msg import Msg
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    import app.core.logging as app_logging
+
+    # Alphabetic runtime markers cannot accidentally match phone redaction.
+    marker = uuid.uuid4().hex.translate(
+        str.maketrans("0123456789abcdef", "abcdefghijklmnop")
+    )
+    task_name = "app.tasks.email.send_auth_email"
+    body: dict[str, Any] = {
+        "args": marker if scenario == "schema" else [marker],
+        "id": "aud447-invalid-worker",
+        "name": task_name,
+        "kwargs": {},
+        "trace_context": {},
+    }
+    wire = json.dumps(body).encode()
+    if scenario == "json":
+        wire = wire[:-1]
+    elif scenario == "utf8":
+        wire += b"\xff"
+
+    expected_error = {
+        "json": json.JSONDecodeError,
+        "schema": nats_module.ValidationError,
+        "utf8": UnicodeDecodeError,
+    }[scenario]
+    fixture_rejected = False
+    schema_error_contains_marker = scenario != "schema"
+    try:
+        nats_module._NatsTaskPayload.model_validate(json.loads(wire.decode()))
+    except expected_error as error:
+        fixture_rejected = True
+        if scenario == "schema":
+            schema_error_contains_marker = marker in str(error)
+
+    client = nats_module.NATS()
+    message = Msg(
+        _client=client,
+        subject=f"tasks.{task_name}",
+        reply="$JS.ACK.tasks.python-worker.1.1.1.1700000000000000000.0",
+        data=wire,
+    )
+    # Exercise the real Msg ACK method; only its outbound publish is a sink.
+    publish = AsyncMock()
+    ack = AsyncMock(wraps=message.ack)
+    nak = AsyncMock(wraps=message.nak)
+    term = AsyncMock(wraps=message.term)
+    subscription = SimpleNamespace(
+        fetch=AsyncMock(side_effect=[[message], asyncio.CancelledError()])
+    )
+    transport = SimpleNamespace(pull_subscribe=AsyncMock(return_value=subscription))
+    connect = AsyncMock(side_effect=AssertionError("probe must not connect"))
+    broker = nats_module.NatsTaskBroker()
+    broker._js = transport
+    handler_calls: list[bool] = []
+
+    async def unexpected_handler(*_args: Any, **_kwargs: Any) -> None:
+        handler_calls.append(True)
+
+    # A registered sink makes accidental handler execution visible without SMTP.
+    broker.task(name=task_name)(unexpected_handler)
+    events: list[dict[str, Any]] = []
+    stream = io.StringIO()
+    stopped = False
+    with (
+        pytest.MonkeyPatch.context() as monkeypatch,
+        contextlib.redirect_stdout(stream),
+        contextlib.redirect_stderr(stream),
+    ):
+        monkeypatch.setattr(client, "publish", publish)
+        monkeypatch.setattr(message, "ack", ack)
+        monkeypatch.setattr(message, "nak", nak)
+        monkeypatch.setattr(message, "term", term)
+        monkeypatch.setattr(broker, "connect", connect)
+        monkeypatch.setattr(nats_module, "_app", None)
+        monkeypatch.setattr(nats_module, "_MAX_DELIVERIES", 2)
+        app_logging.configure_logging(level=logging.INFO, json_output=True)
+        sentry_sdk.init(
+            dsn=f"https://{uuid.uuid4().hex}@example.invalid/1",
+            integrations=[
+                LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)
+            ],
+            send_default_pii=False,
+            transport=events.append,
+        )
+        try:
+            await broker.run_worker()
+        except asyncio.CancelledError:
+            stopped = True
+        sentry_sdk.flush(timeout=1)
+
+    rendered_events = json.dumps(events, default=str)
+    rendered_log = stream.getvalue()
+    return {
+        "completed": True,
+        "fixture_rejected": fixture_rejected,
+        "schema_error_contains_marker": schema_error_contains_marker,
+        "marker_in_raw_prefix": marker.encode() in wire[:200],
+        "stopped": stopped,
+        "handler_not_run": not handler_calls,
+        "normal_ack": (
+            ack.await_count == 1
+            and ack.await_args.args == ()
+            and ack.await_args.kwargs == {}
+            and nak.await_count == 0
+            and term.await_count == 0
+            and message.is_acked
+            and publish.await_count == 1
+            and publish.await_args.args == (message.reply,)
+            and publish.await_args.kwargs == {}
+        ),
+        "bounded_fetch": subscription.fetch.await_count == 2,
+        "no_connection": connect.await_count == 0,
+        "raw_body_unchanged": message.data == wire,
+        "captured_log": rendered_log.count("nats_invalid_payload") == 1,
+        "captured_event": (
+            len(events) == 1
+            and events[0].get("logger") == nats_module.__name__
+            and events[0].get("level") == "error"
+            and "nats_invalid_payload" in rendered_events
+        ),
+        "safe_log": marker not in rendered_log,
+        "safe_event": marker not in rendered_events,
+    }
+
+
+@pytest.mark.parametrize("scenario", ["json", "schema", "utf8"])
+def test_aud447_invalid_worker_payload_keeps_telemetry_secret_free(
+    scenario: str,
+) -> None:
+    context = multiprocessing.get_context("spawn")
+    receive, send = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_invalid_worker_sentry_probe_child, args=(scenario, send)
+    )
+    process.start()
+    send.close()
+    try:
+        assert receive.poll(30), "the isolated invalid-message probe timed out"
+        outcome = receive.recv()
+        process.join(timeout=5)
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join()
+        receive.close()
+
+    assert outcome["completed"], "the isolated invalid-message probe failed"
+    assert outcome["fixture_rejected"]
+    assert outcome["schema_error_contains_marker"]
+    assert outcome["marker_in_raw_prefix"]
+    assert outcome["stopped"]
+    assert outcome["handler_not_run"]
+    assert outcome["normal_ack"]
+    assert outcome["bounded_fetch"]
+    assert outcome["no_connection"]
+    assert outcome["raw_body_unchanged"]
+    assert outcome["captured_log"]
+    assert outcome["captured_event"]
+    assert (outcome["safe_log"], outcome["safe_event"]) == (True, True), (
+        "invalid-message logging or its Sentry event contained the synthetic marker"
+    )
