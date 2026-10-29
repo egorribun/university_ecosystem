@@ -2,6 +2,117 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source 8573ec57 verification and bounded tests-first continuation
+
+**382/512 accepted; 130 remain unaccepted.** This preserves all 381 prior IDs
+and adds only [AUD-445](../../audits/AUDIT-2026-10.md#scoped-aud-445-acceptance-2026-10-29).
+The count is finding-scoped, not release acceptance or full CI success.
+
+Source [8573ec5797d092ec578518137846934a9d90842b](https://github.com/egorribun/university_ecosystem/commit/8573ec5797d092ec578518137846934a9d90842b)
+and tested merge `a3c0197c2c14cfafd88f2d48e649df9e408f24e1` share tree
+`8bb4c4fd76986958e84819a614aee8588d41c1cf`.
+All 22 PR-source workflows are terminal: 19 SUCCESS / 1 FAILURE / 2 SKIP,
+with no cancellations; the separate pull_request_target Security Policy Integrity run succeeds.
+[Matrix 40819093116](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116)
+is FAILURE: 91 jobs, 70 SUCCESS / 5 FAILURE / 16 SKIP. The five failures are
+two exact-identity secret-scanning checks, raw Squawk, the real bundle budget
+and derived CI Success. None of these receipts is inherited as GREEN for
+the next source.
+
+### Confirmed outcomes on this source
+
+- [Contract 123267067640](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123267067640)
+  succeeds: 3412 consumer, 633 security-disposition and 41 scoped cases PASS.
+  Its 44 named Auth cases include both previously witnessed real-worker
+  build/delivery privacy RED cases now GREEN, 14 new scope/mixed-batch controls,
+  four existing ciphertext probes and 24 storage/replay/dedup cases. Raw message
+  bytes and NAK behavior remain intact; unrelated handler diagnostics and
+  post-worker scope restoration are checked. This does not establish malformed
+  payload telemetry privacy, deployed historical-row cleanup or live SMTP delivery.
+- AUD-445's 37 named removal/cache/outbox cases and all five named
+  [PostgreSQL cases](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123267472054)
+  pass on this same source. The PostgreSQL job reports 384 PASS / 16 SKIP plus
+  13 required and five durable-replay cases PASS. Its scoped closure is recorded
+  separately; injected cache/hub faults are not deployed Redis/NATS recovery.
+- AUD-454's three corrected-fixture cases PASS, but all three borrowed-session
+  PostgreSQL cases are SKIPPED. Their dedicated disposable database/restricted-role
+  launcher is not present in the reviewed committed workflow/script entrypoints.
+  Reusing the ordinary superuser database or weakening fixture admission is not
+  a substitute. AUD-454 and AUD-363 remain unaccepted.
+- [Owned Core 40819093148](https://github.com/egorribun/university_ecosystem/actions/runs/40819093148)
+  succeeds: 329 preflight PASS, live 48 PASS / 2 SKIP, exit 0, desktop/mobile
+  reset-replay 400 and owned NATS outage SUCCESS. This is owned-topology evidence,
+  not external deployment proof.
+- [Frontend unit/coverage aggregate 123270958057](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123270958057)
+  succeeds: 10,396 tests / 822 files PASS. Both unchanged ForgotPassword
+  SSR/hydration regressions pass after the local readiness fix. Differential
+  line coverage is 2182/2182, 100%; 29 global branch arms remain unhit, so this
+  is not 100% branch coverage. Lint, WASM and production build succeed.
+- The pure historical148 recognizer passes all 269 cases. It remains diagnostic
+  only: it is not consumed by migration admission. The
+  [Alembic job 123267471579](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123267471579)
+  fails the unchanged Squawk gate: 13 ordinary and 24 expanded warnings, both
+  scanner exits 1. Its 113 expanded-capture and 46 migration tests pass; that is
+  not strict scanning of all 141 nonhistorical revisions.
+- [Bundle analysis 123269139571](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123269139571)
+  passes 77 contract cases, then correctly rejects 285.83 KiB against 280 KiB.
+  The current production diagnostic identifies one non-static-reachable
+  MapLibre 6.15.0 chunk, 292688 gzip bytes, three package modules and 171 graph
+  chunks; it remains inventory, not final-HTML/artifact admission proof.
+  The approved narrow 286 KiB decision is not active.
+- Both secret-scanning checks reject exactly 58 public-integrity identities:
+  29 historical-policy, 27 capture-fixture and two compiled recognizer hashes.
+  Their exact finite disposition decision remains pending. Policy 347,
+  baseline 319, Gitleaks 26, all 78 required contexts, blocking CodeQL and
+  coverage floors are unchanged. Blocking CodeQL succeeds with no new alerts.
+- All four complete backend unit jobs succeed:
+  [shard 0](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123267472121)
+  4554 PASS / 163 SKIP;
+  [shard 1](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123267472419)
+  5292 PASS / 79 SKIP;
+  [shard 2](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123275687225)
+  5124 PASS / 105 SKIP;
+  [shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123276487900)
+  6684 PASS / 53 SKIP. Total: 21,654 PASS / 400 SKIP / 0 FAIL.
+  [Coverage Policy 123285631870](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123285631870)
+  and [Codecov 123285631983](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123285631983)
+  are SKIPPED; no merged Python coverage GREEN is claimed.
+
+### Next bounded test packet; no inherited GREEN
+
+[feb9a60581ff2b7bf65827110b3f742897647164](https://github.com/egorribun/university_ecosystem/commit/feb9a60581ff2b7bf65827110b3f742897647164), followed by the assertion-only formatting fold
+[81441735aff3fac47ead667a3165532624a154fb](https://github.com/egorribun/university_ecosystem/commit/81441735aff3fac47ead667a3165532624a154fb), contains six source/test/dispatch paths:
+
+1. Three invalid-message Auth probes exercise real parser, logger, Sentry and
+   Msg ACK behavior for malformed JSON, schema and UTF-8 inputs. They require
+   nonempty captures and normal side effects before checking privacy. Existing
+   opaque-argument redaction may already protect this boundary; no new leak or
+   production fix is presumed before execution.
+2. MapLibre producer tests require raw-byte/SHA identities for every emitted
+   chunk, including a detached chunk, and reject changed/missing non-Map bytes
+   before writing evidence. They intentionally require the next schema version;
+   the future producer and diagnostic consumer must transition together.
+   Final postbuild HTML/closure, rehashing and current-run artifact admission
+   remain separate prerequisites to the approved narrow budget.
+3. A separate pure graph-metadata scaffold and 43 contracts preserve the
+   source-pinned single-parent reader/CLI and renderer unchanged. The scaffold
+   deliberately rejects every graph: the expected 39 positive-control RED
+   cases are not 39 validated rejection outcomes. Four legacy/no-execution
+   controls are expected to pass. Literal metadata, all 142 current files,
+   2/3-parent merges, dynamic declarations, duplicates, missing parents and
+   cycles are covered without executing migrations. This API is neither a
+   file loader, executable upgrade order, database admission result nor waiver.
+4. Mirrored dispatch preserves the previous 231-selector prefix and appends
+   only the Auth and graph selectors, for 233 selectors and a static forecast
+   of 3458 consumer cases. Workers, filters, timeout, cleanup and failure
+   propagation are unchanged. These forecasts require the next source's own CI.
+
+Next: obtain assertion-level receipts, implement only the observed missing
+producer/graph behavior with independent review, and then run the corrected
+source's full CI. The restricted-role PostgreSQL launcher and owned client-IP
+outer admission remain separate bounded work; no deployment, populated-migration
+execution, broad scanner suppression or historical-migration rewrite is authorized.
+
 ## Source 68a68a terminal receipts and scoped continuation — 2026-10-29
 
 **381/512 accepted; 131 remain unaccepted. No acceptance increment is made here.**
@@ -10,7 +121,7 @@ Source [68a68a78eebc0ca7058554713df0a3534ac68048](https://github.com/egorribun/u
 and tested merge `cf33895e209ca2607b7a695137b771edac5246a4` share tree
 `7af086a06ad0856f9af2af2efd62043e61bacea1`. All 22 PR-source workflow runs
 are terminal: 19 SUCCESS / 1 FAILURE / 2 SKIP, with no cancellations. The
-separate push Security Policy Integrity run also succeeds. None of these
+separate pull_request_target Security Policy Integrity run also succeeds. None of these
 receipts is inherited as GREEN for the next source.
 
 ### Executed results
