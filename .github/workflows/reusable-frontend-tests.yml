@@ -372,6 +372,11 @@ jobs:
         env:
           CI: "true"
 
+      - name: Run final HTML inventory contracts
+        if: ${{ !cancelled() && steps.install-contract-dependencies.outcome == 'success' }}
+        timeout-minutes: 2
+        run: node --test scripts/final-html-root-inventory.test.mjs
+
   unit-tests-shard:
     name: Unit Tests (shard ${{ matrix.shard }}/4)
     needs: wasm-build
