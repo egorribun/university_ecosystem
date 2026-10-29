@@ -2,6 +2,134 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source 24c7c398 terminal verification and retained-row continuation
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment.**
+In particular, AUD-447 remains open: protection of new/reopened auth jobs
+does not establish removal of plaintext from historical retained rows.
+
+Source [24c7c398ed81802543443cd15d8dda91f0dd8a1e](https://github.com/egorribun/university_ecosystem/commit/24c7c398ed81802543443cd15d8dda91f0dd8a1e)
+and tested merge `e7ced1e2dc37d8ae8d66cec68e7312e79013dbca` share tree
+`bfb3ffde9eb4cf21fb63c07d0cd7f1d873d8d10e`.
+All 22 PR-source workflows are terminal: 19 SUCCESS / 1 FAILURE / 2 SKIP.
+The separate [Security Policy Integrity](https://github.com/egorribun/university_ecosystem/actions/runs/40828576580)
+run is SUCCESS and has event **pull_request_target**, not push.
+[Matrix 40828579836](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836)
+is FAILURE: **91 jobs, 68 SUCCESS / 6 FAILURE / 16 SKIP / 1 CANCELLED**.
+The six failures are two exact-identity scanning jobs, raw Squawk, frontend
+formatting, the real bundle budget and derived CI Success. The cancelled
+Contract job is an additional blocker, not a successful check.
+
+### Complete source-bound receipts
+
+- All four complete backend unit shards succeed:
+  [0](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298456574)
+  4724 PASS / 147 SKIP;
+  [1](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298456458)
+  4994 PASS / 80 SKIP;
+  [2](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123306613911)
+  4816 PASS / 86 SKIP;
+  [3](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123307880548)
+  7166 PASS / 87 SKIP. Total: **21,700 PASS / 400 SKIP / 0 FAIL**.
+  [Coverage Policy](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123319831129)
+  and [Codecov](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123319832533)
+  are SKIPPED; no merged Python coverage GREEN is claimed.
+- [Contract 123298041594](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298041594)
+  logs 3458 consumer, 633 exact-disposition and 41 scoped cases PASS.
+  All 43 graph cases and 47 named Auth cases pass. Nevertheless, the job
+  concludes CANCELLED exactly at its configured 600-second boundary; no direct
+  timeout diagnostic was recovered. Successful test commands do not turn that
+  check GREEN. Setup takes about 47 seconds, including a 36-second native build;
+  the consumer step takes about 534 seconds. The existing 10-minute timeout,
+  three file-grouped workers and full selector population are not relaxed.
+- [Owned Core 40828579565](https://github.com/egorribun/university_ecosystem/actions/runs/40828579565)
+  succeeds: 329 preflight PASS, live 48 PASS / 2 SKIP, exit 0, desktop/mobile
+  reset-replay 400 and NATS outage SUCCESS. This is owned-topology evidence.
+  [PostgreSQL 123298456591](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298456591)
+  succeeds: 384 PASS / 16 SKIP (including all five named AUD-445 cases),
+  plus 13 required and five AUD-262 durable-replay cases PASS. The three dedicated
+  borrowed-session PostgreSQL cases are still outside this topology.
+- [Frontend aggregate 123302507453](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123302507453)
+  succeeds: 10,396 tests / 822 files PASS; all four provenance-checked shards
+  merge, with 2182/2182 changed lines covered. There remain 29 unhit global
+  branch arms out of 17,221, including six unlocated arms; this is not 100%
+  global branch coverage.
+- Map schema3 contracts pass **94/94**; the WASM suite reports 789 PASS /
+  6 SKIP. Production Build succeeds and the bounded diagnostic rehashes all
+  171 emitted graph chunks. [Bundle Analysis](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123299961712)
+  then rejects 285.83 KiB against the unchanged 280 KiB limit.
+  This is producer-time/diagnostic evidence, not final-HTML/artifact admission.
+  The approved narrow 286 KiB budget is still inactive. Actual final HTML comes
+  from TanStack's shell and post-build processing, not simply the source
+  `frontend/index.html`; its exact generated script-root forms still need capture.
+- [Frontend Lint](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298574308)
+  fails one Prettier array-layout fold. The next packet applies exactly the
+  hosted formatter hunk without changing its assertion or fixture behavior.
+- [Alembic 123298456057](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298456057)
+  fails the unchanged raw gate: 13 ordinary and 24 expanded Squawk warnings,
+  both scanner exits 1. Its 113 expanded-capture and 46 migration cases PASS.
+  Graph metadata and the diagnostic matcher are not SQL execution admission
+  or strict scanning of all 141 nonhistorical revisions.
+- Both secret-scanning checks still reject exactly 58 public-integrity
+  identities. Their finite disposition decision remains pending. Baseline 319,
+  policy 347, Gitleaks 26, all 78 required contexts, blocking CodeQL and
+  coverage floors remain unchanged. Blocking CodeQL succeeds with no new alerts.
+
+### Honest RED-to-GREEN boundary
+
+The prior [20d Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/40825713315)
+was superseded only after the needed graph/Map semantic RED and Auth/Core/PG
+controls were obtained. It concludes CANCELLED: 62 SUCCESS / 8 FAILURE /
+13 SKIP / 6 CANCELLED. Only backend shard1 completed (4994 PASS / 80 SKIP);
+shards0/2 were cancelled and shard3 had no separate run. No complete backend
+GREEN is attributed to 20d. The corrected 24c run above was allowed to finish
+all four backend shards before the next publication; its Contract cancellation
+is the separate job-level 600-second event.
+
+### AUD-447 remains open: historical retained payloads
+
+Current source prepares the incoming auth payload, but active PENDING/RETRYING
+dedup returns before rewriting an existing plaintext row. Auto replay protects
+the new NATS publication while leaving the old row's payload unchanged on
+completed, rescheduled and exhausted outcomes. Earlier dedup tests created
+their seed via new parking, so they began with an already-protected row.
+
+These are source-backed lifecycle gaps, not evidence that any deployment
+contains such rows. Historical error messages, dormant rows, queues and backups
+are not claimed inspected or cleaned. No automatic database cleanup is run.
+A dedup-only repair would not cover the auto-replay path or those residuals.
+
+### Next bounded tests-first packet
+
+[baeb9fd043494d95dfd2e8b4bf4492b5060917d3](https://github.com/egorribun/university_ecosystem/commit/baeb9fd043494d95dfd2e8b4bf4492b5060917d3)
+contains five reviewed paths, with no Auth or cleanup-profile production fix:
+
+1. Nineteen Auth instances directly seed historical rows: sixteen active-dedup
+   combinations and three real auto-replay outcomes. The forecast is eleven
+   retained-payload RED cases and eight already-protected controls PASS, after
+   identity, retry-budget, schedule, protected-wire and delivery controls.
+   They use actual serializers/models/handlers with DB/NATS/SMTP transport
+   doubles, not PostgreSQL durability or bulk-remediation proof.
+2. The cleanup-profile contract adds 27 exact positive path/function pairs
+   (43 graph and 269 historical-recognizer instances) and six near misses.
+   This adds 66 contract instances; 55 failures are forecast while the
+   production registry remains unchanged. Existing row-cleanup/GC assertions
+   and async cancellation after body errors stay active. No measured runtime
+   or peak-memory improvement is claimed before implementation and hosted CI.
+3. Workflow dispatch and its independent mirror preserve the entire
+   233-selector prefix and append only the two Auth nodes, for 235 selectors.
+   With the profile contracts, the static consumer forecast is 3543 cases,
+   not a test receipt. Workers, scheduling, filters, timeout, security cohort,
+   cleanup, failure propagation and quality gates remain unchanged.
+4. The remaining path is the exact Prettier-only correction described above.
+
+Next: obtain semantic receipts, implement only the observed bounded gaps with
+independent review, then validate the corrected source. The prepared 121-case
+owned-PostgreSQL policy scaffold stays unpublished until Contract headroom is
+restored. Final-HTML/artifact Map proof, owned empty-database migration rendering
+and strict nonhistorical scanning remain separate work. None of the receipts
+above is inherited as full CI GREEN for this new source.
+
 ## Source 8573ec57 verification and bounded tests-first continuation
 
 **382/512 accepted; 130 remain unaccepted.** This preserves all 381 prior IDs
