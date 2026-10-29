@@ -829,10 +829,7 @@ test("metadata fingerprints every emitted client chunk without exposing source",
     const expectedNames = Object.keys(fixture.bundle).sort((left, right) =>
       left.localeCompare(right)
     )
-    assert.deepEqual(
-      report.graph.chunks.map((chunk) => chunk.fileName),
-      expectedNames
-    )
+    assert.deepEqual(report.graph.chunks.map((chunk) => chunk.fileName), expectedNames)
     for (const chunk of report.graph.chunks) {
       const bytes = await readFile(path.join(fixture.outputDir, chunk.fileName))
       assert.deepEqual(bytes, Buffer.from(fixture.bundle[chunk.fileName].code))
