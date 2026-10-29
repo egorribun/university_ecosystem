@@ -973,3 +973,63 @@ async def test_reconstruct_state_never_replays_unchained_outbox_payload():
 
     assert result == (None, 0, False)
     db.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("isolation", "allowed"),
+    [
+        ("read committed", True),
+        ("read uncommitted", True),
+        ("repeatable read", False),
+        ("serializable", False),
+    ],
+)
+async def test_record_domain_event_checks_isolation_before_locking_the_aggregate(
+    isolation: str, allowed: bool
+) -> None:
+    """Check emitted SQL and stable identity; real PostgreSQL proves locking."""
+    service = SecureAuditService(signing_key=secrets.token_hex(32).encode("ascii"))
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = "postgresql"
+    db.scalar = AsyncMock(return_value=isolation)
+    db.execute = AsyncMock(return_value=_Result(first=None))
+    db.flush = AsyncMock()
+    event_arguments = {
+        "event_type": "CUSTOM",
+        "aggregate_type": "grade",
+        "aggregate_id": "aud340-unit",
+        "payload": {"value": 1},
+    }
+
+    if allowed:
+        event = await service.record_domain_event(db, **event_arguments)
+        assert event.sequence_number == 1
+        assert event.prev_hash == "0" * 64
+    else:
+        with pytest.raises(
+            ValueError, match="^Domain event writes require READ COMMITTED semantics$"
+        ):
+            await service.record_domain_event(db, **event_arguments)
+        db.add.assert_not_called()
+        db.flush.assert_not_awaited()
+
+    assert db.scalar.await_count == 1
+    isolation_statement = db.scalar.await_args.args[0]
+    assert str(isolation_statement).startswith("SELECT pg_catalog.current_setting(")
+    assert list(isolation_statement.compile().params.values()) == [
+        "transaction_isolation"
+    ]
+    statements = [call.args[0] for call in db.execute.await_args_list]
+    if not allowed:
+        assert statements == []
+        return
+
+    assert len(statements) == 2
+    lock_statement, head_statement = statements
+    assert str(lock_statement).startswith("SELECT pg_catalog.pg_advisory_xact_lock(")
+    # Fixed SHA-256 vector for the namespaced JSON tuple, not Python's hash().
+    assert list(lock_statement.compile().params.values()) == [4157649041181095682]
+    head_parameters = head_statement.compile().params
+    assert head_parameters["aggregate_type_1"] == "grade"
+    assert head_parameters["aggregate_id_1"] == "aud340-unit"
