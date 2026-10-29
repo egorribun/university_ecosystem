@@ -1035,9 +1035,7 @@ def _assert_scan_timeout_contract(
                     assert remaining > 0
                     assert selector.select(remaining)
             child_identity = _linux_process_identity(child_pid)
-            assert _process_is_missing_or_same_zombie(
-                child_identity, child_start_time
-            )
+            assert _process_is_missing_or_same_zombie(child_identity, child_start_time)
         finally:
             if pidfd is not None:
                 os.close(pidfd)
@@ -1050,9 +1048,7 @@ def _assert_scan_timeout_contract(
             child_group = int(child_group_text)
             child_start_time = int(child_start_text)
             child_identity = _linux_process_identity(child_pid)
-            if not _process_is_missing_or_same_zombie(
-                child_identity, child_start_time
-            ):
+            if not _process_is_missing_or_same_zombie(child_identity, child_start_time):
                 assert child_identity is not None
                 assert child_identity[1:] == (child_group, child_start_time)
                 try:
