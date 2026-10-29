@@ -1008,3 +1008,192 @@ async def test_aud447_protected_replay_reopens_original_legacy_job_without_hash_
     assert source_unchanged, "parking or replay mutated the original legacy input"
     assert wire_safe, "protected replay published the synthetic marker"
     assert stored_payloads_safe, "initial or reopened storage contained the marker"
+
+
+def _legacy_worker_sentry_probe_child(scenario: str, output: Connection) -> None:
+    try:
+        stream = io.StringIO()
+        with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
+            outcome = asyncio.run(_legacy_worker_sentry_probe(scenario))
+        output.send(outcome)
+    except Exception:
+        # Child results must never contain event data, links or markers.
+        output.send({"completed": False})
+    finally:
+        output.close()
+
+
+async def _legacy_worker_sentry_probe(scenario: str) -> dict[str, bool]:
+    import sentry_sdk
+    from nats.aio.msg import Msg
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    import app.core.logging as app_logging
+
+    marker = uuid.uuid4().hex
+    original = "https://example.invalid/reset-password#token=" + marker
+    task_name = "app.tasks.email.send_auth_email"
+    reached_failure: list[bool] = []
+
+    def fail_build(
+        link: str, _name: str, *, locale: str | None
+    ) -> tuple[str, str, str]:
+        reached_failure.append(link == original)
+        raise ValueError(link)
+
+    async def fail_delivery(**kwargs: Any) -> None:
+        link = kwargs["fallback_fields"]["link"]
+        reached_failure.append(link == original)
+        raise RuntimeError(link)
+
+    # Construct an already-queued legacy task, deliberately bypassing enqueue:
+    # the new enqueue protection must not conceal the old-message boundary.
+    message = Msg(
+        _client=nats_module.NATS(),
+        subject=f"tasks.{task_name}",
+        reply="$JS.ACK.tasks.python-worker.1.1.1.1700000000000000000.0",
+        data=json.dumps(
+            {
+                "id": "aud447-legacy-worker",
+                "name": task_name,
+                "args": ["student@example.invalid", original],
+                "kwargs": {},
+                "trace_context": {},
+            }
+        ).encode(),
+    )
+    ack = AsyncMock()
+    nak = AsyncMock()
+    term = AsyncMock()
+    subscription = SimpleNamespace(
+        fetch=AsyncMock(side_effect=[[message], asyncio.CancelledError()])
+    )
+    transport = SimpleNamespace(pull_subscribe=AsyncMock(return_value=subscription))
+    broker = nats_module.NatsTaskBroker()
+    broker._js = transport
+    handler = email_tasks.broker._tasks[task_name]
+    broker.task(name=task_name)(handler)
+
+    events: list[dict[str, Any]] = []
+    stream = io.StringIO()
+    stopped = False
+    with (
+        pytest.MonkeyPatch.context() as monkeypatch,
+        contextlib.redirect_stdout(stream),
+        contextlib.redirect_stderr(stream),
+    ):
+        monkeypatch.setattr(message, "ack", ack)
+        monkeypatch.setattr(message, "nak", nak)
+        monkeypatch.setattr(message, "term", term)
+        monkeypatch.setattr(nats_module, "_app", None)
+        # Exercise real retry handling without entering database parking.
+        monkeypatch.setattr(nats_module, "_MAX_DELIVERIES", 2)
+        monkeypatch.setattr(nats_module, "_RETRY_BASE_DELAY_S", 0)
+        monkeypatch.setattr(nats_module, "_DEFAULT_TASK_TIMEOUT_S", 30)
+        # Both scenarios prohibit SMTP, including an unexpected build success.
+        monkeypatch.setattr(email_tasks, "_deliver_email_message", fail_delivery)
+        if scenario == "build":
+            monkeypatch.setattr(
+                email_tasks.email_utils, "build_reset_email_content", fail_build
+            )
+
+        app_logging.configure_logging(level=logging.INFO, json_output=True)
+        sentry_sdk.init(
+            dsn=f"https://{uuid.uuid4().hex}@example.invalid/1",
+            integrations=[
+                LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)
+            ],
+            send_default_pii=False,
+            transport=events.append,
+        )
+
+        try:
+            await broker.run_worker()
+        except asyncio.CancelledError:
+            stopped = True
+        sentry_sdk.flush(timeout=1)
+
+    values = [
+        value
+        for event in events
+        for value in ((event.get("exception") or {}).get("values") or [])
+    ]
+    frames = [
+        frame
+        for value in values
+        for frame in (value.get("stacktrace") or {}).get("frames", [])
+    ]
+    worker_frames = [
+        frame
+        for frame in frames
+        if frame.get("function") in {"run_worker", "_execute"}
+    ]
+    handler_frames = [
+        frame for frame in frames if frame.get("function") == "send_auth_email"
+    ]
+    return {
+        "completed": True,
+        "stopped": stopped,
+        "original_reached_failure": reached_failure == [True],
+        "captured": len(events) == 1,
+        "one_generic_exception": (
+            len(values) == 1
+            and values[0].get("value") == "Authentication email delivery failed"
+        ),
+        "worker_frame_present": any(
+            frame.get("function") == "run_worker" for frame in worker_frames
+        ),
+        "handler_frame_present": bool(handler_frames),
+        "safe_handler_frames": marker not in json.dumps(handler_frames, default=str),
+        "safe_worker_frames": marker not in json.dumps(worker_frames, default=str),
+        "safe_event": marker not in json.dumps(events, default=str),
+        "safe_log": marker not in stream.getvalue(),
+        "normal_nak": (
+            nak.await_count == 1
+            and nak.await_args.kwargs == {"delay": 0}
+            and ack.await_count == 0
+            and term.await_count == 0
+        ),
+        "bounded_fetch": subscription.fetch.await_count == 2,
+    }
+
+
+@pytest.mark.parametrize("scenario", ["build", "delivery"])
+def test_aud447_real_worker_legacy_failure_keeps_sentry_event_secret_free(
+    scenario: str,
+) -> None:
+    context = multiprocessing.get_context("spawn")
+    receive, send = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_legacy_worker_sentry_probe_child, args=(scenario, send)
+    )
+    process.start()
+    send.close()
+    try:
+        assert receive.poll(30), "the isolated legacy worker probe timed out"
+        outcome = receive.recv()
+        process.join(timeout=5)
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join()
+        receive.close()
+
+    assert outcome["completed"], "the isolated legacy worker probe failed"
+    assert outcome["stopped"]
+    assert outcome["original_reached_failure"]
+    assert outcome["normal_nak"]
+    assert outcome["bounded_fetch"]
+    assert outcome["captured"]
+    assert outcome["one_generic_exception"]
+    assert outcome["worker_frame_present"]
+    assert outcome["handler_frame_present"]
+    assert outcome["safe_handler_frames"]
+    assert outcome["safe_log"]
+    assert outcome["safe_event"], (
+        "the real worker Sentry event contained the synthetic marker"
+    )
+    assert outcome["safe_worker_frames"], (
+        "real worker traceback frames contained the synthetic marker"
+    )

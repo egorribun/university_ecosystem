@@ -1001,7 +1001,7 @@ jobs:
             const raw = await boundedFile(reportPath)
             const receipt = JSON.parse(raw.toString("utf8"))
             exact(receipt, ["schemaVersion", "profile", "package", "producerSha256", "viteConfigSha256", "graph", "mapLibreChunks"])
-            check(receipt.schemaVersion === 1)
+            check(receipt.schemaVersion === 2)
           
             const packageBytes = await insideFile(root, "package.json")
             const lockBytes = await insideFile(root, "package-lock.json")
@@ -1093,13 +1093,14 @@ jobs:
               const modules = []
               for (const module of chunk.modules) {
                 check(["package", "project", "other"].includes(module.kind))
-                const keys = ["kind", "idSha256", "renderedBytes", "originalBytes"]
+                const keys = ["kind", "idSha256", "renderedCodeUnits", "originalCodeUnits"]
                 if (module.kind === "package") keys.push("package", "packageRoot", "path")
                 exact(module, keys)
-                check(integer(module.renderedBytes) && integer(module.originalBytes))
+                check(integer(module.renderedCodeUnits) &&
+                  (module.originalCodeUnits === null || integer(module.originalCodeUnits)))
                 const safe = {
                   kind: module.kind, idSha256: module.idSha256,
-                  renderedBytes: module.renderedBytes, originalBytes: module.originalBytes,
+                  renderedCodeUnits: module.renderedCodeUnits, originalCodeUnits: module.originalCodeUnits,
                 }
                 if (module.kind === "package") {
                   check(

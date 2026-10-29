@@ -4,12 +4,13 @@ import asyncio
 import base64
 import contextlib
 import hmac
+import inspect
 import json
 import logging
 import ssl
 from datetime import UTC, datetime
 from email.message import EmailMessage
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import aiosmtplib
 from cryptography.fernet import Fernet
@@ -18,6 +19,14 @@ from app.core.nats_broker import broker
 from app.utils import email as email_utils
 
 _AUTH_EMAIL_KEY_CONTEXT = b"university-ecosystem:auth-email-delivery:v1"
+_AUTH_EMAIL_LEGACY_KIND = "auth-email-legacy-v1"
+
+
+class AuthEmailPayloadError(ValueError):
+    """An auth task cannot be protected without changing its delivery semantics."""
+
+    def __init__(self) -> None:
+        super().__init__("Authentication email payload protection failed")
 
 
 def _auth_email_cipher(secret: str) -> Fernet:
@@ -33,17 +42,103 @@ def seal_auth_email_link(link: str, expires_at: datetime, secret: str) -> str:
     return _auth_email_cipher(secret).encrypt(envelope.encode("utf-8")).decode("ascii")
 
 
-def _open_auth_email_link(envelope: str, secret: str) -> str:
+def _read_auth_email_link(
+    envelope: str, secret: str
+) -> tuple[str, datetime | None, bool | None]:
+    """Authenticate the format without imposing delivery-time expiry at storage."""
     data = json.loads(_auth_email_cipher(secret).decrypt(envelope.encode("ascii")))
-    expires_at = datetime.fromisoformat(data["expires_at"])
-    if expires_at.tzinfo is None:
-        raise ValueError("Invalid auth email expiry")
-    if expires_at <= datetime.now(UTC):
-        raise ValueError("Auth email link expired")
-    link = data["link"]
+    if not isinstance(data, dict):
+        raise ValueError("Invalid auth email envelope")
+    link = data.get("link")
     if not isinstance(link, str):
         raise ValueError("Invalid auth email link")
+    if data.get("kind") == _AUTH_EMAIL_LEGACY_KIND:
+        if set(data) != {"kind", "link", "encrypted_link_present"}:
+            raise ValueError("Invalid legacy auth email envelope")
+        flag_present = data["encrypted_link_present"]
+        if type(flag_present) is not bool:
+            raise ValueError("Invalid legacy auth email marker")
+        return link, None, flag_present
+    raw_expiry = data.get("expires_at")
+    if not isinstance(raw_expiry, str):
+        raise ValueError("Invalid auth email expiry")
+    expires_at = datetime.fromisoformat(raw_expiry)
+    if expires_at.tzinfo is None:
+        raise ValueError("Invalid auth email expiry")
+    return link, expires_at, None
+
+
+def _open_auth_email_link(envelope: str, secret: str) -> str:
+    link, expires_at, _ = _read_auth_email_link(envelope, secret)
+    if expires_at is not None and expires_at <= datetime.now(UTC):
+        raise ValueError("Auth email link expired")
     return link
+
+
+def prepare_auth_email_payload(
+    payload: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return protected storage/wire data and its original logical hash input."""
+    try:
+        # Import lazily: AuthService imports this task module.
+        from app.services.auth_service import _token_hmac_secret
+
+        if set(payload) != {"args", "kwargs"}:
+            raise ValueError("Invalid auth email task payload")
+        args = payload["args"]
+        kwargs = payload["kwargs"]
+        if not isinstance(args, list) or not isinstance(kwargs, dict):
+            raise ValueError("Invalid auth email task arguments")
+        # Binding enforces required arguments, keyword names, duplicates and the
+        # four positional slots without changing defaults or argument placement.
+        bound = inspect.signature(send_auth_email).bind(*args, **kwargs)
+        link = bound.arguments["link"]
+        encrypted_link = bound.arguments.get("encrypted_link", False)
+        if not isinstance(link, str) or type(encrypted_link) is not bool:
+            raise ValueError("Invalid auth email link or encryption marker")
+
+        safe_args = list(args)
+        safe_kwargs = dict(kwargs)
+        logical_args = list(args)
+        logical_kwargs = dict(kwargs)
+        secret = _token_hmac_secret()
+        if encrypted_link:
+            original_link, _, flag_present = _read_auth_email_link(link, secret)
+            if flag_present is not None:
+                # Only authenticated legacy metadata can restore the old hash.
+                if len(logical_args) >= 2:
+                    logical_args[1] = original_link
+                else:
+                    logical_kwargs["link"] = original_link
+                if flag_present:
+                    logical_kwargs["encrypted_link"] = False
+                else:
+                    logical_kwargs.pop("encrypted_link")
+            # Native envelopes, including expired ones, retain their exact bytes.
+        else:
+            legacy = json.dumps(
+                {
+                    "kind": _AUTH_EMAIL_LEGACY_KIND,
+                    "link": link,
+                    "encrypted_link_present": "encrypted_link" in kwargs,
+                }
+            )
+            protected_link = (
+                _auth_email_cipher(secret)
+                .encrypt(legacy.encode("utf-8"))
+                .decode("ascii")
+            )
+            if len(safe_args) >= 2:
+                safe_args[1] = protected_link
+            else:
+                safe_kwargs["link"] = protected_link
+            safe_kwargs["encrypted_link"] = True
+        return (
+            {"args": safe_args, "kwargs": safe_kwargs},
+            {"args": logical_args, "kwargs": logical_kwargs},
+        )
+    except Exception:  # RZ-22-01-JUSTIFIED: fail-closed task protection
+        raise AuthEmailPayloadError() from None
 
 
 async def _deliver_email_message(

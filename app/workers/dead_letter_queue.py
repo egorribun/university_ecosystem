@@ -65,7 +65,14 @@ class DeadLetterQueue:
 
         Returns the created job, or None if a duplicate already exists.
         """
-        job_hash = compute_job_hash(job_type, payload)
+        if job_type == "app.tasks.email.send_auth_email":
+            from app.tasks.email import prepare_auth_email_payload
+
+            payload, logical_payload = prepare_auth_email_payload(payload)
+            job_hash = compute_job_hash(job_type, logical_payload)
+            del logical_payload
+        else:
+            job_hash = compute_job_hash(job_type, payload)
 
         # Calculate next retry time with exponential backoff
         next_retry = datetime.now(UTC) + timedelta(seconds=self.BASE_BACKOFF_SECONDS)

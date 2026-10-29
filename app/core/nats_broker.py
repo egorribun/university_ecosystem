@@ -455,6 +455,14 @@ class NatsTaskBroker:
 
     async def enqueue(self, task_name: str, *args: Any, **kwargs: Any) -> str:
         """Push a task to the JetStream queue with trace context propagation."""
+        if task_name == "app.tasks.email.send_auth_email":
+            from app.tasks.email import prepare_auth_email_payload
+
+            protected_payload = prepare_auth_email_payload(
+                {"args": list(args), "kwargs": kwargs}
+            )[0]
+            args = tuple(protected_payload["args"])
+            kwargs = protected_payload["kwargs"]
         if self._js is None:
             await self.connect()
         if self._js is None:
@@ -519,6 +527,11 @@ class NatsTaskBroker:
         from app.core.database import async_session
         from app.workers.dead_letter_queue import DeadLetterQueue
 
+        protection_errors: tuple[type[Exception], ...] = ()
+        if payload.name == "app.tasks.email.send_auth_email":
+            from app.tasks.email import AuthEmailPayloadError
+
+            protection_errors = (AuthEmailPayloadError,)
         try:
             async with async_session() as session:
                 await DeadLetterQueue(session).add_failed_job(
@@ -527,6 +540,9 @@ class NatsTaskBroker:
                     error_message=error[:2000],
                 )
                 await session.commit()
+        except protection_errors:
+            _logger.warning("nats_auth_email_payload_protection_failed")
+            return False
         except (SQLAlchemyError, OSError) as exc:
             _logger.error(
                 "nats_task_dlq_persist_failed: task=%s id=%s err=%s",

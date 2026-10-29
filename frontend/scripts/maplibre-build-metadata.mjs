@@ -30,6 +30,14 @@ function safeFileName(value) {
 }
 
 function moduleMetadata(id, info, root) {
+  const renderedCodeUnits = info.renderedLength
+  const hasOriginalLength = "originalLength" in info
+  const originalLength = hasOriginalLength ? info.originalLength : undefined
+  const validLength = (value) =>
+    Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000
+  if (!validLength(renderedCodeUnits) || (hasOriginalLength && !validLength(originalLength)))
+    throw new Error("invalid module length metadata")
+  const originalCodeUnits = hasOriginalLength ? originalLength : null
   const separator = id.search(/[?#]/u)
   const file = separator < 0 ? id : id.slice(0, separator)
   const suffix = separator < 0 ? "" : id.slice(separator)
@@ -39,8 +47,8 @@ function moduleMetadata(id, info, root) {
   const result = {
     kind: local ? "project" : "other",
     idSha256: hash(stableId),
-    renderedBytes: info.renderedLength,
-    originalBytes: info.originalLength,
+    renderedCodeUnits,
+    originalCodeUnits,
   }
   const marker = local ? relative.lastIndexOf("node_modules/") : -1
   if (marker < 0 || (marker > 0 && relative[marker - 1] !== "/")) return result
@@ -57,8 +65,8 @@ function moduleMetadata(id, info, root) {
     packageRoot,
     path: modulePath,
     idSha256: hash(stableId),
-    renderedBytes: info.renderedLength,
-    originalBytes: info.originalLength,
+    renderedCodeUnits,
+    originalCodeUnits,
   }
 }
 
@@ -193,7 +201,7 @@ async function buildMetadata(config, environment, output, bundle, options) {
   }
   mapLibreChunks.sort((left, right) => left.fileName.localeCompare(right.fileName))
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     profile: profile(config, environment, output, options),
     package: await packageMetadata(config.root),
     producerSha256: hash(await readFile(fileURLToPath(import.meta.url))),

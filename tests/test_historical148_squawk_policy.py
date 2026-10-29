@@ -53,7 +53,8 @@ def clock(monkeypatch: pytest.MonkeyPatch) -> list[datetime]:
 
 
 def _valid_control(policy: dict[str, Any], capture: dict[str, Any]) -> None:
-    assert validator.match_inventory(_wire(policy), _wire(capture)) == VERDICT
+    matched = validator.match_inventory(_wire(policy), _wire(capture)) == VERDICT
+    assert matched, "historical diagnostic inventory did not match"
 
 
 def _rows(capture: dict[str, Any], scenario: int) -> list[dict[str, Any]]:

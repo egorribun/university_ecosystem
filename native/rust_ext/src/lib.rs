@@ -1571,7 +1571,10 @@ mod tests {
                     .unwrap()
                     .extract()
                     .unwrap();
-                assert_eq!(python_valid, expected, "Python hash-case expectation changed");
+                assert_eq!(
+                    python_valid, expected,
+                    "Python hash-case expectation changed"
+                );
                 let rust_result = verify_event_chain(
                     vec![wrong_key.clone(), key.clone()],
                     prev.clone(),
@@ -1584,7 +1587,10 @@ mod tests {
                     )],
                 )
                 .unwrap();
-                assert_eq!(rust_result.0, python_valid, "Rust/Python hash-case mismatch");
+                assert_eq!(
+                    rust_result.0, python_valid,
+                    "Rust/Python hash-case mismatch"
+                );
                 if !python_valid {
                     assert_eq!(rust_result.1, 0);
                     assert!(rust_result.2.contains("tampering detected"));

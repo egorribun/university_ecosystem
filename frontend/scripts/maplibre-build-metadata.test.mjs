@@ -112,7 +112,7 @@ test("metadata records real emitted bytes, module identities and entry reachabil
     const candidate = report.mapLibreChunks[0]
     const mapBytes = Buffer.from(fixture.contents["assets/vendor-map-A.js"])
 
-    assert.equal(report.schemaVersion, 1)
+    assert.equal(report.schemaVersion, 2)
     assert.deepEqual(report.profile, {
       command: "build",
       mode: "production",
@@ -150,8 +150,8 @@ test("metadata records real emitted bytes, module identities and entry reachabil
         packageRoot: "node_modules/maplibre-gl",
         path: "dist/maplibre-gl.js",
         idSha256: sha256("node_modules/maplibre-gl/dist/maplibre-gl.js"),
-        renderedBytes: 13,
-        originalBytes: 21,
+        renderedCodeUnits: 13,
+        originalCodeUnits: 21,
       },
     ])
     assert.deepEqual(
@@ -565,8 +565,8 @@ test("inventory diagnostic validates real receipts and rejects unsafe data", asy
             ...module,
             path: modulePath,
             idSha256: sha256("node_modules/maplibre-gl/" + modulePath),
-            renderedBytes: 0,
-            originalBytes: 0,
+            renderedCodeUnits: 0,
+            originalCodeUnits: 0,
           }
         })
         value.mapLibreChunks[0].modules.sort((left, right) =>
@@ -575,6 +575,54 @@ test("inventory diagnostic validates real receipts and rejects unsafe data", asy
       }),
     ],
   ]
+
+  const invalidLengths = [
+    ["negative", -1],
+    ["fractional", 0.5],
+    ["over-limit", 1_000_000_001],
+    ["string", privateCanary],
+    ["boolean", true],
+  ]
+  for (const field of ["renderedCodeUnits", "originalCodeUnits"]) {
+    cases.push([
+      "missing-" + field,
+      changed((value) => {
+        delete value.mapLibreChunks[0].modules[0][field]
+      }),
+    ])
+    for (const [label, invalid] of invalidLengths) {
+      cases.push([
+        field + "-" + label,
+        changed((value) => {
+          value.mapLibreChunks[0].modules[0][field] = invalid
+        }),
+      ])
+    }
+  }
+  cases.push(
+    [
+      "null-rendered-code-units",
+      changed((value) => {
+        value.mapLibreChunks[0].modules[0].renderedCodeUnits = null
+      }),
+    ],
+    [
+      "legacy-schema",
+      changed((value) => {
+        value.schemaVersion = 1
+      }),
+    ],
+    [
+      "legacy-module-length-fields",
+      changed((value) => {
+        const module = value.mapLibreChunks[0].modules[0]
+        module.renderedBytes = module.renderedCodeUnits
+        module.originalBytes = module.originalCodeUnits
+        delete module.renderedCodeUnits
+        delete module.originalCodeUnits
+      }),
+    ]
+  )
   for (const [name, mutate] of cases) {
     await t.test(name, async () => {
       const fixture = await makeDiagnosticFixture()
@@ -666,5 +714,70 @@ test("Rolldown lengths use code units and unavailable original stays null", asyn
     assert.doesNotMatch(result.stdout, /code-private/u)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test("metadata rejects malformed module lengths before writing any receipt", async (t) => {
+  const createProducer = await loadProducer()
+  const capture = async (fixture) => {
+    const plugin = createProducer({ outputPath: fixture.reportPath })
+    plugin.configResolved(fixture.config)
+    await plugin.writeBundle.call(
+      { environment: fixture.environment },
+      { dir: fixture.outputDir, format: "es" },
+      fixture.bundle
+    )
+  }
+  await t.test("zero is a known code-unit length, not missing metadata", async () => {
+    const fixture = await makeFixture()
+    try {
+      const [module] = Object.values(fixture.bundle["assets/vendor-map-A.js"].modules)
+      module.renderedLength = 0
+      module.originalLength = 0
+      await capture(fixture)
+      const report = JSON.parse(await readFile(fixture.reportPath, "utf8"))
+      const record = report.mapLibreChunks[0].modules[0]
+      assert.equal(record.renderedCodeUnits, 0)
+      assert.equal(record.originalCodeUnits, 0)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  const invalidLengths = [
+    ["undefined", undefined],
+    ["null", null],
+    ["nan", Number.NaN],
+    ["infinity", Number.POSITIVE_INFINITY],
+    ["negative-infinity", Number.NEGATIVE_INFINITY],
+    ["negative", -1],
+    ["fractional", 0.5],
+    ["unsafe", Number.MAX_SAFE_INTEGER + 1],
+    ["over-limit", 1_000_000_001],
+    ["string", "13"],
+    ["boolean", true],
+  ]
+  const cases = [["renderedLength", "missing", undefined, true]]
+  for (const field of ["renderedLength", "originalLength"]) {
+    for (const [label, invalid] of invalidLengths) {
+      cases.push([field, label, invalid, false])
+    }
+  }
+  for (const [field, label, invalid, missing] of cases) {
+    await t.test(field + "-" + label, async () => {
+      const fixture = await makeFixture()
+      try {
+        const [module] = Object.values(fixture.bundle["assets/vendor-map-A.js"].modules)
+        if (missing) delete module[field]
+        else module[field] = invalid
+        await assert.rejects(capture(fixture), {
+          name: "Error",
+          message: "invalid module length metadata",
+        })
+        assert.equal(existsSync(fixture.reportPath), false)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
   }
 })
