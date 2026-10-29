@@ -2,6 +2,128 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source ef5f8f verification and bounded causal corrections — 2026-10-29
+
+**381/512 accepted; 131 remain unaccepted. No new finding is closed by this batch.**
+
+Source [ef5f8f041f510dc42e9ab7a1aad8d22089018511](https://github.com/egorribun/university_ecosystem/commit/ef5f8f041f510dc42e9ab7a1aad8d22089018511)
+and tested merge `2655bf9764cb6be4d79762b39cf463617769f9e1` share tree
+`02db8d56e7fb6a34839c2f7e165440b5b0c8dacd`. Results below belong only to
+that source; they are not inherited GREEN evidence for the next commit.
+All 22 PR-source workflow runs are terminal: 19 SUCCESS / 1 FAILURE / 2 SKIP,
+with no cancellations.
+
+Reviewed implementation [7f2394b6e0d2a5190d0344624114f71e7099328b](https://github.com/egorribun/university_ecosystem/commit/7f2394b6e0d2a5190d0344624114f71e7099328b)
+contains twelve source/test/workflow paths. Its own Actions must establish the
+correction outcomes; the new worker and hydration tests are deliberately tests-first.
+
+Follow-on [2b1cc79cbd2f1ca3783b4642501a5e09ea9af54b](https://github.com/egorribun/university_ecosystem/commit/2b1cc79cbd2f1ca3783b4642501a5e09ea9af54b)
+adds the one exact build-environment contract correction below, for thirteen
+combined source/test/workflow paths. No other implementation is bundled here.
+
+- [Matrix 40806667819](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819)
+  is terminal FAILURE: 91 jobs, 60 SUCCESS / 12 FAILURE / 19 SKIP, no running
+  jobs or cancellations. All four backend shards executed: 21,343 PASS /
+  286 FAIL / 400 SKIP. Failures are 258 scaffold-positive-control assertions,
+  20 auth-privacy assertions, one stale build-environment contract and seven
+  catalog tests hitting the same retry-policy false positive.
+- [Owned Core 40806667225](https://github.com/egorribun/university_ecosystem/actions/runs/40806667225)
+  is SUCCESS: 329 preflight PASS; 48 live PASS / 2 SKIP; exit 0 and successful
+  owned NATS outage outcome. Both reset-token replay requests returned 400.
+  The earlier desktop submit flake did not recur, but its cause is not established.
+  This proves the owned topology and selected cases, not an external deployment.
+- Frontend shards pass 10,394 tests / 821 files.
+  [Aggregate 123232004234](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123232004234)
+  is SUCCESS: 2177 changed lines, 0 missing, 100% differential coverage.
+  This is not global coverage or all Tier 0 metrics.
+- [Read-only pre-commit 123227168935](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227168935)
+  is SUCCESS after the exact inner-probe Ruff correction. Blocking CodeQL
+  [123227518266](https://github.com/egorribun/university_ecosystem/runs/123227518266)
+  is SUCCESS, with zero annotations and no new alerts.
+- [Backend shard 0 / 123227936259](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227936259)
+  finishes with 4932 PASS / 278 FAIL / 74 SKIP in 1668.40 seconds.
+  Of the failures, 258 stop at the Squawk matcher's positive control: the deliberate
+  rejecting scaffold returns `None` instead of `matched-diagnostic-inventory`.
+  They do not establish 258 separate mutation outcomes or production defects.
+  The other 20 are causal AUD-447 privacy assertions: the prior 16 and four new
+  legacy-to-protected replay/hash cases. All four new cases reach the synthetic-marker
+  assertion rather than failing import/setup. Shard 1 separately passes 4474 cases,
+  with 135 SKIP, in 1429.46 seconds.
+- [Backend shard 2 / 123235883215](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123235883215)
+  finishes with 5324 PASS / 1 FAIL / 115 SKIP in 1722.55 seconds. Its only failure
+  is the old exact build-environment contract, which omits the already-configured
+  MapLibre metadata output path. The follow-on test correction keeps exact mapping
+  equality and `SKIP_WASM_BUILD=1`, adding only the run/attempt/source-bound
+  temporary receipt path; it does not remove the WASM reuse guard.
+- [Backend shard 3 / 123238646864](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123238646864)
+  finishes with 6613 PASS / 7 FAIL / 76 SKIP in 1610.31 seconds. All seven failures
+  are catalog tests reporting the same literal-test-name retry-policy mismatch,
+  not seven independent retry behaviors.
+- [Integration 123227936223](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227936223)
+  passes 384 cases / 16 SKIP, plus 13 required PostgreSQL cases and five durable
+  PostgreSQL cases. All five AUD-445 concurrency/rollback/lost-ack/deadlock cases
+  have named PASS receipts on this source. The six separate cache-outage/replay
+  consumer receipts remain unextracted; no closure is inferred from the PG cohort.
+- [Contract job 123227169250](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227169250)
+  is FAILURE. Its log transport is unavailable through the allowed plugin; no
+  exact case total, AUD-445 named PASS or successful mutation check is inferred.
+  A boolean-only positive-control assertion preserves the same predicate and
+  avoids pytest expanding the full historical policy/capture in failure output.
+  It is a bounded diagnostic improvement, not a proven transport root-cause fix.
+- [WASM contracts 123228042556](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123228042556)
+  show the intended Rolldown regression: 731 PASS / 1 FAIL / 6 SKIP, with an
+  absent original-length field producing `undefined` rather than explicit `null`.
+  [Production build 123228042393](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123228042393)
+  still rejects the diagnostic inventory after client/server builds complete.
+  The next schema-2 correction names module lengths as UTF-16 code units,
+  distinguishes an absent original length from zero, and rejects present malformed
+  values before JSON serialization. The producer and bounded reporter change
+  together; final chunk raw/gzip bytes, hashes, caps and bundle budgets do not.
+- [Inventory 123227169228](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227169228)
+  fails because the literal names of newly selected AUD-445 tests match the retry
+  heuristic. No operational CI retry was introduced. Selecting their two complete
+  files adds 31 existing bounded cases, preserves the six requested cases and avoids
+  altering or exempting the detector. Mirrored dispatch is kept exact.
+- [Rust format 123227935674](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227935674)
+  reports exactly two `assert_eq!` folds. The next correction is whitespace-only.
+- [Alembic 123227935797](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227935797)
+  is FAILURE: Squawk 2.67.0 reports 13 ordinary and 24 expanded historical warnings,
+  both raw exits 1. The subsequent 46 migration tests pass in 66.32 seconds.
+  Passing those tests does not erase the warnings or admit a populated database.
+- [Security/type hooks 123227169135](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227169135)
+  and [baseline integrity 123228025909](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123228025909)
+  reject 56 newly introduced public-integrity hash identities in the historical
+  Squawk policy/capture. Source review corroborates all 29 unique values; these are
+  not new credential discoveries. Exact disposition approval is pending.
+  The 319-entry baseline and 347 existing dispositions remain unchanged.
+
+The reviewed Auth correction protects legacy authentication links at enqueue and
+DLQ storage boundaries, preserves the logical pre-encryption deduplication hash,
+and retains native ciphertext and expiry semantics. Malformed marked payloads
+fail closed through existing NAK behavior rather than plaintext parking.
+It does not rewrite historical stored rows or establish deployed cleanup.
+
+A fresh security review also identified a possible separate legacy-message path
+through real worker exception-frame locals. Two isolated, real-`run_worker`
+Sentry regressions cover build and delivery failures using the pinned real NATS message type, in-memory transports
+and boolean-only results. They precede any production correction to that boundary;
+no runtime leak, fix or AUD-447 closure is claimed before their own evidence.
+The additional ForgotPassword SSR/hydration regressions similarly precede a
+production change and do not prove the earlier live-submit flake's cause.
+
+The next consumer selection has 225 selectors and projects 3382 cases, including
+both complete AUD-445 files and the two real-worker scenarios. This is a collection
+forecast, not a receipt. Three workers, file grouping, timeout, filters, cleanup,
+failure propagation, scanner gates and required contexts remain unchanged.
+The inactive Squawk scaffold has no migration-gate consumer; empty-database
+admission, all-other-migration evidence and any active risk rule remain separate.
+
+Next: verify the next exact source; repair only demonstrated root causes, obtain
+named AUD-445 receipts, test the adjacent worker boundary, and implement the pure
+historical matcher only against the witnessed rejecting-scaffold control. Keep
+AUD-445/447/454, historical cleanup, final MapLibre budget admission and
+owned-network acceptance open until their respective criteria are met.
+
 ## Source 672d15 terminal verification and tests-first continuation — 2026-10-29 02:22 UTC
 
 **381/512 accepted; 131 remain unaccepted. No new finding is closed here.**
