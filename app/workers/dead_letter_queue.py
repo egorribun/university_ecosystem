@@ -41,6 +41,46 @@ def compute_job_hash(job_type: str, payload: dict[str, Any]) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
+def _unique_auth_payload_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate auth task payload field")
+        result[key] = value
+    return result
+
+
+def _protected_auth_payload_bytes(job: DeadLetterJob) -> str | None:
+    """Validate in an isolated frame before returning only protected bytes."""
+    try:
+        from app.tasks.email import prepare_auth_email_payload
+
+        if job.job_type != "app.tasks.email.send_auth_email":
+            return None
+        payload = json.loads(job.payload, object_pairs_hook=_unique_auth_payload_object)
+        if not isinstance(payload, dict):
+            return None
+        protected, logical = prepare_auth_email_payload(payload)
+        if compute_job_hash(job.job_type, logical) != job.job_hash:
+            return None
+        # Reject duplicate JSON fields above before preserving original bytes:
+        # a shadowed field could otherwise retain a plaintext link on disk.
+        return job.payload if protected == payload else json.dumps(protected)
+    except Exception:  # RZ-22-01-JUSTIFIED: opaque retained auth-row validation
+        return None
+
+
+def _protect_retained_auth_payload(job: DeadLetterJob) -> None:
+    protected = _protected_auth_payload_bytes(job)
+    if protected is None:
+        from app.tasks.email import AuthEmailPayloadError
+
+        # Raise after the parser/crypto frame returned, without raw JSON locals.
+        raise AuthEmailPayloadError() from None
+    if protected != job.payload:
+        job.payload = protected
+
+
 class DeadLetterQueue:
     """Manager for the dead letter queue."""
 
@@ -78,15 +118,20 @@ class DeadLetterQueue:
         next_retry = datetime.now(UTC) + timedelta(seconds=self.BASE_BACKOFF_SECONDS)
 
         # Duplicate check: skip only while a retry for this payload is queued.
-        existing = (
-            await self.session.execute(
-                select(DeadLetterJob).where(DeadLetterJob.job_hash == job_hash)
+        statement = select(DeadLetterJob).where(DeadLetterJob.job_hash == job_hash)
+        if job_type == "app.tasks.email.send_auth_email":
+            # Repair only the current row state, not a stale identity-map copy.
+            statement = statement.with_for_update().execution_options(
+                populate_existing=True
             )
-        ).scalar_one_or_none()
+        existing = (await self.session.execute(statement)).scalar_one_or_none()
         if existing is not None and existing.status in (
             JobStatus.PENDING.value,
             JobStatus.RETRYING.value,
         ):
+            if job_type == "app.tasks.email.send_auth_email":
+                # Keep retry state and let the caller persist the payload repair.
+                _protect_retained_auth_payload(existing)
             logger.debug(
                 "Duplicate job detected, skipping: type=%s, hash=%s",
                 job_type,
@@ -268,6 +313,8 @@ class DeadLetterQueue:
                         try:
                             await self.mark_job_retrying(job)
                             try:
+                                if job.job_type == "app.tasks.email.send_auth_email":
+                                    _protect_retained_auth_payload(job)
                                 payload = json.loads(job.payload)
                                 if handler is None:
                                     raise RuntimeError(
