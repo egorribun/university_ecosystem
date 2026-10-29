@@ -3577,7 +3577,10 @@ def test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report() ->
         if step.get("name") == "Analyze bundle size"
     )
 
-    assert test_step["run"] == "node --test scripts/check-bundle-budget.test.mjs"
+    assert test_step["run"] == (
+        "node --test scripts/check-bundle-budget.test.mjs "
+        "scripts/maplibre-build-metadata.test.mjs"
+    )
     assert analyze_step["run"] == "node scripts/check-bundle-budget.mjs"
     assert not analyze_step.get("continue-on-error", False)
     assert "echo '{}'" not in FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8")
