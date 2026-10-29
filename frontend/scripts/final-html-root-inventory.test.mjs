@@ -1058,3 +1058,201 @@ test("capture wrapper binds owned source context and keeps failures closed", asy
     })
   }
 })
+
+function expandNormalizedInventory(value) {
+  assert.notEqual(value, null, "repeated final HTML roots must fit the bounded inventory")
+  assert.deepEqual(Object.keys(value).sort(), [
+    "documents",
+    "documentsMatch",
+    "kind",
+    "schemaVersion",
+    "scripts",
+  ])
+  assert.equal(value.schemaVersion, 2)
+  assert.equal(value.kind, "final-html-root-inventory-not-budget-proof")
+  assert.equal(typeof value.documentsMatch, "boolean")
+  assert.equal(value.documents.length, 2)
+  assert.ok(value.scripts.length <= 256)
+  const records = value.scripts.map((script) => {
+    assert.deepEqual(Object.keys(script).sort(), [
+      "assetPath",
+      "computedImports",
+      "imports",
+      "parseErrors",
+      "rawBytes",
+      "sha256",
+    ])
+    return JSON.stringify(script)
+  })
+  assert.equal(new Set(records).size, records.length)
+  const seen = new Set()
+  const documents = value.documents.map((document) => {
+    assert.deepEqual(Object.keys(document).sort(), [
+      "complete",
+      "fileName",
+      "issues",
+      "rawBytes",
+      "roots",
+      "sha256",
+    ])
+    assert.ok(document.roots.length <= 128)
+    const roots = document.roots.map((root) => {
+      assert.deepEqual(Object.keys(root).sort(), ["kind", "scriptIndex"])
+      assert.ok(kinds.has(root.kind))
+      assert.ok(Number.isSafeInteger(root.scriptIndex))
+      assert.ok(root.scriptIndex >= 0 && root.scriptIndex < value.scripts.length)
+      if (!seen.has(root.scriptIndex)) {
+        assert.equal(root.scriptIndex, seen.size, "table order follows the first occurrence")
+        seen.add(root.scriptIndex)
+      }
+      return { kind: root.kind, ...value.scripts[root.scriptIndex] }
+    })
+    return { ...document, roots }
+  })
+  assert.equal(seen.size, value.scripts.length, "every script record must be referenced")
+  return {
+    schemaVersion: 1,
+    kind: value.kind,
+    documentsMatch: value.documentsMatch,
+    documents,
+  }
+}
+
+function expectedInventoryDocument(fileName, html, roots, overrides = {}) {
+  const issues = { ...Object.fromEntries(issueNames.map((name) => [name, 0])), ...overrides }
+  return {
+    fileName,
+    rawBytes: Buffer.byteLength(html),
+    sha256: digest(html),
+    complete: Object.values(issues).every((count) => count === 0),
+    roots,
+    issues,
+  }
+}
+
+test("normalized inventory retains repeated roots under the original output cap", async () => {
+  const rootKinds = Array.from({ length: 128 }, (_, index) =>
+    index % 2 === 0 ? "modulepreload" : "external-module"
+  )
+  const html = rootKinds
+    .map((kind) =>
+      kind === "modulepreload"
+        ? '<link rel="modulepreload" href="/assets/index-A.js">'
+        : '<script type="module" src="/assets/index-A.js"></script>'
+    )
+    .join("")
+  await withFixture(async (item) => {
+    await setHtml(item, html)
+    const script = {
+      assetPath: "assets/index-A.js",
+      rawBytes: Buffer.byteLength(entry),
+      sha256: digest(entry),
+      imports: [],
+      computedImports: 0,
+      parseErrors: 0,
+    }
+    const roots = rootKinds.map((kind) => ({ kind, ...script }))
+    const expanded = {
+      schemaVersion: 1,
+      kind: "final-html-root-inventory-not-budget-proof",
+      documentsMatch: true,
+      documents: ["_shell.html", "index.html"].map((name) =>
+        expectedInventoryDocument(name, html, roots)
+      ),
+    }
+    assert.ok(Buffer.byteLength(JSON.stringify(expanded)) > 32_767)
+    const value = inspect(item)
+    const reconstructed = expandNormalizedInventory(value)
+    assert.ok(Buffer.byteLength(JSON.stringify(value)) <= 32_767)
+    assert.equal(value.scripts.length, 1)
+    assert.deepEqual(value.scripts[0], script)
+    assert.deepEqual(reconstructed, expanded)
+  })
+})
+
+test("normalized inventory preserves divergent paths, parse modes and root order", async () => {
+  await withFixture(async (item) => {
+    const moduleSource = 'export { value } from "./dep-A.js"; import("./lazy-A.js");'
+    const plainSource = "void 0;"
+    await writeFile(path.join(item.clientDir, "assets/index-A.js"), moduleSource)
+    await writeFile(path.join(item.clientDir, "assets/twin-A.js"), plainSource)
+    await writeFile(path.join(item.clientDir, "assets/twin-B.js"), plainSource)
+    const shellHtml =
+      '<script type="module" src="/assets/index-A.js"></script>' +
+      '<script src="/assets/index-A.js"></script>' +
+      '<link rel="modulepreload" href="/assets/index-A.js">' +
+      '<script src="/assets/twin-A.js"></script>' +
+      '<script src="/assets/twin-B.js"></script>' +
+      "<script>void 0;</script>"
+    const indexHtml =
+      '<script src="/assets/twin-B.js"></script>' +
+      '<script type="module" src="/assets/index-A.js"></script>' +
+      '<script src="https://example.invalid/foreign.js"></script>' +
+      '<script type="application/json">void 0;</script>'
+    await writeFile(path.join(item.clientDir, "_shell.html"), shellHtml)
+    await writeFile(path.join(item.clientDir, "index.html"), indexHtml)
+    const moduleRecord = {
+      assetPath: "assets/index-A.js",
+      rawBytes: Buffer.byteLength(moduleSource),
+      sha256: digest(moduleSource),
+      imports: [
+        { kind: "static", assetPath: "assets/dep-A.js" },
+        { kind: "dynamic", assetPath: "assets/lazy-A.js" },
+      ],
+      computedImports: 0,
+      parseErrors: 0,
+    }
+    const classicRecord = { ...moduleRecord, imports: [], parseErrors: 1 }
+    const plainRecord = {
+      assetPath: "assets/twin-A.js",
+      rawBytes: Buffer.byteLength(plainSource),
+      sha256: digest(plainSource),
+      imports: [],
+      computedImports: 0,
+      parseErrors: 0,
+    }
+    const twinRecord = { ...plainRecord, assetPath: "assets/twin-B.js" }
+    const inlineRecord = { ...plainRecord, assetPath: null }
+    const expectedScripts = [moduleRecord, classicRecord, plainRecord, twinRecord, inlineRecord]
+    const expected = {
+      schemaVersion: 1,
+      kind: "final-html-root-inventory-not-budget-proof",
+      documentsMatch: false,
+      documents: [
+        expectedInventoryDocument(
+          "_shell.html",
+          shellHtml,
+          [
+            { kind: "external-module", ...moduleRecord },
+            { kind: "external-classic", ...classicRecord },
+            { kind: "modulepreload", ...moduleRecord },
+            { kind: "external-classic", ...plainRecord },
+            { kind: "external-classic", ...twinRecord },
+            { kind: "inline-classic", ...inlineRecord },
+          ],
+          { parseErrors: 1 }
+        ),
+        expectedInventoryDocument(
+          "index.html",
+          indexHtml,
+          [
+            { kind: "external-classic", ...twinRecord },
+            { kind: "external-module", ...moduleRecord },
+            { kind: "inline-data", ...inlineRecord },
+          ],
+          { foreignReferences: 1 }
+        ),
+      ],
+    }
+    const value = inspect(item)
+    assert.deepEqual(expandNormalizedInventory(value), expected)
+    assert.deepEqual(value.scripts, expectedScripts)
+    assert.deepEqual(
+      value.documents.map((document) => document.roots.map((root) => root.scriptIndex)),
+      [
+        [0, 1, 0, 2, 3, 4],
+        [3, 0, 4],
+      ]
+    )
+  })
+})
