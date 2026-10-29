@@ -683,6 +683,8 @@ _RENDERER_LIFECYCLE_NAMES = (
     "test_scratch_nonempty_or_unverifiable_catalog_blocks_upgrade",
     "test_scratch_cleanup_requires_confirmed_created_database_identity",
     "test_renderer_failure_diagnostics_are_opaque",
+    "test_renderer_api_rejects_dbname_query_override_before_scratch_work",
+    "test_renderer_cli_rejects_dbname_query_override_before_scratch_work",
 )
 _RENDERER_LIFECYCLE_SELECTORS = tuple(
     "tests/test_alembic_live_sql_render.py::" + name
@@ -844,9 +846,9 @@ def test_renderer_lifecycle_receipt_rejects_incomplete_results(
     report = tmp_path / "junit.xml"
     cases = [
         f'<testcase classname="owned.renderer" name="case-{index}"/>'
-        for index in range(24)
+        for index in range(26)
     ]
-    start = '<testsuites><testsuite tests="24" failures="0" errors="0" skipped="0">'
+    start = '<testsuites><testsuite tests="26" failures="0" errors="0" skipped="0">'
     end = "</testsuite></testsuites>"
     valid = start + "".join(cases) + end
     report.write_text(valid, encoding="utf-8")
@@ -854,13 +856,13 @@ def test_renderer_lifecycle_receipt_rejects_incomplete_results(
     runpy.run_path(str(script), run_name="__main__")
     output = capsys.readouterr()
     assert output.err == ""
-    assert output.out.endswith("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 24\n")
+    assert output.out.endswith("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 26\n")
     counts = json.loads(output.out.splitlines()[0].split(" ", 1)[1])
-    assert counts == {"tests": 24, "failures": 0, "errors": 0, "skipped": 0}
+    assert counts == {"tests": 26, "failures": 0, "errors": 0, "skipped": 0}
 
     private = make_test_marker(length=32)
     if defect == "count":
-        value = valid.replace('tests="24"', 'tests="23"')
+        value = valid.replace('tests="26"', 'tests="25"')
     elif defect == "duplicate":
         value = start + "".join([cases[0], *cases[:-1]]) + end
     elif defect == "skipped":

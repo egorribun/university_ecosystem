@@ -1878,6 +1878,8 @@ jobs:
             tests/test_alembic_live_sql_render.py::test_scratch_nonempty_or_unverifiable_catalog_blocks_upgrade \
             tests/test_alembic_live_sql_render.py::test_scratch_cleanup_requires_confirmed_created_database_identity \
             tests/test_alembic_live_sql_render.py::test_renderer_failure_diagnostics_are_opaque \
+            tests/test_alembic_live_sql_render.py::test_renderer_api_rejects_dbname_query_override_before_scratch_work \
+            tests/test_alembic_live_sql_render.py::test_renderer_cli_rejects_dbname_query_override_before_scratch_work \
             --basetemp="$probe_root/basetemp" \
             --junitxml="$probe_root/junit.xml" > "$test_log" 2>&1 || pytest_status=$?
           echo "ALEMBIC_RENDERER_LIFECYCLE_TESTS_BEGIN"
@@ -1907,13 +1909,13 @@ jobs:
                   key: int(suites[0].get(key, "-1"))
                   for key in ("tests", "failures", "errors", "skipped")
               }
-              if any(value < 0 or value > 24 for value in counts.values()):
+              if any(value < 0 or value > 26 for value in counts.values()):
                   raise ValueError
               print("ALEMBIC_RENDERER_LIFECYCLE_COUNTS " + json.dumps(counts, sort_keys=True))
               cases = list(root.iter("testcase"))
               identities = {(case.get("classname"), case.get("name")) for case in cases}
-              expected = {"tests": 24, "failures": 0, "errors": 0, "skipped": 0}
-              if len(cases) != 24 or len(identities) != 24 or counts != expected:
+              expected = {"tests": 26, "failures": 0, "errors": 0, "skipped": 0}
+              if len(cases) != 26 or len(identities) != 26 or counts != expected:
                   raise ValueError
               if any(not all(identity) for identity in identities):
                   raise ValueError
@@ -1922,7 +1924,7 @@ jobs:
           except (OSError, ValueError, ElementTree.ParseError):
               print("ALEMBIC_RENDERER_LIFECYCLE_RECEIPT_REJECTED")
               raise SystemExit(1) from None
-          print("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 24")
+          print("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 26")
           PY_RENDERER_RECEIPT
           if [ "$bytes" -gt 131072 ]; then
             echo "::error::Alembic renderer lifecycle output exceeded 131072 bytes"

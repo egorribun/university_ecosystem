@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import psycopg
 from sqlalchemy.engine import make_url
 
 from scripts.quality import render_live_alembic_sql as renderer
@@ -771,3 +772,56 @@ def test_renderer_failure_diagnostics_are_opaque(
     assert environment_restored, "renderer must restore the prior environment"
     assert admin.disposed
     _assert_scratch_listeners_removed(admin)
+
+
+def test_renderer_api_rejects_dbname_query_override_before_scratch_work(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path)
+    previous = dict(environment)
+    database_url = environment["DATABASE_URL"] + "?dbname=original"
+
+    # The real dialect lets the query override a path-only scratch replacement.
+    scratch_url = make_url(database_url).set(database="intended_scratch")
+    _args, parameters = psycopg.dialect().create_connect_args(scratch_url)
+    assert parameters["dbname"] == "original"
+
+    failure = _scratch_failure(migration, database_url)
+
+    assert admin.engine_urls == []
+    assert admin.statements == []
+    assert admin.probes == []
+    assert admin.timeline == []
+    assert admin.upgrades == []
+    assert admin.listeners == []
+    assert environment == previous
+    assert environment.writes == []
+    assert failure is renderer.LiveRenderError
+
+
+def test_renderer_cli_rejects_dbname_query_override_before_scratch_work(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path)
+    environment["DATABASE_URL"] += "?dbname=original"
+    environment.writes.clear()
+    previous = dict(environment)
+    output = tmp_path / "rendered.sql"
+
+    status = renderer.main([str(migration), str(output)])
+
+    captured = capsys.readouterr()
+    assert admin.engine_urls == []
+    assert admin.statements == []
+    assert admin.probes == []
+    assert admin.timeline == []
+    assert admin.upgrades == []
+    assert admin.listeners == []
+    assert environment == previous
+    assert environment.writes == []
+    assert status == 2
+    assert captured.out == ""
+    assert captured.err == "error: PostgreSQL database URL cannot override dbname\n"
+    assert not output.exists()
