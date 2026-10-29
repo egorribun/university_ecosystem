@@ -1,10 +1,11 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
-import { spawnSync } from "node:child_process"
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
+import { execFileSync, spawnSync } from "node:child_process"
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
+import { fileURLToPath } from "node:url"
 
 const subjectUrl = new URL("./final-html-root-inventory.mjs", import.meta.url)
 const themeUrl = new URL("../public/theme-init.js", import.meta.url)
@@ -489,3 +490,454 @@ for (const [name, mutate] of rejectedCases) {
     })
   })
 }
+
+const captureWorkflowUrl = new URL(
+  "../../.github/workflows/reusable-frontend-tests.yml",
+  import.meta.url
+)
+const captureRepositoryUrl = new URL("../../", import.meta.url)
+const captureStepName = "      - name: Capture bounded final HTML inventory\n"
+const captureUploadName = "      - name: Upload final HTML inventory\n"
+const capturePrefix = "FINAL_HTML_INVENTORY_CAPTURE "
+const captureFailure = "FINAL_HTML_INVENTORY_CAPTURE_REJECTED\n"
+const captureSourcePaths = [
+  ".github/workflows/reusable-frontend-tests.yml",
+  "frontend/package.json",
+  "frontend/package-lock.json",
+  "frontend/vite.config.mts",
+  "frontend/scripts/final-html-root-inventory.mjs",
+  "frontend/scripts/build-orchestrated.mjs",
+  "frontend/scripts/post-build-shell.mjs",
+]
+
+function captureStep(workflow, name) {
+  assert.equal(workflow.split(name).length, 2, "capture step must be uniquely wired")
+  const start = workflow.indexOf(name)
+  const end = workflow.indexOf("\n      - name:", start + name.length)
+  assert.ok(end > start)
+  return workflow.slice(start, end)
+}
+
+async function captureProgram() {
+  const workflow = await readFile(captureWorkflowUrl, "utf8")
+  const step = captureStep(workflow, captureStepName)
+  const opening = "          node --input-type=module <<'FINAL_HTML_INVENTORY'\n"
+  const closing = "          FINAL_HTML_INVENTORY"
+  const start = step.indexOf(opening)
+  const end = step.indexOf(closing, start + opening.length)
+  assert.ok(start >= 0 && end > start)
+  return step
+    .slice(start + opening.length, end)
+    .split("\n")
+    .filter((line) => line !== "")
+    .map((line) => {
+      assert.ok(line.startsWith("          "))
+      return line.slice(10)
+    })
+    .join("\n")
+}
+
+async function captureFixture() {
+  // Stay under frontend only so Node resolves the already-installed dependencies.
+  // This owned temporary Git repository is always removed; no checkout is reused.
+  const root = await mkdtemp(fileURLToPath(new URL("../.final-html-capture-", import.meta.url)))
+  try {
+    const frontend = path.join(root, "frontend")
+    const clientDir = path.join(frontend, "dist", "client")
+    const runnerTemp = path.join(root, "runner-temp")
+    await mkdir(path.join(clientDir, "assets"), { recursive: true })
+    await mkdir(runnerTemp)
+    const fixtureEnv = {
+      PATH: process.env.PATH ?? "",
+      HOME: root,
+      TMPDIR: runnerTemp,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_TERMINAL_PROMPT: "0",
+    }
+    for (const relative of captureSourcePaths) {
+      const target = path.join(root, relative)
+      await mkdir(path.dirname(target), { recursive: true })
+      await writeFile(target, await readFile(new URL(relative, captureRepositoryUrl)))
+    }
+    const html = basicHtml.replace(
+      "</head>",
+      '<script type="application/json">' +
+        JSON.stringify({ private: privateCanary }) +
+        "</script></head>"
+    )
+    const asset = entry + "// " + privateCanary + "\n"
+    await writeFile(path.join(clientDir, "assets/index-A.js"), asset)
+    await writeFile(path.join(clientDir, "_shell.html"), html)
+    await writeFile(path.join(clientDir, "index.html"), html)
+    const git = (...args) =>
+      execFileSync(
+        "git",
+        [
+          "-c",
+          "user.name=Inventory Fixture",
+          "-c",
+          "user.email=inventory@example.invalid",
+          "-c",
+          "commit.gpgsign=false",
+          ...args,
+        ],
+        {
+          cwd: root,
+          env: fixtureEnv,
+          encoding: "utf8",
+          timeout: 5_000,
+          maxBuffer: 4096,
+          stdio: ["ignore", "pipe", "pipe"],
+        }
+      ).trim()
+    git("init", "--quiet", "--initial-branch=egorribun")
+    git("add", "--", ...captureSourcePaths)
+    git("commit", "--quiet", "-m", "owned base")
+    const baseSha = git("rev-parse", "HEAD")
+    await writeFile(path.join(root, "fixture-head.txt"), "owned head\n")
+    git("add", "--", "fixture-head.txt")
+    git("commit", "--quiet", "-m", "owned head")
+    const headSha = git("rev-parse", "HEAD")
+    const treeSha = git("rev-parse", "HEAD^{tree}")
+    const checkoutSha = git(
+      "commit-tree",
+      treeSha,
+      "-p",
+      baseSha,
+      "-p",
+      headSha,
+      "-m",
+      "owned merge"
+    )
+    git("update-ref", "HEAD", checkoutSha)
+    const unrelatedSha = git("commit-tree", treeSha, "-m", "owned non-parent")
+    const checkedSourceFiles = {}
+    for (const relative of captureSourcePaths) {
+      checkedSourceFiles[relative] = digest(await readFile(path.join(root, relative)))
+    }
+    const reportName = "final-html-inventory-1234-1-" + checkoutSha + ".json"
+    return {
+      root,
+      frontend,
+      clientDir,
+      runnerTemp,
+      reportName,
+      reportPath: path.join(runnerTemp, reportName),
+      checkoutSha,
+      treeSha,
+      baseSha,
+      headSha,
+      unrelatedSha,
+      checkedSourceFiles,
+      html,
+      indexHtml: html,
+      asset,
+      env: {
+        ...fixtureEnv,
+        GITHUB_WORKSPACE: root,
+        GITHUB_OUTPUT: path.join(root, "github-output"),
+        GITHUB_SHA: checkoutSha,
+        GITHUB_RUN_ID: "1234",
+        GITHUB_RUN_ATTEMPT: "1",
+        GITHUB_EVENT_NAME: "pull_request",
+        FINAL_HTML_PR_HEAD_SHA: headSha,
+        FINAL_HTML_PR_BASE_SHA: baseSha,
+        RUNNER_TEMP: runnerTemp,
+        VITE_LHCI: "",
+        FINAL_HTML_PRIVATE_CANARY: privateCanary,
+      },
+    }
+  } catch (error) {
+    await rm(root, { recursive: true, force: true })
+    throw error
+  }
+}
+
+async function withCaptureFixture(run) {
+  const item = await captureFixture()
+  try {
+    await run(item)
+  } finally {
+    await rm(item.root, { recursive: true, force: true })
+  }
+}
+
+function runCapture(program, item) {
+  // Covers ordinary Node/undici TCP paths, not a universal network sandbox.
+  const guard = [
+    'import net from "node:net"',
+    'import tls from "node:tls"',
+    "let captureNetworkAttempts = 0",
+    "const blockCaptureNetwork = () => {",
+    "  captureNetworkAttempts += 1",
+    "  throw new Error('CAPTURE_NETWORK_DISABLED')",
+    "}",
+    "net.Socket.prototype.connect = blockCaptureNetwork",
+    "tls.connect = blockCaptureNetwork",
+    "globalThis.fetch = blockCaptureNetwork",
+    "globalThis.WebSocket = blockCaptureNetwork",
+  ].join("\n")
+  const result = spawnSync(process.execPath, ["--input-type=module"], {
+    cwd: item.frontend,
+    input: guard + "\n" + program + "\nif (captureNetworkAttempts !== 0) process.exitCode = 97\n",
+    env: item.env,
+    encoding: "utf8",
+    timeout: 10_000,
+    maxBuffer: 65_537,
+  })
+  assert.equal(Boolean(result.error), false, "capture child must finish within its bound")
+  for (const output of [result.stdout, result.stderr]) {
+    assert.equal(output.includes(item.root), false, "capture must not disclose fixture paths")
+    assert.equal(output.includes(privateCanary), false, "capture must not disclose input data")
+    assert.equal(output.includes("<script"), false, "capture must not disclose HTML bodies")
+  }
+  return result
+}
+
+async function capturedReport(program, item) {
+  const result = runCapture(program, item)
+  assert.equal(result.status, 0, "valid owned capture must succeed")
+  assert.equal(result.stderr === "", true, "capture must not print private failure details")
+  assert.ok(result.stdout.startsWith(capturePrefix))
+  assert.equal(result.stdout.trimEnd().split("\n").length, 1)
+  assert.ok(Buffer.byteLength(result.stdout) <= 65_536)
+  const logged = JSON.parse(result.stdout.slice(capturePrefix.length))
+  assert.deepEqual(Object.keys(logged).sort(), ["report", "reportSha256"])
+  const raw = await readFile(item.reportPath)
+  assert.ok(raw.length <= 65_536)
+  assert.equal(logged.reportSha256, digest(raw))
+  assert.equal(raw.toString("utf8"), JSON.stringify(logged.report) + "\n")
+  assert.equal((await lstat(item.reportPath)).mode & 0o777, 0o600)
+  assert.deepEqual(await readdir(item.runnerTemp), [item.reportName])
+  const report = logged.report
+  assert.deepEqual(Object.keys(report).sort(), [
+    "checkedSourceFiles",
+    "checkout",
+    "eventContext",
+    "inventory",
+    "kind",
+    "profile",
+    "relationship",
+    "runContext",
+    "schemaVersion",
+    "toolchain",
+  ])
+  assert.equal(report.schemaVersion, 1)
+  assert.equal(report.kind, "final-html-capture-diagnostic-not-admission")
+  assert.equal(report.profile, "production-final-client")
+  assert.deepEqual(report.checkout, {
+    commitSha: item.checkoutSha,
+    treeSha: item.treeSha,
+    parentShas: [item.baseSha, item.headSha],
+  })
+  const isPr = item.env.GITHUB_EVENT_NAME === "pull_request"
+  assert.deepEqual(report.eventContext, {
+    eventName: item.env.GITHUB_EVENT_NAME,
+    githubSha: item.checkoutSha,
+    prHeadSha: isPr ? item.headSha : null,
+    prBaseSha: isPr ? item.baseSha : null,
+  })
+  assert.equal(report.relationship, isPr ? "merge-parents-match-event-context" : "checkout-only")
+  assert.deepEqual(report.runContext, { runId: "1234", runAttempt: "1" })
+  assert.deepEqual(report.checkedSourceFiles, item.checkedSourceFiles)
+  assert.deepEqual(report.toolchain, { jsdom: "30.1.3", babelParser: "8.0.7" })
+  const inventory = receipt(report.inventory)
+  assert.ok(Buffer.byteLength(JSON.stringify(inventory)) <= 32_767)
+  assert.equal(inventory.documentsMatch, item.html === item.indexHtml)
+  for (const document of inventory.documents) {
+    const html = document.fileName === "_shell.html" ? item.html : item.indexHtml
+    assert.equal(document.sha256, digest(html))
+    assert.equal(document.rawBytes, Buffer.byteLength(html))
+    assert.equal(document.roots[0].sha256, digest(item.asset))
+    assert.equal(document.roots[0].rawBytes, Buffer.byteLength(item.asset))
+  }
+  assert.equal(await readFile(path.join(item.clientDir, "_shell.html"), "utf8"), item.html)
+  assert.equal(await readFile(path.join(item.clientDir, "index.html"), "utf8"), item.indexHtml)
+  return report
+}
+
+test("final HTML capture preserves production ordering and separate artifacts", async () => {
+  const workflow = await readFile(captureWorkflowUrl, "utf8")
+  const step = captureStep(workflow, captureStepName)
+  const upload = captureStep(workflow, captureUploadName)
+  const build = workflow.indexOf("  build:\n")
+  const buildApp = workflow.indexOf("      - name: Build app\n", build)
+  const map = workflow.indexOf("      - name: Report bounded MapLibre build inventory\n", build)
+  const capture = workflow.indexOf(captureStepName)
+  const diagnostic = workflow.indexOf(captureUploadName)
+  const production = workflow.indexOf("      - name: Upload production bundle\n", build)
+  const lighthouse = workflow.indexOf("      - name: Build Lighthouse bundle\n", build)
+  assert.ok(build >= 0 && buildApp > build && map > buildApp)
+  assert.ok(capture > map && diagnostic > capture)
+  assert.ok(production > diagnostic && lighthouse > production)
+  assert.match(step, /^\s+id: capture-final-html-inventory$/mu)
+  assert.match(step, /^\s+timeout-minutes: 1$/mu)
+  assert.doesNotMatch(step + upload, /continue-on-error|permissions:|^\s+if:/mu)
+  const expression = (value) => "$" + "{{ " + value + " }}"
+  assert.ok(
+    step.includes(
+      "FINAL_HTML_PR_HEAD_SHA: " + expression("github.event.pull_request.head.sha || ''")
+    )
+  )
+  assert.ok(
+    step.includes(
+      "FINAL_HTML_PR_BASE_SHA: " + expression("github.event.pull_request.base.sha || ''")
+    )
+  )
+  assert.match(upload, /^\s+id: upload-final-html-inventory$/mu)
+  const suffix =
+    expression("github.run_id") +
+    "-" +
+    expression("github.run_attempt") +
+    "-" +
+    expression("github.sha")
+  assert.ok(upload.includes("name: frontend-final-html-inventory-" + suffix + "\n"))
+  assert.ok(
+    upload.includes(
+      "path: " + expression("runner.temp") + "/final-html-inventory-" + suffix + ".json\n"
+    )
+  )
+  assert.match(upload, /^\s+if-no-files-found: error$/mu)
+  assert.match(upload, /^\s+retention-days: 1$/mu)
+  assert.doesNotMatch(upload, /include-hidden-files|overwrite:|frontend-dist|\/dist/u)
+  const bundleUpload = workflow.slice(production, lighthouse)
+  const actionPin = /^\s+uses: (actions\/upload-artifact@[a-f0-9]{40})(?: #.*)?$/mu
+  const productionAction = actionPin.exec(bundleUpload)?.[1]
+  assert.ok(productionAction, "existing producer must retain its policy-validated full action pin")
+  assert.equal(actionPin.exec(upload)?.[1], productionAction)
+  assert.ok(bundleUpload.includes("name: frontend-dist\n"))
+  assert.ok(bundleUpload.includes("path: " + expression("inputs.working-directory") + "/dist\n"))
+  const selector = "run: node --test scripts/final-html-root-inventory.test.mjs"
+  assert.equal(workflow.split(selector).length, 2)
+  const selectorAt = workflow.indexOf(selector)
+  assert.ok(selectorAt > workflow.indexOf("      - name: Run quick audit regressions\n"))
+  assert.ok(selectorAt < workflow.indexOf("  unit-tests-shard:\n"))
+})
+
+test("capture wrapper binds owned source context and keeps failures closed", async () => {
+  const program = await captureProgram()
+  // These controls must all pass before any rejecting assertion is reachable.
+  await withCaptureFixture(async (item) => {
+    const report = await capturedReport(program, item)
+    assert.equal(report.inventory.documents.every((document) => document.complete), true)
+  })
+  await withCaptureFixture(async (item) => {
+    item.html = item.html.replace(
+      "</head>",
+      '<script src="https://example.invalid/' + privateCanary + '"></script></head>'
+    )
+    await writeFile(path.join(item.clientDir, "_shell.html"), item.html)
+    const report = await capturedReport(program, item)
+    assert.equal(report.inventory.documentsMatch, false)
+    assert.equal(report.inventory.documents[0].complete, false)
+    assert.equal(report.inventory.documents[0].issues.foreignReferences, 1)
+    assert.equal(report.inventory.documents[1].complete, true)
+    assert.equal(report.inventory.documents[1].issues.foreignReferences, 0)
+  })
+  await withCaptureFixture(async (item) => {
+    item.env.GITHUB_EVENT_NAME = "push"
+    item.env.FINAL_HTML_PR_HEAD_SHA = ""
+    item.env.FINAL_HTML_PR_BASE_SHA = ""
+    await capturedReport(program, item)
+  })
+  const cases = [
+    [
+      "wrong-checkout",
+      (item) => {
+        item.env.GITHUB_SHA = "0".repeat(40)
+      },
+    ],
+    [
+      "wrong-pr-head",
+      (item) => {
+        item.env.FINAL_HTML_PR_HEAD_SHA = item.unrelatedSha
+      },
+    ],
+    [
+      "wrong-pr-base",
+      (item) => {
+        item.env.FINAL_HTML_PR_BASE_SHA = item.unrelatedSha
+      },
+    ],
+    [
+      "bad-run-id",
+      (item) => {
+        item.env.GITHUB_RUN_ID = "0"
+      },
+    ],
+    [
+      "bad-attempt",
+      (item) => {
+        item.env.GITHUB_RUN_ATTEMPT = "01"
+      },
+    ],
+    [
+      "unknown-event",
+      (item) => {
+        item.env.GITHUB_EVENT_NAME = privateCanary
+      },
+    ],
+    [
+      "lighthouse-profile",
+      (item) => {
+        item.env.VITE_LHCI = "true"
+      },
+    ],
+    [
+      "changed-inspector",
+      async (item) => {
+        const file = path.join(item.frontend, "scripts", "final-html-root-inventory.mjs")
+        await writeFile(file, (await readFile(file, "utf8")) + "// " + privateCanary + "\n")
+      },
+    ],
+    ["missing-final-index", (item) => rm(path.join(item.clientDir, "index.html"))],
+    [
+      "temporary-output-inside-dist",
+      async (item) => {
+        item.env.RUNNER_TEMP = path.join(item.clientDir, "private-temp")
+        await mkdir(item.env.RUNNER_TEMP)
+      },
+    ],
+    [
+      "temporary-output-symlink",
+      async (item) => {
+        const alias = path.join(item.root, "private-temp-alias")
+        await symlink(item.runnerTemp, alias)
+        item.env.RUNNER_TEMP = alias
+      },
+    ],
+    ["existing-output", (item) => writeFile(item.reportPath, privateCanary)],
+    [
+      "symlink-output",
+      async (item) => {
+        const target = path.join(item.root, "private-output")
+        await writeFile(target, privateCanary)
+        await symlink(target, item.reportPath)
+      },
+    ],
+  ]
+  for (const [name, mutate] of cases) {
+    await withCaptureFixture(async (item) => {
+      await mutate(item)
+      const before = await readdir(item.runnerTemp)
+      const oldOutput = before.length ? await readFile(item.reportPath) : null
+      const oldStat = before.length ? await lstat(item.reportPath) : null
+      const result = runCapture(program, item)
+      assert.equal(result.status, 1, "invalid capture must fail closed: " + name)
+      assert.equal(result.stdout, "")
+      assert.equal(result.stderr === captureFailure, true, "capture uses one fixed failure token")
+      assert.deepEqual(await readdir(item.runnerTemp), before)
+      if (oldOutput !== null) {
+        assert.equal((await readFile(item.reportPath)).equals(oldOutput), true)
+        const nextStat = await lstat(item.reportPath)
+        for (const key of ["dev", "ino", "mode", "size", "mtimeMs", "ctimeMs"]) {
+          assert.equal(nextStat[key], oldStat[key])
+        }
+      }
+      if (name === "temporary-output-inside-dist") {
+        assert.deepEqual(await readdir(item.env.RUNNER_TEMP), [])
+      }
+    })
+  }
+})
