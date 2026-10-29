@@ -27,6 +27,10 @@ const Register = () => {
   const { t, i18n } = useTranslation()
   const passwordStrengthLanguage = i18n.resolvedLanguage ?? i18n.language
   const navigate = useNavigate()
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
   const [showPass, setShowPass] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [capsPass, setCapsPass] = useState(false)
@@ -54,6 +58,9 @@ const Register = () => {
     },
     mode: "onBlur",
   })
+
+  // SSR and the first client render stay inert until the form handlers attach.
+  const controlsDisabled = !hydrated || isSubmitting
 
   // Watch fields for UI logic
   const role = watch("role")
@@ -180,7 +187,7 @@ const Register = () => {
                   id="full_name"
                   {...register("full_name")}
                   autoComplete="name"
-                  disabled={isSubmitting}
+                  disabled={controlsDisabled}
                   error={!!errors.full_name}
                   aria-describedby={errors.full_name ? "register-name-error" : undefined}
                   placeholder={t("auth:register.namePlaceholder") ?? undefined}
@@ -216,7 +223,7 @@ const Register = () => {
                           { value: "teacher", label: t("auth:register.role.teacher") },
                           { value: "admin", label: t("auth:register.role.admin") },
                         ]}
-                        disabled={isSubmitting}
+                        disabled={controlsDisabled}
                         placeholder={t("auth:fields.role")}
                       />
                     )}
@@ -240,7 +247,7 @@ const Register = () => {
                   register("email").onBlur(e)
                   handleEmailBlur()
                 }}
-                disabled={isSubmitting}
+                disabled={controlsDisabled}
                 error={!!errors.email}
                 aria-describedby={errors.email ? "register-email-error" : undefined}
                 placeholder="name@university.edu"
@@ -255,6 +262,7 @@ const Register = () => {
               {emailSuggestion ? (
                 <button
                   type="button"
+                  disabled={controlsDisabled}
                   className="badge-brand"
                   onClick={() => {
                     setValue("email", emailSuggestion, { shouldValidate: true })
@@ -277,7 +285,7 @@ const Register = () => {
                   id="invite_code"
                   {...register("invite_code")}
                   autoComplete="one-time-code"
-                  disabled={isSubmitting}
+                  disabled={controlsDisabled}
                   error={!!errors.invite_code}
                   aria-describedby={errors.invite_code ? "register-invite-error" : undefined}
                   placeholder="ABCD-1234"
@@ -306,7 +314,7 @@ const Register = () => {
                     setCapsPass(event.getModifierState("CapsLock"))
                   }
                   autoComplete="new-password"
-                  disabled={isSubmitting}
+                  disabled={controlsDisabled}
                   error={!!errors.password}
                   className="pr-14"
                   aria-describedby={`register-password-hint${errors.password ? " register-password-error" : ""}`}
@@ -314,6 +322,7 @@ const Register = () => {
                 <button
                   type="button"
                   onClick={() => setShowPass((v) => !v)}
+                  disabled={controlsDisabled}
                   className="absolute inset-y-0 right-1 flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   aria-label={
                     t(showPass ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
@@ -396,7 +405,7 @@ const Register = () => {
                     setCapsConfirm(event.getModifierState("CapsLock"))
                   }
                   autoComplete="new-password"
-                  disabled={isSubmitting}
+                  disabled={controlsDisabled}
                   error={!!errors.confirmPassword}
                   className="pr-14"
                   aria-describedby={
@@ -406,6 +415,7 @@ const Register = () => {
                 <button
                   type="button"
                   onClick={() => setShowConfirm((v) => !v)}
+                  disabled={controlsDisabled}
                   className="absolute inset-y-0 right-1 flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   aria-label={
                     t(showConfirm ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
@@ -453,7 +463,7 @@ const Register = () => {
               size="lg"
               fullWidth
               loading={isSubmitting}
-              disabled={isSubmitting}
+              disabled={controlsDisabled}
               className="auth-submit text-lg font-extrabold disabled:opacity-strong"
             >
               {t("auth:actions.signUp")}
