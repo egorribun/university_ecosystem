@@ -28,7 +28,30 @@ test("live registration double-submit acceptance uses one real owned account", a
   assert.match(config, /video:\s*["']off["']/u)
   assert.match(register, /api\.post\(["']\/auth\/register["']/u)
   assert.match(register, /navigate\(\{\s*to:\s*["']\/login["']\s*\}\)/u)
-  assert.match(register, /disabled=\{isSubmitting\}/u)
+  assert.match(register, /const \[hydrated, setHydrated\] = useState\(false\)/u)
+  assert.match(register, /useEffect\(\(\) => \{\s*setHydrated\(true\)\s*\}, \[\]\)/u)
+  assert.match(register, /const controlsDisabled = !hydrated \|\| isSubmitting\s*$/mu)
+
+  // Bind the readiness/submission guard to actual controls, not an unrelated
+  // disabled prop elsewhere in the component. Runtime hydration tests and the
+  // live double-submit acceptance remain the behavioral evidence.
+  const fieldControls = Array.from(
+    register.matchAll(/<(?:Input|Select)\b[\s\S]*?\/>/gu),
+    ([source]) => source
+  )
+  const buttonControls = Array.from(
+    register.matchAll(/<(?:Button|button)\b[\s\S]*?^\s*>/gmu),
+    ([source]) => source
+  )
+  assert.equal(fieldControls.length, 6, "five inputs, including invite code, and one role selector")
+  assert.equal(buttonControls.length, 4, "submit, two reveal buttons, and the email suggestion")
+  for (const control of [...fieldControls, ...buttonControls]) {
+    assert.match(control, /disabled=\{controlsDisabled\}/u)
+  }
+  const submit = buttonControls.find((control) => /id=["']register-submit["']/u.test(control))
+  assert.ok(submit, "the real registration submit control must exist")
+  assert.match(submit, /type=["']submit["']/u)
+  assert.match(submit, /loading=\{isSubmitting\}/u)
 
   assert.match(spec, /page\.setViewportSize\(\{\s*width:\s*360/u)
   assert.match(spec, /stubBreachedPasswordLookup\(page\)/u)
