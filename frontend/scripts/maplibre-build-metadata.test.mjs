@@ -1,7 +1,8 @@
 import assert from "node:assert/strict"
+import { execFileSync, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import test from "node:test"
@@ -261,5 +262,338 @@ test("metadata rejects an emitted file whose bytes differ from the bundle", asyn
     assert.equal(existsSync(fixture.reportPath), false)
   } finally {
     await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+const inventoryWorkflowUrl = new URL(
+  "../../.github/workflows/reusable-frontend-tests.yml",
+  import.meta.url
+)
+const inventoryStepName = "      - name: Report bounded MapLibre build inventory\n"
+const inventoryPrefix = "MAPLIBRE_BUILD_INVENTORY "
+const privateCanary = "PRIVATE_MAP_INVENTORY_CANARY"
+
+async function diagnosticProgram() {
+  const workflow = await readFile(inventoryWorkflowUrl, "utf8")
+  assert.equal(workflow.split(inventoryStepName).length, 2)
+  const start = workflow.indexOf(inventoryStepName)
+  const end = workflow.indexOf("\n      - name:", start + inventoryStepName.length)
+  assert.ok(end > start)
+  const step = workflow.slice(start, end)
+  assert.match(step, /timeout-minutes: 1/u)
+  assert.doesNotMatch(step, /continue-on-error|permissions:/u)
+  const opening = "          node --input-type=module <<'MAPLIBRE_INVENTORY'\n"
+  const closing = "          MAPLIBRE_INVENTORY"
+  const bodyStart = step.indexOf(opening)
+  const bodyEnd = step.indexOf(closing, bodyStart + opening.length)
+  assert.ok(bodyStart >= 0 && bodyEnd > bodyStart)
+  return step
+    .slice(bodyStart + opening.length, bodyEnd)
+    .split("\n")
+    .filter((line) => line !== "")
+    .map((line) => {
+      assert.ok(line.startsWith("          "))
+      return line.slice(10)
+    })
+    .join("\n")
+}
+
+async function makeDiagnosticFixture() {
+  const fixture = await makeFixture()
+  try {
+    const scriptsDir = path.join(fixture.root, "scripts")
+    const runnerTemp = path.join(fixture.root, "runner-temp")
+    await mkdir(scriptsDir)
+    await mkdir(runnerTemp)
+    await writeFile(
+      path.join(scriptsDir, "maplibre-build-metadata.mjs"),
+      await readFile(helperUrl)
+    )
+    const git = (...args) =>
+      execFileSync("git", args, {
+        cwd: fixture.root,
+        encoding: "utf8",
+        timeout: 5_000,
+        maxBuffer: 4096,
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim()
+    git("init", "--quiet")
+    git("add", "package.json", "package-lock.json", "vite.config.mts", "scripts")
+    git(
+      "-c",
+      "user.name=Inventory Fixture",
+      "-c",
+      "user.email=inventory@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--quiet",
+      "-m",
+      "owned fixture"
+    )
+    const checkoutSha = git("rev-parse", "HEAD")
+    const reportPath = path.join(runnerTemp, "maplibre-inventory-1234-1-" + checkoutSha + ".json")
+    const producer = (await loadProducer())({ outputPath: reportPath, isLhci: false })
+    producer.configResolved(fixture.config)
+    await producer.writeBundle.call(
+      { environment: fixture.environment },
+      { dir: fixture.outputDir, format: "es" },
+      fixture.bundle
+    )
+    return {
+      ...fixture,
+      reportPath,
+      runnerTemp,
+      checkoutSha,
+      env: {
+        ...process.env,
+        GITHUB_SHA: checkoutSha,
+        GITHUB_RUN_ID: "1234",
+        GITHUB_RUN_ATTEMPT: "1",
+        RUNNER_TEMP: runnerTemp,
+        MAPLIBRE_PRIVATE_CANARY: privateCanary,
+      },
+    }
+  } catch (error) {
+    await rm(fixture.root, { recursive: true, force: true })
+    throw error
+  }
+}
+
+function runDiagnostic(program, fixture) {
+  return spawnSync(process.execPath, ["--input-type=module"], {
+    cwd: fixture.root,
+    input: program,
+    env: fixture.env,
+    encoding: "utf8",
+    timeout: 10_000,
+    maxBuffer: 65_536,
+  })
+}
+
+async function mutateDiagnostic(fixture, mutate) {
+  const value = JSON.parse(await readFile(fixture.reportPath, "utf8"))
+  mutate(value)
+  await writeFile(fixture.reportPath, JSON.stringify(value))
+}
+
+test("inventory capture is production-only and preserves general budgets", async () => {
+  const workflow = await readFile(inventoryWorkflowUrl, "utf8")
+  const buildStart = workflow.indexOf("      - name: Build app\n")
+  const uploadStart = workflow.indexOf("      - name: Upload production bundle\n", buildStart)
+  const lighthouseStart = workflow.indexOf("      - name: Build Lighthouse bundle\n", uploadStart)
+  const build = workflow.slice(buildStart, uploadStart)
+  assert.ok(buildStart >= 0 && uploadStart > buildStart && lighthouseStart > uploadStart)
+  const buildEnd = workflow.indexOf("\n      - name:", buildStart + 1)
+  const buildStep = workflow.slice(buildStart, buildEnd)
+  assert.ok(buildEnd > buildStart && buildEnd < uploadStart)
+  assert.ok(
+    buildStep.includes(
+      "\n          MAPLIBRE_BUILD_METADATA_OUTPUT: ${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json\n"
+    )
+  )
+  assert.equal((workflow.match(/^\s+MAPLIBRE_BUILD_METADATA_OUTPUT:/gmu) ?? []).length, 1)
+  assert.ok(build.includes(inventoryStepName))
+  const lighthouseEnd = workflow.indexOf("\n      - name:", lighthouseStart + 1)
+  assert.doesNotMatch(
+    workflow.slice(lighthouseStart, lighthouseEnd),
+    /MAPLIBRE_BUILD_METADATA_OUTPUT/u
+  )
+  assert.match(
+    workflow,
+    /node --test scripts\/check-bundle-budget\.test\.mjs scripts\/maplibre-build-metadata\.test\.mjs/u
+  )
+  const { BUNDLE_BUDGETS } = await import("./check-bundle-budget.mjs")
+  assert.equal(BUNDLE_BUDGETS.generalLazyJsGzipKb, 280)
+})
+
+test("inventory diagnostic validates real receipts and rejects unsafe data", async (t) => {
+  const program = await diagnosticProgram()
+  await t.test("prints only a bounded diagnostic inventory, not a budget proof", async () => {
+    const fixture = await makeDiagnosticFixture()
+    try {
+      const result = runDiagnostic(program, fixture)
+      assert.equal(result.error, undefined)
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(result.stderr, "")
+      assert.ok(result.stdout.startsWith(inventoryPrefix))
+      assert.ok(Buffer.byteLength(result.stdout) <= 32_768)
+      assert.equal(result.stdout.trimEnd().split("\n").length, 1)
+      const receipt = JSON.parse(result.stdout.slice(inventoryPrefix.length))
+      assert.equal(receipt.kind, "maplibre-build-inventory-not-budget-proof")
+      assert.equal(receipt.checkoutSha, fixture.checkoutSha)
+      assert.equal(receipt.runId, "1234")
+      assert.equal(receipt.runAttempt, "1")
+      assert.equal(receipt.package.installedVersion, "6.15.0")
+      assert.equal(receipt.mapLibreChunks.length, 1)
+      assert.equal(receipt.mapLibreChunks[0].fileName, "assets/vendor-map-A.js")
+      assert.equal(
+        receipt.mapLibreChunks[0].sha256,
+        sha256(fixture.contents["assets/vendor-map-A.js"])
+      )
+      assert.equal(receipt.mapLibreChunks[0].staticEntryReachable, false)
+      assert.equal(receipt.mapLibreChunks[0].modules[0].package, "maplibre-gl")
+      assert.equal(receipt.mapLibreChunks[0].modules[0].path, "dist/maplibre-gl.js")
+      assert.equal(receipt.mapLibreChunks[0].modules[0].packageRoot, undefined)
+      assert.equal(result.stdout.includes(fixture.root), false)
+      assert.equal(result.stdout.includes(privateCanary), false)
+      assert.doesNotMatch(result.stdout, /code-private/u)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  const changed = (mutate) => (fixture) => mutateDiagnostic(fixture, mutate)
+  const cases = [
+    ["missing", (fixture) => rm(fixture.reportPath)],
+    ["malformed", (fixture) => writeFile(fixture.reportPath, privateCanary)],
+    [
+      "oversized",
+      (fixture) => writeFile(fixture.reportPath, Buffer.alloc(4 * 1024 * 1024 + 1, 32)),
+    ],
+    [
+      "symlink",
+      async (fixture) => {
+        const target = path.join(fixture.runnerTemp, "private-input-" + privateCanary)
+        await writeFile(target, await readFile(fixture.reportPath))
+        await rm(fixture.reportPath)
+        await symlink(target, fixture.reportPath)
+      },
+    ],
+    [
+      "wrong-checkout",
+      async (fixture) => {
+        fixture.env.GITHUB_SHA = "0".repeat(40)
+        const wrongPath = path.join(
+          fixture.runnerTemp,
+          "maplibre-inventory-1234-1-" + fixture.env.GITHUB_SHA + ".json"
+        )
+        await writeFile(wrongPath, await readFile(fixture.reportPath))
+      },
+    ],
+    [
+      "missing-attempt-receipt",
+      async (fixture) => {
+        fixture.env.GITHUB_RUN_ATTEMPT = "2"
+      },
+    ],
+    [
+      "changed-source",
+      (fixture) => writeFile(path.join(fixture.root, "vite.config.mts"), privateCanary),
+    ],
+    [
+      "changed-map-bytes",
+      (fixture) =>
+        writeFile(path.join(fixture.outputDir, "assets/vendor-map-A.js"), privateCanary),
+    ],
+    [
+      "wrong-package-hash",
+      changed((value) => {
+        value.package.packageJsonSha256 = "0".repeat(64)
+      }),
+    ],
+    [
+      "wrong-version",
+      changed((value) => {
+        value.package.installedVersion = privateCanary
+      }),
+    ],
+    [
+      "bad-module-path",
+      changed((value) => {
+        value.mapLibreChunks[0].modules[0].path = "../" + privateCanary
+      }),
+    ],
+    [
+      "bad-module-kind",
+      changed((value) => {
+        value.mapLibreChunks[0].modules[0].kind = privateCanary
+      }),
+    ],
+    [
+      "bad-chunk-path",
+      async (fixture) => {
+        const fileName = "private-" + privateCanary + ".js"
+        await writeFile(
+          path.join(fixture.root, "dist", fileName),
+          fixture.contents["assets/vendor-map-A.js"]
+        )
+        await mutateDiagnostic(fixture, (value) => {
+          value.mapLibreChunks[0].fileName = "../" + fileName
+        })
+      },
+    ],
+    [
+      "wrong-map-hash",
+      changed((value) => {
+        value.mapLibreChunks[0].sha256 = "0".repeat(64)
+      }),
+    ],
+    [
+      "too-many-chunks",
+      async (fixture) => {
+        const value = JSON.parse(await readFile(fixture.reportPath, "utf8"))
+        const candidate = value.mapLibreChunks[0]
+        value.mapLibreChunks = []
+        for (let index = 0; index < 9; index += 1) {
+          const fileName =
+            index === 0 ? candidate.fileName : "assets/vendor-map-probe-" + index + ".js"
+          await writeFile(
+            path.join(fixture.outputDir, fileName),
+            fixture.contents["assets/vendor-map-A.js"]
+          )
+          value.mapLibreChunks.push({ ...candidate, fileName })
+          if (index > 0) {
+            value.graph.chunks.push({
+              fileName,
+              isEntry: false,
+              isDynamicEntry: true,
+              imports: [],
+              dynamicImports: [],
+            })
+          }
+        }
+        value.mapLibreChunks.sort((left, right) => left.fileName.localeCompare(right.fileName))
+        value.graph.chunks.sort((left, right) => left.fileName.localeCompare(right.fileName))
+        await writeFile(fixture.reportPath, JSON.stringify(value))
+      },
+    ],
+    [
+      "oversized-module-population",
+      changed((value) => {
+        const module = value.mapLibreChunks[0].modules[0]
+        value.mapLibreChunks[0].modules = Array.from({ length: 257 }, (_, index) => {
+          if (index === 0) return module
+          const modulePath = "dist/module-" + index + ".js"
+          return {
+            ...module,
+            path: modulePath,
+            idSha256: sha256("node_modules/maplibre-gl/" + modulePath),
+            renderedBytes: 0,
+            originalBytes: 0,
+          }
+        })
+        value.mapLibreChunks[0].modules.sort((left, right) =>
+          left.idSha256.localeCompare(right.idSha256)
+        )
+      }),
+    ],
+  ]
+  for (const [name, mutate] of cases) {
+    await t.test(name, async () => {
+      const fixture = await makeDiagnosticFixture()
+      try {
+        await mutate(fixture)
+        const result = runDiagnostic(program, fixture)
+        assert.equal(result.error, undefined)
+        assert.equal(result.status, 1)
+        assert.equal(result.stdout, "")
+        assert.equal(result.stderr.trim(), "MAPLIBRE_BUILD_INVENTORY_REJECTED")
+        assert.equal(result.stderr.includes(privateCanary), false)
+        assert.equal(result.stderr.includes(fixture.root), false)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
   }
 })

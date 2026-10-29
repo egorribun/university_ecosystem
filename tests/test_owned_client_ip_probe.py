@@ -93,9 +93,13 @@ class _SimulatedNetwork:
                 True,
                 True,
             )
+        header_limit = 200 if path == "/api/v1/auth/mfa/verify" else limit
         return probe.Response(
             429 if blocked else 422,
-            (("x-ratelimit-limit", str(limit)), ("content-type", "application/json")),
+            (
+                ("x-ratelimit-limit", str(header_limit)),
+                ("content-type", "application/json"),
+            ),
             b"{}",
             True,
             True,
@@ -134,6 +138,7 @@ def test_fixed_protocol_yields_a_decodable_bounded_frame_without_secrets():
         if request.path != "/api/v1/auth/csrf-cookie"
     ]
     assert not any("authorization" in dict(request.headers) for request in cases)
+    assert all(request.body == b"{}" for request in cases if request.method == "POST")
     assert all(request.source_ip in {"172.23.0.10", "172.24.0.10"} for request in cases)
     direct = [
         request
@@ -161,6 +166,7 @@ def test_fixed_protocol_yields_a_decodable_bounded_frame_without_secrets():
     ],
 )
 def test_input_rejects_invalid_topology_before_any_request(mutation):
+    probe.parse_input(_input())
     value = _input()
     routes = value["routes"]
     trust = value["trusted_proxies"]
@@ -193,27 +199,53 @@ def test_input_rejects_invalid_topology_before_any_request(mutation):
         "wrong_backend_response",
         "wrong_ws_response",
         "no_csrf",
+        "authenticated_cookie",
+        "wrong_mfa_layer",
     ],
 )
 def test_incomplete_or_misattributed_observation_cannot_emit_a_frame(defect):
+    config = probe.parse_input(_input())
     network = _SimulatedNetwork()
+    injected = False
 
     def broken(request: probe.Request, timeout: float) -> probe.Response:
+        nonlocal injected
         response = network(request, timeout)
         if defect == "unverified_source":
+            injected = True
             return replace(response, source_verified=False)
         if defect == "open_socket":
+            injected = True
             return replace(response, closed=False)
         if defect == "no_csrf" and request.path == "/api/v1/auth/csrf-cookie":
+            injected = True
             return replace(response, headers=())
         if defect == "wrong_backend_response" and request.method == "POST":
+            injected = True
             return replace(response, status=429, headers=())
         if defect == "wrong_ws_response" and request.path == "/ws/chat":
+            injected = True
             return replace(response, body=b"a proxy returned this response")
+        if defect == "authenticated_cookie":
+            injected = True
+            return replace(
+                response,
+                headers=(*response.headers, ("set-cookie", "session_id=fixture")),
+            )
+        if defect == "wrong_mfa_layer" and request.path == "/api/v1/auth/mfa/verify":
+            injected = True
+            return replace(
+                response,
+                headers=(
+                    ("x-ratelimit-limit", "5"),
+                    ("content-type", "application/json"),
+                ),
+            )
         return response
 
     with pytest.raises(probe.ProbeError):
-        probe._collect(probe.parse_input(_input()), broken)
+        probe._collect(config, broken)
+    assert injected and network.requests
 
 
 def test_http_transport_uses_and_closes_its_real_bound_local_socket():

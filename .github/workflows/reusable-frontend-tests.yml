@@ -955,7 +955,7 @@ jobs:
           path: ${{ inputs.working-directory }}/dist
 
       - name: Test bundle analyzer
-        run: node --test scripts/check-bundle-budget.test.mjs
+        run: node --test scripts/check-bundle-budget.test.mjs scripts/maplibre-build-metadata.test.mjs
 
       - name: Analyze bundle size
         run: node scripts/check-bundle-budget.mjs

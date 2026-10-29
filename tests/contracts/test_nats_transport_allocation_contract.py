@@ -179,7 +179,7 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Sixty explicit selections follow that unchanged prefix: existing audit
+# Seventy-nine explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
 # inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
 # diagnostic, configuration-warning, exact Knip, outbox tenant and historical
@@ -396,6 +396,11 @@ _CONSUMER_SELECTORS = (
     "tests/test_aud345_444_registration.py",
     "tests/test_owned_client_ip_probe_layer_contract.py",
     "tests/test_notifications_delivery_coverage.py",
+    "tests/test_owned_client_ip_probe.py",
+    "tests/test_owned_client_ip_probe_transport.py",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_legacy_delivery_failure_protects_dlq_payload_and_replay",
+    "tests/test_notifications_service.py::test_generate_schedule_reminders_handles_duplicate_titles",
+    "tests/test_notifications_service.py::test_generate_schedule_reminders_skips_inactive_users",
 )
 _DISPATCH_PROBE = """\
 import json

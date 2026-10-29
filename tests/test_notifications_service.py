@@ -453,7 +453,7 @@ async def test_generate_schedule_reminders_query_count_constant(
 
 @pytest.mark.asyncio
 async def test_generate_schedule_reminders_handles_duplicate_titles(
-    db_session, user_factory
+    db_session, user_factory, schedule_reminder_now
 ):
     group = Group(name="G2")
     db_session.add(group)
@@ -462,19 +462,19 @@ async def test_generate_schedule_reminders_handles_duplicate_titles(
 
     user = await user_factory(group_id=group.id)
 
-    now = dt.datetime.now(dt.UTC)
-    current_weekday = now.strftime("%A").lower()
+    now = schedule_reminder_now
+    lesson_starts = [now + dt.timedelta(minutes=offset) for offset in (5, 10)]
     lessons = [
         Schedule(
             group_id=group.id,
             subject="Mathematics",
             teacher="Teacher",
             room="201",
-            weekday=current_weekday,
-            start_time=now + dt.timedelta(minutes=idx * 5 + 5),
-            end_time=now + dt.timedelta(minutes=idx * 5 + 55),
+            weekday=start.strftime("%A").lower(),
+            start_time=start,
+            end_time=start + dt.timedelta(minutes=50),
         )
-        for idx in range(2)
+        for start in lesson_starts
     ]
     db_session.add_all(lessons)
     await db_session.commit()
@@ -508,7 +508,7 @@ async def test_generate_schedule_reminders_handles_duplicate_titles(
 
 @pytest.mark.asyncio
 async def test_generate_schedule_reminders_skips_inactive_users(
-    db_session, user_factory
+    db_session, user_factory, schedule_reminder_now
 ):
     group = Group(name="G3")
     db_session.add(group)
@@ -518,16 +518,16 @@ async def test_generate_schedule_reminders_skips_inactive_users(
     active_user = await user_factory(group_id=group.id, is_active=True)
     inactive_user = await user_factory(group_id=group.id, is_active=False)
 
-    now = dt.datetime.now(dt.UTC)
-    current_weekday = now.strftime("%A").lower()
+    now = schedule_reminder_now
+    lesson_start = now + dt.timedelta(minutes=10)
     lesson = Schedule(
         group_id=group.id,
         subject="History",
         teacher="Teacher",
         room="301",
-        weekday=current_weekday,
-        start_time=now + dt.timedelta(minutes=10),
-        end_time=now + dt.timedelta(minutes=60),
+        weekday=lesson_start.strftime("%A").lower(),
+        start_time=lesson_start,
+        end_time=lesson_start + dt.timedelta(minutes=50),
     )
     db_session.add(lesson)
     await db_session.commit()
@@ -908,3 +908,31 @@ async def test_scheduler_commits_notification_and_outbox_atomically(
         )
     assert len(notification_ids) == 1
     assert len(outbox_ids) == 1
+
+
+@pytest.fixture(
+    params=[(12, 0), (23, 53)],
+    ids=["daytime", "cross-midnight"],
+)
+def schedule_reminder_now(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> dt.datetime:
+    """Exercise weekly fixtures before and across the UTC date boundary."""
+    hour, minute = cast(tuple[int, int], request.param)
+    fixed_now = dt.datetime.now(dt.UTC).replace(
+        hour=hour, minute=minute, second=0, microsecond=0
+    )
+
+    class _FixedDatetime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+    clock = SimpleNamespace(**vars(dt))
+    clock.datetime = _FixedDatetime
+    monkeypatch.setattr(notifications_schedule_reminders, "dt", clock)
+    monkeypatch.setattr(notifications_delivery, "dt", clock)
+    monkeypatch.setattr(settings, "campus_timezone", "UTC")
+    return fixed_now

@@ -460,3 +460,75 @@ async def test_aud447_smtp_error_does_not_log_decrypted_link(
     assert not matching[0].exc_info
     safe_log = marker not in repr(matching[0].__dict__)
     assert safe_log
+
+
+@pytest.mark.asyncio
+async def test_aud447_legacy_delivery_failure_protects_dlq_payload_and_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Already-queued plaintext must not be persisted again after failure."""
+    marker = "synthetic-" + uuid.uuid4().hex
+    legacy_link = f"https://portal.example.test/reset-password#token={marker}"
+    secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    task = nats_module._NatsTaskPayload.model_validate(
+        {
+            "id": str(uuid.uuid4()),
+            "name": "app.tasks.email.send_auth_email",
+            "args": ["student@example.test", legacy_link],
+            "kwargs": {},
+        }
+    )
+    deliveries: list[bool] = []
+
+    async def fail_delivery(**kwargs: Any) -> None:
+        deliveries.append(kwargs["fallback_fields"]["link"] == legacy_link)
+        raise RuntimeError(legacy_link)
+
+    monkeypatch.setattr(email_tasks, "_deliver_email_message", fail_delivery)
+    handler = email_tasks.broker._tasks[task.name]
+    with pytest.raises(
+        RuntimeError, match=r"^Authentication email delivery failed$"
+    ) as failure:
+        await handler(*task.args, **task.kwargs)
+    assert deliveries == [True]
+
+    # The broker and DLQ serializer are real. Only database transport uses the
+    # existing sink; this proves stored model values, not a PostgreSQL commit.
+    session = _Session()
+    monkeypatch.setattr(database_module, "async_session", lambda: session)
+    saved = await email_tasks.broker._dead_letter(task, str(failure.value), 3)
+    parked_once = saved and len(session.jobs) == 1
+    assert parked_once, "the legacy task must retain its retryable DLQ record"
+
+    # Failure output contains booleans, never the link, marker, or stored job.
+    stored_payload_safe = marker not in session.jobs[0].payload
+    stored_error_safe = marker not in session.jobs[0].error_message
+    assert stored_error_safe, "the persisted DLQ error contained the synthetic marker"
+    assert stored_payload_safe, (
+        "the persisted legacy DLQ payload contained the synthetic marker"
+    )
+
+    # Protection must not erase the link or make supported legacy jobs
+    # undeliverable: actual replay must still restore the original email link.
+    js = AsyncMock()
+    monkeypatch.setattr(email_tasks.broker, "_js", js)
+    monkeypatch.setattr(
+        email_tasks.broker,
+        "enqueue",
+        nats_module.NatsTaskBroker.enqueue.__get__(email_tasks.broker),
+    )
+    await email_tasks.broker.replay_dead_letter(
+        task.name, json.loads(session.jobs[0].payload)
+    )
+    wire = js.publish.await_args.args[1]
+    wire_safe = marker not in wire.decode()
+    assert wire_safe, "the replayed NATS payload contained the synthetic marker"
+    replay = nats_module._NatsTaskPayload.model_validate(json.loads(wire))
+
+    async def deliver_replay(**kwargs: Any) -> None:
+        deliveries.append(kwargs["fallback_fields"]["link"] == legacy_link)
+
+    monkeypatch.setattr(email_tasks, "_deliver_email_message", deliver_replay)
+    await handler(*replay.args, **replay.kwargs)
+    assert deliveries == [True, True]

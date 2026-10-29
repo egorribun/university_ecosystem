@@ -2761,7 +2761,12 @@ jobs:
             tests/test_security_hardening_workflow_contract.py::test_squawk_integrity_contract_rejects_weakening_controls \
             tests/test_aud345_444_registration.py \
             tests/test_owned_client_ip_probe_layer_contract.py \
-            tests/test_notifications_delivery_coverage.py -v \
+            tests/test_notifications_delivery_coverage.py \
+            tests/test_owned_client_ip_probe.py \
+            tests/test_owned_client_ip_probe_transport.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_legacy_delivery_failure_protects_dlq_payload_and_replay \
+            tests/test_notifications_service.py::test_generate_schedule_reminders_handles_duplicate_titles \
+            tests/test_notifications_service.py::test_generate_schedule_reminders_skips_inactive_users -v \
             --tb=short --durations=20 -n 3 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \
