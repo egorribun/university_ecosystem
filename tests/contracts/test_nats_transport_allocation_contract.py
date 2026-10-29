@@ -423,6 +423,7 @@ _CONSUMER_SELECTORS = (
     "tests/test_aud447_auth_email_delivery.py::test_aud447_historical_auto_replay_protects_the_retained_row",
     "tests/test_aud447_auth_email_delivery.py::test_aud447_retained_row_compatibility_and_caller_owned_uow",
     "tests/test_aud447_auth_email_delivery.py::test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publish",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_corrupt_retained_job_type_fails_closed_in_auth_dedup",
 )
 _DISPATCH_PROBE = """\
 import json

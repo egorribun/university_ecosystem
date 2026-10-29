@@ -2,6 +2,194 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source fee91fe5: retained Auth rows, verified boundaries and remaining work
+
+**382/512 accepted; 130 remain unaccepted. AUD-447 is still OPEN.**
+The finding concerns plaintext reset/email-confirmation links in DLQ storage;
+repairing the reached lifecycle paths does not establish removal from every
+historical row, error message, queue or backup. No maintenance operation against deployed/user databases, queues or backups,
+deployment, or key rotation was performed.
+
+Source [fee91fe5fb422797e3f84d0800a36c25fdd849b8](https://github.com/egorribun/university_ecosystem/commit/fee91fe5fb422797e3f84d0800a36c25fdd849b8)
+and tested merge `9ea9bb609892d9f284daf20f281926b762505a86` share tree
+`1e56ffeefa50e42dd4b4dd4c382a9c31d8a23c7a`. The implementation changes only
+`app/workers/dead_letter_queue.py`, blob
+`6ac6ebda0b11b9bd321cc87c7aad9da58b0f99d1`; tests, selectors and policy
+are unchanged in that commit.
+
+### Lifecycle repair and exact semantic evidence
+
+Active PENDING/RETRYING auth dedup now locks and refreshes the existing row,
+validates the logical job hash and protects retained legacy links before
+returning. Auto replay also protects the reached retained row, not only the
+new NATS publication. Valid protected payload bytes and native expiry are
+preserved; malformed JSON, duplicate fields, invalid ciphertext and logical
+hash mismatches fail opaquely without a plaintext fallback. The caller retains
+commit ownership. This does not perform a bulk traversal or erase old errors.
+
+- [Contract 123362943976](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123362943976)
+  is SUCCESS: **3569 consumer cases PASS**, plus **633 security-disposition**
+  and **41 scoped** cases PASS. The **82 Auth cases all PASS**, including all
+  35 retained-row cases: 16 active dedup, three auto-replay outcomes, eight
+  representation/UoW controls and eight invalid representations. The prior
+  **19 semantic failures now PASS** without removing selectors or assertions.
+  Cleanup-profile **213/213** and Gitleaks **94/94** also PASS. The job takes
+  about 582 seconds against its unchanged 600-second budget: this is a
+  successful run with only about 18 seconds of observed headroom, not a
+  sustainable performance margin.
+- [PostgreSQL 123364823892](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364823892)
+  is SUCCESS: **385 PASS / 16 SKIP**, plus **13 migration controls** and
+  **five AUD-262 durable-replay cases PASS**. The five AUD-445 cases are inside
+  the 385 integration passes, not the separate five AUD-262 cases.
+  `test_aud447_dedup_waits_for_worker_refreshes_and_leaves_commit_to_caller`
+  reaches and passes the real lock, refresh, rollback and caller-owned commit
+  assertions; its prior worker/admin positive control also passes.
+  This is owned-CI PostgreSQL evidence, not deployed-data cleanup. That new
+  concurrency case does not separately assert the privacy of its worker bytes;
+  the retained-storage privacy checks belong to the ordinary Auth cohort.
+- [Owned Core 40848658632](https://github.com/egorribun/university_ecosystem/actions/runs/40848658632)
+  is SUCCESS: **329 preflight PASS**, **48 live PASS / 2 SKIP**, exit 0,
+  desktop/mobile reset-replay HTTP 400 and NATS outage SUCCESS. A single passing
+  registration run does not resolve the intermittent registration failure on
+  the earlier source: Register and the live action were not changed.
+- [Pre-commit 123362943459](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123362943459)
+  and [Backend Type Check 123364822838](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364822838)
+  are SUCCESS.
+
+### Complete own-source verification, not full CI GREEN
+
+All **23 workflows** and **141 checks** for this source are terminal, without
+cancellation. The 22 PR workflows conclude 19 SUCCESS / one FAILURE (Matrix) /
+two SKIP; the separate
+[Security Policy Integrity 40848654877](https://github.com/egorribun/university_ecosystem/actions/runs/40848654877)
+is SUCCESS with event `pull_request_target`. Check conclusions are
+110 SUCCESS / five FAILURE / 25 SKIP / one NEUTRAL.
+[Matrix 40848658856](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856)
+is FAILURE: **70 SUCCESS / five FAILURE / 16 SKIP** jobs.
+
+- All four backend shards succeed:
+  [0](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364823820)
+  7520 PASS / 78 SKIP;
+  [1](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364823676)
+  5003 PASS / 105 SKIP;
+  [2](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123377401604)
+  4441 PASS / 103 SKIP;
+  [3](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123380214996)
+  4847 PASS / 115 SKIP. Total: **21,811 PASS / 401 SKIP / zero FAIL**.
+  Separate preflight/Contract/PG counts are not added to that total.
+- All four frontend shards and
+  [aggregate 123374026209](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123374026209)
+  succeed: **10,396 tests / 822 files PASS**, with **2182/2182 changed lines**
+  covered. This does not claim 100% global branch coverage.
+  [Blocking CodeQL 123362842155](https://github.com/egorribun/university_ecosystem/runs/123362842155)
+  succeeds with no new alerts and zero annotations.
+- The five failing Matrix jobs are
+  [security/types 123362944161](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123362944161),
+  [baseline integrity 123364470337](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364470337),
+  [Alembic 123364823220](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364823220),
+  [bundle budget 123369732470](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123369732470)
+  and derived
+  [CI Success 123393490742](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123393490742).
+  The security/type job fails detect-secrets, not mypy; the separate Backend
+  Type Check passes. Scanners reject exactly the known 58 technical-integrity
+  locations, not a new DLQ-source secret. Raw Squawk retains its 13 ordinary
+  and 24 expanded warnings, while 113 expanded-capture and 46 migration tests
+  pass. MapLibre remains 285.83 KiB against the unchanged 280 KiB limit.
+- [Coverage Policy 123393491584](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123393491584)
+  and [Codecov 123393492783](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123393492783)
+  are **SKIPPED** behind failed producer dependencies; there is no authoritative
+  merged coverage verdict. Nevertheless, the intersection of the four exact
+  shard `term-missing` reports leaves **new DLQ lines 59 and 62 unhit**:
+  defensive rejection of a wrong stored job type and a decoded non-object JSON
+  payload. This is a concrete unit-shard coverage gap, not a full merged-policy
+  result and not permission to lower its floor.
+
+### Immediate bounded coverage-test continuation
+
+The next three-file test/dispatch change adds two non-object retained-JSON cases
+through the existing real dedup/replay callers and one corrupted-discriminator
+dedup case with a valid positive control and unchanged auth lookup hash.
+It preserves the prior 82 named Auth instances and forecasts **85**, not a
+runtime receipt. The 237-selector prefix is preserved with one appended exact
+selector and its independent mirror; production protection, timeout, workers,
+gates and assertions are not weakened. The malformed bytes remain unchanged
+after rejection: these are fail-closed controls, not historical-data cleanup.
+This new source still needs its own tests and coverage evidence.
+
+### Earlier sources are not silently promoted to GREEN
+
+- [66eef1c3](https://github.com/egorribun/university_ecosystem/commit/66eef1c35a1d9e9b6667362b76b31801da49afdf)
+  established the original **11 retained-payload failures / eight protected
+  controls PASS**, plus 55 expected cleanup-profile failures. An unrelated
+  Gitleaks test rejected a terminal zombie whose process-group field changed;
+  PID birth identity, initial ownership and the disabled-cleanup mutation
+  remained the controls. Its Matrix was intentionally superseded after these
+  receipts: **64 SUCCESS / 6 FAILURE / 13 SKIP / 6 CANCELLED**. Only backend
+  shard0 finished (6398 PASS / 118 SKIP); no full backend GREEN is claimed.
+- [feda6c74](https://github.com/egorribun/university_ecosystem/commit/feda6c74c7dbea47d72e4d96a1c06f4fe96e1d50)
+  added compatibility/invalid-representation and real-PG regressions, corrected
+  the exact cleanup-profile entries and the test-only zombie terminal predicate.
+  Contract recorded **3550 PASS / 19 FAIL**, with profile213 and Gitleaks94 PASS.
+  Two Ruff-only folds failed pre-commit, so PostgreSQL, backend and Alembic were
+  SKIPPED, not semantic RED. All its workflows reached terminal before the next
+  publication; Matrix was **22 SUCCESS / 6 FAILURE / 32 SKIP**, not cancelled.
+- [7ff2812a](https://github.com/egorribun/university_ecosystem/commit/7ff2812ad390096b17b0e9465c7f005c044fd241)
+  made only those two formatting folds. Its own pre-commit passed, Contract
+  reproduced **3550 PASS / 19 FAIL**, and actual PostgreSQL reached the expected
+  missing-lock assertion after 191 passes; later refresh/commit assertions were
+  not reached there. Core was **47 PASS / one FAIL / two SKIP**, with the
+  mobile-registration action observing values filled before hydration and then
+  cleared, no registration request, and no CSRF request. This does not identify
+  the exact DOM writer or prove a physical mobile tap was lost.
+  After the required RED receipts and frontend aggregate SUCCESS, the source
+  was intentionally superseded for the one-file Auth fix. Its Matrix concludes
+  **62 SUCCESS / 7 FAILURE / 12 SKIP / 6 CANCELLED**; backend0/1 were cancelled
+  and backend2/3 had not started. No complete backend GREEN is inherited.
+
+### Residual remediation and next bounded tests-first work
+
+A separate manual maintenance utility is the recommended next Auth design:
+read-only aggregate dry-run by default, exact auth job type, bounded keyset
+batches and statement limits, with no row mutation or FOR UPDATE in dry-run.
+The proposed utility is not implemented. Any separately authorized apply mode
+must use lock limits and reread under lock,
+preserve valid ciphertext bytes, job identity, retry state, schedule and native
+expiry, and report malformed/tampered/unknown-key/hash-mismatched rows as opaque
+unresolved counts. It must not mint tokens, replay jobs, print payloads/links/
+addresses, or create a plaintext undo export. Batch commit and final idempotent
+reconciliation need PostgreSQL tests. Skipping locked rows cannot prove coverage.
+
+This is a source/runbook plan, **not authorization to modify user data**.
+Erasing historical error messages loses diagnostics; deleting pending/failed
+jobs may lose undelivered mail. Those operations, queue retention/removal and
+backup/snapshot handling require specific environment, data and retention
+decisions. Seven-day queue configuration is not proof that legacy data is
+absent. `TOKEN_HMAC_SECRET` rotation is not a plaintext-remediation shortcut:
+it also affects existing Auth ciphertext and reset/email-change token hashes.
+No deployed inventory or backup contents have been inspected.
+
+A separate, still-unpublished reviewed packet contains a rejecting, non-executing
+final-HTML inventory scaffold with 30 tests and two Register SSR/hydration
+tests. These are tests-first forecasts, not executed receipts. The inventory
+must describe only bounded final `_shell.html`/`index.html` roots and static/
+dynamic import edges; it does not establish transitive execution closure,
+artifact provenance or a budget exception. Register tests use real form,
+validation and hydration code with only navigation/HTTP boundaries replaced;
+they target enabled SSR controls and password-reveal controls left enabled
+during a pending submission. Do not weaken or add waits/refills/retries to the
+existing live scenario to manufacture a passing registration receipt.
+
+The MapLibre 286 KiB decision remains inactive; all current chunk limits stay
+unchanged. Raw Squawk still reports 13 ordinary plus 24 expanded warnings.
+The owner approved exactly the 58 public-integrity dispositions on 2026-10-29;
+their source-bound policy/ADR/test delta is being prepared separately and is
+not active in this source. No additional identity is covered by that approval. Baseline319, policy347, Gitleaks26, all 78 required context/app pairs,
+blocking CodeQL, coverage floors and dependency freezes are preserved. The
+121-case owned-PostgreSQL policy scaffold remains unpublished while Contract
+headroom is this small. AUD-454 and infrastructure/data claims require their
+own actual topology and runtime evidence.
+
+
 ## Source 24c7c398 terminal verification and retained-row continuation
 
 **382/512 accepted; 130 remain unaccepted. No acceptance increment.**

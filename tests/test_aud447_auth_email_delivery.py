@@ -2220,7 +2220,14 @@ async def test_aud447_retained_row_compatibility_and_caller_owned_uow(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("boundary", ["dedup", "replay"])
 @pytest.mark.parametrize(
-    "bad_case", ["malformed_json", "tampered", "hash_mismatch", "duplicate_keys"]
+    "bad_case",
+    [
+        "malformed_json",
+        "tampered",
+        "hash_mismatch",
+        "duplicate_keys",
+        "non_object_json",
+    ],
 )
 async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publish(
     monkeypatch: pytest.MonkeyPatch, boundary: str, bad_case: str
@@ -2293,6 +2300,8 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
     job.next_retry_at = datetime.now(UTC) - timedelta(minutes=1)
     if bad_case == "malformed_json":
         job.payload = json.dumps(incoming)[:-1]
+    elif bad_case == "non_object_json":
+        job.payload = json.dumps([link])
     elif bad_case == "tampered":
         bad = json.loads(json.dumps(protected))
         envelope = bad["args"][1]
@@ -2335,6 +2344,11 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
         assert await apply_boundary() == (0, 1)
         assert job.status == "pending"
         assert job.retry_count == 2
+        if bad_case == "non_object_json":
+            opaque_error = (
+                job.error_message == "Authentication email payload protection failed"
+            )
+            assert opaque_error
     assert js.publish.await_count == 0
     unchanged_payload = job.payload == bad_bytes
     unchanged_hash = job.job_hash == job_hash
@@ -2346,5 +2360,87 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
     assert unchanged_hash
     assert unchanged_input
     assert safe_error
+    assert commit.await_count == 0
+    assert rollback.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_aud447_corrupt_retained_job_type_fails_closed_in_auth_dedup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hashlib
+
+    from app.models.dead_letter import DeadLetterJob
+    from app.workers.dead_letter_queue import DeadLetterQueue
+
+    marker = "synthetic-" + uuid.uuid4().hex
+    link = f"https://portal.example.test/reset-password#token={marker}"
+    secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    name = "app.tasks.email.send_auth_email"
+    incoming = {"args": ["student@example.test", link], "kwargs": {}}
+    input_before = json.dumps(incoming, sort_keys=True)
+    job_hash = hashlib.sha256(
+        json.dumps({"type": name, "payload": incoming}, sort_keys=True).encode()
+    ).hexdigest()
+    protected = email_tasks.prepare_auth_email_payload(incoming)[0]
+    job = DeadLetterJob(
+        id=451,
+        job_type=name,
+        job_hash=job_hash,
+        payload=json.dumps(protected),
+        error_message="Safe historical error",
+        status="pending",
+        retry_count=1,
+        max_retries=3,
+        next_retry_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    session = _HashLookupSession()
+    session.jobs.append(job)
+    commit, rollback = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(session, "commit", commit)
+    monkeypatch.setattr(session, "rollback", rollback, raising=False)
+    queue = DeadLetterQueue(session)
+
+    # A valid row must first traverse the same real auth dedup boundary.
+    assert await queue.add_failed_job(name, incoming, "New safe error") is None
+    # Model a corrupted stored discriminator, not legitimate non-auth traffic.
+    # The real query still finds this row by the unchanged auth lookup hash.
+    job.job_type = "aud447.corrupted_job_type"
+    before = (
+        job.job_type,
+        job.job_hash,
+        job.payload,
+        job.error_message,
+        job.status,
+        job.retry_count,
+        job.max_retries,
+        job.next_retry_at,
+    )
+    rejected = False
+    try:
+        await queue.add_failed_job(name, incoming, "New safe error")
+    except email_tasks.AuthEmailPayloadError as error:
+        rejected = (
+            str(error) == "Authentication email payload protection failed"
+            and error.__cause__ is None
+            and error.__suppress_context__
+        )
+    assert rejected, "auth dedup accepted a corrupted retained job type"
+    unchanged_row = before == (
+        job.job_type,
+        job.job_hash,
+        job.payload,
+        job.error_message,
+        job.status,
+        job.retry_count,
+        job.max_retries,
+        job.next_retry_at,
+    )
+    unchanged_input = json.dumps(incoming, sort_keys=True) == input_before
+    assert unchanged_row
+    assert unchanged_input
+    assert len(session.jobs) == 1
+    assert session.jobs[0] is job
     assert commit.await_count == 0
     assert rollback.await_count == 0
