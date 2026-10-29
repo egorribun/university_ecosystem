@@ -328,7 +328,13 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
         assert "taiki-e/install-action" not in consumer_text
 
     assert jobs["unit-tests-shard"]["strategy"]["matrix"]["shard"] == [1, 2, 3, 4]
-    assert _step(jobs["build"], "Build app")["env"] == {"SKIP_WASM_BUILD": "1"}
+    assert _step(jobs["build"], "Build app")["env"] == {
+        "SKIP_WASM_BUILD": "1",
+        "MAPLIBRE_BUILD_METADATA_OUTPUT": (
+            "${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}.json"
+        ),
+    }
 
 
 def test_unit_shards_reuse_wasm_without_repeating_the_contract_suite() -> None:
