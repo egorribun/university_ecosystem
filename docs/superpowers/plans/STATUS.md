@@ -2,6 +2,130 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source 35aeedeb: renderer proof and remaining fail-closed boundaries
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment.**
+AUD-447, AUD-208 and AUD-432 remain OPEN. Historical Squawk admission and the
+286 KiB Map allowance remain inactive. No deployment, populated-database
+execution, role/grant change, template modification or access expansion occurred.
+
+The receipts below belong to source
+[35aeedeb62d5036b2280d60067477d2c74c58ff7](https://github.com/egorribun/university_ecosystem/commit/35aeedeb62d5036b2280d60067477d2c74c58ff7),
+tested merge `e3fc69103be30ea390634ed4744110ede05c890d`, with the identical tree
+`529e2042d15551dd42f3e9728654012e6dd63e33`. They are not inherited by the next
+publication.
+
+### Exact-source checks
+
+- [Renderer lifecycle 123562429013](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562429013):
+  **41 PASS**, zero errors/skips, 8.23 seconds. All prior 24 regressions and two
+  dbname transport controls now pass, together with 15 additional boundary
+  cases. Diagnostic 132 PASS and tenant-context 46 PASS. Raw Squawk still emits
+  13 ordinary plus 24 expanded warnings, both exit 1 with empty reporter stderr;
+  the Alembic job is FAILURE, not scanner GREEN.
+- [Owned PostgreSQL renderer 123562429129](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562429129):
+  **seven PASS**, zero errors/skips, 2.75 seconds on PostgreSQL 17.11. Five
+  catalog contaminations, root cleanup and CREATE-collision preservation pass.
+  This proves the bounded owned-service scenarios, not arbitrary-server
+  pristineness, hostile-administrator race safety, complete catalog admission,
+  all-migration lint coverage or Stage B activation.
+- [Final-HTML contracts 123562401526](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562401526):
+  **32 PASS**, zero failures/skips. All three accepting and 14 rejecting inner
+  capture controls execute. [Production 123562401448](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562401448)
+  builds through Vite and the Map logger, observes a same-process V8 heap of
+  587202560 bytes (560 MiB) below the unchanged 640 MiB cap, then rejects at a
+  later capture boundary. No final report/upload or bundle-budget proof exists.
+  The remaining production failure is not attributed to heap admission.
+- [Frontend lint 123562401538](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562401538)
+  reports one exact Prettier call-fold difference. Other frontend static gates
+  pass. The next correction applies that measured fold without changing the
+  assertion.
+- [Contract 123561077384](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123561077384):
+  **3571 PASS / one FAIL**, solely the old renderer source pin in the inactive
+  historical-capture contract. Auth 85, security 638 and scoped 41 pass.
+  All 110 CI-catalog tests now pass; the catalog gate also passes. The source-pin
+  failure remains enforced and motivates the independently reviewed recapture.
+- [Owned Core 40905756536](https://github.com/egorribun/university_ecosystem/actions/runs/40905756536):
+  329 preflight PASS, 48 live PASS / two SKIP, NATS and cleanup SUCCESS.
+  [Main PostgreSQL 123562430526](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562430526):
+  385 PASS / 16 SKIP, plus 13 migration controls and five durable replay controls.
+- Frontend shards report **10398 PASS in 823 files**.
+  [Aggregate 123568845071](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123568845071)
+  covers all 2186 changed lines, zero missing. This is patch-line evidence,
+  not a global all-metric coverage claim. Fast pre-commit, security/types,
+  fresh baseline and blocking CodeQL pass.
+
+Backend unit tests completed all four cohorts; no job was cancelled:
+
+| Shard | Exact job | PASS | SKIP | FAIL |
+| --- | --- | ---: | ---: | ---: |
+| 0 | [123562430765](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562430765) | 7392 | 46 | 1 |
+| 1 | [123562430458](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562430458) | 4441 | 192 | 0 |
+| 2 | [123576408960](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123576408960) | 4833 | 95 | 0 |
+| 3 | [123584207963](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123584207963) | 5210 | 75 | 0 |
+| Total | | **21876** | **408** | **1** |
+
+The sole unit failure is the same historical renderer source-pin assertion.
+The separate 848 and 240 preflights pass and are excluded from that total.
+Quiet logs do not name the 405-count test or its entire file as PASS.
+The DLQ missing-line intersection across all four shards is empty, including
+lines 59/62, but [merged coverage 123602647692](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123602647692)
+and Codecov 123602651970 are SKIPPED. No authoritative merged-coverage GREEN
+is claimed.
+
+Final [Matrix 40905756873](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873)
+has 66 SUCCESS / six FAILURE / 19 SKIPPED jobs, with no active or cancelled
+job. All 23 workflows are terminal: 20 SUCCESS / one FAILURE / two SKIPPED.
+Across 141 checks: 106 SUCCESS / six FAILURE / 28 SKIPPED / one NEUTRAL.
+The six failures are Contract, production capture, frontend formatting,
+raw Alembic/Squawk, backend shard 0 and derived CI Success 123602649640.
+**Full CI is not GREEN.**
+
+
+### Next bounded publication and expected results
+
+The reviewed continuation is [d513a0e7](https://github.com/egorribun/university_ecosystem/commit/d513a0e78a293ec6e1347748a5967ddd2b15aae9)
+and [d0bcca0f](https://github.com/egorribun/university_ecosystem/commit/d0bcca0f6a682437b020d524cd70bb4d809c1f61).
+Its own hosted checks are pending at publication; the results above belong only
+to 35aeedeb.
+
+The reviewed Map change adds only a fixed, allowlisted stage name when the
+production capture rejects, retaining private-error suppression, all byte/heap
+caps, parser behavior, artifacts and thresholds. Its accepting controls are not
+production evidence. The measured Prettier fold is included; no 286 KiB allowance
+is activated.
+
+The inactive historical recapture preserves actual 35aeedeb SQL and all 37
+warning objects, with reviewed source/provenance and physical file identities.
+The old 15eaaa fixture remains unchanged. The matcher has no gate consumer or
+execution permission. All **405 dispositions, baseline319 and Gitleaks26 remain
+unchanged**; prior approval of 58 exact identities does not cover new paths,
+digests or whole-source bindings. A fresh scanner inventory and any necessary
+exact owner decision must precede a separate disposition update. The resulting
+source-binding/scanner RED is expected and is not waived.
+
+Two independent tests-first additions have source review but no hosted result
+at publication: one real SQLAlchemy QueuePool ERROR-reset privacy regression,
+and three actual PostgreSQL AUD-340 concurrent-writer cases. The latter use
+caller-owned transactions, server-observed blocking/completion and runtime
+ASCII signing keys compatible with the installed native verifier. Expected
+semantic RED is a hypothesis until executed. No producer fix, historical-chain
+repair, logging suppression or finding closure is included. The QueuePool case
+does not establish privacy for every log level or PostgreSQL network path.
+Before eventual AUD-340 acceptance, also execute the nonempty-chain concurrent
+append regression: locking an unchanged predecessor does not refresh the
+command's READ COMMITTED snapshot to include a newly inserted successor.
+This source-backed counterexample is not yet a runtime result.
+
+### Clarification of the superseded e4c14704 record
+
+The four e4c pytest cohorts ultimately completed before or immediately around
+supersession: 21827 PASS, 401 SKIP and 31 FAIL (24 renderer plus seven catalog).
+Shard 2's pytest summary preceded its job cancellation. The workflow/job
+cancellations and skipped authoritative merged coverage remain cancellations
+and skips, not GREEN or test failures. The earlier timestamped snapshot below
+is retained as history, not the final e4c rollup.
+
 ## Source e4c14704: measured regressions and reviewed renderer correction
 
 **382/512 accepted; 130 remain unaccepted. No acceptance increment.**
