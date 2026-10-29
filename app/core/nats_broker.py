@@ -7,7 +7,7 @@ import json
 import os
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any, ParamSpec, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar, cast
 
 import nats
 from nats.aio.client import Client as NATS
@@ -22,6 +22,9 @@ from pydantic import BaseModel, ValidationError, field_validator
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.orjson_utils import orjson
+
+if TYPE_CHECKING:
+    from sentry_sdk._types import Event, Hint
 
 P = ParamSpec("P")
 R_co = TypeVar("R_co", covariant=True)
@@ -40,6 +43,81 @@ class Task(Protocol[P, R_co]):
 
 _logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+
+
+def _worker_stacktrace_without_broker_vars(stacktrace: Any) -> Any:
+    """Copy one native SDK stacktrace without broker-frame local variables."""
+    if type(stacktrace) is not dict:
+        return stacktrace
+    frames = stacktrace.get("frames")
+    if type(frames) is not list:
+        return stacktrace
+
+    protected_frames: list[Any] = []
+    for frame in frames:
+        if type(frame) is dict:
+            module = frame.get("module")
+            if type(module) is str and module == __name__:
+                protected_frame = frame.copy()
+                protected_frame.pop("vars", None)
+                protected_frames.append(protected_frame)
+                continue
+        protected_frames.append(frame)
+    protected_stacktrace = stacktrace.copy()
+    protected_stacktrace["frames"] = protected_frames
+    return protected_stacktrace
+
+
+def _worker_error_event_without_broker_vars(event: Event, _hint: Hint) -> Event:
+    """Copy SDK stack containers, omitting only broker orchestration locals."""
+    protected: dict[str, Any] = dict(event)
+    if "stacktrace" in event:
+        protected["stacktrace"] = _worker_stacktrace_without_broker_vars(
+            event["stacktrace"]
+        )
+    for section_name in ("exception", "threads"):
+        section = event.get(section_name)
+        if type(section) is not dict:
+            continue
+        values = section.get("values")
+        if type(values) is not list:
+            continue
+
+        protected_section = section.copy()
+        protected_values: list[Any] = []
+        for value in values:
+            if type(value) is dict and "stacktrace" in value:
+                protected_value = value.copy()
+                protected_value["stacktrace"] = _worker_stacktrace_without_broker_vars(
+                    value["stacktrace"]
+                )
+                protected_values.append(protected_value)
+            else:
+                protected_values.append(value)
+        protected_section["values"] = protected_values
+        protected[section_name] = protected_section
+    return cast("Event", protected)
+
+
+def _log_worker_task_failure(task_name: str, error: Exception) -> None:
+    """Keep exception diagnostics without exporting the raw fetched task batch."""
+    try:
+        import sentry_sdk
+    except ImportError:
+        # Match observability's optional SDK support without an unsafe raw
+        # traceback fallback. Task retry handling remains owned by the caller.
+        _logger.error(
+            "Error processing task %s (Sentry SDK unavailable)",
+            task_name,
+            exc_info=False,
+            stack_info=False,
+        )
+        return
+
+    with sentry_sdk.new_scope() as scope:
+        scope.add_event_processor(_worker_error_event_without_broker_vars)
+        _logger.exception("Error processing task %s: %s", task_name, error)
+
 
 # A CORE-NATS publish is intentionally best-effort, but a disconnected broker
 # must remain observable.  The event itself can self-heal through the next
@@ -730,9 +808,7 @@ class NatsTaskBroker:
 
                         await msg.ack()
                     except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — NAKs message for JetStream retry (reviewed TD-27-04)
-                        _logger.exception(
-                            "Error processing task %s: %s", task_name, exc
-                        )
+                        _log_worker_task_failure(task_name, exc)
                         await self._retry_or_dead_letter(msg, payload, str(exc))
             except nats.errors.TimeoutError:
                 continue

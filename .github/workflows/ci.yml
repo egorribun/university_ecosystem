@@ -2776,7 +2776,13 @@ jobs:
             tests/test_aud447_auth_email_delivery.py::test_aud447_protected_replay_reopens_original_legacy_job_without_hash_drift \
             tests/test_aud447_auth_email_delivery.py::test_aud447_real_worker_legacy_failure_keeps_sentry_event_secret_free \
             tests/test_aud445_chat_remove_cache_failure.py \
-            tests/test_aud445_cache_outbox.py -v \
+            tests/test_aud445_cache_outbox.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_sentry_events_do_not_capture_plaintext_frames \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_worker_event_processor_copies_only_target_stack_paths \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_worker_event_processor_tolerates_optional_sdk_fields \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_missing_sentry_sdk_keeps_failure_reporting_secret_free \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_worker_scope_keeps_batch_private_and_other_diagnostics \
+            tests/test_aud454_websocket_membership_race.py -v \
             --tb=short --durations=20 -n 3 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

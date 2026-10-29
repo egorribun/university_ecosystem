@@ -179,7 +179,7 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Eighty-nine explicit selections follow that unchanged prefix: existing audit
+# Ninety-five explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
 # inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
 # diagnostic, configuration-warning, exact Knip, outbox tenant and historical
@@ -411,6 +411,12 @@ _CONSUMER_SELECTORS = (
     "tests/test_aud447_auth_email_delivery.py::test_aud447_real_worker_legacy_failure_keeps_sentry_event_secret_free",
     "tests/test_aud445_chat_remove_cache_failure.py",
     "tests/test_aud445_cache_outbox.py",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_sentry_events_do_not_capture_plaintext_frames",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_worker_event_processor_copies_only_target_stack_paths",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_worker_event_processor_tolerates_optional_sdk_fields",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_missing_sentry_sdk_keeps_failure_reporting_secret_free",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_worker_scope_keeps_batch_private_and_other_diagnostics",
+    "tests/test_aud454_websocket_membership_race.py",
 )
 _DISPATCH_PROBE = """\
 import json

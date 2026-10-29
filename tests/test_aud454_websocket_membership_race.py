@@ -12,6 +12,7 @@ import pytest
 
 from app.api.ws import connection_manager, presence
 from app.core import nats_broker
+from app.deps import cache as cache_module
 from app.deps.cache import MemoryCache, versioned_key
 
 
@@ -42,7 +43,9 @@ async def test_inflight_old_roster_cannot_poison_next_broadcast(
     async def open_session() -> AsyncIterator[object]:
         yield object()
 
-    monkeypatch.setattr(presence, "get_cache", lambda: cache)
+    monkeypatch.setattr(cache_module, "_cache_backend", cache)
+    assert cache_module.get_cache() is cache
+    assert presence.get_cache() is cache
     monkeypatch.setattr(connection_manager, "ChatRepository", Repository)
     monkeypatch.setattr(nats_broker.broker, "publish_core", AsyncMock())
     manager = connection_manager.ConnectionManager(session_factory=open_session)
@@ -70,17 +73,23 @@ async def test_existing_stale_cache_cannot_authorize_chat_fanout(
 ) -> None:
     chat_id, owner_id, removed_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     cache = MemoryCache(default_ttl=120)
-    await cache.set(
-        versioned_key(f"chat:{chat_id}:participants"),
-        [str(owner_id), str(removed_id)],
-        ttl=3600,
-    )
+    monkeypatch.setattr(cache_module, "_cache_backend", cache)
+    assert cache_module.get_cache() is cache
+    assert presence.get_cache() is cache
+    cache_key = versioned_key(f"chat:{chat_id}:participants")
+    stale_participants = [str(owner_id), str(removed_id)]
+    await cache.set(cache_key, stale_participants, ttl=3600)
+    cached = await cache.get(cache_key)
+    assert cached is not None
+    assert cached.payload == stale_participants
+    lookups: list[uuid.UUID] = []
 
     class Repository:
         def __init__(self, _session: object) -> None:
             pass
 
         async def get_participants(self, _chat_id: uuid.UUID) -> list[uuid.UUID]:
+            lookups.append(_chat_id)
             return [owner_id]
 
     @asynccontextmanager
@@ -95,6 +104,10 @@ async def test_existing_stale_cache_cannot_authorize_chat_fanout(
     await manager.broadcast_to_chat(chat_id, {"type": "after-removal"})
 
     manager.send_to_user.assert_awaited_once_with(owner_id, {"type": "after-removal"})
+    assert lookups == [chat_id]
+    cached_after = await cache.get(cache_key)
+    assert cached_after is not None
+    assert cached_after.payload == stale_participants
 
 
 @pytest.mark.asyncio

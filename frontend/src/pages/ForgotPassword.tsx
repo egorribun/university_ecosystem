@@ -24,6 +24,10 @@ const RESEND_COOLDOWN_SEC = 30
 export default function ForgotPassword() {
   // Every key names its namespace explicitly ("auth:…").
   const { t } = useTranslation()
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
   // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
   // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -47,6 +51,9 @@ export default function ForgotPassword() {
     },
     mode: "onChange",
   })
+
+  // SSR and the first client render stay inert until the form handlers attach.
+  const controlsDisabled = !hydrated || isSubmitting
 
   // Watch email for suggestions and UI logic
   const email = watch("email")
@@ -189,7 +196,7 @@ export default function ForgotPassword() {
                         autoComplete="email"
                         error={!!errors.email}
                         helperText={errors.email?.message ? t(errors.email.message) : ""}
-                        disabled={isSubmitting}
+                        disabled={controlsDisabled}
                         className="rounded-lg h-14"
                       />
 
@@ -226,8 +233,8 @@ export default function ForgotPassword() {
                         type="submit"
                         variant="solid"
                         className="w-full h-14 rounded-lg text-base font-black shadow-premium hover:shadow-glass hover:-translate-y-0.5 active:translate-y-0"
-                        // `loading` also disables the button; the form never shows during a cooldown.
-                        disabled={!isValid}
+                        // Keep validation enforced after hydration and during submission.
+                        disabled={controlsDisabled || !isValid}
                         loading={isSubmitting}
                         startIcon={<SendIcon className="h-5 w-5" />}
                       >

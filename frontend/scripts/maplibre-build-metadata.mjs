@@ -33,8 +33,7 @@ function moduleMetadata(id, info, root) {
   const renderedCodeUnits = info.renderedLength
   const hasOriginalLength = "originalLength" in info
   const originalLength = hasOriginalLength ? info.originalLength : undefined
-  const validLength = (value) =>
-    Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000
+  const validLength = (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000
   if (!validLength(renderedCodeUnits) || (hasOriginalLength && !validLength(originalLength)))
     throw new Error("invalid module length metadata")
   const originalCodeUnits = hasOriginalLength ? originalLength : null

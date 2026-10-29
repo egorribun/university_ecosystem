@@ -185,33 +185,50 @@ If downtime is unacceptable, a separate expand/backfill/dual-write/validate/cuto
 contract path needs compatibility and forward-recovery proofs. It is substantially
 more complex and still does not eliminate the existing historical lint input.
 
-## Stage A: inactive diagnostic matcher and tests-first scaffold
+## Stage A: inactive compiled historical diagnostic recognizer
 
-This package prepares one historical148-specific matcher and inventory, not a
+This package prepares one historical148-specific recognizer and inventory, not a
 general exception framework. Keep it separate from finite131 coverage, secret
-dispositions and unsupported-downgrade policy. The importable scaffold rejects
-every input until the hosted exact positive-control test has produced a semantic
-assertion failure. No CLI, subprocess, database, file reader or migration-gate consumer is
-wired to it.
+dispositions and unsupported-downgrade policy. The
+[pure matcher](../../../scripts/quality/validate_historical148_squawk.py) recognizes
+only the compiled fingerprints of the exact prepared policy and historical
+capture. A caller cannot authorize a replacement policy by supplying matching
+changed findings. No CLI, subprocess, database, file reader or migration-gate
+consumer is connected.
 
-Its only future positive return is `matched-diagnostic-inventory`. That means
-neither scanner success nor migration permission. The implementation contract
-requires two bounded byte strings and the real UTC clock internally; there is no
-caller clock or expiry override. Tests can monkeypatch the module clock to exercise the
-boundary. Policy status remains `prepared-inactive`, never an active waiver.
+Its only positive return is `matched-diagnostic-inventory`: neither scanner
+success nor migration permission. The source accepts two bounded byte strings
+and checks the real UTC clock internally, with no caller clock or expiry
+override. Tests can monkeypatch the module clock to exercise the boundary. Policy
+status remains `prepared-inactive`, never an active waiver.
 
-The eventual contract must bind full migration/config/helper/fixture pins, scanner
-version and binary digest, relevant consumer arguments, both complete SQL digests,
-scenario IDs, all 37 occurrences with multiplicity, normalization version, owner
-approval evidence and expiry. Record source/run/attempt/job and workflow provenance;
-unrelated workflow edits must not silently broaden the relevant consumer contract.
+The fingerprints retain all migration/config/helper/fixture pins, scanner version
+and binary digest, existing ordered arguments, both complete SQL inputs, scenario
+IDs, all 37 occurrences with multiplicity, normalization version, owner/scope/
+decision fields, expiry and source/run/attempt/job/workflow declarations. This is
+recognition of one historical capture, not authentication of a new run, file
+ownership, freshness or empty-database admission.
+
+The reproducible recipe is compact ASCII JSON with sorted object keys and no
+terminal newline. Preserve every field and all array order except each raw
+warning array: parse it strictly, sort complete rows by their canonical JSON
+strings without deduplicating, and serialize that array back to its JSON string.
+SQL strings are not normalized. The two source constants are derived from the
+committed [policy](../../../quality/historical148-squawk-policy.json) and
+[capture](../../../tests/fixtures/historical148-squawk-capture-15eaaa.json), never
+from caller-supplied approval data. The
+[contract tests](../../../tests/test_historical148_squawk_policy.py) and required
+checks need exact published-source receipts; this source description is not a
+passing test, scanner, full-CI or deployment receipt.
 
 Use Squawk 2.67.0's
 [JSON reporter](https://github.com/sbdchd/squawk/blob/v2.67.0/crates/squawk/src/reporter.rs),
 not ANSI parsing. JSON positions are zero-based. Preserve raw JSON, stderr and exit
 status separately from any policy verdict.
 
-Required fail-closed behavior:
+Required fail-closed behavior and later-consumer constraints follow. Operational
+requirements still belong to Stage B; recognizing the historical bytes does not
+supply those receipts:
 
 - Future file adapters must reject missing/symlink inputs; the Stage A pure
   byte interface does not authenticate file ownership or freshness.
@@ -221,8 +238,9 @@ Required fail-closed behavior:
   uninstrumented-control equality and successful transaction evidence.
 - Require exact known warning rules. Syntax errors, crashes, timeouts, unexpected
   stderr and warnings in other migrations remain blocking.
-- Match each complete physical SQL line. Strip only framing newline and one final
-  semicolon; do not collapse whitespace, lowercase, remove schema or unquote names.
+- Preserve both complete SQL strings byte-for-byte. Historical policy statement
+  extraction removed only line framing and one terminal semicolon; the recognizer
+  does not re-render or normalize SQL, lowercase, remove schema or unquote names.
 - Compare each scenario's exact multiset independently. Extra, missing, duplicate,
   changed or substituted observations fail; fewer findings also require review.
 - Keep preparation approval distinct from activation. The diagnostic matcher

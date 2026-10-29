@@ -1124,9 +1124,7 @@ async def _legacy_worker_sentry_probe(scenario: str) -> dict[str, bool]:
         for frame in (value.get("stacktrace") or {}).get("frames", [])
     ]
     worker_frames = [
-        frame
-        for frame in frames
-        if frame.get("function") in {"run_worker", "_execute"}
+        frame for frame in frames if frame.get("function") in {"run_worker", "_execute"}
     ]
     handler_frames = [
         frame for frame in frames if frame.get("function") == "send_auth_email"
@@ -1197,3 +1195,381 @@ def test_aud447_real_worker_legacy_failure_keeps_sentry_event_secret_free(
     assert outcome["safe_worker_frames"], (
         "real worker traceback frames contained the synthetic marker"
     )
+
+
+def test_aud447_worker_event_processor_copies_only_target_stack_paths() -> None:
+    class Opaque:
+        def __deepcopy__(self, _memo: object) -> object:
+            raise AssertionError("must not deepcopy arbitrary event values")
+
+        def __repr__(self) -> str:
+            raise AssertionError("must not render arbitrary event values")
+
+    opaque = Opaque()
+    original_vars = {"args": opaque}
+    target = {
+        "module": nats_module.__name__,
+        "function": "run_worker",
+        "lineno": 123,
+        "vars": original_vars,
+    }
+    unrelated = {
+        "module": "contracts.other",
+        "function": "run_worker",
+        "vars": {"diagnostic": opaque},
+    }
+    same_prefix = {
+        "module": nats_module.__name__ + "_other",
+        "vars": {"diagnostic": opaque},
+    }
+    frames = [target, unrelated, same_prefix, "opaque frame"]
+    stacktrace = {"frames": frames, "other": opaque}
+    entry = {
+        "type": "RuntimeError",
+        "value": "Authentication email delivery failed",
+        "stacktrace": stacktrace,
+    }
+    section = {"values": [entry, "opaque entry"], "other": opaque}
+    event = {
+        "stacktrace": stacktrace,
+        "exception": section,
+        "threads": section,
+        "extra": opaque,
+        "contexts": {"untouched": opaque},
+    }
+
+    protected = nats_module._worker_error_event_without_broker_vars(event, {})
+
+    assert protected is not event
+    assert protected["extra"] is opaque
+    assert protected["contexts"] is event["contexts"]
+    top_stacktrace = protected["stacktrace"]
+    assert top_stacktrace is not stacktrace
+    assert top_stacktrace["frames"] is not frames
+    assert top_stacktrace["frames"][0] is not target
+    assert "vars" not in top_stacktrace["frames"][0]
+    assert top_stacktrace["frames"][0]["function"] == "run_worker"
+    assert top_stacktrace["frames"][0]["lineno"] == 123
+    assert top_stacktrace["frames"][1] is unrelated
+    assert top_stacktrace["frames"][2] is same_prefix
+    assert top_stacktrace["other"] is opaque
+    for section_name in ("exception", "threads"):
+        copied_section = protected[section_name]
+        copied_entry = copied_section["values"][0]
+        copied_stacktrace = copied_entry["stacktrace"]
+        copied_frames = copied_stacktrace["frames"]
+        assert copied_section is not section
+        assert copied_section["values"] is not section["values"]
+        assert copied_entry is not entry
+        assert copied_stacktrace is not stacktrace
+        assert copied_frames is not frames
+        assert copied_frames[0] is not target
+        assert "vars" not in copied_frames[0]
+        assert copied_frames[0]["function"] == "run_worker"
+        assert copied_frames[0]["lineno"] == 123
+        assert copied_entry["type"] == "RuntimeError"
+        assert copied_entry["value"] == "Authentication email delivery failed"
+        assert copied_frames[1] is unrelated
+        assert copied_frames[2] is same_prefix
+        assert copied_frames[3] == "opaque frame"
+        assert copied_section["values"][1] == "opaque entry"
+        assert copied_stacktrace["other"] is opaque
+    # The incoming event and all original stack containers remain unchanged.
+    assert event["stacktrace"] is stacktrace
+    assert event["exception"] is section
+    assert event["threads"] is section
+    assert section["values"][0] is entry
+    assert entry["stacktrace"] is stacktrace
+    assert stacktrace["frames"] is frames
+    assert frames[0] is target
+    assert target["vars"] is original_vars
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        None,
+        "opaque section",
+        {"values": None},
+        {"values": ["opaque entry"]},
+        {"values": [{}]},
+        {"values": [{"stacktrace": None}]},
+        {"values": [{"stacktrace": {"frames": None}}]},
+        {"values": [{"stacktrace": {"frames": [{"module": None, "vars": {}}]}}]},
+        {"values": [{"stacktrace": {"frames": [{"module": nats_module.__name__}]}}]},
+    ],
+)
+def test_aud447_worker_event_processor_tolerates_optional_sdk_fields(
+    section: Any,
+) -> None:
+    event = {"exception": section, "stacktrace": section}
+    protected = nats_module._worker_error_event_without_broker_vars(event, {})
+    assert protected is not event
+    assert protected == event
+
+
+def test_aud447_missing_sentry_sdk_keeps_failure_reporting_secret_free(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import sys
+
+    marker = uuid.uuid4().hex
+    logger = MagicMock()
+    monkeypatch.setattr(nats_module, "_logger", logger)
+    monkeypatch.setitem(sys.modules, "sentry_sdk", None)
+
+    nats_module._log_worker_task_failure("contracts.optional-sdk", RuntimeError(marker))
+
+    logger.exception.assert_not_called()
+    logger.error.assert_called_once_with(
+        "Error processing task %s (Sentry SDK unavailable)",
+        "contracts.optional-sdk",
+        exc_info=False,
+        stack_info=False,
+    )
+    safe_call = marker not in repr(logger.error.call_args)
+    assert safe_call
+
+
+def _worker_sentry_scope_probe_child(layout: str, output: Connection) -> None:
+    try:
+        stream = io.StringIO()
+        with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
+            outcome = asyncio.run(_worker_sentry_scope_probe(layout))
+        output.send(outcome)
+    except Exception:
+        output.send({"completed": False})
+    finally:
+        output.close()
+
+
+async def _worker_sentry_scope_probe(layout: str) -> dict[str, bool]:
+    import sentry_sdk
+    from nats.aio.msg import Msg
+    from sentry_sdk.integrations.logging import LoggingIntegration
+
+    import app.core.logging as app_logging
+
+    auth_marker = uuid.uuid4().hex
+    diagnostic_marker = uuid.uuid4().hex
+    outside_marker = uuid.uuid4().hex
+    original = "https://example.invalid/reset-password#token=" + auth_marker
+    auth_name = "app.tasks.email.send_auth_email"
+    other_name = "contracts.aud447.other"
+    auth_seen: list[bool] = []
+    other_seen: list[bool] = []
+
+    async def fail_delivery(**kwargs: Any) -> None:
+        link = kwargs["fallback_fields"]["link"]
+        auth_seen.append(link == original)
+        raise RuntimeError(link)
+
+    async def unrelated_handler() -> None:
+        local_diagnostic = diagnostic_marker
+        other_seen.append(bool(local_diagnostic))
+        raise RuntimeError("unrelated task control")
+
+    task_specs: list[tuple[str, list[str]]] = [(other_name, [])]
+    if layout == "auth_then_other":
+        task_specs.insert(0, (auth_name, ["student@example.invalid", original]))
+    elif layout == "other_then_auth":
+        task_specs.append((auth_name, ["student@example.invalid", original]))
+    messages: list[Any] = []
+    acknowledgements: list[tuple[AsyncMock, AsyncMock, AsyncMock]] = []
+    for sequence, (task_name, args) in enumerate(task_specs, start=1):
+        messages.append(
+            Msg(
+                _client=nats_module.NATS(),
+                subject=f"tasks.{task_name}",
+                reply=(
+                    f"$JS.ACK.tasks.python-worker.1.{sequence}.{sequence}."
+                    "1700000000000000000.0"
+                ),
+                data=json.dumps(
+                    {
+                        "id": f"aud447-scope-{sequence}",
+                        "name": task_name,
+                        "args": args,
+                        "kwargs": {},
+                        "trace_context": {},
+                    }
+                ).encode(),
+            )
+        )
+        acknowledgements.append((AsyncMock(), AsyncMock(), AsyncMock()))
+    original_bodies = [message.data for message in messages]
+    subscription = SimpleNamespace(
+        fetch=AsyncMock(side_effect=[messages, asyncio.CancelledError()])
+    )
+    transport = SimpleNamespace(
+        pull_subscribe=AsyncMock(return_value=subscription),
+        publish=AsyncMock(side_effect=RuntimeError("outside-worker enqueue control")),
+    )
+    broker = nats_module.NatsTaskBroker()
+    broker._js = transport
+    broker.task(name=auth_name)(email_tasks.broker._tasks[auth_name])
+    broker.task(name=other_name)(unrelated_handler)
+    events: list[dict[str, Any]] = []
+    stopped = False
+    stream = io.StringIO()
+
+    with (
+        pytest.MonkeyPatch.context() as monkeypatch,
+        contextlib.redirect_stdout(stream),
+        contextlib.redirect_stderr(stream),
+    ):
+        for message, (ack, nak, term) in zip(messages, acknowledgements, strict=True):
+            monkeypatch.setattr(message, "ack", ack)
+            monkeypatch.setattr(message, "nak", nak)
+            monkeypatch.setattr(message, "term", term)
+        monkeypatch.setattr(nats_module, "_app", None)
+        monkeypatch.setattr(nats_module, "_MAX_DELIVERIES", 2)
+        monkeypatch.setattr(nats_module, "_RETRY_BASE_DELAY_S", 0)
+        monkeypatch.setattr(nats_module, "_DEFAULT_TASK_TIMEOUT_S", 30)
+        monkeypatch.setattr(email_tasks, "_deliver_email_message", fail_delivery)
+        app_logging.configure_logging(level=logging.INFO, json_output=True)
+        sentry_sdk.init(
+            dsn=f"https://{uuid.uuid4().hex}@example.invalid/1",
+            integrations=[
+                LoggingIntegration(level=logging.INFO, event_level=logging.ERROR)
+            ],
+            send_default_pii=False,
+            transport=events.append,
+        )
+        try:
+            await broker.run_worker()
+        except asyncio.CancelledError:
+            stopped = True
+        sentry_sdk.flush(timeout=1)
+        worker_events = list(events)
+
+        # Positive control: a subsequent event OUTSIDE worker reporting must
+        # retain broker-frame locals. The scoped processor must not persist.
+        try:
+            await broker.enqueue("contracts.aud447.outside", outside_marker)
+        except RuntimeError:
+            nats_module._logger.exception("outside-worker diagnostic control")
+        sentry_sdk.flush(timeout=1)
+
+    def frames(event: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            frame
+            for value in ((event.get("exception") or {}).get("values") or [])
+            for frame in ((value.get("stacktrace") or {}).get("frames") or [])
+        ]
+
+    def exception_values(event: dict[str, Any]) -> list[Any]:
+        return [
+            value.get("value")
+            for value in ((event.get("exception") or {}).get("values") or [])
+        ]
+
+    other_events = [
+        event
+        for event in worker_events
+        if exception_values(event) == ["unrelated task control"]
+    ]
+    outside_events = events[len(worker_events) :]
+    expected_auth = [] if layout == "other_only" else [True]
+    expected_errors = ["unrelated task control"]
+    if layout == "auth_then_other":
+        expected_errors.insert(0, "Authentication email delivery failed")
+    elif layout == "other_then_auth":
+        expected_errors.append("Authentication email delivery failed")
+
+    return {
+        "completed": True,
+        "stopped": stopped,
+        "tasks_executed": auth_seen == expected_auth and other_seen == [True],
+        "worker_events_captured": len(worker_events) == len(messages),
+        "exception_contract": (
+            [exception_values(event) for event in worker_events]
+            == [[value] for value in expected_errors]
+        ),
+        "all_nacked": all(
+            nak.await_count == 1
+            and nak.await_args.kwargs == {"delay": 0}
+            and ack.await_count == 0
+            and term.await_count == 0
+            for ack, nak, term in acknowledgements
+        ),
+        "bounded_fetch": subscription.fetch.await_count == 2,
+        "raw_bodies_unchanged": (
+            [message.data for message in messages] == original_bodies
+        ),
+        "broker_frames_preserved": all(
+            any(
+                frame.get("module") == nats_module.__name__
+                and frame.get("function") == "run_worker"
+                for frame in frames(event)
+            )
+            for event in worker_events
+        ),
+        "non_auth_diagnostics_preserved": (
+            len(other_events) == 1
+            and any(
+                frame.get("function") == "unrelated_handler"
+                and diagnostic_marker in json.dumps(frame.get("vars"), default=str)
+                for frame in frames(other_events[0])
+            )
+        ),
+        "scope_reset": (
+            len(outside_events) == 1
+            and exception_values(outside_events[0])
+            == ["outside-worker enqueue control"]
+            and any(
+                frame.get("module") == nats_module.__name__
+                and frame.get("function") == "enqueue"
+                and outside_marker in json.dumps(frame.get("vars"), default=str)
+                for frame in frames(outside_events[0])
+            )
+        ),
+        "worker_events_secret_free": (
+            auth_marker not in json.dumps(worker_events, default=str)
+        ),
+        "broker_vars_removed": all(
+            "vars" not in frame
+            for event in worker_events
+            for frame in frames(event)
+            if frame.get("module") == nats_module.__name__
+        ),
+    }
+
+
+@pytest.mark.parametrize("layout", ["auth_then_other", "other_then_auth", "other_only"])
+def test_aud447_worker_scope_keeps_batch_private_and_other_diagnostics(
+    layout: str,
+) -> None:
+    context = multiprocessing.get_context("spawn")
+    receive, send = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_worker_sentry_scope_probe_child, args=(layout, send)
+    )
+    process.start()
+    send.close()
+    try:
+        assert receive.poll(30), "the isolated worker-scope probe timed out"
+        outcome = receive.recv()
+        process.join(timeout=5)
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join()
+        receive.close()
+
+    assert outcome["completed"], "the isolated worker-scope probe failed"
+    assert outcome["stopped"]
+    assert outcome["tasks_executed"]
+    assert outcome["worker_events_captured"]
+    assert outcome["exception_contract"]
+    assert outcome["all_nacked"]
+    assert outcome["bounded_fetch"]
+    assert outcome["raw_bodies_unchanged"]
+    assert outcome["broker_frames_preserved"]
+    assert outcome["non_auth_diagnostics_preserved"]
+    assert outcome["scope_reset"]
+    assert outcome["worker_events_secret_free"], (
+        "a worker event contained the synthetic authentication marker"
+    )
+    assert outcome["broker_vars_removed"]

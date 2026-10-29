@@ -1062,11 +1062,15 @@ database execution, deployment and an unrestricted scanner waiver were not
 authorized.
 
 The [historical148 preparation](../superpowers/plans/2026-10-27-historical-148-squawk-proposal.md)
-now records complete ordinary and expanded SQL plus JSON evidence. Stage A
-contains an exact `prepared-inactive` inventory, an importable rejecting matcher
-scaffold and tests. Its only future diagnostic verdict is
-`matched-diagnostic-inventory`; it has no CLI or migration-gate consumer and cannot turn a
-raw Squawk failure into success. Preparation is not activation.
+records complete ordinary and expanded SQL plus JSON evidence. Stage A contains
+an exact `prepared-inactive` inventory and a
+[pure historical recognizer](../../scripts/quality/validate_historical148_squawk.py)
+with compiled fingerprints of that policy and capture. It accepts bounded byte
+inputs, normalizes only raw-warning JSON representation/order and checks the real
+UTC window. Its only positive verdict is `matched-diagnostic-inventory`, not
+scanner success or migration permission. No CLI, file reader or migration-gate
+consumer is connected; raw Squawk failures remain blocking. Preparation is not
+activation. Exact-source tests and required checks still need their own receipts.
 
 Before a separate reviewed activation diff, obtain actual owned-template0 and
 empty-catalog admission, recapture source-bound evidence after renderer changes,

@@ -548,3 +548,51 @@ def test_matcher_has_no_execution_or_admission_adapter() -> None:
     assert not imports.intersection(prohibited)
     assert '__name__ == "__main__"' not in source
     assert "policy_bytes" in inspect.signature(validator.match_inventory).parameters
+
+
+@pytest.mark.parametrize("target", ["policy", "warning"])
+@pytest.mark.parametrize("numeric", ["-0", "0.0", "0e0"])
+def test_integer_metadata_does_not_accept_alternate_numeric_encodings(
+    target: str, numeric: str
+) -> None:
+    policy, capture = _load()
+    _valid_control(policy, capture)
+    policy_wire = _wire(policy)
+    if target == "policy":
+        needle = b'"column":0'
+        assert needle in policy_wire
+        policy_wire = policy_wire.replace(
+            needle, b'"column":' + numeric.encode("ascii"), 1
+        )
+    else:
+        stdout = capture["report"]["captures"][0]["stdout"]
+        needle_text = '"column":0'
+        assert needle_text in stdout
+        capture["report"]["captures"][0]["stdout"] = stdout.replace(
+            needle_text, '"column":' + numeric, 1
+        )
+    assert validator.match_inventory(policy_wire, _wire(capture)) is None
+
+
+@pytest.mark.parametrize("target", ["policy", "capture", "warning"])
+def test_escaped_lone_surrogates_are_rejected_without_raising(target: str) -> None:
+    policy, capture = _load()
+    _valid_control(policy, capture)
+    policy_wire, capture_wire = _wire(policy), _wire(capture)
+    if target == "policy":
+        needle = b'"owner":"egorribun"'
+        assert needle in policy_wire
+        policy_wire = policy_wire.replace(needle, b'"owner":"\\ud800"', 1)
+    elif target == "capture":
+        needle = b'"schema":"ue-historical148-capture-v1"'
+        assert needle in capture_wire
+        capture_wire = capture_wire.replace(needle, b'"schema":"\\ud800"', 1)
+    else:
+        stdout = capture["report"]["captures"][0]["stdout"]
+        needle_text = '"level":"Warning"'
+        assert needle_text in stdout
+        capture["report"]["captures"][0]["stdout"] = stdout.replace(
+            needle_text, '"level":"\\ud800"', 1
+        )
+        capture_wire = _wire(capture)
+    assert validator.match_inventory(policy_wire, capture_wire) is None
