@@ -685,6 +685,12 @@ _RENDERER_LIFECYCLE_NAMES = (
     "test_renderer_failure_diagnostics_are_opaque",
     "test_renderer_api_rejects_dbname_query_override_before_scratch_work",
     "test_renderer_cli_rejects_dbname_query_override_before_scratch_work",
+    "test_renderer_rejects_invalid_url_and_engine_setup_opaquely",
+    "test_renderer_connection_failure_disposes_opaquely",
+    "test_renderer_rejects_malformed_server_identity",
+    "test_renderer_rejects_malformed_catalog_values",
+    "test_renderer_cleanup_preserves_failure_and_disposes",
+    "test_renderer_restores_unset_environment_after_owned_scratch",
 )
 _RENDERER_LIFECYCLE_SELECTORS = tuple(
     "tests/test_alembic_live_sql_render.py::" + name
@@ -846,9 +852,9 @@ def test_renderer_lifecycle_receipt_rejects_incomplete_results(
     report = tmp_path / "junit.xml"
     cases = [
         f'<testcase classname="owned.renderer" name="case-{index}"/>'
-        for index in range(26)
+        for index in range(41)
     ]
-    start = '<testsuites><testsuite tests="26" failures="0" errors="0" skipped="0">'
+    start = '<testsuites><testsuite tests="41" failures="0" errors="0" skipped="0">'
     end = "</testsuite></testsuites>"
     valid = start + "".join(cases) + end
     report.write_text(valid, encoding="utf-8")
@@ -856,13 +862,13 @@ def test_renderer_lifecycle_receipt_rejects_incomplete_results(
     runpy.run_path(str(script), run_name="__main__")
     output = capsys.readouterr()
     assert output.err == ""
-    assert output.out.endswith("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 26\n")
+    assert output.out.endswith("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 41\n")
     counts = json.loads(output.out.splitlines()[0].split(" ", 1)[1])
-    assert counts == {"tests": 26, "failures": 0, "errors": 0, "skipped": 0}
+    assert counts == {"tests": 41, "failures": 0, "errors": 0, "skipped": 0}
 
     private = make_test_marker(length=32)
     if defect == "count":
-        value = valid.replace('tests="26"', 'tests="25"')
+        value = valid.replace('tests="41"', 'tests="40"')
     elif defect == "duplicate":
         value = start + "".join([cases[0], *cases[:-1]]) + end
     elif defect == "skipped":
@@ -885,3 +891,79 @@ def test_renderer_lifecycle_receipt_rejects_incomplete_results(
     assert private not in output.out
     assert str(tmp_path) not in output.out
     assert len(output.out.encode()) < 1024
+
+
+@pytest.mark.parametrize("defect", ["failure", "error", "skipped", "wrong-identity"])
+def test_owned_renderer_postgres_receipt_rejects_failed_or_misattributed_results(
+    tmp_path, monkeypatch, capsys, defect
+) -> None:
+    job = yaml.safe_load(WORKFLOW.read_text())["jobs"]["db-migration-gate"]
+    matches = [
+        step for step in job["steps"] if step.get("id") == "renderer-postgres-evidence"
+    ]
+    assert len(matches) == 1
+    run = matches[0]["run"]
+    opening = "<<'PY_RENDERER_PG_RECEIPT' || receipt_status=$?\n"
+    body = run.split(opening, 1)[1].split("\nPY_RENDERER_PG_RECEIPT\n", 1)[0]
+    script = tmp_path / "owned_renderer_receipt.py"
+    script.write_text(body, encoding="utf-8")
+    report = tmp_path / "junit.xml"
+    names = [
+        "test_owned_renderer_catalog_rejects_user_objects[" + kind + "]"
+        for kind in ("relation", "routine", "type", "schema", "extension")
+    ]
+    names.extend(
+        [
+            "test_owned_live_renderer_root_lifecycle_cleans_up",
+            "test_owned_live_renderer_create_collision_preserves_existing_database",
+        ]
+    )
+    cases = [
+        f'<testcase classname="tests.test_alembic_live_sql_render" name="{name}"/>'
+        for name in names
+    ]
+    start = '<testsuites><testsuite tests="7" failures="0" errors="0" skipped="0">'
+    end = "</testsuite></testsuites>"
+    valid = start + "".join(cases) + end
+    report.write_text(valid, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [str(script), str(report)])
+    runpy.run_path(str(script), run_name="__main__")
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert output.out.endswith("OWNED_RENDERER_POSTGRES_VERIFIED_PASS 7\n")
+    counts = json.loads(output.out.splitlines()[0].split(" ", 1)[1])
+    assert counts == {"tests": 7, "failures": 0, "errors": 0, "skipped": 0}
+
+    private = make_test_marker(length=32, required_classes=frozenset({"lower"}))
+    if defect == "wrong-identity":
+        mutations = [
+            valid.replace(
+                'classname="tests.test_alembic_live_sql_render"',
+                f'classname="{private}"',
+                1,
+            )
+        ]
+    else:
+        # Neither a falsely clean aggregate nor missing child tags may hide failure.
+        failed_case = cases[0].replace(
+            "/>", f"><{defect}>{private}</{defect}></testcase>"
+        )
+        counters = {"failure": "failures", "error": "errors", "skipped": "skipped"}
+        counter = counters[defect]
+        mutations = [
+            valid.replace(cases[0], failed_case, 1),
+            valid.replace(f'{counter}="0"', f'{counter}="1"', 1),
+        ]
+    for value in mutations:
+        report.write_text(value, encoding="utf-8")
+        with pytest.raises(SystemExit) as failure:
+            runpy.run_path(str(script), run_name="__main__")
+        assert failure.value.code == 1
+        output = capsys.readouterr()
+        opaque = private not in output.out + output.err
+        assert opaque, "receipt diagnostics must not publish private report context"
+        assert output.err == ""
+        assert output.out.endswith("OWNED_RENDERER_POSTGRES_RECEIPT_REJECTED\n")
+        assert "VERIFIED_PASS" not in output.out
+        assert str(tmp_path) not in output.out
+        assert len(output.out.encode()) < 1024

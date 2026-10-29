@@ -7,7 +7,8 @@ import re
 import runpy
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -825,3 +826,507 @@ def test_renderer_cli_rejects_dbname_query_override_before_scratch_work(
     assert captured.out == ""
     assert captured.err == "error: PostgreSQL database URL cannot override dbname\n"
     assert not output.exists()
+
+
+@pytest.fixture
+def owned_renderer_admin() -> Iterator[sa.Engine]:
+    """Use only the disposable PG17 service in the existing migration CI job."""
+    database_url = os.environ.get("ALEMBIC_RENDERER_POSTGRES_DATABASE_URL", "")
+    admitted = (
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and os.environ.get("GITHUB_JOB") == "db-migration-gate"
+        and database_url == "postgresql+psycopg://test@127.0.0.1:5433/test_migration"
+    )
+    if not admitted:
+        pytest.fail("renderer integration requires its owned CI service", pytrace=False)
+    # Endpoint checks prevent accidental reuse; ownership comes from the job service.
+    engine = sa.create_engine(
+        database_url,
+        isolation_level="AUTOCOMMIT",
+        connect_args={"connect_timeout": 5},
+    )
+    try:
+        with engine.connect() as connection:
+            version = int(
+                connection.exec_driver_sql("SHOW server_version_num").scalar_one()
+            )
+            assert 170000 <= version < 180000
+        yield engine
+    finally:
+        engine.dispose()
+
+
+def _owned_renderer_database_identity(
+    admin: sa.Engine, name: str
+) -> tuple[int, str, int, int] | None:
+    with admin.connect() as connection:
+        row = connection.execute(
+            sa.text(
+                "SELECT d.oid, d.datname, d.datdba, r.oid "
+                "FROM pg_catalog.pg_database AS d "
+                "JOIN pg_catalog.pg_roles AS r ON r.rolname = current_user "
+                "WHERE d.datname = :name"
+            ),
+            {"name": name},
+        ).one_or_none()
+    if row is None:
+        return None
+    oid, datname, owner, current_role = row
+    identity_valid = (
+        all(
+            isinstance(value, int) and not isinstance(value, bool) and value > 0
+            for value in (oid, owner, current_role)
+        )
+        and datname == name
+        and owner == current_role
+    )
+    if not identity_valid:
+        raise AssertionError("owned renderer database identity is invalid")
+    return oid, datname, owner, current_role
+
+
+@contextmanager
+def _owned_renderer_database(admin: sa.Engine, name: str) -> Iterator[sa.URL]:
+    """Clean up only the exact database this fixture successfully created."""
+    if re.fullmatch(r"alembic_squawk_[0-9a-f]{16}", name) is None:
+        raise AssertionError("owned renderer database name is invalid")
+    identity: tuple[int, str, int, int] | None = None
+    try:
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'CREATE DATABASE "{name}" TEMPLATE template0')
+        identity = _owned_renderer_database_identity(admin, name)
+        if identity is None:
+            raise AssertionError("owned renderer database creation was not confirmed")
+        yield admin.url.set(database=name)
+    finally:
+        if identity is not None:
+            same_identity = _owned_renderer_database_identity(admin, name) == identity
+            if not same_identity:
+                raise AssertionError("owned renderer cleanup refused changed identity")
+            with admin.connect() as connection:
+                connection.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("kind", ["relation", "routine", "type", "schema", "extension"])
+# AUD-208 @egorribun
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTEGRATION_TESTS") != "1"
+    or not os.environ.get("ALEMBIC_RENDERER_POSTGRES_DATABASE_URL"),
+    reason="Requires the owned renderer PostgreSQL CI service",
+)
+def test_owned_renderer_catalog_rejects_user_objects(
+    owned_renderer_admin: sa.Engine, kind: str
+) -> None:
+    name = f"alembic_squawk_{uuid.uuid4().hex[:16]}"
+    with _owned_renderer_database(owned_renderer_admin, name) as scratch_url:
+        # This is the production SQL probe, not a copied query or safety verdict.
+        renderer._assert_empty_scratch_catalog(scratch_url)
+        engine = sa.create_engine(scratch_url, connect_args={"connect_timeout": 5})
+        try:
+            with engine.begin() as connection:
+                if kind == "relation":
+                    connection.exec_driver_sql(
+                        "CREATE TABLE public.renderer_admission_probe (id integer)"
+                    )
+                    connection.exec_driver_sql(
+                        "INSERT INTO public.renderer_admission_probe VALUES (73)"
+                    )
+                    present = connection.exec_driver_sql(
+                        "SELECT count(*) FROM public.renderer_admission_probe"
+                    ).scalar_one()
+                elif kind == "routine":
+                    connection.exec_driver_sql(
+                        "CREATE FUNCTION public.renderer_admission_probe() "
+                        "RETURNS integer LANGUAGE sql AS 'SELECT 73'"
+                    )
+                    present = connection.exec_driver_sql(
+                        "SELECT count(*) FROM pg_catalog.pg_proc AS p "
+                        "JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace "
+                        "WHERE p.proname = 'renderer_admission_probe' "
+                        "AND n.nspname = 'public'"
+                    ).scalar_one()
+                elif kind == "type":
+                    connection.exec_driver_sql(
+                        "CREATE TYPE public.renderer_admission_probe AS ENUM ('owned')"
+                    )
+                    present = connection.exec_driver_sql(
+                        "SELECT count(*) FROM pg_catalog.pg_type AS t "
+                        "JOIN pg_catalog.pg_namespace AS n ON n.oid = t.typnamespace "
+                        "WHERE t.typname = 'renderer_admission_probe' "
+                        "AND n.nspname = 'public' AND t.typtype = 'e'"
+                    ).scalar_one()
+                elif kind == "schema":
+                    connection.exec_driver_sql("CREATE SCHEMA renderer_admission_probe")
+                    present = connection.exec_driver_sql(
+                        "SELECT count(*) FROM pg_catalog.pg_namespace "
+                        "WHERE nspname = 'renderer_admission_probe'"
+                    ).scalar_one()
+                else:
+                    available = connection.exec_driver_sql(
+                        "SELECT count(*) "
+                        "FROM pg_catalog.pg_available_extension_versions "
+                        "WHERE name = 'vector' AND relocatable AND version = "
+                        "(SELECT default_version "
+                        "FROM pg_catalog.pg_available_extensions "
+                        "WHERE name = 'vector')"
+                    ).scalar_one()
+                    assert available == 1, "the pinned PG17 image must provide vector"
+                    # System-schema members must not hide an extra extension.
+                    connection.exec_driver_sql(
+                        "CREATE EXTENSION vector WITH SCHEMA pg_catalog"
+                    )
+                    present = connection.exec_driver_sql(
+                        "SELECT count(*) FROM pg_catalog.pg_extension AS e "
+                        "JOIN pg_catalog.pg_namespace AS n ON n.oid = e.extnamespace "
+                        "WHERE e.extname = 'vector' AND n.nspname = 'pg_catalog'"
+                    ).scalar_one()
+                assert present == 1
+            with pytest.raises(
+                renderer.LiveRenderError,
+                match=r"^PostgreSQL scratch catalog check failed$",
+            ):
+                renderer._assert_empty_scratch_catalog(scratch_url)
+        finally:
+            engine.dispose()
+
+
+@pytest.mark.integration
+# AUD-208 @egorribun
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTEGRATION_TESTS") != "1"
+    or not os.environ.get("ALEMBIC_RENDERER_POSTGRES_DATABASE_URL"),
+    reason="Requires the owned renderer PostgreSQL CI service",
+)
+def test_owned_live_renderer_root_lifecycle_cleans_up(
+    owned_renderer_admin: sa.Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixed = uuid.uuid4()
+    name = f"alembic_squawk_{fixed.hex[:16]}"
+    assert _owned_renderer_database_identity(owned_renderer_admin, name) is None
+    monkeypatch.setattr(renderer, "uuid", SimpleNamespace(uuid4=lambda: fixed))
+    previous_url = os.environ.get("DATABASE_URL")
+    try:
+        sql = renderer.render_revision_sql(
+            _ROOT_MIGRATION,
+            owned_renderer_admin.url.render_as_string(hide_password=False),
+        )
+        assert "CREATE TABLE" in sql
+        assert "BEGIN;" in sql
+        assert "COMMIT;" in sql
+    finally:
+        # No fallback DROP: unconfirmed leftovers belong to job-service teardown.
+        assert _owned_renderer_database_identity(owned_renderer_admin, name) is None
+        environment_restored = os.environ.get("DATABASE_URL") == previous_url
+        assert environment_restored, "renderer must restore the prior environment"
+
+
+@pytest.mark.integration
+# AUD-208 @egorribun
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTEGRATION_TESTS") != "1"
+    or not os.environ.get("ALEMBIC_RENDERER_POSTGRES_DATABASE_URL"),
+    reason="Requires the owned renderer PostgreSQL CI service",
+)
+def test_owned_live_renderer_create_collision_preserves_existing_database(
+    owned_renderer_admin: sa.Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixed = uuid.uuid4()
+    name = f"alembic_squawk_{fixed.hex[:16]}"
+    with _owned_renderer_database(owned_renderer_admin, name) as scratch_url:
+        identity = _owned_renderer_database_identity(owned_renderer_admin, name)
+        engine = sa.create_engine(scratch_url, connect_args={"connect_timeout": 5})
+        try:
+            with engine.begin() as connection:
+                connection.exec_driver_sql(
+                    "CREATE TABLE public.renderer_collision_canary (id integer)"
+                )
+                connection.exec_driver_sql(
+                    "INSERT INTO public.renderer_collision_canary VALUES (73)"
+                )
+            monkeypatch.setattr(renderer, "uuid", SimpleNamespace(uuid4=lambda: fixed))
+            previous_url = os.environ.get("DATABASE_URL")
+            with pytest.raises(
+                renderer.LiveRenderError,
+                match=r"^PostgreSQL scratch creation failed$",
+            ):
+                renderer.render_revision_sql(
+                    _ROOT_MIGRATION,
+                    owned_renderer_admin.url.render_as_string(hide_password=False),
+                )
+            current_identity = _owned_renderer_database_identity(
+                owned_renderer_admin, name
+            )
+            assert current_identity == identity
+            with engine.connect() as connection:
+                rows = connection.exec_driver_sql(
+                    "SELECT id FROM public.renderer_collision_canary"
+                ).all()
+                assert rows == [(73,)]
+            environment_restored = os.environ.get("DATABASE_URL") == previous_url
+            assert environment_restored, "renderer must restore the prior environment"
+        finally:
+            engine.dispose()
+
+
+def _assert_fixed_scratch_error(
+    migration: Path, database_url: str, canary: str, expected: str
+) -> None:
+    error_type: type[Exception] | None = None
+    message = ""
+    try:
+        renderer.render_revision_sql(migration, database_url)
+    except Exception as error:
+        error_type = type(error)
+        message = str(error)
+    opaque = canary not in message
+    assert opaque, "renderer errors must not expose transport context"
+    assert error_type is renderer.LiveRenderError
+    assert message == expected
+
+
+@pytest.mark.parametrize(
+    "mode", ["invalid-port", "non-postgresql", "admin-engine-error"]
+)
+def test_renderer_rejects_invalid_url_and_engine_setup_opaquely(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path)
+    previous = dict(environment)
+    database_url = environment["DATABASE_URL"]
+    engine_calls: list[bool] = []
+
+    def failed_engine(*_args: object, **_kwargs: object) -> object:
+        engine_calls.append(True)
+        raise sa.exc.ArgumentError(admin.canary)
+
+    monkeypatch.setattr(renderer.sa, "create_engine", failed_engine)
+    expected = "PostgreSQL database URL is invalid"
+    if mode == "invalid-port":
+        database_url = f"postgresql+psycopg://renderer@localhost:{admin.canary}/db"
+    elif mode == "non-postgresql":
+        database_url = "sqlite:///:memory:"
+    else:
+        expected = "PostgreSQL admin connection failed"
+
+    _assert_fixed_scratch_error(migration, database_url, admin.canary, expected)
+
+    assert engine_calls == ([True] if mode == "admin-engine-error" else [])
+    assert admin.statements == []
+    assert admin.probes == []
+    assert admin.upgrades == []
+    assert admin.listeners == []
+    assert environment == previous
+    assert environment.writes == []
+
+
+@pytest.mark.parametrize("mode", ["nonoperational-connect", "failed-connect-disposal"])
+def test_renderer_connection_failure_disposes_opaquely(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path)
+    previous = dict(environment)
+    attempts: list[bool] = []
+
+    def failed_connect() -> _ScratchConnection:
+        attempts.append(True)
+        if mode == "nonoperational-connect":
+            raise sa.exc.InterfaceError(
+                "CONNECT", {"private": admin.canary}, RuntimeError(admin.canary)
+            )
+        raise admin.failure("CONNECT")
+
+    def failed_dispose() -> None:
+        admin.disposed = True
+        raise admin.failure("DISPOSE")
+
+    monkeypatch.setattr(admin, "connect", failed_connect)
+    if mode == "failed-connect-disposal":
+        monkeypatch.setattr(admin, "dispose", failed_dispose)
+
+    _assert_fixed_scratch_error(
+        migration,
+        environment["DATABASE_URL"],
+        admin.canary,
+        "PostgreSQL admin connection failed",
+    )
+
+    assert len(attempts) == (1 if mode == "nonoperational-connect" else 2)
+    assert admin.disposed
+    assert admin.statements == []
+    assert admin.probes == []
+    assert admin.upgrades == []
+    assert admin.listeners == []
+    assert environment == previous
+    assert environment.writes == []
+
+
+@pytest.mark.parametrize("mode", ["missing-key", "boolean-oid"])
+def test_renderer_rejects_malformed_server_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path)
+    previous = dict(environment)
+    execute = admin.execute
+
+    def malformed_identity(
+        scope: str, statement: str, parameters: dict[str, object] | None
+    ) -> _ScratchRows | None:
+        result = execute(scope, statement, parameters)
+        if "PG_DATABASE" in statement.upper():
+            assert isinstance(result, _ScratchRows)
+            if mode == "missing-key":
+                result.rows[0].pop("datdba")
+            else:
+                result.rows[0]["oid"] = True
+        return result
+
+    monkeypatch.setattr(admin, "execute", malformed_identity)
+
+    _assert_fixed_scratch_error(
+        migration,
+        environment["DATABASE_URL"],
+        admin.canary,
+        "PostgreSQL scratch identity check failed",
+    )
+
+    assert admin.identity_reads == 1
+    assert not any(sql.startswith("DROP DATABASE") for sql in admin.statements)
+    assert admin.upgrades == []
+    assert admin.listeners == []
+    assert admin.disposed
+    assert environment == previous
+    assert environment.writes == []
+
+
+@pytest.mark.parametrize("field", ["kind", "namespace", "name"])
+def test_renderer_rejects_malformed_catalog_values(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, field: str
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path)
+    previous = dict(environment)
+    execute = admin.execute
+
+    def malformed_catalog(
+        scope: str, statement: str, parameters: dict[str, object] | None
+    ) -> _ScratchRows | None:
+        result = execute(scope, statement, parameters)
+        if "PG_NAMESPACE" in statement.upper():
+            assert isinstance(result, _ScratchRows)
+            key = {"kind": "kind", "namespace": "nspname", "name": "objname"}[field]
+            result.rows[0][key] = 1
+        return result
+
+    monkeypatch.setattr(admin, "execute", malformed_catalog)
+
+    _assert_fixed_scratch_error(
+        migration,
+        environment["DATABASE_URL"],
+        admin.canary,
+        "PostgreSQL scratch catalog check failed",
+    )
+
+    assert admin.timeline == ["create", "identity", "catalog", "identity", "drop"]
+    assert admin.upgrades == []
+    assert admin.listeners == []
+    assert admin.disposed and admin.scratch_disposed
+    assert environment == previous
+    assert environment.writes == []
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "catalog-engine-error",
+        "catalog-disposal-error",
+        "admin-disposal-error",
+        "migration-and-cleanup-error",
+    ],
+)
+def test_renderer_cleanup_preserves_failure_and_disposes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path)
+    previous = dict(environment)
+    create_engine = renderer.sa.create_engine
+    original_error = RuntimeError("migration failure must survive cleanup")
+
+    def failed_scratch_dispose() -> None:
+        admin.scratch_disposed = True
+        raise admin.failure("SCRATCH DISPOSE")
+
+    def selected_engine(url: str | sa.URL, **kwargs: object) -> object:
+        parsed = make_url(url)
+        if admin.scratch and parsed.database == admin.scratch:
+            if mode == "catalog-engine-error":
+                raise sa.exc.ArgumentError(admin.canary)
+            engine = create_engine(url, **kwargs)
+            if mode == "catalog-disposal-error":
+                monkeypatch.setattr(engine, "dispose", failed_scratch_dispose)
+            return engine
+        return create_engine(url, **kwargs)
+
+    def failed_admin_dispose() -> None:
+        admin.disposed = True
+        raise admin.failure("ADMIN DISPOSE")
+
+    def failed_upgrade(_config: object, revision: str) -> None:
+        admin.upgrades.append(revision)
+        admin.timeline.append(f"upgrade:{revision}")
+        raise original_error
+
+    monkeypatch.setattr(renderer.sa, "create_engine", selected_engine)
+    if mode == "admin-disposal-error":
+        monkeypatch.setattr(admin, "dispose", failed_admin_dispose)
+    if mode == "migration-and-cleanup-error":
+        admin.mode = "cleanup-error"
+        monkeypatch.setattr(renderer.command, "upgrade", failed_upgrade)
+        preserved = False
+        opaque = False
+        notes: list[str] = []
+        try:
+            renderer.render_revision_sql(migration, environment["DATABASE_URL"])
+        except Exception as error:
+            preserved = error is original_error
+            notes = getattr(error, "__notes__", [])
+            opaque = admin.canary not in str(error) + repr(notes)
+        assert opaque, "cleanup must not disclose transport context"
+        assert preserved, "cleanup must preserve the original migration exception"
+        assert notes == ["PostgreSQL scratch cleanup failed"]
+        assert admin.upgrades == ["parent"]
+    else:
+        expected = (
+            "PostgreSQL scratch cleanup failed"
+            if mode == "admin-disposal-error"
+            else "PostgreSQL scratch catalog check failed"
+        )
+        _assert_fixed_scratch_error(
+            migration, environment["DATABASE_URL"], admin.canary, expected
+        )
+        assert admin.upgrades == (
+            ["parent", "target"] if mode == "admin-disposal-error" else []
+        )
+
+    assert admin.identity_reads == 2
+    assert any(sql.startswith("DROP DATABASE") for sql in admin.statements)
+    assert admin.disposed
+    assert admin.scratch_disposed is (mode != "catalog-engine-error")
+    assert environment == previous
+    _assert_scratch_listeners_removed(admin)
+
+
+def test_renderer_restores_unset_environment_after_owned_scratch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path)
+    database_url = environment.pop("DATABASE_URL")
+    assert database_url is not None
+    environment.writes.clear()
+
+    assert renderer.render_revision_sql(migration, database_url) == ""
+
+    assert "DATABASE_URL" not in environment
+    assert environment.writes == ["DATABASE_URL", "DATABASE_URL"]
+    assert admin.upgrades == ["parent", "target"]
+    assert admin.disposed and admin.scratch_disposed
+    _assert_scratch_listeners_removed(admin)
