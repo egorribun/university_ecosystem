@@ -1849,6 +1849,90 @@ jobs:
             exit 1
           }
 
+      - name: Verify Alembic renderer lifecycle contracts
+        id: renderer-lifecycle-evidence
+        if: >-
+          ${{ !cancelled() &&
+              (steps.migration-squawk.outcome == 'success' ||
+               steps.migration-squawk.outcome == 'failure') }}
+        timeout-minutes: 3
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          RUN_INTEGRATION_TESTS: ""
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d)"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          test_log="$probe_root/pytest.log"
+          pytest_status=0
+          timeout --signal=TERM --kill-after=5s 150s \
+            uv run --frozen --no-sync pytest \
+            -n 0 -vv --tb=short --show-capture=no --no-cov --maxfail=0 \
+            tests/test_alembic_live_sql_render.py::test_live_renderer_records_transaction_events_and_removes_listeners_on_success \
+            tests/test_alembic_live_sql_render.py::test_live_renderer_records_rollback_and_removes_listeners_on_failure \
+            tests/test_alembic_live_sql_render.py::test_scratch_requires_template0_and_empty_catalog_before_upgrade \
+            tests/test_alembic_live_sql_render.py::test_scratch_create_failure_never_drops_or_changes_execution_state \
+            tests/test_alembic_live_sql_render.py::test_scratch_nonempty_or_unverifiable_catalog_blocks_upgrade \
+            tests/test_alembic_live_sql_render.py::test_scratch_cleanup_requires_confirmed_created_database_identity \
+            tests/test_alembic_live_sql_render.py::test_renderer_failure_diagnostics_are_opaque \
+            --basetemp="$probe_root/basetemp" \
+            --junitxml="$probe_root/junit.xml" > "$test_log" 2>&1 || pytest_status=$?
+          echo "ALEMBIC_RENDERER_LIFECYCLE_TESTS_BEGIN"
+          bytes="$(wc -c < "$test_log")"
+          head -c 131072 "$test_log"
+          echo "ALEMBIC_RENDERER_LIFECYCLE_TESTS_END"
+          receipt_status=0
+          uv run --frozen --no-sync python - "$probe_root/junit.xml" <<'PY_RENDERER_RECEIPT' || receipt_status=$?
+          import json
+          import sys
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          try:
+              report = Path(sys.argv[1])
+              if (
+                  report.is_symlink()
+                  or not report.is_file()
+                  or not 0 < report.stat().st_size <= 1_048_576
+              ):
+                  raise ValueError
+              root = ElementTree.parse(report).getroot()
+              suites = list(root.iter("testsuite"))
+              if len(suites) != 1:
+                  raise ValueError
+              counts = {
+                  key: int(suites[0].get(key, "-1"))
+                  for key in ("tests", "failures", "errors", "skipped")
+              }
+              if any(value < 0 or value > 24 for value in counts.values()):
+                  raise ValueError
+              print("ALEMBIC_RENDERER_LIFECYCLE_COUNTS " + json.dumps(counts, sort_keys=True))
+              cases = list(root.iter("testcase"))
+              identities = {(case.get("classname"), case.get("name")) for case in cases}
+              expected = {"tests": 24, "failures": 0, "errors": 0, "skipped": 0}
+              if len(cases) != 24 or len(identities) != 24 or counts != expected:
+                  raise ValueError
+              if any(not all(identity) for identity in identities):
+                  raise ValueError
+              if any(list(root.iter(tag)) for tag in ("failure", "error", "skipped")):
+                  raise ValueError
+          except (OSError, ValueError, ElementTree.ParseError):
+              print("ALEMBIC_RENDERER_LIFECYCLE_RECEIPT_REJECTED")
+              raise SystemExit(1) from None
+          print("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 24")
+          PY_RENDERER_RECEIPT
+          if [ "$bytes" -gt 131072 ]; then
+            echo "::error::Alembic renderer lifecycle output exceeded 131072 bytes"
+            receipt_status=1
+          fi
+          if [ "$pytest_status" -ne 0 ]; then
+            exit "$pytest_status"
+          fi
+          exit "$receipt_status"
+
   openapi-verify:
     name: Verify OpenAPI Types
     runs-on: ubuntu-24.04

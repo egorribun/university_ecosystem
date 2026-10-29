@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import runpy
 import sys
 import uuid
@@ -107,7 +108,7 @@ class _FakeAdminConnection:
     def __exit__(self, *_args: object) -> None:
         return None
 
-    def exec_driver_sql(self, statement: str) -> None:
+    def exec_driver_sql(self, statement: str) -> _ScratchRows | None:
         self.statements.append(statement)
 
 
@@ -127,7 +128,8 @@ def _patch_renderer_runtime(
     monkeypatch: pytest.MonkeyPatch,
     fake_upgrade: Callable[[object, str], None],
 ) -> tuple[_FakeAdminEngine, list[renderer._DdlRecorder]]:
-    admin = _FakeAdminEngine()
+    admin = _ScratchTransport()
+    _install_scratch_engines(monkeypatch, admin)
     recorders: list[renderer._DdlRecorder] = []
     recorder_type = renderer._DdlRecorder
 
@@ -366,3 +368,406 @@ def test_main_writes_the_rendered_sql_to_the_output_path(
 
     assert renderer.main([str(_AUD180_MIGRATION), str(output)]) == 0
     assert "CREATE TABLE news_media_assets (" in output.read_text(encoding="utf-8")
+
+
+class _ScratchRows:
+    """Only the SQLAlchemy mapping-result methods used at this boundary."""
+
+    def __init__(self, rows: list[dict[str, object]]) -> None:
+        self.rows = rows
+
+    def mappings(self) -> _ScratchRows:
+        return self
+
+    def all(self) -> list[dict[str, object]]:
+        return [dict(row) for row in self.rows]
+
+    def one_or_none(self) -> dict[str, object] | None:
+        if len(self.rows) > 1:
+            raise sa.exc.MultipleResultsFound()
+        return dict(self.rows[0]) if self.rows else None
+
+
+class _ScratchConnection(_FakeAdminConnection):
+    def __init__(self, admin: _ScratchTransport, scope: str) -> None:
+        super().__init__(admin.statements)
+        self.admin = admin
+        self.scope = scope
+
+    def exec_driver_sql(
+        self, statement: str, parameters: dict[str, object] | None = None
+    ) -> _ScratchRows | None:
+        return self.admin.execute(self.scope, statement, parameters)
+
+    def execute(
+        self, statement: object, parameters: dict[str, object] | None = None
+    ) -> _ScratchRows | None:
+        return self.exec_driver_sql(str(statement), parameters)
+
+
+class _ScratchDatabaseEngine:
+    def __init__(self, admin: _ScratchTransport) -> None:
+        self.admin = admin
+
+    def connect(self) -> _ScratchConnection:
+        return _ScratchConnection(self.admin, "scratch")
+
+    def dispose(self) -> None:
+        self.admin.scratch_disposed = True
+
+
+class _ScratchTransport(_FakeAdminEngine):
+    """Owned, quiescent CI-server transport; no ownership decision is mocked.
+
+    Catalog rows describe the allowed template0 public/plpgsql baseline and
+    non-system relation, routine, type, schema or extension contamination.
+    They do not establish that a real PostgreSQL query covers those surfaces.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.mode = "success"
+        self.canary = uuid.uuid4().hex
+        self.scratch = ""
+        self.created = False
+        self.identity_reads = 0
+        self.scratch_disposed = False
+        self.probes: list[tuple[str, str, dict[str, object] | None]] = []
+        self.engine_urls: list[sa.URL] = []
+        self.timeline: list[str] = []
+        self.upgrades: list[str] = []
+        self.listeners: list[tuple[object, str, Callable[..., object]]] = []
+
+    def failure(self, operation: str) -> sa.exc.OperationalError:
+        return sa.exc.OperationalError(
+            operation, {"private": self.canary}, RuntimeError(self.canary)
+        )
+
+    def connect(self) -> _ScratchConnection:
+        if self.mode == "connect-error":
+            raise self.failure("CONNECT")
+        return _ScratchConnection(self, "admin")
+
+    def execute(
+        self, scope: str, statement: str, parameters: dict[str, object] | None
+    ) -> _ScratchRows | None:
+        normalized = statement.strip().upper()
+        if normalized.startswith("CREATE DATABASE"):
+            self.statements.append(statement)
+            self.timeline.append("create")
+            match = re.search(r'CREATE DATABASE "([^"]+)"', statement)
+            assert match is not None, "the generated database name must be quoted"
+            self.scratch = match.group(1)
+            if self.mode in {"collision", "denied", "uncertain"}:
+                self.created = self.mode == "uncertain"
+                raise self.failure("CREATE DATABASE")
+            self.created = True
+            return None
+        if normalized.startswith("DROP DATABASE"):
+            self.statements.append(statement)
+            self.timeline.append("drop")
+            if self.mode == "cleanup-error":
+                raise self.failure("DROP DATABASE")
+            self.created = False
+            return None
+
+        self.probes.append((scope, statement, parameters))
+        if "PG_DATABASE" in normalized:
+            self.identity_reads += 1
+            self.timeline.append("identity")
+            if self.mode == "unconfirmed" or (
+                self.identity_reads > 1 and self.mode == "missing"
+            ):
+                return _ScratchRows([])
+            if self.identity_reads > 1 and self.mode == "identity-error":
+                raise self.failure("SELECT pg_database")
+            identity: dict[str, object] = {
+                "oid": 79531,
+                "datname": self.scratch,
+                "datdba": 700,
+                "current_role_oid": 700,
+            }
+            if self.mode == "foreign-owner":
+                identity["datdba"] = 701
+            if self.identity_reads > 1:
+                if self.mode == "changed-oid":
+                    identity["oid"] = 79532
+                elif self.mode == "changed-name":
+                    identity["datname"] = "not_the_owned_scratch"
+                elif self.mode == "changed-owner":
+                    identity["datdba"] = 701
+            return _ScratchRows([identity])
+
+        if "PG_NAMESPACE" in normalized:
+            self.timeline.append("catalog")
+            if self.mode == "catalog-error":
+                raise self.failure("SELECT user catalogs")
+            rows: list[dict[str, object]] = [
+                {"kind": "schema", "nspname": None, "objname": "public"},
+                {"kind": "extension", "nspname": "pg_catalog", "objname": "plpgsql"},
+            ]
+            if self.mode == "catalog-malformed":
+                return _ScratchRows([{"kind": "relation"}])
+            if self.mode.startswith("nonempty-"):
+                rows.append(
+                    {
+                        "kind": self.mode.removeprefix("nonempty-"),
+                        "nspname": (
+                            None if self.mode == "nonempty-schema" else "public"
+                        ),
+                        "objname": "preexisting_object",
+                    }
+                )
+            return _ScratchRows(rows)
+        raise AssertionError("unexpected scratch transport query")
+
+
+class _TrackedScratchEnvironment(dict[str, str]):
+    def __init__(self, initial: dict[str, str]) -> None:
+        super().__init__(initial)
+        self.writes: list[str] = []
+
+    def __setitem__(self, key: str, value: str) -> None:
+        self.writes.append(key)
+        super().__setitem__(key, value)
+
+    def pop(self, key: str, default: str | None = None) -> str | None:
+        self.writes.append(key)
+        return super().pop(key, default)
+
+
+def _install_scratch_engines(
+    monkeypatch: pytest.MonkeyPatch, admin: _ScratchTransport
+) -> None:
+    create_engine = sa.create_engine
+
+    def fake_create_engine(url: str | sa.URL, **kwargs: object) -> object:
+        parsed = make_url(url)
+        if parsed.get_backend_name() != "postgresql":
+            return create_engine(url, **kwargs)
+        admin.engine_urls.append(parsed)
+        if admin.scratch and parsed.database == admin.scratch:
+            return _ScratchDatabaseEngine(admin)
+        return admin
+
+    monkeypatch.setattr(renderer.sa, "create_engine", fake_create_engine)
+
+
+def _scratch_case(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str = "success"
+) -> tuple[_ScratchTransport, _TrackedScratchEnvironment, Path]:
+    admin = _ScratchTransport()
+    admin.mode = mode
+    environment = _TrackedScratchEnvironment(
+        {"DATABASE_URL": "postgresql+psycopg://renderer@localhost/university"}
+    )
+    migration = tmp_path / "scratch_target.py"
+    migration.write_text(
+        "revision = 'target'\ndown_revision = 'parent'\n", encoding="utf-8"
+    )
+    _install_scratch_engines(monkeypatch, admin)
+    monkeypatch.setattr(renderer, "os", SimpleNamespace(environ=environment))
+    monkeypatch.setattr(renderer, "_ADMIN_CONNECT_ATTEMPTS", 2)
+    monkeypatch.setattr(renderer.time, "sleep", lambda _seconds: None)
+    listen = renderer.event.listen
+
+    def record_listener(
+        target: object, name: str, listener: Callable[..., object]
+    ) -> None:
+        admin.listeners.append((target, name, listener))
+        listen(target, name, listener)
+
+    def upgrade(_config: object, revision: str) -> None:
+        admin.upgrades.append(revision)
+        admin.timeline.append(f"upgrade:{revision}")
+
+    monkeypatch.setattr(renderer.event, "listen", record_listener)
+    monkeypatch.setattr(renderer.command, "upgrade", upgrade)
+    return admin, environment, migration
+
+
+def _scratch_failure(migration: Path, database_url: str) -> type[Exception] | None:
+    try:
+        renderer.render_revision_sql(migration, database_url)
+    except Exception as error:
+        return type(error)
+    return None
+
+
+def _assert_scratch_listeners_removed(admin: _ScratchTransport) -> None:
+    for target, name, listener in admin.listeners:
+        assert not renderer.event.contains(target, name, listener)
+
+
+def test_scratch_requires_template0_and_empty_catalog_before_upgrade(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path)
+    previous = dict(environment)
+
+    assert renderer.render_revision_sql(migration, environment["DATABASE_URL"]) == ""
+
+    assert re.search(
+        r"\bTEMPLATE\s*(?:=\s*)?[\"']?template0\b", admin.statements[0], re.I
+    )
+    assert admin.timeline == [
+        "create",
+        "identity",
+        "catalog",
+        "upgrade:parent",
+        "upgrade:target",
+        "identity",
+        "drop",
+    ]
+    assert admin.upgrades == ["parent", "target"]
+    for url in admin.engine_urls:
+        assert (url.host, url.port, url.username) == ("localhost", None, "renderer")
+        assert url.database in {"university", admin.scratch}
+    identity_probes = [
+        probe for probe in admin.probes if "pg_database" in probe[1].lower()
+    ]
+    assert len(identity_probes) == 2
+    for scope, statement, parameters in identity_probes:
+        assert scope == "admin"
+        assert "current_user" in statement.lower()
+        assert parameters is not None and admin.scratch in parameters.values()
+    catalog_probes = [
+        probe for probe in admin.probes if "pg_database" not in probe[1].lower()
+    ]
+    assert len(catalog_probes) == 1
+    scope, catalog_sql, _parameters = catalog_probes[0]
+    assert scope == "scratch"
+    for catalog in ("pg_class", "pg_proc", "pg_type", "pg_namespace", "pg_extension"):
+        assert catalog in catalog_sql.lower()
+    assert admin.statements[-1] == (
+        f'DROP DATABASE IF EXISTS "{admin.scratch}" WITH (FORCE)'
+    )
+    assert environment == previous
+    assert admin.disposed and admin.scratch_disposed
+    _assert_scratch_listeners_removed(admin)
+
+
+@pytest.mark.parametrize("mode", ["collision", "denied", "uncertain"])
+def test_scratch_create_failure_never_drops_or_changes_execution_state(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path, mode)
+    previous = dict(environment)
+
+    failure = _scratch_failure(migration, environment["DATABASE_URL"])
+
+    assert not any(sql.startswith("DROP DATABASE") for sql in admin.statements)
+    assert admin.upgrades == []
+    assert admin.listeners == []
+    assert environment == previous
+    assert environment.writes == []
+    assert admin.identity_reads == 0
+    assert admin.disposed
+    assert failure is renderer.LiveRenderError
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "nonempty-relation",
+        "nonempty-routine",
+        "nonempty-type",
+        "nonempty-schema",
+        "nonempty-extension",
+        "catalog-error",
+        "catalog-malformed",
+    ],
+)
+def test_scratch_nonempty_or_unverifiable_catalog_blocks_upgrade(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path, mode)
+    previous = dict(environment)
+
+    failure = _scratch_failure(migration, environment["DATABASE_URL"])
+
+    assert admin.upgrades == []
+    assert admin.identity_reads == 2
+    assert admin.timeline == ["create", "identity", "catalog", "identity", "drop"]
+    assert environment == previous
+    assert admin.disposed and admin.scratch_disposed
+    assert failure is renderer.LiveRenderError
+    _assert_scratch_listeners_removed(admin)
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "changed-oid",
+        "changed-name",
+        "changed-owner",
+        "missing",
+        "identity-error",
+        "unconfirmed",
+        "foreign-owner",
+    ],
+)
+def test_scratch_cleanup_requires_confirmed_created_database_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path, mode)
+    previous = dict(environment)
+
+    failure = _scratch_failure(migration, environment["DATABASE_URL"])
+
+    assert not any(sql.startswith("DROP DATABASE") for sql in admin.statements)
+    if mode in {"unconfirmed", "foreign-owner"}:
+        assert admin.upgrades == []
+        assert environment.writes == []
+        assert admin.listeners == []
+    else:
+        assert admin.upgrades == ["parent", "target"]
+        assert admin.scratch_disposed
+    assert environment == previous
+    assert admin.disposed
+    assert failure is renderer.LiveRenderError
+    _assert_scratch_listeners_removed(admin)
+
+
+@pytest.mark.parametrize(
+    ("mode", "reason"),
+    [
+        ("connect-error", "PostgreSQL admin connection failed"),
+        ("denied", "PostgreSQL scratch creation failed"),
+        ("catalog-error", "PostgreSQL scratch catalog check failed"),
+        ("cleanup-error", "PostgreSQL scratch cleanup failed"),
+    ],
+)
+def test_renderer_failure_diagnostics_are_opaque(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+    reason: str,
+) -> None:
+    admin, environment, migration = _scratch_case(monkeypatch, tmp_path, mode)
+    database_url = make_url(environment["DATABASE_URL"]).set(password=admin.canary)
+    environment["DATABASE_URL"] = database_url.render_as_string(hide_password=False)
+    environment.writes.clear()
+    previous = dict(environment)
+    output = tmp_path / "rendered.sql"
+    status: int | None = None
+    escaped: str | None = None
+
+    try:
+        status = renderer.main([str(migration), str(output)])
+    except Exception as error:
+        escaped = type(error).__name__
+
+    captured = capsys.readouterr()
+    opaque = admin.canary not in captured.out + captured.err
+    assert opaque, "transport diagnostics must not contain private context"
+    assert escaped is None, "CLI must convert transport failures to bounded errors"
+    assert status == 2
+    assert captured.out == ""
+    assert captured.err == f"error: {reason}\n"
+    assert not output.exists()
+    environment_restored = environment == previous
+    assert environment_restored, "renderer must restore the prior environment"
+    assert admin.disposed
+    _assert_scratch_listeners_removed(admin)

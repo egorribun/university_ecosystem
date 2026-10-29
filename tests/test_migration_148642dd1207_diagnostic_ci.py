@@ -673,3 +673,216 @@ def test_ordinary_capture_rejects_invalid_inputs_before_logging(
     with pytest.raises(SystemExit, match="AUD148 ordinary capture:"):
         runpy.run_path(str(script), run_name="__main__")
     assert capsys.readouterr().out == ""
+
+
+_RENDERER_LIFECYCLE_NAMES = (
+    "test_live_renderer_records_transaction_events_and_removes_listeners_on_success",
+    "test_live_renderer_records_rollback_and_removes_listeners_on_failure",
+    "test_scratch_requires_template0_and_empty_catalog_before_upgrade",
+    "test_scratch_create_failure_never_drops_or_changes_execution_state",
+    "test_scratch_nonempty_or_unverifiable_catalog_blocks_upgrade",
+    "test_scratch_cleanup_requires_confirmed_created_database_identity",
+    "test_renderer_failure_diagnostics_are_opaque",
+)
+_RENDERER_LIFECYCLE_SELECTORS = tuple(
+    "tests/test_alembic_live_sql_render.py::" + name
+    for name in _RENDERER_LIFECYCLE_NAMES
+)
+
+
+def _renderer_lifecycle_step(job):
+    matches = [
+        step
+        for step in job["steps"]
+        if step.get("id") == "renderer-lifecycle-evidence"
+    ]
+    assert len(matches) == 1, "one bounded renderer lifecycle step is required"
+    return matches[0]
+
+
+def _assert_renderer_lifecycle_contract(job):
+    step = _renderer_lifecycle_step(job)
+    steps = job["steps"]
+    original = next(s for s in steps if s.get("id") == "migration-squawk")
+    assert steps[-1] is step
+    assert steps[-2]["name"] == "Check Alembic schema drift (MOD-14-03)"
+    assert job["timeout-minutes"] == 15
+    assert step["name"] == "Verify Alembic renderer lifecycle contracts"
+    assert step["timeout-minutes"] == 3
+    assert step["shell"] == "bash"
+    assert "continue-on-error" not in job
+    assert "continue-on-error" not in original
+    assert "continue-on-error" not in step
+    assert "permissions" not in step
+    assert " ".join(step["if"].split()) == (
+        "${{ !cancelled() && "
+        "(steps.migration-squawk.outcome == 'success' || "
+        "steps.migration-squawk.outcome == 'failure') }}"
+    )
+    assert step["env"] == {
+        "SECRET_KEY": "${{ env.SECRET_KEY }}",
+        "ENVIRONMENT": "testing",
+        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "RUN_INTEGRATION_TESTS": "",
+    }
+    run = step["run"]
+    assert run.splitlines()[0] == "set -euo pipefail"
+    assert 'probe_root="$(mktemp -d)"' in run
+    assert "trap 'rm -rf -- \"$probe_root\"' EXIT" in run
+    commands = [
+        line.strip()
+        for line in run.replace("\\\n", "").splitlines()
+        if line.lstrip().startswith("timeout ")
+    ]
+    assert len(commands) == 1
+    assert shlex.split(commands[0]) == [
+        "timeout",
+        "--signal=TERM",
+        "--kill-after=5s",
+        "150s",
+        "uv",
+        "run",
+        "--frozen",
+        "--no-sync",
+        "pytest",
+        "-n",
+        "0",
+        "-vv",
+        "--tb=short",
+        "--show-capture=no",
+        "--no-cov",
+        "--maxfail=0",
+        *_RENDERER_LIFECYCLE_SELECTORS,
+        "--basetemp=$probe_root/basetemp",
+        "--junitxml=$probe_root/junit.xml",
+        ">",
+        "$test_log",
+        "2>&1",
+        "||",
+        "pytest_status=$?",
+    ]
+    for selector in _RENDERER_LIFECYCLE_SELECTORS:
+        assert run.count(selector) == 1
+    assert 'bytes="$(wc -c < "$test_log")"' in run
+    assert 'head -c 131072 "$test_log"' in run
+    assert "ALEMBIC_RENDERER_LIFECYCLE_TESTS_BEGIN" in run
+    assert "ALEMBIC_RENDERER_LIFECYCLE_TESTS_END" in run
+    assert (
+        "uv run --frozen --no-sync python - "
+        "\"$probe_root/junit.xml\" <<'PY_RENDERER_RECEIPT' || receipt_status=$?"
+        in run
+    )
+    assert (
+        'if [ "$bytes" -gt 131072 ]; then\n'
+        '  echo "::error::Alembic renderer lifecycle output exceeded 131072 bytes"\n'
+        "  receipt_status=1\nfi\n"
+        'if [ "$pytest_status" -ne 0 ]; then\n'
+        '  exit "$pytest_status"\nfi\nexit "$receipt_status"'
+    ) == run[run.index('if [ "$bytes" -gt 131072 ]; then') :].rstrip()
+    assert "|| true" not in run
+    assert "set +e" not in run
+
+
+def test_renderer_lifecycle_diagnostic_is_last_bounded_and_fail_preserving() -> None:
+    job, _, _, _ = _steps()
+    _assert_renderer_lifecycle_contract(job)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "missing-selector",
+        "reordered-selectors",
+        "success-only",
+        "advisory",
+        "not-last",
+        "postgres-environment",
+        "integration-opt-in",
+        "maxfail",
+        "discard-exit",
+    ],
+)
+def test_renderer_lifecycle_contract_rejects_dispatch_bypasses(defect) -> None:
+    job, _, _, _ = _steps()
+    _assert_renderer_lifecycle_contract(job)
+    step = _renderer_lifecycle_step(job)
+    if defect == "missing-selector":
+        step["run"] = step["run"].replace(_RENDERER_LIFECYCLE_SELECTORS[-1], "")
+    elif defect == "reordered-selectors":
+        first, second = _RENDERER_LIFECYCLE_SELECTORS[:2]
+        run = step["run"].replace(first, "RENDERER_SELECTOR_PLACEHOLDER")
+        run = run.replace(second, first)
+        step["run"] = run.replace("RENDERER_SELECTOR_PLACEHOLDER", second)
+    elif defect == "success-only":
+        step["if"] = "${{ success() }}"
+    elif defect == "advisory":
+        step["continue-on-error"] = True
+    elif defect == "not-last":
+        job["steps"][-2], job["steps"][-1] = job["steps"][-1], job["steps"][-2]
+    elif defect == "postgres-environment":
+        step["env"]["DATABASE_URL"] = "postgresql://unexpected"
+    elif defect == "integration-opt-in":
+        step["env"]["RUN_INTEGRATION_TESTS"] = "1"
+    elif defect == "maxfail":
+        step["run"] = step["run"].replace("--maxfail=0", "--maxfail=1")
+    else:
+        assert defect == "discard-exit"
+        step["run"] = step["run"].replace('exit "$pytest_status"', "exit 0")
+    with pytest.raises(AssertionError):
+        _assert_renderer_lifecycle_contract(job)
+
+
+@pytest.mark.parametrize(
+    "defect", ["count", "duplicate", "skipped", "malformed", "oversized"]
+)
+def test_renderer_lifecycle_receipt_rejects_incomplete_results(
+    tmp_path, monkeypatch, capsys, defect
+) -> None:
+    job, _, _, _ = _steps()
+    run = _renderer_lifecycle_step(job)["run"]
+    opening = "<<'PY_RENDERER_RECEIPT' || receipt_status=$?\n"
+    body = run.split(opening, 1)[1].split("\nPY_RENDERER_RECEIPT\n", 1)[0]
+    script = tmp_path / "receipt.py"
+    script.write_text(body, encoding="utf-8")
+    report = tmp_path / "junit.xml"
+    cases = [
+        f'<testcase classname="owned.renderer" name="case-{index}"/>'
+        for index in range(24)
+    ]
+    start = '<testsuites><testsuite tests="24" failures="0" errors="0" skipped="0">'
+    end = "</testsuite></testsuites>"
+    valid = start + "".join(cases) + end
+    report.write_text(valid, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [str(script), str(report)])
+    runpy.run_path(str(script), run_name="__main__")
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert output.out.endswith("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 24\n")
+    counts = json.loads(output.out.splitlines()[0].split(" ", 1)[1])
+    assert counts == {"tests": 24, "failures": 0, "errors": 0, "skipped": 0}
+
+    private = make_test_marker(length=32)
+    if defect == "count":
+        value = valid.replace('tests="24"', 'tests="23"')
+    elif defect == "duplicate":
+        value = start + "".join([cases[0], *cases[:-1]]) + end
+    elif defect == "skipped":
+        value = valid.replace('skipped="0"', 'skipped="1"').replace(
+            cases[0], '<testcase name="omitted"><skipped/></testcase>'
+        )
+    elif defect == "malformed":
+        value = "<" + private
+    else:
+        assert defect == "oversized"
+        value = private + "x" * 1_048_577
+    report.write_text(value, encoding="utf-8")
+    with pytest.raises(SystemExit) as failure:
+        runpy.run_path(str(script), run_name="__main__")
+    assert failure.value.code == 1
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert output.out.endswith("ALEMBIC_RENDERER_LIFECYCLE_RECEIPT_REJECTED\n")
+    assert "VERIFIED_PASS" not in output.out
+    assert private not in output.out
+    assert str(tmp_path) not in output.out
+    assert len(output.out.encode()) < 1024
