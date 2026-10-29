@@ -5,6 +5,8 @@
  * executes scripts or recursively follows imports. "complete" covers only this
  * root grammar, not handlers, service workers or arbitrary JavaScript execution.
  * The caller owns checkout/run provenance and a quiescent output directory.
+ * Optional trusted synchronous onRejected gets one closed reason on failure,
+ * never on success. Its return value is not awaited; rejected promises are handled.
  *
  * Static path checks and O_NOFOLLOW do not eliminate intermediate-directory
  * rename races. AST limits apply after parsing, not before parser allocation;
@@ -38,8 +40,34 @@ const IGNORED_AST_KEYS = new Set([
   "extra",
 ])
 
-function requireInput(condition) {
-  if (!condition) throw new Error("FINAL_HTML_INPUT_REJECTED")
+const REJECTION_REASONS = new Set([
+  "input-read",
+  "input-path",
+  "platform",
+  "path",
+  "file-kind",
+  "file-change",
+  "file-bytes",
+  "utf8",
+  "empty-html",
+  "namespace",
+  "inline-location",
+  "root-count",
+  "ast-nodes",
+  "import-edges",
+  "total-asset-bytes",
+  "output-bytes",
+])
+
+class InventoryRejection extends Error {
+  constructor(reason) {
+    super("FINAL_HTML_INPUT_REJECTED")
+    this.reason = reason
+  }
+}
+
+function requireInput(condition, reason) {
+  if (!condition) throw new InventoryRejection(reason)
 }
 
 function digest(bytes) {
@@ -47,7 +75,11 @@ function digest(bytes) {
 }
 
 function decode(bytes) {
-  return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
+  try {
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
+  } catch {
+    throw new InventoryRejection("utf8")
+  }
 }
 
 function sameFile(left, right) {
@@ -60,17 +92,17 @@ async function readOwnedFile(root, name, limit) {
   for (const part of parts.slice(0, -1)) {
     parent = path.join(parent, part)
     const directory = await lstat(parent)
-    requireInput(directory.isDirectory() && !directory.isSymbolicLink())
+    requireInput(directory.isDirectory() && !directory.isSymbolicLink(), "path")
   }
   const file = path.join(root, ...parts)
-  requireInput((await realpath(parent)) === parent)
+  requireInput((await realpath(parent)) === parent, "path")
   const before = await lstat(file, { bigint: true })
-  requireInput(before.isFile() && !before.isSymbolicLink())
-  requireInput(before.size <= BigInt(limit))
+  requireInput(before.isFile() && !before.isSymbolicLink(), "file-kind")
+  requireInput(before.size <= BigInt(limit), "file-bytes")
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   try {
     const opened = await handle.stat({ bigint: true })
-    requireInput(opened.isFile() && sameFile(before, opened))
+    requireInput(opened.isFile() && sameFile(before, opened), "file-change")
     const chunks = []
     let size = 0
     while (true) {
@@ -78,7 +110,7 @@ async function readOwnedFile(root, name, limit) {
       const { bytesRead } = await handle.read(chunk, 0, chunk.length, null)
       if (bytesRead === 0) break
       size += bytesRead
-      requireInput(size <= limit)
+      requireInput(size <= limit, "file-bytes")
       chunks.push(chunk.subarray(0, bytesRead))
     }
     const after = await handle.stat({ bigint: true })
@@ -90,7 +122,8 @@ async function readOwnedFile(root, name, limit) {
         sameFile(opened, after) &&
         sameFile(after, linked) &&
         BigInt(size) === after.size &&
-        (await realpath(parent)) === parent
+        (await realpath(parent)) === parent,
+      "file-change"
     )
     return Buffer.concat(chunks, size)
   } finally {
@@ -181,7 +214,7 @@ function analyzeScript(source, mode, importer) {
     }
     if (typeof node.type !== "string") continue
     nodes += 1
-    requireInput(nodes <= NODE_LIMIT)
+    requireInput(nodes <= NODE_LIMIT, "ast-nodes")
     if (
       node.type === "ImportExpression" ||
       node.type === "ImportDeclaration" ||
@@ -196,7 +229,7 @@ function analyzeScript(source, mode, importer) {
           literal: sourceNode.type === "StringLiteral",
           value: sourceNode.value,
         })
-        requireInput(occurrences.length <= IMPORT_LIMIT)
+        requireInput(occurrences.length <= IMPORT_LIMIT, "import-edges")
       }
     }
     for (const key of Object.keys(node)) {
@@ -233,7 +266,7 @@ function scriptKind(element, issues) {
 }
 
 async function inspectDocument(fileName, bytes, assets) {
-  requireInput(bytes.length > 0)
+  requireInput(bytes.length > 0, "empty-html")
   const source = decode(bytes)
   // Omit both resources and runScripts. Even resources: {} enables subresource
   // loading in jsdom 30. A fresh unforwarded console cannot print input details.
@@ -246,7 +279,7 @@ async function inspectDocument(fileName, bytes, assets) {
     const roots = []
     let rootCount = 0
     for (const element of dom.window.document.querySelectorAll("base, script, link")) {
-      requireInput(element.namespaceURI === "http://www.w3.org/1999/xhtml")
+      requireInput(element.namespaceURI === "http://www.w3.org/1999/xhtml", "namespace")
       if (element.localName === "base") {
         issues.baseElements += 1
         continue
@@ -272,7 +305,7 @@ async function inspectDocument(fileName, bytes, assets) {
         rootCount += 1
         attribute = "href"
       }
-      requireInput(rootCount <= ROOT_LIMIT)
+      requireInput(rootCount <= ROOT_LIMIT, "root-count")
       if (kind === null) continue
       let assetPath = null
       let content
@@ -291,7 +324,8 @@ async function inspectDocument(fileName, bytes, assets) {
             location.endTag &&
             Number.isSafeInteger(location.startTag.endOffset) &&
             Number.isSafeInteger(location.endTag.startOffset) &&
-            location.startTag.endOffset <= location.endTag.startOffset
+            location.startTag.endOffset <= location.endTag.startOffset,
+          "inline-location"
         )
         text = source.slice(location.startTag.endOffset, location.endTag.startOffset)
         content = Buffer.from(text, "utf8")
@@ -329,25 +363,26 @@ async function inspectDocument(fileName, bytes, assets) {
   }
 }
 
-export async function inspectFinalHtml(clientDir) {
+export async function inspectFinalHtml(clientDir, onRejected) {
   try {
-    requireInput(typeof clientDir === "string" && clientDir.length > 0)
+    requireInput(typeof clientDir === "string" && clientDir.length > 0, "input-path")
     requireInput(
       [constants.O_NOFOLLOW, constants.O_NONBLOCK].every(
         (flag) => Number.isSafeInteger(flag) && flag > 0
-      )
+      ),
+      "platform"
     )
     const root = path.resolve(clientDir)
     const directory = await lstat(root)
-    requireInput(directory.isDirectory() && !directory.isSymbolicLink())
-    requireInput((await realpath(root)) === root)
+    requireInput(directory.isDirectory() && !directory.isSymbolicLink(), "path")
+    requireInput((await realpath(root)) === root, "path")
     const cache = new Map()
     let assetBytes = 0
     async function assets(name) {
       if (!cache.has(name)) {
         const bytes = await readOwnedFile(root, name, ASSET_LIMIT)
         assetBytes += bytes.length
-        requireInput(assetBytes <= TOTAL_ASSET_LIMIT)
+        requireInput(assetBytes <= TOTAL_ASSET_LIMIT, "total-asset-bytes")
         cache.set(name, { bytes, text: decode(bytes), analysis: new Map() })
       }
       return cache.get(name)
@@ -364,9 +399,21 @@ export async function inspectFinalHtml(clientDir) {
       documentsMatch: shell.equals(index),
       documents,
     }
-    requireInput(Buffer.byteLength(JSON.stringify(result)) <= OUTPUT_LIMIT)
+    requireInput(Buffer.byteLength(JSON.stringify(result)) <= OUTPUT_LIMIT, "output-bytes")
     return result
-  } catch {
+  } catch (error) {
+    const reason =
+      error instanceof InventoryRejection && REJECTION_REASONS.has(error.reason)
+        ? error.reason
+        : "input-read"
+    if (typeof onRejected === "function") {
+      try {
+        // Trusted synchronous diagnostics cannot change null or leak rejected promises.
+        void Promise.resolve(onRejected(reason)).catch(() => undefined)
+      } catch {
+        // A throwing diagnostic callback must not replace the closed result.
+      }
+    }
     return null
   }
 }

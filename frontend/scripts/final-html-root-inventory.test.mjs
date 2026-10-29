@@ -25,6 +25,24 @@ const kinds = new Set([
   "modulepreload",
   "script-preload",
 ])
+const inventoryRejectionReasons = [
+  "input-read",
+  "input-path",
+  "platform",
+  "path",
+  "file-kind",
+  "file-change",
+  "file-bytes",
+  "utf8",
+  "empty-html",
+  "namespace",
+  "inline-location",
+  "root-count",
+  "ast-nodes",
+  "import-edges",
+  "total-asset-bytes",
+  "output-bytes",
+]
 const issueNames = [
   "baseElements",
   "computedImports",
@@ -54,7 +72,7 @@ async function setHtml(item, html) {
   await writeFile(path.join(item.clientDir, "index.html"), html)
 }
 
-function inspect(item) {
+function inspect(item, expectedReason = null, callbackMode = "absent") {
   // Isolated child bounds a regression that accidentally executes an inline loop.
   // Transport sentinels stop accidental network loading and make it observable.
   const program = [
@@ -70,7 +88,26 @@ function inspect(item) {
     "globalThis.WebSocket = blocked",
     "try {",
     "  const { inspectFinalHtml } = await import(" + JSON.stringify(subjectUrl.href) + ")",
-    "  const value = await inspectFinalHtml(" + JSON.stringify(item.clientDir) + ")",
+    "  const rejections = []",
+    "  const mode = " + JSON.stringify(callbackMode),
+    "  const expected = " + JSON.stringify(expectedReason),
+    "  const allowed = " + JSON.stringify(inventoryRejectionReasons),
+    "  const observe = expected !== null || mode !== 'absent'",
+    "  const onRejected = (reason) => {",
+    "    rejections.push(reason)",
+    "    if (mode === 'throw') throw new Error(" + JSON.stringify(privateCanary) + ")",
+    "    if (mode === 'reject') return Promise.reject(new Error(" +
+      JSON.stringify(privateCanary) +
+      "))",
+    "    if (mode === 'pending') return new Promise(() => {})",
+    "  }",
+    "  const value = await inspectFinalHtml(" +
+      JSON.stringify(item.clientDir) +
+      ", observe ? onRejected : undefined)",
+    "  if (observe && value === null && (rejections.length !== 1 ||",
+    "      !allowed.includes(rejections[0]) ||",
+    "      (expected !== null && rejections[0] !== expected))) throw new Error('BAD_REASON')",
+    "  if (observe && value !== null && rejections.length !== 0) throw new Error('BAD_CALLBACK')",
     "  if (networkAttempts !== 0) throw new Error('NETWORK_ATTEMPT')",
     "  process.stdout.write(JSON.stringify(value) + '\\n')",
     "} catch {",
@@ -480,16 +517,43 @@ const rejectedCases = [
     },
   ],
 ]
+const rejectedReasons = {
+  "missing-shell": "input-read",
+  "missing-index": "input-read",
+  "missing-root-asset": "input-read",
+  "html-symlink": "file-kind",
+  "asset-symlink": "file-kind",
+  "asset-parent-symlink": "path",
+  "html-oversized": "file-bytes",
+  "asset-oversized": "file-bytes",
+  "html-invalid-utf8": "utf8",
+  "asset-invalid-utf8": "utf8",
+  "too-many-roots": "root-count",
+  "ast-node-cap": "ast-nodes",
+  "import-edge-cap": "import-edges",
+  "serialized-output-cap": "output-bytes",
+  "total-asset-byte-cap": "total-asset-bytes",
+}
 for (const [name, mutate] of rejectedCases) {
   test("invalid or excessive final HTML input returns only null: " + name, async () => {
     await withFixture(async (item) => {
       // The same real API must accept the control before a rejecting assertion.
       receipt(inspect(item))
       await mutate(item)
-      assert.equal(inspect(item), null)
+      assert.equal(inspect(item, rejectedReasons[name]), null)
     })
   })
 }
+
+test("rejection observers stay private and cannot replace the closed result", async () => {
+  await withFixture(async (item) => {
+    receipt(inspect(item, null, "observe"))
+    await rm(path.join(item.clientDir, "index.html"))
+    for (const mode of ["throw", "reject", "pending"]) {
+      assert.equal(inspect(item, "input-read", mode), null)
+    }
+  })
+})
 
 const captureWorkflowUrl = new URL(
   "../../.github/workflows/reusable-frontend-tests.yml",
@@ -702,7 +766,16 @@ function runCapture(program, item) {
     item.env.NODE_OPTIONS === "--max-old-space-size=1024 --max-semi-space-size=16"
   assert.equal(heapBytes > 640 * 1024 * 1024, oversizedHeap)
   let stdout = result.stdout.slice(heapMatch[0].length)
+  let inventoryReason = null
   if (result.status !== 0) {
+    const prefix = "FINAL_HTML_INVENTORY_REJECTION "
+    if (stdout.startsWith(prefix)) {
+      const end = stdout.indexOf("\n")
+      assert.ok(end >= prefix.length && end < 128)
+      inventoryReason = stdout.slice(prefix.length, end)
+      assert.ok(inventoryRejectionReasons.includes(inventoryReason))
+      stdout = stdout.slice(end + 1)
+    }
     const stage = /^FINAL_HTML_INVENTORY_CAPTURE_STAGE ([a-z]+)\n$/u.exec(stdout)
     assert.ok(stage, "capture rejection must contain only a closed stage")
     assert.equal(stage[0].length, stdout.length, "capture rejection must be exactly one line")
@@ -722,9 +795,10 @@ function runCapture(program, item) {
       ].includes(stage[1]),
       "capture rejection stage must be allowlisted"
     )
+    if (inventoryReason !== null) assert.equal(stage[1], "inventory")
     stdout = ""
   }
-  return { ...result, stdout }
+  return { ...result, stdout, inventoryReason }
 }
 
 async function capturedReport(program, item) {
@@ -968,6 +1042,7 @@ test("capture wrapper binds owned source context and keeps failures closed", asy
       const result = runCapture(program, item)
       assert.equal(result.status, 1, "invalid capture must fail closed: " + name)
       assert.equal(result.stdout, "")
+      assert.equal(result.inventoryReason, name === "missing-final-index" ? "input-read" : null)
       assert.equal(result.stderr === captureFailure, true, "capture uses one fixed failure token")
       assert.deepEqual(await readdir(item.runnerTemp), before)
       if (oldOutput !== null) {

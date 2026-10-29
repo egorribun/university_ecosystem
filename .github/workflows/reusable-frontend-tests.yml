@@ -1176,6 +1176,24 @@ jobs:
           const SOURCE_LIMIT = 2 * 1024 * 1024
           const REPORT_LIMIT = 65_536
           const MAX_V8_HEAP_BYTES = 640 * 1024 * 1024
+          const REJECTION_REASONS = new Set([
+            "input-read",
+            "input-path",
+            "platform",
+            "path",
+            "file-kind",
+            "file-change",
+            "file-bytes",
+            "utf8",
+            "empty-html",
+            "namespace",
+            "inline-location",
+            "root-count",
+            "ast-nodes",
+            "import-edges",
+            "total-asset-bytes",
+            "output-bytes",
+          ])
           const sourcePaths = [
             ".github/workflows/reusable-frontend-tests.yml",
             "frontend/package.json",
@@ -1349,9 +1367,21 @@ jobs:
               pathToFileURL(path.join(frontend, "scripts/final-html-root-inventory.mjs")).href
             )
             captureStage = "inventory"
-            const inventory = await inspectFinalHtml(client)
+            let rejectionReason
+            let rejectionCalls = 0
+            const inventory = await inspectFinalHtml(client, (reason) => {
+              rejectionCalls += 1
+              if (REJECTION_REASONS.has(reason)) rejectionReason = reason
+            })
+            if (inventory === null) {
+              check(rejectionCalls === 1 && REJECTION_REASONS.has(rejectionReason))
+              const rejected = "FINAL_HTML_INVENTORY_REJECTION " + rejectionReason + "\n"
+              check(Buffer.byteLength(rejected) < 128)
+              process.stdout.write(rejected)
+            }
             check(
               inventory !== null &&
+                rejectionCalls === 0 &&
                 inventory.schemaVersion === 1 &&
                 inventory.kind === "final-html-root-inventory-not-budget-proof" &&
                 Buffer.byteLength(JSON.stringify(inventory)) <= 32_767
