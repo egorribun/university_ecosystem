@@ -1330,3 +1330,96 @@ def test_renderer_restores_unset_environment_after_owned_scratch(
     assert admin.upgrades == ["parent", "target"]
     assert admin.disposed and admin.scratch_disposed
     _assert_scratch_listeners_removed(admin)
+
+
+def test_renderer_admin_pool_reset_diagnostics_are_opaque(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import logging
+    import sqlite3
+
+    from sqlalchemy.pool import QueuePool
+
+    marker = "synthetic-" + uuid.uuid4().hex
+    engine = sa.create_engine(
+        "sqlite://",
+        poolclass=QueuePool,
+        pool_logging_name="renderer-reset-" + uuid.uuid4().hex,
+        isolation_level="AUTOCOMMIT",
+    )
+    database_url = "postgresql+psycopg://renderer@localhost/owned_fixture"
+    pool_logger = engine.pool.logger
+    assert isinstance(pool_logger, logging.Logger)
+    reset_calls: list[bool] = []
+    returned: sa.Engine | None = None
+    bounded_error = False
+    private_error = False
+    private_sinks = False
+    pool_failure_logged = False
+
+    def owned_sqlite_transport(url: str | sa.URL, **_kwargs: object) -> sa.Engine:
+        # Replace only the DB transport: Engine, QueuePool and renderer stay real.
+        # This is not PostgreSQL SQL, catalog-admission or network evidence.
+        assert make_url(url) == make_url(database_url)
+        return engine
+
+    original_reset = engine.dialect.do_rollback
+
+    def failed_reset(connection: object) -> None:
+        original_reset(connection)
+        reset_calls.append(True)
+        raise sqlite3.OperationalError(marker)
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(renderer.sa, "create_engine", owned_sqlite_transport)
+            # Capture only this uniquely named pool. No global logger is disabled,
+            # and raw synthetic records must not reach pytest's failure report.
+            patch.setattr(pool_logger, "propagate", False)
+            pool_logger.addHandler(caplog.handler)
+            try:
+                with caplog.at_level(logging.ERROR, logger=pool_logger.name):
+                    # Positive control also primes dialect initialization before
+                    # injecting the return-to-pool rollback transport failure.
+                    assert renderer._connect_admin(database_url) is engine
+                    with engine.connect() as connection:
+                        value = connection.exec_driver_sql("SELECT 73").scalar_one()
+                        assert value == 73
+                    assert not caplog.records
+                    control = capsys.readouterr()
+                    assert control.out == "" and control.err == ""
+
+                    patch.setattr(engine.dialect, "do_rollback", failed_reset)
+                    try:
+                        returned = renderer._connect_admin(database_url)
+                    except Exception as error:
+                        private_error = marker in str(error)
+                        bounded_error = (
+                            type(error) is renderer.LiveRenderError
+                            and str(error) == "PostgreSQL admin connection failed"
+                        )
+
+                    pool_failure_logged = any(
+                        record.name == pool_logger.name
+                        and record.levelno >= logging.ERROR
+                        for record in caplog.records
+                    )
+                    captured = capsys.readouterr()
+                    private_sinks = marker in caplog.text + captured.out + captured.err
+                    del captured
+            finally:
+                caplog.clear()
+                pool_logger.removeHandler(caplog.handler)
+    finally:
+        # The monkeypatch context restores the real rollback before disposal.
+        engine.dispose()
+
+    assert reset_calls, "the real pool must reach the injected reset failure"
+    assert returned is engine or bounded_error, "unexpected renderer failure shape"
+    assert pool_failure_logged, "the real pool failure must remain observable"
+    assert not private_error
+    assert not private_sinks, (
+        "renderer pool diagnostics exposed synthetic private context"
+    )

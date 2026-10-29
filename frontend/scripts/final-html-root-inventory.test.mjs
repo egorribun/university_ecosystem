@@ -701,7 +701,30 @@ function runCapture(program, item) {
   const oversizedHeap =
     item.env.NODE_OPTIONS === "--max-old-space-size=1024 --max-semi-space-size=16"
   assert.equal(heapBytes > 640 * 1024 * 1024, oversizedHeap)
-  return { ...result, stdout: result.stdout.slice(heapMatch[0].length) }
+  let stdout = result.stdout.slice(heapMatch[0].length)
+  if (result.status !== 0) {
+    const stage = /^FINAL_HTML_INVENTORY_CAPTURE_STAGE ([a-z]+)\n$/u.exec(stdout)
+    assert.ok(stage, "capture rejection must contain only a closed stage")
+    assert.equal(stage[0].length, stdout.length, "capture rejection must be exactly one line")
+    assert.ok(
+      [
+        "heap",
+        "environment",
+        "context",
+        "git",
+        "source",
+        "toolchain",
+        "import",
+        "inventory",
+        "recheck",
+        "output",
+        "readback",
+      ].includes(stage[1]),
+      "capture rejection stage must be allowlisted"
+    )
+    stdout = ""
+  }
+  return { ...result, stdout }
 }
 
 async function capturedReport(program, item) {
@@ -782,10 +805,7 @@ test("final HTML capture preserves production ordering and separate artifacts", 
   assert.ok(production > diagnostic && lighthouse > production)
   assert.match(step, /^\s+id: capture-final-html-inventory$/mu)
   assert.match(step, /^\s+timeout-minutes: 1$/mu)
-  assert.match(
-    step,
-    /^\s+NODE_OPTIONS: "--max-old-space-size=512 --max-semi-space-size=16"$/mu
-  )
+  assert.match(step, /^\s+NODE_OPTIONS: "--max-old-space-size=512 --max-semi-space-size=16"$/mu)
   assert.doesNotMatch(step + upload, /continue-on-error|permissions:|^\s+if:/mu)
   const expression = (value) => "$" + "{{ " + value + " }}"
   assert.ok(

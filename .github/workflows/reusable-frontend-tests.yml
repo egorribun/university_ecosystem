@@ -1234,6 +1234,7 @@ jobs:
 
           let ownedOutput
           let ownedIdentity
+          let captureStage = "heap"
           try {
             // This bounds V8 heap, not native allocations, external buffers or total RSS.
             const heapLimit = getHeapStatistics().heap_size_limit
@@ -1247,6 +1248,7 @@ jobs:
                 (flag) => Number.isSafeInteger(flag) && flag > 0
               )
             )
+            captureStage = "environment"
             const workspace = await directory(process.env.GITHUB_WORKSPACE)
             const frontend = await directory(path.join(workspace, "frontend"))
             check(path.resolve(process.cwd()) === frontend)
@@ -1255,6 +1257,7 @@ jobs:
             const temporary = await directory(process.env.RUNNER_TEMP)
             check(!within(dist, temporary))
             check(!process.env.VITE_LHCI)
+            captureStage = "context"
             const {
               GITHUB_SHA: githubSha,
               GITHUB_RUN_ID: runId,
@@ -1274,6 +1277,7 @@ jobs:
             )
 
             // These commands read only this checkout. Never inherit Git overrides or credentials.
+            captureStage = "git"
             const gitEnvironment = {
               PATH: process.env.PATH || "",
               HOME: workspace,
@@ -1314,6 +1318,7 @@ jobs:
               check(parentShas.length === 2 && parentShas[0] === prBaseSha && parentShas[1] === prHeadSha)
             }
 
+            captureStage = "source"
             const checkedSourceFiles = {}
             const sourceBytes = new Map()
             for (const relative of sourcePaths) {
@@ -1323,6 +1328,7 @@ jobs:
               checkedSourceFiles[relative] = hash(bytes)
               sourceBytes.set(relative, bytes)
             }
+            captureStage = "toolchain"
             const lock = JSON.parse(sourceBytes.get("frontend/package-lock.json").toString("utf8"))
             const require = createRequire(path.join(frontend, "package.json"))
             const toolchain = {}
@@ -1338,9 +1344,11 @@ jobs:
             }
 
             // Verified source, not a sandbox: dependencies and runner ownership are external prerequisites.
+            captureStage = "import"
             const { inspectFinalHtml } = await import(
               pathToFileURL(path.join(frontend, "scripts/final-html-root-inventory.mjs")).href
             )
+            captureStage = "inventory"
             const inventory = await inspectFinalHtml(client)
             check(
               inventory !== null &&
@@ -1348,12 +1356,14 @@ jobs:
                 inventory.kind === "final-html-root-inventory-not-budget-proof" &&
                 Buffer.byteLength(JSON.stringify(inventory)) <= 32_767
             )
+            captureStage = "recheck"
             check(gitText(["rev-parse", "--verify", "HEAD"]) === checkoutSha)
             for (const relative of sourcePaths) {
               check(hash(await boundedFile(path.join(workspace, relative))) === checkedSourceFiles[relative])
             }
 
             // Event/run values remain claimed context; this is not authenticated artifact admission.
+            captureStage = "output"
             const report = {
               schemaVersion: 1,
               kind: "final-html-capture-diagnostic-not-admission",
@@ -1393,6 +1403,7 @@ jobs:
             } finally {
               await handle.close()
             }
+            captureStage = "readback"
             const verified = await boundedFile(output, REPORT_LIMIT)
             check(verified.equals(bytes) && hash(verified) === hash(bytes))
             const published = await lstat(output, { bigint: true })
@@ -1416,6 +1427,7 @@ jobs:
                 // The owned temporary directory is later removed by the runner.
               }
             }
+            process.stdout.write("FINAL_HTML_INVENTORY_CAPTURE_STAGE " + captureStage + "\n")
             process.stderr.write("FINAL_HTML_INVENTORY_CAPTURE_REJECTED\n")
             process.exitCode = 1
           }
