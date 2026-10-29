@@ -15,6 +15,7 @@ databases on.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sys
@@ -94,6 +95,26 @@ LIMIT 3
 _TEMPLATE0_CATALOG_BASELINE = frozenset(
     {("schema", None, "public"), ("extension", "pg_catalog", "plpgsql")}
 )
+
+
+class _RendererPoolLogger(logging.LoggerAdapter):
+    """Keep private driver objects out of this renderer's pool diagnostics."""
+
+    def log(self, level: int, msg: object, *args: object, **kwargs: object) -> None:
+        # Do not forward driver arguments, exceptions, stack text or extras.
+        # The original level and logger remain observable; other loggers are
+        # untouched. SQL echo and migration exceptions are separate boundaries.
+        self.logger.log(level, "PostgreSQL renderer pool diagnostic")
+
+
+class _RendererPool(sa.pool.QueuePool):
+    """Retain opaque pool diagnostics when SQLAlchemy recreates the pool."""
+
+    _sqla_logger_namespace = "sqlalchemy.pool.impl.QueuePool"
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        super().__init__(*args, **kwargs)
+        self.logger = _RendererPoolLogger(self.logger, {})
 
 
 class LiveRenderError(RuntimeError):
@@ -212,6 +233,7 @@ def _admin_engine(database_url: str) -> sa.Engine:
         return sa.create_engine(
             url,
             isolation_level="AUTOCOMMIT",
+            poolclass=_RendererPool,
             connect_args={"connect_timeout": 5},
         )
     except sa.exc.SQLAlchemyError:
@@ -292,6 +314,7 @@ def _assert_empty_scratch_catalog(database_url: str | sa.URL) -> None:
         engine = sa.create_engine(
             url,
             isolation_level="AUTOCOMMIT",
+            poolclass=_RendererPool,
             connect_args={"connect_timeout": 5},
         )
         with engine.connect() as connection:

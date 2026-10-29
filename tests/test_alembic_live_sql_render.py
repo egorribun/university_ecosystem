@@ -1332,6 +1332,38 @@ def test_renderer_restores_unset_environment_after_owned_scratch(
     _assert_scratch_listeners_removed(admin)
 
 
+def _install_renderer_pool_transport(
+    monkeypatch: pytest.MonkeyPatch, database_url: str
+) -> list[sa.Engine]:
+    from sqlalchemy.pool import QueuePool
+
+    create_engine = sa.create_engine
+    engines: list[sa.Engine] = []
+    options: dict[str, object] = {}
+
+    def owned_sqlite_transport(url: str | sa.URL, **kwargs: object) -> sa.Engine:
+        # Keep the requested pool/configuration; replace only the PG transport.
+        assert make_url(url) == make_url(database_url)
+        assert kwargs.pop("connect_args") == {"connect_timeout": 5}
+        kwargs.setdefault("poolclass", QueuePool)
+        assert set(kwargs) == {"isolation_level", "poolclass"}
+        assert kwargs["isolation_level"] == "AUTOCOMMIT"
+        if engines:
+            assert kwargs == options
+            return engines[0]
+        options.update(kwargs)
+        engine = create_engine(
+            "sqlite://",
+            pool_logging_name="renderer-pool-" + uuid.uuid4().hex,
+            **kwargs,
+        )
+        engines.append(engine)
+        return engine
+
+    monkeypatch.setattr(renderer.sa, "create_engine", owned_sqlite_transport)
+    return engines
+
+
 def test_renderer_admin_pool_reset_diagnostics_are_opaque(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -1340,49 +1372,36 @@ def test_renderer_admin_pool_reset_diagnostics_are_opaque(
     import logging
     import sqlite3
 
-    from sqlalchemy.pool import QueuePool
-
     marker = "synthetic-" + uuid.uuid4().hex
-    engine = sa.create_engine(
-        "sqlite://",
-        poolclass=QueuePool,
-        pool_logging_name="renderer-reset-" + uuid.uuid4().hex,
-        isolation_level="AUTOCOMMIT",
-    )
     database_url = "postgresql+psycopg://renderer@localhost/owned_fixture"
-    pool_logger = engine.pool.logger
-    assert isinstance(pool_logger, logging.Logger)
     reset_calls: list[bool] = []
     returned: sa.Engine | None = None
     bounded_error = False
     private_error = False
     private_sinks = False
     pool_failure_logged = False
-
-    def owned_sqlite_transport(url: str | sa.URL, **_kwargs: object) -> sa.Engine:
-        # Replace only the DB transport: Engine, QueuePool and renderer stay real.
-        # This is not PostgreSQL SQL, catalog-admission or network evidence.
-        assert make_url(url) == make_url(database_url)
-        return engine
-
-    original_reset = engine.dialect.do_rollback
-
-    def failed_reset(connection: object) -> None:
-        original_reset(connection)
-        reset_calls.append(True)
-        raise sqlite3.OperationalError(marker)
+    engines: list[sa.Engine] = []
 
     try:
         with monkeypatch.context() as patch:
-            patch.setattr(renderer.sa, "create_engine", owned_sqlite_transport)
+            engines = _install_renderer_pool_transport(patch, database_url)
+            engine = renderer._admin_engine(database_url)
+            pool_logger = logging.getLogger(engine.pool.logger.name)
+            assert pool_logger.name.startswith("sqlalchemy.pool.impl.QueuePool.")
+            original_reset = engine.dialect.do_rollback
+
+            def failed_reset(connection: object) -> None:
+                original_reset(connection)
+                reset_calls.append(True)
+                raise sqlite3.OperationalError(marker)
+
             # Capture only this uniquely named pool. No global logger is disabled,
             # and raw synthetic records must not reach pytest's failure report.
             patch.setattr(pool_logger, "propagate", False)
             pool_logger.addHandler(caplog.handler)
             try:
                 with caplog.at_level(logging.ERROR, logger=pool_logger.name):
-                    # Positive control also primes dialect initialization before
-                    # injecting the return-to-pool rollback transport failure.
+                    # Positive control primes initialization before reset failure.
                     assert renderer._connect_admin(database_url) is engine
                     with engine.connect() as connection:
                         value = connection.exec_driver_sql("SELECT 73").scalar_one()
@@ -1413,8 +1432,9 @@ def test_renderer_admin_pool_reset_diagnostics_are_opaque(
                 caplog.clear()
                 pool_logger.removeHandler(caplog.handler)
     finally:
-        # The monkeypatch context restores the real rollback before disposal.
-        engine.dispose()
+        # Restore the real rollback before disposing every owned engine.
+        for engine in engines:
+            engine.dispose()
 
     assert reset_calls, "the real pool must reach the injected reset failure"
     assert returned is engine or bounded_error, "unexpected renderer failure shape"
@@ -1423,3 +1443,136 @@ def test_renderer_admin_pool_reset_diagnostics_are_opaque(
     assert not private_sinks, (
         "renderer pool diagnostics exposed synthetic private context"
     )
+
+
+@pytest.mark.parametrize("entry_point", ["admin", "catalog"])
+def test_renderer_pool_privacy_survives_recreation_without_changing_other_pools(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+    entry_point: str,
+) -> None:
+    import logging
+    import sqlite3
+
+    from sqlalchemy.pool import QueuePool
+
+    marker = "synthetic-" + uuid.uuid4().hex
+    database_url = "postgresql+psycopg://renderer@localhost/owned_fixture"
+    create_engine = sa.create_engine
+    unrelated = create_engine(
+        "sqlite://",
+        poolclass=QueuePool,
+        pool_logging_name="unrelated-pool-" + uuid.uuid4().hex,
+    )
+    engines: list[sa.Engine] = []
+    invalidations: list[bool] = []
+    info_observed = False
+    private_sinks = False
+    bounded_records = False
+    unrelated_unchanged = False
+    operation_failed = False
+
+    def observed_invalidation(
+        _connection: object, _record: object, error: BaseException | None
+    ) -> None:
+        invalidations.append(isinstance(error, sqlite3.OperationalError))
+
+    try:
+        with monkeypatch.context() as patch:
+            engines = _install_renderer_pool_transport(patch, database_url)
+            if entry_point == "admin":
+                engine = renderer._admin_engine(database_url)
+            else:
+                # Real SQLite cannot execute PG catalogs: only the owned engine
+                # creation/disposal path is tested here, not catalog admission.
+                with pytest.raises(
+                    renderer.LiveRenderError,
+                    match="^PostgreSQL scratch catalog check failed$",
+                ):
+                    renderer._assert_empty_scratch_catalog(database_url)
+                engine = engines[0]
+
+            pool_logger = logging.getLogger(engine.pool.logger.name)
+            assert pool_logger.name.startswith("sqlalchemy.pool.impl.QueuePool.")
+            other_logger = logging.getLogger(unrelated.pool.logger.name)
+            assert isinstance(unrelated.pool.logger, logging.Logger)
+            assert not pool_logger.filters
+            assert not other_logger.filters
+            for logger in (pool_logger, other_logger):
+                patch.setattr(logger, "propagate", False)
+                logger.addHandler(caplog.handler)
+            sa.event.listen(engine, "invalidate", observed_invalidation)
+            try:
+                with (
+                    caplog.at_level(logging.INFO, logger=pool_logger.name),
+                    caplog.at_level(logging.INFO, logger=other_logger.name),
+                ):
+                    with engine.connect() as connection:
+                        value = connection.exec_driver_sql("SELECT 73").scalar_one()
+                        assert value == 73
+                    caplog.clear()
+                    capsys.readouterr()
+                    try:
+                        for recreated in (False, True):
+                            if recreated:
+                                previous_pool = engine.pool
+                                engine.dispose()
+                                assert engine.pool is not previous_pool
+                            with engine.connect() as connection:
+                                connection.invalidate(sqlite3.OperationalError(marker))
+                        engine.pool.logger.error(
+                            "private-%s",
+                            marker,
+                            exc_info=(RuntimeError, RuntimeError(marker), None),
+                            extra={"private_context": marker},
+                            stack_info=True,
+                        )
+                    except Exception:
+                        operation_failed = True
+
+                    records = [
+                        record
+                        for record in caplog.records
+                        if record.name == pool_logger.name
+                    ]
+                    info_observed = any(
+                        record.levelno == logging.INFO for record in records
+                    )
+                    bounded_records = bool(records) and all(
+                        record.msg == "PostgreSQL renderer pool diagnostic"
+                        and record.args == ()
+                        and record.exc_info is None
+                        and record.stack_info is None
+                        and not hasattr(record, "private_context")
+                        for record in records
+                    )
+                    captured = capsys.readouterr()
+                    private_sinks = marker in caplog.text + captured.out + captured.err
+                    del records, captured
+                    caplog.clear()
+                    with unrelated.connect() as connection:
+                        connection.invalidate(sqlite3.OperationalError(marker))
+                    unrelated_unchanged = any(
+                        record.name == other_logger.name
+                        and record.levelno == logging.INFO
+                        and marker in record.getMessage()
+                        for record in caplog.records
+                    )
+                    capsys.readouterr()
+            finally:
+                sa.event.remove(engine, "invalidate", observed_invalidation)
+                caplog.clear()
+                for logger in (pool_logger, other_logger):
+                    logger.removeHandler(caplog.handler)
+    finally:
+        for engine in engines:
+            engine.dispose()
+        unrelated.dispose()
+
+    assert not operation_failed, "owned pool diagnostics must not break operations"
+    assert invalidations == [True, True]
+    assert info_observed, "real invalidation diagnostics must remain observable"
+    assert bounded_records, "owned pool records must contain only fixed diagnostics"
+    assert not private_sinks, "owned pool diagnostics exposed synthetic private context"
+    assert unrelated_unchanged, "other pool diagnostics must remain unchanged"
