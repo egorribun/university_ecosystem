@@ -2,6 +2,104 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source e4c14704: measured regressions and reviewed renderer correction
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment.**
+AUD-447, AUD-208 and AUD-432 remain OPEN. The 286 KiB Map allowance and
+historical Squawk admission remain inactive. No deployed database maintenance,
+template modification, role/grant change, deployment or access expansion occurred.
+
+The reviewed correction is [0232ac6a0f7877bc0b83fda8b201242bd5bfac86](https://github.com/egorribun/university_ecosystem/commit/0232ac6a0f7877bc0b83fda8b201242bd5bfac86).
+Its own hosted execution is **pending** at publication; the receipts below
+belong only to source
+[e4c14704131594490f15c6a931be2d6ccc4b5543](https://github.com/egorribun/university_ecosystem/commit/e4c14704131594490f15c6a931be2d6ccc4b5543),
+tested merge `b4674229a0740316e4008aca623f38dd8898a6b0`, with matching tree
+`f9ecef870ad9edea40066cb56242f88cf888a034`.
+
+### Exact e4c receipts, before the corrective publication
+
+- [Alembic 123523515687](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123523515687):
+  renderer **24 FAIL / two PASS**, zero errors/skips, 6.52 seconds.
+  All prior 24 node identities/outcomes are preserved; the two new dbname
+  cases fail at the expected early-side-effect assertion. The real SQLAlchemy
+  dialect mapping assertion passed first in the API test. This is a
+  constructed-connect-argument
+  and transport regression, not evidence of an original PostgreSQL database
+  actually being mutated. Diagnostic 128 PASS and tenant-context 46 PASS;
+  raw Squawk remains 13 ordinary plus 24 expanded warnings, both exit 1.
+- [Contract 123522377394](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123522377394):
+  3565 PASS / seven FAIL, all seven due to the same missing final-HTML artifact
+  inventory entry. Auth 85, security 638 and the separate scoped 41 pass.
+  The catalog gate also rejects that omission; it is not waived.
+- [Final-HTML contracts 123523200610](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123523200610):
+  31 PASS / one FAIL. Wiring passes, but the first accepting capture control
+  is rejected; the remaining two positive and 14 negative inner controls
+  have not yet executed. [Production 123523200614](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123523200614)
+  builds successfully through Vite and the Map logger, then the capture rejects
+  before upload. Its observed Map gzip size is 292688 bytes (285.83 KiB), still
+  above the unchanged 280 KiB budget.
+- [Owned Core 40894876128](https://github.com/egorribun/university_ecosystem/actions/runs/40894876128):
+  329 preflight PASS, 48 live PASS / two SKIP, NATS and cleanup SUCCESS.
+  [PostgreSQL 123523516914](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123523516914):
+  385 PASS / 16 SKIP, plus 13 migration controls and five durable replay controls.
+- Frontend shards pass 10398 tests in 823 files.
+  [Aggregate 123529480257](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123529480257)
+  covers all 2186 changed lines, zero missing; this is not a global all-metric
+  coverage verdict. Fast pre-commit, frontend lint and blocking CodeQL pass.
+- Backend shard 0 reports 6983 PASS / 82 SKIP / 24 FAIL, exactly the expected
+  renderer lifecycle/dbname regressions. Shard 1 reports 4961 PASS / 144 SKIP.
+  Shards 2/3 were still running at the 15:36 UTC snapshot. No full backend,
+  count-fix full-file or authoritative merged-coverage GREEN is claimed.
+  The earlier 973 shards 0/1 were subsequently cancelled by deliberate
+  supersession, not reported as test failures or a complete backend result.
+
+### Corrective scope and remaining proof
+
+The Map recovery explicitly sets semi-space to 16 MiB with old-space 512 MiB,
+prints one bounded numeric same-process heap receipt and retains the existing
+640 MiB V8 heap and total 65536-byte stdout caps. The previous actual heap limit
+was not measured; a 704 MiB historical value must not be asserted. This remains
+a controlled hypothesis test until the accepting controls and production capture
+pass. It is not an RSS/native-buffer sandbox or a bundle-budget increase.
+The exact catalog artifact metadata is synchronized; required contexts and
+artifact failure behavior are unchanged.
+
+The renderer now rejects dbname overrides and non-PostgreSQL URLs before engine
+creation, creates one TEMPLATE0 scratch database, confirms server OID/name/owner,
+checks the bounded five-surface catalog baseline, and rechecks identity before
+DROP. Failed or uncertain CREATE does not authorize cleanup. The recorder and
+migration exception semantics are preserved. The supplied service must be owned
+and quiescent; built-in system-namespace contents remain trusted, and this is
+not arbitrary-server pristine admission or a hostile concurrent-admin proof.
+
+The corrected lane selects 41 lifecycle cases, including 15 additional edges.
+A separate final step in the existing DB Migration Gate selects seven real-PG
+controls: five catalog surfaces, root lifecycle and collision preservation.
+Four added receipt mutation cases reject failures, errors, skips and wrong
+identities after valid controls. All existing gates, job budgets and tests stay
+in place. These new results and complete corrected-source CI still need execution.
+
+Independent review also identified an **unproven remaining diagnostic surface**:
+SQLAlchemy's internal pool logger can report swallowed close/reset exceptions
+outside these outer exception handlers. See
+[SQLAlchemy 2.0.54 pool implementation](https://github.com/sqlalchemy/sqlalchemy/blob/rel_2_0_54/lib/sqlalchemy/pool/base.py).
+No runtime leak is claimed, and no blanket guarantee that every transport log
+is opaque is made. A separate real-pool, runtime-canary regression is required.
+
+Changing the renderer deliberately invalidates the old historical capture's
+source pin. Preserve that expected RED: obtain fresh ordinary/expanded SQL,
+scanner JSON and provenance from one corrected-source run, independently compare
+the full warning inventory and source bindings, then update the inactive capture,
+policy and compiled fingerprints together. Do not exempt the renderer from its
+pin check or turn raw Squawk failure into success. Any new finite scanner
+identities require their own exact review/authorization; the previous 58-record
+grant is not a blanket allowance.
+
+Next: finish this corrected source's full CI to terminal, verify actual Map
+capture and the 41/7 renderer controls, reconcile the fresh historical capture,
+then implement the already-approved narrow 286 KiB decision only with complete
+final-HTML/static-graph proof. No result is inherited across SHAs.
+
 ## Source 973e817b: formatter recovery, measured RED and next bounded work
 
 **382/512 accepted; 130 remain unaccepted. No acceptance increment.**
