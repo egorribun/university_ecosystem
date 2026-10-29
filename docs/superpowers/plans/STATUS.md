@@ -2,6 +2,117 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source 2cbdfae: actual writer and pool regressions
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment.**
+AUD-340, AUD-447, AUD-208 and AUD-432 remain OPEN. Historical Squawk admission
+and the 286 KiB Map allowance remain inactive. The 405 finite dispositions,
+baseline319 and Gitleaks26 are unchanged; no new hash disposition is authorized
+by this checkpoint.
+
+The receipts below belong to source
+[2cbdfae42300247a40e7132658de554d38e2674e](https://github.com/egorribun/university_ecosystem/commit/2cbdfae42300247a40e7132658de554d38e2674e),
+tested merge `4525de9ca6ff38b6cd6282f3cf4eeb02b7a9333c`, identical tree
+`a8267be974432778bba09941a3f4e1d26090aab2`. They are not inherited by the next
+publication.
+
+### Measured boundaries
+
+- [PostgreSQL AUD-340 123609608542](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609608542):
+  distinct-key progress and rollback controls PASS; concurrent genesis FAILS
+  at the actual committed sequence `[1, 1]` rather than `[1, 2]`.
+  Later hash-link and HMAC assertions are not reached. Main integration reports
+  154 PASS / four SKIP / one FAIL; existing fail-fast selection leaves subsequent
+  integration cases unexecuted. Separate 13 migration and five durable replay
+  controls pass.
+- [Pool regression 123609608855](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609608855):
+  the real SQLAlchemy QueuePool reset, legitimate SELECT, observable ERROR and
+  bounded exception-text controls pass, then
+  `test_renderer_admin_pool_reset_diagnostics_are_opaque` fails at
+  `assert not private_sinks`. Runtime-generated synthetic context reaches
+  captured internal diagnostics. This is SQLite Pool evidence, not a PostgreSQL
+  network failure or deployed-credential exposure claim.
+- [Final-HTML contracts 123609159938](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609159938):
+  32 PASS. [Production capture 123609160362](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609160362)
+  passes the heap, environment, Git, source and toolchain boundaries, then emits
+  the closed stage `inventory`: the real inspector returns null.
+  The exact inner rejection is not yet known. No production inventory artifact,
+  bundle-budget proof or cap increase is claimed. Frontend lint now passes.
+- [Contract 123607323164](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123607323164):
+  3572 consumer tests PASS; the security cohort has 633 PASS / five FAIL at
+  historical whole-source/fingerprint bindings. Auth 85 and scoped renderer 41
+  pass. Later mutation assertions in the four early-binding failures are not
+  reached.
+- [Security/types 123607322845](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123607322845)
+  and [fresh scan 123608553361](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123608553361)
+  both report 33 new Hex High Entropy String findings across the same three
+  source paths: the inactive policy, validator and new capture fixture. They are public
+  technical hashes, not credentials, but remain blocking and unapproved.
+  A final inventory must be recaptured after the renderer stabilizes; neither
+  the old 58-identity decision nor this triage grants a new exception.
+- [Owned Core 40919142957](https://github.com/egorribun/university_ecosystem/actions/runs/40919142957)
+  succeeds: 329 preflight PASS, 48 live PASS / two SKIP, NATS and cleanup SUCCESS.
+  Frontend reports 10398 PASS in 823 files;
+  [aggregate 123615080552](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123615080552)
+  covers 2186 changed lines with zero missing. This is patch-line evidence,
+  not a global all-metric coverage result. Fast pre-commit passes.
+
+Backend unit cohorts completed without cancellation:
+
+| Shard | Exact job | PASS | SKIP | FAIL |
+| --- | --- | ---: | ---: | ---: |
+| 0 | [123609608624](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609608624) | 7455 | 75 | 0 |
+| 1 | [123609608855](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609608855) | 4622 | 217 | 1 |
+| 2 | [123624856484](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123624856484) | 4273 | 77 | 0 |
+| 3 | [123630088339](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123630088339) | 5523 | 42 | 5 |
+| Total | | **21873** | **411** | **6** |
+
+The failures are one Pool privacy regression and five existing historical
+source-binding guards. Separate 848 and 240 preflights are excluded from these
+totals. The DLQ missing-line intersection across all four shards is empty,
+including lines 59/62; this does not replace
+[Coverage & Quality Policy 123646348840](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123646348840)
+or Trusted Codecov 123646348979, both SKIPPED. No authoritative merged-coverage
+GREEN is claimed.
+
+Final [Matrix 40919143121](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121)
+has 63 SUCCESS / nine FAILURE / 19 SKIPPED jobs, no active or cancelled job.
+The failures are security/types, baseline freshness, Contract, Main PostgreSQL,
+raw Alembic/Squawk, production capture, backend shards 1/3 and
+[derived CI Success 123646347471](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123646347471).
+All 23 workflows are terminal: 20 SUCCESS / one FAILURE / two SKIPPED.
+Across 141 checks: 103 SUCCESS / nine FAILURE / 28 SKIPPED / one NEUTRAL.
+[Blocking CodeQL 123607997071](https://github.com/egorribun/university_ecosystem/runs/123607997071)
+passes with zero new alerts. **Full CI is not GREEN.**
+
+### Bounded continuation, not acceptance
+
+[02717ad3](https://github.com/egorribun/university_ecosystem/commit/02717ad3a60f0b318dbd038a1c4a0eb0830277f5)
+adds only a closed, private-error-safe inner rejection reason and its controls;
+all parser, filesystem, output and heap limits remain unchanged.
+[35606de4](https://github.com/egorribun/university_ecosystem/commit/35606de4872bef7b63f6ef34c746adba50bf6b8f)
+adds nonempty-chain and PostgreSQL isolation observations before one aggregate
+assertion, plus unit SQL-boundary checks. Existing three PostgreSQL cases remain
+unchanged. The AUD-340 producer is deliberately unchanged until this additional
+semantic RED is established.
+
+[1f0b84bb](https://github.com/egorribun/university_ecosystem/commit/1f0b84bbe16fa40d64c2a2bd1185a81cc64ed282)
+restricts only this renderer's two owned pool loggers to a
+fixed message while preserving severity, logger hierarchy and event observability,
+including pool recreation. No global logger/filter is changed. The original
+ERROR regression remains, using a configuration-faithful transport; added INFO,
+recreation and unrelated-pool controls still require hosted execution.
+Migration exceptions, SQL echo and arbitrary application pools are separate
+boundaries, not covered by a blanket privacy claim.
+
+The new renderer bytes deliberately invalidate the inactive historical
+capture's source pin. Fresh ordinary/expanded SQL, raw Squawk JSON and
+source/provenance evidence are required before another capture update and any
+exact hash-disposition decision. Raw scanner failures remain failures.
+No deployment, populated-database maintenance, role/grant change, template
+modification, historical-chain repair or access expansion is included.
+Own-source CI for this continuation is pending at publication.
+
 ## Source 35aeedeb: renderer proof and remaining fail-closed boundaries
 
 **382/512 accepted; 130 remain unaccepted. No acceptance increment.**
