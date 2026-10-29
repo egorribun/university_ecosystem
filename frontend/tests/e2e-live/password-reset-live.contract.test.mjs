@@ -16,7 +16,7 @@ test("password reset rejects redirect abuse, reuse, and cleanup outside its own 
   assert.match(source, /createOwnedResetAccount\(testInfo\.project\.name, randomUUID\(\)\)/u)
   assert.match(source, /waitForResponse\([\s\S]*?\/auth\/register/u)
   assert.doesNotMatch(source, /registrationBody\.id/u)
-  assert.match(source, /createdUserId = await readOwnedResetUserId\(/u)
+  assert.match(source, /createdUser\.id = await readOwnedResetUserId\(/u)
   assert.match(source, /awaitMail\(email, RESET_LINK\)/u)
   assert.match(source, /new URL\(resetMatch\[0\], page\.url\(\)\)/u)
   assert.match(source, /redirect-target\.invalid/u)
@@ -171,19 +171,32 @@ test("password reset binds cleanup to its owned account before response parsing"
     /throw new Error\("Synthetic account registration returned an invalid receipt"\)/u
   )
   assert.doesNotMatch(source, /expect\(registrationBody\)/u)
-  assert.match(source, /let createdUserId: string \| undefined/u)
+  assert.match(source, /const createdUser: \{ id: string \| undefined \} = \{ id: undefined \}/u)
 
   const success = source.indexOf("  expect(registered.ok()).toBe(true)")
   const cleanup = source.indexOf("  registerOwnedSessionCleanup(", success)
   const parsed = source.indexOf("await registered.json()", cleanup)
   const login = source.indexOf("  await loginWith(page, email, firstPassword)", parsed)
-  const read = source.indexOf("createdUserId = await readOwnedResetUserId(", login)
+  const deadline = source.indexOf(
+    "  const identityDeadlineAtMs = readPlaywrightTestSlotDeadlineAtMs(",
+    login
+  )
+  const guard = source.indexOf("  if (identityDeadlineAtMs === null)", deadline)
+  const read = source.indexOf("createdUser.id = await readOwnedResetUserId(", guard)
   const cookies = source.indexOf("  await page.context().clearCookies()", read)
   assert.ok(
     success >= 0 && success < cleanup && cleanup < parsed && parsed < login,
     "cleanup is registered after successful registration and before parsing or login can fail"
   )
-  assert.ok(login < read && read < cookies, "identity is read under the existing student session")
+  assert.ok(
+    login < deadline && deadline < guard && guard < read && read < cookies,
+    "identity is read under the existing student session only with an available deadline"
+  )
+  assert.match(
+    source.slice(guard, read),
+    /if \(identityDeadlineAtMs === null\) throw new Error\("Owned reset account deadline unavailable"\)/u
+  )
+  assert.match(source.slice(read, cookies), /boundedReplayTimeout\(identityDeadlineAtMs, 5_000\)/u)
   assert.match(
     source.slice(read, cookies),
     /readOwnedResetUserId\(\s*page\.request,\s*ownedSessionOrigin\(\),\s*account,/u
@@ -195,7 +208,7 @@ test("password reset binds cleanup to its owned account before response parsing"
   assert.equal([...cleanupBody.matchAll(/await loginAs\(cleanupPage, "admin",/gu)].length, 1)
   assert.match(
     cleanupBody,
-    /const cleanupUserId =\s*createdUserId \?\?\s*\(await findOwnedResetUserId\(\s*cleanupPage\.request,\s*ownedSessionOrigin\(\),\s*account,/u
+    /const cleanupUserId =\s*createdUser\.id \?\?\s*\(await findOwnedResetUserId\(\s*cleanupPage\.request,\s*ownedSessionOrigin\(\),\s*account,/u
   )
   assert.match(cleanupBody, /userId: cleanupUserId/u)
   assert.doesNotMatch(

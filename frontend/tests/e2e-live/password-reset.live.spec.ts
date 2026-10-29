@@ -154,7 +154,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
     )
   })
   expect(registered.ok()).toBe(true)
-  let createdUserId: string | undefined
+  const createdUser: { id: string | undefined } = { id: undefined }
   registerOwnedSessionCleanup(async (cleanupBrowser, cleanupDeadlineAtMs) => {
     const cleanupContext = await cleanupBrowser.newContext({
       baseURL: ownedSessionOrigin(),
@@ -165,7 +165,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
       const cleanupPage = await cleanupContext.newPage()
       await loginAs(cleanupPage, "admin", cleanupDeadlineAtMs, 5_000)
       const cleanupUserId =
-        createdUserId ??
+        createdUser.id ??
         (await findOwnedResetUserId(
           cleanupPage.request,
           ownedSessionOrigin(),
@@ -221,14 +221,16 @@ test("a student resets with the Mailpit link without retaining tokens or followi
 
   await expect(page).toHaveURL(/\/login/)
   await loginWith(page, email, firstPassword)
-  createdUserId = await readOwnedResetUserId(
+  const identityDeadlineAtMs = readPlaywrightTestSlotDeadlineAtMs(
+    testInfo,
+    REGISTRATION_MAX_TEST_TIMEOUT_MS
+  )
+  if (identityDeadlineAtMs === null) throw new Error("Owned reset account deadline unavailable")
+  createdUser.id = await readOwnedResetUserId(
     page.request,
     ownedSessionOrigin(),
     account,
-    boundedReplayTimeout(
-      readPlaywrightTestSlotDeadlineAtMs(testInfo, REGISTRATION_MAX_TEST_TIMEOUT_MS),
-      5_000
-    )
+    boundedReplayTimeout(identityDeadlineAtMs, 5_000)
   )
   await page.context().clearCookies()
 
