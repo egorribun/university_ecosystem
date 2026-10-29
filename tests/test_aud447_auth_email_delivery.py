@@ -2075,3 +2075,276 @@ async def test_aud447_historical_auto_replay_protects_the_retained_row(
     assert stored_payload_safe, (
         "auto replay retained the synthetic marker in the historical DLQ row"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("boundary", ["dedup", "replay"])
+@pytest.mark.parametrize(
+    "stored_case", ["legacy", "native_live", "native_expired", "non_auth"]
+)
+async def test_aud447_retained_row_compatibility_and_caller_owned_uow(
+    monkeypatch: pytest.MonkeyPatch, boundary: str, stored_case: str
+) -> None:
+    import hashlib
+
+    from app.models.dead_letter import DeadLetterJob
+    from app.workers.dead_letter_queue import DeadLetterQueue
+
+    marker = "synthetic-" + uuid.uuid4().hex
+    link = f"https://portal.example.test/reset-password#token={marker}"
+    secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    name = (
+        "aud447.non_auth"
+        if stored_case == "non_auth"
+        else "app.tasks.email.send_auth_email"
+    )
+    payload: dict[str, Any] = {
+        "args": ["student@example.test", link],
+        "kwargs": {},
+    }
+    if stored_case.startswith("native"):
+        expiry = datetime.now(UTC) + timedelta(
+            minutes=-1 if stored_case == "native_expired" else 5
+        )
+        payload["args"][1] = email_tasks.seal_auth_email_link(link, expiry, secret)
+        payload["kwargs"]["encrypted_link"] = True
+    source_bytes = json.dumps(payload, sort_keys=True)
+    job_hash = hashlib.sha256(
+        json.dumps({"type": name, "payload": payload}, sort_keys=True).encode()
+    ).hexdigest()
+    # Noncanonical JSON formatting is part of the unchanged stored-byte control.
+    stored_bytes = json.dumps(payload, indent=2)
+    due_at = datetime.now(UTC) - timedelta(minutes=1)
+    job = DeadLetterJob(
+        id=449,
+        job_type=name,
+        job_hash=job_hash,
+        payload=stored_bytes,
+        error_message="Safe historical error",
+        status="pending",
+        retry_count=1,
+        max_retries=7,
+        next_retry_at=due_at,
+    )
+    session = _HashLookupSession()
+    session.jobs.append(job)
+    commit = AsyncMock()
+    rollback = AsyncMock()
+    monkeypatch.setattr(session, "commit", commit)
+    monkeypatch.setattr(session, "rollback", rollback, raising=False)
+    broker = nats_module.NatsTaskBroker()
+    js = AsyncMock()
+    monkeypatch.setattr(broker, "_js", js)
+    monkeypatch.setattr(
+        broker,
+        "connect",
+        AsyncMock(side_effect=AssertionError("unexpected broker connection")),
+    )
+    queue = DeadLetterQueue(session)
+    if boundary == "dedup":
+        result = await queue.add_failed_job(name, payload, "New safe error")
+        assert result is None
+        unchanged_retry = (
+            job.status == "pending"
+            and job.retry_count == 1
+            and job.max_retries == 7
+            and job.next_retry_at == due_at
+        )
+        assert unchanged_retry
+        await broker.replay_dead_letter(name, json.loads(job.payload))
+    else:
+        monkeypatch.setattr(DeadLetterQueue, "_replay_lock", asyncio.Lock())
+        ready = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [job]))
+        monkeypatch.setattr(session, "execute", AsyncMock(return_value=ready))
+        assert await queue.auto_replay_jobs(
+            broker.replay_dead_letter,
+            batch_size=1,
+            max_batches=1,
+            rate_limit_delay=0,
+        ) == (1, 0)
+        assert job.status == "completed"
+        assert job.retry_count == 2
+
+    owns_uow = commit.await_count == 0 and rollback.await_count == 0
+    assert owns_uow, "retained-row handling took over the caller's transaction"
+    identity_preserved = (
+        len(session.jobs) == 1
+        and session.jobs[0] is job
+        and job.id == 449
+        and job.job_hash == job_hash
+        and job.max_retries == 7
+    )
+    assert identity_preserved
+    input_unchanged = json.dumps(payload, sort_keys=True) == source_bytes
+    assert input_unchanged
+    if stored_case != "legacy":
+        exact_stored_bytes = job.payload == stored_bytes
+        assert exact_stored_bytes, "handling rewrote an already-compatible payload"
+    assert js.publish.await_count == 1
+    wire = js.publish.await_args.args[1]
+    task = nats_module._NatsTaskPayload.model_validate(json.loads(wire))
+    if stored_case == "non_auth":
+        unchanged_wire = (
+            task.args == payload["args"] and task.kwargs == payload["kwargs"]
+        )
+        assert unchanged_wire
+    else:
+        safe_wire = marker not in wire.decode()
+        assert safe_wire
+        if stored_case.startswith("native"):
+            exact_envelope = (
+                task.args == payload["args"] and task.kwargs == payload["kwargs"]
+            )
+            assert exact_envelope
+        delivered: list[bool] = []
+
+        async def capture(**kwargs: Any) -> None:
+            delivered.append(kwargs["fallback_fields"]["link"] == link)
+
+        monkeypatch.setattr(email_tasks, "_deliver_email_message", capture)
+        rejected = False
+        try:
+            await email_tasks.broker._tasks[name](*task.args, **task.kwargs)
+        except RuntimeError as error:
+            rejected = str(error) == "Authentication email delivery failed"
+        assert rejected is (stored_case == "native_expired")
+        assert delivered == ([] if stored_case == "native_expired" else [True])
+        safe_storage = marker not in job.payload
+        assert safe_storage, "retained auth payload was not protected"
+    # The caller may still choose its own boundary after the repository returns.
+    await session.commit()
+    assert commit.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("boundary", ["dedup", "replay"])
+@pytest.mark.parametrize(
+    "bad_case", ["malformed_json", "tampered", "hash_mismatch", "duplicate_keys"]
+)
+async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publish(
+    monkeypatch: pytest.MonkeyPatch, boundary: str, bad_case: str
+) -> None:
+    import hashlib
+
+    from app.models.dead_letter import DeadLetterJob
+    from app.workers.dead_letter_queue import DeadLetterQueue
+
+    marker = "synthetic-" + uuid.uuid4().hex
+    other_marker = "synthetic-" + uuid.uuid4().hex
+    link = f"https://portal.example.test/reset-password#token={marker}"
+    secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    name = "app.tasks.email.send_auth_email"
+    incoming = {"args": ["student@example.test", link], "kwargs": {}}
+    input_before = json.dumps(incoming, sort_keys=True)
+    job_hash = hashlib.sha256(
+        json.dumps({"type": name, "payload": incoming}, sort_keys=True).encode()
+    ).hexdigest()
+    protected = email_tasks.prepare_auth_email_payload(incoming)[0]
+    job = DeadLetterJob(
+        id=450,
+        job_type=name,
+        job_hash=job_hash,
+        payload=json.dumps(protected),
+        error_message="Safe historical error",
+        status="pending",
+        retry_count=1,
+        max_retries=3,
+        next_retry_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    session = _HashLookupSession()
+    session.jobs.append(job)
+    commit, rollback = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(session, "commit", commit)
+    monkeypatch.setattr(session, "rollback", rollback, raising=False)
+    broker = nats_module.NatsTaskBroker()
+    js = AsyncMock()
+    monkeypatch.setattr(broker, "_js", js)
+    monkeypatch.setattr(
+        broker,
+        "connect",
+        AsyncMock(side_effect=AssertionError("unexpected broker connection")),
+    )
+    queue = DeadLetterQueue(session)
+    if boundary == "replay":
+        monkeypatch.setattr(DeadLetterQueue, "_replay_lock", asyncio.Lock())
+        ready = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [job]))
+        monkeypatch.setattr(session, "execute", AsyncMock(return_value=ready))
+
+    async def apply_boundary() -> Any:
+        if boundary == "dedup":
+            return await queue.add_failed_job(name, incoming, "New safe error")
+        return await queue.auto_replay_jobs(
+            broker.replay_dead_letter,
+            batch_size=1,
+            max_batches=1,
+            rate_limit_delay=0,
+            jitter=0,
+        )
+
+    # A valid stored row must traverse the same boundary before rejection counts.
+    control = await apply_boundary()
+    assert control == (None if boundary == "dedup" else (1, 0))
+    assert js.publish.await_count == (0 if boundary == "dedup" else 1)
+    js.reset_mock()
+    job.status = "pending"
+    job.retry_count = 1
+    job.next_retry_at = datetime.now(UTC) - timedelta(minutes=1)
+    if bad_case == "malformed_json":
+        job.payload = json.dumps(incoming)[:-1]
+    elif bad_case == "tampered":
+        bad = json.loads(json.dumps(protected))
+        envelope = bad["args"][1]
+        index = len(envelope) // 2
+        replacement = "A" if envelope[index] != "A" else "B"
+        bad["args"][1] = envelope[:index] + replacement + envelope[index + 1 :]
+        job.payload = json.dumps(bad)
+    elif bad_case == "duplicate_keys":
+        job.payload = (
+            '{"args": '
+            + json.dumps(incoming["args"])
+            + ', "args": '
+            + json.dumps(protected["args"])
+            + ', "kwargs": '
+            + json.dumps(protected["kwargs"])
+            + "}"
+        )
+        hidden_plaintext = marker in job.payload
+        last_key_control = json.loads(job.payload) == protected
+        assert hidden_plaintext
+        assert last_key_control
+    else:
+        # The lookup key still belongs to incoming, not this different valid link.
+        other = json.loads(input_before)
+        other["args"][1] = (
+            f"https://portal.example.test/reset-password#token={other_marker}"
+        )
+        job.payload = json.dumps(other)
+    bad_bytes = job.payload
+    rejected = False
+    if boundary == "dedup":
+        try:
+            await apply_boundary()
+        except email_tasks.AuthEmailPayloadError as error:
+            rejected = str(error) == "Authentication email payload protection failed"
+        assert rejected, "active dedup accepted an invalid retained auth row"
+        assert job.status == "pending"
+        assert job.retry_count == 1
+    else:
+        assert await apply_boundary() == (0, 1)
+        assert job.status == "pending"
+        assert job.retry_count == 2
+    assert js.publish.await_count == 0
+    unchanged_payload = job.payload == bad_bytes
+    unchanged_hash = job.job_hash == job_hash
+    unchanged_input = json.dumps(incoming, sort_keys=True) == input_before
+    safe_error = all(
+        value not in str(job.error_message) for value in (marker, other_marker)
+    )
+    assert unchanged_payload, "rejection partially rewrote the retained payload"
+    assert unchanged_hash
+    assert unchanged_input
+    assert safe_error
+    assert commit.await_count == 0
+    assert rollback.await_count == 0

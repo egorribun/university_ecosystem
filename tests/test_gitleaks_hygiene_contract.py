@@ -779,6 +779,37 @@ def _linux_process_identity(pid: int) -> tuple[str, int, int] | None:
     return fields[0], int(fields[2]), int(fields[19])
 
 
+def _process_is_missing_or_same_zombie(
+    identity: tuple[str, int, int] | None, expected_start_time: int
+) -> bool:
+    # Termination keeps the birth check, not mutable process-group metadata.
+    # Live ownership is checked separately before any fixture rescue signal.
+    return identity is None or (
+        identity[0] == "Z" and identity[2] == expected_start_time
+    )
+
+
+@pytest.mark.parametrize(
+    ("identity", "expected"),
+    [
+        (None, True),
+        (("Z", 8758, 28868), True),
+        (("Z", -1, 28868), True),
+        (("Z", 9999, 28868), True),
+        (("Z", 8758, 28869), False),
+        (("Z", -1, 28869), False),
+        (("S", 8758, 28868), False),
+        (("S", -1, 28868), False),
+        (("R", 8758, 28868), False),
+        (("T", 8758, 28868), False),
+    ],
+)
+def test_terminal_process_identity_requires_same_birth_not_live_group(
+    identity: tuple[str, int, int] | None, expected: bool
+) -> None:
+    assert _process_is_missing_or_same_zombie(identity, 28868) is expected
+
+
 @pytest.mark.parametrize(
     ("error_type", "error_number"),
     [
@@ -1004,10 +1035,8 @@ def _assert_scan_timeout_contract(
                     assert remaining > 0
                     assert selector.select(remaining)
             child_identity = _linux_process_identity(child_pid)
-            assert child_identity is None or child_identity == (
-                "Z",
-                child_group,
-                child_start_time,
+            assert _process_is_missing_or_same_zombie(
+                child_identity, child_start_time
             )
         finally:
             if pidfd is not None:
@@ -1021,11 +1050,10 @@ def _assert_scan_timeout_contract(
             child_group = int(child_group_text)
             child_start_time = int(child_start_text)
             child_identity = _linux_process_identity(child_pid)
-            if child_identity is not None and child_identity != (
-                "Z",
-                child_group,
-                child_start_time,
+            if not _process_is_missing_or_same_zombie(
+                child_identity, child_start_time
             ):
+                assert child_identity is not None
                 assert child_identity[1:] == (child_group, child_start_time)
                 try:
                     pidfd = os.pidfd_open(child_pid, 0)
