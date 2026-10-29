@@ -2,6 +2,101 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source 973e817b: formatter recovery, measured RED and next bounded work
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment.**
+Map budget 286 KiB and Squawk admission remain inactive. AUD-447, AUD-208
+and AUD-432 remain OPEN; no deployed data maintenance or deployment occurred.
+
+Source [973e817b3189032a754456c3e0757e896bb5c2c5](https://github.com/egorribun/university_ecosystem/commit/973e817b3189032a754456c3e0757e896bb5c2c5)
+contains only the two hosted Ruff folds and one hosted Prettier wrap following
+[eb8e8970](https://github.com/egorribun/university_ecosystem/commit/eb8e89706fd494d7b3aef3b9677a42ca5eeed8b4).
+Assertions, selectors and behavior are unchanged. Its tested merge
+`e721fdca937f471f4a8b0711406dd0e36dd3c429` shares tree
+`031aebd9f112e283c355cf82ceb3fee3d69bf05e`.
+
+### Exact-source receipts at the 2026-10-29 14:32 UTC checkpoint
+
+- Fast pre-commit and frontend lint are SUCCESS.
+- [Contract 123499131531](https://github.com/egorribun/university_ecosystem/actions/runs/40888656070/job/123499131531):
+  consumer 3572 PASS, including Auth 85; security 638 PASS; scoped 41 PASS.
+  The consumer's 3572 unique node identities match source 084 exactly.
+  Job wall time is 559 seconds against the unchanged 600-second limit:
+  41 seconds observed margin, not a guarantee against runner/setup variance.
+- [Owned Core 40888655471](https://github.com/egorribun/university_ecosystem/actions/runs/40888655471):
+  329 preflight PASS, 48 live PASS / two SKIP, NATS and cleanup SUCCESS.
+  Its seven-spec execution scope remains the limitation documented below.
+- [PostgreSQL 123501606582](https://github.com/egorribun/university_ecosystem/actions/runs/40888656070/job/123501606582):
+  385 PASS / 16 SKIP, plus 13 migration controls and five durable replay controls.
+  The retained Auth lock/refresh/caller-commit case passed.
+- All frontend shards pass 10,398 tests in 823 files.
+  [Aggregate 123509431040](https://github.com/egorribun/university_ecosystem/actions/runs/40888656070/job/123509431040)
+  reports 2186 changed lines covered and zero missing, not a global all-metric
+  verdict. Backend shards 0/1 are still running at this checkpoint; 2/3 have
+  not started. The count-fix selector/full-file receipt and authoritative
+  merged backend coverage are not yet available. No full backend GREEN is
+  claimed or inherited by a subsequent source.
+- [Alembic 123501605378](https://github.com/egorribun/university_ecosystem/actions/runs/40888656070/job/123501605378)
+  is FAILURE, with actual renderer semantic RED: **22 FAIL / two PASS /
+  zero errors or skips**, 5.77 seconds. The two previous SQLite transaction
+  and rollback controls pass. Failures establish missing TEMPLATE0,
+  unconditional DROP after failed/unconfirmed CREATE, ignored catalog admission,
+  unverified cleanup identity and non-opaque transport-error handling.
+  The lifecycle receipt rejects the result and propagates failure.
+  The existing diagnostic cohort passes all 128 cases, including the 15 added
+  workflow contracts through an unfiltered file selector; the quiet reporter
+  does not list those 15 individually. Raw Squawk still reports 13 ordinary
+  and 24 expanded warnings, both exit 1. No exception was activated.
+- [WASM/native 123501896008](https://github.com/egorribun/university_ecosystem/actions/runs/40888656070/job/123501896008):
+  final-HTML cohort 30 PASS / two semantic FAIL, 31.800 seconds.
+  Both new outer contracts stop at the absent capture step; their inner
+  accepting/rejecting runtime assertions have not yet executed.
+
+### Bounded continuation and remaining proof
+
+The next Map change captures only diagnostic final-build HTML evidence, outside
+the production artifact. Exact checkout/source checks, readback, separate upload,
+fixed failure messages, input/output caps and a one-minute step are required.
+The new child uses a 512 MiB old-generation setting and rejects a reported V8
+heap ceiling above 640 MiB before parsing. These are **V8 heap controls, not
+native-allocation, external-buffer or total-RSS isolation**; production-input
+fit and the complete wrapper controls still require their own hosted run.
+The existing 30 cases and two outer contracts remain, with three accepting
+controls and 14 inner negative mutations. No 286 KiB admission follows from
+a diagnostic report, and installed-version/lock equality is not a separate
+dependency-implementation attestation.
+
+Independent renderer review also found the direct-input `dbname` query override:
+the pinned SQLAlchemy 2.0.54 dialect applies query options after path-derived
+connection arguments. Two added API/CLI tests require rejection before engine,
+CREATE, environment, listener or upgrade side effects; the tests include a real
+network-free dialect characterization of that mapping. Their RED is **not yet
+executed**. Exact diagnostic selection expands from seven/24 to nine/26
+selectors/cases while preserving zero-error/skip guards and all time limits.
+Renderer production code is unchanged in this tests-first extension.
+
+The eventual lifecycle repair must preserve the original migration exception,
+rollback recorder and historical migration atomicity. Owned, quiescent CI is
+not arbitrary-server authorization or hostile concurrent-admin safety. Actual
+PostgreSQL catalog controls, merge-frontier execution and all 141 ordinary
+migration receipts remain separate work. Changing renderer source invalidates
+its historical capture pin and requires new hosted evidence/review; the existing
+58-identity approval is not authority for additional future fingerprints.
+
+### Prior eb8 terminal boundary
+
+All 23 eb8 workflows and 110 checks reached terminal before the formatter recovery.
+Core passed 329 preflight and 48 live / two SKIP, NATS and cleanup; frontend
+passed 10,398 with 2186 changed lines covered. Backend, PostgreSQL and Alembic
+were SKIPPED behind formatting, not semantic failures. Matrix ended
+22 SUCCESS / five FAILURE / 32 SKIP / one CANCELLED.
+Contract stopped at 606 seconds with 3567 explicit PASS, including Auth 85,
+but no completed consumer/security/scoped verdict. The 600-second limit and
+elapsed time support a timeout inference; the explicit annotation was not
+available. No branch update caused that cancellation. All workers continued
+making progress; no single-test deadlock was established. The completed 973
+Contract receipts above are distinct evidence, not a retrospective eb8 GREEN.
+
 ## Source 0849785a: full terminal checkpoint and bounded next regressions
 
 **382/512 accepted; 130 remain unaccepted. No acceptance increment. AUD-447,
