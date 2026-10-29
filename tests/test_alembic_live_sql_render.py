@@ -1488,7 +1488,7 @@ def test_renderer_pool_privacy_survives_recreation_without_changing_other_pools(
                 # creation/disposal path is tested here, not catalog admission.
                 with pytest.raises(
                     renderer.LiveRenderError,
-                    match="^PostgreSQL scratch catalog check failed$",
+                    match=r"^PostgreSQL scratch catalog check failed$",
                 ):
                     renderer._assert_empty_scratch_catalog(database_url)
                 engine = engines[0]

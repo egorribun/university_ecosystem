@@ -1008,7 +1008,7 @@ async def test_record_domain_event_checks_isolation_before_locking_the_aggregate
         assert event.prev_hash == "0" * 64
     else:
         with pytest.raises(
-            ValueError, match="^Domain event writes require READ COMMITTED semantics$"
+            ValueError, match=r"^Domain event writes require READ COMMITTED semantics$"
         ):
             await service.record_domain_event(db, **event_arguments)
         db.add.assert_not_called()
