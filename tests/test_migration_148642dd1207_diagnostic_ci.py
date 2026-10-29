@@ -692,9 +692,7 @@ _RENDERER_LIFECYCLE_SELECTORS = tuple(
 
 def _renderer_lifecycle_step(job):
     matches = [
-        step
-        for step in job["steps"]
-        if step.get("id") == "renderer-lifecycle-evidence"
+        step for step in job["steps"] if step.get("id") == "renderer-lifecycle-evidence"
     ]
     assert len(matches) == 1, "one bounded renderer lifecycle step is required"
     return matches[0]
@@ -769,8 +767,7 @@ def _assert_renderer_lifecycle_contract(job):
     assert "ALEMBIC_RENDERER_LIFECYCLE_TESTS_END" in run
     assert (
         "uv run --frozen --no-sync python - "
-        "\"$probe_root/junit.xml\" <<'PY_RENDERER_RECEIPT' || receipt_status=$?"
-        in run
+        "\"$probe_root/junit.xml\" <<'PY_RENDERER_RECEIPT' || receipt_status=$?" in run
     )
     assert (
         'if [ "$bytes" -gt 131072 ]; then\n'

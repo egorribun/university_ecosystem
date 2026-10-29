@@ -820,7 +820,10 @@ test("capture wrapper binds owned source context and keeps failures closed", asy
   // These controls must all pass before any rejecting assertion is reachable.
   await withCaptureFixture(async (item) => {
     const report = await capturedReport(program, item)
-    assert.equal(report.inventory.documents.every((document) => document.complete), true)
+    assert.equal(
+      report.inventory.documents.every((document) => document.complete),
+      true
+    )
   })
   await withCaptureFixture(async (item) => {
     item.html = item.html.replace(
