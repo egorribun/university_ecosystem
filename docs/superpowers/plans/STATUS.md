@@ -2,6 +2,134 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source 68a68a terminal receipts and scoped continuation — 2026-10-29
+
+**381/512 accepted; 131 remain unaccepted. No acceptance increment is made here.**
+
+Source [68a68a78eebc0ca7058554713df0a3534ac68048](https://github.com/egorribun/university_ecosystem/commit/68a68a78eebc0ca7058554713df0a3534ac68048)
+and tested merge `cf33895e209ca2607b7a695137b771edac5246a4` share tree
+`7af086a06ad0856f9af2af2efd62043e61bacea1`. All 22 PR-source workflow runs
+are terminal: 19 SUCCESS / 1 FAILURE / 2 SKIP, with no cancellations. The
+separate push Security Policy Integrity run also succeeds. None of these
+receipts is inherited as GREEN for the next source.
+
+### Executed results
+
+- [Matrix 40813622544](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544)
+  is FAILURE: 60 jobs, 19 SUCCESS / 9 FAILURE / 32 SKIP.
+- [Owned Core 40813622457](https://github.com/egorribun/university_ecosystem/actions/runs/40813622457)
+  is SUCCESS: 329 preflight PASS; live 48 PASS / 2 SKIP; exit 0; desktop/mobile
+  reset-replay requests return 400; owned NATS outage acceptance succeeds.
+  This is the owned topology, not external deployment evidence.
+- [Contract 123249476686](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123249476686)
+  has an accessible log: consumer 3122 PASS / 260 FAIL in 484.23 seconds, plus
+  633 security-policy and 41 scoped cases PASS. Of the 260 failures, 258 are
+  the intentional historical matcher positive-control RED and two are actual
+  worker telemetry privacy RED; they are not 260 independent new defects.
+- All 24 selected auth storage/replay/dedup/expiry cases pass. Both real-worker
+  build/delivery cases then fail specifically at `safe_event`: the Sentry
+  event contains the synthetic authentication marker. Every preceding control
+  passes: real handler failure reached, normal NAK, bounded fetch, one generic
+  exception, worker/handler frames present, handler frames and text log clean.
+  This establishes the worker-frame boundary, not a setup failure or a deployed
+  telemetry incident.
+- Both complete AUD-445 files have named receipts: 23 removal/cache and 14 outbox
+  cases PASS, including the six previously missing outage/retry/durable-repair/
+  crash-before-ack cases. The five PostgreSQL receipts remain on
+  [ef5 integration 123227936223](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227936223).
+  Independent reconciliation found 20 supporting blobs unchanged between those
+  sources and unchanged chat `publish`/`publish_core` paths. This is a scoped
+  ready candidate, not current-SHA PostgreSQL success: the
+  [68 PostgreSQL job](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123250723484)
+  is SKIPPED. Prefer the next corrected full-CI receipt before recording acceptance.
+  Controlled cache/hub faults are not deployed Redis/NATS delivery proof.
+- [Source/test inventory 123249477004](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123249477004)
+  is SUCCESS: catalog 59 workflows / 184 jobs, full quality inventory passed.
+  The retry-selector false positive is resolved without changing the detector.
+  [Blocking CodeQL 123249822538](https://github.com/egorribun/university_ecosystem/runs/123249822538)
+  is SUCCESS with zero annotations and no new alerts.
+- Frontend shards total 10,395 PASS / 1 FAIL; 821 files PASS / 1 FAIL.
+  The only failed case is the new
+  [ForgotPassword SSR regression, shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123250668297):
+  the server-rendered email input lacks `disabled`. Its companion real
+  hydration/first-edit/single-submit case passes. The
+  [aggregate 123253912333](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123253912333)
+  fails before merged coverage thresholds are reached; no merged coverage GREEN
+  is claimed.
+- [WASM contracts 123250668191](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123250668191)
+  succeed: 772 PASS / 0 FAIL / 6 SKIP in the native contract set, including the
+  original Rolldown regression and malformed-length controls; the additional
+  worker and selected cohorts pass 56 and 665 cases.
+  [Production build 123250668185](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123250668185)
+  succeeds and emits the first bounded inventory: one MapLibre 6.15.0 chunk,
+  three package modules, unavailable original code-unit lengths represented as
+  null, no static entry reachability, 171 graph chunks and zero unresolved imports.
+  The report explicitly remains diagnostic, not final budget-admission proof.
+  [Bundle job 123251432256](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123251432256)
+  passes 77 tests and then fails the unchanged budget: 285.83 KiB exceeds 280 KiB.
+  The approved narrow 286 KiB decision is not active.
+- [Pre-commit 123249476983](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123249476983)
+  fails only one Ruff formatting fold in the new worker test.
+  [Frontend lint 123250668230](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123250668230)
+  fails only one Prettier fold in the metadata producer; its type/lint/i18n/
+  compiler-compatibility checks pass. The exact whitespace-only corrections
+  reproduce the hosted hunks. Backend, Alembic, PostgreSQL and related dependent
+  checks are SKIPPED after pre-commit, not verified on this source.
+- [Baseline integrity 123249896482](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123249896482)
+  and security/type hooks still reject the 56 public-integrity hash identities
+  from the historical policy/capture. Their exact disposition decision remains
+  pending. This batch does not extend the 347 dispositions or the 319-entry baseline.
+
+### Next reviewed implementation; own Actions still required
+
+The eleven-path implementation is [2fb3c509b51e3f4400c655be885c807dffc082ee](https://github.com/egorribun/university_ecosystem/commit/2fb3c509b51e3f4400c655be885c807dffc082ee).
+Its independent static reviews are not a substitute for the next exact-SHA runs.
+
+- Worker reporting uses a fresh Sentry scope and removes only exact broker-module
+  frame locals across exception, thread and top-level stacks. With the pinned SDK, exception identity,
+  stack positions, non-auth handler diagnostics, raw message bytes and NAK/DLQ
+  behavior remain intact. Targeted copies do not mutate the original event.
+  Missing/broken SDK import takes an explicitly sanitized, traceback-free fallback;
+  it does not silently fall back to raw frame capture. Fourteen new controls
+  cover both mixed-batch orders, unrelated diagnostics, scope reset, opaque values
+  and SDK absence; the two observed RED cases remain unchanged.
+  New controls have no historical hosted RED claim. Invalid-payload raw logging
+  is a separate source-visible limitation; future dependency-bearing auth handlers
+  and deployed/historical-row cleanup are not established by this patch.
+- ForgotPassword uses the existing local hydration-readiness idiom to keep email
+  and submit controls inert until handlers attach, retaining submitting and
+  validation locks. This addresses the witnessed SSR invariant, not a proven
+  cause of the earlier live-submit flake.
+- The pure historical Squawk recognizer replaces only the rejecting scaffold.
+  It binds the exact prepared policy/capture, bounds and strictly parses bytes,
+  retains all fields and warning multiplicity, and checks the real UTC window.
+  Its only positive result is `matched-diagnostic-inventory`; it has no file/
+  process/DB/CLI or migration-gate consumer. Nine additional numeric/surrogate
+  guards bring its static forecast to 269 cases. Two new public compiled
+  fingerprints may create further scanner identities; no disposition is inferred.
+- The AUD-454 fixture now binds the actual canonical cache provider, proves the
+  poisoned cache is present and unchanged, and asserts an authoritative DB lookup.
+  The production manager is unchanged. Its historical cached implementation is
+  a source counterfactual, not an executed RED receipt; no closure is made.
+- Mirrored consumer dispatch preserves the current 225-selector prefix and adds
+  six selectors. The resulting 231 selectors forecast 3412 cases, including four
+  existing ciphertext probes and the three corrected AUD-454 cases. Workers,
+  timeout, filters, cleanup, failure propagation and required gates are unchanged.
+
+Stage B remains a separate blocker: source review of all 142 migrations found
+one root/head, 152 parent edges and ten tuple-parent merges, but that is not
+Alembic execution. The raw gate selects six PR-changed migrations, not all 142;
+136 unchanged nonhistorical files are outside that selection. On ef5 it reached
+only historical148; on68 Alembic did not run. The reader currently rejects tuple
+parents, and the renderer lacks template0/empty-catalog/owned-server admission
+and exact multi-parent frontier proof. No active rule may substitute the
+historical recognizer for those prerequisites or for strict receipts on all
+141 nonhistorical revisions. Renderer changes also require a fresh148 capture.
+
+Next: verify this exact continuation, obtain fresh full-backend/PG receipts,
+reconcile the AUD-445 candidate, and continue bounded MapLibre admission and
+migration-proof work without unapproved gate or scanner allowances.
+
 ## Source ef5f8f verification and bounded causal corrections — 2026-10-29
 
 **381/512 accepted; 131 remain unaccepted. No new finding is closed by this batch.**
