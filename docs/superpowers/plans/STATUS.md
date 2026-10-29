@@ -2,6 +2,186 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source 0849785a: full terminal checkpoint and bounded next regressions
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment. AUD-447,
+AUD-208 and AUD-432 remain OPEN.** This records the completed source below,
+not a passing verdict for subsequent commits or production deployments.
+
+Source [0849785a94d81f0d6d70ff377787b5c3274936c9](https://github.com/egorribun/university_ecosystem/commit/0849785a94d81f0d6d70ff377787b5c3274936c9)
+and tested merge `6b2e9c467bd6ed3591d94a3b5ec9afe5f2c4fb11` share tree
+`7b93de909f3463d5b88a9b5cf819270cbaf59401`. All 23 workflows and 141 checks
+reached terminal without cancellation. Checks: 109 SUCCESS / four FAILURE /
+27 SKIP / one NEUTRAL. [Matrix 40870607540](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540)
+ended with 69 SUCCESS / four FAILURE / 18 SKIP; the full CI is not green.
+
+### Exact-source receipts
+
+- The four backend shards completed **21,818 PASS / 401 SKIP / one FAIL**:
+  shard 0 [6954/41](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123440053776),
+  shard 1 [4518/108](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123440053750),
+  shard 2 [5052/117/1](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123451908407),
+  shard 3 [5294/135](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123457159892).
+  The sole failure is the old exact count 347 in
+  `test_public_git_blob_orchestrator_rebind_appends_one_exact_identity`;
+  the owner-approved inventory now contains 405. The original ordered 347
+  records and the indexed historical identity are unchanged. Its narrow
+  follow-up changes only that exact count, not identity, expiry or source guards.
+- The retained Auth source's two identified line gaps, DLQ lines 59 and 62,
+  are covered in shard 3. The intersection of missing-line sets across all
+  four shards is empty. Merged coverage and Codecov were SKIPPED after the
+  test failure: this is not an authoritative all-metric 100% coverage verdict.
+- [Contract 123438716902](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123438716902):
+  3572 consumer PASS, including Auth 85, cleanup-profile 213 and Gitleaks 94;
+  security 638 PASS; scoped 41 PASS. The 551-second job used the unchanged
+  600-second limit; its observed 49-second margin is not a future guarantee.
+- [PostgreSQL 123440053724](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123440053724):
+  385 PASS / 16 SKIP, plus separate 13 migration controls and five durable
+  replay controls. The lock/refresh/caller-commit Auth case passed.
+- All frontend shards passed **10,398 tests in 823 files**, zero failures
+  and skips. [Aggregate 123446951817](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123446951817)
+  reports 2186 changed lines covered, zero missing. This is changed-line
+  coverage, not a global all-metric claim. The Map reader's 30 cases and both
+  Register regressions pass; frontend lint, pre-commit, security/types and
+  finite baseline/disposition checks pass.
+- [Owned Core 40870607394](https://github.com/egorribun/university_ecosystem/actions/runs/40870607394):
+  329 preflight PASS; 48 live PASS / two SKIP; both reset replays returned 400;
+  NATS and cleanup completed. This lane selects seven existing live specs,
+  not `register-double-submit.live.spec.ts`,
+  `ssr-hydration-i18n.live.spec.ts` or `auth-login-lockout.live.spec.ts`.
+  Passing their source contracts is not execution evidence for those specs.
+- The separate blocking [CodeQL check 123437381919](https://github.com/egorribun/university_ecosystem/runs/123437381919)
+  is SUCCESS with zero new alerts and zero annotations.
+
+### Remaining failures and next bounded proof
+
+The other direct failures are [raw Squawk](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123440052954)
+and [MapLibre bundle size](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123443592932);
+the fourth is derived CI Success. The active Map limit remains 280 KiB against
+285.83 KiB observed; the approved narrow 286 KiB rule is not active yet.
+Squawk still reports 13 ordinary and 24 expanded warnings with failure status.
+Its 288-second failed path skipped later upgrade/downgrade/schema checks and
+does not establish the healthy-path 15-minute runtime budget.
+
+The next tests-first work is deliberately bounded: capture final-build HTML
+diagnostics with independent checkout/run/artifact provenance, and require
+owned scratch-database creation, catalog admission, cleanup identity and opaque
+diagnostics before extending migration rendering. The Map capture tests keep
+the original 30 cases and add two outer contracts; the renderer tests keep
+16 original bodies and add 22 cases. Their negative behavior still requires
+hosted semantic RED before an implementation change. Neither unit transport
+fakes nor graph metadata prove actual PostgreSQL catalog safety or execution
+of all 141 ordinary migrations. Raw failures, existing job limits and gates
+remain intact.
+
+AUD-432 live expansion also needs causal fixture repair before activation:
+registration no longer returns a user id, the login shell is a section, the
+SSR SEO oracle must follow localized route metadata, and cleanup must survive
+lost receipts and CDP-detach failure. Do not restore obsolete public identifiers
+or DOM structure merely to satisfy stale tests. These are source-reviewed
+gaps, not new runtime results or automatic acceptance candidates.
+
+## Source de0f297b: reviewed policy, HTML diagnostics and registration guards
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment. AUD-447 is OPEN.**
+The source [de0f297bf88eee95402d6d35a734ff40a7762b97](https://github.com/egorribun/university_ecosystem/commit/de0f297bf88eee95402d6d35a734ff40a7762b97)
+contains eight changed files in three independently reviewed commits. Its tested
+merge `75af21e462d1d34ccdafae238494d8a23a2d0d2a` has the same tree,
+`404008a74e74e8e4baecec6dc5ce87e3415bc650`. Final-source checks were
+read from [Matrix 40867272426](https://github.com/egorribun/university_ecosystem/actions/runs/40867272426)
+and [Owned Core 40867272382](https://github.com/egorribun/university_ecosystem/actions/runs/40867272382),
+not inherited from an older source.
+
+### Bounded implementation and policy scope
+
+- [59b6fa5a](https://github.com/egorribun/university_ecosystem/commit/59b6fa5a302ea6c897b3c15f0298bc5150014da7)
+  adds exactly the 58 owner-approved public technical-integrity identities.
+  The original ordered 347 records are preserved, making 405 dispositions;
+  baseline 319 and Gitleaks 26 remain unchanged. Matching binds exact path,
+  detector type and digest, fixed owner/review date/evidence and existing expiry
+  2027-01-10. Four new locations sharing two older digests are admitted only as
+  exact reviewed tuples; the two original collision records keep their guards.
+  This is not a digest-wide exception, Squawk admission or migration-risk waiver.
+- [c5233804](https://github.com/egorribun/university_ecosystem/commit/c523380413d280fb33fcac6528c1c0f259e6ff08)
+  implements bounded, non-executing final-HTML root diagnostics. It reads only
+  the owned `_shell.html`, `index.html` and direct local script roots; reports
+  hashes, sizes, safe paths and closed issue counters; and never evaluates
+  scripts or recursively follows imports. Unknown forms are incomplete and
+  invalid/excessive inputs return null. The caller still owns a quiescent build
+  directory, checkout/run provenance and external time/memory limits; this is
+  not a hostile-filesystem sandbox or full transitive execution proof.
+- [de0f297b](https://github.com/egorribun/university_ecosystem/commit/de0f297bf88eee95402d6d35a734ff40a7762b97)
+  gives Register one hydration/submitting guard across ten controls. Server and
+  initial client renders are inert until handlers attach; the pending request
+  also disables email correction and password reveals. Validation, payload,
+  role selection and submission handling remain unchanged. This does not
+  identify the earlier exact DOM writer or prove a physical mobile tap was lost.
+
+### Tests-first evidence and prior-source limitations
+
+Source `dbb2874509cd603fe98450c4ea83575e72e795af` and tested merge
+`0f7efc7b83e43ce657bf3e92b7cf0e7bf0ac1e54` share tree
+`c52017ad7409fefe7ecaf67d83eed6b9f8005cbe`. Its
+[Matrix 40863028788](https://github.com/egorribun/university_ecosystem/actions/runs/40863028788)
+reached terminal without cancellation: 18 SUCCESS / 10 FAILURE / 32 SKIP.
+All 23 workflows and 110 checks were terminal.
+
+- [Contract 123413461797](https://github.com/egorribun/university_ecosystem/actions/runs/40863028788/job/123413461797):
+  3572 consumer cases PASS, including Auth 85, cleanup-profile 213 and Gitleaks 94;
+  security 635 PASS / three expected FAIL; scoped 41 PASS. The old 633 security
+  cases and two new controls passed. New failures were the absent 58 inventory,
+  missing changed-scope rejection and a legitimate collision tuple rejected by
+  the old guard. The last failure occurred in its valid control before later
+  negative mutations; those branches still need final-source GREEN.
+- [WASM/native 123414361031](https://github.com/egorribun/university_ecosystem/actions/runs/40863028788/job/123414361031):
+  the new Map cohort failed all 30 cases on its accepting positive-control
+  assertion against the rejecting scaffold. The negative assertions were not
+  reached. The prior 789 PASS / six SKIP cohort remained intact.
+- [Frontend shard 2 123414361267](https://github.com/egorribun/university_ecosystem/actions/runs/40863028788/job/123414361267):
+  2528 PASS / two expected Register FAIL. SSR full-name input and pending reveal
+  button were enabled. Across all shards 10,396 PASS / two FAIL; no merged
+  coverage verdict. The pending case reached one valid POST and busy state;
+  assertions after the reveal failure were not reached.
+- [Owned Core 40863028686](https://github.com/egorribun/university_ecosystem/actions/runs/40863028686)
+  passed 329 preflight and 48 live / two SKIP, both reset replays returned 400,
+  NATS completed and cleanup finished. Backend, PostgreSQL and Alembic were
+  SKIPPED behind a Ruff-format failure, not semantic failures.
+- Recovery applies the exact four hosted Ruff hunks, two hosted Prettier hunks
+  and two equivalent string escapes, with assertions unchanged. The Map
+  implementation's control-character predicate was reviewed as equivalent
+  without disabling ESLint.
+
+The earlier `2628a0cfec2ed45b4ce817d65b62722594ff89bd` test-only continuation
+passed Auth 85, Contract 3572+633+41, pre-commit, PostgreSQL 385/16+13+5, Core 329+48/2
+and frontend aggregate with 2182 changed lines covered. It was intentionally
+superseded after those targeted receipts: Matrix 64 SUCCESS / five FAILURE /
+12 SKIP / six CANCELLED; backend 0/1 were cancelled and 2/3 had not started.
+No full backend or authoritative merged coverage GREEN is claimed for 2628.
+
+### de0 terminal outcome and deliberate transition
+
+At de0, security 638, consumer 3572, scoped 41, Map 30, Register two,
+frontend aggregate and PostgreSQL 385/16+13+5 passed. Owned Core stopped at
+328 preflight PASS / one stale source-contract FAIL; no live stand ran.
+The later one-file 084 correction checks each of the ten actual control opening
+tags against the hydration/submission guard without changing production code.
+de0 was intentionally superseded after the targeted receipts: Matrix 66 SUCCESS /
+three FAILURE / 12 SKIP / six CANCELLED. Backend 0/1 were cancelled and 2/3
+had not started; no full backend GREEN is claimed for de0. The subsequent full
+084 terminal result above is separate evidence, not an inherited status.
+
+### Remaining boundaries
+
+The 286 KiB MapLibre allowance is still inactive; the current limit remains
+280 KiB. Real final-build inventory capture, artifact/run identity and graph
+closure still need evidence before a narrow budget decision can be enforced.
+Raw Squawk remains blocking; the historical-148 policy/migration/capture source
+is unchanged. Stage B still needs owned-empty-PostgreSQL frontier/rendering
+evidence and strict validation of the remaining migrations.
+The retained Auth production blob remains `6ac6ebda0b11b9bd321cc87c7aad9da58b0f99d1`;
+historical-data, old-error, queue and backup residuals described below remain
+open, with no deployed maintenance or key rotation performed.
+
 ## Source fee91fe5: retained Auth rows, verified boundaries and remaining work
 
 **382/512 accepted; 130 remain unaccepted. AUD-447 is still OPEN.**
