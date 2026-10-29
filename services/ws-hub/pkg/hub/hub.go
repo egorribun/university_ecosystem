@@ -1792,6 +1792,7 @@ func (h *Hub) rejectCacheInvalidation(ctx context.Context, msg *nats.Msg) {
 	if err := safeTerm(msg); err != nil &&
 		!errors.Is(err, nats.ErrMsgNotBound) && !errors.Is(err, nats.ErrNotJSMessage) {
 		h.Logger.WarnContext(ctx, "Failed to terminate invalid cache invalidation", "err", err)
+		safeNakWithDelay(msg, 5*time.Second)
 	}
 }
 
@@ -1823,8 +1824,14 @@ func (h *Hub) applyCacheInvalidation(
 			safeNakWithDelay(msg, 5*time.Second)
 			return false
 		}
-	} else if h.authClient != nil {
+	} else if h.authClient != nil && !runAuthorizationCallback(func() {
 		h.authClient.Invalidate(payload.Data.UserID, payload.Data.RoomID)
+	}) {
+		err := errors.New("authorization cache invalidation panicked")
+		h.Logger.ErrorContext(ctx, "Cache invalidation failed; retrying", "err", err)
+		span.RecordError(err)
+		safeNakWithDelay(msg, 5*time.Second)
+		return false
 	}
 	return true
 }
@@ -1970,6 +1977,18 @@ func (h *Hub) failClosedRoomMembershipDrainAt(
 	lock.unlockRetained()
 }
 
+// runAuthorizationCallback confines recovery to external authorization calls.
+// A panic is an unconfirmed operation, not proof that the NATS event is poison.
+func runAuthorizationCallback(callback func()) (completed bool) {
+	defer func() {
+		if !completed {
+			_ = recover()
+		}
+	}()
+	callback()
+	return true
+}
+
 func (h *Hub) refreshRoomAuthorizationForRevocation(
 	ctx context.Context,
 	userID string,
@@ -1982,7 +2001,11 @@ func (h *Hub) refreshRoomAuthorizationForRevocation(
 	if err := ctx.Err(); err != nil {
 		return false, err, true
 	}
-	allowed, authErr = refresher.RefreshRoomAuthorization(ctx, userID, roomID)
+	if !runAuthorizationCallback(func() {
+		allowed, authErr = refresher.RefreshRoomAuthorization(ctx, userID, roomID)
+	}) {
+		return false, errors.New("room authorization refresh panicked"), true
+	}
 	return allowed, authErr, true
 }
 

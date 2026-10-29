@@ -2,30 +2,40 @@
 
 Обновлено: 2026-10-30 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Autonomous audit resumption — 2026-10-30
+
+The owner explicitly resumed autonomous audit work on 2026-10-30. The safe-pause
+checkpoint below is historical and no longer restricts that continuation. At
+resumption, branch `egorribun` was at `d1c8e96d5957ec9e0b4bb64c1fabb2e23ccc5a97`;
+its required checks remain source-bound. The [scoped root-reviewed decision](../../audits/AUDIT-2026-10.md#scoped-aud-258-aud-365-and-aud-418-acceptance-2026-10-30)
+adds only AUD-258, AUD-365 and AUD-418 to the prior 383: **386/512 accepted,
+126 unaccepted**. It does not authorize a gate exception, merge or deployment.
+This documentation publication and every later source need their own scans and
+required checks; earlier evidence is not full CI, coverage or release acceptance.
+
 ## Safe pause checkpoint — 2026-10-29
 
-The owner requested a safe pause at 22:16 UTC. This publication is limited to
+The owner requested a safe pause at 22:16 UTC. That publication was limited to
 the nine prepared recapture/acceptance files; it does not change application
-code or activate either exception. After publication, repository writes and
-autonomous remediation stop. Only read-only observation of this publication's
-CI remains; pending or terminal results are reported in the conversation
-without another commit.
+code or activate either exception. At that checkpoint, repository writes and
+autonomous remediation stopped after publication; only read-only observation
+of its CI continued without another commit. The owner resumed work as stated above.
 
-The last completely tested production source is
+At that checkpoint, the last completely tested production source was
 `36f70a0f27065231d7c0ad66ded01d22385a0a81`, with the exact failed-CI accounting
-below. This checkpoint's own CI is pending at publication and does not inherit
-those results. Resume only after an explicit owner instruction: first read
-the fresh branch head and reconcile any owner changes. The ordered continuation
-below is a handoff, not authorization to execute during the pause.
+below. That checkpoint's own CI was pending at publication and did not inherit
+those results. At the time, resumption required an explicit owner instruction
+and reconciliation of the fresh branch head and owner changes. The ordered
+continuation below remains a handoff to reconcile against the current source.
 
-All nine reviewed artifacts are contained in this publication; no additional
-unpublished implementation patch is represented as ready. Preserve the
+That publication contained all nine reviewed artifacts; no additional
+unpublished implementation patch was represented as ready at the pause. Preserve the
 fail-closed scanner/source-binding checks, inactive Map/Squawk boundaries and
 unchanged 405/319/26 inventories.
 
 ## Source 36f70a0f: AUD-340 race fix and stable renderer capture
 
-**383/512 accepted; 129 remain unaccepted. Only AUD-340 is newly accepted.**
+**At that checkpoint 383/512 were accepted; 129 remained unaccepted. Only AUD-340 was newly accepted.**
 The [scoped decision](../../audits/AUDIT-2026-10.md#scoped-aud-340-acceptance-2026-10-29)
 preserves all 382 previous IDs. AUD-447, AUD-208, AUD-432 and AUD-454 remain
 unaccepted. Historical Squawk admission and the 286 KiB Map allowance remain

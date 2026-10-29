@@ -332,14 +332,14 @@ def test_decode_token_branches(monkeypatch) -> None:
 async def test_validate_password_hibp_real_flow_and_errors() -> None:
     mock_resp = MagicMock()
     mock_resp.status_code = 200
-    mock_resp.text = "ABC12:0\nDEF34:0\n"
+    mock_resp.text = f"{'0' * 35}:0\n{'1' * 35}:0\n"
 
     mock_client = AsyncMock(spec=httpx.AsyncClient)
     mock_client.get = AsyncMock(return_value=mock_resp)
     mock_client.aclose = AsyncMock()
 
     with patch("app.auth.security.httpx.AsyncClient", return_value=mock_client):
-        await validate_password_hibp("SafePassword123!")
+        await validate_password_hibp(os.urandom(32).hex())
         assert sec._hibp_client is mock_client
 
         client = await sec._get_hibp_client()
@@ -368,10 +368,16 @@ async def test_validate_password_hibp_real_flow_and_errors() -> None:
 
     from app.auth.security import _calculate_lookup_hash
 
-    sha1 = _calculate_lookup_hash("pass")
+    candidate = os.urandom(32).hex()
+    sha1 = _calculate_lookup_hash(candidate)
     suffix = sha1[5:]
     mock_resp.text = f"{suffix}:INVALID_COUNT\n"
 
     mock_client.get = AsyncMock(return_value=mock_resp)
-    with patch("app.auth.security.httpx.AsyncClient", return_value=mock_client):
-        await validate_password_hibp("pass")
+    with (
+        patch("app.auth.security.httpx.AsyncClient", return_value=mock_client),
+        patch.object(settings, "password_hibp_fail_open", False),
+        patch("app.auth.security.translate", return_value="unavailable"),
+        pytest.raises(ValueError, match="unavailable"),
+    ):
+        await validate_password_hibp(candidate)

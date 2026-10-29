@@ -519,7 +519,8 @@ networkPolicy:
     egressCIDRs: []
   # TCP 443 egress for backup, backend, file-processor and outbox-worker. Public
   # destinations stay reachable; cluster, private and link-local ranges are
-  # excepted. Owner-verified private HTTPS endpoints go in privateCIDRs.
+  # excepted. The listed baseline exclusions must remain when adding cluster
+  # CIDRs; owner-verified private HTTPS endpoints go in privateCIDRs.
   httpsEgress:
     privateCIDRs: []
     exceptIPv4CIDRs:

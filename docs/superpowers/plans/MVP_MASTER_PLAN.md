@@ -8,8 +8,8 @@
 короткий оперативный срез. Отдельный план выпуска объединён с этим
 документом; новую конкурирующую дорожную карту не создавать.
 
-**Возобновление по поручению владельца от 2026-10-16, подтверждённое новым
-поручением от 2026-10-28:** dependency checkpoint C8
+**Возобновление по поручению владельца от 2026-10-16, подтверждённое новыми
+поручениями от 2026-10-28 и 2026-10-30:** dependency checkpoint C8
 принят; текущие evidence и активный пакет находятся в [STATUS.md](STATUS.md).
 Работа продолжается автономно. Первый приоритет — полное закрытие всех находок
 [октябрьского аудита](../../audits/AUDIT-2026-10.md): P1, P2, P3
@@ -32,15 +32,15 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   интеграцию и выполняет stage/commit/push; по актуальному поручению владельца до 64 GPT-6.1 Terra Max работают в
   непересекающихся областях. Новые ветки/worktree не создавать. Обычный merge;
   admin bypass, force-push и общие изменения branch protection не разрешены.
-  Исключение владельца от 2026-10-09: после готового reviewed CI diff и проверок
-  можно убрать только 14 Q1/Q4 contexts из ruleset `8335285`, перечисленных в
-  [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#authorized-required-context-removals); остальные правила сохранить.
-  Последующим явным ответом владелец разрешил ещё ровно один context,
-  `Security Audit / Semgrep SAST`, после reviewed scanner de-dup diff и проверок;
+  Историческое решение владельца от 2026-10-09 разрешило удаление 14 Q1/Q4 contexts;
+  последующим решением разрешён один `Security Audit / Semgrep SAST` context.
+  [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#authorized-required-context-removals) фиксирует эти внедрённые изменения.
+  Дальнейшие удаления или ослабления обязательных проверок не разрешены.
   CodeQL остаётся blocking, Semgrep — в pre-commit. Решение владельца от
   2026-10-12, зафиксированное в ADR-047, заменило два compatibility contexts
   четырьмя security contexts: действуют 78 обязательных пар context/integration
   и отдельное правило CodeQL `code_scanning`. Сохранять действующие правила;
+  любые их изменения требуют отдельного разрешения владельца по ADR-047;
   bypass допустим только по отдельному явному решению владельца для названного PR.
 - Уже реализованные исправления, тесты и оснастка сохраняются. Начатые направления
   доводятся до **ограниченной контрольной точки**, указанной ниже, без восстановления
@@ -249,7 +249,7 @@ runtime guard85%/4 GiB неизменен. Build, full E2E и Lighthouse сох�
    проверяемый шаг; blanket CLOSED и формальное удаление отчётов запрещены.
 
 Этот объём добавлен к работе по выпуску. Ограничения ресурсов, один checkout,
-ветка `egorribun`, PR #1306 и обычный release flow сохраняются.
+ветка `egorribun`, PR #1343 и обычный release flow сохраняются.
 
 ## Evidence и сохранность результатов
 
@@ -404,9 +404,10 @@ STATUS ≤150 строк: результаты, следующий шаг и к�
 рабочего дерева; Git history не переписывалась. Value-free inventory на rescue SHA
 `d0aad7c296facd79b3d41b037bc4160f5b3132be` содержит 120 путей; повторная read-only
 сверка подтвердила все 120 blob IDs и размеров (3,981,581 bytes), а три уникальных
-полезных требования имеют tracked destinations. Внешние bundle и inventory уже
-существуют и задокументированы в [индексе аудита](../../audits/INDEX.md); новые
-bundle/копии не создавать, каталоги не восстанавливать и bundle не распространять.
+полезных требования имеют tracked destinations. Внешние bundle и inventory были
+проверены на исторической контрольной точке и задокументированы в [индексе аудита](../../audits/INDEX.md).
+На 2026-10-30 их нет по указанным локальным путям; текущее расположение не подтверждено.
+Новые bundle/копии не создавать, каталоги не восстанавливать и bundle не распространять.
 
 Пользователь подтвердил, что исторический signing-key default применялся только
 в эфемерных CI/demo-средах; проверки persistent deployment или ротация ключа из
@@ -754,10 +755,10 @@ static contracts или PR Core доказательством frozen-RC full sm
 - Q1/Q4 ADR-047 интегрированы в reviewable пакетах. Сохранять согласованность
   зависимостей, результатов, event filters, special assertions, release rationale
   и catalog/contracts. Оставшиеся gates fail closed: ошибка, missing evidence
-  или неожиданный skip не становятся PASS. Branch protection менять только
-  в точной границе исходных14 contexts и отдельно разрешённого
-  `Security Audit / Semgrep SAST` после готового reviewed CI diff и проверок;
-  остальные правила сохранять, CodeQL оставлять blocking.
+  или неожиданный skip не становятся PASS. Сохранить 78 действующих пар
+  context/integration, отдельное правило CodeQL и все остальные защиты.
+  Исторические разрешения на 14 Q1/Q4 contexts и отдельный Semgrep context
+  уже реализованы; дальнейшее изменение требует нового решения владельца.
 - Сохранить integrated planner/checker и ADR-040 presentation ignorer. Проверить
   затронутые контракты; не запускать полные мутации перед каждым MVP-коммитом.
   Полный inventory, survivors/runtime/no-coverage closure, Q2 dashboard/regression
@@ -897,9 +898,9 @@ chaos/recovery/rollback сохраняют данные; runner не удали�
 - Обычный merge единственного PR после required checks. Для resulting main SHA
   получить новое push-main evidence согласно `quality/release-required-checks.json`;
   synthetic PR merge не подменяет released source. Admin bypass, force-push и
-  общие изменения branch protection запрещены; разрешены исходные14 Q1/Q4
-  contexts и отдельно ровно один `Security Audit / Semgrep SAST` после reviewed
-  diff/проверок. Все остальные rules/contexts сохраняются; CodeQL blocking.
+  изменения branch protection запрещены; прежние разрешённые удаления
+  14 Q1/Q4 contexts и одного `Security Audit / Semgrep SAST` уже внедрены.
+  Все 78 действующих пар и CodeQL `code_scanning` сохраняются.
 - Запустить готовый main-only producer ровно шести images: backend/frontend/
   gateway/ws-hub/file-processor/caddy. Сохранить Trivy, signing, SBOM/provenance
   и WASM parity; проверить фактические published digests и source/run/attempt

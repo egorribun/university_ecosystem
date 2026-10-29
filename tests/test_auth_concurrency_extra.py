@@ -49,14 +49,14 @@ class TestValidatePasswordHibp:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.text = "ABC12:0\nDEF34:0\n"
+        mock_response.text = f"{'0' * 35}:0\n{'1' * 35}:0\n"
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
 
         with patch("app.auth.security._get_hibp_client", return_value=mock_client):
             # Should not raise
-            await validate_password_hibp("SafePassword123!")
+            await validate_password_hibp(uuid.uuid4().hex)
 
     @pytest.mark.asyncio
     async def test_password_compromised(self):
@@ -71,7 +71,7 @@ class TestValidatePasswordHibp:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.text = f"{suffix}:1500\nOTHER:0\n"
+        mock_response.text = f"{suffix}:1500\n"
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)

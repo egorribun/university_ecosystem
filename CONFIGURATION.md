@@ -1,7 +1,7 @@
 # Configuration Reference
 
-This document describes the operator-facing environment variables used by the
-University Ecosystem backend. Defaults in this document are the runtime
+This document describes selected operator-facing environment variables used by the
+University Ecosystem backend; it is not yet an exhaustive inventory. Defaults in this document are the runtime
 `Settings` defaults; `.env.example` is an explicit local profile and may set a
 different value intentionally. Only settings with an implemented `*_FILE`
 variant accept secret-file mounts; the file value takes precedence over the
@@ -82,7 +82,7 @@ corresponding plaintext variable.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CACHE_BACKEND` | `redis`, `memory`, `none` | `redis` |
+| `CACHE_BACKEND` | `redis`, `memory`, `tiered`, `none`, `nats` | `redis` |
 | `CACHE_ENABLED` | Enable caching | `true` |
 | `CACHE_REDIS_URL` | Redis URL | `redis://127.0.0.1:6379/0` |
 | `REVOCATION_REDIS_URL` | Dedicated persistent/noeviction Redis URL for session revocation | Required outside development |
@@ -154,14 +154,19 @@ local-key operations and S3 behavior are unchanged.
 | `SPICEDB_ENDPOINT` | SpiceDB gRPC endpoint | `spicedb:50051` |
 | `SPICEDB_PRESHARED_KEY` | SpiceDB auth key (`_FILE` supported); the development sentinel is rejected outside development | `development-preshared-key` (development only) |
 | `ELASTICSEARCH_URL` | Search engine endpoint; production/staging requires `https://` | `http://localhost:9200` (local only) |
-| `ELASTICSEARCH_PASSWORD` | ES password (`_FILE` supported) | Required |
-| `WS_HUB_INTERNAL_SECRET` | HMAC for ws-hub cache invalidation | Required |
+| `ELASTICSEARCH_PASSWORD` | ES password (`_FILE` supported) | Empty; required outside development/test unless CI |
+| `WS_HUB_INTERNAL_SECRET` | HMAC for ws-hub cache invalidation (`_FILE` supported) | Empty; required outside development/test unless CI |
 | `INTERNAL_AUTH_TOKEN` | Token for ws-hub's exact room-participant callback; managed Compose/Helm/K8s deployments derive it from the existing ws-hub secret | Empty in development |
 | `IDEMPOTENCY_HMAC_SECRET` | signs idempotency keys | Empty |
 
 ---
 
 ## ⚙️ Background Workers & Retention
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NOTIFICATIONS_WORKER_METRICS_HOST` | Notifications worker health and metrics listener address | `127.0.0.1` |
+| `NOTIFICATIONS_WORKER_METRICS_PORT` | Notifications worker listener port; `0` disables the listener | `9101` |
 
 ### Transactional Outbox
 
@@ -202,14 +207,13 @@ local-key operations and S3 behavior are unchanged.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint | `http://localhost:4317` |
 | `LOG_LEVEL` | Logging verbosity | `INFO` |
 
-> **Tip**: `_FILE` loading is implemented only for `DATABASE_URL`, `SECRET_KEY`,
-> `INTERNAL_HMAC_SECRET`, `TOKEN_HMAC_SECRET`, `NATS_AUTH_TOKEN`, `SMTP_PASSWORD`,
-> `VAPID_PRIVATE_KEY`, `SPOTIFY_CLIENT_SECRET`, `SPICEDB_PRESHARED_KEY`,
-> `ELASTICSEARCH_PASSWORD`, `WS_HUB_INTERNAL_SECRET`, and
-> `MFA_TOTP_ENCRYPTION_KEYS`. For these settings, the file value takes precedence
-> over plaintext. `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` is a non-secret key name
-> supplied directly through the environment and does not support `_FILE`. Other
-> settings do not automatically accept a `_FILE` suffix.
+> **Tip**: `_FILE` loading is limited to the explicit secret-field allowlist in
+> [the backend configuration](app/core/config/base.py). It includes, for example,
+> `DATABASE_URL`, `AUDIT_LOG_SECRET`, `CSRF_HMAC_SECRET` and
+> `MFA_TOTP_ENCRYPTION_KEYS`; the file value takes precedence over plaintext.
+> `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` is a non-secret key name supplied directly
+> through the environment and does not support `_FILE`. Other settings do not
+> automatically accept a `_FILE` suffix.
 
 The active TOTP key must be independent of every configured Spotify key and of
 Spotify's `SECRET_KEY`-derived fallback. During migration, a non-active TOTP ring

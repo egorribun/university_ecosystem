@@ -411,28 +411,48 @@ export const fetchAnonymousNewsDetail = ({
   return fetchAnonymousGet(url, language, signal)
 }
 
+type AnonymousNewsInteractionPagination =
+  { offset: number; cursor?: never } | { offset?: never; cursor: string }
+
+const isValidAnonymousNewsCursor = (cursor: unknown): cursor is string => {
+  if (typeof cursor !== "string" || cursor.length === 0) return false
+  let length = 0
+  for (const character of cursor) {
+    length += 1
+    const codePoint = character.codePointAt(0)!
+    if (length > 128 || (codePoint >= 0xd800 && codePoint <= 0xdfff)) return false
+  }
+  return true
+}
+
 /** Fetch public article interactions while preserving the comment-page contract. */
 export const fetchAnonymousNewsInteractions = ({
   id,
   language,
   limit,
   offset,
+  cursor,
   signal,
 }: {
   id: string
   language: string
   limit: number
-  offset: number
   signal?: AbortSignal
-}): Promise<Response> => {
+} & AnonymousNewsInteractionPagination): Promise<Response> => {
   if (!ANONYMOUS_RESOURCE_ID.test(id)) {
     return Promise.reject(new Error("Anonymous news interactions require a UUID"))
   }
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
     return Promise.reject(new Error("Anonymous news interaction limit is invalid"))
   }
-  if (!Number.isSafeInteger(offset) || offset < 0) {
+  if ((offset === undefined) === (cursor === undefined)) {
+    return Promise.reject(new Error("Anonymous news interaction pagination is invalid"))
+  }
+  if (offset !== undefined && (!Number.isSafeInteger(offset) || offset < 0)) {
     return Promise.reject(new Error("Anonymous news interaction offset is invalid"))
+  }
+  if (cursor !== undefined && !isValidAnonymousNewsCursor(cursor)) {
+    return Promise.reject(new Error("Anonymous news interaction cursor is invalid"))
   }
   const path = `/api/v1/news/${encodeURIComponent(id)}/interactions`
   let url: URL
@@ -442,7 +462,8 @@ export const fetchAnonymousNewsInteractions = ({
     return Promise.reject(error)
   }
   url.searchParams.set("limit", String(limit))
-  url.searchParams.set("offset", String(offset))
+  if (cursor !== undefined) url.searchParams.set("cursor", cursor)
+  else url.searchParams.set("offset", String(offset))
   return fetchAnonymousGet(url, language, signal)
 }
 

@@ -339,7 +339,8 @@ def test_pr_vulnerability_gate_has_a_read_only_producer() -> None:
 
     jobs = workflow["jobs"]
     assert jobs["vuln-gate"]["if"] == (
-        "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}"
+        "${{ always() && github.ref == 'refs/heads/main' "
+        "&& github.event_name != 'pull_request' }}"
     )
     pr_gate = jobs["vuln-gate-pr"]
     assert pr_gate["name"] == "Vulnerability gate (CRITICAL/HIGH)"
@@ -385,8 +386,12 @@ def test_privileged_sbom_jobs_are_bound_to_the_protected_main_ref() -> None:
     expected_guard = (
         "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}"
     )
-    for job_name in ("sbom-python", "sbom-go", "sbom-rust", "vuln-gate"):
+    for job_name in ("sbom-python", "sbom-go", "sbom-rust"):
         assert workflow["jobs"][job_name]["if"] == expected_guard
+    assert workflow["jobs"]["vuln-gate"]["if"] == (
+        "${{ always() && github.ref == 'refs/heads/main' "
+        "&& github.event_name != 'pull_request' }}"
+    )
 
 
 def test_release_policy_declares_a_pr_event_without_removing_push_policy() -> None:

@@ -36,12 +36,45 @@ def _reply_server(
                     request.extend(part)
                 seen.append((self.client_address[0], bytes(request)))
                 if drip:
-                    for byte in reply:
-                        if stop.wait(0.02):
-                            return
-                        self.request.sendall(bytes([byte]))
-                else:
-                    self.request.sendall(reply)
+                    # Observe peer EOF/reset separately from the writer: on
+                    # Windows a failed write can also be a local socket abort.
+                    def send_drip() -> None:
+                        try:
+                            for byte in reply:
+                                if stop.wait(0.02) or closed.is_set():
+                                    return
+                                self.request.sendall(bytes([byte]))
+                        except OSError as error:
+                            if error.errno not in {
+                                errno.EPIPE,
+                                errno.ECONNRESET,
+                                errno.ENOTCONN,
+                                errno.ECONNABORTED,
+                            } or not closed.wait(2):
+                                failures.append(True)
+
+                    writer = threading.Thread(target=send_drip, name="drip-writer")
+                    writer.start()
+                    try:
+                        try:
+                            received = self.request.recv(1)
+                        except OSError as error:
+                            if error.errno == errno.ECONNRESET:
+                                closed.set()
+                            else:
+                                failures.append(True)
+                        else:
+                            if received == b"":
+                                closed.set()
+                            else:
+                                failures.append(True)
+                    finally:
+                        stop.set()
+                        writer.join(timeout=5)
+                        if writer.is_alive():
+                            failures.append(True)
+                    return
+                self.request.sendall(reply)
                 self.request.shutdown(socket.SHUT_WR)
                 if self.request.recv(1) == b"":
                     closed.set()
@@ -158,6 +191,31 @@ def test_transport_deadline_does_not_restart_for_each_header_byte() -> None:
         with pytest.raises(probe.ProbeError):
             probe._request(_request(port), 0.5)
         assert len(seen) == 1 and closed.wait(2)
+
+
+def test_rolling_timeout_negative_control(monkeypatch: pytest.MonkeyPatch) -> None:
+    reply = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+    with _reply_server(reply, drip=True) as (port, seen, closed):
+        monkeypatch.setattr(probe, "_remaining", lambda _deadline: 0.5)
+        response = probe._request(_request(port), 0.5)
+        assert response.status == 200 and response.body == b"ok"
+        assert len(seen) == 1 and closed.wait(2)
+
+
+def test_peer_observer_rejects_an_open_connection() -> None:
+    reply = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+    with _reply_server(reply, drip=True) as (port, seen, closed):
+        connection = socket.create_connection(("127.0.0.1", port), timeout=5)
+        try:
+            connection.sendall(
+                b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+            )
+            assert connection.recv(1) == b"H"
+            assert len(seen) == 1
+            assert not closed.wait(0.15)
+        finally:
+            connection.close()
+        assert closed.wait(2)
 
 
 def test_redirect_is_observed_once_and_never_followed() -> None:

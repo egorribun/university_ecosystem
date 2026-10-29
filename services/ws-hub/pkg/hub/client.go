@@ -319,7 +319,7 @@ func (c *Client) processNextMessage(ctx context.Context) bool {
 		return true
 	}
 	if c.rejectRateLimitedMessage() {
-		return true
+		return ctx.Err() == nil && (c.ctx == nil || c.ctx.Err() == nil)
 	}
 
 	var msg Message
@@ -481,6 +481,7 @@ type roomJoinDecision struct {
 	replayEnabled     bool
 	replayLimited     bool
 	replayUnavailable bool
+	reconnectOnReject bool
 	replaySeq         uint64
 	replayCtx         context.Context
 	replayState       *roomReplayState
@@ -519,17 +520,23 @@ func (c *Client) prepareAuthorizedRoomJoin(
 		msg.Room,
 	)
 	if !c.Hub.chatReplayAvailable.Load() {
-		c.cancelRoomReplay(msg.Room)
 		if decision.tokenErr == nil {
 			decision.replayUnavailable = true
+			decision.reconnectOnReject = c.cancelJoinedReplayForRetry(msg.Room)
+			c.cancelRoomReplay(msg.Room)
 			return false
 		}
+		c.cancelRoomReplay(msg.Room)
 	}
 	if decision.tokenErr != nil {
 		return true
 	}
 	if !c.allowReplayJoin(msg.Room) {
 		decision.replayLimited = true
+		decision.reconnectOnReject = c.cancelJoinedReplayForRetry(msg.Room)
+		if decision.reconnectOnReject {
+			c.cancelRoomReplay(msg.Room)
+		}
 		return false
 	}
 	decision.replayCtx, decision.replayState = c.prepareRoomReplay(ctx, msg.Room)
@@ -562,6 +569,13 @@ func (c *Client) finishAuthorizedRoomJoin(
 	msg Message,
 	decision *roomJoinDecision,
 ) {
+	if decision.reconnectOnReject {
+		// Cancellation happened while the room admission lock was held, so
+		// later queued frames cannot advance the rejected cursor. Close only
+		// after releasing that lock; closeTransport waits for the writer.
+		c.closeTransport("Failed to close session after replay rejection")
+		return
+	}
 	if decision.replayUnavailable {
 		c.sendReplayJoinError(msg.Room, replayUnavailableCode, replayUnavailableDetail)
 		return
@@ -583,6 +597,17 @@ func (c *Client) finishAuthorizedRoomJoin(
 	if decision.legacyCursor && decision.resumeToken == "" {
 		c.sendReplayJoinError(msg.Room, "resume_token_required", "unsigned replay cursors are not accepted")
 	}
+}
+
+// cancelJoinedReplayForRetry prevents later queued frames from advancing past
+// a rejected cursor. ReadPump owns unregistering after the caller closes the
+// transport outside the room lock.
+func (c *Client) cancelJoinedReplayForRetry(room string) bool {
+	if !c.isInRoom(room) {
+		return false
+	}
+	c.cancelConnection()
+	return true
 }
 
 // authorizeRoomJoin runs backend authorization outside the keyed mutex. A
@@ -1375,8 +1400,10 @@ func (c *Client) rejectRateLimitedMessage() bool {
 		return false
 	}
 	IncomingDropsTotal.Inc()
-	if notice, err := json.Marshal(map[string]string{"type": "rate_limit_exceeded"}); err == nil {
-		_ = safeSend(c.Send, notice)
+	if !safeSend(c.Send, []byte(`{"type":"rate_limit_exceeded"}`)) {
+		// A dropped command cannot be retried if its rejection is also lost.
+		c.cancelConnection()
+		c.closeTransport("Failed to close session after rate-limit rejection")
 	}
 	return true
 }

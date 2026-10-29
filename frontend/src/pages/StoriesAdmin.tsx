@@ -51,8 +51,8 @@ function toIso(date: string) {
   return d.toISOString()
 }
 
-function formatTimeLeft(expiresAt: string, now: Date) {
-  return formatRelativeTime(expiresAt, "en-US", now) // Simplified for now, but following the requirement
+function formatTimeLeft(expiresAt: string, now: Date, locale: string) {
+  return formatRelativeTime(expiresAt, locale, now)
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -91,11 +91,12 @@ const createInitialFormState = (): StoryFormState => ({
 type StoryAdminItemProps = {
   story: StoryItem
   nowTick: Date
+  localeCode: string
   formatDate: (value: Date | string | number) => string
   onRefresh: () => void
 }
 
-function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminItemProps) {
+function StoryAdminItem({ story, nowTick, localeCode, formatDate, onRefresh }: StoryAdminItemProps) {
   const { t } = useTranslation(["stories", "common"])
   const [publishedAt, setPublishedAt] = useState(() => formatInputDate(story.published_at))
   const [expiresAt, setExpiresAt] = useState(() => formatInputDate(story.expires_at))
@@ -121,8 +122,8 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
   }, [coverPreview])
 
   const timeLeft = useMemo(
-    () => formatTimeLeft(story.expires_at, nowTick),
-    [story.expires_at, nowTick]
+    () => formatTimeLeft(story.expires_at, nowTick, localeCode),
+    [story.expires_at, nowTick, localeCode]
   )
 
   const handleTimeSave = async () => {
@@ -407,7 +408,7 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
 export default function StoriesAdmin() {
   const { user } = useAuth()
   const { t } = useTranslation(["stories", "common"])
-  const { formatDate } = useLocaleFormatters()
+  const { formatDate, localeCode } = useLocaleFormatters()
   const isAdmin = user?.role === "admin"
   const nowTick = useScheduleClock(isAdmin)
   const [stories, setStories] = useState<StoryItem[]>([])
@@ -720,6 +721,7 @@ export default function StoriesAdmin() {
                     key={story.id}
                     story={story}
                     nowTick={nowTick}
+                    localeCode={localeCode}
                     formatDate={(value) => formatDate(value, { preset: "datetime" })}
                     onRefresh={() => void fetchStories()}
                   />

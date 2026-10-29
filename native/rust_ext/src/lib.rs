@@ -838,17 +838,34 @@ pub fn is_partition_expired(
     catch_unwind_value(
         "is_partition_expired",
         std::panic::AssertUnwindSafe(|| {
-            // LOW-W19: a negative retention_days would make the cutoff a future timestamp,
-            // causing every partition to appear un-expired.  Reject it defensively.
+            // LOW-W19: a negative retention_days would put the cutoff in the future
+            // and could expire partitions prematurely. Reject it defensively.
             if retention_days < 0 {
                 return false;
             }
             let prefix = format!("{}_y", table_name);
-            let Some(remainder) = partition_name.strip_prefix(&prefix) else {
-                return false;
-            };
+            let (remainder, separator) =
+                if let Some(remainder) = partition_name.strip_prefix(&prefix) {
+                    (remainder, 'm')
+                } else {
+                    // Migration 202607020001 used the exact suffix YYYY_MM.
+                    // Do not infer retention from other underscore-separated names.
+                    let historical_prefix = format!("{}_", table_name);
+                    let Some(remainder) = partition_name.strip_prefix(&historical_prefix) else {
+                        return false;
+                    };
+                    let bytes = remainder.as_bytes();
+                    if bytes.len() != 7
+                        || bytes[4] != b'_'
+                        || !bytes[..4].iter().all(u8::is_ascii_digit)
+                        || !bytes[5..].iter().all(u8::is_ascii_digit)
+                    {
+                        return false;
+                    }
+                    (remainder, '_')
+                };
 
-            let parts: Vec<&str> = remainder.split('m').collect();
+            let parts: Vec<&str> = remainder.split(separator).collect();
             if parts.len() != 2 {
                 return false;
             }
@@ -1276,6 +1293,129 @@ mod tests {
     }
 
     // -- is_partition_expired edge cases --
+
+    #[test]
+    fn aud045_historical_months_obey_the_same_retention_as_runtime_names() {
+        for table in [
+            "notifications",
+            "notification_deliveries",
+            "data_access_logs",
+        ] {
+            for (year, month, days, expected) in [
+                (2020, 1, 30, true),
+                (2020, 12, 30, true),
+                (2020, 1, 0, true),
+                (2999, 1, 30, false),
+                (2999, 1, 0, false),
+                (2020, 1, -1, false),
+                (2020, 1, 100_000_000, false),
+                (2020, 1, i64::MAX, false),
+            ] {
+                let historical = format!("{table}_{year:04}_{month:02}");
+                let runtime = format!("{table}_y{year:04}m{month:02}");
+                assert_eq!(
+                    is_partition_expired(historical.clone(), table.to_string(), days).unwrap(),
+                    expected,
+                    "historical partition {historical} with retention {days}"
+                );
+                assert_eq!(
+                    is_partition_expired(runtime.clone(), table.to_string(), days).unwrap(),
+                    expected,
+                    "runtime partition {runtime} with retention {days}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn aud045_historical_months_are_retained_until_their_end() {
+        let now = Utc::now();
+        let current_month = Utc
+            .with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
+            .single()
+            .unwrap();
+        let previous_month = current_month - Duration::days(1);
+        let days = i64::from(now.day()) + 1;
+        for name in [
+            format!(
+                "notifications_{:04}_{:02}",
+                previous_month.year(),
+                previous_month.month()
+            ),
+            format!(
+                "notifications_y{:04}m{:02}",
+                previous_month.year(),
+                previous_month.month()
+            ),
+        ] {
+            assert!(
+                !is_partition_expired(name.clone(), "notifications".to_string(), days).unwrap(),
+                "{name} ends after the retention cutoff"
+            );
+        }
+    }
+
+    #[test]
+    fn aud045_historical_months_reject_noncanonical_names() {
+        let table = "notifications";
+        for name in [
+            "notifications_default",
+            "other_2020_01",
+            "notifications_archive_2020_01",
+            "notifications_2020_01_extra",
+            "notifications_2020_01_",
+            "notifications_202_01",
+            "notifications_02020_01",
+            "notifications_2020_1",
+            "notifications_2020_001",
+            "notifications_+020_01",
+            "notifications_-020_01",
+            "notifications_2020_+1",
+            "notifications_20a0_01",
+            "notifications_2020_0a",
+            "notifications_2020_٠",
+            "notifications_2020_00",
+            "notifications_2020_13",
+            "notifications_0000_01",
+            "notifications_y2020_01",
+            "notifications_2020m01",
+            "notifications_2020_01;",
+        ] {
+            assert!(
+                !is_partition_expired(name.to_string(), table.to_string(), 30).unwrap(),
+                "noncanonical partition {name} must not expire"
+            );
+        }
+    }
+
+    #[test]
+    fn aud045_historical_months_preserve_python_retention_guards() {
+        Python::initialize();
+        Python::attach(|py| {
+            let module = pyo3::types::PyModule::new(py, "rust_ext").unwrap();
+            rust_ext(&module).unwrap();
+            let expired = module.getattr("is_partition_expired").unwrap();
+            assert!(expired
+                .call1(("notifications_2020_01", "notifications", 30i64))
+                .unwrap()
+                .extract::<bool>()
+                .unwrap());
+
+            let integer = py.import("builtins").unwrap().getattr("int").unwrap();
+            for value in ["9223372036854775808", "-9223372036854775809"] {
+                let days = integer.call1((value,)).unwrap();
+                assert!(!expired
+                    .call1(("notifications_2020_01", "notifications", days))
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap());
+            }
+            let error = expired
+                .call1(("notifications_2020_01", "notifications", "30"))
+                .unwrap_err();
+            assert!(error.is_instance_of::<pyo3::exceptions::PyTypeError>(py));
+        });
+    }
 
     #[test]
     fn expired_empty_partition_name() {

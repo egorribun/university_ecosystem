@@ -16,6 +16,9 @@ class _Preparer:
     def quote(self, name: str) -> str:
         return f'"{name}"'
 
+    def quote_identifier(self, name: str) -> str:
+        return self.quote(name)
+
 
 class _Result:
     def __init__(self, partitions=()):
@@ -26,6 +29,9 @@ class _Result:
 
     def all(self):
         return list(self.partitions)
+
+    def scalar_one(self):
+        return self.partitions[0]
 
 
 class _Connection:
@@ -58,6 +64,9 @@ class _Connection:
     async def __aexit__(self, exc_type, exc, tb):
         return False
 
+    def begin_nested(self):
+        return self
+
     async def execute(self, statement, *args):
         sql = str(statement)
         self.executed.append((sql, args))
@@ -71,7 +80,19 @@ class _Connection:
             and f'CREATE TABLE "{self.partition_create_error_name}"' in sql
         ):
             raise OSError("range partition unavailable")
-        if "SELECT child.relname" in sql:
+        if "pg_try_advisory_xact_lock" in sql:
+            return _Result([True])
+        if "current_setting('transaction_isolation')" in sql:
+            return _Result(["read committed"])
+        if "pg_catalog.pg_settings" in sql:
+            return _Result(["0"])
+        if "AS partition_bound" in sql:
+            if args and args[0].get("child_oid"):
+                return _Result(
+                    row
+                    for row in self.partitions
+                    if row.child_oid == args[0]["child_oid"]
+                )
             return _Result(self.partitions)
         if "pg_get_expr(child.relpartbound" in sql:
             return _Result(self.range_bounds)
@@ -351,9 +372,34 @@ async def test_partition_pruning_covers_expired_nonexpired_invalid_and_ddl_error
 ):
     rust = MagicMock()
     rust.get_partition_info.return_value = _info()
-    rust.is_partition_expired.side_effect = lambda name, *_: name != "not_expired"
+    rust.is_partition_expired.return_value = True
     connection = _Connection(
-        partitions=("not_expired", "bad;drop", "old_partition"),
+        partitions=(
+            SimpleNamespace(
+                parent_oid=11,
+                parent_schema="public",
+                child_oid=12,
+                child_schema="public",
+                partition_name="notifications_y1999m01",
+                partition_bound="FOR VALUES FROM ('1999-01-01') TO ('1999-02-01')",
+            ),
+            SimpleNamespace(
+                parent_oid=11,
+                parent_schema="public",
+                child_oid=13,
+                child_schema="public",
+                partition_name="notifications_y2099m02",
+                partition_bound="FOR VALUES FROM ('2099-02-01') TO ('2099-03-01')",
+            ),
+            SimpleNamespace(
+                parent_oid=11,
+                parent_schema="public",
+                child_oid=14,
+                child_schema="public",
+                partition_name="bad;drop",
+                partition_bound="FOR VALUES FROM ('1999-03-01') TO ('1999-04-01')",
+            ),
+        ),
         drop_error=True,
     )
     await _run(

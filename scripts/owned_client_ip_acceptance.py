@@ -33,7 +33,7 @@ _CASE_BUDGETS_MS = (45000, 45000, 45000, 45000, 5000)
 _TOTAL_BUDGET_MS = 120000
 _MAX_OUTPUT_BYTES = 4096
 _SETUP_REQUESTS = 2
-_HTTP_REQUESTS = _SETUP_REQUESTS + sum(_LIMITS) + 6 * len(_CASES)
+_HTTP_REQUESTS = _SETUP_REQUESTS + sum(_LIMITS) + 6 * len(_CASES) + 4
 _BACKEND_COMMAND = (
     "gunicorn",
     "app.main:app",
@@ -76,6 +76,7 @@ _CASE_KEYS = frozenset(
         "other_client",
         "spoofed",
         "direct_untrusted",
+        "backend_direct_untrusted",
         "elapsed_ms",
     }
 )
@@ -115,6 +116,7 @@ class CaseObservation:
     other_client: int
     spoofed: tuple[int, ...]
     direct_untrusted: int
+    backend_direct_untrusted: int | None
     elapsed_ms: int
 
 
@@ -311,6 +313,11 @@ def _case_from_row(row: object, index: int) -> CaseObservation | None:
         or len(spoofed) != 3
         or not all(_status(status) for status in spoofed)
         or not _status(row["direct_untrusted"])
+        or (
+            not _status(row["backend_direct_untrusted"])
+            if index < 4
+            else row["backend_direct_untrusted"] is not None
+        )
         or not _bounded_integer(row["elapsed_ms"], _CASE_BUDGETS_MS[index])
     ):
         return None
@@ -321,6 +328,7 @@ def _case_from_row(row: object, index: int) -> CaseObservation | None:
         other_client=row["other_client"],
         spoofed=tuple(spoofed),
         direct_untrusted=row["direct_untrusted"],
+        backend_direct_untrusted=row["backend_direct_untrusted"],
         elapsed_ms=row["elapsed_ms"],
     )
 
@@ -331,7 +339,7 @@ def _decode_frame(
     if type(wire) is not dict or wire.keys() != _ROOT_KEYS:
         return None
     if (
-        wire["schema"] != "ue-owned-client-ip-v1"
+        wire["schema"] != "ue-owned-client-ip-v2"
         or wire["source_sha"] != expected_source_sha
         or wire["run_id"] != expected_run_id
         or wire["closed"] is not True
@@ -413,6 +421,11 @@ def _case_passes(case: CaseObservation, index: int) -> bool:
         and case.other_client == expected
         and case.spoofed == (429, 429, 429)
         and case.direct_untrusted == 429
+        and (
+            case.backend_direct_untrusted == 429
+            if index < 4
+            else case.backend_direct_untrusted is None
+        )
     )
 
 

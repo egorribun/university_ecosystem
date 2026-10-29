@@ -36,7 +36,10 @@ type NewsInteractionSummary = Pick<NewsInteractions, "likes_count" | "is_liked" 
 // Optimistic inserts and deletes change the visible array, not the number of
 // rows the server returned for this page. Keep that length with the page so
 // a later request advances from the server offset rather than the UI count.
-type InteractionPage = NewsInteractions & { serverCommentsLength?: number }
+type InteractionPage = NewsInteractions & {
+  serverCommentsLength?: number
+  isSummarySeed?: boolean
+}
 type InteractionPages = InfiniteData<InteractionPage, number>
 type MutationOwner = { ownsSession: () => boolean }
 
@@ -127,11 +130,18 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
         })
         interactions = response.data
       }
-      return { ...interactions, serverCommentsLength: interactions.comments.length }
+      return {
+        ...interactions,
+        serverCommentsLength: interactions.comments.length,
+        isSummarySeed: false,
+      }
     },
     initialPageParam: 0,
     getNextPageParam: nextCommentsOffset,
-    select: flattenInteractions,
+    select: (data) => ({
+      interactions: flattenInteractions(data),
+      commentsLoaded: data.pages.length > 0 && data.pages[0]?.isSummarySeed !== true,
+    }),
     enabled: options.loadComments ?? true,
     staleTime: 30_000, // 30s cache — optimistic updates handle local state immediately
     // The seed is stale on purpose: a detail page mounted after a feed card must
@@ -145,6 +155,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
               comments: [],
               comments_count: seed.comments_count ?? 0,
               serverCommentsLength: 0,
+              isSummarySeed: true,
             },
           ],
           pageParams: [0],
@@ -155,12 +166,21 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
     // in a persisted query snapshot while their request is unresolved.
     meta: { persist: false },
   })
-  const interactions = interactionsQuery.data
+  const interactions = interactionsQuery.data?.interactions
+  const commentsStatus = interactionsQuery.data?.commentsLoaded
+    ? "ready"
+    : interactionsQuery.isError
+      ? "error"
+      : "loading"
   const isLoading = interactionsQuery.isLoading
   const fetchNextPage = interactionsQuery.fetchNextPage
+  const refetch = interactionsQuery.refetch
   const loadMoreComments = useCallback(() => {
     void fetchNextPage()
   }, [fetchNextPage])
+  const retryComments = useCallback(() => {
+    void refetch()
+  }, [refetch])
 
   const likeMutation = useMutation({
     networkMode: "always",
@@ -327,8 +347,12 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
   return {
     interactions,
     isLoading,
+    commentsStatus,
+    isRetryingComments: interactionsQuery.isFetching,
+    retryComments,
     hasMoreComments: interactionsQuery.hasNextPage,
     isLoadingMoreComments: interactionsQuery.isFetchingNextPage,
+    isLoadingMoreCommentsError: interactionsQuery.isFetchNextPageError,
     loadMoreComments,
     toggleLike: useCallback(() => likeMutate({ ownsSession: captureSessionEpoch() }), [likeMutate]),
     toggleLikeAsync: useCallback(

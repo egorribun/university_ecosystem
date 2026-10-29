@@ -1533,6 +1533,7 @@ jobs:
             uv run python - "$squawk_binary_path" "$AUD148_ORDINARY_SQL" "$sql_file" "${squawk_args[@]}" <<'AUD148_JSON' || capture_status=$?
           import hashlib
           import json
+          import math
           import os
           import re
           import resource
@@ -1544,6 +1545,42 @@ jobs:
 
           def fail(reason):
               raise SystemExit("AUD148 Squawk JSON: " + reason)
+
+
+          def contains_private(value):
+              if isinstance(value, str):
+                  return any(
+                      private and private in value
+                      for private in (os.environ.get("SECRET_KEY", ""), os.environ.get("DATABASE_URL", ""))
+                  )
+              if isinstance(value, dict):
+                  return any(
+                      contains_private(key) or contains_private(item)
+                      for key, item in value.items()
+                  )
+              if isinstance(value, list):
+                  return any(contains_private(item) for item in value)
+              return False
+
+
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate JSON object key")
+                  result[key] = value
+              return result
+
+
+          def reject_constant(_value):
+              raise ValueError("non-finite JSON number")
+
+
+          def finite_float(value):
+              result = float(value)
+              if not math.isfinite(result):
+                  raise ValueError("non-finite JSON number")
+              return result
 
 
           def physical(path):
@@ -1619,6 +1656,8 @@ jobs:
                   fail("scanner checksum mismatch")
               records = []
               for path, prefix in zip(sql_paths, ("ORDINARY", "EXPANDED"), strict=True):
+                  if contains_private(str(path)):
+                      fail("SQL path contains private runtime context")
                   data = read_limited(path, 65536)
                   decoded = data.decode("utf-8")
                   for name in ("SECRET_KEY", "DATABASE_URL"):
@@ -1658,20 +1697,25 @@ jobs:
                   fail("scanner output exceeds its byte limit")
               out_text, err_text = out.decode("utf-8"), err.decode("utf-8")
               try:
-                  parsed = json.loads(out_text)
-              except json.JSONDecodeError:
+                  parsed = json.loads(
+                      out_text, object_pairs_hook=unique_object,
+                      parse_constant=reject_constant, parse_float=finite_float,
+                  )
+              except (ValueError, RecursionError):
                   parsed = None
-              searchable = out_text + err_text + json.dumps(parsed, ensure_ascii=False)
-              for name in ("SECRET_KEY", "DATABASE_URL"):
-                  private = os.environ.get(name, "")
-                  if private and private in searchable:
-                      fail("scanner output contains private runtime context")
+                  publishable = False
+              else:
+                  # stderr is untrusted and may encode private runtime values
+                  # in ways a substring check cannot identify safely.
+                  publishable = not err_text
+              if contains_private(out_text) or contains_private(err_text) or contains_private(parsed):
+                  fail("scanner output contains private runtime context")
               valid = (
                   isinstance(parsed, list)
                   and all(isinstance(item, dict) and item.get("level") != "Error" for item in parsed)
                   and exit_code in (0, 1)
               )
-              return exit_code, out_text, err_text, valid
+              return exit_code, out_text, err_text, valid, publishable
 
 
           def capture():
@@ -1679,10 +1723,11 @@ jobs:
               records = verify_files(binary, paths, expected)
               captures = []
               valid = True
+              publishable = True
               for path, scenario, (size, digest, physical_id) in zip(
                   paths, ("ordinary-parent-live", "expanded-populated-diagnostic"), records, strict=True
               ):
-                  exit_code, stdout, stderr, scan_valid = scan(binary, path, args)
+                  exit_code, stdout, stderr, scan_valid, scan_publishable = scan(binary, path, args)
                   verify_files(binary, paths, expected)
                   captures.append({
                       "scenario": scenario, "sql_path": str(path), "sql_bytes": size,
@@ -1690,6 +1735,9 @@ jobs:
                       "stdout": stdout, "stderr": stderr,
                   })
                   valid = valid and scan_valid
+                  publishable = publishable and scan_publishable
+              if not publishable:
+                  fail("scanner output cannot be safely published")
               report = {
                   "status": "diagnostic-only-not-an-exception", "checkout_sha": checkout,
                   "workflow_sha": os.environ["GITHUB_SHA"], "pr_head_sha": pr_head or None,
@@ -1699,6 +1747,8 @@ jobs:
                   "squawk_version": "squawk 2.67.0",
                   "squawk_binary_sha256": expected, "squawk_args": args, "captures": captures,
               }
+              if contains_private(report):
+                  fail("report contains private runtime context")
               rendered = json.dumps(report, ensure_ascii=True, sort_keys=True, indent=2)
               output = "AUD148_SQUAWK_JSON_BEGIN\n" + rendered + "\nAUD148_SQUAWK_JSON_END\n"
               if len(output.encode("utf-8")) >= 262144:
@@ -1708,7 +1758,7 @@ jobs:
 
           try:
               output, valid = capture()
-          except (OSError, UnicodeError, IndexError, subprocess.SubprocessError):
+          except (OSError, UnicodeError, IndexError, RecursionError, subprocess.SubprocessError):
               fail("input or scanner could not be read")
           sys.stdout.write(output)
           if not valid:
@@ -4906,17 +4956,37 @@ jobs:
     name: "Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)"
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    if: ${{ always() }}
     needs: backend-tests
     steps:
-      - run: echo "Satisfying branch protection for Unit Tests"
+      - name: Require successful backend tests
+        shell: bash
+        env:
+          BACKEND_TEST_RESULT: ${{ needs.backend-tests.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$BACKEND_TEST_RESULT" != "success" ]]; then
+            echo "::error::Backend tests did not succeed." >&2
+            exit 1
+          fi
 
   backend-tests-integration-dummy:
     name: "Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)"
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    if: ${{ always() }}
     needs: backend-tests
     steps:
-      - run: echo "Satisfying branch protection for Integration Tests"
+      - name: Require successful backend tests
+        shell: bash
+        env:
+          BACKEND_TEST_RESULT: ${{ needs.backend-tests.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$BACKEND_TEST_RESULT" != "success" ]]; then
+            echo "::error::Backend tests did not succeed." >&2
+            exit 1
+          fi
 
   ci-success:
     name: CI Success

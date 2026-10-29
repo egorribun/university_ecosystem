@@ -19,6 +19,9 @@ import pytest
 import yaml
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml"
+OPAQUE_ERROR = "AUD148 Squawk JSON: scanner output cannot be safely published"
+PRIVATE_ERROR = "AUD148 Squawk JSON: scanner output contains private runtime context"
+PRIVATE_PATH_ERROR = "AUD148 Squawk JSON: SQL path contains private runtime context"
 pytest_plugins = ("pytester",)
 
 
@@ -145,7 +148,7 @@ def capture(tmp_path, monkeypatch):
         '[{"rule_name":"one","message":"λ","help":"details","line":0,"column":7}]\n'.encode(),
         b'[{"rule_name":"two","message":"distinct finding","line":1,"column":2}]\n',
     ]
-    errors = [b"first stderr\n", b"second stderr\n"]
+    errors = [b"", b""]
     statuses = [1, 1]
     calls = []
     monkeypatch.setitem(
@@ -267,14 +270,10 @@ def test_collector_rejects_invalid_provenance_before_scanning(
     assert calls == []
 
 
-@pytest.mark.parametrize(
-    "case", ["malformed_json", "scanner_error", "error_diagnostic"]
-)
+@pytest.mark.parametrize("case", ["scanner_error", "error_diagnostic"])
 def test_collector_keeps_errors_as_diagnostics_but_fails(case, capture, capsys):
     script, _, _, _, _, payloads, errors, statuses, calls = capture
-    if case == "malformed_json":
-        payloads[0] = b"not JSON\n"
-    elif case == "scanner_error":
+    if case == "scanner_error":
         statuses[0] = 2
     else:
         payloads[0] = b'[{"level":"Error","message":"invalid SQL"}]\n'
@@ -288,12 +287,52 @@ def test_collector_keeps_errors_as_diagnostics_but_fails(case, capture, capsys):
     assert report["captures"][0]["exit_code"] == statuses[0]
 
 
+@pytest.mark.parametrize(
+    "invalid_json",
+    [
+        b"not JSON\n",
+        b'[{"level":"Error","level":"Warning"}]',
+        b'[{"message":"first","message":"second"}]',
+        b'[{"line":NaN}]',
+        b'[{"line":Infinity}]',
+        b'[{"line":-Infinity}]',
+        b'[{"line":1e999}]',
+    ],
+    ids=[
+        "malformed",
+        "duplicate-level",
+        "duplicate-field",
+        "nan",
+        "infinity",
+        "negative-infinity",
+        "numeric-overflow",
+    ],
+)
+def test_collector_rejects_unpublishable_json_without_raw_output(
+    invalid_json, capture, monkeypatch, capsys
+):
+    script, _, _, _, _, payloads, _, statuses, calls = capture
+    payloads[0] = invalid_json
+    statuses[:] = [0, 0]
+    monkeypatch.setenv("ORIGINAL_SQUAWK_OUTCOME", "success")
+    monkeypatch.setenv("AUD148_RAW_ORDINARY_EXIT", "0")
+    monkeypatch.setenv("AUD148_RAW_EXPANDED_EXIT", "0")
+
+    with pytest.raises(SystemExit, match="AUD148 Squawk JSON") as exc:
+        runpy.run_path(str(script), run_name="__main__")
+    assert len(calls) == 2
+    assert str(exc.value) == OPAQUE_ERROR
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
+
+
 def test_collector_refuses_oversized_output(capture, capsys):
     script, _, _, _, _, payloads, _, _, _ = capture
     payloads[0] = b"x" * 131073
     with pytest.raises(SystemExit, match="AUD148 Squawk JSON"):
         runpy.run_path(str(script), run_name="__main__")
-    assert capsys.readouterr().out == ""
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
 
 
 @pytest.mark.parametrize("target", ["sql", "binary"])
@@ -312,7 +351,8 @@ def test_collector_rechecks_inputs_after_each_scan(
     with pytest.raises(SystemExit, match="AUD148 Squawk JSON"):
         runpy.run_path(str(script), run_name="__main__")
     assert len(calls) == 1
-    assert capsys.readouterr().out == ""
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
 
 
 def test_collector_rejects_private_context_in_decoded_scanner_output(
@@ -322,9 +362,100 @@ def test_collector_rejects_private_context_in_decoded_scanner_output(
     private = "private λ token"
     monkeypatch.setenv("SECRET_KEY", private)
     payloads[0] = json.dumps([{"message": private}], ensure_ascii=True).encode()
-    with pytest.raises(SystemExit, match="AUD148 Squawk JSON"):
+    with pytest.raises(SystemExit, match="AUD148 Squawk JSON") as exc:
         runpy.run_path(str(script), run_name="__main__")
-    assert capsys.readouterr().out == ""
+    assert str(exc.value) == PRIVATE_ERROR
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
+
+
+@pytest.mark.parametrize("escaped", ['"', "\\", "\n"])
+@pytest.mark.parametrize("location", ["value", "key"])
+@pytest.mark.parametrize("private_name", ["SECRET_KEY", "DATABASE_URL"])
+def test_collector_rejects_json_escaped_private_context(
+    private_name, escaped, location, capture, monkeypatch, capsys
+):
+    script, _, _, _, _, payloads, _, _, calls = capture
+    private = secrets.token_urlsafe(16) + escaped + secrets.token_urlsafe(16)
+    monkeypatch.setenv(private_name, private)
+    nested = {private: "detail"} if location == "key" else {"detail": private}
+    payloads[0] = json.dumps([{"nested": [nested]}], ensure_ascii=True).encode()
+
+    with pytest.raises(SystemExit, match="AUD148 Squawk JSON") as exc:
+        runpy.run_path(str(script), run_name="__main__")
+    assert len(calls) == 1
+    assert str(exc.value) == PRIVATE_ERROR
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
+
+
+@pytest.mark.parametrize("defect", ["truncated", "duplicate"])
+@pytest.mark.parametrize("private_name", ["SECRET_KEY", "DATABASE_URL"])
+def test_collector_never_reports_private_context_in_unpublishable_json(
+    private_name, defect, capture, monkeypatch, capsys
+):
+    script, _, _, _, _, payloads, _, _, calls = capture
+    private = secrets.token_urlsafe(16) + '"' + secrets.token_urlsafe(16)
+    monkeypatch.setenv(private_name, private)
+    encoded = json.dumps(private)
+    suffix = "" if defect == "truncated" else ',"message":"safe"}]'
+    payloads[0] = ('[{"message":' + encoded + suffix).encode()
+
+    with pytest.raises(SystemExit, match="AUD148 Squawk JSON") as exc:
+        runpy.run_path(str(script), run_name="__main__")
+    assert len(calls) == 2
+    assert str(exc.value) == OPAQUE_ERROR
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
+
+
+@pytest.mark.parametrize("escaped", ['"', "\\"])
+@pytest.mark.parametrize("private_name", ["SECRET_KEY", "DATABASE_URL"])
+def test_collector_rejects_private_context_in_json_encoded_stderr(
+    private_name, escaped, capture, monkeypatch, capsys
+):
+    script, _, _, _, _, _, errors, _, _ = capture
+    private = secrets.token_urlsafe(16) + escaped + secrets.token_urlsafe(16)
+    monkeypatch.setenv(private_name, private)
+    errors[0] = json.dumps({"detail": private}).encode()
+
+    with pytest.raises(SystemExit, match="AUD148 Squawk JSON") as exc:
+        runpy.run_path(str(script), run_name="__main__")
+    assert str(exc.value) == OPAQUE_ERROR
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
+
+
+@pytest.mark.parametrize("scenario", [0, 1], ids=["ordinary", "expanded"])
+def test_collector_keeps_nonempty_stderr_opaque(scenario, capture, capsys):
+    script, _, _, _, _, _, errors, _, calls = capture
+    errors[scenario] = b"untrusted scanner diagnostic\n"
+
+    with pytest.raises(SystemExit, match="AUD148 Squawk JSON") as exc:
+        runpy.run_path(str(script), run_name="__main__")
+    assert len(calls) == 2
+    assert str(exc.value) == OPAQUE_ERROR
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
+
+
+@pytest.mark.parametrize("scenario", [0, 1], ids=["ordinary", "expanded"])
+@pytest.mark.parametrize("private_name", ["SECRET_KEY", "DATABASE_URL"])
+def test_collector_rejects_private_context_in_reported_sql_path(
+    private_name, scenario, capture, monkeypatch, capsys
+):
+    script, _, files, _, _, _, _, _, _ = capture
+    private = secrets.token_urlsafe(24)
+    renamed = files[scenario].with_name(private + ".sql")
+    files[scenario].rename(renamed)
+    sys.argv[2 + scenario] = str(renamed)
+    monkeypatch.setenv(private_name, private)
+
+    with pytest.raises(SystemExit, match="AUD148 Squawk JSON") as exc:
+        runpy.run_path(str(script), run_name="__main__")
+    assert str(exc.value) == PRIVATE_PATH_ERROR
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
 
 
 def test_each_json_scanner_gets_a_hard_output_file_limit(capture, monkeypatch, capsys):

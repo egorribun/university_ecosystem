@@ -22,7 +22,7 @@
 
 ---
 
-> Coverage badges show policy targets from [`quality/quality-contract.json`](quality/quality-contract.json), not a live certification result. Current evidence is published in the [quality dashboard](docs/testing/dashboard.md); only a fresh exact-SHA CI/release artifact can certify a build.
+> Coverage badges show policy targets from [`quality/quality-contract.json`](quality/quality-contract.json), not a live certification result. See [current status](docs/superpowers/plans/STATUS.md) for checkpoint evidence and the [quality dashboard](docs/testing/dashboard.md) for its publication state; only a fresh exact-SHA CI/release artifact can certify a build.
 
 **University Ecosystem** is a high-performance, polyglot microservices platform engineered to centralize and revolutionize student interactions. From real-time scheduling and interactive campus navigation to enterprise-grade security and automated workflows, we provide the digital foundation for the next generation of academic excellence.
 
@@ -224,7 +224,7 @@ for every runtime and Prometheus target:
 
 ### 🌐 Access Points
 - **Digital Hub (Caddy edge, including Frontend SSR)**: [http://localhost](http://localhost)
-- **Core API documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Core API documentation (development only)**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
 - **Go Gateway Entry**: [http://localhost:8080](http://localhost:8080)
 - **Real-Time Signal**: `ws://localhost:8083/ws`
 - **Observability Hub**: [Grafana](http://localhost:3000) · [Prometheus](http://localhost:9090) · [Pyroscope](http://localhost:4040)

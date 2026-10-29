@@ -6,6 +6,8 @@ import { gzipSync } from "node:zlib"
 
 const MAX_CHUNKS = 5000
 const MAX_MODULES = 10000
+const MAX_EDGES_PER_KIND = 5000
+const MAX_EDGES = 50000
 const MAX_REPORT_BYTES = 4 * 1024 * 1024
 const hash = (value) => createHash("sha256").update(value).digest("hex")
 const normalize = (value) => value.replaceAll("\\", "/")
@@ -133,15 +135,53 @@ function profile(config, environment, output, options) {
 }
 
 async function buildMetadata(config, environment, output, bundle, options) {
-  const chunks = Object.values(bundle).filter((item) => item.type === "chunk")
-  if (chunks.length > MAX_CHUNKS || !output.dir)
+  const inputChunks = Object.values(bundle).filter((item) => item.type === "chunk")
+  if (inputChunks.length > MAX_CHUNKS || !output.dir)
     throw new Error("invalid or oversized client bundle")
+  const root = config.root
+  const chunks = []
   const names = new Set()
-  for (const chunk of chunks) {
-    if (!safeFileName(chunk.fileName) || names.has(chunk.fileName)) {
+  let edgeCount = 0
+  // Capture compiler metadata synchronously before any file reads can yield.
+  for (const chunk of inputChunks) {
+    const fileName = chunk.fileName
+    const isEntry = chunk.isEntry
+    const isDynamicEntry = chunk.isDynamicEntry
+    if (!safeFileName(fileName) || names.has(fileName)) {
       throw new Error("invalid client chunk filename")
     }
-    names.add(chunk.fileName)
+    if (typeof isEntry !== "boolean" || typeof isDynamicEntry !== "boolean") {
+      throw new Error("invalid client entry metadata")
+    }
+    const edgeLists = []
+    for (const edges of [chunk.imports, chunk.dynamicImports]) {
+      if (!Array.isArray(edges)) throw new Error("invalid client import metadata")
+      edgeCount += edges.length
+      if (edges.length > MAX_EDGES_PER_KIND || edgeCount > MAX_EDGES) {
+        throw new Error("oversized client import metadata")
+      }
+      const captured = []
+      for (let index = 0; index < edges.length; index += 1) {
+        if (!Object.hasOwn(edges, index)) throw new Error("invalid client import metadata")
+        const name = edges[index]
+        if (typeof name !== "string" || name.length === 0) {
+          throw new Error("invalid client import metadata")
+        }
+        captured.push(name)
+      }
+      edgeLists.push(captured)
+    }
+    const code = chunk.code
+    chunks.push({
+      fileName,
+      isEntry,
+      isDynamicEntry,
+      imports: edgeLists[0],
+      dynamicImports: edgeLists[1],
+      code: typeof code === "string" ? code : Buffer.from(code),
+      modules: Object.entries(chunk.modules).map(([id, info]) => moduleMetadata(id, info, root)),
+    })
+    names.add(fileName)
   }
   let unresolvedStaticImportCount = 0
   let unresolvedDynamicImportCount = 0
@@ -149,6 +189,12 @@ async function buildMetadata(config, environment, output, bundle, options) {
   for (const chunk of chunks) {
     const imports = chunk.imports.filter((name) => names.has(name)).sort()
     const dynamicImports = chunk.dynamicImports.filter((name) => names.has(name)).sort()
+    if (
+      new Set(imports).size !== imports.length ||
+      new Set(dynamicImports).size !== dynamicImports.length
+    ) {
+      throw new Error("invalid client import metadata")
+    }
     unresolvedStaticImportCount += chunk.imports.length - imports.length
     unresolvedDynamicImportCount += chunk.dynamicImports.length - dynamicImports.length
     const bytes = await readFile(path.resolve(output.dir, chunk.fileName))
@@ -179,9 +225,7 @@ async function buildMetadata(config, environment, output, bundle, options) {
   const mapLibreChunks = []
   let moduleCount = 0
   for (const chunk of chunks) {
-    const modules = Object.entries(chunk.modules).map(([id, info]) =>
-      moduleMetadata(id, info, config.root)
-    )
+    const modules = chunk.modules
     if (
       !modules.some((module) => module.kind === "package" && module.package === "maplibre-gl") &&
       !/(?:^|\/)vendor-map(?:-|\.)/u.test(chunk.fileName)
@@ -207,9 +251,9 @@ async function buildMetadata(config, environment, output, bundle, options) {
   return {
     schemaVersion: 3,
     profile: profile(config, environment, output, options),
-    package: await packageMetadata(config.root),
+    package: await packageMetadata(root),
     producerSha256: hash(await readFile(fileURLToPath(import.meta.url))),
-    viteConfigSha256: hash(await readFile(path.join(config.root, "vite.config.mts"))),
+    viteConfigSha256: hash(await readFile(path.join(root, "vite.config.mts"))),
     graph: {
       complete,
       entryFiles,
@@ -237,9 +281,17 @@ export function mapLibreBuildMetadata(options = {}) {
       if (!options.outputPath || !isClient(this.environment)) return
       if (!path.isAbsolute(options.outputPath))
         throw new Error("metadata output path must be absolute")
-      const report = await buildMetadata(config, this.environment, output, bundle, options)
+      const outputSnapshot = { dir: output.dir, format: output.format }
+      const report = await buildMetadata(config, this.environment, outputSnapshot, bundle, options)
       const data = `${JSON.stringify(report, null, 2)}\n`
       if (Buffer.byteLength(data) > MAX_REPORT_BYTES) throw new Error("oversized metadata report")
+      // This is still a writeBundle snapshot; final post-build consumers must rehash.
+      for (const chunk of report.graph.chunks) {
+        const bytes = await readFile(path.resolve(outputSnapshot.dir, chunk.fileName))
+        if (bytes.byteLength !== chunk.rawBytes || hash(bytes) !== chunk.sha256) {
+          throw new Error("emitted bytes differ from bundle")
+        }
+      }
       await writeFile(options.outputPath, data, { flag: "wx" })
     },
   }

@@ -144,6 +144,46 @@ test("AUD-137 live News checks the requested locale in SPA, SSR and hydrated mar
   }
 })
 
+test("AUD-137 live dashboard checks the common skip link in SSR and hydrated markup", async () => {
+  const [spec, layout] = await Promise.all([
+    readFile(specUrl, "utf8"),
+    readFile(new URL("../../src/components/layout/MainLayout.tsx", import.meta.url), "utf8"),
+  ])
+  assert.match(
+    layout,
+    /<a href="#main-content" className="skip-link"[\s\S]*?t\("common:skipToMain"\)/u
+  )
+  assert.match(spec, /import \{ matchesMainSkipLinkLocale \} from "\.\/ssr-common-locale\.mjs"/u)
+  assert.match(spec, /from "\.\.\/\.\.\/src\/i18n\/locales\/en\/common\.json"/u)
+  assert.match(spec, /from "\.\.\/\.\.\/src\/i18n\/locales\/ru\/common\.json"/u)
+  assert.match(
+    spec,
+    /MAIN_SKIP_LINK_CATALOGS[\s\S]*?enCommon\.skipToMain[\s\S]*?ruCommon\.skipToMain/u
+  )
+
+  const serverProbe = spec.indexOf("matchesMainSkipLinkLocale(serverMarkup ?? null,")
+  const hydration = spec.indexOf("await page.waitForFunction(() => window.__APP_HYDRATED === true)")
+  const clientCapture = spec.indexOf("const hydratedDashboardMarkup =")
+  const clientProbe = spec.indexOf("matchesMainSkipLinkLocale(hydratedDashboardMarkup,")
+  const newsNavigation = spec.indexOf("const newsLink = page.locator(")
+  assert.ok(
+    serverProbe >= 0 &&
+      serverProbe < hydration &&
+      hydration < clientCapture &&
+      clientCapture < clientProbe &&
+      clientProbe < newsNavigation
+  )
+  for (const snapshot of ["serverMarkup \\?\\? null", "hydratedDashboardMarkup"]) {
+    assert.match(
+      spec,
+      new RegExp(
+        `expect\\(\\s*matchesMainSkipLinkLocale\\(\\s*${snapshot},\\s*MAIN_SKIP_LINK_CATALOGS\\[language\\]\\s*\\)\\s*\\)\\.toBe\\(\\s*true\\s*\\)`,
+        "u"
+      )
+    )
+  }
+})
+
 test("live acceptance verifies each finite route title against its requested locale on SSR and client", async () => {
   const [spec, dashboardPage, newsPage, seoMetadata] = await Promise.all([
     readFile(specUrl, "utf8"),

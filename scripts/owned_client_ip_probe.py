@@ -36,10 +36,15 @@ _INPUT_KEYS = frozenset(
         "routes",
         "gateway_ip",
         "ws_hub_ip",
+        "backend_public_ip",
+        "gateway_backend_peers",
         "trusted_proxies",
     }
 )
-_ROUTE_KEYS = frozenset({"subnet", "source_ip", "caddy_ip"})
+_ROUTE_KEYS = frozenset({"network", "network_id", "subnet", "source_ip", "caddy_ip"})
+_GATEWAY_PEER_KEYS = frozenset({"network", "network_id", "subnet", "address"})
+_ROUTE_NETWORKS = ("public", "frontend_net")
+_GATEWAY_NETWORKS = ("public", "internal", "revocation_net")
 _CSRF_PATH = "/api/v1/auth/csrf-cookie"
 # Logical limits and outer middleware headers differ for the MFA dependency.
 _CASES = (
@@ -54,7 +59,7 @@ _MAX_HEADERS = 16384
 _MAX_BODY = 4096
 _MAX_WIRE = 24576
 _TOTAL_SECONDS = 120.0
-_MAX_REQUESTS = 115
+_MAX_REQUESTS = 119
 
 
 class ProbeError(RuntimeError):
@@ -95,6 +100,7 @@ class _Config:
     routes: tuple[_Route, _Route]
     gateway_ip: str
     ws_hub_ip: str
+    backend_public_ip: str
 
 
 def _address(value: object, *, loopback: bool = False) -> IPv4Address:
@@ -120,68 +126,124 @@ def _identity(value: object, length: int) -> bool:
     )
 
 
+def _topology_address(value: object) -> IPv4Address:
+    try:
+        return _address(value)
+    except ProbeError:
+        raise ProbeError("invalid topology") from None
+
+
+def _topology_network(value: object) -> IPv4Network:
+    if type(value) is not str or not 1 <= len(value) <= 18:
+        raise ProbeError("invalid topology")
+    try:
+        network = IPv4Network(value)
+    except ValueError:
+        raise ProbeError("invalid topology") from None
+    if str(network) != value or not any(
+        network.subnet_of(private) for private in _PRIVATE
+    ):
+        raise ProbeError("invalid topology")
+    return network
+
+
+def _usable_host(address: IPv4Address, network: IPv4Network) -> bool:
+    return address in network and address not in (
+        network.network_address,
+        network.broadcast_address,
+    )
+
+
 def parse_input(value: object) -> _Config:
-    """Decode only the pinned two-interface shape; this is not admission."""
+    """Decode the fixed inspected-topology shape; this is not ownership admission."""
     if type(value) is not dict or value.keys() != _INPUT_KEYS:
         raise ProbeError("invalid topology")
     if (
         type(value["schema"]) is not str
-        or value["schema"] != "ue-owned-client-ip-probe-input-v1"
+        or value["schema"] != "ue-owned-client-ip-probe-input-v2"
         or not _identity(value["source_sha"], 40)
         or not _identity(value["run_id"], 64)
         or type(value["routes"]) is not list
         or len(value["routes"]) != 2
+        or type(value["gateway_backend_peers"]) is not list
+        or len(value["gateway_backend_peers"]) != 3
     ):
         raise ProbeError("invalid topology")
     routes: list[_Route] = []
     networks: list[IPv4Network] = []
-    for row in value["routes"]:
+    network_ids: list[str] = []
+    for row, name in zip(value["routes"], _ROUTE_NETWORKS, strict=True):
         if (
             type(row) is not dict
             or row.keys() != _ROUTE_KEYS
-            or type(row["subnet"]) is not str
-            or len(row["subnet"]) > 18
+            or row["network"] != name
+            or not _identity(row["network_id"], 64)
         ):
             raise ProbeError("invalid topology")
-        try:
-            network = IPv4Network(row["subnet"])
-        except ValueError:
-            raise ProbeError("invalid topology") from None
-        if str(network) != row["subnet"] or not any(
-            network.subnet_of(private) for private in _PRIVATE
-        ):
-            raise ProbeError("invalid topology")
-        source = _address(row["source_ip"])
-        caddy = _address(row["caddy_ip"])
-        if source == caddy or any(
-            address not in network
-            or address in (network.network_address, network.broadcast_address)
-            for address in (source, caddy)
+        network = _topology_network(row["subnet"])
+        source = _topology_address(row["source_ip"])
+        caddy = _topology_address(row["caddy_ip"])
+        if source == caddy or not all(
+            _usable_host(address, network) for address in (source, caddy)
         ):
             raise ProbeError("invalid topology")
         networks.append(network)
+        network_ids.append(row["network_id"])
         routes.append(_Route(row["subnet"], str(source), str(caddy)))
-    if networks[0].overlaps(networks[1]):
+    gateway = _topology_address(value["gateway_ip"])
+    ws_hub = _topology_address(value["ws_hub_ip"])
+    backend_public = _topology_address(value["backend_public_ip"])
+    if not all(
+        _usable_host(address, networks[0])
+        for address in (gateway, ws_hub, backend_public)
+    ):
         raise ProbeError("invalid topology")
-    gateway = _address(value["gateway_ip"])
-    ws_hub = _address(value["ws_hub_ip"])
-    if any(
-        address not in networks[0]
-        or address in (networks[0].network_address, networks[0].broadcast_address)
-        for address in (gateway, ws_hub)
+
+    gateway_addresses: list[str] = []
+    for index, (row, name) in enumerate(
+        zip(value["gateway_backend_peers"], _GATEWAY_NETWORKS, strict=True)
+    ):
+        if (
+            type(row) is not dict
+            or row.keys() != _GATEWAY_PEER_KEYS
+            or row["network"] != name
+            or not _identity(row["network_id"], 64)
+        ):
+            raise ProbeError("invalid topology")
+        network = _topology_network(row["subnet"])
+        address = _topology_address(row["address"])
+        if not _usable_host(address, network):
+            raise ProbeError("invalid topology")
+        if index == 0:
+            if (
+                network != networks[0]
+                or row["network_id"] != network_ids[0]
+                or address != gateway
+            ):
+                raise ProbeError("invalid topology")
+        else:
+            networks.append(network)
+            network_ids.append(row["network_id"])
+        gateway_addresses.append(str(address))
+
+    if len(set(network_ids)) != len(network_ids) or any(
+        network.overlaps(other)
+        for index, network in enumerate(networks)
+        for other in networks[index + 1 :]
     ):
         raise ProbeError("invalid topology")
     addresses = [
         *(route.source_ip for route in routes),
         *(route.caddy_ip for route in routes),
-        str(gateway),
+        *gateway_addresses,
         str(ws_hub),
+        str(backend_public),
     ]
     if len(set(addresses)) != len(addresses):
         raise ProbeError("invalid topology")
     trust = value["trusted_proxies"]
     expected = (
-        {routes[0].caddy_ip, routes[1].caddy_ip, str(gateway)},
+        {routes[0].caddy_ip, routes[1].caddy_ip, *gateway_addresses},
         {routes[0].caddy_ip},
         {routes[0].caddy_ip},
     )
@@ -201,6 +263,7 @@ def parse_input(value: object) -> _Config:
         (routes[0], routes[1]),
         str(gateway),
         str(ws_hub),
+        str(backend_public),
     )
 
 
@@ -336,13 +399,17 @@ def _collect(
         extra: tuple[tuple[str, str], ...] = (),
         *,
         direct: bool = False,
+        backend_direct: bool = False,
     ) -> int:
         is_ws = path == "/ws/chat"
         route = config.routes[source_index]
         target = route.caddy_ip
         port = 80
         target_path = path
-        if direct:
+        if backend_direct:
+            target = config.backend_public_ip
+            port = 8000
+        elif direct:
             target = config.ws_hub_ip if is_ws else config.gateway_ip
             port = 8081 if is_ws else 8080
             target_path = "/ws" if is_ws else path
@@ -408,6 +475,18 @@ def _collect(
             (("x-forwarded-for", other_ip),),
             direct=True,
         )
+        backend_direct = (
+            None
+            if name == "ws_hub"
+            else observe(
+                path,
+                header_limit,
+                case_deadline,
+                0,
+                (("x-forwarded-for", other_ip),),
+                backend_direct=True,
+            )
+        )
         cases.append(
             {
                 "case": name,
@@ -416,12 +495,13 @@ def _collect(
                 "other_client": other_client,
                 "spoofed": spoofed,
                 "direct_untrusted": direct,
+                "backend_direct_untrusted": backend_direct,
                 "elapsed_ms": int((time.monotonic() - case_started) * 1000),
             }
         )
     _remaining(deadline)
     frame: dict[str, object] = {
-        "schema": "ue-owned-client-ip-v1",
+        "schema": "ue-owned-client-ip-v2",
         "source_sha": config.source_sha,
         "run_id": config.run_id,
         "closed": True,
@@ -476,7 +556,7 @@ def _request_bytes(item: Request) -> bytes:
             or (
                 item.method == "POST"
                 and item.path in _API_PATHS
-                and item.port in (80, 8080)
+                and item.port in (80, 8000, 8080)
                 and item.body == b"{}"
             )
         )

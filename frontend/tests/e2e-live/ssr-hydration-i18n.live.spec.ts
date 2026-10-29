@@ -2,9 +2,12 @@ import { type BrowserContext, type Page } from "@playwright/test"
 import { JSDOM } from "jsdom"
 import { extractSeoMetadata, normalizeMetadataText } from "./seo-metadata.mjs"
 import { matchesNewsSearchLocale } from "./ssr-news-locale.mjs"
+import { matchesMainSkipLinkLocale } from "./ssr-common-locale.mjs"
 import enActivity from "../../src/i18n/locales/en/activity.json" with { type: "json" }
+import enCommon from "../../src/i18n/locales/en/common.json" with { type: "json" }
 import enDashboard from "../../src/i18n/locales/en/dashboard.json" with { type: "json" }
 import enNavigation from "../../src/i18n/locales/en/navigation.json" with { type: "json" }
+import ruCommon from "../../src/i18n/locales/ru/common.json" with { type: "json" }
 import ruDashboard from "../../src/i18n/locales/ru/dashboard.json" with { type: "json" }
 import ruActivity from "../../src/i18n/locales/ru/activity.json" with { type: "json" }
 import ruNavigation from "../../src/i18n/locales/ru/navigation.json" with { type: "json" }
@@ -14,6 +17,11 @@ import { expect, loginAs, test } from "./fixtures"
 
 type Language = "ru" | "en"
 type TitleLandmark = "activity" | "dashboard" | "news"
+
+const MAIN_SKIP_LINK_CATALOGS = {
+  en: enCommon.skipToMain,
+  ru: ruCommon.skipToMain,
+} satisfies Record<Language, string>
 
 const PAGE_TITLE_CATALOGS = {
   activity: { en: enActivity.title, ru: ruActivity.title },
@@ -276,10 +284,17 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
       expectedPageHeadSnapshot(language, "dashboard")
     )
     expect(serverMarkup?.includes('data-ssr-auth="authenticated:student"')).toBe(true)
+    expect(
+      matchesMainSkipLinkLocale(serverMarkup ?? null, MAIN_SKIP_LINK_CATALOGS[language])
+    ).toBe(true)
 
     await page.waitForFunction(() => window.__APP_HYDRATED === true)
     await expect(page.locator("html")).toHaveAttribute("lang", language)
     await expect(page.getByRole("main")).toBeVisible()
+    const hydratedDashboardMarkup = await page.locator("#root").evaluate((root) => root.outerHTML)
+    expect(
+      matchesMainSkipLinkLocale(hydratedDashboardMarkup, MAIN_SKIP_LINK_CATALOGS[language])
+    ).toBe(true)
     expect(normalizeMetadataText(await page.title())).toBe(
       expectedDocumentTitle(language, "dashboard")
     )

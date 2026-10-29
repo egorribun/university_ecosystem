@@ -1,21 +1,27 @@
 /**
  * Wave 11 — E2E: News feed & admin routes smoke test.
  *
- * WHY: News is the primary public-facing content surface. Any bundler
- * regression or router misconfiguration on /news would immediately impact all
- * unauthenticated visitors. These tests act as a fast canary for regressions
- * that break the entire news subtree.
+ * WHY: News and admin routes rely on router startup and authentication guards.
+ * These tests act as a fast canary for broken entry routes and redirects.
  */
-import { test, expect } from "./test"
+import { test, expect, type Page } from "./test"
 import { pageErrorsThroughReady } from "./aud151-readiness.mjs"
+import { collectNewsStartupErrors } from "./aud151-news-errors.mjs"
+
+async function expectLoginReady(page: Page) {
+  await expect(page).toHaveURL((url) => url.pathname === "/login")
+  const email = page.getByRole("textbox", { name: /^e-?mail$/i })
+  const password = page.getByLabel(/^(пароль|password)$/i)
+  await expect(email).toBeVisible()
+  await expect(email).toBeEnabled()
+  await expect(password).toBeVisible()
+  await expect(password).toBeEnabled()
+  await expect(page).toHaveURL((url) => url.pathname === "/login")
+}
 
 test.describe("News & Admin — Wave 11", () => {
   test("app root loads without uncaught JS errors", async ({ page }) => {
-    const errors = await pageErrorsThroughReady(page, async () => {
-      await expect(page).toHaveURL((url) => url.pathname === "/login")
-      await expect(page.getByRole("textbox", { name: /^e-?mail$/i })).toBeVisible()
-      await expect(page.getByLabel(/^(пароль|password)$/i)).toBeVisible()
-    })
+    const errors = await pageErrorsThroughReady(page, () => expectLoginReady(page))
     expect(errors).toHaveLength(0)
   })
 
@@ -45,23 +51,29 @@ test.describe("News & Admin — Wave 11", () => {
     await expect(page.getByRole("heading", { name: /^(Пользователи|Users)$/i })).not.toBeVisible()
   })
 
-  test("news route has no critical console errors", async ({ page }) => {
-    const consoleErrors: string[] = []
-    page.on("console", (msg) => {
-      if (msg.type() === "error" && !msg.text().includes("favicon")) {
-        consoleErrors.push(msg.text())
-      }
-    })
-    await page.goto("/news", { waitUntil: "commit", timeout: 30_000 })
-    // Filter known CDN / third-party console errors
-    const critical = consoleErrors.filter(
-      (e) =>
-        !e.includes("ResizeObserver") &&
-        !e.includes("favicon") &&
-        !e.includes("net::ERR_") &&
-        !e.includes("Failed to load resource") &&
-        !e.includes("status code 401")
+  test("unauthenticated news redirect has no startup errors", async ({ page }) => {
+    const { consoleErrors, pageErrors } = await collectNewsStartupErrors(page, () =>
+      expectLoginReady(page)
     )
-    expect(critical).toHaveLength(0)
+    expect(consoleErrors).toEqual([])
+    expect(pageErrors).toEqual([])
+  })
+
+  test("startup monitoring captures errors emitted during hydration", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.addEventListener(
+        "ue:app-hydrated",
+        () => {
+          console.error("AUD-151 hydration console control")
+          throw new Error("AUD-151 hydration page error control")
+        },
+        { once: true }
+      )
+    })
+    const { consoleErrors, pageErrors } = await collectNewsStartupErrors(page, () =>
+      expectLoginReady(page)
+    )
+    expect(consoleErrors).toContain("AUD-151 hydration console control")
+    expect(pageErrors).toContain("AUD-151 hydration page error control")
   })
 })

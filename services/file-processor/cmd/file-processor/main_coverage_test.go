@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -25,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	graphql "github.com/graph-gophers/graphql-go"
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
@@ -69,14 +71,29 @@ func TestInitLogger_ReturnsJSONLogger(t *testing.T) {
 }
 
 func TestInitSentry_NoDSNIsNoOp(t *testing.T) {
-	// Empty DSN takes the early return — no global Sentry hub is mutated.
-	initSentry(context.Background(), &config.Config{SentryDSN: "", Environment: "test"}, discardLogger())
+	// Empty DSN takes the early return without logging or replacing the hub client.
+	hub := sentry.CurrentHub()
+	client := hub.Client()
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	initSentry(context.Background(), &config.Config{SentryDSN: "", Environment: "test"}, logger)
+	require.Empty(t, output.String())
+	require.Same(t, hub, sentry.CurrentHub())
+	require.True(t, client == sentry.CurrentHub().Client(), "empty DSN changed the Sentry hub client")
 }
 
 func TestInitSentry_MalformedDSNLogsError(t *testing.T) {
 	// A malformed DSN makes sentry.Init return an error → the error branch runs.
 	// sentry.Init parses the DSN synchronously and does no network on a bad parse.
-	initSentry(context.Background(), &config.Config{SentryDSN: "not-a-valid-dsn", Environment: "test"}, discardLogger())
+	const malformedDSN = "not-a-valid-dsn"
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	initSentry(context.Background(), &config.Config{SentryDSN: malformedDSN, Environment: "test"}, logger)
+	var record map[string]any
+	require.NoError(t, json.Unmarshal(output.Bytes(), &record))
+	require.Equal(t, "ERROR", record["level"])
+	require.Equal(t, "Sentry initialization failed", record["msg"])
+	require.NotContains(t, output.String(), malformedDSN)
 }
 
 func TestInitSpiffeClient_DisabledReturnsNil(t *testing.T) {

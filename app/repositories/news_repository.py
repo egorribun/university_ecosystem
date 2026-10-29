@@ -436,6 +436,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
         *,
         limit: int = 50,
         offset: int = 0,
+        cursor: tuple[datetime, uuid.UUID] | None = None,
     ) -> NewsInteractionsDTO:
         """Get likes count, current user's like status, and comments for a news item."""
         likes_stmt = select(func.count(models.NewsLike.id)).where(
@@ -454,7 +455,22 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
             .join(models.User, models.NewsComment.user_id == models.User.id)
             .outerjoin(models.UserProfile, models.User.id == models.UserProfile.user_id)
             .where(models.NewsComment.news_id == news_id)
-            .order_by(models.NewsComment.created_at.asc())
+        )
+        if cursor is not None:
+            created_at, comment_id = cursor
+            comments_stmt = comments_stmt.where(
+                or_(
+                    models.NewsComment.created_at > created_at,
+                    and_(
+                        models.NewsComment.created_at == created_at,
+                        models.NewsComment.id > comment_id,
+                    ),
+                )
+            )
+        comments_stmt = (
+            comments_stmt.order_by(
+                models.NewsComment.created_at.asc(), models.NewsComment.id.asc()
+            )
             .limit(limit)
             .offset(offset)
         )

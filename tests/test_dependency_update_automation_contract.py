@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -13,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANAGER_DESCRIPTIONS = {
     "Update the SQLMap workflow exact PyPI version pin": 1,
     "Update the govulncheck go install release pin": 3,
-    "Update the osv-scanner go install release pin": 1,
+    "Update the osv-scanner release binary version and checksum together": 1,
     "Update the cargo-audit standalone Cargo CLI version": 3,
     "Update the golangci-lint CLI input to its SHA-pinned action": 2,
     "Update tested Helm 4.2 CLI inputs to azure/setup-helm": 8,
@@ -118,9 +119,16 @@ def test_renovate_custom_managers_are_narrow_and_cooldown_bound() -> None:
     for description, expected_matches in MANAGER_DESCRIPTIONS.items():
         manager = by_description[description]
         assert manager["customType"] == "regex"
-        assert manager["datasourceTemplate"] in {"pypi", "github-releases", "crate"}
+        if (
+            description
+            == "Update the osv-scanner release binary version and checksum together"
+        ):
+            assert manager["datasourceTemplate"] == "github-release-attachments"
+            assert "autoReplaceStringTemplate" not in manager
+        else:
+            assert manager["datasourceTemplate"] in {"pypi", "github-releases", "crate"}
+            assert manager["autoReplaceStringTemplate"].count("{{{newValue}}}") == 1
         assert manager["versioningTemplate"] in {"pep440", "semver", "cargo"}
-        assert manager["autoReplaceStringTemplate"].count("{{{newValue}}}") == 1
         patterns = [
             _compile_renovate_regex(value) for value in manager["managerFilePatterns"]
         ]
@@ -264,3 +272,51 @@ def test_manual_tool_and_checksum_routes_have_live_contracts() -> None:
     )
     assert ghcr_images
     assert all("@sha256:" in image for image in ghcr_images)
+
+
+def test_osv_release_manager_tracks_one_version_and_checksum_pair() -> None:
+    renovate = json.loads(_text("renovate.json"))
+    managers = [
+        manager
+        for manager in renovate["customManagers"]
+        if manager.get("packageNameTemplate") == "google/osv-scanner"
+    ]
+    assert len(managers) == 1
+    manager = managers[0]
+    assert manager["datasourceTemplate"] == "github-release-attachments"
+    assert manager["versioningTemplate"] == "semver"
+    assert "autoReplaceStringTemplate" not in manager
+    assert manager["managerFilePatterns"] == [r"/^\.github/workflows/sbom\.yml$/"]
+
+    matcher = _python_regex(manager["matchStrings"][0])
+    matches = list(matcher.finditer(_text(".github/workflows/sbom.yml")))
+    assert len(matches) == 1
+    matched = matches[0]
+    assert matched.group("currentValue") == "v2.6.0"
+    assert re.fullmatch(r"[0-9a-f]{64}", matched.group("currentDigest"))
+
+
+def test_osv_release_manager_can_reextract_a_paired_replacement() -> None:
+    renovate = json.loads(_text("renovate.json"))
+    manager = next(
+        manager
+        for manager in renovate["customManagers"]
+        if manager.get("packageNameTemplate") == "google/osv-scanner"
+    )
+    matcher = _python_regex(manager["matchStrings"][0])
+    matches = list(matcher.finditer(_text(".github/workflows/sbom.yml")))
+    assert len(matches) == 1
+    original = matches[0]
+    current_version = original.group("currentValue")
+    current_digest = original.group("currentDigest")
+    next_version = "v9.8.7"
+    next_digest = hashlib.sha256(b"synthetic future release").hexdigest()
+    updated = (
+        original.group(0)
+        .replace(current_version, next_version, 1)
+        .replace(current_digest, next_digest, 1)
+    )
+    rematched = matcher.fullmatch(updated)
+    assert rematched is not None
+    assert rematched.group("currentValue") == next_version
+    assert rematched.group("currentDigest") == next_digest

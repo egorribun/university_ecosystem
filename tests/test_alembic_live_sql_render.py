@@ -249,6 +249,116 @@ def test_main_rejects_migrations_without_literal_revision_metadata(
     assert "revision must be a string literal" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    "error_kind",
+    [
+        "migration",
+        "driver",
+        "live-render",
+        "revision-metadata",
+        "metadata-multiple-args",
+        "metadata-nonstring-arg",
+        "metadata-subclass",
+    ],
+)
+def test_main_keeps_unexpected_migration_failure_context_private(
+    error_kind: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The CLI must fail without exposing migration or driver exception data."""
+    marker = uuid.uuid4().hex
+    output = tmp_path / "rendered.sql"
+    monkeypatch.setenv("DATABASE_URL", _UNREACHABLE_DATABASE_URL)
+
+    def fail_render(_migration: Path, _url: str) -> str:
+        if error_kind == "driver":
+            raise sa.exc.StatementError(
+                "migration failed",
+                "SELECT :private",
+                {"private": marker},
+                RuntimeError(marker),
+            )
+        if error_kind == "live-render":
+            raise renderer.LiveRenderError(marker)
+        if error_kind == "revision-metadata":
+            raise renderer.RevisionMetadataError(marker)
+        if error_kind == "metadata-multiple-args":
+            raise renderer.RevisionMetadataError(marker, marker)
+        if error_kind == "metadata-nonstring-arg":
+            raise renderer.RevisionMetadataError({"private": marker})
+        if error_kind == "metadata-subclass":
+
+            class PrivateMetadataError(renderer.RevisionMetadataError):
+                pass
+
+            raise PrivateMetadataError(marker)
+        raise RuntimeError(marker)
+
+    monkeypatch.setattr(renderer, "render_revision_sql", fail_render)
+
+    assert renderer.main([str(_AUD180_MIGRATION), str(output)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "error: live migration rendering failed\n"
+    assert marker not in captured.err
+    assert not output.exists()
+
+
+def test_main_keeps_output_write_failure_context_private(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    marker = uuid.uuid4().hex
+    output = tmp_path / "rendered.sql"
+    monkeypatch.setenv("DATABASE_URL", _UNREACHABLE_DATABASE_URL)
+    monkeypatch.setattr(
+        renderer, "render_revision_sql", lambda _migration, _url: "SELECT 1"
+    )
+
+    def fail_write(_path: Path, *_args: object, **_kwargs: object) -> int:
+        raise OSError(marker)
+
+    monkeypatch.setattr(Path, "write_text", fail_write)
+
+    assert renderer.main([str(_AUD180_MIGRATION), str(output)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "error: live migration rendering failed\n"
+    assert marker not in captured.err
+    assert not output.exists()
+
+
+def test_main_writes_successful_render_without_changing_sql(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output = tmp_path / "rendered.sql"
+    monkeypatch.setenv("DATABASE_URL", _UNREACHABLE_DATABASE_URL)
+    monkeypatch.setattr(
+        renderer, "render_revision_sql", lambda _migration, _url: "SELECT 1;\n"
+    )
+
+    assert renderer.main([str(_AUD180_MIGRATION), str(output)]) == 0
+    assert output.read_text(encoding="utf-8") == "SELECT 1;\n"
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_main_does_not_swallow_process_interruptions(
+    interruption: type[BaseException], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", _UNREACHABLE_DATABASE_URL)
+
+    def interrupt(_migration: Path, _url: str) -> str:
+        raise interruption
+
+    monkeypatch.setattr(renderer, "render_revision_sql", interrupt)
+    with pytest.raises(interruption):
+        renderer.main([str(_AUD180_MIGRATION), str(tmp_path / "out.sql")])
+
+
 def test_admin_connection_is_retried_then_reported_as_unreachable(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

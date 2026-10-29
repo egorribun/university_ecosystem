@@ -37,6 +37,10 @@ class IneligibleQueryError(ValueError):
     """Raised for transaction-control statements intentionally skipped by the gate."""
 
 
+class QueryLogReadError(OSError):
+    """Raised when a query-log inventory cannot be read completely."""
+
+
 _SAFE_TABLE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
 _EXPLAINABLE_STATEMENT_RE = re.compile(
     r"^(?:SELECT|WITH|INSERT|UPDATE|DELETE)\b", re.IGNORECASE
@@ -493,7 +497,9 @@ async def explain_plan(
     return plan
 
 
-def extract_queries_from_logs(log_directory: Path) -> list[str]:
+def extract_queries_from_logs(
+    log_directory: Path, *, require_complete: bool = False
+) -> list[str]:
     """Search for query log files and extract unique SQL queries."""
     unique_queries: set[str] = set()
 
@@ -510,6 +516,8 @@ def extract_queries_from_logs(log_directory: Path) -> list[str]:
                         unique_queries.add(cleaned_line)
         except Exception as error:
             logger.error(f"Failed to read query log file {log_file}: {error}")
+            if require_complete:
+                raise QueryLogReadError("query-log inventory is incomplete") from error
 
     return sorted(list(unique_queries))
 
@@ -904,7 +912,15 @@ async def main():
     target_tables = [t.strip() for t in args.tables.split(",")]
     log_dir_path = Path(args.log_dir)
 
-    queries = extract_queries_from_logs(log_dir_path)
+    try:
+        queries = extract_queries_from_logs(log_dir_path, require_complete=True)
+    except QueryLogReadError:
+        await engine.dispose()
+        if args.fail_on_seq_scan:
+            logger.critical("DB Performance Gate FAILED: Query logs are incomplete.")
+            sys.exit(1)
+        logger.warning("Query logs are incomplete; no pass was established.")
+        return
     if not queries:
         if args.fail_on_seq_scan:
             logger.error(

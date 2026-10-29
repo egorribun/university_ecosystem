@@ -342,7 +342,12 @@ async def healthz(
                     cache_status = "error"
                 finally:
                     try:
-                        await cache_probe_backend.invalidate(probe_key)
+                        # The ordinary adapters suppress transport failures.
+                        # Probe cleanup must surface those failures as unhealthy.
+                        if isinstance(cache_probe_backend, BaseCache):
+                            await cache_probe_backend.invalidate_strict(probe_key)
+                        else:
+                            await cache_probe_backend.invalidate(probe_key)
                     except Exception:  # RZ-22-01-JUSTIFIED: health probe — cache invalidate probe returns "error" (reviewed TD-27-04)
                         cache_status = "error"
             else:

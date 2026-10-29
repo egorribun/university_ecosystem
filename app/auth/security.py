@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import os
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -273,20 +274,27 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
             translate("errors.auth.password_policy_hibp_unavailable", locale=locale)
         )
 
-    for line in response.text.splitlines():
-        hashed_suffix, _, count = line.partition(":")
-        if hashed_suffix.upper() == suffix:
-            # LOW-W19: guard against malformed HIBP response lines where count
-            # is not a valid integer (e.g. empty string after stripping padding).
-            try:
-                hit_count = int(count.strip() or 0)
-            except ValueError:
-                hit_count = 0
-            if hit_count > 0:
-                raise ValueError(
-                    translate("errors.auth.password_policy_compromised", locale=locale)
-                )
-            break
+    lines = response.text.splitlines()
+    malformed = not lines
+    for line in lines:
+        record = re.fullmatch(r"([0-9A-Fa-f]{35}):([0-9]+)", line)
+        if record is None:
+            malformed = True
+            continue
+        hashed_suffix, count = record.groups()
+        # Zero-count records are padding; a later matching record may still
+        # contain a positive count. Avoid integer conversion limits on counts.
+        if hashed_suffix.upper() == suffix and count.strip("0"):
+            raise ValueError(
+                translate("errors.auth.password_policy_compromised", locale=locale)
+            )
+
+    if malformed:
+        _logger.warning("External breach lookup returned a malformed response")
+        if not fail_open:
+            raise ValueError(
+                translate("errors.auth.password_policy_hibp_unavailable", locale=locale)
+            )
 
 
 def _validate_password_policy(password: str, *, locale: str | None = None) -> None:

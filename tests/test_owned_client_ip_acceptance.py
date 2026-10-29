@@ -89,13 +89,14 @@ def _case(name: str, count: int, status: int, elapsed_ms: int) -> dict[str, obje
         # X-Forwarded-For, X-Real-IP, Forwarded; no caller-supplied case names.
         "spoofed": [429, 429, 429],
         "direct_untrusted": 429,
+        "backend_direct_untrusted": None if name == "ws_hub" else 429,
         "elapsed_ms": elapsed_ms,
     }
 
 
 def _wire() -> dict[str, object]:
     return {
-        "schema": "ue-owned-client-ip-v1",
+        "schema": "ue-owned-client-ip-v2",
         "source_sha": SHA,
         "run_id": RUN_ID,
         "closed": True,
@@ -105,7 +106,7 @@ def _wire() -> dict[str, object]:
         "source_labels": ["public", "frontend_net"],
         "csrf_ready": [True, True],
         "setup_requests": 2,
-        "http_requests": 115,
+        "http_requests": 119,
         "elapsed_ms": 60000,
         "cases": [
             _case("login", 60, 422, 1000),

@@ -732,14 +732,22 @@ def load_or_create_vapid(worktree: Path) -> dict[str, str]:
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with path.open("x", encoding="utf-8") as key_file:
-            key_file.write(json.dumps(keys))
-        if IN_PLACE_MODE and os.name == "nt":
-            _restrict_in_place_windows_state_file(path)
-        elif os.name != "nt":
-            path.chmod(0o600)
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
     except FileExistsError:
         return load_vapid(worktree)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", closefd=False) as key_file:
+            key_file.write(json.dumps(keys))
+    finally:
+        os.close(descriptor)
+    if IN_PLACE_MODE and os.name == "nt":
+        _restrict_in_place_windows_state_file(path)
+    elif os.name != "nt":
+        path.chmod(0o600)
     return keys
 
 

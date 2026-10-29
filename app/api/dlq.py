@@ -261,6 +261,15 @@ async def get_dlq_stats(
     )
 
 
+def _public_dlq_error(job: DeadLetterJob) -> str | None:
+    """Keep historical authentication errors out of the admin response."""
+    if not job.error_message:
+        return None
+    if job.job_type == "app.tasks.email.send_auth_email":
+        return "Authentication job error details redacted"
+    return job.error_message[:200]
+
+
 @router.get(
     "/jobs",
     response_model=DLQJobsListResponse,
@@ -313,7 +322,7 @@ async def list_dlq_jobs(
                 id=job.id,
                 job_type=job.job_type,
                 job_hash=job.job_hash[:16] + "...",  # Truncate for display
-                error_message=job.error_message[:200] if job.error_message else None,
+                error_message=_public_dlq_error(job),
                 retry_count=job.retry_count,
                 max_retries=job.max_retries,
                 status=job.status,

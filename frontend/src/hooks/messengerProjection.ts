@@ -69,6 +69,10 @@ type ProjectionStore = {
   >
   confirmedEdits: Map<Query, Map<string, ConfirmedEdit>>
   chatRefreshes: Set<Extract<Operation, { kind: "clear" }>>
+  failedChatRefreshes: Map<
+    Query,
+    { operation: Extract<Operation, { kind: "clear" }>; fetchUpdateCount?: number }
+  >
   subscribe: (listener: () => void) => () => void
   snapshot: () => Operation[]
   publish: (entries: Operation[]) => void
@@ -88,6 +92,7 @@ function getStore(client: QueryClient): ProjectionStore {
     clearRefreshes: new Map(),
     confirmedEdits: new Map(),
     chatRefreshes: new Set(),
+    failedChatRefreshes: new Map(),
     subscribe: (listener) => {
       listeners.add(listener)
       if (listeners.size === 1 && typeof window !== "undefined") {
@@ -102,8 +107,10 @@ function getStore(client: QueryClient): ProjectionStore {
           store!.clearRefreshes.forEach((refresh) => refresh.operation.retireSession())
           store!.confirmedEdits.forEach((edits) => edits.forEach((edit) => edit.retireSession()))
           store!.chatRefreshes.forEach((operation) => operation.retireSession())
+          store!.failedChatRefreshes.forEach((refresh) => refresh.operation.retireSession())
           store!.clearRefreshes.clear()
           store!.confirmedEdits.clear()
+          store!.failedChatRefreshes.clear()
           store!.operationQueues.clear()
           store!.publish([])
         }
@@ -126,6 +133,33 @@ function getStore(client: QueryClient): ProjectionStore {
   }
   stores.set(client, store)
   client.getQueryCache().subscribe((event) => {
+    if (event.type === "updated") {
+      const recovery = store!.failedChatRefreshes.get(event.query)
+      if (recovery) {
+        if (!ownsChats(client, recovery.operation)) {
+          store!.failedChatRefreshes.delete(event.query)
+        } else if (event.action.type === "fetch") {
+          recovery.fetchUpdateCount = event.query.state.dataUpdateCount
+        } else if (event.action.type === "success") {
+          const recovered =
+            !event.action.manual &&
+            recovery.fetchUpdateCount !== undefined &&
+            event.query.state.dataUpdateCount === recovery.fetchUpdateCount + 1
+          if (recovered) {
+            store!.failedChatRefreshes.delete(event.query)
+          } else {
+            if (!event.action.manual) recovery.fetchUpdateCount = undefined
+            if (!event.query.state.isInvalidated) event.query.invalidate()
+          }
+        } else if (event.action.type === "setState") {
+          // Cancellation can restore a pre-invalidation manual-write snapshot.
+          recovery.fetchUpdateCount = undefined
+          if (!event.query.state.isInvalidated) event.query.invalidate()
+        } else if (event.action.type === "error") {
+          recovery.fetchUpdateCount = undefined
+        }
+      }
+    }
     if (event.type === "updated" && event.action.type === "success" && !event.action.manual) {
       const refresh = store!.clearRefreshes.get(event.query)
       if (refresh?.retireOnSuccess && refresh.operation.ownsSession()) {
@@ -148,6 +182,7 @@ function getStore(client: QueryClient): ProjectionStore {
     if (event.type !== "removed") return
     store!.clearRefreshes.delete(event.query)
     store!.confirmedEdits.delete(event.query)
+    store!.failedChatRefreshes.delete(event.query)
     store!.operationQueues.delete(event.query)
     const retained = store!.entries.filter((operation) => ownsRelevantQuery(client, operation))
     if (retained.length !== store!.entries.length) store!.publish(retained)
@@ -727,18 +762,16 @@ async function reconcileChatsAfterClear(
     if (!ownsChats(client, operation)) return
     const before = client.getQueryData<ChatsListResponse>(["chats"])
     if (!before) return
-    let fetched: ChatsListResponse
-    try {
-      fetched = await operation.refreshChats()
-    } catch {
-      return
-    }
+    const query = operation.chatsQuery!
+    const recovery = getStore(client).failedChatRefreshes.get(query)
+    const updateCount = query.state.dataUpdateCount
+    const fetched = await operation.refreshChats()
     if (!ownsChats(client, operation)) return
     if (client.getQueryData<ChatsListResponse>(["chats"]) !== before) {
       collisions += 1
       continue
     }
-    client.setQueryData<ChatsListResponse>(["chats"], {
+    const merged: ChatsListResponse = {
       ...fetched,
       items: fetched.items.map((chat) => {
         const live = before.items.find((item) => item.id === chat.id)
@@ -750,7 +783,16 @@ async function reconcileChatsAfterClear(
             }
           : chat
       }),
-    })
+    }
+    if (
+      recovery &&
+      getStore(client).failedChatRefreshes.get(query) === recovery &&
+      query.state.dataUpdateCount === updateCount &&
+      query.state.fetchStatus === "idle"
+    ) {
+      getStore(client).failedChatRefreshes.delete(query)
+    }
+    client.setQueryData<ChatsListResponse>(["chats"], merged)
     return
   }
 }
@@ -872,8 +914,12 @@ function commitOperation(client: QueryClient, operation: Operation) {
       () => store.chatRefreshes.delete(operation),
       () => {
         store.chatRefreshes.delete(operation)
-        if (ownsChats(client, operation)) {
-          void client.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
+        const query = operation.chatsQuery
+        if (query && ownsChats(client, operation)) {
+          // Keep a failed post-clear refresh stale across unrelated live writes
+          // until a newer uncontended server fetch repairs the aggregate.
+          store.failedChatRefreshes.set(query, { operation })
+          query.invalidate()
         }
       }
     )

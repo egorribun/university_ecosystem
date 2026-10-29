@@ -1572,7 +1572,7 @@
           "check_name_template": "Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)",
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
-          "guard": "workflow trigger",
+          "guard": "${{ always() }}",
           "needs": [
             "backend-tests"
           ],
@@ -1589,7 +1589,7 @@
           "check_name_template": "Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)",
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
-          "guard": "workflow trigger",
+          "guard": "${{ always() }}",
           "needs": [
             "backend-tests"
           ],
@@ -4283,7 +4283,7 @@
           "check_name_template": "Vulnerability gate (CRITICAL/HIGH, main)",
           "expected_timeout_minutes": 30,
           "expected_duration_seconds": 1800,
-          "guard": "${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
+          "guard": "${{ always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}",
           "needs": [
             "sbom-python",
             "sbom-go",

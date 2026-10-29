@@ -1,8 +1,10 @@
 import asyncio
 import re
-from collections.abc import Callable, Coroutine
-from datetime import UTC, datetime
-from typing import Any
+from collections.abc import AsyncIterator, Callable, Coroutine
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError as SAOperationalError
@@ -111,6 +113,197 @@ async def _lock_partition_ddl(conn: Any, table: str) -> None:
         text("SELECT pg_advisory_xact_lock(hashtext(:table_name))"),
         {"table_name": table},
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _PartitionCandidate:
+    parent_oid: int
+    parent_schema: str
+    child_oid: int
+    child_schema: str
+    partition_name: str
+    partition_bound: str
+
+
+@asynccontextmanager
+async def _bounded_partition_statement(conn: Any) -> AsyncIterator[None]:
+    """Bound catalog/DDL waits without changing the caller's timeout or transaction."""
+    async with conn.begin_nested():
+        timeout_result = await conn.execute(
+            text(
+                "SELECT setting FROM pg_catalog.pg_settings "
+                "WHERE name = 'statement_timeout'"
+            )
+        )
+        previous_timeout_ms = int(timeout_result.scalar_one())
+        bounded_timeout_ms = min(previous_timeout_ms or 5000, 5000)
+        await conn.execute(
+            text("SELECT pg_catalog.set_config('statement_timeout', :timeout, true)"),
+            {"timeout": f"{bounded_timeout_ms}ms"},
+        )
+        yield
+        await conn.execute(
+            text("SELECT pg_catalog.set_config('statement_timeout', :timeout, true)"),
+            {"timeout": f"{previous_timeout_ms}ms"},
+        )
+
+
+async def _list_prunable_partitions(
+    conn: Any,
+    table: str,
+    partition_key: str,
+    *,
+    candidate: _PartitionCandidate | None = None,
+) -> list[_PartitionCandidate]:
+    """List leaf partitions attached to the expected parent in this schema."""
+    parameters: dict[str, Any] = {
+        "table_name": table,
+        "partition_key": partition_key,
+        "parent_oid": candidate.parent_oid if candidate is not None else None,
+        "child_oid": candidate.child_oid if candidate is not None else None,
+    }
+    async with _bounded_partition_statement(conn):
+        result = await conn.execute(
+            text(
+                """
+            SELECT parent.oid AS parent_oid, parent_ns.nspname AS parent_schema,
+                   child.oid AS child_oid, child_ns.nspname AS child_schema,
+                   child.relname AS partition_name,
+                   pg_catalog.pg_get_expr(child.relpartbound, child.oid) AS partition_bound
+            FROM pg_catalog.pg_inherits AS inheritance
+            JOIN pg_catalog.pg_class AS parent ON parent.oid = inheritance.inhparent
+            JOIN pg_catalog.pg_namespace AS parent_ns ON parent_ns.oid = parent.relnamespace
+            JOIN pg_catalog.pg_class AS child ON child.oid = inheritance.inhrelid
+            JOIN pg_catalog.pg_namespace AS child_ns ON child_ns.oid = child.relnamespace
+            JOIN pg_catalog.pg_partitioned_table AS partitioning ON partitioning.partrelid = parent.oid
+            JOIN pg_catalog.pg_attribute AS partition_column
+              ON partition_column.attrelid = parent.oid
+             AND partition_column.attnum = partitioning.partattrs[0]
+            WHERE parent.relname = :table_name
+              AND parent_ns.nspname = pg_catalog.current_schema()
+              AND child_ns.nspname = parent_ns.nspname
+              AND parent.relkind = 'p' AND child.relkind = 'r' AND child.relispartition
+              AND partitioning.partstrat = 'r' AND partitioning.partnatts = 1
+              AND partition_column.attname = :partition_key
+              AND partition_column.atttypid = CAST('pg_catalog.timestamptz' AS pg_catalog.regtype)
+              AND (CAST(:parent_oid AS pg_catalog.oid) IS NULL OR parent.oid = CAST(:parent_oid AS pg_catalog.oid))
+              AND (CAST(:child_oid AS pg_catalog.oid) IS NULL OR child.oid = CAST(:child_oid AS pg_catalog.oid))
+                """
+            ),
+            parameters,
+        )
+        rows = result.all()
+    return [
+        _PartitionCandidate(
+            parent_oid=row.parent_oid,
+            parent_schema=row.parent_schema,
+            child_oid=row.child_oid,
+            child_schema=row.child_schema,
+            partition_name=row.partition_name,
+            partition_bound=row.partition_bound,
+        )
+        for row in rows
+    ]
+
+
+def _expired_partition_has_matching_bounds(
+    table: str, candidate: _PartitionCandidate, retention_days: int
+) -> bool:
+    """Refuse to infer data retention from a name that disagrees with its bounds."""
+    match = re.fullmatch(
+        rf"{re.escape(table)}_(?:y([0-9]{{4}})m([0-9]{{2}})|([0-9]{{4}})_([0-9]{{2}}))",
+        candidate.partition_name,
+    )
+    if match is None or retention_days <= 0:
+        return False
+    # Each alternative contains both year and month; the successful match
+    # guarantees exactly one pair of capturing groups is populated.
+    year = int(cast(str, match.group(1) or match.group(3)))
+    month = int(cast(str, match.group(2) or match.group(4)))
+    try:
+        start = datetime(year, month, 1, tzinfo=UTC)
+        end = datetime(year + (month == 12), month % 12 + 1, 1, tzinfo=UTC)
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    except (OverflowError, ValueError):
+        return False
+    return end < cutoff and _partition_bound_matches(
+        candidate.partition_bound, start.isoformat(), end.isoformat()
+    )
+
+
+async def _prune_expired_partition(
+    conn: Any,
+    table: str,
+    partition_key: str,
+    retention_days: int,
+    rust: Any,
+    candidate: _PartitionCandidate,
+) -> bool:
+    """Drop only a still-attached, expired monthly leaf; caller owns the transaction."""
+    if not _expired_partition_has_matching_bounds(table, candidate, retention_days):
+        return False
+    if not rust.is_partition_expired(candidate.partition_name, table, retention_days):
+        return False
+    if not _SAFE_IDENTIFIER_RE.fullmatch(table) or len(candidate.partition_name) > 63:
+        return False
+
+    preparer = conn.dialect.identifier_preparer
+    parent = (
+        f"{preparer.quote_identifier(candidate.parent_schema)}."
+        f"{preparer.quote_identifier(table)}"
+    )
+    child = (
+        f"{preparer.quote_identifier(candidate.child_schema)}."
+        f"{preparer.quote_identifier(candidate.partition_name)}"
+    )
+    try:
+        # The savepoint lets a missing relation or NOWAIT conflict fail safely
+        # without rolling back a transaction owned by the caller.
+        async with _bounded_partition_statement(conn):
+            isolation_result = await conn.execute(
+                text("SELECT pg_catalog.current_setting('transaction_isolation')")
+            )
+            isolation = isolation_result.scalar_one()
+            if not isinstance(isolation, str) or isolation.lower() not in {
+                "read committed",
+                "read uncommitted",
+            }:
+                # A fixed MVCC snapshot could re-read obsolete catalog bounds
+                # even after the current relation has been locked.
+                return False
+            lock = await conn.execute(
+                text(
+                    "SELECT pg_catalog.pg_try_advisory_xact_lock("
+                    "pg_catalog.hashtext(:table_name))"
+                ),
+                {"table_name": table},
+            )
+            if not lock.scalar_one():
+                return False
+            await conn.exec_driver_sql(
+                f"LOCK TABLE ONLY {parent} IN ACCESS EXCLUSIVE MODE NOWAIT"
+            )
+            await conn.exec_driver_sql(
+                f"LOCK TABLE ONLY {child} IN ACCESS EXCLUSIVE MODE NOWAIT"
+            )
+            current = await _list_prunable_partitions(
+                conn, table, partition_key, candidate=candidate
+            )
+            valid = current == [candidate] and _expired_partition_has_matching_bounds(
+                table, candidate, retention_days
+            )
+            if valid:
+                await conn.exec_driver_sql(f"DROP TABLE {child}")
+    except (OSError, ConnectionError, SQLAlchemyError, TypeError, ValueError) as exc:
+        logger.warning(
+            "Could not safely prune partition %s (%s)",
+            candidate.partition_name,
+            type(exc).__name__,
+        )
+        return False
+    if valid:
+        logger.info("Pruned old partition %s", candidate.partition_name)
+    return valid
 
 
 async def ensure_partitions_exist() -> None:
@@ -242,49 +435,41 @@ async def ensure_partitions_exist() -> None:
         # 2. Prune old partitions
         retention_days = settings.partition_retention_days
         if retention_days > 0:
-            for table, _ in PARTITIONED_TABLES:
-                result = await conn.execute(
-                    text(
-                        """
-                    SELECT child.relname AS partition_name
-                    FROM pg_inherits
-                    JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
-                    JOIN pg_class child ON pg_inherits.inhrelid = child.oid
-                    WHERE parent.relname = :table_name
-                """
-                    ),
-                    {"table_name": table},
-                )
-                partitions = result.scalars().all()
-
-                for p_name in partitions:
-                    if rust_ext.is_partition_expired(p_name, table, retention_days):
-                        # RZ-20-05: Validate partition name from pg_class before DDL.
-                        if not _SAFE_IDENTIFIER_RE.match(p_name):
-                            logger.error(
-                                "Partition name %r from pg_class failed validation — "
-                                "skipping DROP to prevent DDL injection",
-                                p_name,
-                            )
-                            continue
-                        try:
-                            logger.info(
-                                "Pruning old partition %s", p_name
-                            )  # LOW-W19: lazy logging
-                            preparer = conn.dialect.identifier_preparer
-                            safe_p_name = preparer.quote(p_name)
-                            await conn.exec_driver_sql(f"DROP TABLE {safe_p_name}")
-                            await conn.commit()
-                        except (
-                            OSError,
-                            ConnectionError,
-                            SAOperationalError,
-                            SAProgrammingError,
-                        ) as e:
-                            # RZ-20-04 + RZ-33-03: Broadened — DDL errors include SA exceptions.
-                            logger.error(
-                                "Failed to prune partition %s: %s", p_name, e
-                            )  # LOW-W19: lazy logging
+            for table, partition_key in PARTITIONED_TABLES:
+                try:
+                    partitions = await _list_prunable_partitions(
+                        conn, table, partition_key
+                    )
+                    await conn.commit()
+                except (
+                    OSError,
+                    ConnectionError,
+                    SQLAlchemyError,
+                    TypeError,
+                    ValueError,
+                ) as exc:
+                    await conn.rollback()
+                    logger.warning(
+                        "Could not inspect partitions for %s (%s)",
+                        table,
+                        type(exc).__name__,
+                    )
+                    continue
+                for candidate in partitions:
+                    try:
+                        await _prune_expired_partition(
+                            conn,
+                            table,
+                            partition_key,
+                            retention_days,
+                            rust_ext,
+                            candidate,
+                        )
+                        # Release parent/child locks before examining the next candidate.
+                        await conn.commit()
+                    except (OSError, ConnectionError, SQLAlchemyError):
+                        await conn.rollback()
+                        raise
 
 
 async def start_partition_management_scheduler(

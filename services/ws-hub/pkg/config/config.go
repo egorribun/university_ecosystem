@@ -156,6 +156,11 @@ func LoadConfig() (*Config, error) {
 				trustedCIDRs = append(trustedCIDRs, cidr)
 			}
 		} else {
+			// RealIP compares net.IP.String(), so exact peers need the same
+			// canonical form, including equivalent IPv6 and IPv4-mapped forms.
+			if ip := net.ParseIP(entry); ip != nil {
+				entry = ip.String()
+			}
 			trustedProxiesSet[entry] = struct{}{}
 		}
 	}

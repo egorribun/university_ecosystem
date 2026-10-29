@@ -596,3 +596,39 @@ def test_escaped_lone_surrogates_are_rejected_without_raising(target: str) -> No
         )
         capture_wire = _wire(capture)
     assert validator.match_inventory(policy_wire, capture_wire) is None
+
+
+@pytest.mark.parametrize("target", ["policy", "capture", "ordinary", "expanded"])
+@pytest.mark.parametrize("same_value", [True, False], ids=["same", "changed-first"])
+def test_unicode_escaped_duplicate_keys_cannot_hide_behind_last_value(
+    target: str, same_value: bool
+) -> None:
+    policy, capture = _load()
+    _valid_control(policy, capture)
+    policy_wire, capture_wire = _wire(policy), _wire(capture)
+
+    if target in {"policy", "capture"}:
+        document = policy if target == "policy" else capture
+        original = policy_wire if target == "policy" else capture_wire
+        first_value = document["schema"] if same_value else "forged-schema"
+        escaped_duplicate = rb'"\u0073chema":' + json.dumps(first_value).encode() + b","
+        assert original.startswith(b"{")
+        altered = b"{" + escaped_duplicate + original[1:]
+        # A last-key-wins parser would recover the exact approved document.
+        assert json.loads(altered) == document
+        if target == "policy":
+            policy_wire = altered
+        else:
+            capture_wire = altered
+    else:
+        scenario = 0 if target == "ordinary" else 1
+        rows = _rows(capture, scenario)
+        first_value = rows[0]["line"] if same_value else rows[0]["line"] + 1
+        stdout = json.dumps(rows, separators=(",", ":"))
+        assert stdout.startswith("[{")
+        altered = "[{" + r'"\u006cine":' + str(first_value) + "," + stdout[2:]
+        assert json.loads(altered) == rows
+        capture["report"]["captures"][scenario]["stdout"] = altered
+        capture_wire = _wire(capture)
+
+    assert validator.match_inventory(policy_wire, capture_wire) is None

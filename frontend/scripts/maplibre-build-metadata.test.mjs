@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { execFileSync, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { existsSync } from "node:fs"
+import { existsSync, writeFileSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -937,4 +937,175 @@ test("metadata rejects changed or missing non-Map chunks before writing evidence
       })
     }
   }
+})
+
+test("compiler graph keeps unresolved static and dynamic edges distinct", async (t) => {
+  for (const field of ["imports", "dynamicImports"]) {
+    await t.test(field, async () => {
+      const fixture = await makeAllChunkFixture()
+      try {
+        const external = "private-external-compiler-edge"
+        fixture.bundle["assets/index-A.js"][field].push(external)
+        await writeAllChunkFixture(fixture)
+        const raw = await readFile(fixture.reportPath, "utf8")
+        const report = JSON.parse(raw)
+        const staticUnknown = field === "imports"
+        assert.equal(report.graph.unresolvedStaticImportCount, Number(staticUnknown))
+        assert.equal(report.graph.unresolvedDynamicImportCount, Number(!staticUnknown))
+        // `complete` covers only compiler entry-point static reachability.
+        assert.equal(report.graph.complete, !staticUnknown)
+        assert.equal(report.mapLibreChunks[0].staticEntryReachable, staticUnknown ? null : false)
+        assert.equal(raw.includes(external), false)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+test("compiler graph rejects malformed edge and entry metadata before writing", async (t) => {
+  const cases = [
+    ["missing imports", "imports", undefined],
+    ["null imports", "imports", null],
+    ["string imports", "imports", "assets/Map-A.js"],
+    ["non-string static edge", "imports", [null]],
+    ["empty static edge", "imports", [""]],
+    ["sparse static edges", "imports", Array(1)],
+    ["duplicate static edge", "imports", ["assets/vendor-map-A.js", "assets/vendor-map-A.js"]],
+    ["missing dynamic imports", "dynamicImports", undefined],
+    ["object dynamic imports", "dynamicImports", {}],
+    ["non-string dynamic edge", "dynamicImports", [42]],
+    ["empty dynamic edge", "dynamicImports", [""]],
+    ["sparse dynamic edges", "dynamicImports", Array(1)],
+    ["duplicate dynamic edge", "dynamicImports", ["assets/Map-A.js", "assets/Map-A.js"]],
+    ["non-boolean entry", "isEntry", "true"],
+    ["missing entry", "isEntry", undefined],
+    ["non-boolean dynamic entry", "isDynamicEntry", 1],
+    ["missing dynamic entry", "isDynamicEntry", undefined],
+  ]
+  for (const [name, field, value] of cases) {
+    await t.test(name, async () => {
+      const fixture = await makeAllChunkFixture()
+      try {
+        fixture.bundle["assets/index-A.js"][field] = value
+        await assert.rejects(
+          writeAllChunkFixture(fixture),
+          /invalid client (?:import|entry) metadata/u
+        )
+        assert.equal(existsSync(fixture.reportPath), false)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    })
+  }
+})
+
+test("compiler graph rejects a chunk changed while metadata is being captured", async () => {
+  const fixture = await makeAllChunkFixture()
+  try {
+    const build = fixture.environment.config.build
+    const target = build.target
+    Object.defineProperty(build, "target", {
+      get() {
+        writeFileSync(
+          path.join(fixture.outputDir, "assets/detached-A.js"),
+          "changed-during-capture"
+        )
+        return target
+      },
+    })
+    await assert.rejects(writeAllChunkFixture(fixture), /emitted bytes differ/u)
+    assert.equal(existsSync(fixture.reportPath), false)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test("compiler graph snapshots chunk and module metadata before asynchronous reads", async () => {
+  const fixture = await makeAllChunkFixture()
+  try {
+    const entry = fixture.bundle["assets/index-A.js"]
+    const map = fixture.bundle["assets/vendor-map-A.js"]
+    const code = entry.code
+    let scheduled = false
+    Object.defineProperty(entry, "code", {
+      get() {
+        if (!scheduled) {
+          scheduled = true
+          queueMicrotask(() => {
+            map.imports.push("external-mutated-after-snapshot")
+            map.isEntry = true
+            map.isDynamicEntry = true
+            Object.values(map.modules)[0].renderedLength = 999
+          })
+        }
+        return code
+      },
+    })
+    await writeAllChunkFixture(fixture)
+    const report = JSON.parse(await readFile(fixture.reportPath, "utf8"))
+    const graphMap = report.graph.chunks.find((chunk) => chunk.fileName === map.fileName)
+    assert.deepEqual(report.graph.entryFiles, ["assets/index-A.js"])
+    assert.equal(report.graph.unresolvedStaticImportCount, 0)
+    assert.equal(graphMap.isEntry, false)
+    assert.equal(graphMap.isDynamicEntry, false)
+    assert.deepEqual(graphMap.imports, [])
+    assert.equal(report.mapLibreChunks[0].modules[0].renderedCodeUnits, 13)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
+test("compiler graph bounds external edges before writing evidence", async (t) => {
+  const externalEdges = () => Array.from({ length: 5_000 }, (_, index) => `external-${index}`)
+  await t.test("per-array limit", async () => {
+    const fixture = await makeAllChunkFixture()
+    try {
+      const edges = externalEdges()
+      fixture.bundle["assets/index-A.js"].dynamicImports = edges
+      await writeAllChunkFixture(fixture)
+      const control = JSON.parse(await readFile(fixture.reportPath, "utf8"))
+      assert.equal(control.graph.unresolvedDynamicImportCount, 5_000)
+      await rm(fixture.reportPath)
+      edges.push("external-extra")
+      await assert.rejects(writeAllChunkFixture(fixture), /oversized client import metadata/u)
+      assert.equal(existsSync(fixture.reportPath), false)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
+
+  await t.test("aggregate limit", async () => {
+    const fixture = await makeAllChunkFixture()
+    try {
+      for (let index = 0; index < 7; index += 1) {
+        const fileName = `assets/extra-${index}.js`
+        const code = `export const value = ${index}`
+        fixture.bundle[fileName] = {
+          type: "chunk",
+          fileName,
+          code,
+          imports: [],
+          dynamicImports: [],
+          isEntry: false,
+          isDynamicEntry: false,
+          modules: {},
+        }
+        await writeFile(path.join(fixture.outputDir, fileName), code)
+      }
+      const chunks = Object.values(fixture.bundle)
+      for (const chunk of chunks.slice(0, 10)) chunk.dynamicImports = externalEdges()
+      // The fixture already has one resolved static edge.
+      chunks[9].dynamicImports.pop()
+      await writeAllChunkFixture(fixture)
+      const control = JSON.parse(await readFile(fixture.reportPath, "utf8"))
+      assert.equal(control.graph.unresolvedDynamicImportCount, 49_999)
+      await rm(fixture.reportPath)
+      chunks[10].dynamicImports = externalEdges()
+      await assert.rejects(writeAllChunkFixture(fixture), /oversized client import metadata/u)
+      assert.equal(existsSync(fixture.reportPath), false)
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true })
+    }
+  })
 })

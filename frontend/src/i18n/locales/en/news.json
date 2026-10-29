@@ -5,6 +5,9 @@
     "empty": "No news yet",
     "loadError": "Failed to load the news.",
     "noComments": "No comments yet. Be the first!",
+    "loadingComments": "Loading comments…",
+    "commentsLoadError": "Could not load comments. Try again.",
+    "commentsPageLoadError": "Could not load more comments. Try again.",
     "checkLater": "Check back later for updates"
   },
   "sections": {

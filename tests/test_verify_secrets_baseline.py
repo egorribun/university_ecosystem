@@ -5913,11 +5913,190 @@ _HISTORICAL148_PRIOR_347_SHA256 = (
 )
 
 
+def _historical148_assert_original_blob(path: str, data: bytes) -> None:
+    expected_blob, _ = _HISTORICAL148_SOURCE_PINS_AND_LINES[path]
+    framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+    assert hashlib.sha1(framed, usedforsecurity=False).digest() == bytes(expected_blob)
+
+
+def _historical148_load_json(data: str | bytes) -> Any:
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            assert key not in result, "duplicate JSON key"
+            result[key] = value
+        return result
+
+    return json.loads(data, object_pairs_hook=unique)
+
+
+def _historical148_pretty_json(value: Any) -> bytes:
+    return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def _historical148_canonical_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _historical148_capture_fingerprint(capture: dict[str, Any]) -> str:
+    normalized = copy.deepcopy(capture)
+    scenarios = normalized["report"]["captures"]
+    assert len(scenarios) == 2
+    for count, scenario in zip((13, 24), scenarios, strict=True):
+        warnings = _historical148_load_json(scenario["stdout"])
+        assert len(warnings) == count
+        scenario["stdout"] = _historical148_canonical_json(
+            sorted(warnings, key=_historical148_canonical_json)
+        )
+    return hashlib.sha256(
+        _historical148_canonical_json(normalized).encode("ascii")
+    ).hexdigest()
+
+
+def _historical148_reconstruct_sources(
+    policy_source: bytes, validator_source: bytes, historical_capture: bytes
+) -> dict[str, bytes]:
+    policy_path = "quality/historical148-squawk-policy.json"
+    validator_path = "scripts/quality/validate_historical148_squawk.py"
+    capture_path = "tests/fixtures/historical148-squawk-capture-15eaaa.json"
+
+    # Authenticate the retained capture before parsing any of its old values.
+    _historical148_assert_original_blob(capture_path, historical_capture)
+    capture = _historical148_load_json(historical_capture)
+    policy = _historical148_load_json(policy_source)
+    assert _historical148_pretty_json(policy) == policy_source
+    for field in (
+        "source_commit",
+        "checkout_sha",
+        "workflow_sha",
+        "workflow_run_id",
+        "job_id",
+    ):
+        policy["provenance"][field] = capture["provenance"][field]
+    for field in (
+        ".github/workflows/ci.yml",
+        "scripts/quality/render_live_alembic_sql.py",
+    ):
+        policy["source_blobs"][field] = capture["ordinary"]["source_blobs"][field]
+    policy["scenarios"][0]["sql_path"] = capture["report"]["captures"][0]["sql_path"]
+    for index in (0, 1):
+        policy["scenarios"][index]["sql_identity"] = capture["report"]["captures"][
+            index
+        ]["sql_identity"]
+    for field in (
+        "checkout_sha",
+        "renderer_blob",
+        "workflow_blob",
+        "workflow_run_id",
+        "workflow_sha",
+    ):
+        policy["expanded_contract"][field] = capture["expanded"]["metadata"][field]
+
+    historical_policy = _historical148_pretty_json(policy)
+    _historical148_assert_original_blob(policy_path, historical_policy)
+    policy = _historical148_load_json(historical_policy)
+    policy_pin = hashlib.sha256(_historical148_canonical_json(policy).encode("ascii"))
+    capture_pin = _historical148_capture_fingerprint(capture)
+
+    # This inverse is limited to the known three recapture lines. A later
+    # legitimate matcher body change requires a separately reviewed inverse or
+    # retained historical evidence; it does not make current bytes an approval.
+    lines = validator_source.decode("utf-8").splitlines(keepends=True)
+    current_label = (
+        "# Reproducible from the committed historical148 policy and 36f70a0f capture.\n"
+    )
+    historical_label = (
+        "# Reproducible from the committed historical148 policy and 15eaaa capture.\n"
+    )
+    assert lines.count(current_label) == 1
+    replacements = {
+        "_POLICY_SHA256": policy_pin.hexdigest(),
+        "_CAPTURE_SHA256": capture_pin,
+    }
+    counts = dict.fromkeys(replacements, 0)
+    for index, line in enumerate(lines):
+        if line == current_label:
+            lines[index] = historical_label
+        for name, fingerprint in replacements.items():
+            if line.startswith(name + " = "):
+                assert re.fullmatch(rf'{name} = "[0-9a-f]{{64}}"\n', line)
+                counts[name] += 1
+                lines[index] = f'{name} = "{fingerprint}"\n'
+    assert all(count == 1 for count in counts.values())
+    historical_validator = "".join(lines).encode("utf-8")
+    _historical148_assert_original_blob(validator_path, historical_validator)
+    return {
+        policy_path: historical_policy,
+        validator_path: historical_validator,
+        capture_path: historical_capture,
+    }
+
+
+def _historical148_matcher_pins(source: bytes) -> dict[str, str]:
+    nodes = [
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id in {"_POLICY_SHA256", "_CAPTURE_SHA256"}
+    ]
+    assert len(nodes) == 2
+    pins = {node.targets[0].id: ast.literal_eval(node.value) for node in nodes}
+    assert set(pins) == {"_POLICY_SHA256", "_CAPTURE_SHA256"}
+    assert all(
+        isinstance(pin, str) and re.fullmatch(r"[0-9a-f]{64}", pin)
+        for pin in pins.values()
+    )
+    return pins
+
+
+def _historical148_assert_current_bindings(
+    policy_source: bytes,
+    validator_source: bytes,
+    historical_capture: bytes,
+    current_capture: bytes,
+) -> None:
+    _historical148_reconstruct_sources(
+        policy_source, validator_source, historical_capture
+    )
+    policy = _historical148_load_json(policy_source)
+    capture = _historical148_load_json(current_capture)
+    assert _historical148_pretty_json(capture) == current_capture
+    pins = _historical148_matcher_pins(validator_source)
+    assert (
+        hashlib.sha256(
+            _historical148_canonical_json(policy).encode("ascii")
+        ).hexdigest()
+        == pins["_POLICY_SHA256"]
+    )
+    assert _historical148_capture_fingerprint(capture) == pins["_CAPTURE_SHA256"]
+    assert policy["provenance"] == capture["provenance"]
+    assert policy["expanded_contract"] == capture["expanded"]["metadata"]
+    for path, fingerprint in capture["ordinary"]["source_blobs"].items():
+        assert policy["source_blobs"][path] == fingerprint
+    for policy_scenario, captured in zip(
+        policy["scenarios"], capture["report"]["captures"], strict=True
+    ):
+        for field in ("sql_path", "sql_identity", "sql_sha256", "sql_bytes"):
+            assert policy_scenario[field] == captured[field]
+        assert policy_scenario["raw_exit"] == captured["exit_code"]
+
+
 def _historical148_source_records() -> list[dict[str, Any]]:
-    root = Path(__file__).resolve().parents[1]
+    policy, validator_source, historical_capture, _ = _historical148_current_inputs()
+    sources = _historical148_reconstruct_sources(
+        policy, validator_source, historical_capture
+    )
     records: list[dict[str, Any]] = []
     for path, (expected_blob, lines) in _HISTORICAL148_SOURCE_PINS_AND_LINES.items():
-        data = (root / path).read_bytes()
+        data = sources[path]
         framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
         assert hashlib.sha1(framed, usedforsecurity=False).digest() == bytes(
             expected_blob
@@ -6106,49 +6285,262 @@ def test_historical148_integrity_preserves_only_two_preexisting_collisions() -> 
 
 
 def test_historical148_validator_pins_are_public_canonical_fingerprints() -> None:
-    root = Path(__file__).resolve().parents[1]
-    source = ast.parse(
-        (root / "scripts/quality/validate_historical148_squawk.py").read_text(
-            encoding="utf-8"
-        )
+    policy, validator_source, historical_capture, current_capture = (
+        _historical148_current_inputs()
     )
-    pins = {
-        node.targets[0].id: ast.literal_eval(node.value)
-        for node in source.body
-        if isinstance(node, ast.Assign)
-        and len(node.targets) == 1
-        and isinstance(node.targets[0], ast.Name)
-        and node.targets[0].id in {"_POLICY_SHA256", "_CAPTURE_SHA256"}
+    historical = _historical148_reconstruct_sources(
+        policy, validator_source, historical_capture
+    )
+    historical_policy = _historical148_load_json(
+        historical["quality/historical148-squawk-policy.json"]
+    )
+    historical_pins = _historical148_matcher_pins(
+        historical["scripts/quality/validate_historical148_squawk.py"]
+    )
+    assert (
+        hashlib.sha256(
+            _historical148_canonical_json(historical_policy).encode("ascii")
+        ).hexdigest()
+        == historical_pins["_POLICY_SHA256"]
+    )
+    assert (
+        _historical148_capture_fingerprint(_historical148_load_json(historical_capture))
+        == historical_pins["_CAPTURE_SHA256"]
+    )
+    _historical148_assert_current_bindings(
+        policy, validator_source, historical_capture, current_capture
+    )
+
+
+def _historical148_current_inputs() -> tuple[bytes, bytes, bytes, bytes]:
+    root = Path(__file__).resolve().parents[1]
+    return (
+        (root / "quality/historical148-squawk-policy.json").read_bytes(),
+        (root / "scripts/quality/validate_historical148_squawk.py").read_bytes(),
+        (root / "tests/fixtures/historical148-squawk-capture-15eaaa.json").read_bytes(),
+        (
+            root / "tests/fixtures/historical148-squawk-capture-36f70a0f.json"
+        ).read_bytes(),
+    )
+
+
+def test_historical148_reconstruction_preserves_each_original_blob() -> None:
+    policy, validator_source, historical_capture, _ = _historical148_current_inputs()
+    reconstructed = _historical148_reconstruct_sources(
+        policy, validator_source, historical_capture
+    )
+    assert set(reconstructed) == set(_HISTORICAL148_SOURCE_PINS_AND_LINES)
+    for path, (expected_blob, _) in _HISTORICAL148_SOURCE_PINS_AND_LINES.items():
+        data = reconstructed[path]
+        framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+        assert hashlib.sha1(framed, usedforsecurity=False).digest() == bytes(
+            expected_blob
+        )
+
+
+@pytest.mark.parametrize("input_name", ["policy", "validator", "capture"])
+def test_historical148_reconstruction_rejects_changed_inputs(input_name: str) -> None:
+    policy, validator_source, historical_capture, _ = _historical148_current_inputs()
+    _historical148_reconstruct_sources(policy, validator_source, historical_capture)
+    if input_name == "policy":
+        changed = json.loads(policy)
+        changed["status"] += "-changed"
+        policy = (json.dumps(changed, indent=2, ensure_ascii=False) + "\n").encode()
+    elif input_name == "validator":
+        validator_source += b"\n# changed\n"
+    else:
+        historical_capture += b" "
+    with pytest.raises(AssertionError):
+        _historical148_reconstruct_sources(policy, validator_source, historical_capture)
+
+
+@pytest.mark.parametrize(
+    "input_name",
+    [
+        "policy",
+        "policy_recapture",
+        "policy_duplicate",
+        "capture",
+        "validator_policy_pin",
+        "validator_capture_pin",
+        "validator_body",
+    ],
+)
+def test_historical148_current_bindings_reject_changed_inputs(input_name: str) -> None:
+    policy, validator_source, historical_capture, capture = (
+        _historical148_current_inputs()
+    )
+    _historical148_assert_current_bindings(
+        policy, validator_source, historical_capture, capture
+    )
+    if input_name == "policy":
+        changed = json.loads(policy)
+        changed["status"] += "-changed"
+        policy = (json.dumps(changed, indent=2, ensure_ascii=False) + "\n").encode()
+    elif input_name == "policy_recapture":
+        changed = json.loads(policy)
+        changed["provenance"]["workflow_run_id"] += "-changed"
+        policy = (json.dumps(changed, indent=2, ensure_ascii=False) + "\n").encode()
+    elif input_name == "policy_duplicate":
+        policy = policy.replace(b"{\n", b'{\n  "status": "prepared-inactive",\n', 1)
+    elif input_name == "capture":
+        changed = json.loads(capture)
+        changed["schema"] += "-changed"
+        capture = (json.dumps(changed, indent=2, ensure_ascii=False) + "\n").encode()
+    elif input_name in {"validator_policy_pin", "validator_capture_pin"}:
+        name = (
+            b"_POLICY_SHA256"
+            if input_name == "validator_policy_pin"
+            else b"_CAPTURE_SHA256"
+        )
+        match = re.search(name + rb' = "([0-9a-f]{64})"', validator_source)
+        assert match is not None
+        digest = bytearray(match.group(1))
+        digest[0] = ord("1") if digest[0] == ord("0") else ord("0")
+        validator_source = (
+            validator_source[: match.start(1)]
+            + digest
+            + validator_source[match.end(1) :]
+        )
+    else:
+        validator_source += b"\n# changed\n"
+    with pytest.raises(AssertionError):
+        _historical148_assert_current_bindings(
+            policy, validator_source, historical_capture, capture
+        )
+
+
+_HISTORICAL148_RESTORED_POLICY_FIELDS = (
+    ("provenance", "source_commit"),
+    ("provenance", "checkout_sha"),
+    ("provenance", "workflow_sha"),
+    ("provenance", "workflow_run_id"),
+    ("provenance", "job_id"),
+    ("source_blobs", ".github/workflows/ci.yml"),
+    ("source_blobs", "scripts/quality/render_live_alembic_sql.py"),
+    ("scenarios", 0, "sql_path"),
+    ("scenarios", 0, "sql_identity"),
+    ("scenarios", 1, "sql_identity"),
+    ("expanded_contract", "checkout_sha"),
+    ("expanded_contract", "renderer_blob"),
+    ("expanded_contract", "workflow_blob"),
+    ("expanded_contract", "workflow_run_id"),
+    ("expanded_contract", "workflow_sha"),
+)
+
+_HISTORICAL148_RESTORED_CAPTURE_FIELDS = (
+    ("provenance", "source_commit"),
+    ("provenance", "checkout_sha"),
+    ("provenance", "workflow_sha"),
+    ("provenance", "workflow_run_id"),
+    ("provenance", "job_id"),
+    ("ordinary", "source_blobs", ".github/workflows/ci.yml"),
+    ("ordinary", "source_blobs", "scripts/quality/render_live_alembic_sql.py"),
+    ("report", "captures", 0, "sql_path"),
+    ("report", "captures", 0, "sql_identity"),
+    ("report", "captures", 1, "sql_identity"),
+    ("expanded", "metadata", "checkout_sha"),
+    ("expanded", "metadata", "renderer_blob"),
+    ("expanded", "metadata", "workflow_blob"),
+    ("expanded", "metadata", "workflow_run_id"),
+    ("expanded", "metadata", "workflow_sha"),
+)
+
+
+@pytest.mark.parametrize("field", _HISTORICAL148_RESTORED_POLICY_FIELDS)
+def test_historical148_current_binding_rejects_each_recapture_field_change(
+    field: tuple[str | int, ...],
+) -> None:
+    policy, validator_source, historical_capture, capture = (
+        _historical148_current_inputs()
+    )
+    changed = json.loads(policy)
+    parent = changed
+    for key in field[:-1]:
+        parent = parent[key]
+    parent[field[-1]] += "-changed"
+    changed_policy = (json.dumps(changed, indent=2, ensure_ascii=False) + "\n").encode()
+    with pytest.raises(AssertionError):
+        _historical148_assert_current_bindings(
+            changed_policy, validator_source, historical_capture, capture
+        )
+
+
+@pytest.mark.parametrize("field", _HISTORICAL148_RESTORED_CAPTURE_FIELDS)
+def test_historical148_reconstruction_rejects_each_historical_input_change(
+    field: tuple[str | int, ...],
+) -> None:
+    policy, validator_source, historical_capture, _ = _historical148_current_inputs()
+    changed = json.loads(historical_capture)
+    parent = changed
+    for key in field[:-1]:
+        parent = parent[key]
+    parent[field[-1]] += "-changed"
+    changed_capture = (
+        json.dumps(changed, indent=2, ensure_ascii=False) + "\n"
+    ).encode()
+    with pytest.raises(AssertionError):
+        _historical148_reconstruct_sources(policy, validator_source, changed_capture)
+
+
+def test_historical148_changed_current_literals_remain_unapproved() -> None:
+    root = Path(__file__).resolve().parents[1]
+    changed_paths: set[str] = set()
+    records = iter(_historical148_source_records())
+    for path, (_, lines) in _HISTORICAL148_SOURCE_PINS_AND_LINES.items():
+        source_lines = (root / path).read_text(encoding="utf-8").splitlines()
+        for line in lines:
+            historical = next(records)
+            values = re.findall(
+                r'"([0-9a-f]{40}|[0-9a-f]{64})"', source_lines[line - 1]
+            )
+            assert len(values) == 1
+            current_digest = hashlib.sha1(
+                values[0].encode("ascii"), usedforsecurity=False
+            ).digest()
+            if list(current_digest) == historical["identity"]["hashed_secret_bytes"]:
+                continue
+            changed_paths.add(path)
+            changed = copy.deepcopy(historical)
+            changed["identity"]["hashed_secret_bytes"] = list(current_digest)
+            with pytest.raises(
+                verifier.BaselineArtifactError,
+                match="historical-148 integrity identity changed scope",
+            ):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed), today=verifier.date(2026, 10, 29)
+                )
+    assert changed_paths == {
+        "quality/historical148-squawk-policy.json",
+        "scripts/quality/validate_historical148_squawk.py",
     }
 
-    def canonical(value: Any) -> str:
-        return json.dumps(
-            value,
-            ensure_ascii=True,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        )
 
-    policy = json.loads(
-        (root / "quality/historical148-squawk-policy.json").read_text(encoding="utf-8")
+def test_historical148_current_capture_cannot_inherit_old_path_approvals() -> None:
+    root = Path(__file__).resolve().parents[1]
+    capture_path = "tests/fixtures/historical148-squawk-capture-36f70a0f.json"
+    values = re.findall(
+        r'"([0-9a-f]{40}|[0-9a-f]{64})"',
+        (root / capture_path).read_text(encoding="utf-8"),
     )
-    capture = json.loads(
-        (root / "tests/fixtures/historical148-squawk-capture-15eaaa.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    scenarios = capture["report"]["captures"]
-    assert len(scenarios) == 2
-    for expected_count, scenario in zip((13, 24), scenarios, strict=True):
-        warnings = json.loads(scenario["stdout"])
-        assert len(warnings) == expected_count
-        scenario["stdout"] = canonical(sorted(warnings, key=canonical))
-    assert (
-        hashlib.sha256(canonical(policy).encode("ascii")).hexdigest()
-        == pins["_POLICY_SHA256"]
-    )
-    assert (
-        hashlib.sha256(canonical(capture).encode("ascii")).hexdigest()
-        == pins["_CAPTURE_SHA256"]
-    )
+    current_digests = {
+        tuple(hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest())
+        for value in values
+    }
+    shared = [
+        record
+        for record in _historical148_source_records()
+        if record["identity"]["path"].endswith("capture-15eaaa.json")
+        and tuple(record["identity"]["hashed_secret_bytes"]) in current_digests
+    ]
+    assert shared
+    for record in shared:
+        changed = copy.deepcopy(record)
+        changed["identity"]["path"] = capture_path
+        with pytest.raises(
+            verifier.BaselineArtifactError,
+            match="historical-148 integrity identity changed scope",
+        ):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(changed), today=verifier.date(2026, 10, 29)
+            )

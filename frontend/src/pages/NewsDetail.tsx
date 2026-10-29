@@ -139,6 +139,9 @@ function NewsDetailArticle({ id }: { id: string }) {
 
   const {
     interactions,
+    commentsStatus,
+    isRetryingComments,
+    retryComments,
     toggleLikeAsync,
     addComment,
     isCommenting,
@@ -146,6 +149,7 @@ function NewsDetailArticle({ id }: { id: string }) {
     deleteCommentAsync,
     hasMoreComments,
     isLoadingMoreComments,
+    isLoadingMoreCommentsError,
     loadMoreComments,
   } = useNewsInteraction(id, {
     anonymousRead: anonymous,
@@ -158,8 +162,8 @@ function NewsDetailArticle({ id }: { id: string }) {
         }
       : undefined,
   })
-  const isLiked = interactions?.is_liked ?? false
-  const likesCount = interactions?.likes_count ?? 0
+  const isLiked = interactions?.is_liked ?? (anonymous ? false : (query.data?.is_liked ?? false))
+  const likesCount = interactions?.likes_count ?? query.data?.likes_count ?? 0
   const comments = interactions?.comments ?? []
 
   /* ── Store hero ID for back-navigation view transition ── */
@@ -366,6 +370,12 @@ function NewsDetailArticle({ id }: { id: string }) {
             <NewsComments
               key={user?.id ?? "anonymous"}
               comments={comments}
+              commentsCount={interactions?.comments_count ?? query.data.comments_count}
+              loadState={{
+                status: commentsStatus,
+                retry: retryComments,
+                isRetrying: isRetryingComments,
+              }}
               user={user}
               isCommenting={isCommenting}
               addComment={addComment}
@@ -376,7 +386,12 @@ function NewsDetailArticle({ id }: { id: string }) {
             />
 
             {hasMoreComments && (
-              <div className="flex justify-center">
+              <div className="flex flex-col items-center gap-3">
+                {isLoadingMoreCommentsError && (
+                  <p role="alert" className="text-sm text-(--error-text)">
+                    {t("news:states.commentsPageLoadError")}
+                  </p>
+                )}
                 <Button
                   variant="glass"
                   onClick={loadMoreComments}

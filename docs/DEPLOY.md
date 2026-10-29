@@ -493,7 +493,7 @@ ingress proxy не требуются.
 ## Notifications worker
 
 - Для корректной отправки push-уведомлений запустите отдельный воркер: `python -m app.workers.notifications`.
-- Воркер публикует здоровье и метрики Prometheus на `http://<host>:9101/healthz` и `http://<host>:9101/metrics` (порт можно изменить через `NOTIFICATIONS_WORKER_METRICS_PORT`).
+- Отдельный воркер по умолчанию слушает `127.0.0.1:9101` для `/healthz` и `/metrics`. Адрес задаётся через `NOTIFICATIONS_WORKER_METRICS_HOST`, порт — через `NOTIFICATIONS_WORKER_METRICS_PORT`; порт `0` отключает listener. `docker-compose.yml` слушает внутри контейнера и публикует доступ на хосте через `127.0.0.1:9102`; `docker-compose.full.yml` не публикует порт воркера на хосте.
 - В docker-compose уже добавлен сервис `notifications-worker` с политикой перезапуска `unless-stopped`.
 - Задания из dead-letter очереди автоматически удаляются по истечении 30 дней (управляется `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`).
 

@@ -1687,7 +1687,7 @@ def test_sbom_go_gate_uses_symbol_aware_reachable_vulnerability_analysis() -> No
     workflow = yaml.safe_load(SBOM_WORKFLOW_PATH.read_text(encoding="utf-8"))
     report_job = workflow["jobs"]["sbom-go"]
     report_script = "\n".join(str(step.get("run", "")) for step in report_job["steps"])
-    assert "osv-scanner scan source --recursive --format sarif" in report_script
+    assert '"$OSV_SCANNER_BIN" scan source --recursive --format sarif' in report_script
     assert any(
         str(step.get("uses", "")).startswith("github/codeql-action/upload-sarif@")
         for step in report_job["steps"]

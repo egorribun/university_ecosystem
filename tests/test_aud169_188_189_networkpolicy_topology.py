@@ -284,6 +284,23 @@ def test_both_sides_of_redis_and_jwks_rules_are_release_scoped(
         assert not _allowed_side(resources, target, untrusted, "Ingress", "TCP", port)
 
 
+def test_redis_and_jwks_reject_wrong_ports_and_protocols_on_both_sides(
+    topology: tuple[list[dict[str, Any]], dict[str, Endpoint]],
+) -> None:
+    resources, endpoints = topology
+    for release in (FIRST, SECOND):
+        processor = endpoints[f"{release}-processor"]
+        for component, port in (("redis", 6379), ("backend", 8181)):
+            target = endpoints[f"{release}-{component}"]
+            for protocol, wrong_port in (("TCP", port + 1), ("UDP", port)):
+                assert not _allowed_side(
+                    resources, processor, target, "Egress", protocol, wrong_port
+                )
+                assert not _allowed_side(
+                    resources, target, processor, "Ingress", protocol, wrong_port
+                )
+
+
 def test_dns_and_443_direct_address_intent_is_scoped(
     topology: tuple[list[dict[str, Any]], dict[str, Endpoint]],
 ) -> None:

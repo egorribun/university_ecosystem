@@ -121,6 +121,49 @@ class LiveRenderError(RuntimeError):
     """Raised when the live rendering cannot complete."""
 
 
+_SAFE_CLI_DIAGNOSTICS: dict[type[Exception], frozenset[str]] = {
+    RevisionMetadataError: frozenset(
+        {
+            f"{name} must {requirement}"
+            for name in ("revision", "down_revision")
+            for requirement in (
+                "be assigned exactly once",
+                "be a top-level assignment",
+                "use a single-name assignment",
+                "not be empty",
+            )
+        }
+        | {
+            "revision must be a string literal",
+            "down_revision must be a string literal or None",
+        }
+    ),
+    LiveRenderError: frozenset(
+        {
+            "PostgreSQL database URL is invalid",
+            "PostgreSQL database URL cannot override dbname",
+            "PostgreSQL admin connection failed",
+            "PostgreSQL scratch identity check failed",
+            "PostgreSQL scratch catalog check failed",
+            "PostgreSQL scratch creation failed",
+            "PostgreSQL scratch cleanup failed",
+        }
+    ),
+}
+
+
+def _safe_cli_diagnostic(error: Exception) -> str:
+    allowed = _SAFE_CLI_DIAGNOSTICS.get(type(error))
+    if (
+        allowed is not None
+        and len(error.args) == 1
+        and type(error.args[0]) is str
+        and error.args[0] in allowed
+    ):
+        return error.args[0]
+    return "live migration rendering failed"
+
+
 class _DdlRecorder:
     """Collect lintable DDL and safety context from the active migration."""
 
@@ -460,10 +503,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         sql = render_revision_sql(Path(arguments[0]), database_url)
-    except (RevisionMetadataError, LiveRenderError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        Path(arguments[1]).write_text(sql, encoding="utf-8")
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: CLI privacy boundary
+        print(f"error: {_safe_cli_diagnostic(exc)}", file=sys.stderr)
         return 2
-    Path(arguments[1]).write_text(sql, encoding="utf-8")
     return 0
 
 

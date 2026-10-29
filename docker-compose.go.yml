@@ -64,6 +64,8 @@ services:
       - "127.0.0.1:8083:8081"
     environment:
       WS_HUB_PORT: "8081"
+      # Trust only operator-supplied proxy peers; the default remains loopback-only.
+      TRUSTED_PROXIES: "${WS_HUB_TRUSTED_PROXIES:-127.0.0.1,::1}"
       NATS_URL: nats://${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}@nats:4222
       REDIS_URL: valkey:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}

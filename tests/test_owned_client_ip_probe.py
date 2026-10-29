@@ -27,16 +27,20 @@ from scripts.owned_nats_process import (
 
 def _input() -> dict[str, object]:
     return {
-        "schema": "ue-owned-client-ip-probe-input-v1",
+        "schema": "ue-owned-client-ip-probe-input-v2",
         "source_sha": "a" * 40,
         "run_id": "b" * 64,
         "routes": [
             {
+                "network": "public",
+                "network_id": "c" * 64,
                 "subnet": "172.23.0.0/24",
                 "source_ip": "172.23.0.10",
                 "caddy_ip": "172.23.0.20",
             },
             {
+                "network": "frontend_net",
+                "network_id": "d" * 64,
                 "subnet": "172.24.0.0/24",
                 "source_ip": "172.24.0.10",
                 "caddy_ip": "172.24.0.20",
@@ -44,8 +48,35 @@ def _input() -> dict[str, object]:
         ],
         "gateway_ip": "172.23.0.30",
         "ws_hub_ip": "172.23.0.40",
+        "backend_public_ip": "172.23.0.50",
+        "gateway_backend_peers": [
+            {
+                "network": "public",
+                "network_id": "c" * 64,
+                "subnet": "172.23.0.0/24",
+                "address": "172.23.0.30",
+            },
+            {
+                "network": "internal",
+                "network_id": "e" * 64,
+                "subnet": "172.25.0.0/24",
+                "address": "172.25.0.30",
+            },
+            {
+                "network": "revocation_net",
+                "network_id": "f" * 64,
+                "subnet": "172.26.0.0/24",
+                "address": "172.26.0.30",
+            },
+        ],
         "trusted_proxies": [
-            ["172.23.0.20", "172.24.0.20", "172.23.0.30"],
+            [
+                "172.23.0.20",
+                "172.24.0.20",
+                "172.23.0.30",
+                "172.25.0.30",
+                "172.26.0.30",
+            ],
             ["172.23.0.20"],
             ["172.23.0.20"],
         ],
@@ -131,9 +162,21 @@ def test_fixed_protocol_yields_a_decodable_bounded_frame_without_secrets():
         "not_assessed",
         "not_assessed",
     )
-    assert len(network.requests) == 115
+    assert len(network.requests) == 119
     assert frame["http_requests"] == len(network.requests)
     assert b"token" not in encoded and b"nonce" not in encoded
+    for address in (
+        "172.23.0.10",
+        "172.24.0.10",
+        "172.23.0.20",
+        "172.24.0.20",
+        "172.23.0.30",
+        "172.25.0.30",
+        "172.26.0.30",
+        "172.23.0.40",
+        "172.23.0.50",
+    ):
+        assert address.encode() not in encoded
 
     cases = [
         request
@@ -143,16 +186,102 @@ def test_fixed_protocol_yields_a_decodable_bounded_frame_without_secrets():
     assert not any("authorization" in dict(request.headers) for request in cases)
     assert all(request.body == b"{}" for request in cases if request.method == "POST")
     assert all(request.source_ip in {"172.23.0.10", "172.24.0.10"} for request in cases)
-    direct = [
+    non_caddy = [
         request
         for request in cases
         if request.target_ip not in {"172.23.0.20", "172.24.0.20"}
+    ]
+    assert len(non_caddy) == 9
+    assert {request.target_ip for request in non_caddy} == {
+        "172.23.0.30",
+        "172.23.0.40",
+        "172.23.0.50",
+    }
+    direct = [
+        request
+        for request in non_caddy
+        if request.target_ip in {"172.23.0.30", "172.23.0.40"}
     ]
     assert len(direct) == 5
     assert all(request.source_ip == "172.23.0.10" for request in direct)
     assert all(
         dict(request.headers)["x-forwarded-for"] == "172.24.0.10" for request in direct
     )
+    backend_direct = [
+        request for request in non_caddy if request.target_ip == "172.23.0.50"
+    ]
+    assert len(backend_direct) == 4
+    assert {request.path for request in backend_direct} == {
+        "/api/v1/auth/login/json",
+        "/api/v1/auth/register",
+        "/api/v1/auth/mfa/verify",
+        "/api/v1/password/forgot",
+    }
+    assert all(request.source_ip == "172.23.0.10" for request in backend_direct)
+    assert all(request.port == 8000 for request in backend_direct)
+    assert all(
+        dict(request.headers)["x-forwarded-for"] == "172.24.0.10"
+        for request in backend_direct
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/auth/login/json",
+        "/api/v1/auth/register",
+        "/api/v1/auth/mfa/verify",
+        "/api/v1/password/forgot",
+    ],
+)
+def test_direct_backend_spoof_bypass_cannot_pass_backend_verdict(path):
+    config = probe.parse_input(_input())
+    network = _SimulatedNetwork()
+    injected = False
+
+    def bypass(request: probe.Request, timeout: float) -> probe.Response:
+        nonlocal injected
+        response = network(request, timeout)
+        if request.target_ip == config.backend_public_ip and request.path == path:
+            assert response.status == 429
+            assert request.port == 8000
+            assert request.source_ip == config.routes[0].source_ip
+            assert (
+                dict(request.headers)["x-forwarded-for"] == config.routes[1].source_ip
+            )
+            injected = True
+            return replace(
+                response,
+                status=422,
+                headers=tuple(
+                    (name, "application/json" if name == "content-type" else value)
+                    for name, value in response.headers
+                ),
+            )
+        return response
+
+    frame = probe._collect(config, bypass)
+    assert injected and len(network.requests) == 119
+    result = PrivateProcessResult(
+        ProcessOutcome.EXITED,
+        0,
+        (json.dumps(frame, separators=(",", ":")) + "\n").encode(),
+        b"",
+        LocalCleanup.CONFIRMED,
+    )
+    observed = decode_observations(
+        result,
+        expected_source_sha="a" * 40,
+        expected_run_id="b" * 64,
+        now_ms=1000,
+        deadline_ms=121000,
+    )
+
+    assert observed is not None
+    verdict = evaluate_observations(observed)
+    assert verdict.backend is False
+    assert verdict.ws_hub is True
+    assert verdict.gateway == verdict.deployment == "not_assessed"
 
 
 @pytest.mark.parametrize(

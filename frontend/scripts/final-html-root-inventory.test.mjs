@@ -340,6 +340,68 @@ test("AST edges exclude strings and comments while computed imports stay incompl
   )
 })
 
+test("repeated root occurrences retain computed-import counts per document", async () => {
+  const source = [
+    'const label = "Привет 🌍";',
+    "import(globalThis." + privateCanary + ");",
+    'import("./lazy-A.js");',
+    "import(`./${label}.js`);",
+  ].join("\n")
+  const moduleRoot = '<script type="module" src="/assets/index-A.js"></script>'
+  const preloadRoot = '<link rel="modulepreload" href="/assets/index-A.js">'
+  const inlineRoot = '<script type="module">import(globalThis.unknown)</script>'
+  const shellHtml = moduleRoot + preloadRoot + inlineRoot
+  const indexHtml = moduleRoot
+  await withFixture(async (item) => {
+    await writeFile(path.join(item.clientDir, "assets/index-A.js"), source)
+    await writeFile(path.join(item.clientDir, "_shell.html"), shellHtml)
+    await writeFile(path.join(item.clientDir, "index.html"), indexHtml)
+
+    const normalized = inspect(item)
+    const value = receipt(normalized)
+    assert.equal(value.documentsMatch, false)
+    assert.deepEqual(
+      value.documents.map((document) => document.sha256),
+      [digest(shellHtml), digest(indexHtml)]
+    )
+    assert.deepEqual(
+      normalized.documents.map((document) => document.roots.map((root) => root.scriptIndex)),
+      [[0, 0, 1], [0]]
+    )
+    assert.equal(normalized.scripts.length, 2)
+    assert.equal(normalized.scripts[0].sha256, digest(source))
+    assert.equal(normalized.scripts[0].rawBytes, Buffer.byteLength(source))
+    assert.deepEqual(normalized.scripts[0].imports, [
+      { kind: "dynamic", assetPath: "assets/lazy-A.js" },
+    ])
+    assert.equal(normalized.scripts[0].computedImports, 2)
+    assert.deepEqual(
+      value.documents.map((document) => document.issues.computedImports),
+      [5, 2]
+    )
+    assert.deepEqual(
+      value.documents.map((document) => document.complete),
+      [false, false]
+    )
+    assert.deepEqual(
+      value.documents.map((document) => document.roots.map((root) => root.kind)),
+      [["external-module", "modulepreload", "inline-module"], ["external-module"]]
+    )
+    for (const document of value.documents) {
+      assert.deepEqual(
+        Object.entries(document.issues)
+          .filter(([name]) => name !== "computedImports")
+          .map(([, count]) => count),
+        Array(6).fill(0)
+      )
+      assert.equal(
+        document.issues.computedImports,
+        document.roots.reduce((total, root) => total + root.computedImports, 0)
+      )
+    }
+  })
+})
+
 const incompleteCases = [
   [
     "foreign-script",

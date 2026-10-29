@@ -224,6 +224,69 @@ async def test_read_committed_revalidation_respects_rls_and_preserves_dirty_uow(
 
 
 @pytest.mark.asyncio
+async def test_borrowed_read_committed_broadcast_observes_committed_removal(
+    owned_postgres: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _revocation_store(monkeypatch)
+    publisher = AsyncMock()
+    monkeypatch.setattr(broker, "publish_core", publisher)
+    manager = connection_manager.ConnectionManager()
+    websocket = AsyncMock()
+    assert await manager.connect(
+        websocket, owned_postgres.recipient_id, session_jti="local-session"
+    )
+
+    token = set_current_tenant(owned_postgres.tenant_a)
+    try:
+        async with owned_postgres.sessions() as session:
+            assert await session.scalar(text("SHOW transaction_isolation")) == (
+                "read committed"
+            )
+            pending = User(id=uuid.uuid4(), is_active=True, mfa_epoch=0)
+            session.add(pending)
+            with (
+                patch.object(session, "commit", wraps=session.commit) as commit,
+                patch.object(session, "rollback", wraps=session.rollback) as rollback,
+                patch.object(session, "close", wraps=session.close) as close,
+            ):
+                assert (
+                    await manager.broadcast_to_chat(
+                        owned_postgres.chat_id, {"type": "before"}, db_session=session
+                    )
+                    == 1
+                )
+                websocket.send_json.assert_awaited_once_with({"type": "before"})
+                assert session.in_transaction()
+
+                async with owned_postgres.sessions.begin() as writer:
+                    deleted = await writer.execute(
+                        chat_participants.delete().where(
+                            chat_participants.c.chat_id == owned_postgres.chat_id,
+                            chat_participants.c.user_id == owned_postgres.recipient_id,
+                        )
+                    )
+                    assert deleted.rowcount == 1
+
+                assert (
+                    await manager.broadcast_to_chat(
+                        owned_postgres.chat_id, {"type": "after"}, db_session=session
+                    )
+                    == 0
+                )
+                websocket.send_json.assert_awaited_once_with({"type": "before"})
+                websocket.close.assert_not_awaited()
+                assert manager.is_online(owned_postgres.recipient_id)
+                assert session.in_transaction()
+                assert pending in session.new
+                commit.assert_not_awaited()
+                rollback.assert_not_awaited()
+                close.assert_not_awaited()
+            assert publisher.await_count == 2
+    finally:
+        tenant_id_ctx.reset(token)
+
+
+@pytest.mark.asyncio
 async def test_repeatable_read_cannot_authorize_or_publish(
     owned_postgres: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -266,6 +329,8 @@ async def test_typing_and_presence_progress_under_saturated_pool(
         websocket, owned_postgres.recipient_id, session_jti="local-session"
     )
     ready, all_checked = 0, asyncio.Event()
+    release_typing = asyncio.Event()
+    presence_started = asyncio.Event()
 
     class CheckedRepository(ChatRepository):
         async def check_participant(self, chat_id, user_id):
@@ -274,8 +339,16 @@ async def test_typing_and_presence_progress_under_saturated_pool(
             ready += 1
             if ready == 4:
                 all_checked.set()
-            await all_checked.wait()
+            await release_typing.wait()
             return result
+
+    real_presence_audience = presence._get_presence_audience
+
+    async def observed_presence_audience(user_id):
+        presence_started.set()
+        return await real_presence_audience(user_id)
+
+    monkeypatch.setattr(presence, "_get_presence_audience", observed_presence_audience)
 
     async def fresh_session_validator(user_id, jti):
         # Presence uses the ordinary fresh-session path; keep the real scalar
@@ -294,6 +367,8 @@ async def test_typing_and_presence_progress_under_saturated_pool(
         id=owned_postgres.actor_id, profile=None, email="actor@example.test"
     )
     token = set_current_tenant(owned_postgres.tenant_a)
+    typing = []
+    presence_task = None
     try:
 
         async def issue_typing():
@@ -306,6 +381,7 @@ async def test_typing_and_presence_progress_under_saturated_pool(
 
         typing = [asyncio.create_task(issue_typing()) for _ in range(4)]
         await asyncio.wait_for(all_checked.wait(), timeout=5)
+        assert owned_postgres.engine.pool.checkedout() == 4
         presence_task = asyncio.create_task(
             manager.broadcast_presence(
                 owned_postgres.actor_id,
@@ -316,8 +392,18 @@ async def test_typing_and_presence_progress_under_saturated_pool(
                 publish=False,
             )
         )
+        await asyncio.wait_for(presence_started.wait(), timeout=5)
+        assert owned_postgres.engine.pool.checkedout() == 4
+        assert not presence_task.done()
+        release_typing.set()
         await asyncio.wait_for(asyncio.gather(*typing, presence_task), timeout=10)
         assert publisher.await_count == 4
         assert websocket.send_json.await_count == 5
     finally:
+        release_typing.set()
+        tasks = [*typing, *([presence_task] if presence_task is not None else [])]
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         tenant_id_ctx.reset(token)
