@@ -419,6 +419,8 @@ _CONSUMER_SELECTORS = (
     "tests/test_aud454_websocket_membership_race.py",
     "tests/test_aud447_auth_email_delivery.py::test_aud447_invalid_worker_payload_keeps_telemetry_secret_free",
     "tests/test_alembic_graph_metadata.py",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_active_historical_duplicates_protect_payload_without_reset",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_historical_auto_replay_protects_the_retained_row",
 )
 _DISPATCH_PROBE = """\
 import json

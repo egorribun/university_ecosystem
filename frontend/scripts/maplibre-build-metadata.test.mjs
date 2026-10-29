@@ -565,10 +565,7 @@ test("inventory diagnostic validates real receipts and rejects unsafe data", asy
       "changed-non-map-bytes",
       (fixture) => writeFile(path.join(fixture.outputDir, "assets/index-A.js"), privateCanary),
     ],
-    [
-      "missing-non-map-bytes",
-      (fixture) => rm(path.join(fixture.outputDir, "assets/index-A.js")),
-    ],
+    ["missing-non-map-bytes", (fixture) => rm(path.join(fixture.outputDir, "assets/index-A.js"))],
     [
       "schema-without-chunk-proof",
       changed((value) => {

@@ -1755,3 +1755,323 @@ def test_aud447_invalid_worker_payload_keeps_telemetry_secret_free(
     assert (outcome["safe_log"], outcome["safe_event"]) == (True, True), (
         "invalid-message logging or its Sentry event contained the synthetic marker"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("existing_status", ["pending", "retrying"])
+@pytest.mark.parametrize("call_style", ["positional", "keyword"])
+@pytest.mark.parametrize("marker_state", ["absent", "explicit_false"])
+@pytest.mark.parametrize("stored_form", ["legacy", "protected"])
+async def test_aud447_active_historical_duplicates_protect_payload_without_reset(
+    monkeypatch: pytest.MonkeyPatch,
+    existing_status: str,
+    call_style: str,
+    marker_state: str,
+    stored_form: str,
+) -> None:
+    import hashlib
+
+    from app.models.dead_letter import DeadLetterJob
+
+    marker = "synthetic-" + uuid.uuid4().hex
+    link = f"https://portal.example.test/reset-password?next=a%2Bb#token={marker}"
+    secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    name = "app.tasks.email.send_auth_email"
+    if call_style == "positional":
+        payload: dict[str, Any] = {
+            "args": ["student@example.test", link, "Student", "en"],
+            "kwargs": {},
+        }
+    else:
+        payload = {
+            "args": [],
+            "kwargs": {
+                "to_email": "student@example.test",
+                "link": link,
+                "full_name": "Student",
+                "locale": "en",
+            },
+        }
+    if marker_state == "explicit_false":
+        payload["kwargs"]["encrypted_link"] = False
+    original_payload = json.dumps(payload, sort_keys=True)
+    task = nats_module._NatsTaskPayload.model_validate(
+        {"id": str(uuid.uuid4()), "name": name, **json.loads(original_payload)}
+    )
+    original_task = json.dumps(task.model_dump(), sort_keys=True)
+
+    # Reconstruct the historical hash independently of the current preparer.
+    # Do not create this row by calling new parking, which already encrypts it.
+    logical_hash = hashlib.sha256(
+        json.dumps({"type": name, "payload": payload}, sort_keys=True).encode()
+    ).hexdigest()
+    stored_payload = (
+        email_tasks.prepare_auth_email_payload(payload)[0]
+        if stored_form == "protected"
+        else json.loads(original_payload)
+    )
+    historical_bytes = json.dumps(stored_payload)
+    created_at = datetime.now(UTC) - timedelta(days=1)
+    scheduled_at = created_at + timedelta(days=1, minutes=17)
+    historical_error = "Historical delivery failure"
+    existing = DeadLetterJob(
+        id=447,
+        job_type=name,
+        job_hash=logical_hash,
+        payload=historical_bytes,
+        error_message=historical_error,
+        retry_count=2,
+        max_retries=9,
+        status=existing_status,
+        next_retry_at=scheduled_at,
+        created_at=created_at,
+        updated_at=created_at,
+    )
+    session = _HashLookupSession()
+    # Bypass the sink's INSERT-default emulation: this is an existing row.
+    session.jobs.append(existing)
+    commit = AsyncMock(wraps=session.commit)
+    monkeypatch.setattr(session, "commit", commit)
+    monkeypatch.setattr(database_module, "async_session", lambda: session)
+    broker = nats_module.NatsTaskBroker()
+    js = AsyncMock()
+    monkeypatch.setattr(broker, "_js", js)
+    monkeypatch.setattr(
+        broker,
+        "connect",
+        AsyncMock(side_effect=AssertionError("unexpected broker connection")),
+    )
+    seeded_as_requested = (marker in existing.payload) == (stored_form == "legacy")
+    assert seeded_as_requested
+
+    built: list[bool] = []
+    delivered: list[bool] = []
+    fail_transport = [True]
+
+    def build(
+        value: str, full_name: str, *, locale: str | None
+    ) -> tuple[str, str, str]:
+        built.append(value == link and full_name == "Student" and locale == "en")
+        return ("subject", "plain", "<p>html</p>")
+
+    async def deliver(**kwargs: Any) -> None:
+        delivered.append(
+            kwargs["fallback_fields"]["link"] == link
+            and kwargs["to_email"] == "student@example.test"
+        )
+        if fail_transport[0]:
+            raise RuntimeError("Synthetic transport failure")
+
+    monkeypatch.setattr(email_tasks.email_utils, "build_reset_email_content", build)
+    monkeypatch.setattr(email_tasks, "_deliver_email_message", deliver)
+    handler = email_tasks.broker._tasks[name]
+    failed_safely = False
+    try:
+        await handler(*task.args, **task.kwargs)
+    except RuntimeError as error:
+        failed_safely = str(error) == "Authentication email delivery failed"
+    assert failed_safely
+    assert built == [True]
+    assert delivered == [True]
+
+    saved = await broker._dead_letter(task, "Authentication email delivery failed", 5)
+    duplicate_committed = saved is True and commit.await_count == 1
+    assert duplicate_committed
+    same_row = len(session.jobs) == 1 and session.jobs[0] is existing
+    assert same_row, "the active historical duplicate created another DLQ row"
+    expected_metadata = (
+        447,
+        name,
+        logical_hash,
+        existing_status,
+        2,
+        9,
+        scheduled_at,
+        created_at,
+        historical_error,
+    )
+
+    def metadata_preserved() -> bool:
+        return (
+            existing.id,
+            existing.job_type,
+            existing.job_hash,
+            existing.status,
+            existing.retry_count,
+            existing.max_retries,
+            existing.next_retry_at,
+            existing.created_at,
+            existing.error_message,
+        ) == expected_metadata
+
+    assert metadata_preserved(), "dedup reset active retry metadata"
+    first_payload_safe = marker not in existing.payload
+    source_unchanged = (
+        json.dumps(payload, sort_keys=True) == original_payload
+        and json.dumps(task.model_dump(), sort_keys=True) == original_task
+    )
+    assert source_unchanged, "dedup mutated the incoming legacy task"
+
+    # The real replay/enqueue/handler path must still restore the exact link.
+    # Only database, NATS and SMTP transports are replaced; no DB commit claim.
+    replay_input = json.loads(existing.payload)
+    original_replay_input = json.dumps(replay_input, sort_keys=True)
+    await broker.replay_dead_letter(name, replay_input)
+    assert js.publish.await_count == 1
+    wire = js.publish.await_args.args[1]
+    wire_safe = marker not in wire.decode()
+    assert wire_safe, "replay exposed the synthetic marker on NATS"
+    replay_source_unchanged = (
+        json.dumps(replay_input, sort_keys=True) == original_replay_input
+    )
+    assert replay_source_unchanged
+    replay = nats_module._NatsTaskPayload.model_validate(json.loads(wire))
+    fail_transport[0] = False
+    await handler(*replay.args, **replay.kwargs)
+    assert built == [True, True]
+    assert delivered == [True, True]
+
+    # A duplicate arriving in protected wire form must use the same old hash,
+    # keep active retry state, and not rotate an already-protected payload.
+    before_repeat = existing.payload
+    repeated = await broker._dead_letter(
+        replay, "Authentication email delivery failed", 5
+    )
+    repeat_committed = repeated is True and commit.await_count == 2
+    assert repeat_committed
+    same_row = len(session.jobs) == 1 and session.jobs[0] is existing
+    assert same_row
+    assert metadata_preserved()
+    repeat_bytes_preserved = existing.payload == before_repeat
+    protected_bytes_preserved = (
+        stored_form == "legacy" or existing.payload == historical_bytes
+    )
+    assert repeat_bytes_preserved
+    assert protected_bytes_preserved, "dedup rewrote existing protected ciphertext"
+
+    # Keep this final assertion after the positive replay/identity controls:
+    # current source is expected to fail here only for historical plaintext.
+    assert first_payload_safe, (
+        "active historical dedup retained the synthetic marker in the DLQ payload"
+    )
+    stored_payload_safe = marker not in existing.payload
+    assert stored_payload_safe
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["completed", "pending", "failed"])
+async def test_aud447_historical_auto_replay_protects_the_retained_row(
+    monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    import hashlib
+
+    import app.workers.dead_letter_queue as dlq_module
+    from app.models.dead_letter import DeadLetterJob
+
+    marker = "synthetic-" + uuid.uuid4().hex
+    link = f"https://portal.example.test/reset-password#token={marker}"
+    secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    name = "app.tasks.email.send_auth_email"
+    payload = {"args": ["student@example.test", link], "kwargs": {}}
+    logical_hash = hashlib.sha256(
+        json.dumps({"type": name, "payload": payload}, sort_keys=True).encode()
+    ).hexdigest()
+    now = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)
+    scheduled_at = now - timedelta(seconds=1)
+    max_retries = 2 if outcome == "failed" else 3
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return now.astimezone(tz) if tz is not None else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(dlq_module, "datetime", FrozenDateTime)
+    monkeypatch.setattr(dlq_module.DeadLetterQueue, "_replay_lock", asyncio.Lock())
+    existing = DeadLetterJob(
+        id=448,
+        job_type=name,
+        job_hash=logical_hash,
+        payload=json.dumps(payload),
+        error_message="Historical delivery failure",
+        retry_count=1,
+        max_retries=max_retries,
+        status="pending",
+        next_retry_at=scheduled_at,
+        created_at=now - timedelta(days=1),
+        updated_at=now - timedelta(days=1),
+    )
+    session = _Session()
+    session.jobs.append(existing)
+    ready_result = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: [existing])
+    )
+    query = AsyncMock(return_value=ready_result)
+    monkeypatch.setattr(session, "execute", query)
+    broker = nats_module.NatsTaskBroker()
+    js = AsyncMock()
+    if outcome != "completed":
+        js.publish.side_effect = OSError("Synthetic NATS transport failure")
+    monkeypatch.setattr(broker, "_js", js)
+    monkeypatch.setattr(
+        broker,
+        "connect",
+        AsyncMock(side_effect=AssertionError("unexpected broker connection")),
+    )
+    seeded_plaintext = marker in existing.payload
+    assert seeded_plaintext
+
+    # Exercise the real lifecycle, real ready-job query builder and real broker
+    # replay handler. The session is a transport sink, not a DB transaction proof.
+    result = await dlq_module.DeadLetterQueue(session).auto_replay_jobs(
+        broker.replay_dead_letter,
+        batch_size=1,
+        max_batches=1,
+        rate_limit_delay=0,
+        base_backoff_seconds=1,
+        max_backoff_seconds=8,
+        jitter=0,
+    )
+    assert query.await_count == 1
+    assert result == ((1, 0) if outcome == "completed" else (0, 1))
+    expected_schedule = {
+        "completed": scheduled_at,
+        "pending": now + timedelta(seconds=4),
+        "failed": None,
+    }[outcome]
+    lifecycle_preserved = (
+        len(session.jobs) == 1
+        and session.jobs[0] is existing
+        and existing.id == 448
+        and existing.job_type == name
+        and existing.job_hash == logical_hash
+        and existing.retry_count == 2
+        and existing.max_retries == max_retries
+        and existing.status == outcome
+        and existing.next_retry_at == expected_schedule
+    )
+    assert lifecycle_preserved, "historical replay changed retry lifecycle semantics"
+    assert dlq_module.DeadLetterQueue._is_replaying is False
+    assert js.publish.await_count == 1
+    wire = js.publish.await_args.args[1]
+    wire_safe = marker not in wire.decode()
+    assert wire_safe, "historical replay exposed the synthetic marker on NATS"
+
+    # Successful replay must remain usable by the actual registered auth handler.
+    # Failed publication must not be represented as successful delivery.
+    delivered: list[bool] = []
+
+    async def capture(**kwargs: Any) -> None:
+        delivered.append(kwargs["fallback_fields"]["link"] == link)
+
+    monkeypatch.setattr(email_tasks, "_deliver_email_message", capture)
+    if outcome == "completed":
+        replay = nats_module._NatsTaskPayload.model_validate(json.loads(wire))
+        await email_tasks.broker._tasks[name](*replay.args, **replay.kwargs)
+    assert delivered == ([True] if outcome == "completed" else [])
+
+    stored_payload_safe = marker not in existing.payload
+    assert stored_payload_safe, (
+        "auto replay retained the synthetic marker in the historical DLQ row"
+    )

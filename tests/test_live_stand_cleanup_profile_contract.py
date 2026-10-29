@@ -261,6 +261,114 @@ _TARGET_CASES = (
         "tests/test_live_nats_transport.py",
         "test_compose_decode_enforces_exact_json_container_depth",
     ),
+    (
+        "tests/test_alembic_graph_metadata.py",
+        "test_literal_roots_linear_edges_and_merges_are_read_without_execution",
+    ),
+    (
+        "tests/test_alembic_graph_metadata.py",
+        "test_source_mapping_order_does_not_change_parent_order_or_graph",
+    ),
+    (
+        "tests/test_alembic_graph_metadata.py",
+        "test_ambiguous_or_dynamic_metadata_cannot_form_a_graph",
+    ),
+    (
+        "tests/test_alembic_graph_metadata.py",
+        "test_incomplete_duplicate_or_cyclic_graphs_fail_closed",
+    ),
+    (
+        "tests/test_alembic_graph_metadata.py",
+        "test_all_current_migrations_are_retained_in_the_metadata_graph",
+    ),
+    (
+        "tests/test_alembic_graph_metadata.py",
+        "test_legacy_single_parent_cli_contract_remains_unchanged",
+    ),
+    (
+        "tests/test_alembic_graph_metadata.py",
+        "test_graph_reader_has_no_execution_or_admission_entrypoint",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_exact_historical_capture_matches_only_the_diagnostic_inventory",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_raw_warning_failure_is_retained_without_mutating_the_capture",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_warning_order_does_not_change_the_exact_multiset",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_each_known_occurrence_is_exact_and_required",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_span_source_and_raw_scanner_near_misses_fail_closed",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_capture_provenance_and_complete_inputs_are_required",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_policy_is_not_an_arbitrary_exception_document",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_bounded_json_is_strict",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_real_utc_expiry_boundary_has_no_caller_override",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_boolean_is_not_an_integer_scanner_exit",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_boolean_is_not_a_capture_exit",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_unknown_nested_fields_cannot_claim_approval",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_capture_source_pins_match_the_unchanged_reviewed_inputs",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_every_source_pin_remains_exact",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_only_bytes_are_accepted",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_clock_before_the_preparation_decision_cannot_match",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_correlated_policy_and_capture_changes_cannot_self_authorize",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_matcher_has_no_execution_or_admission_adapter",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_integer_metadata_does_not_accept_alternate_numeric_encodings",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_escaped_lone_surrogates_are_rejected_without_raising",
+    ),
 )
 _NEAR_MISS_CASES = (
     (
@@ -298,6 +406,30 @@ _NEAR_MISS_CASES = (
     (
         "tests/test_live_stand.py",
         "test_daemon_decode_matches_exact_private_metadata",
+    ),
+    (
+        "tests/test_alembic_graph_metadata.py",
+        "test_literal_roots_linear_edges_and_merges_are_read_without_execution_unlisted",
+    ),
+    (
+        "tests/test_alembic_graph_metadata.py.copy",
+        "test_literal_roots_linear_edges_and_merges_are_read_without_execution",
+    ),
+    (
+        "tests/test_alembic_graph_metadata.py",
+        "test_exact_historical_capture_matches_only_the_diagnostic_inventory",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_exact_historical_capture_matches_only_the_diagnostic_inventory_unlisted",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py.copy",
+        "test_exact_historical_capture_matches_only_the_diagnostic_inventory",
+    ),
+    (
+        "tests/test_historical148_squawk_policy.py",
+        "test_literal_roots_linear_edges_and_merges_are_read_without_execution",
     ),
 )
 _POLICY_TEST_NAMES = (
