@@ -191,7 +191,7 @@ This package prepares one historical148-specific matcher and inventory, not a
 general exception framework. Keep it separate from finite131 coverage, secret
 dispositions and unsupported-downgrade policy. The importable scaffold rejects
 every input until the hosted exact positive-control test has produced a semantic
-assertion failure. No CLI, subprocess, database, file reader or CI consumer is
+assertion failure. No CLI, subprocess, database, file reader or migration-gate consumer is
 wired to it.
 
 Its only future positive return is `matched-diagnostic-inventory`. That means
@@ -267,7 +267,7 @@ disposition can affect a CI result, it must establish:
 
 The current renderer inherits `template1`; that is not an empty-database proof.
 This Stage A adds none of these missing operational receipts and changes no
-workflow, scanner exit handling, migration, active policy or accepted audit ID.
+migration workflow logic, scanner exit handling, migration, active policy or accepted audit ID.
 Raw migration gates remain blocking. No populated-database execution, merge,
 deployment, atomicity rewrite, new exclusion or coverage reduction is authorized.
 

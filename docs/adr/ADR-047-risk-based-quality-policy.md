@@ -1065,7 +1065,7 @@ The [historical148 preparation](../superpowers/plans/2026-10-27-historical-148-s
 now records complete ordinary and expanded SQL plus JSON evidence. Stage A
 contains an exact `prepared-inactive` inventory, an importable rejecting matcher
 scaffold and tests. Its only future diagnostic verdict is
-`matched-diagnostic-inventory`; it has no CLI or CI consumer and cannot turn a
+`matched-diagnostic-inventory`; it has no CLI or migration-gate consumer and cannot turn a
 raw Squawk failure into success. Preparation is not activation.
 
 Before a separate reviewed activation diff, obtain actual owned-template0 and

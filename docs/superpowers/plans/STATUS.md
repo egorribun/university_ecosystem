@@ -2,6 +2,86 @@
 
 Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Source 672d15 terminal verification and tests-first continuation — 2026-10-29 02:22 UTC
+
+**381/512 accepted; 131 remain unaccepted. No new finding is closed here.**
+
+Source [672d15b45d4ff843fba6e3a824e0ff4d96247db0](https://github.com/egorribun/university_ecosystem/commit/672d15b45d4ff843fba6e3a824e0ff4d96247db0)
+and tested merge `e72af6e32b33da91613ba672b99f760d97d40de9` share tree
+`472c974b1feb0463bc152bc15ff6e3b3989fbe41`. All 22 PR-source workflow runs
+are terminal: 18 SUCCESS / 2 FAILURE / 2 SKIP, with no cancellations.
+
+- [Matrix 40803493929](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929)
+  is FAILURE: 60 jobs, 23 SUCCESS / 4 FAILURE / 33 SKIP. Failures are Contracts,
+  read-only pre-commit, Production Build and derived CI Success.
+- [Blocking CodeQL](https://github.com/egorribun/university_ecosystem/runs/123217211385)
+  is SUCCESS with no new alerts and zero annotations; all five language-analysis
+  jobs also succeeded. The runtime Rust fixture correction did not add a
+  suppression, disposition or policy exception.
+- [Contract job 123216850792](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929/job/123216850792)
+  executed 3079 consumer cases: 3063 PASS / 16 FAIL in 468.01 seconds, plus
+  633 security and 41 scoped cases PASS. All 47 named inner-probe cases pass:
+  19 protocol, 27 transport and one real ASGI-layer case. This does not establish
+  ownership admission, an external topology, deployment or AUD-164/167 acceptance.
+- All 16 consumer failures are actual AUD-447 privacy assertions: the existing
+  legacy DLQ case and 15 new cases covering four plaintext entrypoint/call-style cases, six
+  stored/reopened payloads, one marked-plaintext transport and four unsafe parking
+  paths. Four controls pass: byte-preserved native ciphertext/expiry round-trip,
+  and marked expired/tampered/missing-expiry rejection. These are semantic RED
+  receipts, not import/setup failures; production Auth/DLQ remains unchanged.
+- Frontend unit shards pass 10,394 tests / 821 files.
+  [Aggregate 123221867625](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929/job/123221867625)
+  confirms 2177 changed lines, missing 0, 100% differential coverage. This does
+  not measure global coverage, all Tier 0 metrics or the inner Python probe.
+- [Pre-commit 123216850800](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929/job/123216850800)
+  fails only two Ruff formatting hunks in `scripts/owned_client_ip_probe.py`.
+  The reviewed correction reproduces hosted blob `64b5e8b5846fe9aee9e1740a88e2ce26cfbf7101`
+  without behavioral changes. Backend and Alembic jobs were skipped, not verified.
+- [WASM contracts 123217987612](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929/job/123217987612)
+  pass. The [production client/server build 123217987726](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929/job/123217987726)
+  completes, but its bounded MapLibre inventory reporter rejects the receipt.
+  The first failing check is not exposed by the fixed rejection label. Source
+  review found a concrete schema incompatibility: locked
+  [Rolldown 1.2.12](https://github.com/rolldown/rolldown/blob/45e407b177f5885d04a9795f37f8be71d91f6f17/packages/rolldown/src/utils/transform-rendered-module.ts)
+  supplies rendered UTF-16 code-unit length, not byte length, and no original
+  length. The current diagnostic assumes the missing field and labels module
+  lengths as bytes. A new causal regression precedes the schema correction;
+  final chunk byte/hash evidence and all bundle budgets remain unchanged.
+- [Core 40803493580 / job 123216847334](https://github.com/egorribun/university_ecosystem/actions/runs/40803493580/job/123216847334)
+  is FAILURE: 329 preflight PASS; live 47 PASS / 2 SKIP / 1 FLAKY. The desktop
+  failure frame is `password-reset.live.spec.ts:239`, clicking the forgot-password
+  submit button. Redacted diagnostics do not establish why it failed. Logout
+  429 responses are present but are not proven causal. Both reset-replay requests
+  returned 400; NATS outage acceptance was skipped. No flaky-test allowance,
+  timeout expansion or inferred full Core success is introduced.
+
+The next reviewed [tests-first commit 3dc62bedd7f185dd3c2f73c205699dc44bc3d1ef](https://github.com/egorribun/university_ecosystem/commit/3dc62bedd7f185dd3c2f73c205699dc44bc3d1ef)
+contains eleven paths, with no production Auth/MapLibre correction yet:
+the exact Ruff delta; six inactive historical Squawk preparation files;
+four legacy-to-protected replay/hash cases; one real Rolldown-shape metric case;
+and the two mirrored consumer-dispatch files.
+
+The Squawk matcher is an importable rejecting scaffold, not an active exception.
+Its 260-case projection includes neutral source-pin test IDs so the unchanged
+`-k "not integration"` filter cannot silently omit the fixture pin. Its historical
+SQL/JSON receipts, migration bytes, scanner arguments and raw failure gate remain
+separate from empty-database admission and all-other-migration evidence.
+The matcher verdict is not wired to the migration CI gate. This
+prepared-inactive package grants no execution authorization or audit closure.
+
+Consumer selection preserves the existing 220 selectors as an exact prefix and
+adds eight: the Squawk file, four-case auth replay selector and six named AUD-445
+cache/outage/replay nodes. The resulting 228 selectors project 3349 cases, not
+execution receipts. Three workers, file grouping, ten-minute timeout, filters,
+cleanup, failure propagation and all required gates are unchanged.
+
+Next: verify this new source independently; use the witnessed auth RED to correct
+queue/DLQ boundaries without ciphertext/expiry/hash drift; obtain the new Rolldown
+semantic RED before synchronizing truthful schema2 metric fields; diagnose the
+Core submit failure without guessing or weakening assertions. AUD-445/447/454,
+historical plaintext cleanup, final MapLibre budget admission and owned-network
+proof remain open.
+
 ## Source 114df35 verification and bounded continuation — 2026-10-29 01:54 UTC
 
 **Accepted registry unchanged: 381/512 (74.4%); 131 findings remain unaccepted.**
