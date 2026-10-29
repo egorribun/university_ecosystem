@@ -5724,3 +5724,413 @@ def test_aud247_guard_preserves_existing_same_path_type_identities() -> None:
     assert verifier.validate_false_positive_dispositions(
         policy, today=verifier.date(2026, 10, 26)
     )
+
+
+# Exact source binding for the 58 owner-approved historical-148 identities.
+_HISTORICAL148_SOURCE_PINS_AND_LINES = {
+    "quality/historical148-squawk-policy.json": (
+        (
+            36,
+            132,
+            207,
+            244,
+            106,
+            240,
+            49,
+            167,
+            97,
+            171,
+            64,
+            222,
+            196,
+            190,
+            95,
+            98,
+            215,
+            36,
+            243,
+            8,
+        ),
+        (
+            15,
+            16,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            38,
+            60,
+            213,
+            488,
+            489,
+            497,
+            503,
+            509,
+            515,
+            521,
+            527,
+            533,
+            539,
+            545,
+            551,
+            557,
+            583,
+        ),
+    ),
+    "scripts/quality/validate_historical148_squawk.py": (
+        (
+            54,
+            178,
+            204,
+            32,
+            249,
+            241,
+            240,
+            25,
+            238,
+            58,
+            0,
+            148,
+            91,
+            57,
+            51,
+            128,
+            157,
+            187,
+            123,
+            95,
+        ),
+        (
+            19,
+            20,
+        ),
+    ),
+    "tests/fixtures/historical148-squawk-capture-15eaaa.json": (
+        (
+            251,
+            252,
+            68,
+            231,
+            189,
+            221,
+            124,
+            226,
+            103,
+            74,
+            101,
+            221,
+            196,
+            242,
+            213,
+            72,
+            59,
+            207,
+            188,
+            167,
+        ),
+        (
+            4,
+            5,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            35,
+            52,
+            62,
+            63,
+            64,
+            72,
+            78,
+            84,
+            90,
+            96,
+            102,
+            108,
+            114,
+            120,
+            126,
+            132,
+            158,
+        ),
+    ),
+}
+_HISTORICAL148_PRIOR_347_SHA256 = (
+    160,
+    163,
+    198,
+    32,
+    211,
+    155,
+    83,
+    161,
+    43,
+    70,
+    157,
+    234,
+    181,
+    127,
+    187,
+    82,
+    155,
+    225,
+    165,
+    248,
+    177,
+    208,
+    186,
+    42,
+    46,
+    232,
+    138,
+    211,
+    213,
+    147,
+    83,
+    40,
+)
+
+
+def _historical148_source_records() -> list[dict[str, Any]]:
+    root = Path(__file__).resolve().parents[1]
+    records: list[dict[str, Any]] = []
+    for path, (expected_blob, lines) in _HISTORICAL148_SOURCE_PINS_AND_LINES.items():
+        data = (root / path).read_bytes()
+        framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+        assert hashlib.sha1(framed, usedforsecurity=False).digest() == bytes(
+            expected_blob
+        )
+        source_lines = data.decode("utf-8").splitlines()
+        for line in lines:
+            values = re.findall(
+                r'"([0-9a-f]{40}|[0-9a-f]{64})"', source_lines[line - 1]
+            )
+            assert len(values) == 1
+            digest = hashlib.sha1(
+                values[0].encode("ascii"), usedforsecurity=False
+            ).digest()
+            records.append(
+                {
+                    "identity": {
+                        "path": path,
+                        "type": "Hex High Entropy String",
+                        "hashed_secret_bytes": list(digest),
+                    },
+                    "category": "public_integrity_digest",
+                    "evidence": (
+                        "Public historical-148 integrity metadata; exact source "
+                        f"reference {path}:{line}; source-bound diagnostic capture "
+                        "and validator fingerprints; not credential material; no "
+                        "Squawk admission or migration-risk waiver."
+                    ),
+                    "owner": "egorribun",
+                    "reviewed_on": "2026-10-29",
+                    "expires_on": "2027-01-10",
+                    "approval_status": "approved",
+                }
+            )
+    assert len(records) == 58
+    return records
+
+
+def test_historical148_integrity_adds_only_58_and_preserves_347_prefix() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert len(policy["records"]) == 405
+    encoded_prefix = json.dumps(
+        policy["records"][:347],
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded_prefix).digest() == bytes(
+        _HISTORICAL148_PRIOR_347_SHA256
+    )
+    expected = _historical148_source_records()
+    assert policy["records"][347:] == expected
+    identities = {
+        (
+            row["identity"]["path"],
+            row["identity"]["type"],
+            tuple(row["identity"]["hashed_secret_bytes"]),
+        )
+        for row in expected
+    }
+    assert len(identities) == 58
+    assert identities == getattr(
+        verifier, "_HISTORICAL148_PUBLIC_INTEGRITY_IDENTITIES", frozenset()
+    )
+    assert len(
+        verifier.validate_false_positive_dispositions(
+            policy, today=verifier.date(2026, 10, 29)
+        )
+    ) == 405
+
+
+def test_historical148_integrity_rejects_each_changed_scope_or_review() -> None:
+    for original in _historical148_source_records():
+        for mutation in (
+            "path",
+            "detector",
+            "digest",
+            "category",
+            "evidence",
+            "owner",
+            "review_date",
+            "pending",
+            "expiry_extension",
+            "expiry_change",
+        ):
+            changed = copy.deepcopy(original)
+            if mutation == "path":
+                changed["identity"]["path"] = "tests/unreviewed_historical148.py"
+            elif mutation == "detector":
+                changed["identity"]["type"] = "Secret Keyword"
+            elif mutation == "digest":
+                changed["identity"]["hashed_secret_bytes"][0] ^= 1
+            elif mutation == "category":
+                changed["category"] = "documented_crypto_test_vector"
+            elif mutation == "evidence":
+                changed["evidence"] = "Public checksum; not credential material."
+            elif mutation == "owner":
+                changed["owner"] = "Different Reviewer"
+            elif mutation == "review_date":
+                changed["reviewed_on"] = "2026-10-28"
+            elif mutation == "pending":
+                changed["approval_status"] = "pending_owner_review"
+            elif mutation == "expiry_extension":
+                changed["expires_on"] = "2027-01-11"
+            else:
+                assert mutation == "expiry_change"
+                changed["expires_on"] = "2027-01-09"
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed), today=verifier.date(2026, 10, 29)
+                )
+
+
+def test_historical148_integrity_rejects_duplicates_and_unapproved_dates() -> None:
+    for record in _historical148_source_records():
+        for today in (verifier.date(2026, 10, 28), verifier.date(2027, 1, 11)):
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(copy.deepcopy(record)), today=today
+                )
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+                today=verifier.date(2026, 10, 29),
+            )
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 10),
+        )
+
+
+def test_historical148_integrity_preserves_only_two_preexisting_collisions() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    source_digests = {
+        tuple(row["identity"]["hashed_secret_bytes"])
+        for row in _historical148_source_records()
+    }
+    expected_old_identities = frozenset(
+        {
+            verifier._PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY,
+            verifier._AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY,
+        }
+    )
+    old_collisions = [
+        row
+        for row in policy["records"][:347]
+        if tuple(row["identity"]["hashed_secret_bytes"]) in source_digests
+    ]
+    assert len(old_collisions) == 2
+    assert {
+        (
+            row["identity"]["path"],
+            row["identity"]["type"],
+            tuple(row["identity"]["hashed_secret_bytes"]),
+        )
+        for row in old_collisions
+    } == expected_old_identities
+    assert len(
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(*copy.deepcopy(old_collisions)),
+            today=verifier.date(2026, 10, 29),
+        )
+    ) == 2
+    for row in old_collisions:
+        changed = copy.deepcopy(row)
+        changed["identity"]["path"] = "tests/unreviewed_historical148.py"
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(changed), today=verifier.date(2026, 10, 29)
+            )
+
+
+def test_historical148_validator_pins_are_public_canonical_fingerprints() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = ast.parse(
+        (root / "scripts/quality/validate_historical148_squawk.py").read_text(
+            encoding="utf-8"
+        )
+    )
+    pins = {
+        node.targets[0].id: ast.literal_eval(node.value)
+        for node in source.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id in {"_POLICY_SHA256", "_CAPTURE_SHA256"}
+    }
+
+    def canonical(value: Any) -> str:
+        return json.dumps(
+            value,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+
+    policy = json.loads(
+        (root / "quality/historical148-squawk-policy.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    capture = json.loads(
+        (root / "tests/fixtures/historical148-squawk-capture-15eaaa.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    scenarios = capture["report"]["captures"]
+    assert len(scenarios) == 2
+    for expected_count, scenario in zip((13, 24), scenarios, strict=True):
+        warnings = json.loads(scenario["stdout"])
+        assert len(warnings) == expected_count
+        scenario["stdout"] = canonical(sorted(warnings, key=canonical))
+    assert hashlib.sha256(canonical(policy).encode("ascii")).hexdigest() == pins[
+        "_POLICY_SHA256"
+    ]
+    assert hashlib.sha256(canonical(capture).encode("ascii")).hexdigest() == pins[
+        "_CAPTURE_SHA256"
+    ]
