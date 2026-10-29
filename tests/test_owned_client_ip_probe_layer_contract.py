@@ -9,11 +9,12 @@ import uuid
 
 import httpx
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 
 from app.auth.schemas import MfaVerifyIn
 from app.core.config import settings
 from app.core.config.mixins.rate_limit_settings import RateLimitSettingsMixin
+from app.core.exceptions.handlers import http_exception_handler
 from app.core.middleware.setup import _configure_rate_limiting
 from app.core.ratelimit import sensitive_route_limit
 
@@ -32,6 +33,7 @@ async def test_mfa_probe_keeps_dependency_limit_distinct_from_middleware_header(
     monkeypatch.setattr(settings, "rate_limit_storage_uri", "memory://")
 
     app = FastAPI()
+    app.add_exception_handler(HTTPException, http_exception_handler)
     _configure_rate_limiting(app, config)
     reached_handler = False
     dependency = sensitive_route_limit(
@@ -65,4 +67,12 @@ async def test_mfa_probe_keeps_dependency_limit_distinct_from_middleware_header(
         response.headers["x-ratelimit-limit"] for response in observations
     }
     assert observed_limits == {"200"}
+    assert [response.headers["content-type"] for response in observations] == [
+        "application/json",
+        "application/json",
+        "application/json",
+        "application/json",
+        "application/json",
+        "application/problem+json",
+    ]
     assert not reached_handler

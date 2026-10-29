@@ -2766,7 +2766,12 @@ jobs:
             tests/test_owned_client_ip_probe_transport.py \
             tests/test_aud447_auth_email_delivery.py::test_aud447_legacy_delivery_failure_protects_dlq_payload_and_replay \
             tests/test_notifications_service.py::test_generate_schedule_reminders_handles_duplicate_titles \
-            tests/test_notifications_service.py::test_generate_schedule_reminders_skips_inactive_users -v \
+            tests/test_notifications_service.py::test_generate_schedule_reminders_skips_inactive_users \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_plaintext_entrypoints_protect_links_without_changing_delivery \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_legacy_parking_keeps_logical_dedup_and_protects_reopened_rows \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_sealed_round_trip_preserves_bytes_and_native_expiry \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_marked_round_trip_never_falls_back_to_legacy_delivery \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_unsafe_marked_parking_uses_existing_nak_without_plaintext -v \
             --tb=short --durations=20 -n 3 --dist loadfile \
             -p no:cacheprovider \
             -k "not integration" \

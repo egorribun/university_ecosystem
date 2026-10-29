@@ -1500,20 +1500,59 @@ mod tests {
     #[test]
     fn event_chain_hash_case_matches_python_fallback() {
         Python::initialize();
-        let key = "key";
+        let key: String = Python::attach(|py| {
+            py.import("secrets")
+                .unwrap()
+                .getattr("token_hex")
+                .unwrap()
+                .call1((32,))
+                .unwrap()
+                .extract()
+                .unwrap()
+        });
+        assert!(
+            key.len() == 64
+                && key
+                    .bytes()
+                    .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')),
+            "invalid runtime test key"
+        );
+        let mut wrong_key = key.clone();
+        wrong_key.replace_range(0..1, if key.starts_with('0') { "1" } else { "0" });
+        assert!(wrong_key != key, "negative test key must differ");
+
         let prev = "0".repeat(64);
-        let payload = "payload";
         let timestamp = "timestamp";
-        let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
-        mac.update(format!("{prev}|{payload}|{timestamp}").as_bytes());
-        let lowercase = hex::encode(mac.finalize().into_bytes());
+        // Require two letters so lower, upper and mixed forms are all distinct.
+        // Bound fixture construction without assuming the first random tag has letters.
+        let (payload, lowercase, first_letter) = (0..256)
+            .find_map(|nonce| {
+                let payload = format!("payload-{nonce}");
+                let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
+                mac.update(format!("{prev}|{payload}|{timestamp}").as_bytes());
+                let lowercase = hex::encode(mac.finalize().into_bytes());
+                let letters: Vec<_> = lowercase
+                    .bytes()
+                    .enumerate()
+                    .filter(|(_, byte)| byte.is_ascii_alphabetic())
+                    .map(|(index, _)| index)
+                    .take(2)
+                    .collect();
+                if letters.len() < 2 {
+                    return None;
+                }
+                Some((payload, lowercase, letters[0]))
+            })
+            .expect("failed to construct case-sensitive hash fixture");
         let uppercase = lowercase.to_ascii_uppercase();
-        assert_ne!(lowercase, uppercase);
         let mut mixed = lowercase.clone();
-        let first_letter = mixed.find(|c: char| c.is_ascii_alphabetic()).unwrap();
         mixed.replace_range(
             first_letter..first_letter + 1,
             &uppercase[first_letter..first_letter + 1],
+        );
+        assert!(
+            lowercase != uppercase && lowercase != mixed && uppercase != mixed,
+            "case fixtures must be pairwise distinct"
         );
 
         Python::attach(|py| {
@@ -1522,25 +1561,30 @@ mod tests {
                 .unwrap()
                 .getattr("compare_digest")
                 .unwrap();
-            for stored_hash in [lowercase.clone(), uppercase, mixed] {
+            for (stored_hash, expected) in [
+                (lowercase.clone(), true),
+                (uppercase, false),
+                (mixed, false),
+            ] {
                 let python_valid: bool = compare_digest
                     .call1((&stored_hash, &lowercase))
                     .unwrap()
                     .extract()
                     .unwrap();
+                assert_eq!(python_valid, expected, "Python hash-case expectation changed");
                 let rust_result = verify_event_chain(
-                    vec!["wrong".to_string(), key.to_string()],
+                    vec![wrong_key.clone(), key.clone()],
                     prev.clone(),
                     vec![(
                         "event-1".to_string(),
                         prev.clone(),
-                        payload.to_string(),
+                        payload.clone(),
                         timestamp.to_string(),
-                        stored_hash.clone(),
+                        stored_hash,
                     )],
                 )
                 .unwrap();
-                assert_eq!(rust_result.0, python_valid, "stored hash: {stored_hash}");
+                assert_eq!(rust_result.0, python_valid, "Rust/Python hash-case mismatch");
                 if !python_valid {
                     assert_eq!(rust_result.1, 0);
                     assert!(rust_result.2.contains("tampering detected"));

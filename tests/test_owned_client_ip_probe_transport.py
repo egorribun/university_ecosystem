@@ -8,6 +8,7 @@ import socketserver
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 import pytest
 
@@ -173,3 +174,65 @@ def test_redirect_is_observed_once_and_never_followed() -> None:
             assert response.closed and closed.wait(2)
             assert len(seen) == 1
             assert target_seen == []
+
+
+def _post(cookie: str) -> probe.Request:
+    return probe.Request(
+        "172.23.0.10",
+        "172.23.0.20",
+        80,
+        "POST",
+        "/api/v1/auth/login/json",
+        (("cookie", cookie), ("x-csrf-token", "token")),
+        b"{}",
+    )
+
+
+@pytest.mark.parametrize(
+    "cookie",
+    [
+        "csrf_token=token; _csrf_anon_nonce=nonce;session_id=fixture",
+        "csrf_token=token;session_id=fixture; _csrf_anon_nonce=nonce",
+        "csrf_token=token; _csrf_anon_nonce=nonce; session_id=fixture",
+        "csrf_token=token; _csrf_anon_nonce=nonce\r\nHost: example.invalid",
+    ],
+    ids=[
+        "hidden-after-nonce",
+        "hidden-after-token",
+        "third-cookie",
+        "header-injection",
+    ],
+)
+def test_post_encoder_rejects_hidden_or_injected_cookie_fields(cookie: str) -> None:
+    # The real encoder must first accept the fixed anonymous request.
+    valid = _post("csrf_token=token; _csrf_anon_nonce=nonce")
+    wire = probe._request_bytes(valid)
+    assert wire.startswith(b"POST /api/v1/auth/login/json HTTP/1.1\r\n")
+    assert b"cookie: csrf_token=token; _csrf_anon_nonce=nonce\r\n" in wire
+    assert b"Content-Length: 2\r\n" in wire
+    assert wire.endswith(b"\r\n\r\n{}")
+
+    with pytest.raises(probe.ProbeError):
+        probe._request_bytes(_post(cookie))
+
+
+@pytest.mark.parametrize(
+    "timeout",
+    [10**1000, float("nan"), float("inf"), 0, 6, True],
+    ids=["huge-integer", "nan", "infinity", "zero", "over-budget", "boolean"],
+)
+def test_invalid_timeout_is_closed_before_socket_creation(
+    monkeypatch: pytest.MonkeyPatch, timeout: float
+) -> None:
+    request = _request(1)
+    assert probe._request_bytes(request).startswith(b"GET / HTTP/1.1\r\n")
+
+    def unexpected_socket(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalid timeout reached socket creation")
+
+    # Replace only this module's view, not the process-global socket module.
+    guarded = SimpleNamespace(**vars(probe.socket))
+    guarded.socket = unexpected_socket
+    monkeypatch.setattr(probe, "socket", guarded)
+    with pytest.raises(probe.ProbeError):
+        probe._request(request, timeout)

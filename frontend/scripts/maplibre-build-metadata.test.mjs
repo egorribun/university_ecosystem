@@ -305,10 +305,7 @@ async function makeDiagnosticFixture() {
     const runnerTemp = path.join(fixture.root, "runner-temp")
     await mkdir(scriptsDir)
     await mkdir(runnerTemp)
-    await writeFile(
-      path.join(scriptsDir, "maplibre-build-metadata.mjs"),
-      await readFile(helperUrl)
-    )
+    await writeFile(path.join(scriptsDir, "maplibre-build-metadata.mjs"), await readFile(helperUrl))
     const git = (...args) =>
       execFileSync("git", args, {
         cwd: fixture.root,
@@ -483,8 +480,7 @@ test("inventory diagnostic validates real receipts and rejects unsafe data", asy
     ],
     [
       "changed-map-bytes",
-      (fixture) =>
-        writeFile(path.join(fixture.outputDir, "assets/vendor-map-A.js"), privateCanary),
+      (fixture) => writeFile(path.join(fixture.outputDir, "assets/vendor-map-A.js"), privateCanary),
     ],
     [
       "wrong-package-hash",

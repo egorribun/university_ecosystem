@@ -98,7 +98,10 @@ class _SimulatedNetwork:
             429 if blocked else 422,
             (
                 ("x-ratelimit-limit", str(header_limit)),
-                ("content-type", "application/json"),
+                (
+                    "content-type",
+                    "application/problem+json" if blocked else "application/json",
+                ),
             ),
             b"{}",
             True,
@@ -201,6 +204,8 @@ def test_input_rejects_invalid_topology_before_any_request(mutation):
         "no_csrf",
         "authenticated_cookie",
         "wrong_mfa_layer",
+        "wrong_validation_media_type",
+        "wrong_limit_media_type",
     ],
 )
 def test_incomplete_or_misattributed_observation_cannot_emit_a_frame(defect):
@@ -231,6 +236,24 @@ def test_incomplete_or_misattributed_observation_cannot_emit_a_frame(defect):
             return replace(
                 response,
                 headers=(*response.headers, ("set-cookie", "session_id=fixture")),
+            )
+        wrong_status = {
+            "wrong_validation_media_type": 422,
+            "wrong_limit_media_type": 429,
+        }.get(defect)
+        if request.method == "POST" and response.status == wrong_status:
+            injected = True
+            wrong_type = (
+                "application/problem+json"
+                if response.status == 422
+                else "application/json"
+            )
+            return replace(
+                response,
+                headers=tuple(
+                    (name, wrong_type if name == "content-type" else value)
+                    for name, value in response.headers
+                ),
             )
         if defect == "wrong_mfa_layer" and request.path == "/api/v1/auth/mfa/verify":
             injected = True

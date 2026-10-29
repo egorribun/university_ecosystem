@@ -179,7 +179,7 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Seventy-nine explicit selections follow that unchanged prefix: existing audit
+# Eighty-four explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
 # inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
 # diagnostic, configuration-warning, exact Knip, outbox tenant and historical
@@ -401,6 +401,11 @@ _CONSUMER_SELECTORS = (
     "tests/test_aud447_auth_email_delivery.py::test_aud447_legacy_delivery_failure_protects_dlq_payload_and_replay",
     "tests/test_notifications_service.py::test_generate_schedule_reminders_handles_duplicate_titles",
     "tests/test_notifications_service.py::test_generate_schedule_reminders_skips_inactive_users",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_plaintext_entrypoints_protect_links_without_changing_delivery",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_legacy_parking_keeps_logical_dedup_and_protects_reopened_rows",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_sealed_round_trip_preserves_bytes_and_native_expiry",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_marked_round_trip_never_falls_back_to_legacy_delivery",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_unsafe_marked_parking_uses_existing_nak_without_plaintext",
 )
 _DISPATCH_PROBE = """\
 import json

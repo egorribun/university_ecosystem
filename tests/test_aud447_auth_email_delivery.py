@@ -532,3 +532,387 @@ async def test_aud447_legacy_delivery_failure_protects_dlq_payload_and_replay(
     monkeypatch.setattr(email_tasks, "_deliver_email_message", deliver_replay)
     await handler(*replay.args, **replay.kwargs)
     assert deliveries == [True, True]
+
+
+class _HashLookupSession(_Session):
+    """Evaluate only the real DLQ hash lookup; no database persistence claim."""
+
+    async def execute(self, statement: Any) -> SimpleNamespace:
+        parameters = list(statement.compile().params.values())
+        assert len(parameters) == 1
+        requested_hash = parameters[0]
+        assert isinstance(requested_hash, str) and len(requested_hash) == 64
+        existing = next(
+            (job for job in self.jobs if job.job_hash == requested_hash), None
+        )
+        return SimpleNamespace(scalar_one_or_none=lambda: existing)
+
+    def add(self, job: Any) -> None:
+        # SQLAlchemy applies this column default at INSERT in a real session.
+        job.status = "pending"
+        super().add(job)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entrypoint", ["enqueue", "replay"])
+@pytest.mark.parametrize("call_style", ["positional", "keyword"])
+async def test_aud447_plaintext_entrypoints_protect_links_without_changing_delivery(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str, call_style: str
+) -> None:
+    marker = "synthetic-" + uuid.uuid4().hex
+    link = f"https://portal.example.test/reset-password?next=a%2Bb#token={marker}"
+    secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    broker = nats_module.NatsTaskBroker()
+    js = AsyncMock()
+    monkeypatch.setattr(broker, "_js", js)
+    name = "app.tasks.email.send_auth_email"
+    payload: dict[str, Any]
+    if call_style == "positional":
+        payload = {"args": ["student@example.test", link], "kwargs": {}}
+    else:
+        payload = {
+            "args": [],
+            "kwargs": {"to_email": "student@example.test", "link": link},
+        }
+    original = json.dumps(payload, sort_keys=True)
+
+    if entrypoint == "enqueue":
+        await broker.enqueue(name, *payload["args"], **payload["kwargs"])
+    else:
+        # This is an already-stored legacy payload, not one prepared by a producer.
+        await broker.replay_dead_letter(name, payload)
+
+    assert js.publish.await_count == 1
+    wire = js.publish.await_args.args[1]
+    wire_safe = marker not in wire.decode()
+    source_unchanged = json.dumps(payload, sort_keys=True) == original
+    assert wire_safe, "the NATS payload contained the synthetic marker"
+    assert source_unchanged, "queue preparation mutated the caller's legacy payload"
+    task = nats_module._NatsTaskPayload.model_validate(json.loads(wire))
+    delivered: list[bool] = []
+
+    async def capture(**kwargs: Any) -> None:
+        delivered.append(kwargs["fallback_fields"]["link"] == link)
+
+    monkeypatch.setattr(email_tasks, "_deliver_email_message", capture)
+    await email_tasks.broker._tasks[name](*task.args, **task.kwargs)
+    assert delivered == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("existing_status", ["pending", "completed", "failed"])
+@pytest.mark.parametrize("call_style", ["positional", "keyword"])
+async def test_aud447_legacy_parking_keeps_logical_dedup_and_protects_reopened_rows(
+    monkeypatch: pytest.MonkeyPatch, existing_status: str, call_style: str
+) -> None:
+    marker = "synthetic-" + uuid.uuid4().hex
+    other_marker = "synthetic-" + uuid.uuid4().hex
+    secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    session = _HashLookupSession()
+    monkeypatch.setattr(database_module, "async_session", lambda: session)
+    broker = nats_module.NatsTaskBroker()
+    name = "app.tasks.email.send_auth_email"
+
+    def legacy_task(token: str) -> nats_module._NatsTaskPayload:
+        link = f"https://portal.example.test/reset-password#token={token}"
+        if call_style == "positional":
+            args, kwargs = ["student@example.test", link], {}
+        else:
+            args, kwargs = [], {"to_email": "student@example.test", "link": link}
+        return nats_module._NatsTaskPayload.model_validate(
+            {"id": str(uuid.uuid4()), "name": name, "args": args, "kwargs": kwargs}
+        )
+
+    assert await broker._dead_letter(legacy_task(marker), "delivery failed", 3)
+    assert len(session.jobs) == 1
+    original_job = session.jobs[0]
+    original_hash = original_job.job_hash
+    original_job.status = existing_status
+    original_job.retry_count = 2
+
+    # A fresh task ID and fresh input object must still find the logical job.
+    assert await broker._dead_letter(legacy_task(marker), "delivery failed", 4)
+    same_job = len(session.jobs) == 1 and session.jobs[0] is original_job
+    assert same_job, "the same legacy task created a second DLQ record"
+    same_hash = original_job.job_hash == original_hash
+    assert same_hash
+    assert original_job.status == "pending"
+    assert original_job.retry_count == (2 if existing_status == "pending" else 0)
+
+    # Positive control: genuinely different links must not collapse together.
+    assert await broker._dead_letter(legacy_task(other_marker), "delivery failed", 3)
+    assert len(session.jobs) == 2
+    hashes_distinct = session.jobs[0].job_hash != session.jobs[1].job_hash
+    payloads_safe = all(
+        marker not in job.payload and other_marker not in job.payload
+        for job in session.jobs
+    )
+    assert hashes_distinct
+    assert payloads_safe, "a stored or reopened payload contained a synthetic marker"
+
+
+async def _aud447_queue_park_and_replay(
+    broker: nats_module.NatsTaskBroker,
+    js: AsyncMock,
+    session: _Session,
+    payload: dict[str, Any],
+) -> nats_module._NatsTaskPayload:
+    name = "app.tasks.email.send_auth_email"
+    await broker.enqueue(name, *payload["args"], **payload["kwargs"])
+    task = nats_module._NatsTaskPayload.model_validate(
+        json.loads(js.publish.await_args.args[1])
+    )
+    assert await broker._dead_letter(task, "delivery failed", 3)
+    assert len(session.jobs) == 1
+    await broker.replay_dead_letter(name, json.loads(session.jobs[0].payload))
+    return nats_module._NatsTaskPayload.model_validate(
+        json.loads(js.publish.await_args.args[1])
+    )
+
+
+@pytest.mark.asyncio
+async def test_aud447_sealed_round_trip_preserves_bytes_and_native_expiry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = "synthetic-" + uuid.uuid4().hex
+    link = f"https://portal.example.test/reset-password#token={marker}"
+    secret = uuid.uuid4().hex
+    clock = [datetime(2026, 10, 29, 12, 0, tzinfo=UTC)]
+    native_expiry = clock[0] + timedelta(minutes=2)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            if tz is not None:
+                return clock[0].astimezone(tz)
+            return clock[0].replace(tzinfo=None)
+
+    monkeypatch.setattr(email_tasks, "datetime", FrozenDateTime)
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    envelope = email_tasks.seal_auth_email_link(link, native_expiry, secret)
+    payload = {
+        "args": ["student@example.test", envelope],
+        "kwargs": {"encrypted_link": True},
+    }
+    broker = nats_module.NatsTaskBroker()
+    js = AsyncMock()
+    monkeypatch.setattr(broker, "_js", js)
+    session = _Session()
+    monkeypatch.setattr(database_module, "async_session", lambda: session)
+    replay = await _aud447_queue_park_and_replay(broker, js, session, payload)
+    assert js.publish.await_count == 2
+    serialized = [json.loads(call.args[1]) for call in js.publish.await_args_list]
+    serialized.append(json.loads(session.jobs[0].payload))
+    bytes_preserved = all(
+        item["args"] == payload["args"] and item["kwargs"] == payload["kwargs"]
+        for item in serialized
+    )
+    assert bytes_preserved, "queue or DLQ preparation rewrote a sealed payload"
+    decoded = json.loads(
+        email_tasks._auth_email_cipher(secret).decrypt(replay.args[1].encode("ascii"))
+    )
+    exact_expiry = decoded["expires_at"] == native_expiry.isoformat()
+    assert exact_expiry, "queue preparation changed the original envelope expiry"
+    delivered: list[bool] = []
+
+    async def capture(**kwargs: Any) -> None:
+        delivered.append(kwargs["fallback_fields"]["link"] == link)
+
+    monkeypatch.setattr(email_tasks, "_deliver_email_message", capture)
+    handler = email_tasks.broker._tasks[replay.name]
+    clock[0] = native_expiry - timedelta(microseconds=1)
+    await handler(*replay.args, **replay.kwargs)
+    assert delivered == [True]
+    clock[0] = native_expiry
+    session.jobs.clear()
+    js.reset_mock()
+    expired_replay = await _aud447_queue_park_and_replay(broker, js, session, payload)
+    assert js.publish.await_count == 2
+    expired_serialized = [
+        json.loads(call.args[1]) for call in js.publish.await_args_list
+    ]
+    expired_serialized.append(json.loads(session.jobs[0].payload))
+    expired_bytes_preserved = all(
+        item["args"] == payload["args"] and item["kwargs"] == payload["kwargs"]
+        for item in expired_serialized
+    )
+    assert expired_bytes_preserved, "storage changed an expired sealed payload"
+    with pytest.raises(RuntimeError, match=r"^Authentication email delivery failed$"):
+        await handler(*expired_replay.args, **expired_replay.kwargs)
+    assert delivered == [True]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case", ["expired", "tampered", "marked_plaintext", "missing_expiry"]
+)
+async def test_aud447_marked_round_trip_never_falls_back_to_legacy_delivery(
+    monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    marker = "synthetic-" + uuid.uuid4().hex
+    link = f"https://portal.example.test/reset-password#token={marker}"
+    secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    future = datetime.now(UTC) + timedelta(minutes=5)
+    broker = nats_module.NatsTaskBroker()
+    js = AsyncMock()
+    monkeypatch.setattr(broker, "_js", js)
+    session = _Session()
+    monkeypatch.setattr(database_module, "async_session", lambda: session)
+    delivered: list[bool] = []
+
+    async def capture(**kwargs: Any) -> None:
+        delivered.append(kwargs["fallback_fields"]["link"] == link)
+
+    monkeypatch.setattr(email_tasks, "_deliver_email_message", capture)
+    handler = email_tasks.broker._tasks["app.tasks.email.send_auth_email"]
+
+    # Valid input must traverse the same real broker/DLQ path before a negative
+    # case can pass; an unconditional rejection is not a security fix.
+    valid = email_tasks.seal_auth_email_link(link, future, secret)
+    replay = await _aud447_queue_park_and_replay(
+        broker,
+        js,
+        session,
+        {
+            "args": ["student@example.test", valid],
+            "kwargs": {"encrypted_link": True},
+        },
+    )
+    await handler(*replay.args, **replay.kwargs)
+    assert delivered == [True]
+    session.jobs.clear()
+    js.reset_mock()
+    delivered.clear()
+
+    if case == "expired":
+        bad = email_tasks.seal_auth_email_link(
+            link, datetime.now(UTC) - timedelta(minutes=1), secret
+        )
+    elif case == "tampered":
+        index = len(valid) // 2
+        replacement = "A" if valid[index] != "A" else "B"
+        bad = valid[:index] + replacement + valid[index + 1 :]
+    elif case == "marked_plaintext":
+        bad = link
+    else:
+        bad = (
+            email_tasks._auth_email_cipher(secret)
+            .encrypt(json.dumps({"link": link}).encode())
+            .decode()
+        )
+
+    # A safe early rejection is allowed. If accepted for transport, the actual
+    # handler must reject rather than reinterpret a marked link as legacy.
+    with pytest.raises((ValueError, RuntimeError)) as failure:
+        replay = await _aud447_queue_park_and_replay(
+            broker,
+            js,
+            session,
+            {
+                "args": ["student@example.test", bad],
+                "kwargs": {"encrypted_link": True},
+            },
+        )
+        await handler(*replay.args, **replay.kwargs)
+
+    error_safe = marker not in str(failure.value)
+    wire_safe = all(
+        marker not in call.args[1].decode() for call in js.publish.await_args_list
+    )
+    stored_safe = all(marker not in job.payload for job in session.jobs)
+    assert error_safe, "rejection exposed the synthetic marker"
+    assert wire_safe, "a rejected marked payload exposed the marker on NATS"
+    assert stored_safe, "a rejected marked payload exposed the marker in the DLQ"
+    assert delivered == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case", ["marked_plaintext", "tampered", "missing_expiry", "rotated"]
+)
+async def test_aud447_unsafe_marked_parking_uses_existing_nak_without_plaintext(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    case: str,
+) -> None:
+    marker = "synthetic-" + uuid.uuid4().hex
+    link = f"https://portal.example.test/reset-password#token={marker}"
+    secret = uuid.uuid4().hex
+    read_secret = [secret]
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: read_secret[0])
+    envelope = email_tasks.seal_auth_email_link(
+        link, datetime.now(UTC) + timedelta(minutes=5), secret
+    )
+    session = _Session()
+    monkeypatch.setattr(database_module, "async_session", lambda: session)
+    broker = nats_module.NatsTaskBroker()
+    message = SimpleNamespace(
+        metadata=SimpleNamespace(num_delivered=nats_module._MAX_DELIVERIES),
+        ack=AsyncMock(),
+        nak=AsyncMock(),
+        term=AsyncMock(),
+    )
+
+    def marked_task(value: str) -> nats_module._NatsTaskPayload:
+        return nats_module._NatsTaskPayload.model_validate(
+            {
+                "id": str(uuid.uuid4()),
+                "name": "app.tasks.email.send_auth_email",
+                "args": ["student@example.test", value],
+                "kwargs": {"encrypted_link": True},
+            }
+        )
+
+    # Actual safe parking must persist before TERM, not reject every auth task.
+    await broker._retry_or_dead_letter(message, marked_task(envelope), "failed")
+    assert len(session.jobs) == 1
+    control_safe = marker not in session.jobs[0].payload
+    assert control_safe
+    message.term.assert_awaited_once_with()
+    message.nak.assert_not_awaited()
+    message.ack.assert_not_awaited()
+    session.jobs.clear()
+    message.term.reset_mock()
+    caplog.clear()
+
+    if case == "marked_plaintext":
+        invalid = link
+    elif case == "tampered":
+        index = len(envelope) // 2
+        replacement = "A" if envelope[index] != "A" else "B"
+        invalid = envelope[:index] + replacement + envelope[index + 1 :]
+    elif case == "missing_expiry":
+        invalid = (
+            email_tasks._auth_email_cipher(secret)
+            .encrypt(json.dumps({"link": link}).encode())
+            .decode()
+        )
+    else:
+        invalid = envelope
+        read_secret[0] = uuid.uuid4().hex
+
+    with caplog.at_level(logging.WARNING, logger="app.core.nats_broker"):
+        await broker._retry_or_dead_letter(message, marked_task(invalid), "failed")
+
+    assert len(session.jobs) == 0, "unsafe input must not create a DLQ row"
+    message.term.assert_not_awaited()
+    message.ack.assert_not_awaited()
+    expected_delay = min(
+        nats_module._RETRY_BASE_DELAY_S * 2 ** (nats_module._MAX_DELIVERIES - 1),
+        nats_module._RETRY_MAX_DELAY_S,
+    )
+    message.nak.assert_awaited_once_with(delay=expected_delay)
+    failure_logs = [
+        record
+        for record in caplog.records
+        if record.name == "app.core.nats_broker" and record.levelno >= logging.WARNING
+    ]
+    failure_recorded = bool(failure_logs)
+    logs_safe = all(marker not in repr(record.__dict__) for record in failure_logs)
+    no_traceback = all(not record.exc_info for record in failure_logs)
+    assert failure_recorded, "safe parking failure must remain observable"
+    assert logs_safe, "parking failure logs contained the synthetic marker"
+    assert no_traceback, "parking rejection must not report raw-payload frames"

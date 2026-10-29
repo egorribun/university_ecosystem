@@ -902,6 +902,247 @@ jobs:
         run: npm run build
         env:
           SKIP_WASM_BUILD: "1"
+          MAPLIBRE_BUILD_METADATA_OUTPUT: ${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
+
+      - name: Report bounded MapLibre build inventory
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'MAPLIBRE_INVENTORY'
+          import { execFileSync } from "node:child_process"
+          import { createHash } from "node:crypto"
+          import { constants } from "node:fs"
+          import { open, realpath } from "node:fs/promises"
+          import path from "node:path"
+          import { gzipSync } from "node:zlib"
+          
+          const MAX_BYTES = 4 * 1024 * 1024
+          const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
+          const reject = () => { throw new Error("invalid inventory") }
+          const check = (valid) => { if (!valid) reject() }
+          const integer = (value, maximum = 1_000_000_000) =>
+            Number.isSafeInteger(value) && value >= 0 && value <= maximum
+          const digest = (value) => typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
+          const safePath = (value) =>
+            typeof value === "string" && value.length > 0 && value.length <= 1024 &&
+            /^[A-Za-z0-9_@./-]+$/u.test(value) && !value.startsWith("/") &&
+            value.split("/").every((part) => part !== "" && part !== "." && part !== "..")
+          const within = (root, value) => value === root || value.startsWith(root + path.sep)
+          const exact = (value, keys) => {
+            check(value !== null && typeof value === "object" && !Array.isArray(value))
+            const actual = Object.keys(value).sort()
+            const expected = [...keys].sort()
+            check(actual.length === expected.length && actual.every((key, index) => key === expected[index]))
+          }
+          const ordered = (values, maximum, predicate, lexical = false) => {
+            check(Array.isArray(values) && values.length <= maximum)
+            check(values.every(predicate))
+            check(values.every((value, index) => index === 0 ||
+              (lexical ? values[index - 1] < value : values[index - 1].localeCompare(value) < 0)))
+          }
+          async function boundedFile(file) {
+            check(
+              Number.isSafeInteger(constants.O_NOFOLLOW) && constants.O_NOFOLLOW > 0 &&
+              Number.isSafeInteger(constants.O_NONBLOCK) && constants.O_NONBLOCK > 0
+            )
+            const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+            try {
+              const before = await handle.stat({ bigint: true })
+              check(before.isFile() && before.size <= BigInt(MAX_BYTES))
+              const bytes = Buffer.alloc(MAX_BYTES + 1)
+              let size = 0
+              while (size <= MAX_BYTES) {
+                const part = await handle.read(bytes, size, bytes.length - size, null)
+                if (part.bytesRead === 0) break
+                size += part.bytesRead
+              }
+              check(size <= MAX_BYTES)
+              const after = await handle.stat({ bigint: true })
+              check(
+                before.dev === after.dev && before.ino === after.ino &&
+                before.size === after.size && before.size === BigInt(size) &&
+                before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs
+              )
+              return bytes.subarray(0, size)
+            } finally {
+              await handle.close()
+            }
+          }
+          async function insideFile(root, relative) {
+            check(safePath(relative))
+            const file = path.resolve(root, relative)
+            check(within(root, file))
+            const parent = await realpath(path.dirname(file))
+            check(within(root, parent) && parent === path.dirname(file))
+            return boundedFile(file)
+          }
+          
+          try {
+            const root = await realpath(process.cwd())
+            const dist = await realpath(path.join(root, "dist"))
+            const output = await realpath(path.join(dist, "client"))
+            check(within(root, dist) && within(dist, output))
+            const { GITHUB_SHA: checkoutSha, GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: runAttempt } = process.env
+            check(typeof checkoutSha === "string" && /^[a-f0-9]{40}$/u.test(checkoutSha))
+            check(typeof runId === "string" && /^[1-9][0-9]{0,19}$/u.test(runId))
+            check(typeof runAttempt === "string" && /^[1-9][0-9]{0,9}$/u.test(runAttempt))
+            check(typeof process.env.RUNNER_TEMP === "string" && path.isAbsolute(process.env.RUNNER_TEMP))
+            const temporary = await realpath(process.env.RUNNER_TEMP)
+            check(!within(dist, temporary))
+            const reportPath = path.join(temporary, "maplibre-inventory-" + runId + "-" + runAttempt + "-" + checkoutSha + ".json")
+            const git = (...args) => execFileSync("git", args, {
+              cwd: root, encoding: "utf8", timeout: 5000, maxBuffer: 4096,
+              stdio: ["ignore", "pipe", "pipe"],
+            }).trim()
+            check(git("rev-parse", "--verify", "HEAD") === checkoutSha)
+            const tracked = ["package.json", "package-lock.json", "vite.config.mts", "scripts/maplibre-build-metadata.mjs"]
+            git("ls-files", "--error-unmatch", "--", ...tracked)
+            git("diff", "--quiet", "HEAD", "--", ...tracked)
+            const raw = await boundedFile(reportPath)
+            const receipt = JSON.parse(raw.toString("utf8"))
+            exact(receipt, ["schemaVersion", "profile", "package", "producerSha256", "viteConfigSha256", "graph", "mapLibreChunks"])
+            check(receipt.schemaVersion === 1)
+          
+            const packageBytes = await insideFile(root, "package.json")
+            const lockBytes = await insideFile(root, "package-lock.json")
+            const installedBytes = await insideFile(root, "node_modules/maplibre-gl/package.json")
+            const manifest = JSON.parse(packageBytes.toString("utf8"))
+            const lock = JSON.parse(lockBytes.toString("utf8"))
+            const installed = JSON.parse(installedBytes.toString("utf8"))
+            const entry = lock.packages?.["node_modules/maplibre-gl"]
+            const packageInfo = receipt.package
+            exact(packageInfo, ["declared", "installedName", "installedVersion", "lockVersion", "lockIntegrity", "packageJsonSha256", "lockSha256", "installedManifestSha256"])
+            check(
+              packageInfo.declared === manifest.dependencies?.["maplibre-gl"] &&
+              typeof packageInfo.declared === "string" && packageInfo.declared.length <= 128 &&
+              packageInfo.installedName === "maplibre-gl" && installed.name === "maplibre-gl" &&
+              packageInfo.installedVersion === "6.15.0" && installed.version === "6.15.0" &&
+              packageInfo.lockVersion === "6.15.0" && entry?.version === "6.15.0" &&
+              packageInfo.lockIntegrity === entry?.integrity &&
+              typeof packageInfo.lockIntegrity === "string" &&
+              /^sha(?:256|384|512)-[A-Za-z0-9+/=]{1,256}$/u.test(packageInfo.lockIntegrity)
+            )
+            check(
+              packageInfo.packageJsonSha256 === hash(packageBytes) &&
+              packageInfo.lockSha256 === hash(lockBytes) &&
+              packageInfo.installedManifestSha256 === hash(installedBytes) &&
+              receipt.producerSha256 === hash(await insideFile(root, "scripts/maplibre-build-metadata.mjs")) &&
+              receipt.viteConfigSha256 === hash(await insideFile(root, "vite.config.mts"))
+            )
+            const profile = receipt.profile
+            exact(profile, ["command", "mode", "isProduction", "lhci", "lhciEnv", "reactDevMode", "unminified", "consumer", "isWorker", "minify", "sourcemap", "target", "format"])
+            check(
+              profile.command === "build" && profile.mode === "production" &&
+              profile.isProduction === true && profile.lhci === false && profile.lhciEnv === false &&
+              profile.reactDevMode === false && profile.unminified === false &&
+              profile.consumer === "client" && profile.isWorker === false && profile.format === "es" &&
+              ["oxc", "esbuild", "terser"].includes(profile.minify) &&
+              [false, true, "inline", "hidden"].includes(profile.sourcemap) &&
+              Array.isArray(profile.target) && profile.target.length > 0 && profile.target.length <= 32 &&
+              profile.target.every((value) => typeof value === "string" && /^[A-Za-z0-9.*+^~<>=| _/-]{1,128}$/u.test(value))
+            )
+            const graph = receipt.graph
+            exact(graph, ["complete", "entryFiles", "unresolvedStaticImportCount", "unresolvedDynamicImportCount", "chunks"])
+            check(Array.isArray(graph.chunks) && graph.chunks.length <= 5000)
+            check(integer(graph.unresolvedStaticImportCount) && integer(graph.unresolvedDynamicImportCount))
+            const graphNames = graph.chunks.map((chunk) => chunk.fileName)
+            ordered(graphNames, 5000, safePath)
+            const byName = new Map(graph.chunks.map((chunk) => [chunk.fileName, chunk]))
+            let edgeCount = 0
+            for (const chunk of graph.chunks) {
+              exact(chunk, ["fileName", "isEntry", "isDynamicEntry", "imports", "dynamicImports"])
+              check(typeof chunk.isEntry === "boolean" && typeof chunk.isDynamicEntry === "boolean")
+              for (const edges of [chunk.imports, chunk.dynamicImports]) {
+                ordered(edges, 5000, (name) => safePath(name) && byName.has(name), true)
+                edgeCount += edges.length
+                check(edgeCount <= 50000)
+              }
+            }
+            ordered(graph.entryFiles, 5000, (name) => safePath(name) && byName.has(name))
+            check(JSON.stringify(graph.entryFiles) === JSON.stringify(graph.chunks.filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName)))
+            check(graph.complete === (graph.entryFiles.length > 0 && graph.unresolvedStaticImportCount === 0))
+            const reachable = new Set()
+            const pending = [...graph.entryFiles]
+            while (pending.length > 0) {
+              const name = pending.pop()
+              if (reachable.has(name)) continue
+              reachable.add(name)
+              pending.push(...byName.get(name).imports)
+            }
+          
+            const candidates = receipt.mapLibreChunks
+            check(Array.isArray(candidates) && candidates.length > 0 && candidates.length <= 8)
+            ordered(candidates.map((chunk) => chunk.fileName), 8, (name) => safePath(name) && byName.has(name))
+            const mapLibreChunks = []
+            let moduleCount = 0
+            for (const chunk of candidates) {
+              exact(chunk, ["fileName", "staticEntryReachable", "rawBytes", "gzipBytes", "sha256", "gzipSha256", "modules"])
+              check(chunk.staticEntryReachable === (graph.complete ? reachable.has(chunk.fileName) : null))
+              check(integer(chunk.rawBytes, MAX_BYTES) && integer(chunk.gzipBytes, MAX_BYTES))
+              check(digest(chunk.sha256) && digest(chunk.gzipSha256))
+              const bytes = await insideFile(output, chunk.fileName)
+              const compressed = gzipSync(bytes, { level: 9 })
+              check(
+                chunk.rawBytes === bytes.length && chunk.gzipBytes === compressed.length &&
+                chunk.sha256 === hash(bytes) && chunk.gzipSha256 === hash(compressed)
+              )
+              check(Array.isArray(chunk.modules) && chunk.modules.length > 0)
+              moduleCount += chunk.modules.length
+              check(moduleCount <= 256)
+              ordered(chunk.modules.map((module) => module.idSha256), 256, digest)
+              const modules = []
+              for (const module of chunk.modules) {
+                check(["package", "project", "other"].includes(module.kind))
+                const keys = ["kind", "idSha256", "renderedBytes", "originalBytes"]
+                if (module.kind === "package") keys.push("package", "packageRoot", "path")
+                exact(module, keys)
+                check(integer(module.renderedBytes) && integer(module.originalBytes))
+                const safe = {
+                  kind: module.kind, idSha256: module.idSha256,
+                  renderedBytes: module.renderedBytes, originalBytes: module.originalBytes,
+                }
+                if (module.kind === "package") {
+                  check(
+                    safePath(module.package) && safePath(module.packageRoot) && safePath(module.path) &&
+                    /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/u.test(module.package) &&
+                    (module.packageRoot === "node_modules/" + module.package ||
+                      module.packageRoot.endsWith("/node_modules/" + module.package))
+                  )
+                  safe.package = module.package
+                  safe.path = module.path
+                }
+                modules.push(safe)
+              }
+              check(
+                modules.some((module) => module.kind === "package" && module.package === "maplibre-gl") ||
+                /(?:^|\/)vendor-map(?:-|\.)/u.test(chunk.fileName)
+              )
+              mapLibreChunks.push({
+                fileName: chunk.fileName, staticEntryReachable: chunk.staticEntryReachable,
+                rawBytes: chunk.rawBytes, gzipBytes: chunk.gzipBytes,
+                sha256: chunk.sha256, gzipSha256: chunk.gzipSha256, modules,
+              })
+            }
+            const diagnostic = {
+              kind: "maplibre-build-inventory-not-budget-proof",
+              checkoutSha, runId, runAttempt, metadataSha256: hash(raw),
+              producerSha256: receipt.producerSha256, viteConfigSha256: receipt.viteConfigSha256,
+              package: packageInfo, profile,
+              graph: {
+                complete: graph.complete, entryFiles: graph.entryFiles, chunkCount: graph.chunks.length,
+                unresolvedStaticImportCount: graph.unresolvedStaticImportCount,
+                unresolvedDynamicImportCount: graph.unresolvedDynamicImportCount,
+              },
+              mapLibreChunks,
+            }
+            const line = "MAPLIBRE_BUILD_INVENTORY " + JSON.stringify(diagnostic) + "\n"
+            check(Buffer.byteLength(line) <= 32768)
+            process.stdout.write(line)
+          } catch {
+            process.stderr.write("MAPLIBRE_BUILD_INVENTORY_REJECTED\n")
+            process.exitCode = 1
+          }
+          MAPLIBRE_INVENTORY
 
       - name: Upload production bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
