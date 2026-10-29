@@ -645,7 +645,7 @@ async function captureFixture() {
         FINAL_HTML_PR_BASE_SHA: baseSha,
         RUNNER_TEMP: runnerTemp,
         VITE_LHCI: "",
-        NODE_OPTIONS: "--max-old-space-size=512",
+        NODE_OPTIONS: "--max-old-space-size=512 --max-semi-space-size=16",
         FINAL_HTML_PRIVATE_CANARY: privateCanary,
       },
     }
@@ -693,7 +693,15 @@ function runCapture(program, item) {
     assert.equal(output.includes(privateCanary), false, "capture must not disclose input data")
     assert.equal(output.includes("<script"), false, "capture must not disclose HTML bodies")
   }
-  return result
+  assert.ok(Buffer.byteLength(result.stdout) <= 65_536)
+  const heapMatch = /^FINAL_HTML_INVENTORY_HEAP_BYTES ([1-9][0-9]{0,15})\n/u.exec(result.stdout)
+  assert.ok(heapMatch, "capture must emit a bounded heap integer before its guard")
+  const heapBytes = Number(heapMatch[1])
+  assert.ok(Number.isSafeInteger(heapBytes) && heapBytes > 0)
+  const oversizedHeap =
+    item.env.NODE_OPTIONS === "--max-old-space-size=1024 --max-semi-space-size=16"
+  assert.equal(heapBytes > 640 * 1024 * 1024, oversizedHeap)
+  return { ...result, stdout: result.stdout.slice(heapMatch[0].length) }
 }
 
 async function capturedReport(program, item) {
@@ -774,7 +782,10 @@ test("final HTML capture preserves production ordering and separate artifacts", 
   assert.ok(production > diagnostic && lighthouse > production)
   assert.match(step, /^\s+id: capture-final-html-inventory$/mu)
   assert.match(step, /^\s+timeout-minutes: 1$/mu)
-  assert.match(step, /^\s+NODE_OPTIONS: "--max-old-space-size=512"$/mu)
+  assert.match(
+    step,
+    /^\s+NODE_OPTIONS: "--max-old-space-size=512 --max-semi-space-size=16"$/mu
+  )
   assert.doesNotMatch(step + upload, /continue-on-error|permissions:|^\s+if:/mu)
   const expression = (value) => "$" + "{{ " + value + " }}"
   assert.ok(
@@ -924,7 +935,7 @@ test("capture wrapper binds owned source context and keeps failures closed", asy
     [
       "oversized-heap",
       (item) => {
-        item.env.NODE_OPTIONS = "--max-old-space-size=1024"
+        item.env.NODE_OPTIONS = "--max-old-space-size=1024 --max-semi-space-size=16"
       },
     ],
   ]

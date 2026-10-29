@@ -3705,6 +3705,12 @@
           ],
           "artifacts": [
             {
+              "name_pattern": "frontend-final-html-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}",
+              "path_pattern": "${{ runner.temp }}/final-html-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json",
+              "required": false,
+              "provenance": "sha"
+            },
+            {
               "name_pattern": "frontend-dist",
               "path_pattern": "${{ inputs.working-directory }}/dist",
               "required": false,

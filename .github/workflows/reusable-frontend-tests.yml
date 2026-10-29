@@ -1157,7 +1157,7 @@ jobs:
         id: capture-final-html-inventory
         timeout-minutes: 1
         env:
-          NODE_OPTIONS: "--max-old-space-size=512"
+          NODE_OPTIONS: "--max-old-space-size=512 --max-semi-space-size=16"
           FINAL_HTML_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
           FINAL_HTML_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
         shell: bash
@@ -1237,7 +1237,11 @@ jobs:
           try {
             // This bounds V8 heap, not native allocations, external buffers or total RSS.
             const heapLimit = getHeapStatistics().heap_size_limit
-            check(Number.isSafeInteger(heapLimit) && heapLimit > 0 && heapLimit <= MAX_V8_HEAP_BYTES)
+            check(Number.isSafeInteger(heapLimit) && heapLimit > 0)
+            const heapReceipt = "FINAL_HTML_INVENTORY_HEAP_BYTES " + heapLimit + "\n"
+            check(Buffer.byteLength(heapReceipt) <= 64)
+            process.stdout.write(heapReceipt)
+            check(heapLimit <= MAX_V8_HEAP_BYTES)
             check(
               [constants.O_NOFOLLOW, constants.O_NONBLOCK].every(
                 (flag) => Number.isSafeInteger(flag) && flag > 0
@@ -1368,7 +1372,10 @@ jobs:
               "FINAL_HTML_INVENTORY_CAPTURE " +
               JSON.stringify({ report, reportSha256: hash(bytes) }) +
               "\n"
-            check(bytes.length <= REPORT_LIMIT && Buffer.byteLength(logged) <= REPORT_LIMIT)
+            check(
+              bytes.length <= REPORT_LIMIT &&
+                Buffer.byteLength(heapReceipt) + Buffer.byteLength(logged) <= REPORT_LIMIT
+            )
             const output = path.join(
               temporary,
               "final-html-inventory-" + runId + "-" + runAttempt + "-" + checkoutSha + ".json"
