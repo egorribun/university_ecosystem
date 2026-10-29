@@ -15,7 +15,7 @@ import uuid
 
 import pytest
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.models.domain_events import StoredEvent
 from app.services.audit_service import SecureAuditService
@@ -239,12 +239,20 @@ async def test_existing_head_and_snapshot_isolation_obey_the_writer_contract(
     factory = _sessions(db_session)
     service = SecureAuditService(signing_key=secrets.token_hex(32).encode("ascii"))
     aggregate_id = uuid.uuid4()
-    async with factory() as seed:
-        await seed.execute(text("SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED"))
-        seed_isolation = await seed.scalar(text("SHOW transaction_isolation"))
-        assert seed_isolation == "read uncommitted"
-        await _record(service, seed, "aud340", aggregate_id, "seed")
-        await seed.commit()
+    engine = db_session.bind
+    assert isinstance(engine, AsyncEngine)
+    async with engine.connect() as seed_connection:
+        # Set isolation before the ORM's after_begin listener runs RLS queries.
+        await seed_connection.execute(
+            text("SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED")
+        )
+        async with factory(
+            bind=seed_connection, join_transaction_mode="rollback_only"
+        ) as seed:
+            seed_isolation = await seed.scalar(text("SHOW transaction_isolation"))
+            assert seed_isolation == "read uncommitted"
+            await _record(service, seed, "aud340", aggregate_id, "seed")
+        await seed_connection.commit()
 
     ready: asyncio.Future[int] = asyncio.get_running_loop().create_future()
     async with factory() as first:
@@ -270,21 +278,21 @@ async def test_existing_head_and_snapshot_isolation_obey_the_writer_contract(
     assert observation == "blocked", "the contender must wait on the current writer"
 
     evidence = {}
-    for name, isolation, statement in (
+    for name, isolation, level in (
         (
             "repeatable_read",
             "repeatable read",
-            "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+            "REPEATABLE READ",
         ),
         (
             "serializable",
             "serializable",
-            "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+            "SERIALIZABLE",
         ),
     ):
         unsupported_id = uuid.uuid4()
         async with factory() as session:
-            await session.execute(text(statement))
+            await session.connection(execution_options={"isolation_level": level})
             assert await session.scalar(text("SHOW transaction_isolation")) == isolation
             transaction = session.get_transaction()
             assert transaction is not None
