@@ -2088,7 +2088,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     records = [
         record
         for record in policy["records"]
@@ -3084,7 +3084,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 347
+    assert len(records) == 405
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3139,7 +3139,11 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         for path, finding_type, digest in expected_identities
     }
     validated = verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 10, 26)
+        {
+            "schema_version": policy["schema_version"],
+            "records": policy["records"][:347],
+        },
+        today=verifier.date(2026, 10, 26),
     )
     assert expected_findings <= validated
     assert (
@@ -3486,7 +3490,7 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 347
+    assert len(records) == 405
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
@@ -3676,7 +3680,7 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 10
 
@@ -4024,7 +4028,7 @@ def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> No
         )
     )
     test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
     assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
 
@@ -4275,7 +4279,7 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
         )
     )
     test_observed_public_metadata_policy_preserves_all_325_prior_records()
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
@@ -4296,7 +4300,7 @@ def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> Non
         )
     )
     test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     assert policy["records"][328:329] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
@@ -4425,7 +4429,7 @@ def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> Non
         )
     )
     test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     assert policy["records"][329:330] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
 
 
@@ -4630,7 +4634,7 @@ def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
         )
     )
     test_public_alembic_revision_policy_preserves_all_329_prior_records()
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     assert policy["records"][330:331] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6]
@@ -4651,7 +4655,7 @@ def test_public_git_blob_index_assertion_preserves_all_331_prior_records() -> No
         )
     )
     test_public_git_blob_index_rebind_preserves_all_330_prior_records()
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     assert policy["records"][331:332] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7]
@@ -4750,7 +4754,7 @@ def test_public_compiler_golden_policy_preserves_all_332_prior_records() -> None
         )
     )
     test_public_git_blob_index_assertion_preserves_all_331_prior_records()
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     assert policy["records"][332:336] == _PUBLIC_COMPILER_GOLDEN_RECORDS
 
 
@@ -5153,7 +5157,7 @@ def test_node_compiler_policy_appends_seven_and_preserves_337_prefix() -> None:
         )
     )
     records = policy["records"]
-    assert len(records) == 347
+    assert len(records) == 405
     prefix = json.dumps(
         records[:337], sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
@@ -5184,7 +5188,11 @@ def test_node_compiler_policy_appends_seven_and_preserves_337_prefix() -> None:
         for record in suffix
     )
     validated = verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 10, 26)
+        {
+            "schema_version": policy["schema_version"],
+            "records": policy["records"][:347],
+        },
+        today=verifier.date(2026, 10, 26),
     )
     expected_findings = {
         verifier.FindingIdentity(path, finding_type, bytes(digest).hex(), 1)
@@ -5392,7 +5400,7 @@ def test_live_private_field_policy_preserves_all_336_prior_records() -> None:
         )
     )
     test_public_compiler_golden_policy_preserves_all_332_prior_records()
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     assert policy["records"][336:337] == [_LIVE_PRIVATE_FIELD_RECORD]
 
 
@@ -5569,7 +5577,7 @@ def test_public_git_blob_sourcebinding_rebind_appends_one_exact_identity() -> No
         )
     )
     test_live_private_field_policy_preserves_all_336_prior_records()
-    assert len(policy["records"]) == 347
+    assert len(policy["records"]) == 405
     record = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[8]
     assert policy["records"][337:338] == [record]
     assert record["identity"]["path"] == (
@@ -5722,7 +5730,11 @@ def test_aud247_guard_preserves_existing_same_path_type_identities() -> None:
     assert len(target_records) <= 1
     assert len(same_path_type) == 10 + len(target_records)
     assert verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 10, 26)
+        {
+            "schema_version": policy["schema_version"],
+            "records": policy["records"][:347],
+        },
+        today=verifier.date(2026, 10, 26),
     )
 
 
@@ -5974,11 +5986,14 @@ def test_historical148_integrity_adds_only_58_and_preserves_347_prefix() -> None
     assert identities == getattr(
         verifier, "_HISTORICAL148_PUBLIC_INTEGRITY_IDENTITIES", frozenset()
     )
-    assert len(
-        verifier.validate_false_positive_dispositions(
-            policy, today=verifier.date(2026, 10, 29)
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                policy, today=verifier.date(2026, 10, 29)
+            )
         )
-    ) == 405
+        == 405
+    )
 
 
 def test_historical148_integrity_rejects_each_changed_scope_or_review() -> None:
@@ -6072,12 +6087,15 @@ def test_historical148_integrity_preserves_only_two_preexisting_collisions() -> 
         )
         for row in old_collisions
     } == expected_old_identities
-    assert len(
-        verifier.validate_false_positive_dispositions(
-            _disposition_document(*copy.deepcopy(old_collisions)),
-            today=verifier.date(2026, 10, 29),
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(*copy.deepcopy(old_collisions)),
+                today=verifier.date(2026, 10, 29),
+            )
         )
-    ) == 2
+        == 2
+    )
     for row in old_collisions:
         changed = copy.deepcopy(row)
         changed["identity"]["path"] = "tests/unreviewed_historical148.py"
@@ -6113,9 +6131,7 @@ def test_historical148_validator_pins_are_public_canonical_fingerprints() -> Non
         )
 
     policy = json.loads(
-        (root / "quality/historical148-squawk-policy.json").read_text(
-            encoding="utf-8"
-        )
+        (root / "quality/historical148-squawk-policy.json").read_text(encoding="utf-8")
     )
     capture = json.loads(
         (root / "tests/fixtures/historical148-squawk-capture-15eaaa.json").read_text(
@@ -6128,9 +6144,11 @@ def test_historical148_validator_pins_are_public_canonical_fingerprints() -> Non
         warnings = json.loads(scenario["stdout"])
         assert len(warnings) == expected_count
         scenario["stdout"] = canonical(sorted(warnings, key=canonical))
-    assert hashlib.sha256(canonical(policy).encode("ascii")).hexdigest() == pins[
-        "_POLICY_SHA256"
-    ]
-    assert hashlib.sha256(canonical(capture).encode("ascii")).hexdigest() == pins[
-        "_CAPTURE_SHA256"
-    ]
+    assert (
+        hashlib.sha256(canonical(policy).encode("ascii")).hexdigest()
+        == pins["_POLICY_SHA256"]
+    )
+    assert (
+        hashlib.sha256(canonical(capture).encode("ascii")).hexdigest()
+        == pins["_CAPTURE_SHA256"]
+    )

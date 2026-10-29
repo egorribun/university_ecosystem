@@ -1082,3 +1082,33 @@ caller override or automatic extension.
 This preparation changes no migration bytes, raw gates, existing scanner
 arguments, secret dispositions, coverage floors, required context/app pairs or
 blocking CodeQL. No audit finding closes from this package alone.
+
+
+## Fifty-eight exact historical-148 integrity dispositions (2026-10-29)
+
+The owner approved exactly 58 additional `public_integrity_digest` identities:
+29 in `quality/historical148-squawk-policy.json`, 27 in the immutable historical
+capture fixture and two canonical-document fingerprints in its validator.
+The ordered 347-record prefix is unchanged; the finite approved union is 405.
+Each addition is bound to the exact path, detector type and finding digest,
+with source-binding tests for the complete reviewed source blobs. The owner is
+`egorribun`, review date 2026-10-29, and unchanged expiry 2027-01-10.
+
+The fresh [pre-commit report](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123362944161)
+reported all 58 locations; [baseline verification](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364470337)
+independently reported 58 new identities. The public literals at those exact
+source locations determine the SHA-1 detector fingerprints; the logs do not
+print a raw fingerprint inventory. Repeated literals in one file remain one
+path/type/digest identity, not additional approvals.
+
+This decision preserves the 319-identity detect-secrets baseline, 26 historical
+Gitleaks fingerprints, 78 required context/app pairs, blocking CodeQL, hooks,
+coverage floors and existing expiry caps. The two pre-existing identities that
+share a public digest remain bound to their original paths, categories and
+approval metadata. New or changed identities remain blocking; no category-wide
+match, baseline addition, inline pragma or scanner bypass is authorized.
+
+These are public source-integrity values, not credentials. This disposition
+neither activates the prepared Squawk matcher nor accepts migration risks,
+changes migration bytes or authorizes execution or deployment. Approval and
+source-bound tests do not substitute for final-source scans or hosted checks.
