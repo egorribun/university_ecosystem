@@ -20,7 +20,7 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.exceptions.domain import PermissionDenied
@@ -853,8 +853,32 @@ class SecureAuditService:
         version: int = 1,
         created_at: datetime | None = None,
     ) -> Any:
-        """Record a domain event with cryptographic HMAC hash chaining."""
+        """Record a domain event with cryptographic HMAC hash chaining.
+
+        PostgreSQL requires a caller-owned transaction with READ COMMITTED
+        semantics (including READ UNCOMMITTED). Snapshot isolation is rejected
+        without committing, rolling back or changing the isolation level.
+        """
         agg_id_str = str(aggregate_id)
+
+        if db.get_bind().dialect.name == "postgresql":
+            isolation = await db.scalar(
+                select(func.pg_catalog.current_setting("transaction_isolation"))
+            )
+            if isolation not in ("read committed", "read uncommitted"):
+                raise ValueError("Domain event writes require READ COMMITTED semantics")
+            # PostgreSQL READ UNCOMMITTED has READ COMMITTED semantics.
+            # Reject snapshot isolation rather than changing caller-owned state.
+            # A fresh head snapshot must follow the aggregate lock acquisition.
+            # The caller owns commit/rollback and therefore the lock lifetime.
+            lock_identity = json.dumps(
+                ["audit-domain-event-chain", aggregate_type, agg_id_str],
+                separators=(",", ":"),
+            ).encode("utf-8")
+            lock_id = int.from_bytes(
+                sha256(lock_identity).digest()[:8], byteorder="big", signed=True
+            )
+            await db.execute(select(func.pg_catalog.pg_advisory_xact_lock(lock_id)))
 
         # 1. Fetch latest event hash for sequence continuity and per-aggregate hash chaining with row lock
         stmt = (
