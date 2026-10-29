@@ -1,8 +1,97 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-28 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Post-pause source-bound acceptance — 2026-10-28 UTC
+## Named evidence checkpoint — 2026-10-29 00:34 UTC
+
+**Current accepted lower bound: 381/512 (74.4%); 131 findings remain unaccepted.**
+The [four scoped acceptances](../../audits/AUDIT-2026-10.md#scoped-aud-247-aud-345-aud-361-and-aud-444-acceptance-2026-10-28)
+add only AUD-247/345/361/444 to the previous 377 IDs. The exact original criteria,
+source/test blobs, named results and limitations are recorded there.
+
+Verified code source is
+[15eaaa5194642a4f3e52b5207f57235df968cb8e](https://github.com/egorribun/university_ecosystem/commit/15eaaa5194642a4f3e52b5207f57235df968cb8e);
+tested merge `37b82de67516752bb8c11462759b381c533db7fd` shares tree
+`6390ea2d437bf568553b78d64e7f90f1340c77c5`. Later documentation or source
+commits do not inherit its complete CI outcome.
+
+Confirmed on that source:
+- [Core](https://github.com/egorribun/university_ecosystem/actions/runs/40787466109/job/123164133882): terminal SUCCESS; 329 preflight, 48 live PASS / 2 SKIP, NATS outage success.
+- [Contracts](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123164137350): 3009 + 633 + 41 PASS, including canonical StaticFS persistence/cleanup/forwarding, Trivy fail-closed replay, registration and MFA layer boundaries.
+- [PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123165736302): 384 PASS / 16 unrelated SKIP; real invitation contention and driver unique-constraint cases pass.
+- All frontend shards: 10,394 PASS / 821 files. [Merged patch coverage](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123170707819): 100%, missing 0, not global/Tier-0 coverage.
+- Trivy FS metadata is now clean with finding_count 0; scanner and container-image jobs pass. No scanner exceptions were introduced.
+
+[Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183)
+is terminal FAILURE: **91 jobs, 66 SUCCESS / 7 FAILURE / 18 SKIP**, with no
+running or cancelled jobs. All 22 pull_request workflow runs on source 15eaaa
+are terminal: 19 SUCCESS / 1 FAILURE (Matrix) / 2 SKIP. The separate trusted
+[pull_request_target Security Policy Integrity run](https://github.com/egorribun/university_ecosystem/actions/runs/40787464413)
+is SUCCESS; its trust model is distinct from the PR-source runs. These workflow
+counts are not the separate CodeQL code-scanning verdict below.
+
+| Failed Matrix job | Exact remaining cause on source 15eaaa |
+| --- | --- |
+| [Security & Types](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123164137041) | detect-secrets changed only the existing storage fixture line number and generated timestamp; mypy passed. |
+| [Frontend lint/format](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123165800686) | reset-spec nullable deadline argument and prefer-const binding; no frontend unit-test failure. |
+| [Backend shard 1](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123165736317) | 6486 PASS / 2 FAIL / 115 SKIP; duplicate-title and inactive-user reminder fixtures. The reviewed correction binds each weekly weekday to its actual lesson start and tests noon/midnight; production is unchanged. |
+| [Backend shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123177863593) | 4870 PASS / 2 FAIL / 104 SKIP; the owned client-IP producer and real bound transport remain unimplemented. |
+| [Alembic](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123165735779) | historical migration/Squawk warnings and the bounded diagnostic remain failing; no active waiver. |
+| [Bundle analysis](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123167177090) | MapLibre exceeds the unchanged general lazy budget; the narrow 286 KiB policy is not active. |
+| [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123187818865) | derived failure, not an independent source defect. |
+
+Backend shard 0 passed 4696 cases / 87 SKIP; shard 2 passed 5256 / 94 SKIP.
+Backend coverage aggregation, Coverage Policy and Codecov were skipped, not
+accepted. The two probe failures are
+`test_fixed_protocol_yields_a_decodable_bounded_frame_without_secrets` and
+`test_http_transport_uses_and_closes_its_real_bound_local_socket`.
+The separate blocking [CodeQL check](https://github.com/egorribun/university_ecosystem/runs/123164697617)
+also reports one critical-severity alert. Its [current PR annotation](https://github.com/egorribun/university_ecosystem/pull/1343#discussion_r4402201538)
+points to the hard-coded key in the Rust test-only
+`event_chain_hash_case_matches_python_fallback`, introduced in b09532bd.
+This is a synthetic test fixture, not a confirmed production secret; the gate
+remains blocking. Runtime-generated fixture hygiene needs review and fresh
+scanner/test evidence, not a suppression or a relabelled green scan.
+
+The reviewed continuation included with this checkpoint is
+[1f1178aa](https://github.com/egorribun/university_ecosystem/commit/1f1178aa3016f109401c1c0d5810b0fba2431d18)
+(reset-spec fail-closed deadline/cleanup contracts and the hosted baseline
+metadata) followed by
+[7669bc97](https://github.com/egorribun/university_ecosystem/commit/7669bc97f67d7f08349ccc03049e64d64805a535)
+(tests-first bounded probe and MapLibre inventory boundaries, the AUD-447 legacy
+DLQ/replay regression, deterministic reminder fixtures and exact CI selection).
+The existing 210 consumer selectors remain in order; five focused selectors
+are appended, with the same 10-minute job limit and all previous gates intact.
+The static population estimate is 3048 cases, not an executed receipt.
+
+Expected missing-implementation RED for the probe/MapLibre scaffold and expected
+AUD-447 legacy-payload RED must be distinguished from accidental regressions.
+These tests do not activate the 286 KiB exception, Squawk dispositions, a probe
+transport or a deployment. The new branch head requires its own hosted CI;
+none of source 15eaaa's green jobs are inherited.
+
+Remaining ordered work:
+1. Verify this publication's exact SHA, confirm expected semantic RED rather
+   than harness failures, then implement the smallest reviewed fixes. Keep all
+   required final-source checks and continue them to terminal.
+2. Reproduce AUD-447 legacy failure-to-DLQ using a generated marker and retain
+   replayability; correct AUD-454's cache accessor fixture. Do not close either
+   from source-only review. Obtain the finite AUD-445 cache/outbox cohort.
+3. Continue owned probe and MapLibre inventory after their actual RED receipts,
+   preserving network ownership, output bounds, existing limits and budgets.
+4. Prepare the exact finite greenfield Squawk validator and negative tests.
+   Known warning risks remain real; no populated migration execution, gate
+   activation, atomicity rewrite or deploy is authorized by preparation.
+5. Continue the master audit plan against all remaining 131 findings, including
+   infrastructure proof requirements; do not infer deployment acceptance from
+   unit tests or owned fixtures.
+
+The [exhaustive post-pause review](../../audits/AUDIT-2026-10-post-pause-review.md)
+is published; earlier sections describing it as pending are historical.
+Work remains strictly on `egorribun` through GitHub plugin, with one writer,
+independent read-only reviews, fresh leases and no force push/merge/deploy.
+
+## Historical post-pause source-bound acceptance — 2026-10-28 UTC
 
 **Current accepted lower bound: 377/512 (73.6%); 135 findings remain unaccepted.**
 The [26 scoped acceptances](../../audits/AUDIT-2026-10.md#post-pause-named-evidence-acceptance-2026-10-28)
