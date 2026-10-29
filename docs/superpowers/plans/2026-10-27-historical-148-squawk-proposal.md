@@ -51,6 +51,42 @@ The fixture describes the 15eaaa source, not a new source's successful scan.
 Changed migration/configuration/helper/fixture/scanner or consumer identities
 require explicit review and a new source-bound capture.
 
+## Renderer correction and exact-source recapture (2026-10-29)
+
+The [35aeedeb Alembic job](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562429013)
+recaptured source `35aeedeb62d5036b2280d60067477d2c74c58ff7`, tested merge
+`e3fc69103be30ea390634ed4744110ede05c890d`, with the same source tree
+`529e2042d15551dd42f3e9728654012e6dd63e33`.
+The [new fixture](../../../tests/fixtures/historical148-squawk-capture-35aeedeb.json)
+retains both actual captures, not a simulated or relabelled old run. The old
+15eaaa fixture remains an unchanged historical artifact.
+
+The ordinary SQL is still 17,031 bytes and the expanded SQL 18,373 bytes;
+both complete byte strings are identical to the old capture. All 13 ordinary
+and 24 expanded warning objects are unchanged except their actual temporary
+file paths. Both raw scanner exits remain 1, with empty reporter stderr.
+The reviewed recapture updates source/run/job identities, the two changed
+source pins, and observed temporary file identities. It does not drop, merge
+or reinterpret any warning, change SQL or extend the expiry.
+
+The same Alembic job passes all 41 renderer lifecycle/transport controls, zero
+errors or skips. The [owned PostgreSQL job](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562429129)
+passes all seven new PostgreSQL 17.11 controls: five catalog contaminations,
+root renderer cleanup, and preservation of an existing database after a CREATE
+collision. These are bounded owned-service receipts, not arbitrary-server
+pristineness, hostile-administrator race safety, all-migration coverage or
+Stage B admission. The renderer checks five catalog surfaces; system namespaces
+remain trusted under the owned, quiescent TEMPLATE0 topology.
+
+The pure matcher stays inactive. Its fingerprints and capture selector are
+rebound to this reviewed historical evidence, while all 405 existing secret
+dispositions remain unchanged. The earlier 58-identity authorization does not
+authorize new paths, digests or whole-source bindings. Actual scanner inventory,
+independent public-integrity triage, any necessary exact owner decision and
+source-binding tests must precede a new disposition update. Expected failures
+at this boundary are not waived or labelled scanner GREEN. This recapture
+closes no audit item.
+
 ## Exact observed inventory
 
 There are **37 occurrences**, **24 rule/statement groups**, and **20 statements**.
@@ -215,7 +251,7 @@ warning array: parse it strictly, sort complete rows by their canonical JSON
 strings without deduplicating, and serialize that array back to its JSON string.
 SQL strings are not normalized. The two source constants are derived from the
 committed [policy](../../../quality/historical148-squawk-policy.json) and
-[capture](../../../tests/fixtures/historical148-squawk-capture-15eaaa.json), never
+[capture](../../../tests/fixtures/historical148-squawk-capture-35aeedeb.json), never
 from caller-supplied approval data. The
 [contract tests](../../../tests/test_historical148_squawk_policy.py) and required
 checks need exact published-source receipts; this source description is not a
@@ -262,7 +298,7 @@ of raw failure, all 78 required context/app pairs, blocking CodeQL, hooks and fl
 horizon does not merge the two policies. Expiration fails closed; no automatic
 extension or expansion is authorized.
 
-## Stage B prerequisites — not implemented or activated
+## Stage B prerequisites — admission not implemented or activated
 
 A later exact consumer diff still requires review. Before any narrow risk
 disposition can affect a CI result, it must establish:
@@ -270,8 +306,10 @@ disposition can affect a CI result, it must establish:
 1. A separately owned fresh database created from `template0`, with verified
    empty user-object/data catalogs before preparation and checked expected state
    afterwards. Self-declared JSON is not admission evidence.
-2. A new SQL/JSON capture after changing the renderer, while keeping the
-   historical migration and transaction boundaries immutable.
+2. A source-bound SQL/JSON capture after every relevant renderer or input
+   change, while keeping the historical migration and transaction boundaries
+   immutable. The 35aeedeb recapture above supplies the current historical
+   receipt; later changes require another capture.
 3. Graph-aware handling of merge revisions and strict coverage of all 141 other
    migration files in the current 142-file inventory. The current
    `read_alembic_revision.py` supports only a string or `None` parent and does
@@ -283,8 +321,12 @@ disposition can affect a CI result, it must establish:
    failures; and failed admission must block. A later successful step cannot
    erase an earlier raw failure.
 
-The current renderer inherits `template1`; that is not an empty-database proof.
-This Stage A adds none of these missing operational receipts and changes no
+The historical 15eaaa renderer inherited `template1`. The current renderer uses
+TEMPLATE0 and has the bounded 41 lifecycle and seven owned-PostgreSQL receipts
+above. The new capture resolves the recapture prerequisite for these unchanged
+historical SQL inputs only. Expected post-migration state, graph-aware coverage
+of all other revisions, the final admission adapter and real shell failure
+propagation remain separate prerequisites. This Stage A recapture changes no
 migration workflow logic, scanner exit handling, migration, active policy or accepted audit ID.
 Raw migration gates remain blocking. No populated-database execution, merge,
 deployment, atomicity rewrite, new exclusion or coverage reduction is authorized.

@@ -1112,3 +1112,21 @@ These are public source-integrity values, not credentials. This disposition
 neither activates the prepared Squawk matcher nor accepts migration risks,
 changes migration bytes or authorizes execution or deployment. Approval and
 source-bound tests do not substitute for final-source scans or hosted checks.
+
+## Historical-148 recapture without a new disposition (2026-10-29)
+
+The [35aeedeb recapture](../superpowers/plans/2026-10-27-historical-148-squawk-proposal.md#renderer-correction-and-exact-source-recapture-2026-10-29)
+binds the inactive recognizer to actual SQL/JSON after the reviewed renderer
+correction. Both SQL inputs and all 37 warning objects, apart from actual
+temporary paths, remain unchanged. The migration, atomicity, raw exits and
+prepared-inactive status are preserved. The old capture remains historical
+evidence; no scanner-success or execution permission is inferred.
+
+This is evidence maintenance, not an additional owner-approved secret
+disposition. The approved union stays 405; the 319-entry baseline, 26 Gitleaks
+fingerprints, current expiry caps and all other gates remain unchanged.
+The prior 58-identity approval cannot be transferred to new paths, fingerprints
+or whole-source bindings. Obtain the actual new scanner inventory and review
+each public integrity literal; any new finite approval and its source-bound
+negative tests are a separate change. Until then, unmatched identities and
+source-binding mismatches remain blocking. No audit acceptance increases.
