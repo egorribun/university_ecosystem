@@ -278,24 +278,27 @@ test("HTML root classification does not execute inline JavaScript", async () => 
 
 test("AST edges exclude strings and comments while computed imports stay incomplete", async () => {
   const source = [
-    'const text = "import(\\\"https://example.invalid/' + privateCanary + '\\\")";',
+    'const text = "import(\\"https://example.invalid/' + privateCanary + '\\")";',
     '// import("/assets/fake-A.js")',
     'import("/assets/index-A.js");',
-    'import(globalThis.hiddenPath);',
+    "import(globalThis.hiddenPath);",
   ].join("\n")
-  await withFixture(async (item) => {
-    const value = receipt(inspect(item))
-    for (const document of value.documents) {
-      assert.equal(document.complete, false)
-      assert.equal(document.issues.computedImports, 1)
-      assert.equal(document.issues.foreignReferences, 0)
-      assert.deepEqual(document.roots[0].imports, [
-        { kind: "dynamic", assetPath: "assets/index-A.js" },
-      ])
-      assert.equal(document.roots[0].computedImports, 1)
-      assert.equal(document.roots[0].parseErrors, 0)
-    }
-  }, '<script type="module">' + source + "</script>")
+  await withFixture(
+    async (item) => {
+      const value = receipt(inspect(item))
+      for (const document of value.documents) {
+        assert.equal(document.complete, false)
+        assert.equal(document.issues.computedImports, 1)
+        assert.equal(document.issues.foreignReferences, 0)
+        assert.deepEqual(document.roots[0].imports, [
+          { kind: "dynamic", assetPath: "assets/index-A.js" },
+        ])
+        assert.equal(document.roots[0].computedImports, 1)
+        assert.equal(document.roots[0].parseErrors, 0)
+      }
+    },
+    '<script type="module">' + source + "</script>"
+  )
 })
 
 const incompleteCases = [
@@ -337,7 +340,7 @@ const incompleteCases = [
     '<script type="private/' + privateCanary + '">hidden</script>',
     "unknownScriptTypes",
   ],
-  ["invalid-js", '<script type="module">const = ' + privateCanary + '</script>', "parseErrors"],
+  ["invalid-js", '<script type="module">const = ' + privateCanary + "</script>", "parseErrors"],
 ]
 for (const [name, extra, issue] of incompleteCases) {
   test("unknown final HTML form stays bounded and incomplete: " + name, async () => {
