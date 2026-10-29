@@ -916,3 +916,95 @@ async def test_aud447_unsafe_marked_parking_uses_existing_nak_without_plaintext(
     assert failure_recorded, "safe parking failure must remain observable"
     assert logs_safe, "parking failure logs contained the synthetic marker"
     assert no_traceback, "parking rejection must not report raw-payload frames"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("call_style", ["positional", "keyword"])
+@pytest.mark.parametrize(
+    "flag_present", [False, True], ids=["absent", "explicit-false"]
+)
+async def test_aud447_protected_replay_reopens_original_legacy_job_without_hash_drift(
+    monkeypatch: pytest.MonkeyPatch, call_style: str, flag_present: bool
+) -> None:
+    from app.workers.dead_letter_queue import compute_job_hash
+
+    marker = "synthetic-" + uuid.uuid4().hex
+    link = f"https://portal.example.test/reset-password#token={marker}"
+    secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
+    name = "app.tasks.email.send_auth_email"
+    payload: dict[str, Any]
+    if call_style == "positional":
+        payload = {"args": ["student@example.test", link], "kwargs": {}}
+    else:
+        payload = {
+            "args": [],
+            "kwargs": {"to_email": "student@example.test", "link": link},
+        }
+    if flag_present:
+        payload["kwargs"]["encrypted_link"] = False
+    original = json.dumps(payload, sort_keys=True)
+    expected_hash = compute_job_hash(name, payload)
+    legacy = nats_module._NatsTaskPayload.model_validate(
+        {"id": str(uuid.uuid4()), "name": name, **payload}
+    )
+    session = _HashLookupSession()
+    monkeypatch.setattr(database_module, "async_session", lambda: session)
+    broker = nats_module.NatsTaskBroker()
+    js = AsyncMock()
+    monkeypatch.setattr(broker, "_js", js)
+
+    assert await broker._dead_letter(legacy, "initial delivery failed", 3)
+    assert len(session.jobs) == 1
+    original_job = session.jobs[0]
+    original_hash_preserved = original_job.job_hash == expected_hash
+    assert original_hash_preserved, "legacy parking changed the original logical hash"
+    stored_payloads = [original_job.payload]
+    original_job.status = "completed"
+    original_job.retry_count = 2
+
+    # Replay the real stored representation, not a freshly prepared raw task.
+    await broker.replay_dead_letter(name, json.loads(original_job.payload))
+    assert js.publish.await_count == 1
+    wire = js.publish.await_args.args[1]
+    replay = nats_module._NatsTaskPayload.model_validate(json.loads(wire))
+    assert await broker._dead_letter(replay, "replayed delivery failed", 4)
+
+    same_job = len(session.jobs) == 1 and session.jobs[0] is original_job
+    assert same_job, "protected replay created a second logical DLQ record"
+    same_hash = original_job.job_hash == expected_hash
+    assert same_hash, "protected replay changed the original logical hash"
+    assert original_job.status == "pending"
+    assert original_job.retry_count == 0
+    stored_payloads.append(original_job.payload)
+
+    # An active duplicate must not reset its retry budget or overwrite the row.
+    original_job.retry_count = 2
+    pending_payload = original_job.payload
+    pending_error = original_job.error_message
+    pending_retry_at = original_job.next_retry_at
+    assert await broker._dead_letter(replay, "another replay failure", 5)
+    still_same_job = len(session.jobs) == 1 and session.jobs[0] is original_job
+    assert still_same_job, "an active protected duplicate created another DLQ record"
+    pending_unchanged = (
+        original_job.job_hash == expected_hash
+        and original_job.status == "pending"
+        and original_job.retry_count == 2
+        and original_job.payload == pending_payload
+        and original_job.error_message == pending_error
+        and original_job.next_retry_at == pending_retry_at
+    )
+    assert pending_unchanged, "an active duplicate rewrote or reset the pending job"
+
+    # Keep all sensitive comparisons boolean-only in pytest failure output.
+    legacy_after = json.dumps(
+        {"args": legacy.args, "kwargs": legacy.kwargs}, sort_keys=True
+    )
+    source_unchanged = (
+        json.dumps(payload, sort_keys=True) == original and legacy_after == original
+    )
+    wire_safe = marker not in wire.decode()
+    stored_payloads_safe = all(marker not in value for value in stored_payloads)
+    assert source_unchanged, "parking or replay mutated the original legacy input"
+    assert wire_safe, "protected replay published the synthetic marker"
+    assert stored_payloads_safe, "initial or reopened storage contained the marker"

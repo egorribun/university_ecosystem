@@ -489,7 +489,8 @@ def _request_bytes(item: Request) -> bytes:
         name, value = pair
         if (
             type(name) is not str
-            or name not in {
+            or name
+            not in {
                 "cookie",
                 "x-csrf-token",
                 "x-forwarded-for",
@@ -680,9 +681,11 @@ def _request(request: Request, timeout: float) -> Response:
         connection.bind((request.source_ip, 0))
         connection.settimeout(_remaining(deadline))
         connection.connect((request.target_ip, request.port))
-        if (
-            connection.getsockname()[0] != request.source_ip
-            or connection.getpeername() != (request.target_ip, request.port)
+        if connection.getsockname()[
+            0
+        ] != request.source_ip or connection.getpeername() != (
+            request.target_ip,
+            request.port,
         ):
             raise ProbeError("socket attribution failed")
         connection.settimeout(_remaining(deadline))

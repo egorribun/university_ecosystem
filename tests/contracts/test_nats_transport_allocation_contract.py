@@ -179,7 +179,7 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
 # Preserve all 136 original selectors, including intentional file/node overlaps.
-# Eighty-four explicit selections follow that unchanged prefix: existing audit
+# Ninety-two explicit selections follow that unchanged prefix: existing audit
 # regressions, Gitleaks diagnostics, WebSocket/migration safety, logging/email,
 # inventory, repaired orchestrators, typed DLQ, client-IP and owned registration
 # diagnostic, configuration-warning, exact Knip, outbox tenant and historical
@@ -406,6 +406,14 @@ _CONSUMER_SELECTORS = (
     "tests/test_aud447_auth_email_delivery.py::test_aud447_sealed_round_trip_preserves_bytes_and_native_expiry",
     "tests/test_aud447_auth_email_delivery.py::test_aud447_marked_round_trip_never_falls_back_to_legacy_delivery",
     "tests/test_aud447_auth_email_delivery.py::test_aud447_unsafe_marked_parking_uses_existing_nak_without_plaintext",
+    "tests/test_historical148_squawk_policy.py",
+    "tests/test_aud447_auth_email_delivery.py::test_aud447_protected_replay_reopens_original_legacy_job_without_hash_drift",
+    "tests/test_aud445_chat_remove_cache_failure.py::test_committed_removal_survives_cache_outage_and_owner_retry[chat]",
+    "tests/test_aud445_chat_remove_cache_failure.py::test_committed_removal_survives_cache_outage_and_owner_retry[presence]",
+    "tests/test_aud445_chat_remove_cache_failure.py::test_failed_commit_rolls_back_membership_and_all_events",
+    "tests/test_aud445_chat_remove_cache_failure.py::test_redis_cleanup_event_repairs_cache_without_client_retry",
+    "tests/test_aud445_cache_outbox.py::test_cache_outbox_failure_is_retried_without_blocking_hub",
+    "tests/test_aud445_cache_outbox.py::test_crash_before_outbox_ack_retries_same_cache_job",
 )
 _DISPATCH_PROBE = """\
 import json

@@ -593,3 +593,78 @@ test("inventory diagnostic validates real receipts and rejects unsafe data", asy
     })
   }
 })
+
+test("Rolldown lengths use code units and unavailable original stays null", async () => {
+  const fixture = await makeDiagnosticFixture()
+  try {
+    // Rolldown 1.2.12 transformToRenderedModule exposes these three getters,
+    // not Rollup's originalLength. renderedLength counts UTF-16 code units.
+    const privateSource = 'export const label = "PRIVATE_MAP_INVENTORY_CANARY_é😀"\n'
+    assert.notEqual(privateSource.length, Buffer.byteLength(privateSource))
+    let sourceReads = 0
+    const module = {
+      get code() {
+        sourceReads += 1
+        return privateSource
+      },
+      get renderedLength() {
+        return privateSource.length
+      },
+      get renderedExports() {
+        return ["label"]
+      },
+    }
+    assert.equal(Object.hasOwn(module, "originalLength"), false)
+    const chunk = fixture.bundle["assets/vendor-map-A.js"]
+    const [moduleId] = Object.keys(chunk.modules)
+    chunk.modules = { [moduleId]: module }
+    await rm(fixture.reportPath)
+    const producer = (await loadProducer())({ outputPath: fixture.reportPath, isLhci: false })
+    producer.configResolved(fixture.config)
+    await producer.writeBundle.call(
+      { environment: fixture.environment },
+      { dir: fixture.outputDir, format: "es" },
+      fixture.bundle
+    )
+
+    const raw = await readFile(fixture.reportPath, "utf8")
+    const report = JSON.parse(raw)
+    const candidate = report.mapLibreChunks[0]
+    const record = candidate.modules[0]
+    // Missing metadata is not zero and must survive JSON serialization.
+    assert.equal(record.originalCodeUnits, null)
+    assert.equal(record.renderedCodeUnits, privateSource.length)
+    assert.equal(Object.hasOwn(record, "renderedBytes"), false)
+    assert.equal(Object.hasOwn(record, "originalBytes"), false)
+    assert.equal(report.schemaVersion, 2)
+    assert.equal(sourceReads, 0)
+    assert.equal(raw.includes(privateCanary), false)
+    const bytes = Buffer.from(fixture.contents["assets/vendor-map-A.js"])
+    const compressed = gzipSync(bytes, { level: 9 })
+    assert.equal(candidate.rawBytes, bytes.length)
+    assert.equal(candidate.gzipBytes, compressed.length)
+    assert.equal(candidate.sha256, sha256(bytes))
+    assert.equal(candidate.gzipSha256, sha256(compressed))
+
+    const result = runDiagnostic(await diagnosticProgram(), fixture)
+    assert.equal(result.error, undefined)
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stderr, "")
+    assert.ok(result.stdout.startsWith(inventoryPrefix))
+    assert.ok(Buffer.byteLength(result.stdout) <= 32_768)
+    assert.equal(result.stdout.trimEnd().split("\n").length, 1)
+    const diagnostic = JSON.parse(result.stdout.slice(inventoryPrefix.length))
+    assert.equal(diagnostic.kind, "maplibre-build-inventory-not-budget-proof")
+    const sanitized = diagnostic.mapLibreChunks[0].modules[0]
+    assert.equal(sanitized.originalCodeUnits, null)
+    assert.equal(sanitized.renderedCodeUnits, privateSource.length)
+    assert.equal(Object.hasOwn(sanitized, "renderedBytes"), false)
+    assert.equal(Object.hasOwn(sanitized, "originalBytes"), false)
+    assert.equal(sanitized.packageRoot, undefined)
+    assert.equal(result.stdout.includes(fixture.root), false)
+    assert.equal(result.stdout.includes(privateCanary), false)
+    assert.doesNotMatch(result.stdout, /code-private/u)
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})

@@ -1,15 +1,22 @@
-# Historical 148 Squawk proposal — 2026-10-27
+# Historical 148 Squawk preparation — 2026-10-29
 
-**PROPOSED — NOT APPROVED — NOT ACTIVE.**
+**PREPARATION AUTHORIZED — MATCHER INACTIVE — RAW GATES UNCHANGED.**
 
-## Proposed decision and scope
+## Authorized preparation and restricted scope
 
 Preserve historical revision `148642dd1207` byte-for-byte and retain its atomic
-parent/child key cutover and FK restoration. Treat this path as a controlled
-offline/maintenance operation, **not a zero-downtime migration**.
+parent/child key cutover and FK restoration. The owner authorized preparation of
+a finite CI rule and tests on 2026-10-28, limited to creating a **new empty MVP
+database** through 2026-11-13 at 00:00 UTC. This is not permission to run the
+historical migration against a populated database or to deploy.
 
-A separate finite, source-bound policy could account for the exact historical
-observations below. These are real operational risks, **not false positives**.
+This Stage A package is deliberately inactive. Historical operations still carry
+blocking-lock, table-rewrite and destructive-column risks; matching their exact
+diagnostics does not eliminate those risks or prove a zero-downtime migration.
+
+A separately reviewed, source-bound consumer could eventually account for the
+exact historical observations below, only after the missing admission and
+all-migration evidence described here exists. These are real operational risks, **not false positives**.
 This proposal activates no policy and authorizes no merge, deployment, shutdown,
 external-database execution, history rewrite, scanner exclusion or new finding.
 
@@ -17,30 +24,32 @@ Already-authorized additive migration development remains separate. A successor
 cannot change earlier historical SQL. Later revisions already convert groups/users
 to UUID; moving the old INTEGER conversion to a new head revision would be wrong.
 
-## Evidence and missing prerequisite
+## Complete historical capture and its limits
 
-The inventory comes from
-[the historical Alembic job](https://github.com/egorribun/university_ecosystem/actions/runs/40504891903/job/122193711183):
-PR source e671440, actual tested merge ceaf5b5, PostgreSQL 17.11 and checksum-verified
-Squawk 2.67.0. Ninety focused tests passed; both raw lint streams failed.
+The [15eaaa Alembic job](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123165735779)
+captured both complete SQL inputs and the Squawk JSON reporter. PR source
+`15eaaa5194642a4f3e52b5207f57235df968cb8e` was tested as merge
+`37b82de67516752bb8c11462759b381c533db7fd`. The independent fixture
+[`historical148-squawk-capture-15eaaa.json`](../../../tests/fixtures/historical148-squawk-capture-15eaaa.json)
+retains the ordinary capture, expanded diagnostic metadata/SQL, both raw JSON
+streams, their exit codes and provenance. No credentials or database row values
+are introduced by this fixture.
 
-Migration, renderer, trace helper, populated fixture and Squawk configuration blobs
-were identical at source 88509ed. This is source-equivalent historical migration
-evidence, not fresh hosted validation of a later full source. Exact scanner and
-trace digests are retained in the linked job, not inferred from version labels.
+The [114df35 Alembic job](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123191731137)
+repeated exactly the same ordinary SQL (17,031 bytes) and expanded SQL (18,373
+bytes), with 13 and 24 warnings respectively. Both raw exits were 1 and both
+JSON-reporter stderr streams were empty. SQL digests, source pins, full warnings,
+locations and the seven existing ordered `--exclude` arguments are recorded
+in [the inactive policy](../../../quality/historical148-squawk-policy.json).
+The rule does not introduce an exclusion; the existing arguments are not
+misrepresented as an exclusion-free scan.
 
-Immutable reviewed sources:
-
-- [Migration](https://github.com/egorribun/university_ecosystem/blob/88509ed/alembic/versions/148642dd1207_fix_missing_tables.py).
-- [Ordinary renderer](https://github.com/egorribun/university_ecosystem/blob/88509ed/scripts/quality/render_live_alembic_sql.py).
-- [Trace helper](https://github.com/egorribun/university_ecosystem/blob/88509ed/tests/helpers/migration_148642dd1207_trace.py).
-- [Populated fixture](https://github.com/egorribun/university_ecosystem/blob/88509ed/tests/integration/test_migration_148642dd1207.py).
-- [Scanner configuration](https://github.com/egorribun/university_ecosystem/blob/88509ed/.squawk.toml).
-
-**Before activation:** obtain the complete ordinary SQL capture and source-bound
-digest. The historical log exposes ordinary diagnostic snippets, not a complete
-ordinary capture manifest. Do not invent that digest or substitute the expanded
-SQL digest. Short displayed Git identities are not sufficient future validator pins.
+The old missing-ordinary-capture prerequisite is resolved for this historical
+inventory only. Neither captured run proves that `template1` is empty, that an
+arbitrary target is owned, or that all other revisions have strict lint receipts.
+The fixture describes the 15eaaa source, not a new source's successful scan.
+Changed migration/configuration/helper/fixture/scanner or consumer identities
+require explicit review and a new source-bound capture.
 
 ## Exact observed inventory
 
@@ -176,11 +185,20 @@ If downtime is unacceptable, a separate expand/backfill/dual-write/validate/cuto
 contract path needs compatibility and forward-recovery proofs. It is substantially
 more complex and still does not eliminate the existing historical lint input.
 
-## Proposed narrow validator — not implemented
+## Stage A: inactive diagnostic matcher and tests-first scaffold
 
-After approval of an exact diff, use one historical148-specific validator and
-inventory, not a general exception framework. Keep this separate from finite131
-coverage, secret dispositions and unsupported-downgrade policy.
+This package prepares one historical148-specific matcher and inventory, not a
+general exception framework. Keep it separate from finite131 coverage, secret
+dispositions and unsupported-downgrade policy. The importable scaffold rejects
+every input until the hosted exact positive-control test has produced a semantic
+assertion failure. No CLI, subprocess, database, file reader or CI consumer is
+wired to it.
+
+Its only future positive return is `matched-diagnostic-inventory`. That means
+neither scanner success nor migration permission. The implementation contract
+requires two bounded byte strings and the real UTC clock internally; there is no
+caller clock or expiry override. Tests can monkeypatch the module clock to exercise the
+boundary. Policy status remains `prepared-inactive`, never an active waiver.
 
 The eventual contract must bind full migration/config/helper/fixture pins, scanner
 version and binary digest, relevant consumer arguments, both complete SQL digests,
@@ -195,7 +213,9 @@ status separately from any policy verdict.
 
 Required fail-closed behavior:
 
-- Reject missing, symlink, oversized, malformed, truncated or invalid-UTF-8 inputs;
+- Future file adapters must reject missing/symlink inputs; the Stage A pure
+  byte interface does not authenticate file ownership or freshness.
+- Reject oversized, malformed, truncated or invalid-UTF-8 inputs;
   wrong source/provenance/path/span and unsupported scanner exits.
 - Preserve real ordinary execution, five bounded instrumentation sites,
   uninstrumented-control equality and successful transaction evidence.
@@ -205,9 +225,12 @@ Required fail-closed behavior:
   semicolon; do not collapse whitespace, lowercase, remove schema or unquote names.
 - Compare each scenario's exact multiset independently. Extra, missing, duplicate,
   changed or substituted observations fail; fewer findings also require review.
-- Reject missing approval, draft status and expired or ambiguous UTC expiry.
+- Keep preparation approval distinct from activation. The diagnostic matcher
+  accepts only the exact prepared-inactive policy; a future gate must reject
+  inactive policy and cannot infer activation from a successful match.
+- Reject changed owner/scope/decision fields and expired or ambiguous UTC expiry.
 - Keep every migration in the lint loop. No `continue-on-error`, `|| true`,
-  `--exclude`, changed diff base or conditional bypass.
+  new `--exclude`, changed diff base or conditional bypass.
 - Keep raw Squawk exit 1 visible even if an explicitly approved policy verdict later
   accepts the exact historical risk. Never label raw failure as scanner success.
 
@@ -217,22 +240,36 @@ forged manifest/path/span; malformed output, crash and timeout; absent approval 
 expiry boundaries; trace/control mismatch; unrelated migration warnings; preservation
 of raw failure, all 78 required context/app pairs, blocking CodeQL, hooks and floors.
 
-**Proposed, not approved expiry:** 2026-11-13 at 00:00 UTC. Sharing the finite131
-review horizon grants no Squawk permission. Expiration fails closed; no automatic
+**Preparation horizon:** 2026-11-13 at 00:00 UTC. Sharing the finite131 review
+horizon does not merge the two policies. Expiration fails closed; no automatic
 extension or expansion is authorized.
 
-## Owner decision and remaining boundaries
+## Stage B prerequisites — not implemented or activated
 
-Complete the ordinary capture and present the exact inventory/validator/tests/
-consumer diff before requesting a narrow owner decision:
+A later exact consumer diff still requires review. Before any narrow risk
+disposition can affect a CI result, it must establish:
 
-> Разрешить только конечную source-bound обработку перечисленных historical148
-> findings для документированного offline/maintenance-пути; сохранить неизменную
-> миграцию, raw Squawk evidence и блокировку новых/изменённых результатов.
-> Не разрешать deployment, merge, глобальные exclusions или изменение rollback
-> boundaries.
+1. A separately owned fresh database created from `template0`, with verified
+   empty user-object/data catalogs before preparation and checked expected state
+   afterwards. Self-declared JSON is not admission evidence.
+2. A new SQL/JSON capture after changing the renderer, while keeping the
+   historical migration and transaction boundaries immutable.
+3. Graph-aware handling of merge revisions and strict coverage of all 141 other
+   migration files in the current 142-file inventory. The current
+   `read_alembic_revision.py` supports only a string or `None` parent and does
+   not yet support merge-parent tuples.
+4. Source-bound preservation of ordinary execution, all five diagnostic trace
+   sites and the successful uninstrumented-control comparison.
+5. Real shell failure-propagation tests: unexpected, changed, missing or
+   duplicate warnings; scanner errors; expired policy; unrelated migration
+   failures; and failed admission must block. A later successful step cannot
+   erase an earlier raw failure.
 
-This document records no approval. Raw migration gates remain unchanged and red.
+The current renderer inherits `template1`; that is not an empty-database proof.
+This Stage A adds none of these missing operational receipts and changes no
+workflow, scanner exit handling, migration, active policy or accepted audit ID.
+Raw migration gates remain blocking. No populated-database execution, merge,
+deployment, atomicity rewrite, new exclusion or coverage reduction is authorized.
 
 AUD-164/AUD-167 still require actual trusted-peer, two-client and spoof evidence;
 AUD-169 requires actual CNI positive/negative reachability. Render/unit contracts and

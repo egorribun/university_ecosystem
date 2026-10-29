@@ -1051,12 +1051,30 @@ The owner authorized exactly one inline `# noqa: S603` on the `subprocess.run` c
 
 These decisions preserve the 319-entry detect-secrets baseline, the 26 Gitleaks fingerprints, all 78 required CI context/app pairs, blocking CodeQL, hooks and coverage floors. Policy records and owner approvals do not replace final-source tests, scans or required hosted checks.
 
-## Proposed, not approved: historical-148 offline migration scope
+## Authorized inactive historical-148 preparation (2026-10-28)
 
-The [historical148 Squawk proposal](../superpowers/plans/2026-10-27-historical-148-squawk-proposal.md)
-records exact historical observations, maintenance risks and a proposed finite
-source-bound validator contract. It is **not approved or active**. Complete
-ordinary capture and the exact validator/tests/consumer diff require review before
-any narrow owner decision. Historical migration bytes, raw gates, coverage policy
-and required checks remain unchanged. No migration execution, deployment, merge
-or scanner disposition is authorized by this proposal.
+The owner authorized preparation of a narrow CI rule with tests for the exact
+37 historical Squawk observations, solely for a new empty MVP database and
+through 2026-11-13 at 00:00 UTC. The historical migration, atomicity and raw
+scanner evidence must remain unchanged. These are accepted-risk candidates, not
+false warnings or elimination of blocking-lock/rewrite/drop risks. Populated
+database execution, deployment and an unrestricted scanner waiver were not
+authorized.
+
+The [historical148 preparation](../superpowers/plans/2026-10-27-historical-148-squawk-proposal.md)
+now records complete ordinary and expanded SQL plus JSON evidence. Stage A
+contains an exact `prepared-inactive` inventory, an importable rejecting matcher
+scaffold and tests. Its only future diagnostic verdict is
+`matched-diagnostic-inventory`; it has no CLI or CI consumer and cannot turn a
+raw Squawk failure into success. Preparation is not activation.
+
+Before a separate reviewed activation diff, obtain actual owned-template0 and
+empty-catalog admission, recapture source-bound evidence after renderer changes,
+handle merge-parent metadata correctly and verify the other 141 migrations
+strictly. Neither a captured declaration nor the prepared matcher substitutes
+for those receipts. The contract requires fail-closed real UTC expiry with no
+caller override or automatic extension.
+
+This preparation changes no migration bytes, raw gates, existing scanner
+arguments, secret dispositions, coverage floors, required context/app pairs or
+blocking CodeQL. No audit finding closes from this package alone.
