@@ -1153,6 +1153,276 @@ jobs:
           }
           MAPLIBRE_INVENTORY
 
+      - name: Capture bounded final HTML inventory
+        id: capture-final-html-inventory
+        timeout-minutes: 1
+        env:
+          NODE_OPTIONS: "--max-old-space-size=512"
+          FINAL_HTML_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          FINAL_HTML_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'FINAL_HTML_INVENTORY'
+          import { execFileSync } from "node:child_process"
+          import { createHash } from "node:crypto"
+          import { constants } from "node:fs"
+          import { lstat, open, realpath, unlink } from "node:fs/promises"
+          import { createRequire } from "node:module"
+          import path from "node:path"
+          import { pathToFileURL } from "node:url"
+          import { getHeapStatistics } from "node:v8"
+
+          const SOURCE_LIMIT = 2 * 1024 * 1024
+          const REPORT_LIMIT = 65_536
+          const MAX_V8_HEAP_BYTES = 640 * 1024 * 1024
+          const sourcePaths = [
+            ".github/workflows/reusable-frontend-tests.yml",
+            "frontend/package.json",
+            "frontend/package-lock.json",
+            "frontend/vite.config.mts",
+            "frontend/scripts/final-html-root-inventory.mjs",
+            "frontend/scripts/build-orchestrated.mjs",
+            "frontend/scripts/post-build-shell.mjs",
+          ]
+          const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
+          const check = (condition) => {
+            if (!condition) throw new Error("invalid capture")
+          }
+          const commitId = (value) => typeof value === "string" && /^[a-f0-9]{40}$/u.test(value)
+          const within = (root, value) => value === root || value.startsWith(root + path.sep)
+
+          async function directory(value) {
+            check(typeof value === "string" && path.isAbsolute(value))
+            check(path.resolve(value) === value && (await realpath(value)) === value)
+            const info = await lstat(value)
+            check(info.isDirectory() && !info.isSymbolicLink())
+            return value
+          }
+
+          async function boundedFile(file, maximum = SOURCE_LIMIT) {
+            check((await realpath(path.dirname(file))) === path.dirname(file))
+            const handle = await open(
+              file,
+              constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK
+            )
+            try {
+              const before = await handle.stat({ bigint: true })
+              check(before.isFile() && before.size >= 0n && before.size <= BigInt(maximum))
+              const bytes = Buffer.alloc(maximum + 1)
+              let size = 0
+              while (size < bytes.length) {
+                const read = await handle.read(bytes, size, bytes.length - size, null)
+                if (read.bytesRead === 0) break
+                size += read.bytesRead
+              }
+              const after = await handle.stat({ bigint: true })
+              check(
+                size <= maximum &&
+                  before.size === BigInt(size) &&
+                  before.dev === after.dev &&
+                  before.ino === after.ino &&
+                  before.size === after.size &&
+                  before.mtimeNs === after.mtimeNs &&
+                  before.ctimeNs === after.ctimeNs
+              )
+              return bytes.subarray(0, size)
+            } finally {
+              await handle.close()
+            }
+          }
+
+          let ownedOutput
+          let ownedIdentity
+          try {
+            // This bounds V8 heap, not native allocations, external buffers or total RSS.
+            const heapLimit = getHeapStatistics().heap_size_limit
+            check(Number.isSafeInteger(heapLimit) && heapLimit > 0 && heapLimit <= MAX_V8_HEAP_BYTES)
+            check(
+              [constants.O_NOFOLLOW, constants.O_NONBLOCK].every(
+                (flag) => Number.isSafeInteger(flag) && flag > 0
+              )
+            )
+            const workspace = await directory(process.env.GITHUB_WORKSPACE)
+            const frontend = await directory(path.join(workspace, "frontend"))
+            check(path.resolve(process.cwd()) === frontend)
+            const dist = await directory(path.join(frontend, "dist"))
+            const client = await directory(path.join(dist, "client"))
+            const temporary = await directory(process.env.RUNNER_TEMP)
+            check(!within(dist, temporary))
+            check(!process.env.VITE_LHCI)
+            const {
+              GITHUB_SHA: githubSha,
+              GITHUB_RUN_ID: runId,
+              GITHUB_RUN_ATTEMPT: runAttempt,
+              GITHUB_EVENT_NAME: eventName,
+            } = process.env
+            check(commitId(githubSha))
+            check(typeof runId === "string" && /^[1-9][0-9]{0,19}$/u.test(runId))
+            check(typeof runAttempt === "string" && /^[1-9][0-9]{0,9}$/u.test(runAttempt))
+            check(eventName === "pull_request" || eventName === "push")
+            const prHeadSha = process.env.FINAL_HTML_PR_HEAD_SHA || null
+            const prBaseSha = process.env.FINAL_HTML_PR_BASE_SHA || null
+            check(
+              eventName === "pull_request"
+                ? commitId(prHeadSha) && commitId(prBaseSha)
+                : prHeadSha === null && prBaseSha === null
+            )
+
+            // These commands read only this checkout. Never inherit Git overrides or credentials.
+            const gitEnvironment = {
+              PATH: process.env.PATH || "",
+              HOME: workspace,
+              GIT_CONFIG_NOSYSTEM: "1",
+              GIT_CONFIG_GLOBAL: "/dev/null",
+              GIT_TERMINAL_PROMPT: "0",
+              GIT_OPTIONAL_LOCKS: "0",
+              GIT_NO_LAZY_FETCH: "1",
+              GIT_NO_REPLACE_OBJECTS: "1",
+              LC_ALL: "C",
+            }
+            const git = (args, maximum = 4096) =>
+              execFileSync("git", ["--no-pager", "-c", "core.fsmonitor=false", ...args], {
+                cwd: workspace,
+                env: gitEnvironment,
+                timeout: 5000,
+                maxBuffer: maximum,
+                stdio: ["ignore", "pipe", "pipe"],
+              })
+            const gitText = (args) => git(args).toString("utf8").trim()
+            check(gitText(["rev-parse", "--show-toplevel"]) === workspace)
+            const checkoutSha = gitText(["rev-parse", "--verify", "HEAD"])
+            check(checkoutSha === githubSha)
+            // Raw commit headers preserve parents even when checkout used fetch-depth: 1.
+            const rawCommit = git(["cat-file", "commit", checkoutSha], 65_536)
+            const headerEnd = rawCommit.indexOf("\n\n")
+            check(headerEnd > 0)
+            const headers = rawCommit.subarray(0, headerEnd).toString("utf8").split("\n")
+            const trees = headers.filter((line) => line.startsWith("tree "))
+            const parentShas = headers
+              .filter((line) => line.startsWith("parent "))
+              .map((line) => line.slice(7))
+            check(trees.length === 1 && parentShas.length <= 16 && parentShas.every(commitId))
+            check(new Set(parentShas).size === parentShas.length)
+            const treeSha = trees[0].slice(5)
+            check(commitId(treeSha) && gitText(["rev-parse", "HEAD^{tree}"]) === treeSha)
+            if (eventName === "pull_request") {
+              check(parentShas.length === 2 && parentShas[0] === prBaseSha && parentShas[1] === prHeadSha)
+            }
+
+            const checkedSourceFiles = {}
+            const sourceBytes = new Map()
+            for (const relative of sourcePaths) {
+              const bytes = await boundedFile(path.join(workspace, relative))
+              const committed = git(["cat-file", "blob", checkoutSha + ":" + relative], SOURCE_LIMIT)
+              check(bytes.equals(committed))
+              checkedSourceFiles[relative] = hash(bytes)
+              sourceBytes.set(relative, bytes)
+            }
+            const lock = JSON.parse(sourceBytes.get("frontend/package-lock.json").toString("utf8"))
+            const require = createRequire(path.join(frontend, "package.json"))
+            const toolchain = {}
+            for (const [name, label, version] of [
+              ["jsdom", "jsdom", "30.1.3"],
+              ["@babel/parser", "babelParser", "8.0.7"],
+            ]) {
+              const packageFile = require.resolve(name + "/package.json")
+              const installed = JSON.parse((await boundedFile(packageFile)).toString("utf8"))
+              check(installed.name === name && installed.version === version)
+              check(lock.packages?.["node_modules/" + name]?.version === version)
+              toolchain[label] = installed.version
+            }
+
+            // Verified source, not a sandbox: dependencies and runner ownership are external prerequisites.
+            const { inspectFinalHtml } = await import(
+              pathToFileURL(path.join(frontend, "scripts/final-html-root-inventory.mjs")).href
+            )
+            const inventory = await inspectFinalHtml(client)
+            check(
+              inventory !== null &&
+                inventory.schemaVersion === 1 &&
+                inventory.kind === "final-html-root-inventory-not-budget-proof" &&
+                Buffer.byteLength(JSON.stringify(inventory)) <= 32_767
+            )
+            check(gitText(["rev-parse", "--verify", "HEAD"]) === checkoutSha)
+            for (const relative of sourcePaths) {
+              check(hash(await boundedFile(path.join(workspace, relative))) === checkedSourceFiles[relative])
+            }
+
+            // Event/run values remain claimed context; this is not authenticated artifact admission.
+            const report = {
+              schemaVersion: 1,
+              kind: "final-html-capture-diagnostic-not-admission",
+              profile: "production-final-client",
+              checkout: { commitSha: checkoutSha, treeSha, parentShas },
+              eventContext: { eventName, githubSha, prHeadSha, prBaseSha },
+              relationship:
+                eventName === "pull_request" ? "merge-parents-match-event-context" : "checkout-only",
+              runContext: { runId, runAttempt },
+              checkedSourceFiles,
+              toolchain,
+              inventory,
+            }
+            const bytes = Buffer.from(JSON.stringify(report) + "\n")
+            const logged =
+              "FINAL_HTML_INVENTORY_CAPTURE " +
+              JSON.stringify({ report, reportSha256: hash(bytes) }) +
+              "\n"
+            check(bytes.length <= REPORT_LIMIT && Buffer.byteLength(logged) <= REPORT_LIMIT)
+            const output = path.join(
+              temporary,
+              "final-html-inventory-" + runId + "-" + runAttempt + "-" + checkoutSha + ".json"
+            )
+            const handle = await open(
+              output,
+              constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+              0o600
+            )
+            ownedOutput = output
+            try {
+              ownedIdentity = await handle.stat({ bigint: true })
+              check(ownedIdentity.isFile() && (ownedIdentity.mode & 0o777n) === 0o600n)
+              await handle.writeFile(bytes)
+            } finally {
+              await handle.close()
+            }
+            const verified = await boundedFile(output, REPORT_LIMIT)
+            check(verified.equals(bytes) && hash(verified) === hash(bytes))
+            const published = await lstat(output, { bigint: true })
+            check(
+              published.isFile() &&
+                published.dev === ownedIdentity.dev &&
+                published.ino === ownedIdentity.ino &&
+                published.size === BigInt(bytes.length) &&
+                (published.mode & 0o777n) === 0o600n
+            )
+            process.stdout.write(logged)
+          } catch {
+            // Remove only our own partial file, never a pre-existing output or substituted inode.
+            if (ownedOutput && ownedIdentity) {
+              try {
+                const current = await lstat(ownedOutput, { bigint: true })
+                if (current.dev === ownedIdentity.dev && current.ino === ownedIdentity.ino) {
+                  await unlink(ownedOutput)
+                }
+              } catch {
+                // The owned temporary directory is later removed by the runner.
+              }
+            }
+            process.stderr.write("FINAL_HTML_INVENTORY_CAPTURE_REJECTED\n")
+            process.exitCode = 1
+          }
+          FINAL_HTML_INVENTORY
+
+      - name: Upload final HTML inventory
+        id: upload-final-html-inventory
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-final-html-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ runner.temp }}/final-html-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload production bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

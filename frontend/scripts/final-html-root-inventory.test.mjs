@@ -645,6 +645,7 @@ async function captureFixture() {
         FINAL_HTML_PR_BASE_SHA: baseSha,
         RUNNER_TEMP: runnerTemp,
         VITE_LHCI: "",
+        NODE_OPTIONS: "--max-old-space-size=512",
         FINAL_HTML_PRIVATE_CANARY: privateCanary,
       },
     }
@@ -773,6 +774,7 @@ test("final HTML capture preserves production ordering and separate artifacts", 
   assert.ok(production > diagnostic && lighthouse > production)
   assert.match(step, /^\s+id: capture-final-html-inventory$/mu)
   assert.match(step, /^\s+timeout-minutes: 1$/mu)
+  assert.match(step, /^\s+NODE_OPTIONS: "--max-old-space-size=512"$/mu)
   assert.doesNotMatch(step + upload, /continue-on-error|permissions:|^\s+if:/mu)
   const expression = (value) => "$" + "{{ " + value + " }}"
   assert.ok(
@@ -917,6 +919,12 @@ test("capture wrapper binds owned source context and keeps failures closed", asy
         const target = path.join(item.root, "private-output")
         await writeFile(target, privateCanary)
         await symlink(target, item.reportPath)
+      },
+    ],
+    [
+      "oversized-heap",
+      (item) => {
+        item.env.NODE_OPTIONS = "--max-old-space-size=1024"
       },
     ],
   ]
