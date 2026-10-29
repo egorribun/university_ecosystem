@@ -142,6 +142,7 @@ function safePath(value) {
 }
 
 function receipt(value) {
+  value = expandNormalizedInventory(value)
   assert.notEqual(value, null, "valid final HTML must produce a diagnostic inventory")
   assert.deepEqual(Object.keys(value).sort(), [
     "documents",
@@ -849,7 +850,7 @@ async function capturedReport(program, item) {
   assert.deepEqual(report.checkedSourceFiles, item.checkedSourceFiles)
   assert.deepEqual(report.toolchain, { jsdom: "30.1.3", babelParser: "8.0.7" })
   const inventory = receipt(report.inventory)
-  assert.ok(Buffer.byteLength(JSON.stringify(inventory)) <= 32_767)
+  assert.ok(Buffer.byteLength(JSON.stringify(report.inventory)) <= 32_767)
   assert.equal(inventory.documentsMatch, item.html === item.indexHtml)
   for (const document of inventory.documents) {
     const html = document.fileName === "_shell.html" ? item.html : item.indexHtml

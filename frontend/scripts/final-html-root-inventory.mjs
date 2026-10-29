@@ -393,11 +393,27 @@ export async function inspectFinalHtml(clientDir, onRejected) {
       await inspectDocument("_shell.html", shell, assets),
       await inspectDocument("index.html", index, assets),
     ]
+    const scripts = []
+    const scriptIndices = new Map()
+    const normalizedDocuments = documents.map((document) => ({
+      ...document,
+      roots: document.roots.map(({ kind, ...script }) => {
+        const key = JSON.stringify(script)
+        let scriptIndex = scriptIndices.get(key)
+        if (scriptIndex === undefined) {
+          scriptIndex = scripts.length
+          scriptIndices.set(key, scriptIndex)
+          scripts.push(script)
+        }
+        return { kind, scriptIndex }
+      }),
+    }))
     const result = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       kind: "final-html-root-inventory-not-budget-proof",
       documentsMatch: shell.equals(index),
-      documents,
+      documents: normalizedDocuments,
+      scripts,
     }
     requireInput(Buffer.byteLength(JSON.stringify(result)) <= OUTPUT_LIMIT, "output-bytes")
     return result

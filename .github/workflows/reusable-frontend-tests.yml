@@ -1382,10 +1382,36 @@ jobs:
             check(
               inventory !== null &&
                 rejectionCalls === 0 &&
-                inventory.schemaVersion === 1 &&
+                inventory.schemaVersion === 2 &&
                 inventory.kind === "final-html-root-inventory-not-budget-proof" &&
                 Buffer.byteLength(JSON.stringify(inventory)) <= 32_767
             )
+            check(
+              Array.isArray(inventory.scripts) &&
+                inventory.scripts.length <= 256 &&
+                Array.isArray(inventory.documents) &&
+                inventory.documents.length === 2
+            )
+            check(
+              new Set(inventory.scripts.map((script) => JSON.stringify(script))).size ===
+                inventory.scripts.length
+            )
+            const referencedScripts = new Set()
+            for (const document of inventory.documents) {
+              check(Array.isArray(document.roots) && document.roots.length <= 128)
+              for (const root of document.roots) {
+                check(
+                  Number.isSafeInteger(root.scriptIndex) &&
+                    root.scriptIndex >= 0 &&
+                    root.scriptIndex < inventory.scripts.length
+                )
+                if (!referencedScripts.has(root.scriptIndex)) {
+                  check(root.scriptIndex === referencedScripts.size)
+                  referencedScripts.add(root.scriptIndex)
+                }
+              }
+            }
+            check(referencedScripts.size === inventory.scripts.length)
             captureStage = "recheck"
             check(gitText(["rev-parse", "--verify", "HEAD"]) === checkoutSha)
             for (const relative of sourcePaths) {
