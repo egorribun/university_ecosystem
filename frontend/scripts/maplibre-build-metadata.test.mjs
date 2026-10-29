@@ -112,7 +112,7 @@ test("metadata records real emitted bytes, module identities and entry reachabil
     const candidate = report.mapLibreChunks[0]
     const mapBytes = Buffer.from(fixture.contents["assets/vendor-map-A.js"])
 
-    assert.equal(report.schemaVersion, 2)
+    assert.equal(report.schemaVersion, 3)
     assert.deepEqual(report.profile, {
       command: "build",
       mode: "production",
@@ -526,6 +526,56 @@ test("inventory diagnostic validates real receipts and rejects unsafe data", asy
       }),
     ],
     [
+      "graph-missing-raw-bytes",
+      changed((value) => {
+        delete value.graph.chunks[0].rawBytes
+      }),
+    ],
+    [
+      "graph-wrong-raw-bytes",
+      changed((value) => {
+        value.graph.chunks[0].rawBytes += 1
+      }),
+    ],
+    [
+      "graph-invalid-raw-bytes",
+      changed((value) => {
+        value.graph.chunks[0].rawBytes = privateCanary
+      }),
+    ],
+    [
+      "graph-missing-sha256",
+      changed((value) => {
+        delete value.graph.chunks[0].sha256
+      }),
+    ],
+    [
+      "graph-invalid-sha256",
+      changed((value) => {
+        value.graph.chunks[0].sha256 = privateCanary
+      }),
+    ],
+    [
+      "graph-wrong-sha256",
+      changed((value) => {
+        value.graph.chunks[0].sha256 = "0".repeat(64)
+      }),
+    ],
+    [
+      "changed-non-map-bytes",
+      (fixture) => writeFile(path.join(fixture.outputDir, "assets/index-A.js"), privateCanary),
+    ],
+    [
+      "missing-non-map-bytes",
+      (fixture) => rm(path.join(fixture.outputDir, "assets/index-A.js")),
+    ],
+    [
+      "schema-without-chunk-proof",
+      changed((value) => {
+        value.schemaVersion = 2
+      }),
+    ],
+    [
       "too-many-chunks",
       async (fixture) => {
         const value = JSON.parse(await readFile(fixture.reportPath, "utf8"))
@@ -542,6 +592,8 @@ test("inventory diagnostic validates real receipts and rejects unsafe data", asy
           if (index > 0) {
             value.graph.chunks.push({
               fileName,
+              rawBytes: candidate.rawBytes,
+              sha256: candidate.sha256,
               isEntry: false,
               isDynamicEntry: true,
               imports: [],
@@ -684,7 +736,7 @@ test("Rolldown lengths use code units and unavailable original stays null", asyn
     assert.equal(record.renderedCodeUnits, privateSource.length)
     assert.equal(Object.hasOwn(record, "renderedBytes"), false)
     assert.equal(Object.hasOwn(record, "originalBytes"), false)
-    assert.equal(report.schemaVersion, 2)
+    assert.equal(report.schemaVersion, 3)
     assert.equal(sourceReads, 0)
     assert.equal(raw.includes(privateCanary), false)
     const bytes = Buffer.from(fixture.contents["assets/vendor-map-A.js"])
@@ -829,7 +881,10 @@ test("metadata fingerprints every emitted client chunk without exposing source",
     const expectedNames = Object.keys(fixture.bundle).sort((left, right) =>
       left.localeCompare(right)
     )
-    assert.deepEqual(report.graph.chunks.map((chunk) => chunk.fileName), expectedNames)
+    assert.deepEqual(
+      report.graph.chunks.map((chunk) => chunk.fileName),
+      expectedNames
+    )
     for (const chunk of report.graph.chunks) {
       const bytes = await readFile(path.join(fixture.outputDir, chunk.fileName))
       assert.deepEqual(bytes, Buffer.from(fixture.bundle[chunk.fileName].code))

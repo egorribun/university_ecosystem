@@ -1001,7 +1001,7 @@ jobs:
             const raw = await boundedFile(reportPath)
             const receipt = JSON.parse(raw.toString("utf8"))
             exact(receipt, ["schemaVersion", "profile", "package", "producerSha256", "viteConfigSha256", "graph", "mapLibreChunks"])
-            check(receipt.schemaVersion === 2)
+            check(receipt.schemaVersion === 3)
           
             const packageBytes = await insideFile(root, "package.json")
             const lockBytes = await insideFile(root, "package-lock.json")
@@ -1050,7 +1050,10 @@ jobs:
             const byName = new Map(graph.chunks.map((chunk) => [chunk.fileName, chunk]))
             let edgeCount = 0
             for (const chunk of graph.chunks) {
-              exact(chunk, ["fileName", "isEntry", "isDynamicEntry", "imports", "dynamicImports"])
+              exact(chunk, ["fileName", "rawBytes", "sha256", "isEntry", "isDynamicEntry", "imports", "dynamicImports"])
+              check(integer(chunk.rawBytes, MAX_BYTES) && digest(chunk.sha256))
+              const bytes = await insideFile(output, chunk.fileName)
+              check(chunk.rawBytes === bytes.length && chunk.sha256 === hash(bytes))
               check(typeof chunk.isEntry === "boolean" && typeof chunk.isDynamicEntry === "boolean")
               for (const edges of [chunk.imports, chunk.dynamicImports]) {
                 ordered(edges, 5000, (name) => safePath(name) && byName.has(name), true)

@@ -145,19 +145,24 @@ async function buildMetadata(config, environment, output, bundle, options) {
   }
   let unresolvedStaticImportCount = 0
   let unresolvedDynamicImportCount = 0
-  const graphChunks = chunks.map((chunk) => {
+  const graphChunks = []
+  for (const chunk of chunks) {
     const imports = chunk.imports.filter((name) => names.has(name)).sort()
     const dynamicImports = chunk.dynamicImports.filter((name) => names.has(name)).sort()
     unresolvedStaticImportCount += chunk.imports.length - imports.length
     unresolvedDynamicImportCount += chunk.dynamicImports.length - dynamicImports.length
-    return {
+    const bytes = await readFile(path.resolve(output.dir, chunk.fileName))
+    if (!bytes.equals(Buffer.from(chunk.code))) throw new Error("emitted bytes differ from bundle")
+    graphChunks.push({
       fileName: chunk.fileName,
+      rawBytes: bytes.byteLength,
+      sha256: hash(bytes),
       isEntry: chunk.isEntry,
       isDynamicEntry: chunk.isDynamicEntry,
       imports,
       dynamicImports,
-    }
-  })
+    })
+  }
   graphChunks.sort((left, right) => left.fileName.localeCompare(right.fileName))
   const entryFiles = graphChunks.filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName)
   const complete = entryFiles.length > 0 && unresolvedStaticImportCount === 0
@@ -200,7 +205,7 @@ async function buildMetadata(config, environment, output, bundle, options) {
   }
   mapLibreChunks.sort((left, right) => left.fileName.localeCompare(right.fileName))
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     profile: profile(config, environment, output, options),
     package: await packageMetadata(config.root),
     producerSha256: hash(await readFile(fileURLToPath(import.meta.url))),
