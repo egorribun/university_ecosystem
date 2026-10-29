@@ -1130,3 +1130,25 @@ or whole-source bindings. Obtain the actual new scanner inventory and review
 each public integrity literal; any new finite approval and its source-bound
 negative tests are a separate change. Until then, unmatched identities and
 source-binding mismatches remain blocking. No audit acceptance increases.
+
+## Pool-safe historical-148 recapture without activation (2026-10-29)
+
+The [36f70a0f recapture](../superpowers/plans/2026-10-27-historical-148-squawk-proposal.md#pool-safe-renderer-recapture-on-source-36f70a0f-2026-10-29)
+updates the inactive evidence after the renderer's owned-pool privacy correction.
+Its exact-source 41 lifecycle and seven PostgreSQL controls pass; the three
+Pool regressions pass by whole-file/cohort evidence, not printed named results.
+Both SQL inputs and all 37 warning objects, except the actual ordinary temporary
+path, remain unchanged. Raw exits stay 1, the historical migration and atomicity
+are unchanged, and both older fixtures are retained.
+
+This is evidence maintenance only. The policy remains `prepared-inactive`;
+the matcher still returns only `matched-diagnostic-inventory` and has no CI
+admission adapter. The 2026-11-13 UTC expiry is unchanged. No scanner warning is
+suppressed, reclassified or relabelled as success.
+
+The approved secret-disposition union remains exactly 405, the 319-entry baseline and
+26 Gitleaks fingerprints are unchanged, and the earlier 58-identity decision does not transfer
+to new paths, fingerprints or whole-source bindings. Existing mismatches remain
+blocking. Capture the actual scanner inventory before proposing any new finite
+approval and corresponding negative tests; no blanket hash exception, expiry
+extension or implied owner authorization is introduced here.

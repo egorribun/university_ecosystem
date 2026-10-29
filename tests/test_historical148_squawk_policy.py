@@ -1,6 +1,6 @@
 """Tests-first contract for an inactive historical Squawk inventory matcher.
 
-The captured SQL/JSON came from the hosted 35aeedeb job, not this validator. These
+The captured SQL/JSON came from the hosted 36f70a0f job, not this validator. These
 tests establish no empty-database, all-migration, operational or deployment proof.
 """
 
@@ -21,7 +21,7 @@ from scripts.quality import validate_historical148_squawk as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "quality/historical148-squawk-policy.json"
-CAPTURE = ROOT / "tests/fixtures/historical148-squawk-capture-35aeedeb.json"
+CAPTURE = ROOT / "tests/fixtures/historical148-squawk-capture-36f70a0f.json"
 VERDICT = "matched-diagnostic-inventory"
 POLICY_LIMIT = 32768
 CAPTURE_LIMIT = 131072

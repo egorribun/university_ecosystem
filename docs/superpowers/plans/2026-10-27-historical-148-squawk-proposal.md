@@ -87,6 +87,47 @@ source-binding tests must precede a new disposition update. Expected failures
 at this boundary are not waived or labelled scanner GREEN. This recapture
 closes no audit item.
 
+## Pool-safe renderer recapture on source 36f70a0f (2026-10-29)
+
+The [36f70a0f Alembic job](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702568135)
+captures source `36f70a0f27065231d7c0ad66ded01d22385a0a81`, tested merge
+`587a180333d962d5c25e984f54567835a3071e93`, identical source tree
+`e38f2243726cd11b25e44958655e7fa61c41314e`.
+The [new immutable capture](../../../tests/fixtures/historical148-squawk-capture-36f70a0f.json)
+contains this run's actual ordinary and expanded SQL, raw JSON, temporary
+identities and provenance. Both older 15eaaa and 35aeedeb fixtures remain
+unchanged historical evidence.
+
+The renderer now confines diagnostics from its two owned SQLAlchemy pools to
+an opaque fixed message while preserving severity and logger hierarchy,
+including pool recreation. This changes renderer blob
+`310893725db4739f2fa4be9eafbdb2c4e71d2da6` to
+`01d4e4956d48cf6c00cc3668eaf51464cd3b28cd`; the other ten capture input pins
+are unchanged. The ordinary 17,031-byte and expanded 18,373-byte SQL strings
+remain byte-identical. All 13 ordinary and 24 expanded warnings retain their
+complete fields and multiplicities; only the actual ordinary temporary file
+path changes. Raw exits remain 1/1 and reporter stderr remains empty.
+
+Own-source evidence: the Alembic job passes 41 named lifecycle controls;
+[owned PostgreSQL 123702568368](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702568368) passes all seven named
+catalog/cleanup/collision controls. [Backend shard 2](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123717284268)
+passes 4650 cases with 138 skips and no failures/errors. Its 13 historical
+PostgreSQL skips establish whole-file renderer-test selection; the three new
+Pool cases have no skip/xfail/quarantine. Their PASS is therefore
+**full-file/cohort-inferred**, not three printed named PASS lines.
+The original privacy trigger was executed RED before the fix. This proves the
+bounded pool behavior, not arbitrary application logging, SQL echo or every
+driver exception surface.
+
+The recapture changes only exact provenance, the renderer pin and observed
+temporary metadata, then recomputes the two canonical fingerprints. All negative
+test bodies, real-clock expiry and diagnostic-only verdict remain unchanged.
+It activates no CI admission and adds no secret disposition. The five existing
+historical whole-source consumer guards and unmatched public-hash findings
+remain blocking; the previous 58-identity approval does not cover this delta.
+A fresh scanner inventory and a separately reviewed exact owner decision are
+still required before any finite-disposition change.
+
 ## Exact observed inventory
 
 There are **37 occurrences**, **24 rule/statement groups**, and **20 statements**.
@@ -251,7 +292,7 @@ warning array: parse it strictly, sort complete rows by their canonical JSON
 strings without deduplicating, and serialize that array back to its JSON string.
 SQL strings are not normalized. The two source constants are derived from the
 committed [policy](../../../quality/historical148-squawk-policy.json) and
-[capture](../../../tests/fixtures/historical148-squawk-capture-35aeedeb.json), never
+[capture](../../../tests/fixtures/historical148-squawk-capture-36f70a0f.json), never
 from caller-supplied approval data. The
 [contract tests](../../../tests/test_historical148_squawk_policy.py) and required
 checks need exact published-source receipts; this source description is not a
@@ -308,7 +349,7 @@ disposition can affect a CI result, it must establish:
    afterwards. Self-declared JSON is not admission evidence.
 2. A source-bound SQL/JSON capture after every relevant renderer or input
    change, while keeping the historical migration and transaction boundaries
-   immutable. The 35aeedeb recapture above supplies the current historical
+   immutable. The 36f70a0f recapture above supplies the current historical
    receipt; later changes require another capture.
 3. Graph-aware handling of merge revisions and strict coverage of all 141 other
    migration files in the current 142-file inventory. The current

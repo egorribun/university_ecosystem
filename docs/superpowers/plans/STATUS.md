@@ -1,6 +1,140 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-29 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-30 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+
+## Safe pause checkpoint — 2026-10-29
+
+The owner requested a safe pause at 22:16 UTC. This publication is limited to
+the nine prepared recapture/acceptance files; it does not change application
+code or activate either exception. After publication, repository writes and
+autonomous remediation stop. Only read-only observation of this publication's
+CI remains; pending or terminal results are reported in the conversation
+without another commit.
+
+The last completely tested production source is
+`36f70a0f27065231d7c0ad66ded01d22385a0a81`, with the exact failed-CI accounting
+below. This checkpoint's own CI is pending at publication and does not inherit
+those results. Resume only after an explicit owner instruction: first read
+the fresh branch head and reconcile any owner changes. The ordered continuation
+below is a handoff, not authorization to execute during the pause.
+
+All nine reviewed artifacts are contained in this publication; no additional
+unpublished implementation patch is represented as ready. Preserve the
+fail-closed scanner/source-binding checks, inactive Map/Squawk boundaries and
+unchanged 405/319/26 inventories.
+
+## Source 36f70a0f: AUD-340 race fix and stable renderer capture
+
+**383/512 accepted; 129 remain unaccepted. Only AUD-340 is newly accepted.**
+The [scoped decision](../../audits/AUDIT-2026-10.md#scoped-aud-340-acceptance-2026-10-29)
+preserves all 382 previous IDs. AUD-447, AUD-208, AUD-432 and AUD-454 remain
+unaccepted. Historical Squawk admission and the 286 KiB Map allowance remain
+inactive. The 405 finite dispositions, the 319-entry baseline, 26 Gitleaks fingerprints, expiry caps,
+all 78 required context/app pairs, blocking CodeQL and all existing coverage floors are unchanged.
+
+All receipts in this section belong to source
+[36f70a0f27065231d7c0ad66ded01d22385a0a81](https://github.com/egorribun/university_ecosystem/commit/36f70a0f27065231d7c0ad66ded01d22385a0a81),
+tested merge `587a180333d962d5c25e984f54567835a3071e93`, identical tree
+`e38f2243726cd11b25e44958655e7fa61c41314e`.
+They are not inherited by the documentation/recapture publication that follows.
+
+### Behavioral fixes and exact boundaries
+
+- AUD-340: [all four owned PostgreSQL cases](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702569227) and
+  [all four isolation/vector/SQL-order unit cases](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123701547547) PASS.
+  Genesis and nonempty races now form one contiguous HMAC chain; distinct keys
+  progress, caller rollback releases the lock, READ UNCOMMITTED works and
+  unsupported snapshot isolation is rejected without changing caller ownership.
+  Main PostgreSQL reports 389 PASS / 16 SKIP, plus separate 13 migration and five
+  replay PASS. This closes the bounded source race, not historical fork repair,
+  AUTOCOMMIT, mixed-version writers or production rollout.
+- Renderer: [41 named controls](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702568135) and
+  [seven real PostgreSQL controls](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702568368) PASS.
+  [Shard 2](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123717284268) establishes the three Pool regressions as
+  full-file/cohort-inferred PASS: the selected file's 13 historical PG skips
+  appear, the new cases have no skip/xfail/quarantine, and the cohort has no
+  failure/error. These are not three printed named PASS lines and do not prove
+  arbitrary SQL echo or application-log privacy.
+- Map: [35/35 final-HTML contracts](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702667834) and
+  [actual production capture/uploads](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702667723) PASS.
+  Lossless normalization reduces this build's inventory from 40,008 to 20,678
+  bytes without raising the 32,767-byte limit. Its 45 script records retain all
+  46 root occurrences per document. Both documents still report
+  `complete=false` and 79 computed-import occurrences; this is diagnostic
+  evidence, not closed transitive reachability or 286 KiB admission.
+  [Artifact 12928004752](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/artifacts/12928004752)
+  retains the diagnostic report. Bundle admission remains blocked at 285.83 KiB
+  versus the unchanged 280 KiB limit.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40945703148) SUCCESS:
+  329 preflight PASS, 48 live PASS / two SKIP, NATS and owned cleanup SUCCESS.
+  Frontend has 10398 PASS in 823 files; its
+  [aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123708859995) covers 2186 changed lines with zero missing.
+  Fast pre-commit, frontend lint and backend type checking pass.
+  [Blocking CodeQL](https://github.com/egorribun/university_ecosystem/runs/123701429068) succeeds; its check has zero annotations.
+
+### Full terminal accounting, not all-green acceptance
+
+| Backend shard | Exact job | PASS | SKIP | FAIL |
+| --- | --- | ---: | ---: | ---: |
+| 0 | [123702569258](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702569258) | 6957 | 71 | 1 |
+| 1 | [123702569509](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702569509) | 5329 | 167 | 5 |
+| 2 | [123717284268](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123717284268) | 4650 | 138 | 0 |
+| 3 | [123719915407](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123719915407) | 4943 | 36 | 0 |
+| Total | | **21879** | **412** | **6** |
+
+All four shards completed without cancellation. Separate 848 and 240
+preflights are excluded. The six failures are one historical renderer pin and
+five existing whole-source/fingerprint consumer guards. Contract has 3575
+consumer PASS / one renderer-pin FAIL, security 633 PASS / five binding FAIL,
+85 Auth cases and 41 scoped renderer cases PASS; do not call that whole job successful.
+
+The new AUD-340 executable lines are absent from shard3's missing set, and the
+new decision paths execute. The raw four-shard missing-line intersections for
+audit_service and DLQ are empty, including DLQ lines 59/62. These are not a merged
+coverage report. Shard3 alone reports audit_service at 91%, not 100% whole-file branch coverage.
+[Coverage & Quality Policy 123733923028](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123733923028) and Trusted Codecov
+123733923445 are SKIPPED. Native merged line/statement/branch/function compliance
+is not established; the 100% floors and release gates are not waived.
+
+Final [Matrix 40945703255](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255) has
+65 SUCCESS / eight FAILURE / 18 SKIPPED jobs. All 23 workflows are terminal:
+20 SUCCESS / one FAILURE / two SKIPPED. All 141 checks are terminal:
+105 SUCCESS / eight FAILURE / 27 SKIPPED / one NEUTRAL.
+There are no active or cancelled results on this final source.
+The eight failed checks are security/types, baseline freshness, Contract,
+raw Alembic/Squawk, backend shards 0/1, Bundle Size and derived CI Success
+123733921270. **Full CI is not GREEN.**
+
+### Prepared inactive recapture and ordered continuation
+
+The [new source-bound fixture](../../../tests/fixtures/historical148-squawk-capture-36f70a0f.json)
+uses the actual 36f70a0f Alembic receipt after Pool privacy validation.
+The 17,031-byte ordinary and 18,373-byte expanded SQL remain byte-identical;
+13+24 warnings, raw exits 1/1 and empty reporter stderr are preserved.
+The old 15eaaa/35aeedeb fixtures remain historical. The
+[proposal](2026-10-27-historical-148-squawk-proposal.md#pool-safe-renderer-recapture-on-source-36f70a0f-2026-10-29)
+and ADR-047 record the same inactive boundary. No migration-gate consumer,
+admission activation or new secret disposition is included.
+
+1. Run the recapture publication's own contracts and actual secret scanners.
+   The 33 previously observed public-hash findings are not a final delta:
+   the retained old fixture and new source-bound capture require fresh inventory.
+2. Review each actual path/type/digest and ask the owner for that exact finite
+   delta before changing the 405-entry policy. Preserve the historical approved prefix and repair
+   historical/current-source consumer oracles with negative tests; do not simply
+   erase the five guard failures or transfer the earlier 58-identity approval.
+3. Reconcile final HTML computed imports with bound compiler-graph/artifact
+   evidence before the approved narrow Map rule. Do not turn
+   `complete=false` into true or activate the 286 KiB allowance from direct-root absence alone.
+4. Complete the separately reviewed greenfield admission/all-migration/shell
+   failure-propagation prerequisites before any Squawk risk disposition can
+   affect CI. The historical operations still carry real risks.
+
+The intermediate da1 and 209 backend runs were intentionally superseded after
+their required scoped receipts; their partial results are not full-suite GREEN.
+The complete 36f70a0f run above was not cancelled. No deployed database repair, role or
+grant change, template modification, merge, deployment or access expansion occurred.
+Own checks for the next publication remain required.
 
 ## Source 2cbdfae: actual writer and pool regressions
 
