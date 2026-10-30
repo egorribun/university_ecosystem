@@ -35,6 +35,7 @@ _SECRET_NAMES = (
     "internal_hmac_secret",
     "spicedb_preshared_key",
     "token_hmac_secret",
+    "idempotency_hmac_secret",
     "ws_hub_internal_secret",
 )
 # Every Compose secret name uses the matching <NAME>_SOURCE_FILE variable.
@@ -60,6 +61,7 @@ _PRODUCTION_SERVICE_SECRETS = {
         "internal_hmac_secret",
         "spicedb_preshared_key",
         "token_hmac_secret",
+        "idempotency_hmac_secret",
         "ws_hub_internal_secret",
     },
     "notifications-worker": {
@@ -76,6 +78,7 @@ _PRODUCTION_SERVICE_SECRETS = {
         "internal_hmac_secret",
         "spicedb_preshared_key",
         "token_hmac_secret",
+        "idempotency_hmac_secret",
         "ws_hub_internal_secret",
     },
     "outbox-worker": {
@@ -90,6 +93,7 @@ _PRODUCTION_SERVICE_SECRETS = {
         "internal_hmac_secret",
         "spicedb_preshared_key",
         "token_hmac_secret",
+        "idempotency_hmac_secret",
         "ws_hub_internal_secret",
     },
     "migrations": {
@@ -106,6 +110,7 @@ _PRODUCTION_SERVICE_SECRETS = {
         "internal_hmac_secret",
         "spicedb_preshared_key",
         "token_hmac_secret",
+        "idempotency_hmac_secret",
         "ws_hub_internal_secret",
     },
     "postgres": {"postgres_password"},
@@ -130,6 +135,7 @@ _SERVICE_FILE_ENVIRONMENT = {
         "INTERNAL_HMAC_SECRET_FILE": "/run/secrets/internal_hmac_secret",
         "SPICEDB_PRESHARED_KEY_FILE": "/run/secrets/spicedb_preshared_key",
         "TOKEN_HMAC_SECRET_FILE": "/run/secrets/token_hmac_secret",
+        "IDEMPOTENCY_HMAC_SECRET_FILE": "/run/secrets/idempotency_hmac_secret",
         "WS_HUB_INTERNAL_SECRET_FILE": "/run/secrets/ws_hub_internal_secret",
     },
     "notifications-worker": {
@@ -146,6 +152,7 @@ _SERVICE_FILE_ENVIRONMENT = {
         "INTERNAL_HMAC_SECRET_FILE": "/run/secrets/internal_hmac_secret",
         "SPICEDB_PRESHARED_KEY_FILE": "/run/secrets/spicedb_preshared_key",
         "TOKEN_HMAC_SECRET_FILE": "/run/secrets/token_hmac_secret",
+        "IDEMPOTENCY_HMAC_SECRET_FILE": "/run/secrets/idempotency_hmac_secret",
         "WS_HUB_INTERNAL_SECRET_FILE": "/run/secrets/ws_hub_internal_secret",
     },
     "outbox-worker": {
@@ -160,6 +167,7 @@ _SERVICE_FILE_ENVIRONMENT = {
         "INTERNAL_HMAC_SECRET_FILE": "/run/secrets/internal_hmac_secret",
         "SPICEDB_PRESHARED_KEY_FILE": "/run/secrets/spicedb_preshared_key",
         "TOKEN_HMAC_SECRET_FILE": "/run/secrets/token_hmac_secret",
+        "IDEMPOTENCY_HMAC_SECRET_FILE": "/run/secrets/idempotency_hmac_secret",
         "WS_HUB_INTERNAL_SECRET_FILE": "/run/secrets/ws_hub_internal_secret",
     },
     "migrations": {
@@ -176,6 +184,7 @@ _SERVICE_FILE_ENVIRONMENT = {
         "INTERNAL_HMAC_SECRET_FILE": "/run/secrets/internal_hmac_secret",
         "SPICEDB_PRESHARED_KEY_FILE": "/run/secrets/spicedb_preshared_key",
         "TOKEN_HMAC_SECRET_FILE": "/run/secrets/token_hmac_secret",
+        "IDEMPOTENCY_HMAC_SECRET_FILE": "/run/secrets/idempotency_hmac_secret",
         "WS_HUB_INTERNAL_SECRET_FILE": "/run/secrets/ws_hub_internal_secret",
     },
 }
@@ -322,6 +331,7 @@ def test_production_profile_renders_only_file_backed_secret_sources(
         "ELASTICSEARCH_URL",
         "SPICEDB_ENDPOINT",
         "EVENT_FILE_SCANNER_HOST",
+        "TRUSTED_PROXIES",
     ),
 )
 def test_production_render_fails_when_required_secret_path_or_key_id_is_missing(

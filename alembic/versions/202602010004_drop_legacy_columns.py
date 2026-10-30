@@ -6,7 +6,6 @@ Create Date: 2026-02-01 06:00:00.000000
 
 """
 
-import contextlib
 import logging
 
 import sqlalchemy as sa
@@ -97,71 +96,75 @@ FK_TO_CLEANUP = [
 ]
 
 
+def _column_names(inspector, table: str) -> set[str]:
+    return {column["name"] for column in inspector.get_columns(table)}
+
+
 def upgrade():
     logger = logging.getLogger("alembic")
     bind = op.get_bind()
     dialect = bind.dialect.name
 
-    # We do NOT use inspector here because heavy DDL in previous steps
+    # AUD-393: every DDL statement here either succeeds or stops the migration.
+    # The former broad ``except Exception`` logged a failed DROP and continued,
+    # which left the schema half-cleaned and PostgreSQL in an aborted transaction.
+    # Existence checks use IF EXISTS on PostgreSQL and the inspector elsewhere.
+    # We do NOT inspect on PostgreSQL because heavy DDL in previous steps
     # causes asyncpg generic cache to fail with "pg_namespace.nspname != $7"
     # referencing stale types/tables when inspecting.
-    # Instead, we just try to drop the columns and ignore missing errors.
 
     # 1. Drop the legacy primary key columns and their unique constraints
     for table in TABLES_TO_CLEANUP:
-        if not sa.inspect(op.get_bind()).has_table(table):
+        inspector = sa.inspect(op.get_bind())
+        if not inspector.has_table(table):
             logger.info(f"Skipping drop for missing table {table}")
             continue
 
         logger.info(f"Cleaning legacy_id {table}...")
-        try:
-            if dialect == "postgresql":
-                # Drop constraint if exists (CASCADE handles it usually)
-                if table == "active_sessions":
-                    op.execute(  # nosemgrep
-                        f'ALTER TABLE "{table}" '
-                        f'DROP CONSTRAINT IF EXISTS "uq_{table}_legacy_id" CASCADE'
-                    )
-
+        if dialect == "postgresql":
+            # Drop constraint if exists (CASCADE handles it usually)
+            if table == "active_sessions":
                 op.execute(  # nosemgrep
-                    f'ALTER TABLE "{table}" DROP COLUMN IF EXISTS "legacy_id" CASCADE'
+                    f'ALTER TABLE "{table}" '
+                    f'DROP CONSTRAINT IF EXISTS "uq_{table}_legacy_id" CASCADE'
                 )
-                logger.info(f"Dropped legacy_id from {table} (Postgres)")
-            else:
-                with op.batch_alter_table(table) as batch_op:
-                    if dialect != "sqlite":
-                        with contextlib.suppress(Exception):
-                            batch_op.drop_constraint(
-                                f"uq_{table}_legacy_id", type_="unique"
-                            )
+
+            op.execute(  # nosemgrep
+                f'ALTER TABLE "{table}" DROP COLUMN IF EXISTS "legacy_id" CASCADE'
+            )
+            logger.info(f"Dropped legacy_id from {table} (Postgres)")
+        else:
+            unique_names = {
+                constraint["name"]
+                for constraint in inspector.get_unique_constraints(table)
+            }
+            with op.batch_alter_table(table) as batch_op:
+                if f"uq_{table}_legacy_id" in unique_names:
+                    batch_op.drop_constraint(f"uq_{table}_legacy_id", type_="unique")
+                if "legacy_id" in _column_names(inspector, table):
                     batch_op.drop_column("legacy_id")
-                logger.info(f"Dropped legacy_id from {table}")
-        except Exception as e:
-            logger.info(f"Skipping legacy_id drop for {table}: {e}")
+            logger.info(f"Dropped legacy_id from {table}")
 
     # 2. Drop the legacy foreign key columns
     for table, legacy_col in FK_TO_CLEANUP:
-        if not sa.inspect(op.get_bind()).has_table(table):
+        inspector = sa.inspect(op.get_bind())
+        if not inspector.has_table(table):
             continue
 
         logger.info(f"Cleaning FK {legacy_col} in {table}...")
-        try:
-            if dialect == "postgresql":
-                op.execute(  # nosemgrep
-                    f'ALTER TABLE "{table}" DROP COLUMN IF EXISTS '
-                    f'"{legacy_col}" CASCADE'
-                )
-                logger.info(f"Dropped {legacy_col} from {table} (Postgres)")
-            else:
+        if dialect == "postgresql":
+            op.execute(  # nosemgrep
+                f'ALTER TABLE "{table}" DROP COLUMN IF EXISTS "{legacy_col}" CASCADE'
+            )
+            logger.info(f"Dropped {legacy_col} from {table} (Postgres)")
+        else:
+            if legacy_col in _column_names(inspector, table):
                 with op.batch_alter_table(table) as batch_op:
                     batch_op.drop_column(legacy_col)
-                logger.info(f"Dropped {legacy_col} from {table}")
-        except Exception as e:
-            logger.info(f"Skipping {legacy_col} drop for {table}: {e}")
+            logger.info(f"Dropped {legacy_col} from {table}")
 
 
 def downgrade():
-    logger = logging.getLogger("alembic")
     bind = op.get_bind()
     dialect = bind.dialect.name
 
@@ -180,17 +183,14 @@ def downgrade():
                 f'ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS '
                 f'"legacy_id" {col_type_str}'
             )
-        else:
-            try:
-                with op.batch_alter_table(table) as batch_op:
-                    col_type = (
-                        sa.String()
-                        if table in ("chats", "messages", "attachments")
-                        else sa.Integer()
-                    )
-                    batch_op.add_column(sa.Column("legacy_id", col_type, nullable=True))
-            except Exception as e:
-                logger.warning(f"Could not restore legacy_id for {table}: {e}")
+        elif "legacy_id" not in _column_names(inspector, table):
+            with op.batch_alter_table(table) as batch_op:
+                col_type = (
+                    sa.String()
+                    if table in ("chats", "messages", "attachments")
+                    else sa.Integer()
+                )
+                batch_op.add_column(sa.Column("legacy_id", col_type, nullable=True))
 
     for table, legacy_col in FK_TO_CLEANUP:
         if not inspector.has_table(table):
@@ -205,14 +205,11 @@ def downgrade():
                 f'ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS '
                 f'"{legacy_col}" {col_type_str}'
             )
-        else:
-            try:
-                with op.batch_alter_table(table) as batch_op:
-                    col_type = (
-                        sa.String()
-                        if "chat_id" in legacy_col or "message_id" in legacy_col
-                        else sa.Integer()
-                    )
-                    batch_op.add_column(sa.Column(legacy_col, col_type, nullable=True))
-            except Exception as e:
-                logger.warning(f"Could not restore {legacy_col} for {table}: {e}")
+        elif legacy_col not in _column_names(inspector, table):
+            with op.batch_alter_table(table) as batch_op:
+                col_type = (
+                    sa.String()
+                    if "chat_id" in legacy_col or "message_id" in legacy_col
+                    else sa.Integer()
+                )
+                batch_op.add_column(sa.Column(legacy_col, col_type, nullable=True))

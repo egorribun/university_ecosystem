@@ -139,10 +139,19 @@ def upgrade() -> None:
             existing_nullable=True,
             existing_server_default=sa.text("now()"),
         )
-    if "ix_events_search_vector" in events_indexes:
-        op.drop_index(
-            op.f("ix_events_search_vector"), table_name="events", postgresql_using="gin"
-        )
+    # AUD-278: the GIN full-text index behind event search is kept, never dropped.
+    # Only a database where it is genuinely absent gets it rebuilt, concurrently
+    # so the events table stays writable during the build.
+    if "events" in existing_tables and "ix_events_search_vector" not in events_indexes:
+        with op.get_context().autocommit_block():
+            op.create_index(
+                op.f("ix_events_search_vector"),
+                "events",
+                ["search_vector"],
+                unique=False,
+                postgresql_using="gin",
+                postgresql_concurrently=True,
+            )
     if "invite_codes" in existing_tables:
         alter_column_if_needed(
             "invite_codes",

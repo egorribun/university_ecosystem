@@ -29,6 +29,30 @@ CORE_TABLES = (
     "notifications",
 )
 
+# AUD-277/360/450: privileged access is granted by membership in this dedicated
+# NOLOGIN role, never by a GUC that any SQL session can set. Application
+# sessions are scoped to one tenant through app.current_tenant instead.
+BYPASS_ROLE = "ue_rls_bypass"
+
+# A row is visible only to a bypass-role member or to the tenant it belongs to.
+# NULL tenant_id rows therefore stay hidden from every tenant session (AUD-360).
+_TENANT_PREDICATE = (
+    f"pg_has_role(current_user, '{BYPASS_ROLE}', 'MEMBER') "
+    "OR (tenant_id IS NOT NULL "
+    "AND tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)"
+)
+
+
+def _create_bypass_role() -> None:
+    """Create the NOLOGIN bypass role once, so policies can reference it."""
+    op.execute(  # nosemgrep
+        sa.text(  # nosemgrep
+            "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles "
+            "WHERE rolname = 'ue_rls_bypass') THEN "
+            "CREATE ROLE ue_rls_bypass NOLOGIN; END IF; END $$;"
+        )
+    )
+
 
 def upgrade() -> None:
     bind = op.get_bind()
@@ -84,6 +108,10 @@ def upgrade() -> None:
                 postgresql_concurrently=True,
             )
 
+    # The policies below reference the bypass role, so it must exist first.
+    if bind.dialect.name == "postgresql":
+        _create_bypass_role()
+
     # 2. Add tenant_id columns, foreign keys, and indexes across core entity tables
     for table_name in CORE_TABLES:
         if table_name not in tables:
@@ -124,7 +152,7 @@ def upgrade() -> None:
                         postgresql_concurrently=True,
                     )
 
-        # 3. Enable RLS and create isolation policy on PostgreSQL
+        # 3. Enable RLS and create the tenant policy on PostgreSQL
         if bind.dialect.name == "postgresql":
             op.execute(  # nosemgrep
                 sa.text(  # nosemgrep
@@ -136,29 +164,27 @@ def upgrade() -> None:
                     f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY;"
                 )
             )
-            if table_name != "messages":
-                op.execute(  # nosemgrep
-                    sa.text(  # nosemgrep
-                        f"DROP POLICY IF EXISTS default_permissive_policy ON {table_name};"
-                    )
+            # AUD-277: the former permissive USING (true) policy is removed. The
+            # tenant predicate is the only policy that grants row access on the
+            # tables that have no other permissive policy.
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"DROP POLICY IF EXISTS default_permissive_policy ON {table_name};"
                 )
-                op.execute(  # nosemgrep
-                    sa.text(  # nosemgrep
-                        f"CREATE POLICY default_permissive_policy ON {table_name} AS PERMISSIVE "
-                        f"USING (true) WITH CHECK (true);"
-                    )
-                )
+            )
             op.execute(  # nosemgrep
                 sa.text(  # nosemgrep
                     f"DROP POLICY IF EXISTS tenant_isolation_policy ON {table_name};"
                 )
             )
+            # messages keeps its participant permissive policy, so the tenant
+            # predicate must stay restrictive there to be ANDed with it.
+            policy_type = "RESTRICTIVE" if table_name == "messages" else "PERMISSIVE"
             op.execute(  # nosemgrep
                 sa.text(  # nosemgrep
-                    f"CREATE POLICY tenant_isolation_policy ON {table_name} AS RESTRICTIVE "
-                    f"USING (current_setting('app.bypass_rls', true) = 'on' "
-                    f"OR tenant_id IS NULL "
-                    f"OR tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid);"
+                    f"CREATE POLICY tenant_isolation_policy ON {table_name} AS {policy_type} "
+                    f"FOR ALL USING ({_TENANT_PREDICATE}) "
+                    f"WITH CHECK ({_TENANT_PREDICATE});"
                 )
             )
 
@@ -196,3 +222,12 @@ def downgrade() -> None:
 
     if "tenants" in tables:
         op.drop_table("tenants")
+
+    if bind.dialect.name == "postgresql":
+        op.execute(  # nosemgrep
+            sa.text(  # nosemgrep
+                "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles "
+                "WHERE rolname = 'ue_rls_bypass') THEN "
+                "DROP ROLE ue_rls_bypass; END IF; END $$;"
+            )
+        )

@@ -124,60 +124,64 @@ def test_characterized_revisions_are_ancestors_of_reconciliation() -> None:
     } <= ancestors
 
 
+HOT_PATH_INDEXES: dict[str, str] = {
+    "ix_stored_events_pending_created": (
+        "202603140002_add_stored_events_pending_partial_indexes.py"
+    ),
+    "ix_stored_events_pending_aggregate_created": (
+        "202603140002_add_stored_events_pending_partial_indexes.py"
+    ),
+    "ix_stored_events_aggregate_uuid": (
+        "202603140003_add_stored_events_aggregate_ordering.py"
+    ),
+    "ix_chat_participants_user_id_chat_id": (
+        "202603060001_add_chat_participants_covering_indexes.py"
+    ),
+    "ix_chat_participants_chat_id_user_id": (
+        "202603060001_add_chat_participants_covering_indexes.py"
+    ),
+    "ix_messages_unread_chat_sender": (
+        "202603070001_add_message_unread_partial_index.py"
+    ),
+    "idx_news_comment_cursor": "202603150001_add_news_comment_cursor_index.py",
+    "idx_messages_chat_pagination_covering": (
+        "202603170001_add_message_pagination_covering_index.py"
+    ),
+}
+
+
 @pytest.mark.parametrize(
-    ("predecessor", "indexes"),
-    [
-        (
-            "202603140002_add_stored_events_pending_partial_indexes.py",
-            (
-                "ix_stored_events_pending_created",
-                "ix_stored_events_pending_aggregate_created",
-            ),
-        ),
-        (
-            "202603140003_add_stored_events_aggregate_ordering.py",
-            ("ix_stored_events_aggregate_uuid",),
-        ),
-        (
-            "202603060001_add_chat_participants_covering_indexes.py",
-            (
-                "ix_chat_participants_user_id_chat_id",
-                "ix_chat_participants_chat_id_user_id",
-            ),
-        ),
-        (
-            "202603070001_add_message_unread_partial_index.py",
-            ("ix_messages_unread_chat_sender",),
-        ),
-        (
-            "202603150001_add_news_comment_cursor_index.py",
-            ("idx_news_comment_cursor",),
-        ),
-        (
-            "202603170001_add_message_pagination_covering_index.py",
-            ("idx_messages_chat_pagination_covering",),
-        ),
-    ],
+    ("index", "predecessor"),
+    sorted(HOT_PATH_INDEXES.items()),
 )
-def test_historical_upgrade_drops_prior_hot_path_indexes_without_recreating_them(
+def test_reconcile_keeps_prior_hot_path_indexes(
+    index: str,
     predecessor: str,
-    indexes: tuple[str, ...],
     reconcile_sql: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # AUD-269: the predecessor really builds the index, and the reconciliation
+    # neither drops it nor replaces it with a differently named duplicate.
     earlier_sql = _render_upgrade(predecessor, monkeypatch)
-    earlier_indexes = _index_definitions(earlier_sql)
-    replacement_indexes = _index_definitions(reconcile_sql)
-    for name in indexes:
-        assert f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {name}" in earlier_sql
-        assert f"DROP INDEX IF EXISTS {name} CASCADE" in reconcile_sql
-        assert not re.search(
-            rf"\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF NOT EXISTS\s+)?{name}\b",
-            reconcile_sql,
-        )
-        # Compare complete rendered definitions as well as names; an alternate
-        # name with the same columns, order, predicate and INCLUDE would count.
-        assert earlier_indexes[name] not in replacement_indexes.values()
+    assert f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {index}" in earlier_sql
+    assert f"DROP INDEX IF EXISTS {index}" not in reconcile_sql
+    assert not re.search(
+        rf"DROP\s+INDEX\s+(?:CONCURRENTLY\s+)?(?:IF EXISTS\s+)?{index}",
+        reconcile_sql,
+    )
+    assert not re.search(
+        rf"CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF NOT EXISTS\s+)?{index}",
+        reconcile_sql,
+    )
+
+
+def test_reconcile_shadow_list_excludes_every_hot_path_index() -> None:
+    module = _load_revision("202603280001_reconcile_post_uuid_migration_drift.py")
+    dropped = {name for name, _table in module._SHADOW_INDEXES}
+    assert dropped.isdisjoint(HOT_PATH_INDEXES)
+    # Genuine shadow artifacts are still removed.
+    assert "ix_messages_shadow_chat_id" in dropped
+    assert "ix_chat_participants_uuid_id" in dropped
 
 
 def test_historical_reconcile_recreates_hnsw_under_new_names(
@@ -228,17 +232,59 @@ def test_delivery_constraint_permits_later_attempt_and_null_subscription(
         assert connection.execute("SELECT count(*) FROM delivery").fetchone() == (4,)
 
 
-def test_queue_started_as_integer_and_reconcile_renders_text_uuid_cast(
-    reconcile_sql: str, monkeypatch: pytest.MonkeyPatch
+class _QueueInspector(_EmptyInspector):
+    """Reports only the queue ``record_id`` type, so the AUD-351 gate is isolated."""
+
+    def __init__(self, record_id_type: sa.types.TypeEngine[Any]) -> None:
+        self._record_id_type = record_id_type
+
+    def get_columns(self, table: str) -> list[dict[str, Any]]:
+        if table == "notification_queue_jobs":
+            return [{"name": "record_id", "type": self._record_id_type}]
+        return []
+
+
+def test_integer_queue_record_ids_are_dead_lettered_and_map_to_job_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sql = _render_upgrade(
+        "202603280001_reconcile_post_uuid_migration_drift.py",
+        monkeypatch,
+        _QueueInspector(sa.Integer()),
+    )
+    # AUD-351: the integer-to-UUID cast that failed on populated tables is gone.
+    assert "record_id::text::uuid" not in sql
+    assert "USING id" in sql
+    assert (
+        "ALTER TABLE notification_queue_jobs ALTER COLUMN record_id TYPE UUID USING id"
+    ) in sql
+    assert "UPDATE notification_queue_jobs SET dead_lettered = true" in sql
+    assert "WHERE dead_lettered = false" in sql
+    # The dead-lettering runs before the type change that rewrites record_id.
+    assert sql.index("UPDATE notification_queue_jobs") < sql.index(
+        "ALTER TABLE notification_queue_jobs ALTER COLUMN record_id"
+    )
+
+
+def test_uuid_queue_record_ids_are_left_untouched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sql = _render_upgrade(
+        "202603280001_reconcile_post_uuid_migration_drift.py",
+        monkeypatch,
+        _QueueInspector(sa.UUID()),
+    )
+    assert "record_id" not in sql
+    assert "dead_lettered = true" not in sql
+
+
+def test_queue_integer_record_id_predates_uuid_cutover(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     earlier_sql = _render_upgrade(
         "202506150001_add_notification_queue_jobs_table.py", monkeypatch
     )
     assert "record_id INTEGER NOT NULL" in earlier_sql
-    assert (
-        "ALTER TABLE notification_queue_jobs ALTER COLUMN record_id TYPE UUID "
-        "USING record_id::text::uuid"
-    ) in reconcile_sql
 
 
 def test_prior_cleanup_can_remove_event_and_news_legacy_id_maps(
