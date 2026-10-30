@@ -1130,7 +1130,9 @@ const policySourcePaths = [
 function policyPayload(blocks) {
   const bytes = Buffer.concat(
     Array.from({ length: blocks }, (_, index) =>
-      createHash("sha256").update("owned MapLibre budget fixture " + index).digest()
+      createHash("sha256")
+        .update("owned MapLibre budget fixture " + index)
+        .digest()
     )
   )
   return 'export const ownedPayload = "' + bytes.toString("base64") + '";\n'

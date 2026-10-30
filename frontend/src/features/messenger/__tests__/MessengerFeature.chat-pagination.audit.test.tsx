@@ -259,13 +259,15 @@ describe("AUD030 chat-list cursor reachability", () => {
       content: "Older message",
       created_at: "2026-10-30T09:00:00Z",
     }
-    const messages = vi.mocked(chatApi.getMessages).mockImplementation((_id, cursor) =>
-      Promise.resolve(
-        cursor === undefined
-          ? { items: [recent], has_more: true, next_cursor: "older-message-page" }
-          : { items: [older], has_more: false, next_cursor: null }
+    const messages = vi
+      .mocked(chatApi.getMessages)
+      .mockImplementation((_id, cursor) =>
+        Promise.resolve(
+          cursor === undefined
+            ? { items: [recent], has_more: true, next_cursor: "older-message-page" }
+            : { items: [older], has_more: false, next_cursor: null }
+        )
       )
-    )
     const { client, Wrapper } = environment()
     const HookWrapper = ({ children }: { children: ReactNode }) => (
       <Wrapper>
