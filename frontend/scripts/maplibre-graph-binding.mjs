@@ -552,13 +552,14 @@ function validateCandidate(metadata, byName) {
         "renderedCodeUnits",
       ])
     )
+    const suffix = module.path === "dist/maplibre-gl-worker.mjs" ? "?url" : ""
     requireInput(
       module.kind === "package" &&
         module.package === "maplibre-gl" &&
         module.packageRoot === "node_modules/maplibre-gl" &&
         MAP_MODULE_PATHS.includes(module.path) &&
         !seen.has(module.path) &&
-        module.idSha256 === sha256("node_modules/maplibre-gl/" + module.path) &&
+        module.idSha256 === sha256("node_modules/maplibre-gl/" + module.path + suffix) &&
         count(module.renderedCodeUnits, 1_000_000_000) &&
         (module.originalCodeUnits === null || count(module.originalCodeUnits, 1_000_000_000)) &&
         (module.path !== "dist/maplibre-gl.css" || module.renderedCodeUnits === 0)

@@ -1187,7 +1187,7 @@ async function makePolicyFixture(change = () => {}) {
       }),
       "assets/vendor-map-A.js": chunk("assets/vendor-map-A.js", {
         modules: Object.fromEntries(
-          ["maplibre-gl.css", "maplibre-gl.mjs", "maplibre-gl-worker.mjs"].map((name) => [
+          ["maplibre-gl.css", "maplibre-gl.mjs", "maplibre-gl-worker.mjs?url"].map((name) => [
             path.join(installedDir, "dist", name),
             { renderedLength: name.endsWith(".css") ? 0 : 1 },
           ])
@@ -1371,6 +1371,15 @@ test("admits only a proven MapLibre 6.15 chunk within the separate lazy ceiling"
     const bytes = Buffer.from(fixture.bundle["assets/vendor-map-A.js"].code)
     const compressed = gzipSync(bytes, { level: 9 }).byteLength
     assert.ok(compressed > 280 * 1024 && compressed <= 286 * 1024)
+    const metadata = JSON.parse(await readFile(fixture.evidence.metadataPath, "utf8"))
+    const worker = metadata.mapLibreChunks[0].modules.find(
+      (module) => module.path === "dist/maplibre-gl-worker.mjs"
+    )
+    assert.ok(worker)
+    assert.equal(
+      worker.idSha256,
+      sha256("node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs?url")
+    )
 
     const ordinary = await analyzeBundle(path.join(fixture.frontend, "dist"))
     assert.throws(() => assertBundleBudgets(ordinary), /vendor-map-A\.js.*280 KiB/u)
@@ -1470,6 +1479,11 @@ test("invalid MapLibre evidence cannot grant a lazy budget allowance", async () 
     "duplicate-module": "candidate-validation",
     "foreign-module": "candidate-validation",
     "forged-module-id": "candidate-validation",
+    "worker-missing-query": "candidate-validation",
+    "worker-wrong-query": "candidate-validation",
+    "worker-extra-query": "candidate-validation",
+    "css-query": "candidate-validation",
+    "main-query": "candidate-validation",
     "candidate-count-0": "candidate-validation",
     "candidate-count-2": "graph-validation",
     "candidate-count-3": "graph-validation",
@@ -1586,6 +1600,19 @@ test("invalid MapLibre evidence cannot grant a lazy budget allowance", async () 
         metadata.mapLibreChunks[0].modules[0].idSha256 = "0".repeat(64)
       }),
     ],
+    ...[
+      ["worker-missing-query", "dist/maplibre-gl-worker.mjs", ""],
+      ["worker-wrong-query", "dist/maplibre-gl-worker.mjs", "?worker"],
+      ["worker-extra-query", "dist/maplibre-gl-worker.mjs", "?url&inline"],
+      ["css-query", "dist/maplibre-gl.css", "?url"],
+      ["main-query", "dist/maplibre-gl.mjs", "?url"],
+    ].map(([name, modulePath, suffix]) => [
+      name,
+      changedMetadata((metadata) => {
+        const module = metadata.mapLibreChunks[0].modules.find((item) => item.path === modulePath)
+        module.idSha256 = sha256("node_modules/maplibre-gl/" + modulePath + suffix)
+      }),
+    ]),
     ...[0, 2, 3].map((count) => [
       "candidate-count-" + count,
       changedMetadata((metadata) => {
