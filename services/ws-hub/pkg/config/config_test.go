@@ -25,7 +25,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 		"JWKS_URL", "WS_SEND_BUFFER_SIZE", "WS_BROADCAST_BUFFER_SIZE",
 		"WS_BROADCAST_WORKERS", "WS_HUB_INTERNAL_SECRET", "INTERNAL_AUTH_TOKEN", "WS_HUB_MAX_CLIENTS",
 		"WS_CLIENT_MSG_RATE_LIMIT", "WS_CLIENT_MSG_BURST", "WS_TICKET_TTL_SECONDS",
-		"REDIS_URL", "REDIS_PASSWORD", "REDIS_DB",
+		"REDIS_URL", "REDIS_PASSWORD", "REDIS_DB", "WS_HUB_METRICS_ADDR",
 	}
 	// Clear env at test start (each Unsetenv is benign if var already unset).
 	for _, env := range envVars {
@@ -36,6 +36,9 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	cfg, err := LoadConfig()
 	require.NoError(t, err)
 	require.Equal(t, "8081", cfg.Port)
+	// AUD-438: metrics are scrape-only and bind to loopback unless the
+	// deployment explicitly opts in to a pod-network listener.
+	require.Equal(t, "127.0.0.1:9108", cfg.MetricsAddr)
 	require.Equal(t, "nats://nats:4222", cfg.NatsURL)
 	require.Equal(t, "", cfg.NatsUser)
 	require.Equal(t, "", cfg.NatsPassword)

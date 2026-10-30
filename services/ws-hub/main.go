@@ -485,8 +485,23 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 			logger.ErrorContext(r.Context(), "Failed to encode health check response", "err", err)
 		}
 	}), "health_check"))
+}
 
+// newMetricsServer builds the scrape-only Prometheus listener. It is kept out
+// of the public WebSocket mux, so unauthenticated metrics are reachable only
+// through the metrics bind address and its network policy (AUD-438).
+func newMetricsServer(addr string) *http.Server {
+	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	return &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		MaxHeaderBytes:    1 << 13,
+	}
 }
 
 // startupPacketConn exposes a readiness barrier after webtransport.Server.Serve
@@ -625,13 +640,26 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	// RZ-33-07: Use channel-based error propagation instead of os.Exit in
 	// goroutine — ensures deferred cleanup (NATS close, Redis close, tracer
 	// shutdown) always executes. Matches gateway pattern (RZ-31-01).
-	errChan := make(chan error, 2)
+	errChan := make(chan error, 3)
 	hub.StartTrackedGoroutine(func() {
 		logger.InfoContext(context.Background(), "Starting WebSocket Hub (TCP)", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errChan <- err
 		}
 	})
+
+	// A metrics listener failure is a startup/runtime error like the others:
+	// the process must not run without the configured scrape boundary.
+	var metricsServer *http.Server
+	if cfg.MetricsAddr != "" {
+		metricsServer = newMetricsServer(cfg.MetricsAddr)
+		hub.StartTrackedGoroutine(func() {
+			logger.InfoContext(context.Background(), "Starting metrics listener", "addr", cfg.MetricsAddr)
+			if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errChan <- err
+			}
+		})
+	}
 
 	wtReady := make(chan struct{})
 	wtDone := make(chan struct{})
@@ -657,6 +685,11 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	shutdownWebTransport(wtServer, wtDone)
 	if err := shutdownHTTPServerFunc(server, shutdownCtx); err != nil {
 		logger.ErrorContext(context.Background(), "Server forced to shutdown", "err", err)
+	}
+	if metricsServer != nil {
+		if err := shutdownHTTPServerFunc(metricsServer, shutdownCtx); err != nil {
+			logger.ErrorContext(context.Background(), "Metrics listener forced to shutdown", "err", err)
+		}
 	}
 	return runErr
 }

@@ -807,7 +807,15 @@ func (c *Client) runRoomReplay(
 	}) {
 		stopStateCancellation()
 		cancelReplay()
-		c.removeRoomReplay(room, state)
+		// Admission is refused only after Stop seals the hub, so this replay can
+		// never run. The membership committed for the join would keep delivering
+		// live frames past the skipped range, so a state that still owns the room
+		// closes with the shutdown retry contract. A superseded state is answered
+		// by its successor instead.
+		if c.removeRoomReplay(room, state) {
+			c.closeTransportWithControlFrame(websocket.CloseTryAgainLater, "hub is shutting down")
+			c.cancelConnection()
+		}
 	}
 }
 

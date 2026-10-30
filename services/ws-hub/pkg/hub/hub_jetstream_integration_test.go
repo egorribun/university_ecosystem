@@ -149,17 +149,15 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 	addOwnedMemoryStream(t, js, cacheInvalidationStream, "cache.invalidate")
 
 	cfg := &config.Config{
-		MaxClients:               10,
-		BroadcastBufferSize:      10,
-		BroadcastWorkers:         1,
-		ClientMsgRateLimit:       10,
-		ClientMsgRateBurst:       10,
-		EnableJetStream:          true,
-		NatsStreamChat:           chatStream,
-		NatsStreamNotifications:  notificationStream,
-		NatsDurableChat:          "integration-chat-" + namespace,
-		NatsDurableNotifications: "integration-notifications-" + namespace,
-		InternalSecret:           "integration-replay-signing-secret",
+		MaxClients:              10,
+		BroadcastBufferSize:     10,
+		BroadcastWorkers:        1,
+		ClientMsgRateLimit:      10,
+		ClientMsgRateBurst:      10,
+		EnableJetStream:         true,
+		NatsStreamChat:          chatStream,
+		NatsStreamNotifications: notificationStream,
+		InternalSecret:          "integration-replay-signing-secret",
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	ctx, cancel := context.WithCancel(context.Background())

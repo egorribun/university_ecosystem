@@ -184,13 +184,54 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 		})
 	}
 
-	t.Run("metrics endpoint", func(t *testing.T) {
+	// AUD-438: /metrics is unauthenticated, so it must not share the public
+	// WebSocket listener. It is served only by the separate metrics listener.
+	t.Run("metrics are not served on the public listener", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
 		require.NoError(t, err)
 		mux.ServeHTTP(rec, req)
-		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
 	})
+}
+
+func TestNewMetricsServer_ServesOnlyScrapeEndpoint(t *testing.T) {
+	srv := newMetricsServer("127.0.0.1:0")
+
+	rec := httptest.NewRecorder()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
+	require.NoError(t, err)
+	srv.Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	for _, path := range []string{"/ws", "/ws/chat", "/health/live", "/"} {
+		t.Run("not exposed at "+path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+			require.NoError(t, err)
+			srv.Handler.ServeHTTP(rec, req)
+			assert.Equal(t, http.StatusNotFound, rec.Code)
+		})
+	}
+}
+
+func TestNewMetricsServer_ServesScrapeEndpointOnItsListener(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	srv := newMetricsServer(listener.Addr().String())
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.Serve(listener) }()
+	t.Cleanup(func() {
+		require.NoError(t, srv.Close())
+		require.ErrorIs(t, <-serveErr, http.ErrServerClosed)
+	})
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+listener.Addr().String()+"/metrics", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestSetupHub_JWKS(t *testing.T) {

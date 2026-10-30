@@ -1265,23 +1265,32 @@ services:
       # only one of those addresses, so binding gRPC to it strands clients on
       # the other network. Membership still advertises one concrete address.
       BIND_ON_IP: "0.0.0.0"
+      # AUD-506: JWT signing keys are fetched over TLS from Caddy's internal JWKS
+      # listener; the certificate chains to the root copied by temporal-jwks-ca.
+      TEMPORAL_JWKS_URL: "https://caddy:8443/.well-known/jwks.json"
     entrypoint: ["/bin/sh", "/etc/temporal/wave144-entrypoint.sh"]
     volumes:
       - ./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro
       - ./services/temporal/entrypoint.sh:/etc/temporal/wave144-entrypoint.sh:ro
       # Defensive .secrets/ mount for any future file-based key import. The
-      # primary auth path uses HTTP JWKS via global.authorization.jwtKeyProvider
+      # primary auth path uses HTTPS JWKS via global.authorization.jwtKeyProvider
       # in config.yaml (W142 (z) #6 disproved file:// URL scheme).
       - ./.secrets:/app/.secrets:ro # pragma: allowlist secret; credential mount path only
+      # Public root of Caddy's internal CA for the JWKS listener (AUD-506).
+      - temporal-jwks-ca:/etc/temporal/jwks-ca:ro
     depends_on:
       # The JWT key provider fetches JWKS during Temporal startup. Starting
       # before backend is ready leaves an empty key cache and rejects the first
       # authenticated SDK connections until its background refresh runs.
       backend:
         condition: service_healthy
+      caddy:
+        condition: service_started
       postgres:
         condition: service_healthy
       temporal-admin-tools:
+        condition: service_completed_successfully
+      temporal-jwks-ca:
         condition: service_completed_successfully
     networks:
       - internal
@@ -1308,6 +1317,44 @@ services:
           cpus: '0.50'
           memory: 1G
     restart: unless-stopped
+
+  # ─── Temporal JWKS trust anchor (AUD-506) ─────────────────────────────────
+  #
+  # Copies only the public root certificate of Caddy's internal CA into a volume
+  # that Temporal mounts read-only. Temporal never mounts caddy-data, which also
+  # stores the CA private key. The copy runs once Caddy has issued its root.
+  temporal-jwks-ca:
+    image: temporalio/admin-tools:1.30.7@sha256:bbdf5fe91b288c17442efbbfb42daa3668d09cfa8ebeb078d6fd475a97f66b81
+    network_mode: none
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        src=/caddy-data/caddy/pki/authorities/local/root.crt
+        tries=0
+        until [ -s "$$src" ]; do
+          tries=$$((tries + 1))
+          if [ "$$tries" -gt 120 ]; then
+            echo "[temporal-jwks-ca] Caddy did not issue its local root certificate" >&2
+            exit 1
+          fi
+          sleep 1
+        done
+        cp "$$src" /out/root.crt
+        chmod 0644 /out/root.crt
+        echo "[temporal-jwks-ca] JWKS trust anchor copied."
+    depends_on:
+      caddy:
+        condition: service_started
+    volumes:
+      - caddy-data:/caddy-data:ro
+      - temporal-jwks-ca:/out
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
 
   # ─── Temporal namespace init (W144 SW2 Step 2 sidecar) ─────────────────────
   #
@@ -1705,6 +1752,8 @@ services:
       - "443:443"
     volumes:
       - ./infrastructure/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy's local CA. temporal-jwks-ca copies only its public root (AUD-506).
+      - caddy-data:/data
     depends_on:
       backend:
         condition: service_healthy
@@ -1719,6 +1768,8 @@ services:
     networks:
       - public
       - frontend_net
+      # Temporal reaches the internal JWKS listener (caddy:8443) on this network.
+      - internal
     deploy:
       resources:
         limits:
@@ -1743,6 +1794,10 @@ volumes:
   static-data:
   seaweedfs_data:
   nats-data:
+  # Caddy's local CA state. Only the one-shot temporal-jwks-ca reads it (AUD-506).
+  caddy-data:
+  # Public root certificate of Caddy's internal CA, read-only for Temporal.
+  temporal-jwks-ca:
   elasticsearch-data:
   tempo-data:
   loki-data:

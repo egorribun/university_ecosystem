@@ -35,7 +35,7 @@ spec:
       annotations:
         university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
         prometheus.io/scrape: "true"
-        prometheus.io/port: {{ .Values.wsHub.service.port | quote }}
+        prometheus.io/port: {{ .Values.wsHub.metrics.port | quote }}
         prometheus.io/path: "/metrics"
     spec:
       {{- with .Values.global.imagePullSecrets }}
@@ -71,6 +71,9 @@ spec:
           env:
             - name: WS_HUB_PORT
               value: {{ .Values.wsHub.service.port | quote }}
+            # Bind all pod interfaces; the NetworkPolicy limits who may connect.
+            - name: WS_HUB_METRICS_ADDR
+              value: {{ printf ":%v" .Values.wsHub.metrics.port | quote }}
             - name: VITE_ENVIRONMENT
               value: {{ .Values.global.environment | quote }}
             - name: JWT_SECRET_FILE

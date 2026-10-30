@@ -1032,6 +1032,7 @@
         "replicaCount",
         "image",
         "service",
+        "metrics",
         "resources",
         "autoscaling",
         "config"
@@ -1046,6 +1047,20 @@
         },
         "image": {
           "$ref": "#/definitions/image"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "port"
+          ],
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          }
         },
         "service": {
           "$ref": "#/definitions/service"

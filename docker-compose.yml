@@ -70,6 +70,11 @@ services:
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/1
       RATE_LIMIT_HEADERS_ENABLED: "true"
+      # AUD-164: Caddy reaches the API over the explicit bridge subnets declared in
+      # `networks` below. Trusting exactly those subnets lets the per-client rate
+      # limiters use Caddy's forwarded client address in local development; any
+      # other peer keeps its socket address as the client identity.
+      TRUSTED_PROXIES: "${UE_PUBLIC_NET_SUBNET:-10.210.12.0/24},${UE_FRONTEND_NET_SUBNET:-10.210.11.0/24},${UE_SERVICE_NET_SUBNET:-10.210.10.0/24}"
       NATS_URL: nats://nats:4222
       NATS_AUTH_TOKEN: ${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
@@ -654,18 +659,26 @@ services:
       # resolves second; listen on every interface and advertise one concrete
       # address separately for the single-node membership ring.
       BIND_ON_IP: "0.0.0.0"
+      # AUD-506: JWT signing keys are fetched over TLS from Caddy's internal JWKS
+      # listener. The certificate chains to the root copied by temporal-jwks-ca.
+      TEMPORAL_JWKS_URL: "https://caddy:8443/.well-known/jwks.json"
     entrypoint: ["/bin/sh", "/etc/temporal/wave144-entrypoint.sh"]
     volumes:
       - ./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro
       - ./services/temporal/entrypoint.sh:/etc/temporal/wave144-entrypoint.sh:ro
+      - temporal_jwks_ca:/etc/temporal/jwks-ca:ro
     depends_on:
       # Temporal's JWT key provider fetches this backend's JWKS during startup.
       # Waiting avoids an empty key cache and failed first SDK connections.
       backend:
         condition: service_healthy
+      caddy:
+        condition: service_started
       postgres:
         condition: service_healthy
       temporal-admin-tools:
+        condition: service_completed_successfully
+      temporal-jwks-ca:
         condition: service_completed_successfully
     networks:
       - db_net
@@ -687,6 +700,44 @@ services:
         limits:
           cpus: "0.50"
           memory: 1G
+
+  # ─── Temporal JWKS trust anchor (AUD-506) ─────────────────────────────────
+  #
+  # Copies only the public root certificate of Caddy's internal CA into a volume
+  # that Temporal mounts read-only. Temporal never mounts caddy_data, which also
+  # stores the CA private key. The copy runs once Caddy has issued its root.
+  temporal-jwks-ca:
+    image: temporalio/admin-tools:1.30.7@sha256:bbdf5fe91b288c17442efbbfb42daa3668d09cfa8ebeb078d6fd475a97f66b81
+    network_mode: none
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        src=/caddy-data/caddy/pki/authorities/local/root.crt
+        tries=0
+        until [ -s "$$src" ]; do
+          tries=$$((tries + 1))
+          if [ "$$tries" -gt 120 ]; then
+            echo "[temporal-jwks-ca] Caddy did not issue its local root certificate" >&2
+            exit 1
+          fi
+          sleep 1
+        done
+        cp "$$src" /out/root.crt
+        chmod 0644 /out/root.crt
+        echo "[temporal-jwks-ca] JWKS trust anchor copied."
+    depends_on:
+      caddy:
+        condition: service_started
+    volumes:
+      - caddy_data:/caddy-data:ro
+      - temporal_jwks_ca:/out
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
 
   # ─── Temporal namespace init (W144 SW2 Step 2 sidecar) ─────────────────────
   #
@@ -970,14 +1021,26 @@ services:
     restart: unless-stopped
 
 networks:
+  # Explicit subnets (AUD-164). The backend's TRUSTED_PROXIES names the subnets of
+  # every network that Caddy shares with it, so the subnets must stay in step.
+  # Override them only when another local stack already uses the defaults.
   public:
+    ipam:
+      config:
+        - subnet: "${UE_PUBLIC_NET_SUBNET:-10.210.12.0/24}"
   # Host-published admin and infrastructure ports stay reachable from the
   # Docker host without placing their services on the frontend-facing network.
   published_ports:
   frontend_net:
     internal: true
+    ipam:
+      config:
+        - subnet: "${UE_FRONTEND_NET_SUBNET:-10.210.11.0/24}"
   service_net:
     internal: true
+    ipam:
+      config:
+        - subnet: "${UE_SERVICE_NET_SUBNET:-10.210.10.0/24}"
   db_net:
     internal: true
   cache_net:
@@ -993,6 +1056,8 @@ volumes:
   postgres-data:
   static-data:
   temporal_data:
+  # Public root certificate of Caddy's internal CA, read-only for Temporal (AUD-506).
+  temporal_jwks_ca:
   seaweedfs_data:
   # Caddy ACME certificates and OCSP staples — persist TLS state across restarts.
   caddy_data:

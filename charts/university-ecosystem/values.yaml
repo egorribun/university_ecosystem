@@ -308,6 +308,12 @@ wsHub:
   service:
     type: ClusterIP
     port: 8081
+  # Scrape-only Prometheus listener (AUD-438). It is separate from the public
+  # WebSocket port, so /metrics is never served by the client route table. The
+  # pod listens on this port and the NetworkPolicy admits it only from the
+  # monitoring namespace. Keep it distinct from service.port.
+  metrics:
+    port: 9108
   resources:
     requests:
       cpu: 100m

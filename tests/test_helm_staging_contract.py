@@ -2035,7 +2035,18 @@ def test_ws_hub_network_policy_is_least_privilege() -> None:
         for rule in policy["spec"]["ingress"]
         for port in rule.get("ports", [])
     }
-    assert ingress_ports == {8081}
+    assert ingress_ports == {8081, 9108}
+    # Prometheus may reach only the scrape-only metrics port (AUD-438); the
+    # public WebSocket port is never admitted from the monitoring namespace.
+    monitoring_ports = {
+        port["port"]
+        for rule in policy["spec"]["ingress"]
+        for source in rule.get("from", [])
+        if source.get("namespaceSelector", {}).get("matchLabels")
+        == {"kubernetes.io/metadata.name": "monitoring"}
+        for port in rule.get("ports", [])
+    }
+    assert monitoring_ports == {9108}
     backend_policy = _component_resource(resources, "NetworkPolicy", "backend")
     backend_sources = [
         source.get("podSelector", {}).get("matchLabels", {})

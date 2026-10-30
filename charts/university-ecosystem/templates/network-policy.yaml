@@ -247,6 +247,15 @@ spec:
         - protocol: TCP
           port: {{ .Values.wsHub.service.port }}
     {{- end }}
+    # Prometheus scraping of the scrape-only metrics listener (AUD-438). The
+    # public WebSocket port above is never opened to the monitoring namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: {{ .Values.wsHub.metrics.port }}
   egress:
     - to:
         - podSelector:

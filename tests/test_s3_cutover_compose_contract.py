@@ -60,6 +60,7 @@ _PRODUCTION_SECRET_SOURCE_VARIABLES = (
     "RATE_LIMIT_STORAGE_URI_SOURCE_FILE",
     "SPICEDB_PRESHARED_KEY_SOURCE_FILE",
     "TOKEN_HMAC_SECRET_SOURCE_FILE",
+    "IDEMPOTENCY_HMAC_SECRET_SOURCE_FILE",
     "WS_HUB_INTERNAL_SECRET_SOURCE_FILE",
 )
 
@@ -74,6 +75,8 @@ def _production_secret_source_overrides(tmp_path: Path) -> dict[str, str]:
         source.write_text("synthetic compose contract fixture\n", encoding="utf-8")
         overrides[variable] = str(source)
     overrides["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"] = "synthetic-active-key-id"
+    # RFC 5737 documentation range: a placeholder edge CIDR for render checks only.
+    overrides["TRUSTED_PROXIES"] = "203.0.113.0/24"
     overrides["ELASTICSEARCH_URL"] = "https://search.synthetic.invalid:9243"
     overrides["SPICEDB_ENDPOINT"] = "grpcs://spicedb.synthetic.invalid:443"
     overrides["EVENT_FILE_SCANNER_HOST"] = "clamd.synthetic.invalid"

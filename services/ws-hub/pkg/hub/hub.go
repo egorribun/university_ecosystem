@@ -322,8 +322,6 @@ type Hub struct {
 	dedupCache      *lru.Cache[string, time.Time]
 	streamChat      string
 	streamNotif     string
-	durableChat     string
-	durableNotif    string
 	enableJetStream bool
 	// chatReplayAvailable is true only when the live chat subscription itself
 	// uses JetStream. A non-nil JS context is insufficient after core fallback.
@@ -599,8 +597,6 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 	rateBurst := 20
 	streamChat := "CHAT_EVENTS"
 	streamNotif := "NOTIFICATIONS_EVENTS"
-	durableChat := "ws-hub-chat"
-	durableNotif := "ws-hub-notifications"
 	enableJS := true
 
 	if cfg != nil {
@@ -621,12 +617,6 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		}
 		if cfg.NatsStreamNotifications != "" {
 			streamNotif = cfg.NatsStreamNotifications
-		}
-		if cfg.NatsDurableChat != "" {
-			durableChat = cfg.NatsDurableChat
-		}
-		if cfg.NatsDurableNotifications != "" {
-			durableNotif = cfg.NatsDurableNotifications
 		}
 		enableJS = cfg.EnableJetStream
 	}
@@ -675,8 +665,6 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		dedupCache:                        dedupCache,
 		streamChat:                        streamChat,
 		streamNotif:                       streamNotif,
-		durableChat:                       durableChat,
-		durableNotif:                      durableNotif,
 		enableJetStream:                   enableJS,
 	}
 	hub.sessionRevocationCheck = hub.checkJTINotRevoked
@@ -1217,8 +1205,10 @@ func (h *Hub) collectNotificationRecipientsLocked(msg *Message, span trace.Span)
 	return recipients
 }
 
+// maxBroadcastBytes bounds one fanned-out frame (AGENTS.md section 3.2).
+const maxBroadcastBytes = 60 * 1024 // 60 KB
+
 func (h *Hub) isOversized(bctx context.Context, msg *Message, data []byte, span trace.Span) bool {
-	const maxBroadcastBytes = 60 * 1024 // 60 KB
 	if len(data) <= maxBroadcastBytes {
 		return false
 	}
@@ -1385,6 +1375,11 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 			return fmt.Errorf("chat stream incarnation is unavailable")
 		}
 		incarnation := streamInfo.Created.UTC().Format(time.RFC3339Nano)
+		// Chat and notification consumers are ephemeral and start at new messages.
+		// Each replica must receive every live event for its own sockets, so no shared
+		// durable name is used: nats.go rejects a second non-queue subscriber on one push
+		// consumer, and a per-replica durable would retain and redeliver backlog after a
+		// reconnect, duplicating what the signed resume replay already serves.
 		chatSub, err = h.js.Subscribe("chat.*", h.handleChat(appCtx),
 			nats.DeliverNew(),
 			nats.AckExplicit(),
@@ -1419,10 +1414,13 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	h.subs = append(h.subs, chatSub, notifSub)
 
 	// Membership revocations are published through the backend transactional
-	// outbox and must reach every replica after downtime. Keep this subscription
-	// durable even when Core NATS is selected for chat delivery.
+	// outbox. This consumer stays ephemeral: ws-hub replicas are stateless, so
+	// a fresh replica holds no invalidation-derived state and must not replay
+	// the seven-day CACHE_INVALIDATIONS retention on every start (AUD-478).
+	// It remains a JetStream consumer, so acknowledgements still apply even
+	// when Core NATS is selected for chat delivery.
 	invHandler := h.handleCacheInvalidation(appCtx)
-	invOpts := []nats.SubOpt{nats.DeliverAll(), nats.AckExplicit(), nats.ManualAck()}
+	invOpts := []nats.SubOpt{nats.DeliverNew(), nats.AckExplicit(), nats.ManualAck()}
 	var invSub *nats.Subscription
 	if h.subscribeCacheInvalidations != nil {
 		invSub, err = h.subscribeCacheInvalidations(invHandler, invOpts...)
@@ -1568,6 +1566,32 @@ func (h *Hub) terminateChatMessage(ctx context.Context, msg *nats.Msg, reason st
 	}
 }
 
+// sequencedChatUndeliverableReason reports why a sequenced chat message cannot
+// be fanned out. Broadcast drops such messages after the JetStream ACK, which
+// would leave a silent gap in the client's replay sequence (AUD-477).
+func sequencedChatUndeliverableReason(wsMsg *Message) string {
+	data, err := hubJSONMarshalFunc(wsMsg)
+	if err != nil {
+		return "marshal failed"
+	}
+	if len(data) > maxBroadcastBytes {
+		return "oversized"
+	}
+	return ""
+}
+
+// rejectUndeliverableSequencedChat terminates the message instead of
+// acknowledging it, then resynchronizes the room: connected clients reconnect
+// and resume from their last delivered sequence instead of continuing past the
+// gap. Termination stops JetStream from redelivering a poison message forever.
+func (h *Hub) rejectUndeliverableSequencedChat(ctx context.Context, msg *nats.Msg, wsMsg *Message, reason string) {
+	BroadcastDropsTotal.Inc()
+	h.Logger.WarnContext(ctx, "ws-hub: sequenced chat message cannot be broadcast; resynchronizing room",
+		"subject", msg.Subject, "room", wsMsg.Room, "sequence", wsMsg.replaySequence(), "reason", reason)
+	h.failRoomClients(wsMsg.Room)
+	h.terminateChatMessage(ctx, msg, reason)
+}
+
 func (h *Hub) enqueueChatDelivery(
 	ctx context.Context,
 	msg *nats.Msg,
@@ -1575,6 +1599,12 @@ func (h *Hub) enqueueChatDelivery(
 	msgID string,
 	requireSequence bool,
 ) {
+	if requireSequence && wsMsg.replaySequence() > 0 {
+		if reason := sequencedChatUndeliverableReason(wsMsg); reason != "" {
+			h.rejectUndeliverableSequencedChat(ctx, msg, wsMsg, reason)
+			return
+		}
+	}
 	select {
 	case h.Broadcast <- wsMsg:
 		if msgID != "" && h.dedupCache != nil {
