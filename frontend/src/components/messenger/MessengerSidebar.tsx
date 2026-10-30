@@ -180,13 +180,11 @@ export function MessengerSidebar({
             }}
             className="w-full min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold text-msg-active transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
           >
-            {t(
-              isLoadingMoreChats
-                ? "messenger:pagination.loadingMoreChats"
-                : moreChatsError
-                  ? "messenger:error.retry"
-                  : "messenger:pagination.loadMoreChats"
-            )}
+            {isLoadingMoreChats
+              ? t("messenger:pagination.loadingMoreChats")
+              : moreChatsError
+                ? t("messenger:error.retry")
+                : t("messenger:pagination.loadMoreChats")}
           </m.button>
         </div>
       )}
