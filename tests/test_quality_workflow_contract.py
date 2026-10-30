@@ -3563,8 +3563,179 @@ def test_lhci_collection_scores_the_real_404_document_without_rewriting_status()
     assert "ignoreStatusCode: true" in lhci_script
 
 
+def _assert_maplibre_budget_artifact_transport(workflow: dict[str, object]) -> None:
+    build = workflow["jobs"]["build"]
+    analysis = workflow["jobs"]["bundle-analysis"]
+    assert build["timeout-minutes"] == 45
+    assert analysis["timeout-minutes"] == 15
+    assert analysis["needs"] == "build"
+    assert "permissions" not in build
+    assert "permissions" not in analysis
+    expected_outputs = {
+        "bundle-artifact-id": "steps.upload-production-bundle.outputs.artifact-id",
+        "metadata-artifact-id": "steps.upload-maplibre-metadata.outputs.artifact-id",
+        "html-artifact-id": "steps.upload-final-html-inventory.outputs.artifact-id",
+        "metadata-sha256": "steps.capture-maplibre-metadata.outputs.metadata-sha256",
+        "html-sha256": "steps.capture-final-html-inventory.outputs.html-sha256",
+        "tree-sha": "steps.capture-final-html-inventory.outputs.tree-sha",
+    }
+    assert build["outputs"] == {
+        key: "${{ " + value + " }}" for key, value in expected_outputs.items()
+    }
+    producers = {step.get("id"): step for step in build["steps"] if "id" in step}
+    upload = producers["upload-maplibre-metadata"]
+    assert upload["uses"] == producers["upload-production-bundle"]["uses"]
+    assert upload["with"] == {
+        "name": (
+            "frontend-maplibre-metadata-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}"
+        ),
+        "path": (
+            "${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}.json"
+        ),
+        "if-no-files-found": "error",
+        "retention-days": 1,
+    }
+    metadata = producers["capture-maplibre-metadata"]["run"]
+    html = producers["capture-final-html-inventory"]["run"]
+    assert metadata.index("\nMAPLIBRE_INVENTORY\n") < metadata.index("metadata_sha=")
+    assert html.index("\nFINAL_HTML_INVENTORY\n") < html.index("report_sha=")
+    assert "sha256sum --" in metadata and "sha256sum --" in html
+    assert "metadata-sha256=%s" in metadata
+    assert "html-sha256=%s" in html and "tree-sha=%s" in html
+    assert "GIT_NO_REPLACE_OBJECTS=1 git rev-parse 'HEAD^{tree}'" in html
+    steps = analysis["steps"]
+    names = [step.get("name") for step in steps]
+    by_name = {step.get("name"): step for step in steps}
+    guard = by_name["Validate bundle artifact receipts"]
+    assert guard["env"] == {
+        "BUNDLE_ARTIFACT_ID": "${{ needs.build.outputs.bundle-artifact-id }}",
+        "METADATA_ARTIFACT_ID": "${{ needs.build.outputs.metadata-artifact-id }}",
+        "HTML_ARTIFACT_ID": "${{ needs.build.outputs.html-artifact-id }}",
+        "METADATA_SHA256": "${{ needs.build.outputs.metadata-sha256 }}",
+        "HTML_SHA256": "${{ needs.build.outputs.html-sha256 }}",
+        "BUILD_TREE_SHA": "${{ needs.build.outputs.tree-sha }}",
+    }
+    for required in (
+        "/^[1-9][0-9]{0,19}$/u.test(value)",
+        "Number.isSafeInteger(Number(value))",
+        "new Set(ids).size !== 3",
+        "/^[0-9a-f]{64}$/u.test(value)",
+        "/^[0-9a-f]{40}$/u.test(process.env.BUILD_TREE_SHA)",
+        "process.exitCode = 1",
+        "BUNDLE_ARTIFACT_RECEIPTS_REJECTED",
+    ):
+        assert required in guard["run"]
+    download_action = by_name["Download immutable WASM modules"]["uses"]
+    for name, output, destination in (
+        (
+            "Download production bundle",
+            "bundle-artifact-id",
+            "${{ inputs.working-directory }}/dist",
+        ),
+        (
+            "Download MapLibre compiler metadata",
+            "metadata-artifact-id",
+            "${{ runner.temp }}/maplibre-budget-metadata",
+        ),
+        (
+            "Download final HTML budget evidence",
+            "html-artifact-id",
+            "${{ runner.temp }}/maplibre-budget-html",
+        ),
+    ):
+        step = by_name[name]
+        assert step["uses"] == download_action
+        assert step["with"] == {
+            "artifact-ids": "${{ needs.build.outputs." + output + " }}",
+            "path": destination,
+            "merge-multiple": True,
+            "digest-mismatch": "error",
+        }
+        assert names.index(guard["name"]) < names.index(name)
+        assert names.index(name) < names.index("Analyze bundle size")
+        assert "if" not in step
+        assert "continue-on-error" not in step
+    analyze = by_name["Analyze bundle size"]
+    assert analyze["env"] == {
+        "NODE_OPTIONS": "--max-old-space-size=512 --max-semi-space-size=16",
+        "MAPLIBRE_BUDGET_METADATA_PATH": (
+            "${{ runner.temp }}/maplibre-budget-metadata/"
+            "maplibre-inventory-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}.json"
+        ),
+        "MAPLIBRE_BUDGET_METADATA_SHA256": "${{ needs.build.outputs.metadata-sha256 }}",
+        "MAPLIBRE_BUDGET_HTML_PATH": (
+            "${{ runner.temp }}/maplibre-budget-html/"
+            "final-html-inventory-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}.json"
+        ),
+        "MAPLIBRE_BUDGET_HTML_SHA256": "${{ needs.build.outputs.html-sha256 }}",
+        "MAPLIBRE_BUDGET_TREE_SHA": "${{ needs.build.outputs.tree-sha }}",
+    }
+    for step in (guard, analyze, upload):
+        assert "if" not in step
+        assert "continue-on-error" not in step
+
+
+@pytest.mark.parametrize(
+    "defect",
+    (
+        "name-fallback",
+        "empty-id",
+        "digest-warning",
+        "foreign-run-token",
+        "missing-content-hash",
+        "wrong-producer",
+        "nonblocking-analyzer",
+        "missing-id-guard",
+        "unsafe-id-guard",
+        "download-before-guard",
+    ),
+)
+def test_maplibre_budget_transport_rejects_wiring_near_misses(defect: str) -> None:
+    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_maplibre_budget_artifact_transport(workflow)
+    changed = deepcopy(workflow)
+    build = changed["jobs"]["build"]
+    steps = changed["jobs"]["bundle-analysis"]["steps"]
+    by_name = {step.get("name"): step for step in steps}
+    download = by_name["Download MapLibre compiler metadata"]
+    analyze = by_name["Analyze bundle size"]
+    guard = by_name["Validate bundle artifact receipts"]
+    if defect == "name-fallback":
+        download["with"].pop("artifact-ids")
+        download["with"]["name"] = "frontend-maplibre-metadata"
+    elif defect == "empty-id":
+        download["with"]["artifact-ids"] = ""
+    elif defect == "digest-warning":
+        download["with"]["digest-mismatch"] = "warn"
+    elif defect == "foreign-run-token":
+        download["with"]["github-token"] = "${{ secrets.GITHUB_TOKEN }}"
+        download["with"]["run-id"] = "1"
+    elif defect == "missing-content-hash":
+        analyze["env"].pop("MAPLIBRE_BUDGET_METADATA_SHA256")
+    elif defect == "wrong-producer":
+        build["outputs"]["metadata-artifact-id"] = build["outputs"]["html-artifact-id"]
+    elif defect == "nonblocking-analyzer":
+        analyze["continue-on-error"] = True
+    elif defect == "missing-id-guard":
+        guard["run"] = guard["run"].replace("/^[1-9][0-9]{0,19}$/u.test(value)", "true")
+    elif defect == "unsafe-id-guard":
+        guard["run"] = guard["run"].replace(
+            "Number.isSafeInteger(Number(value))", "true"
+        )
+    else:
+        steps.remove(download)
+        steps.insert(steps.index(guard), download)
+    with pytest.raises(AssertionError):
+        _assert_maplibre_budget_artifact_transport(changed)
+
+
 def test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report() -> None:
     workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_maplibre_budget_artifact_transport(workflow)
     analysis_job = workflow["jobs"]["bundle-analysis"]
     test_step = next(
         step

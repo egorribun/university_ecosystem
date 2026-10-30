@@ -860,6 +860,13 @@ jobs:
   build:
     name: Production Build
     needs: wasm-build
+    outputs:
+      bundle-artifact-id: ${{ steps.upload-production-bundle.outputs.artifact-id }}
+      metadata-artifact-id: ${{ steps.upload-maplibre-metadata.outputs.artifact-id }}
+      html-artifact-id: ${{ steps.upload-final-html-inventory.outputs.artifact-id }}
+      metadata-sha256: ${{ steps.capture-maplibre-metadata.outputs.metadata-sha256 }}
+      html-sha256: ${{ steps.capture-final-html-inventory.outputs.html-sha256 }}
+      tree-sha: ${{ steps.capture-final-html-inventory.outputs.tree-sha }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
@@ -910,6 +917,7 @@ jobs:
           MAPLIBRE_BUILD_METADATA_OUTPUT: ${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
 
       - name: Report bounded MapLibre build inventory
+        id: capture-maplibre-metadata
         timeout-minutes: 1
         run: |
           set -euo pipefail
@@ -1152,6 +1160,21 @@ jobs:
             process.exitCode = 1
           }
           MAPLIBRE_INVENTORY
+          metadata="$RUNNER_TEMP/maplibre-inventory-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_SHA.json"
+          metadata_sha="$(sha256sum -- "$metadata" 2>/dev/null)" || {
+            printf '%s\n' 'MAPLIBRE_METADATA_RECEIPT_REJECTED' >&2
+            exit 1
+          }
+          printf 'metadata-sha256=%s\n' "${metadata_sha%% *}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload MapLibre compiler metadata
+        id: upload-maplibre-metadata
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-maplibre-metadata-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Capture bounded final HTML inventory
         id: capture-final-html-inventory
@@ -1488,6 +1511,17 @@ jobs:
             process.exitCode = 1
           }
           FINAL_HTML_INVENTORY
+          report="$RUNNER_TEMP/final-html-inventory-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_SHA.json"
+          report_sha="$(sha256sum -- "$report" 2>/dev/null)" || {
+            printf '%s\n' 'FINAL_HTML_RECEIPT_REJECTED' >&2
+            exit 1
+          }
+          tree_sha="$(timeout 5s env GIT_NO_REPLACE_OBJECTS=1 git rev-parse 'HEAD^{tree}' 2>/dev/null)" || {
+            printf '%s\n' 'FINAL_HTML_RECEIPT_REJECTED' >&2
+            exit 1
+          }
+          printf 'html-sha256=%s\n' "${report_sha%% *}" >> "$GITHUB_OUTPUT"
+          printf 'tree-sha=%s\n' "$tree_sha" >> "$GITHUB_OUTPUT"
 
       - name: Upload final HTML inventory
         id: upload-final-html-inventory
@@ -1499,6 +1533,7 @@ jobs:
           retention-days: 1
 
       - name: Upload production bundle
+        id: upload-production-bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: frontend-dist
@@ -1562,16 +1597,74 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Validate bundle artifact receipts
+        env:
+          BUNDLE_ARTIFACT_ID: ${{ needs.build.outputs.bundle-artifact-id }}
+          METADATA_ARTIFACT_ID: ${{ needs.build.outputs.metadata-artifact-id }}
+          HTML_ARTIFACT_ID: ${{ needs.build.outputs.html-artifact-id }}
+          METADATA_SHA256: ${{ needs.build.outputs.metadata-sha256 }}
+          HTML_SHA256: ${{ needs.build.outputs.html-sha256 }}
+          BUILD_TREE_SHA: ${{ needs.build.outputs.tree-sha }}
+        run: |
+          node --input-type=module <<'BUNDLE_RECEIPTS'
+          const ids = [
+            process.env.BUNDLE_ARTIFACT_ID,
+            process.env.METADATA_ARTIFACT_ID,
+            process.env.HTML_ARTIFACT_ID,
+          ]
+          const hashes = [process.env.METADATA_SHA256, process.env.HTML_SHA256]
+          if (
+            !ids.every(
+              (value) =>
+                typeof value === "string" &&
+                /^[1-9][0-9]{0,19}$/u.test(value) &&
+                Number.isSafeInteger(Number(value))
+            ) ||
+            new Set(ids).size !== 3 ||
+            !hashes.every((value) => typeof value === "string" && /^[0-9a-f]{64}$/u.test(value)) ||
+            typeof process.env.BUILD_TREE_SHA !== "string" ||
+            !/^[0-9a-f]{40}$/u.test(process.env.BUILD_TREE_SHA)
+          ) {
+            process.stderr.write("BUNDLE_ARTIFACT_RECEIPTS_REJECTED\n")
+            process.exitCode = 1
+          }
+          BUNDLE_RECEIPTS
+
       - name: Download production bundle
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: frontend-dist
+          artifact-ids: ${{ needs.build.outputs.bundle-artifact-id }}
           path: ${{ inputs.working-directory }}/dist
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download MapLibre compiler metadata
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.metadata-artifact-id }}
+          path: ${{ runner.temp }}/maplibre-budget-metadata
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download final HTML budget evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.html-artifact-id }}
+          path: ${{ runner.temp }}/maplibre-budget-html
+          merge-multiple: true
+          digest-mismatch: error
 
       - name: Test bundle analyzer
         run: node --test scripts/check-bundle-budget.test.mjs scripts/maplibre-build-metadata.test.mjs
 
       - name: Analyze bundle size
+        env:
+          NODE_OPTIONS: "--max-old-space-size=512 --max-semi-space-size=16"
+          MAPLIBRE_BUDGET_METADATA_PATH: ${{ runner.temp }}/maplibre-budget-metadata/maplibre-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
+          MAPLIBRE_BUDGET_METADATA_SHA256: ${{ needs.build.outputs.metadata-sha256 }}
+          MAPLIBRE_BUDGET_HTML_PATH: ${{ runner.temp }}/maplibre-budget-html/final-html-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
+          MAPLIBRE_BUDGET_HTML_SHA256: ${{ needs.build.outputs.html-sha256 }}
+          MAPLIBRE_BUDGET_TREE_SHA: ${{ needs.build.outputs.tree-sha }}
         run: node scripts/check-bundle-budget.mjs
 
       - name: Upload bundle report

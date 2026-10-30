@@ -10,6 +10,7 @@ const DEFAULT_REPORT_PATH = path.resolve(process.cwd(), "bundle-report.json")
 const ASSET_EXTENSIONS = new Set([".js", ".mjs", ".css"])
 const HTML_LIMIT = 1024 * 1024
 const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml"
+const MAPLIBRE_LAZY_GZIP_KB = 286
 
 // parse5 preserves browser tree recovery without reporting every mismatched end
 // tag. Require a real closing token where HTML does not permit its omission.
@@ -322,6 +323,30 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
   )
   assets.sort((left, right) => left.path.localeCompare(right.path))
 
+  let mapLibreAllowance
+  if (options.mapLibreEvidence !== undefined) {
+    const { verifyMapLibreBudgetAllowance } = await import("./maplibre-graph-binding.mjs")
+    const verified = await verifyMapLibreBudgetAllowance(
+      path.dirname(entryHtmlPath),
+      options.mapLibreEvidence
+    )
+    const candidatePath = path.posix.join(htmlRelativeDirectory, verified.fileName)
+    const candidates = assets.filter(
+      (asset) => asset.type === "javascript" && /(?:^|\/)vendor-map(?:-|\.)/u.test(asset.path)
+    )
+    const candidate = candidates[0]
+    if (
+      candidates.length !== 1 ||
+      candidate.path !== candidatePath ||
+      candidate.isInitial ||
+      candidate.rawBytes !== verified.rawBytes ||
+      candidate.gzipBytes !== verified.gzipBytes
+    ) {
+      throw new Error("MapLibre budget evidence rejected")
+    }
+    mapLibreAllowance = { ...verified, path: candidatePath, gzipLimitKiB: MAPLIBRE_LAZY_GZIP_KB }
+  }
+
   const javascriptAssets = assets.filter((asset) => asset.type === "javascript")
   const stylesheetAssets = assets.filter((asset) => asset.type === "stylesheet")
   const mainAssets = javascriptAssets.filter((asset) => asset.isMain)
@@ -356,6 +381,7 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
     commitSha: options.commitSha ?? process.env.GITHUB_SHA ?? null,
     sourceRoot: normalizeAssetPath(path.relative(process.cwd(), distDir)) || ".",
     budgets: BUNDLE_BUDGETS,
+    ...(mapLibreAllowance ? { mapLibreAllowance } : {}),
     summary: {
       assetCount: assets.length,
       javascriptAssetCount: javascriptAssets.length,
@@ -403,11 +429,27 @@ export function getBundleBudgetViolations(report) {
       limitKb: BUNDLE_BUDGETS.initialCssGzipKb,
       message: "Initial CSS delivery graph exceeds gzip budget",
     },
-    {
-      actualBytes: summary.largestGeneralLazyJsGzipBytes,
-      limitKb: BUNDLE_BUDGETS.generalLazyJsGzipKb,
-      message: `Lazy JS chunk '${summary.largestGeneralLazyJsPath}' exceeds gzip budget`,
-    },
+    ...(report.mapLibreAllowance
+      ? report.assets
+          .filter(
+            (asset) =>
+              asset.type === "javascript" && !asset.isInitial && !asset.isPasswordDictionary
+          )
+          .map((asset) => ({
+            actualBytes: asset.gzipBytes,
+            limitKb:
+              asset.path === report.mapLibreAllowance.path
+                ? MAPLIBRE_LAZY_GZIP_KB
+                : BUNDLE_BUDGETS.generalLazyJsGzipKb,
+            message: `Lazy JS chunk '${asset.path}' exceeds gzip budget`,
+          }))
+      : [
+          {
+            actualBytes: summary.largestGeneralLazyJsGzipBytes,
+            limitKb: BUNDLE_BUDGETS.generalLazyJsGzipKb,
+            message: `Lazy JS chunk '${summary.largestGeneralLazyJsPath}' exceeds gzip budget`,
+          },
+        ]),
     {
       actualBytes: summary.largestPasswordDictionaryRawBytes ?? 0,
       limitKb: BUNDLE_BUDGETS.passwordDictionaryRawKb,
@@ -439,7 +481,25 @@ export function assertBundleBudgets(report) {
 }
 
 async function main() {
-  const report = await analyzeBundle()
+  const input = {
+    metadataPath: process.env.MAPLIBRE_BUDGET_METADATA_PATH,
+    metadataSha256: process.env.MAPLIBRE_BUDGET_METADATA_SHA256,
+    htmlReportPath: process.env.MAPLIBRE_BUDGET_HTML_PATH,
+    htmlReportSha256: process.env.MAPLIBRE_BUDGET_HTML_SHA256,
+    treeSha: process.env.MAPLIBRE_BUDGET_TREE_SHA,
+  }
+  const options = Object.values(input).some((value) => value !== undefined)
+    ? {
+        mapLibreEvidence: {
+          ...input,
+          workspace: process.env.GITHUB_WORKSPACE,
+          checkoutSha: process.env.GITHUB_SHA,
+          runId: process.env.GITHUB_RUN_ID,
+          runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+        },
+      }
+    : {}
+  const report = await analyzeBundle(DEFAULT_DIST_DIR, options)
   const violations = getBundleBudgetViolations(report)
   report.validation = { valid: violations.length === 0, violations }
   await fs.writeFile(DEFAULT_REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`, "utf8")
