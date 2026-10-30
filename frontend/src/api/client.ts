@@ -414,7 +414,7 @@ export const fetchAnonymousNewsDetail = ({
 type AnonymousNewsInteractionPagination =
   { offset: number; cursor?: never } | { offset?: never; cursor: string }
 
-const isValidAnonymousNewsCursor = (cursor: unknown): cursor is string => {
+export const isValidAnonymousNewsCursor = (cursor: unknown): cursor is string => {
   if (typeof cursor !== "string" || cursor.length === 0) return false
   let length = 0
   for (const character of cursor) {

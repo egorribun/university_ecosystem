@@ -1,5 +1,5 @@
 import { useCallback } from "react"
-import api, { fetchAnonymousNewsInteractions } from "@/api/client"
+import api, { fetchAnonymousNewsInteractions, isValidAnonymousNewsCursor } from "@/api/client"
 import {
   useInfiniteQuery,
   useMutation,
@@ -14,7 +14,7 @@ import { captureSessionEpoch } from "@/stores/sessionEpoch"
 // Temporary comments have no server ID until the interactions query reconciles.
 export const OPTIMISTIC_COMMENT_ID_PREFIX = "optimistic-"
 
-/** Comments per /interactions request. The backend pages comments by offset, oldest first. */
+/** Comments per request; prefer opaque server cursors with legacy offset fallback. */
 export const NEWS_COMMENTS_PAGE_SIZE = 20
 
 export type NewsComment = {
@@ -30,6 +30,7 @@ export type NewsInteractions = {
   is_liked: boolean
   comments: NewsComment[]
   comments_count?: number
+  next_cursor?: string | null
 }
 
 type NewsInteractionSummary = Pick<NewsInteractions, "likes_count" | "is_liked" | "comments_count">
@@ -40,7 +41,8 @@ type InteractionPage = NewsInteractions & {
   serverCommentsLength?: number
   isSummarySeed?: boolean
 }
-type InteractionPages = InfiniteData<InteractionPage, number>
+type CommentPageParam = number | { cursor: string; requiresCursor: boolean }
+type InteractionPages = InfiniteData<InteractionPage, CommentPageParam>
 type MutationOwner = { ownsSession: () => boolean }
 
 function requireCurrentSession(ownsSession: () => boolean) {
@@ -58,13 +60,19 @@ function flattenInteractions(data: InteractionPages): NewsInteractions {
   }
 }
 
-function nextCommentsOffset(
+function nextCommentsPage(
   lastPage: InteractionPage,
   _allPages: InteractionPage[],
-  lastOffset: number
-) {
-  // Older persisted cache entries do not have this metadata. Ignore
-  // optimistic IDs in that fallback until the page is fetched again.
+  lastPageParam: CommentPageParam
+): CommentPageParam | undefined {
+  if (Object.hasOwn(lastPage, "next_cursor")) {
+    return lastPage.next_cursor
+      ? { cursor: lastPage.next_cursor, requiresCursor: true }
+      : undefined
+  }
+  // Only the initial probe may fall back when an older server omits cursors.
+  // Numeric page parameters also preserve already-loaded legacy cache entries.
+  const lastOffset = typeof lastPageParam === "number" ? lastPageParam : 0
   const serverLength =
     lastPage.serverCommentsLength ??
     lastPage.comments.filter((comment) => !comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX))
@@ -110,13 +118,19 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
   const interactionsQuery = useInfiniteQuery({
     queryKey,
     queryFn: async ({ pageParam, signal }) => {
+      const pagination =
+        typeof pageParam === "number" ? { offset: pageParam } : { cursor: pageParam.cursor }
+      const cachedPages = queryClient.getQueryData<InteractionPages>(queryKey)?.pages
+      const requiresCursor =
+        (typeof pageParam !== "number" && pageParam.requiresCursor) ||
+        cachedPages?.some((page) => Object.hasOwn(page, "next_cursor")) === true
       let interactions: NewsInteractions
       if (anonymous) {
         const response = await fetchAnonymousNewsInteractions({
           id: newsId,
           language: options.language ?? i18n.language,
           limit: NEWS_COMMENTS_PAGE_SIZE,
-          offset: pageParam,
+          ...pagination,
           signal,
         })
         if (!response.ok) {
@@ -125,10 +139,19 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
         interactions = (await response.json()) as NewsInteractions
       } else {
         const response = await api.get<NewsInteractions>(`/news/${newsId}/interactions`, {
-          params: { limit: NEWS_COMMENTS_PAGE_SIZE, offset: pageParam },
+          params: { limit: NEWS_COMMENTS_PAGE_SIZE, ...pagination },
           signal,
         })
         interactions = response.data
+      }
+      const hasCursor = Object.hasOwn(interactions, "next_cursor")
+      if (
+        (requiresCursor && !hasCursor) ||
+        (hasCursor &&
+          interactions.next_cursor !== null &&
+          !isValidAnonymousNewsCursor(interactions.next_cursor))
+      ) {
+        throw new Error("News interactions cursor contract changed")
       }
       return {
         ...interactions,
@@ -136,8 +159,8 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
         isSummarySeed: false,
       }
     },
-    initialPageParam: 0,
-    getNextPageParam: nextCommentsOffset,
+    initialPageParam: { cursor: "start", requiresCursor: false } as CommentPageParam,
+    getNextPageParam: nextCommentsPage,
     select: (data) => ({
       interactions: flattenInteractions(data),
       commentsLoaded: data.pages.length > 0 && data.pages[0]?.isSummarySeed !== true,
@@ -158,7 +181,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
               isSummarySeed: true,
             },
           ],
-          pageParams: [0],
+          pageParams: [{ cursor: "start", requiresCursor: false } as CommentPageParam],
         }
       : undefined,
     initialDataUpdatedAt: 0,

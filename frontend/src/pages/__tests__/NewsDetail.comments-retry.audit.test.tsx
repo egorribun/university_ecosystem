@@ -743,4 +743,79 @@ describe("NewsDetail comment page recovery", () => {
       client.clear()
     }
   })
+
+  it("rejects cursor capability loss after refreshing a legacy numeric cache", async () => {
+    useAuthStore.setState({ user: null, loading: false })
+    let downgrade = false
+    const requests: { offset: string | null; cursor: string | null }[] = []
+    server.use(
+      http.get(`*/news/${fixture.newsId}/interactions`, ({ request }) => {
+        const params = new URL(request.url).searchParams
+        requests.push({ offset: params.get("offset"), cursor: params.get("cursor") })
+        return HttpResponse.json({
+          likes_count: 0,
+          is_liked: false,
+          comments: downgrade
+            ? [{ ...comments[0], content: "Downgraded cached comment" }]
+            : [comments[0]],
+          comments_count: 23,
+          ...(downgrade ? {} : { next_cursor: cursorAfterFirst }),
+        })
+      })
+    )
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const queryKey = ["news", fixture.newsId, "anonymous-interactions"]
+    seedDetail(client, "anonymous", 23)
+    client.setQueryData(queryKey, {
+      pages: [
+        {
+          likes_count: 0,
+          is_liked: false,
+          comments: [comments[0]],
+          comments_count: 23,
+        },
+      ],
+      pageParams: [0],
+    })
+    const view = render(
+      <QueryClientProvider client={client}>
+        <NewsDetail />
+      </QueryClientProvider>
+    )
+    try {
+      const section = await screen.findByRole("region", { name: "news:sections.comments" })
+      await within(section).findByText("Comment number 0")
+      await act(async () => {
+        await client.invalidateQueries({ queryKey })
+      })
+      expect(requests).toEqual([{ offset: "0", cursor: null }])
+      expect(client.getQueryState(queryKey)?.status).toBe("success")
+      const upgraded = client.getQueryData(queryKey)
+      expect(upgraded).toMatchObject({
+        pages: [{ next_cursor: cursorAfterFirst }],
+        pageParams: [0],
+      })
+
+      downgrade = true
+      await act(async () => {
+        await client.invalidateQueries({ queryKey })
+      })
+      expect(requests).toHaveLength(2)
+      expect(client.getQueryState(queryKey)?.status).toBe("error")
+      expect(client.getQueryData(queryKey)).toEqual(upgraded)
+      expect(within(section).getByText("Comment number 0")).toBeVisible()
+      expect(within(section).queryByText("Downgraded cached comment")).not.toBeInTheDocument()
+
+      downgrade = false
+      await act(async () => {
+        await client.invalidateQueries({ queryKey })
+      })
+      expect(requests).toEqual(Array.from({ length: 3 }, () => ({ offset: "0", cursor: null })))
+      expect(client.getQueryState(queryKey)?.status).toBe("success")
+      expect(client.getQueryData(queryKey)).toEqual(upgraded)
+    } finally {
+      view.unmount()
+      client.clear()
+    }
+  })
 })
