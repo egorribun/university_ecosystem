@@ -263,3 +263,102 @@ describe("MessengerProvider + controller + WebSocket reconnect", () => {
     expect(reconnectFetches.some(([chatId]) => chatId === chat.id)).toBe(true)
   })
 })
+
+it("recovers missed messages after disabled replay rejects the saved cursor", async () => {
+  const { clearReplayCheckpoints, peekReplayCheckpoint, writeReplayCheckpoint } =
+    await import("@/hooks/chatReplayCheckpoints")
+  const { withExpectedConsole } = await import("@/tests/strictConsole")
+  const session = renderHook(
+    () => ({ controller: useMessengerController(), messenger: useMessenger() }),
+    { wrapper: createWrapper() }
+  )
+  try {
+    // Core-NATS mode rejects the old stream token but retains authorized live membership.
+    writeReplayCheckpoint(mocks.user.id, chat.id, 12, "saved-cursor", chat.id)
+    await waitFor(() => expect(ControlledWebSocket.instances).toHaveLength(1))
+    const socket = ControlledWebSocket.instances[0]!
+    await act(async () => {
+      socket.open()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(isTransportConnected).toBe(true))
+    await waitFor(() =>
+      expect(session.result.current.controller.messages.map(({ id }) => id)).toEqual([
+        initialMessage.id,
+      ])
+    )
+    expect(framesOfType(socket, "join")).toContainEqual({
+      type: "join",
+      room: chat.id,
+      resume_token: "saved-cursor",
+    })
+    expect(peekReplayCheckpoint(mocks.user.id, chat.id)).toEqual({
+      sequence: 12,
+      resumeToken: "saved-cursor",
+    })
+    const initialFetchCount = mocks.chatApi.getMessages.mock.calls.length
+    expect(initialFetchCount).toBeGreaterThan(0)
+
+    // No reconnect or explicit refetch: the real parsed server error must cause recovery.
+    exposeMissedMessage = true
+    await withExpectedConsole(
+      "error",
+      (args) => {
+        expect(args).toStrictEqual([
+          "[WebSocket] Server error:",
+          {
+            type: "error",
+            room: chat.id,
+            code: "invalid_resume_token",
+            detail: "resume token is invalid or expired",
+          },
+        ])
+        return true
+      },
+      () =>
+        act(async () => {
+          socket.onmessage?.({
+            data: JSON.stringify({
+              type: "error",
+              room: chat.id,
+              code: "invalid_resume_token",
+              detail: "resume token is invalid or expired",
+            }),
+          } as MessageEvent)
+          await Promise.resolve()
+        }),
+      1
+    )
+    await waitFor(() =>
+      expect(session.result.current.controller.messages.map(({ id }) => id)).toEqual([
+        initialMessage.id,
+        missedMessage.id,
+      ])
+    )
+    expect(
+      session.result.current.controller.messages.filter(({ id }) => id === missedMessage.id)
+    ).toHaveLength(1)
+    expect(
+      session.result.current.controller.messages.find(({ id }) => id === missedMessage.id)?.text
+    ).toBe(missedMessage.content)
+    expect(mocks.chatApi.getMessages.mock.calls.slice(initialFetchCount)).toContainEqual([
+      chat.id,
+      undefined,
+      50,
+      expect.any(AbortSignal),
+    ])
+    expect(peekReplayCheckpoint(mocks.user.id, chat.id)).toBeUndefined()
+    expect(ControlledWebSocket.instances).toEqual([socket])
+    expect(socket.readyState).toBe(ControlledWebSocket.OPEN)
+    expect(isTransportConnected).toBe(true)
+
+    act(() => session.result.current.messenger.sendJoin(chat.id))
+    expect(framesOfType(socket, "join").at(-1)).toEqual({ type: "join", room: chat.id })
+  } finally {
+    try {
+      clearReplayCheckpoints(mocks.user.id)
+    } finally {
+      session.unmount()
+    }
+  }
+})
