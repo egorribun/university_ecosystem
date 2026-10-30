@@ -1185,7 +1185,7 @@ test("audit selection rejects omissions, filters and nonblocking substitutes", (
     )
   }
   for (const candidate of [
-    "node -e \"process.exit(0)\"",
+    'node -e "process.exit(0)"',
     "node ./scripts/sync-tokens.mjs",
     "node ./scripts/validate-css-token-closure.mjs --root tests/fixtures",
   ]) {
