@@ -76,7 +76,8 @@ def _inspect(docker: str, container_id: str, port: int) -> None:
             and bool(bindings)
             and all(
                 binding["HostPort"] == str(port)
-                and binding["HostIp"] in (
+                and binding["HostIp"]
+                in (
                     "",
                     "0.0.0.0",  # noqa: S104 -- inspected runner metadata, not a bind
                     "::",

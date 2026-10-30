@@ -1141,10 +1141,7 @@ def test_owned_redis_launcher_ruff_scope_rejects_unapproved_changes(
             "            env=child_env,\n            check=False,\n"
             "            shell=True,",
         ),
-        "comparison_context": (
-            'binding["HostIp"] in (',
-            "bind_host_ip(",
-        ),
+        "comparison_context": ('binding["HostIp"]', "bind_host_ip()"),
     }
     before, after = replacements[mutation]
     assert source.count(before) == 1
