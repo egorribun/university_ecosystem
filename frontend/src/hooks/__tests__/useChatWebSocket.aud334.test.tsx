@@ -282,3 +282,57 @@ describe("AUD-334 rejected resume recovery", () => {
     }
   })
 })
+
+it("bounds replay retries despite healthy heartbeats on each transport", async () => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+  const session = await connect()
+  try {
+    // Keep one mounted account, active room and unadvanced seq-12 checkpoint.
+    writeReplayCheckpoint(USER, ROOM, 12, "saved-cursor", ROOM)
+    act(() => session.result.current.sendJoin(ROOM))
+
+    for (let reconnects = 0; reconnects <= 10; reconnects += 1) {
+      const socket = AuditSocket.instances.at(-1)!
+      expect(AuditSocket.instances).toHaveLength(reconnects + 1)
+      expect(sentJoins(socket)).toStrictEqual([
+        { type: "join", room: ROOM, resume_token: "saved-cursor" },
+      ])
+      expect(session.result.current.isConnected).toBe(true)
+
+      await act(() => vi.advanceTimersByTimeAsync(30_000))
+      const pings = socket.send.mock.calls
+        .map(([frame]) => JSON.parse(frame) as { type: string; nonce?: string })
+        .filter((frame) => frame.type === "heartbeat_ping")
+      expect(pings).toHaveLength(1)
+      expect(pings[0]!.nonce).toMatch(/^[0-9a-f]{32}$/)
+      act(() => socket.receive({ type: "heartbeat_pong", nonce: pings[0]!.nonce }))
+
+      // Passing the ACK deadline proves the real parser accepted the matching pong.
+      // Transport liveness is not progress for this unchanged rejected cursor.
+      await act(() => vi.advanceTimersByTimeAsync(10_001))
+      expect(socket.close).not.toHaveBeenCalled()
+      expect(session.result.current.isConnected).toBe(true)
+      expect(sentJoins(socket)).toStrictEqual([
+        { type: "join", room: ROOM, resume_token: "saved-cursor" },
+      ])
+
+      act(() => socket.receive({ type: "error", room: ROOM, code: "replay_unavailable" }))
+      expect(socket.close).toHaveBeenCalledOnce()
+      expect(socket.close).toHaveBeenCalledWith(4002, "replay_unavailable")
+      expect(session.result.current.isConnected).toBe(false)
+
+      if (reconnects < 10) {
+        await act(() => vi.advanceTimersByTimeAsync(60_000))
+        expect(AuditSocket.instances).toHaveLength(reconnects + 2)
+        act(() => AuditSocket.instances.at(-1)!.onopen?.())
+      }
+    }
+
+    await act(() => vi.advanceTimersByTimeAsync(60_000))
+    expect(AuditSocket.instances).toHaveLength(11)
+    expect(session.result.current.isConnected).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  } finally {
+    session.unmount()
+  }
+})
