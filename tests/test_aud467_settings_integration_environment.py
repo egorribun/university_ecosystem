@@ -60,6 +60,8 @@ def _valid_production_settings() -> dict[str, object]:
         "rate_limit_storage_backend": "redis",
         "rate_limit_storage_uri": "redis://rate-limit.aud467.invalid:6379/1",
         "revocation_redis_url": "redis://revocation.aud467.invalid:6379/0",
+        "trusted_proxies": "10.0.0.0/8",
+        "idempotency_hmac_secret": secrets.token_urlsafe(48),
         "event_file_scanner_enabled": True,
         "event_file_scanner_host": "clamd.aud467.invalid",
         "minio_secure": True,

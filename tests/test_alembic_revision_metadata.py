@@ -183,6 +183,9 @@ def _staging_environment_without_secret_key() -> dict[str, str]:
     values.update(
         ALGORITHM="RS256",
         APP_PROCESS_ROLE="api",
+        # AUD-164: the staging API role must name its gateway peers. Migrations run
+        # as that role (charts/.../migration-job.yaml), so the fixture supplies it.
+        TRUSTED_PROXIES="10.0.0.0/8",
         AUTO_CREATE_SCHEMA="false",
         CACHE_REDIS_URL="redis://cache.staging.internal:6379/0",
         RATE_LIMIT_STORAGE_BACKEND="redis",

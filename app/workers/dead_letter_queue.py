@@ -22,6 +22,7 @@ from sqlalchemy import (
     delete,
     func,
     select,
+    update,
 )
 
 from app.core.logging import get_logger
@@ -79,6 +80,11 @@ def _protect_retained_auth_payload(job: DeadLetterJob) -> None:
         raise AuthEmailPayloadError() from None
     if protected != job.payload:
         job.payload = protected
+
+
+# Unprotectable retained auth bytes may hold a plaintext link, so they are replaced
+# with a constant that matches no auth task shape. Identity and retry state stay.
+_QUARANTINED_AUTH_PAYLOAD = json.dumps({"kind": "auth-email-quarantined-v1"})
 
 
 class DeadLetterQueue:
@@ -250,6 +256,18 @@ class DeadLetterQueue:
 
         return deleted
 
+    async def quarantine_auth_payload(self, job_hash: str) -> None:
+        """Replace an unprotectable retained auth payload inside the caller's UoW.
+
+        Only the stored bytes change. The row keeps its id, hash, status, retry
+        budget and schedule, so every later replay still fails closed.
+        """
+        await self.session.execute(
+            update(DeadLetterJob)
+            .where(DeadLetterJob.job_hash == job_hash)
+            .values(payload=_QUARANTINED_AUTH_PAYLOAD)
+        )
+
     async def auto_replay_jobs(
         self,
         handler: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None,
@@ -272,6 +290,9 @@ class DeadLetterQueue:
         - Rate-limited batch processing
         - Exponential backoff with jitter on failures
         """
+        # Import lazily: the auth task module imports this worker's broker.
+        from app.tasks.email import AuthEmailPayloadError
+
         if DeadLetterQueue._replay_lock.locked() and not force:
             logger.info(
                 "DB DLQ auto-replay already in progress; skipping thundering herd"
@@ -314,7 +335,13 @@ class DeadLetterQueue:
                             await self.mark_job_retrying(job)
                             try:
                                 if job.job_type == "app.tasks.email.send_auth_email":
-                                    _protect_retained_auth_payload(job)
+                                    try:
+                                        _protect_retained_auth_payload(job)
+                                    except AuthEmailPayloadError:
+                                        # Persist the replacement before the failure
+                                        # bookkeeping flushes in the same transaction.
+                                        await self.quarantine_auth_payload(job.job_hash)
+                                        raise
                                 payload = json.loads(job.payload)
                                 if handler is None:
                                     raise RuntimeError(

@@ -619,6 +619,9 @@ class NatsTaskBroker:
                 )
                 await session.commit()
         except protection_errors:
+            # The rejected attempt rolled back, so its retained row still holds
+            # the stored bytes. Replace them in a separate committed unit.
+            await self._quarantine_auth_payload(payload)
             _logger.warning("nats_auth_email_payload_protection_failed")
             return False
         except (SQLAlchemyError, OSError) as exc:
@@ -636,6 +639,34 @@ class NatsTaskBroker:
             delivered,
         )
         return True
+
+    async def _quarantine_auth_payload(self, payload: _NatsTaskPayload) -> None:
+        """Make the retained auth row for this task unreplayable and plaintext-free."""
+        from sqlalchemy.exc import SQLAlchemyError
+
+        from app.core.database import async_session
+        from app.tasks.email import AuthEmailPayloadError, prepare_auth_email_payload
+        from app.workers.dead_letter_queue import DeadLetterQueue, compute_job_hash
+
+        try:
+            _, logical = prepare_auth_email_payload(
+                {"args": list(payload.args), "kwargs": payload.kwargs}
+            )
+        except AuthEmailPayloadError:
+            # The incoming task itself is invalid, so no retained row is keyed by it.
+            return
+        job_hash = compute_job_hash(payload.name, logical)
+        try:
+            async with async_session() as session:
+                await DeadLetterQueue(session).quarantine_auth_payload(job_hash)
+                await session.commit()
+        except (SQLAlchemyError, OSError) as exc:
+            _logger.error(
+                "nats_auth_payload_quarantine_failed: task=%s id=%s err=%s",
+                payload.name,
+                payload.id,
+                exc,
+            )
 
     async def replay_dead_letter(self, job_type: str, payload: dict[str, Any]) -> None:
         """Re-enqueue a dead-lettered task (handler for ``DeadLetterQueue`` replay)."""
