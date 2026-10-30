@@ -640,9 +640,9 @@ describe("AUD030 cursor response ownership", () => {
 describe("AUD030 queued-page ownership", () => {
   it("does not dispatch a queued page after same-tick session rotation", async () => {
     const { invalidateSessionEpoch } = await import("@/stores/sessionEpoch")
-    const requests = vi.spyOn(chatApi, "getChats").mockImplementation((cursor) =>
-      Promise.resolve(cursor === undefined ? firstPage : lastPage)
-    )
+    const requests = vi
+      .spyOn(chatApi, "getChats")
+      .mockImplementation((cursor) => Promise.resolve(cursor === undefined ? firstPage : lastPage))
     const view = renderChatListController()
     let attempt = Promise.resolve()
     try {
