@@ -9,6 +9,7 @@ import type { Chat, Message, MessagesListResponse } from "@/api/chat"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 
 const mocks = vi.hoisted(() => ({
+  chatId: "chat-current",
   chatApi: {
     getChats: vi.fn(),
     getChat: vi.fn(),
@@ -57,7 +58,7 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: mocks.user, isAuth: true, loading: false }),
 }))
 vi.mock("@tanstack/react-router", () => ({
-  useParams: () => ({ chatId: "chat-current" }),
+  useParams: () => ({ chatId: mocks.chatId }),
   useNavigate: () => mocks.navigate,
 }))
 vi.mock("react-i18next", () => ({
@@ -174,6 +175,7 @@ const framesOfType = (socket: ControlledWebSocket, type: string) =>
     .filter((frame) => frame.type === type)
 
 beforeEach(() => {
+  mocks.chatId = "chat-current"
   exposeMissedMessage = false
   isTransportConnected = false
   ControlledWebSocket.instances = []
@@ -359,6 +361,183 @@ it("recovers missed messages after disabled replay rejects the saved cursor", as
       clearReplayCheckpoints(mocks.user.id)
     } finally {
       session.unmount()
+    }
+  }
+})
+
+it("reconciles a delivered replay record and a REST-only tail after an untyped close", async () => {
+  const { clearReplayCheckpoints, peekReplayCheckpoint, writeReplayCheckpoint } =
+    await import("@/hooks/chatReplayCheckpoints")
+  const { useQueryClient } = await import("@tanstack/react-query")
+  const room = "8ef3bb0c-a893-4f74-bdb4-01544a532626"
+  const peer = "cd9e5849-6db6-4262-b4f0-f93159139a9a"
+  const replayChat: Chat = {
+    ...chat,
+    id: room,
+    participants: [chat.participants[0]!, { ...chat.participants[1]!, id: peer }],
+  }
+  const delivered: Message = {
+    ...initialMessage,
+    id: "c55bed91-a163-4b4b-b08a-92f62af2459e",
+    chat_id: room,
+    sender_id: peer,
+    content: "Delivered before the replay failed",
+  }
+  const missingTail: Message = {
+    ...missedMessage,
+    id: "0612629c-b7fd-4a8a-b1a3-1c1e78f594ca",
+    chat_id: room,
+    sender_id: peer,
+    content: "Recovered only through REST",
+  }
+  const recoveredPage: MessagesListResponse = {
+    items: [delivered, missingTail],
+    has_more: false,
+    next_cursor: null,
+  }
+  let resolveRecovery!: (page: MessagesListResponse) => void
+  const recovery = new Promise<MessagesListResponse>((resolve) => {
+    resolveRecovery = resolve
+  })
+  let recovering = false
+  let recoveryRequested = false
+  mocks.chatId = room
+  mocks.chatApi.getChats.mockResolvedValue({
+    items: [replayChat],
+    has_more: false,
+    next_cursor: null,
+  })
+  mocks.chatApi.getChat.mockResolvedValue(replayChat)
+  mocks.chatApi.getMessages.mockImplementation(async (): Promise<MessagesListResponse> => {
+    if (recovering) {
+      recoveryRequested = true
+      return recovery
+    }
+    return { items: [], has_more: false, next_cursor: null }
+  })
+  clearReplayCheckpoints(mocks.user.id)
+  const session = renderHook(
+    () => ({ controller: useMessengerController(), queryClient: useQueryClient() }),
+    { wrapper: createWrapper() }
+  )
+  try {
+    writeReplayCheckpoint(mocks.user.id, room, 9, "resume-before-delivery", room)
+    await waitFor(() => expect(ControlledWebSocket.instances).toHaveLength(1))
+    const firstSocket = ControlledWebSocket.instances[0]!
+    await act(async () => {
+      firstSocket.open()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(isTransportConnected).toBe(true))
+    await waitFor(() => expect(session.result.current.controller.messagesLoading).toBe(false))
+    expect(session.result.current.controller.messages).toEqual([])
+    expect(framesOfType(firstSocket, "join")).toContainEqual({
+      type: "join",
+      room,
+      resume_token: "resume-before-delivery",
+    })
+
+    // These UUID fields cross the real parser; the client treats the server's
+    // resume token as opaque, rather than verifying its producer-side signature.
+    await act(async () => {
+      firstSocket.onmessage?.({
+        data: JSON.stringify({
+          type: "new_message",
+          room,
+          seq: 10,
+          resume_token: "resume-after-delivery",
+          replayed: true,
+          payload: { type: "new_message", chat_id: room, message: delivered },
+        }),
+      } as MessageEvent)
+      await Promise.resolve()
+    })
+    await waitFor(() =>
+      expect(
+        session.result.current.controller.messages.map(({ id, text }) => ({ id, text }))
+      ).toEqual([{ id: delivered.id, text: delivered.content }])
+    )
+    const deliveredCache = session.result.current.queryClient.getQueryData<MessagesListResponse>([
+      "messages",
+      room,
+    ])
+    expect(deliveredCache?.items).toEqual([delivered])
+    expect(peekReplayCheckpoint(mocks.user.id, room)).toEqual({
+      sequence: 10,
+      resumeToken: "resume-after-delivery",
+    })
+    const beforeReconnectFetches = mocks.chatApi.getMessages.mock.calls.length
+
+    // Model the isolated untyped peer closure, not a replay error frame or a
+    // reserved policy/shutdown close. The actual Go peer proof is separate.
+    recovering = true
+    await act(async () => {
+      firstSocket.loseConnection(1006)
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(isTransportConnected).toBe(false))
+    expect(peekReplayCheckpoint(mocks.user.id, room)).toEqual({
+      sequence: 10,
+      resumeToken: "resume-after-delivery",
+    })
+    await waitFor(() => expect(ControlledWebSocket.instances).toHaveLength(2))
+    const replacement = ControlledWebSocket.instances[1]!
+    await act(async () => {
+      replacement.open()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(isTransportConnected).toBe(true))
+    await waitFor(() => expect(recoveryRequested).toBe(true))
+    expect(framesOfType(replacement, "join")).toEqual([
+      { type: "join", room, resume_token: "resume-after-delivery" },
+    ])
+    expect(session.result.current.controller.messages.map(({ id }) => id)).toEqual([delivered.id])
+
+    await act(async () => {
+      resolveRecovery(recoveredPage)
+      await recovery
+    })
+    await waitFor(() =>
+      expect(
+        session.result.current.controller.messages.map(({ id, text }) => ({ id, text }))
+      ).toEqual([
+        { id: delivered.id, text: delivered.content },
+        { id: missingTail.id, text: missingTail.content },
+      ])
+    )
+    const cached = session.result.current.queryClient.getQueryData<MessagesListResponse>([
+      "messages",
+      room,
+    ])
+    expect(cached?.items.map(({ id }) => id)).toEqual([delivered.id, missingTail.id])
+    for (const id of [delivered.id, missingTail.id]) {
+      expect(
+        session.result.current.controller.messages.filter((message) => message.id === id)
+      ).toHaveLength(1)
+      expect(cached?.items.filter((message) => message.id === id)).toHaveLength(1)
+    }
+    expect(mocks.chatApi.getMessages.mock.calls.slice(beforeReconnectFetches)).toContainEqual([
+      room,
+      undefined,
+      50,
+      expect.any(AbortSignal),
+    ])
+    expect(peekReplayCheckpoint(mocks.user.id, room)).toEqual({
+      sequence: 10,
+      resumeToken: "resume-after-delivery",
+    })
+  } finally {
+    try {
+      await act(async () => {
+        resolveRecovery(recoveredPage)
+        await recovery
+      })
+    } finally {
+      try {
+        session.unmount()
+      } finally {
+        clearReplayCheckpoints(mocks.user.id)
+      }
     }
   }
 })

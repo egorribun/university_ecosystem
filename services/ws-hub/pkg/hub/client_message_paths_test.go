@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/quic-go/webtransport-go"
@@ -1230,4 +1231,197 @@ func TestClientDisconnect_DefaultHubContextClosesSend(t *testing.T) {
 	c.Disconnect(1000, "done")
 	_, open := <-c.Send
 	assert.False(t, open)
+}
+
+// Only JetStream fetch/ack/unsubscribe and the existing session authority are
+// doubled. Replay signing, room admission, WritePump and transport teardown are real.
+func TestAUD334MidstreamFetchOutcomeAfterDeliveredCheckpoint(t *testing.T) {
+	const room = "8ef3bb0c-a893-4f74-bdb4-01544a532626"
+	payload := json.RawMessage(`{
+		"type": "new_message",
+		"chat_id": "8ef3bb0c-a893-4f74-bdb4-01544a532626",
+		"message": {
+			"id": "c55bed91-a163-4b4b-b08a-92f62af2459e",
+			"chat_id": "8ef3bb0c-a893-4f74-bdb4-01544a532626",
+			"sender_id": "cd9e5849-6db6-4262-b4f0-f93159139a9a",
+			"content": "Delivered before the replay failed",
+			"created_at": "2026-10-22T12:01:00.000Z",
+			"read_status": false,
+			"attachments": []
+		}
+	}`)
+	for _, test := range []struct {
+		name     string
+		fetchErr error
+		failed   bool
+	}{
+		{name: "storage_error", fetchErr: errors.New("synthetic storage failure"), failed: true},
+		{name: "drained_timeout", fetchErr: nats.ErrTimeout},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := setupTestHub()
+			enableSecureReplayForTest(h)
+			h.enableJetStream = true
+			server, peer := newConnPair(t)
+			client := newClientOn(h, server, "midstream-"+test.name, "replay-user")
+			h.handleRegister(client.ctx, client)
+			record := replayMessage(10)
+			record.Subject = "chat." + room
+			recordData, err := json.Marshal(map[string]any{
+				"type": "new_message", "room": room, "payload": payload,
+			})
+			require.NoError(t, err)
+			record.Data = recordData
+
+			oldFetch, oldAck, oldUnsubscribe := fetchPullMessagesFunc, ackOfflineMessageFunc, unsubscribePullFunc
+			t.Cleanup(func() {
+				fetchPullMessagesFunc = oldFetch
+				ackOfflineMessageFunc = oldAck
+				unsubscribePullFunc = oldUnsubscribe
+			})
+			h.js = &scriptedPullSubscription{
+				pull: func(string, string, ...nats.SubOpt) (*nats.Subscription, error) {
+					return &nats.Subscription{}, nil
+				},
+			}
+			nextFetch := make(chan struct{})
+			releaseFetch := make(chan struct{})
+			var releaseOnce sync.Once
+			release := func() { releaseOnce.Do(func() { close(releaseFetch) }) }
+			var fetches, acks, unsubscribes atomic.Int32
+			fetchPullMessagesFunc = func(*nats.Subscription, int, ...nats.PullOpt) ([]*nats.Msg, error) {
+				switch fetches.Add(1) {
+				case 1:
+					return []*nats.Msg{record}, nil
+				case 2:
+					close(nextFetch)
+					select {
+					case <-releaseFetch:
+						return nil, test.fetchErr
+					case <-client.ctx.Done():
+						return nil, client.ctx.Err()
+					}
+				default:
+					return nil, errors.New("unexpected replay fetch")
+				}
+			}
+			ackOfflineMessageFunc = func(*nats.Msg) error {
+				acks.Add(1)
+				return nil
+			}
+			unsubscribePullFunc = func(*nats.Subscription) error {
+				unsubscribes.Add(1)
+				return nil
+			}
+
+			writerDone := make(chan struct{})
+			go func() {
+				defer close(writerDone)
+				client.WritePump()
+			}()
+			replayDone := make(chan struct{})
+			t.Cleanup(func() {
+				client.cancelConnection()
+				release()
+				client.closeTransport("test cleanup")
+				h.unregisterClient(client.ctx, client)
+				for _, done := range []<-chan struct{}{replayDone, writerDone} {
+					select {
+					case <-done:
+					case <-time.After(3 * time.Second):
+						t.Error("owned replay or writer did not stop during cleanup")
+					}
+				}
+			})
+			client.handleJoin(client.ctx, Message{
+				Type: "join", Room: room,
+				Payload: resumeJoinPayload(t, h, client.UserID, room, 9),
+			})
+			go func() {
+				h.replayWG.Wait()
+				close(replayDone)
+			}()
+
+			require.NoError(t, peer.SetReadDeadline(time.Now().Add(3*time.Second)))
+			kind, data, err := peer.ReadMessage()
+			require.NoError(t, err)
+			require.Equal(t, websocket.TextMessage, kind)
+			var delivered struct {
+				Type        string          `json:"type"`
+				Room        string          `json:"room"`
+				Sequence    uint64          `json:"seq"`
+				ResumeToken string          `json:"resume_token"`
+				Replayed    bool            `json:"replayed"`
+				Payload     json.RawMessage `json:"payload"`
+			}
+			require.NoError(t, json.Unmarshal(data, &delivered))
+			require.Equal(t, "new_message", delivered.Type)
+			require.Equal(t, room, delivered.Room)
+			require.JSONEq(t, string(payload), string(delivered.Payload))
+			require.True(t, delivered.Replayed)
+			require.Equal(t, uint64(10), delivered.Sequence)
+			require.NotEmpty(t, delivered.ResumeToken)
+			checkpoint, err := h.verifyResumeToken(delivered.ResumeToken, client.UserID, room)
+			require.NoError(t, err)
+			require.Equal(t, delivered.Sequence, checkpoint)
+
+			// The next fetch cannot fail until the peer received the signed record.
+			select {
+			case <-nextFetch:
+			case <-time.After(3 * time.Second):
+				t.Fatal("replay did not reach its second fetch")
+			}
+			require.NoError(t, client.ctx.Err())
+			require.True(t, client.isInRoom(room))
+			require.Equal(t, int32(1), acks.Load())
+			release()
+			select {
+			case <-replayDone:
+			case <-time.After(3 * time.Second):
+				t.Fatal("replay worker did not return after its second fetch")
+			}
+			require.Equal(t, int32(2), fetches.Load())
+			require.Equal(t, int32(1), acks.Load())
+			require.Equal(t, int32(1), unsubscribes.Load())
+			client.replayMu.Lock()
+			replaysRemaining := len(client.replays)
+			client.replayMu.Unlock()
+			require.Zero(t, replaysRemaining)
+			h.mu.RLock()
+			registered := h.Clients[client.ID] == client
+			roomMember := h.Rooms[room][client]
+			h.mu.RUnlock()
+
+			if test.failed {
+				require.ErrorIs(t, client.ctx.Err(), context.Canceled)
+				require.False(t, registered)
+				require.False(t, roomMember)
+				require.False(t, client.isInRoom(room))
+				require.NoError(t, peer.SetReadDeadline(time.Now().Add(3*time.Second)))
+				_, _, err = peer.ReadMessage()
+				var closed *websocket.CloseError
+				require.ErrorAs(t, err, &closed)
+				require.Equal(t, websocket.CloseAbnormalClosure, closed.Code)
+				select {
+				case <-writerDone:
+				case <-time.After(3 * time.Second):
+					t.Fatal("failed replay left its writer running")
+				}
+				return
+			}
+
+			require.NoError(t, client.ctx.Err())
+			require.True(t, registered)
+			require.True(t, roomMember)
+			require.True(t, client.isInRoom(room))
+			// A drained replay is not a failure: the same transport still delivers.
+			live := append([]byte(nil), recordData...)
+			require.True(t, safeSend(client.Send, live))
+			require.NoError(t, peer.SetReadDeadline(time.Now().Add(3*time.Second)))
+			kind, data, err = peer.ReadMessage()
+			require.NoError(t, err)
+			require.Equal(t, websocket.TextMessage, kind)
+			require.JSONEq(t, string(live), string(data))
+		})
+	}
 }
