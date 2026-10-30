@@ -66,9 +66,7 @@ function nextCommentsPage(
   lastPageParam: CommentPageParam
 ): CommentPageParam | undefined {
   if (Object.hasOwn(lastPage, "next_cursor")) {
-    return lastPage.next_cursor
-      ? { cursor: lastPage.next_cursor, requiresCursor: true }
-      : undefined
+    return lastPage.next_cursor ? { cursor: lastPage.next_cursor, requiresCursor: true } : undefined
   }
   // Only the initial probe may fall back when an older server omits cursors.
   // Numeric page parameters also preserve already-loaded legacy cache entries.

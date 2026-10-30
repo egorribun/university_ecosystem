@@ -455,20 +455,18 @@ export function useChatWebSocket({
 
   useEffect(() => retainReplayCheckpoints(currentUserId), [currentUserId])
 
-  const sendRoomJoin = useConstant(
-    () => (ws: WebSocket, frame: ReturnType<typeof joinFrame>) => {
-      lastResumeJoinRef.current = null
-      ws.send(JSON.stringify(frame))
-      if (typeof frame.resume_token === "string") {
-        lastResumeJoinRef.current = {
-          socket: ws,
-          room: frame.room,
-          resumeToken: frame.resume_token,
-          sentAt: Date.now(),
-        }
+  const sendRoomJoin = useConstant(() => (ws: WebSocket, frame: ReturnType<typeof joinFrame>) => {
+    lastResumeJoinRef.current = null
+    ws.send(JSON.stringify(frame))
+    if (typeof frame.resume_token === "string") {
+      lastResumeJoinRef.current = {
+        socket: ws,
+        room: frame.room,
+        resumeToken: frame.resume_token,
+        sentAt: Date.now(),
       }
     }
-  )
+  })
 
   const cleanup = useConstant(() => () => {
     lastResumeJoinRef.current = null
