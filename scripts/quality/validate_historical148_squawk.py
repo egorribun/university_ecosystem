@@ -13,11 +13,11 @@ import json
 from datetime import UTC, datetime
 from typing import NoReturn
 
-# Reproducible from the committed historical148 policy and 36f70a0f capture.
+# Reproducible from the committed historical148 policy and 3d83fb27 capture.
 # Compact ASCII JSON, sorted object keys, no final LF. Only each raw warning
 # array is sorted by complete canonical rows; duplicates and all fields remain.
-_POLICY_SHA256 = "d22de4503b8ecc752cbc2c188e91876dd56dee739db3fc88613be7bee4d3e93c"
-_CAPTURE_SHA256 = "ead6a5f5d0c9a8f16711804b2f465f0681c98f004948992fa4fb37398dad786c"
+_POLICY_SHA256 = "8df4a533b1704e2eb9f7e59ee22f77efd721f2e409cdf1dd2a08609179725997"
+_CAPTURE_SHA256 = "b95428590fb65d0ac6f74a30d7dc57f1c48c6aaf43122aba17fa926f956cedf6"
 _NOT_BEFORE = datetime(2026, 10, 28, tzinfo=UTC)
 _EXPIRES_AT = datetime(2026, 11, 13, tzinfo=UTC)
 _MAX_DEPTH = 8

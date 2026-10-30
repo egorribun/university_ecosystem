@@ -12,23 +12,23 @@
     "parent": "f7aa476e968a"
   },
   "provenance": {
-    "source_commit": "36f70a0f27065231d7c0ad66ded01d22385a0a81",
-    "checkout_sha": "587a180333d962d5c25e984f54567835a3071e93",
-    "workflow_sha": "587a180333d962d5c25e984f54567835a3071e93",
-    "workflow_run_id": "40945703255",
+    "source_commit": "3d83fb27a2f7a91ddffc555afa8e12f369bbec09",
+    "checkout_sha": "1eb4a25de262c255c97efdfdd327153c01b3c72a",
+    "workflow_sha": "1eb4a25de262c255c97efdfdd327153c01b3c72a",
+    "workflow_run_id": "41005719399",
     "workflow_run_attempt": "1",
-    "job_id": "123702568135",
+    "job_id": "123901199844",
     "producer_job": "alembic-migrations"
   },
   "source_blobs": {
-    ".github/workflows/ci.yml": "02a925d558802916e62991afd8e65b0551434ceb",
+    ".github/workflows/ci.yml": "26f6d29a19ca378b433ee2f8ba957ad518003776",
     ".squawk.toml": "d31f69b8a7fdf34adae4a272dfb902f45305959d",
     "alembic.ini": "ff320e0800931949e348b6059593cfda95c750e4",
     "alembic/env.py": "e8d5432623b49ce3dcf080cd64d8e38129073a72",
     "alembic/versions/148642dd1207_fix_missing_tables.py": "d762c45c9248c14eccf57ac8e9e2dae8867777c1",
     "pyproject.toml": "ecce4c433635d7c8c5786e5bf66507300dd8fb92",
     "scripts/quality/read_alembic_revision.py": "be2a19f8a918cfc6ae082c5ba83748f7c3829ba6",
-    "scripts/quality/render_live_alembic_sql.py": "01d4e4956d48cf6c00cc3668eaf51464cd3b28cd",
+    "scripts/quality/render_live_alembic_sql.py": "27febaf0f99c01e4ca45af448513d2aa4d58739b",
     "uv.lock": "2350989e7256b1af1015ac42dbc09d4e8be91188",
     "tests/helpers/migration_148642dd1207_trace.py": "e197651b944413e2af01a8b2a92a086f00304155",
     "tests/integration/test_migration_148642dd1207.py": "0d27981ede7a71541772865450ca8c782f87dd61"
@@ -56,7 +56,7 @@
   "scenarios": [
     {
       "scenario": "ordinary-parent-live",
-      "sql_path": "/tmp/tmp.E9RD3ZE3eL/148642dd1207.sql",
+      "sql_path": "/tmp/tmp.wTSlDQT8ZC/148642dd1207.sql",
       "sql_sha256": "7e27d9cfec48afbe26d8efeb03cf27ff9140982507af0652960e512a34f39305",
       "sql_bytes": 17031,
       "raw_exit": 1,
@@ -205,7 +205,7 @@
           "sql_statement": "ALTER TABLE users ADD CONSTRAINT fk_users_group_id_groups FOREIGN KEY(group_id) REFERENCES groups (id) ON DELETE SET NULL"
         }
       ],
-      "sql_identity": "66305:2386048"
+      "sql_identity": "2049:9218318"
     },
     {
       "scenario": "expanded-populated-diagnostic",
@@ -479,11 +479,11 @@
           "sql_statement": "ALTER TABLE users ADD CONSTRAINT fk_users_group_id_groups FOREIGN KEY(group_id) REFERENCES groups (id) ON DELETE SET NULL"
         }
       ],
-      "sql_identity": "66305:9440966"
+      "sql_identity": "2049:9225480"
     }
   ],
   "expanded_contract": {
-    "checkout_sha": "587a180333d962d5c25e984f54567835a3071e93",
+    "checkout_sha": "1eb4a25de262c255c97efdfdd327153c01b3c72a",
     "expanded_sql_sha256": "7b3143428c7811d6f919a2d7b340b572e6e17ce340e68bdf4d682cea7086d82c",
     "fixture_sha256": "71d22eb0432d94545d99c7892a6d92a02e28c8f5ccd4510e0f1df34a0a880319",
     "helper_sha256": "891a9f3454560d1c804897f03b70c4d260174899625a21e449dafd88061c8499",
@@ -559,7 +559,7 @@
     ],
     "original_squawk_outcome": "failure",
     "postgres_version": "PostgreSQL 17.11 (Debian 17.11-1.pgdg12+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit",
-    "renderer_blob": "01d4e4956d48cf6c00cc3668eaf51464cd3b28cd",
+    "renderer_blob": "27febaf0f99c01e4ca45af448513d2aa4d58739b",
     "squawk_args": [
       "--exclude",
       "prefer-robust-stmts",
@@ -580,8 +580,8 @@
     "squawk_config_blob": "d31f69b8a7fdf34adae4a272dfb902f45305959d",
     "squawk_version": "squawk 2.67.0",
     "status": "diagnostic-only-not-an-exception",
-    "workflow_blob": "02a925d558802916e62991afd8e65b0551434ceb",
-    "workflow_run_id": "40945703255",
-    "workflow_sha": "587a180333d962d5c25e984f54567835a3071e93"
+    "workflow_blob": "26f6d29a19ca378b433ee2f8ba957ad518003776",
+    "workflow_run_id": "41005719399",
+    "workflow_sha": "1eb4a25de262c255c97efdfdd327153c01b3c72a"
   }
 }
