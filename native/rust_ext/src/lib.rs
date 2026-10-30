@@ -1650,15 +1650,16 @@ mod tests {
                 .extract()
                 .unwrap()
         });
+        assert!(key.len() == 64, "invalid runtime test key");
         assert!(
-            key.len() == 64
-                && key
-                    .bytes()
-                    .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')),
+            key.bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')),
             "invalid runtime test key"
         );
         let mut wrong_key = key.clone();
-        wrong_key.replace_range(0..1, if key.starts_with('0') { "1" } else { "0" });
+        // Index 1 yields "1" for a leading '0' and index 0 yields "0" otherwise, so the
+        // key-dependent replacement needs no runtime branch and no arm can go unexecuted.
+        wrong_key.replace_range(0..1, ["0", "1"][usize::from(key.starts_with('0'))]);
         assert!(wrong_key != key, "negative test key must differ");
 
         let prev = "0".repeat(64);
@@ -1678,10 +1679,8 @@ mod tests {
                     .map(|(index, _)| index)
                     .take(2)
                     .collect();
-                if letters.len() < 2 {
-                    return None;
-                }
-                Some((payload, lowercase, letters[0]))
+                // bool::then keeps the two-letter requirement without an early return.
+                (letters.len() >= 2).then(|| (payload, lowercase, letters[0]))
             })
             .expect("failed to construct case-sensitive hash fixture");
         let uppercase = lowercase.to_ascii_uppercase();
@@ -1691,7 +1690,15 @@ mod tests {
             &uppercase[first_letter..first_letter + 1],
         );
         assert!(
-            lowercase != uppercase && lowercase != mixed && uppercase != mixed,
+            lowercase != uppercase,
+            "case fixtures must be pairwise distinct"
+        );
+        assert!(
+            lowercase != mixed,
+            "case fixtures must be pairwise distinct"
+        );
+        assert!(
+            uppercase != mixed,
             "case fixtures must be pairwise distinct"
         );
 

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider, dehydrate } from "@tanstack/react-que
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest"
 import type { ReactNode } from "react"
 import { createIDBPersister, persistOptions } from "@/app/queryClient"
+import { invalidateSessionEpoch } from "@/stores/sessionEpoch"
 import type { ChatsListResponse, MessagesListResponse } from "@/api/chat"
 
 /**
@@ -3432,5 +3433,113 @@ describe("useMessengerController — branch top-up", () => {
         expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
       }
     )
+  })
+})
+
+describe("useMessengerController — uncovered arms of the messenger projection", () => {
+  const message = (id: string, overrides: Record<string, unknown> = {}) => ({
+    id,
+    chat_id: "chat-1",
+    sender_id: "peer",
+    content: `content ${id}`,
+    created_at: "2026-10-30T10:00:00.000Z",
+    read_status: false,
+    attachments: [],
+    ...overrides,
+  })
+
+  it("resolves a refetch with no open chat to an empty history without chat or edit fences", async () => {
+    mocks.paramsRef.current = {}
+    const { queryClient, HookWrapper } = createQueryHarness()
+    const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+
+    await act(async () => {
+      await result.current.refetchMessages()
+    })
+
+    expect(mocks.chatApi.getMessages).not.toHaveBeenCalled()
+    expect(queryClient.getQueryData(["messages", ""])).toEqual({
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    expect(result.current.messages).toEqual([])
+  })
+
+  it("keeps the chat menu as it is when a successful clear settles after its session was retired", async () => {
+    mocks.paramsRef.current = { chatId: "chat-1" }
+    mocks.chatApi.getChats.mockResolvedValue({
+      items: [{ id: "chat-1", participants: [{ id: "current-user-id" }], unread_count: 0 }],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [message("msg-1")],
+      has_more: false,
+      next_cursor: null,
+    })
+    let resolveClear!: (value: { status: string }) => void
+    mocks.chatApi.clearChat.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveClear = resolve
+        })
+    )
+    const { HookWrapper } = createQueryHarness()
+    const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+    await waitFor(() => expect(result.current.messages).toHaveLength(1))
+
+    act(() => result.current.setShowChatMenu(true))
+    act(() => result.current.handleClearChat())
+    await act(async () => {
+      result.current.confirmDialog?.onConfirm()
+    })
+    await waitFor(() => expect(mocks.chatApi.clearChat).toHaveBeenCalledWith("chat-1"))
+
+    act(() => invalidateSessionEpoch())
+    await act(async () => {
+      resolveClear({ status: "ok" })
+    })
+
+    expect(result.current.showChatMenu).toBe(true)
+  })
+
+  it("does not report a load-more failure for a request retired by an account switch", async () => {
+    mocks.paramsRef.current = {}
+    const firstPage = {
+      items: [{ id: "chat-1", participants: [{ id: "current-user-id" }], unread_count: 0 }],
+      has_more: true,
+      next_cursor: "cursor-2",
+    }
+    let rejectNext!: (reason: Error) => void
+    mocks.chatApi.getChats.mockImplementation((cursor?: string) =>
+      cursor === "cursor-2"
+        ? new Promise((_resolve, reject) => {
+            rejectNext = reject
+          })
+        : Promise.resolve(firstPage)
+    )
+    const { HookWrapper } = createQueryHarness()
+    const { result, rerender } = renderHook(() => useMessengerController(), {
+      wrapper: HookWrapper,
+    })
+    await waitFor(() => expect(result.current.hasMoreChats).toBe(true))
+
+    let request!: Promise<void>
+    act(() => {
+      request = result.current.handleLoadMoreChats()
+    })
+    await waitFor(() => expect(result.current.isLoadingMoreChats).toBe(true))
+
+    mocks.authUserRef.current = { ...mocks.testUser, id: "next-account" }
+    rerender()
+    await waitFor(() => expect(result.current.isLoadingMoreChats).toBe(false))
+
+    await act(async () => {
+      rejectNext(new Error("transport failure"))
+      await request
+    })
+
+    expect(result.current.moreChatsError).toBe(false)
   })
 })

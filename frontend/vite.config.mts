@@ -246,50 +246,6 @@ export default defineConfig(({ mode }) => {
       srcDir: "src",
       filename: "sw.ts",
       includeAssets: [],
-      workbox: {
-        clientsClaim: true,
-        skipWaiting: true,
-        runtimeCaching: [
-          {
-            urlPattern: ({ request }) => request.mode === "navigate",
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "app-shell",
-              networkTimeoutSeconds: 5,
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: ({ url, request }) =>
-              request.method === "GET" && /\/api\/(news|schedule|events)/.test(url.pathname),
-            handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "api-cache",
-              // MOD-07 (audit 2026-03-06): 304 must NOT be cached by Workbox.
-              // Workbox stores an empty body for 304, returning blank content on cache-first hit.
-              cacheableResponse: { statuses: [0, 200] },
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 },
-            },
-          },
-          {
-            urlPattern: ({ url }) => url.pathname.endsWith("/offline.html"),
-            handler: "CacheFirst",
-            options: {
-              cacheName: "offline-fallback",
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: ({ url }) =>
-              url.pathname.startsWith("/static/") || url.pathname.startsWith("/media/"),
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "backend-static",
-              expiration: { maxEntries: 200, maxAgeSeconds: 24 * 60 * 60 },
-            },
-          },
-        ],
-      },
       ...(manifest ? { manifest } : {}),
       // One source of truth for both the plugin and standalone orchestrator.
       injectManifest: PWA_INJECT_CONFIG,
@@ -512,21 +468,6 @@ export default defineConfig(({ mode }) => {
             if (id.includes("node_modules/protobufjs")) return "vendor-protobuf"
           },
         },
-      },
-    },
-    test: {
-      globals: true,
-      environment: "jsdom",
-      setupFiles: "./src/test/setup.ts",
-      css: true,
-      restoreMocks: true,
-      include: ["src/**/*.{test,spec}.{ts,tsx}", "src/**/__tests__/**/*.{ts,tsx}"],
-      exclude: ["node_modules", "tests", "dist"],
-      reporters: ["default", "junit"],
-      outputFile: { junit: "vitest-report.xml" },
-      snapshotFormat: {
-        escapeString: true,
-        printBasicPrototype: true,
       },
     },
   }

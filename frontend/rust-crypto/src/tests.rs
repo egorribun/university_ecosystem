@@ -68,6 +68,26 @@ fn scrypt_rejects_non_power_of_two_cost() {
 }
 
 #[test]
+fn scrypt_rejects_degenerate_costs_below_minimum() {
+    // AUD-414: N=1 made scrypt a single-block computation; the floor is 16.
+    let password = fixture_bytes(8);
+    let salt = fixture_bytes(4);
+    for cost in [1, 2, 4, 8] {
+        assert!(
+            scrypt_derive(&password, &salt, cost, 1, 1, 16).is_err(),
+            "scrypt cost N={cost} must be rejected"
+        );
+    }
+}
+
+#[test]
+fn scrypt_accepts_minimum_cost_at_the_floor() {
+    let password = fixture_bytes(8);
+    let salt = fixture_bytes(4);
+    assert!(scrypt_derive(&password, &salt, 16, 1, 1, 16).is_ok());
+}
+
+#[test]
 fn scrypt_derives_valid_output_in_unit_coverage() {
     let password = fixture_bytes(8);
     let salt = fixture_bytes(4);

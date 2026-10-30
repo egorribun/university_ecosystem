@@ -5,4 +5,6 @@ const ResetPassword = lazy(() => import("@/pages/ResetPassword"))
 
 export const Route = createFileRoute("/_public/reset-password/$token")({
   component: ResetPassword,
+  // AUD-178: the reset token must never reach a Referer header from this page.
+  head: () => ({ meta: [{ name: "referrer", content: "no-referrer" }] }),
 })

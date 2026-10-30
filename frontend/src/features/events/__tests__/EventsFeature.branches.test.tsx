@@ -78,6 +78,8 @@ const queryCalls = vi.hoisted(() => ({
   list: [] as unknown[][],
   mine: [] as unknown[][],
 }))
+type MyPagingProbe = { onPrevious: () => void; onNext: () => void }
+const pagingProbe = vi.hoisted(() => ({ value: undefined as MyPagingProbe | undefined }))
 vi.mock("@/api/hooks/events", () => ({
   EVENTS_PAGE_SIZE: 12,
   useEventsListQuery: (...args: unknown[]) => {
@@ -161,21 +163,27 @@ vi.mock("../components/EventsHeader", () => ({
   ),
 }))
 vi.mock("../components/EventsList", () => ({
-  EventsList: (props: Record<string, unknown>) => (
-    <div data-testid="list">
-      <span data-testid="list-count">{(props.eventsList as unknown[]).length}</span>
-      <span data-testid="list-order">
-        {(props.eventsList as Array<{ id: string }>).map(({ id }) => id).join(",")}
-      </span>
-      <span data-testid="list-initial-loading">{String(props.isInitialLoading)}</span>
-      <span data-testid="list-fetching">{String(props.isFetching)}</span>
-      <span data-testid="list-has-next">{String(props.hasNextPage)}</span>
-      <MyPaginationControls value={props.myPagination} />
-      <button onClick={() => (props.fetchNextPage as () => void)()}>fetch-next</button>
-      <button onClick={() => (props.refreshEvents as () => void)()}>refresh</button>
-      <button onClick={() => (props.onAddClick as () => void)()}>list-add</button>
-    </div>
-  ),
+  EventsList: (props: Record<string, unknown>) => {
+    // Keeps the latest My Events callbacks reachable so a test can invoke a
+    // Previous callback directly, including one captured before a scope change.
+    pagingProbe.value = props.myPagination as MyPagingProbe | undefined
+    return (
+      <div data-testid="list">
+        <span data-testid="list-count">{(props.eventsList as unknown[]).length}</span>
+        <span data-testid="list-order">
+          {(props.eventsList as Array<{ id: string }>).map(({ id }) => id).join(",")}
+        </span>
+        <span data-testid="list-initial-loading">{String(props.isInitialLoading)}</span>
+        <span data-testid="list-fetching">{String(props.isFetching)}</span>
+        <span data-testid="list-has-next">{String(props.hasNextPage)}</span>
+        <MyPaginationControls value={props.myPagination} />
+        <button onClick={() => (props.fetchNextPage as () => void)()}>fetch-next</button>
+        <button onClick={() => (props.refreshEvents as () => void)()}>refresh</button>
+        <button onClick={() => (props.onAddClick as () => void)()}>list-add</button>
+        <button onClick={() => (props.onRetry as (() => void) | undefined)?.()}>list-retry</button>
+      </div>
+    )
+  },
 }))
 vi.mock("../components/EventFormDialog", () => ({
   EventFormDialog: (props: Record<string, unknown>) => (
@@ -190,6 +198,7 @@ vi.mock("../components/EventsShortcutsOverlay", () => ({
 }))
 
 import { EventsFeature } from "@/features/events/EventsFeature"
+import { invalidateSessionEpoch } from "@/stores/sessionEpoch"
 
 function evt(over: Partial<Record<string, unknown>> = {}) {
   return {
@@ -822,5 +831,69 @@ describe("EventsFeature — My Events cursor transitions", () => {
     expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: null })
     expect(screen.getByTestId("my-at-first")).toHaveTextContent("true")
     expect(screen.getByText("my-previous")).toBeDisabled()
+  })
+
+  it("leaves the first My Events page unchanged when a Previous callback has no history", () => {
+    search.params = { tab: "my" }
+    myQuery.data = myPage([evt({ id: "first" })], null, "cursor-1")
+    render(<EventsFeature />)
+
+    act(() => pagingProbe.value?.onPrevious())
+
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: null })
+    expect(screen.getByTestId("my-at-first")).toHaveTextContent("true")
+  })
+
+  it("ignores a Previous callback captured before the browser session scope changed", () => {
+    search.params = { tab: "my" }
+    myQuery.data = myPage([evt({ id: "first" })], null, "cursor-1")
+    const { rerender } = render(<EventsFeature />)
+    fireEvent.click(screen.getByText("my-next"))
+    myQuery.data = myPage([evt({ id: "second" })], "cursor-1", "cursor-2")
+    rerender(<EventsFeature />)
+    const stalePrevious = pagingProbe.value!.onPrevious
+
+    act(() => invalidateSessionEpoch())
+    rerender(<EventsFeature />)
+    myQuery.data = myPage([evt({ id: "fresh-first" })], null, "cursor-1")
+    rerender(<EventsFeature />)
+    fireEvent.click(screen.getByText("my-next"))
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: "cursor-1" })
+
+    act(() => stalePrevious())
+
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: "cursor-1" })
+    expect(screen.getByTestId("my-at-first")).toHaveTextContent("false")
+  })
+
+  it("keeps only the nineteen most recent cursors in the My Events back stack", () => {
+    search.params = { tab: "my" }
+    myQuery.data = myPage([evt({ id: "page-0" })], null, "cursor-1")
+    const { rerender } = render(<EventsFeature />)
+    for (let page = 1; page <= 21; page += 1) {
+      fireEvent.click(screen.getByText("my-next"))
+      myQuery.data = myPage([evt({ id: `page-${page}` })], `cursor-${page}`, `cursor-${page + 1}`)
+      rerender(<EventsFeature />)
+    }
+    expect(queryCalls.mine.at(-1)?.[0]).toMatchObject({ cursor: "cursor-21" })
+
+    const visited: unknown[] = []
+    for (let back = 0; back < 19; back += 1) {
+      fireEvent.click(screen.getByText("my-previous"))
+      visited.push((queryCalls.mine.at(-1)?.[0] as { cursor: unknown }).cursor)
+    }
+
+    expect(visited).toEqual(Array.from({ length: 19 }, (_, index) => `cursor-${20 - index}`))
+    expect(screen.getByText("my-previous")).toBeDisabled()
+  })
+
+  it("retries the My Events query from the list error action", () => {
+    search.params = { tab: "my" }
+    myQuery.data = myPage([evt({ id: "first" })], null, null)
+    render(<EventsFeature />)
+
+    fireEvent.click(screen.getByText("list-retry"))
+
+    expect(myQuery.refetch).toHaveBeenCalledOnce()
   })
 })

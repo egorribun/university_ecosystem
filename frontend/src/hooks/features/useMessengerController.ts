@@ -392,15 +392,16 @@ export const useMessengerController = () => {
     const detach = cache.subscribe((event) => {
       if (event.query === query && event.type === "removed") abortController.abort()
     })
+    // This controller is the active request whenever its abort listener can
+    // run: both refs are cleared together, and only after this listener fires
+    // (or the request settles and detaches it) can a later request replace them.
     const retire = () => {
       detach()
-      if (chatPageAbortRef.current === abortController) {
-        chatPageAbortRef.current = null
-        chatPageRequestRef.current = null
-        if (chatPageGenerationRef.current === generation) {
-          setIsLoadingMoreChats(false)
-          setMoreChatsError(false)
-        }
+      chatPageAbortRef.current = null
+      chatPageRequestRef.current = null
+      if (chatPageGenerationRef.current === generation) {
+        setIsLoadingMoreChats(false)
+        setMoreChatsError(false)
       }
     }
     abortController.signal.addEventListener("abort", retire, { once: true })
@@ -442,10 +443,12 @@ export const useMessengerController = () => {
       .finally(() => {
         detach()
         abortController.signal.removeEventListener("abort", retire)
+        // A generation bump always clears the request ref in the same synchronous
+        // turn, so a request still owning the ref has the generation it started with.
         if (chatPageRequestRef.current === request) {
           chatPageRequestRef.current = null
           chatPageAbortRef.current = null
-          if (chatPageGenerationRef.current === generation) setIsLoadingMoreChats(false)
+          setIsLoadingMoreChats(false)
         }
       })
     chatPageRequestRef.current = request

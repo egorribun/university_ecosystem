@@ -92,6 +92,60 @@ const mixWithWhite = (hex: string, alpha: number) => {
   return "#" + blended.map((channel) => channel.toString(16).padStart(2, "0")).join("")
 }
 
+const channelsOf = (hex: string) =>
+  [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16))
+
+const hexOf = (channels: number[]) =>
+  "#" + channels.map((channel) => Math.round(channel).toString(16).padStart(2, "0")).join("")
+
+/** Linear sRGB interpolation between two stops, as a 2-stop gradient paints it. */
+const interpolateSrgb = (from: string, to: string, t: number) => {
+  const start = channelsOf(from)
+  const end = channelsOf(to)
+  return hexOf(start.map((channel, index) => channel + ((end[index] ?? 0) - channel) * t))
+}
+
+/** Björn Ottosson's Oklab transform, used for browsers that interpolate gradients in oklab. */
+const hexToOklab = (hex: string) => {
+  const [r = 0, g = 0, b = 0] = channelsOf(hex).map((channel) => toLinear(channel))
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ]
+}
+
+const linearToSrgbChannel = (linear: number) => {
+  const clamped = Math.min(1, Math.max(0, linear))
+  const encoded = clamped <= 0.0031308 ? 12.92 * clamped : 1.055 * clamped ** (1 / 2.4) - 0.055
+  return encoded * 255
+}
+
+const oklabToHex = ([L = 0, a = 0, b = 0]: number[]) => {
+  const lPrime = L + 0.3963377774 * a + 0.2158037573 * b
+  const mPrime = L - 0.1055613458 * a - 0.0638541728 * b
+  const sPrime = L - 0.0894841775 * a - 1.291485548 * b
+  const [l, m, s] = [lPrime ** 3, mPrime ** 3, sPrime ** 3]
+  return hexOf(
+    [
+      4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+      -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+      -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+    ].map(linearToSrgbChannel)
+  )
+}
+
+const interpolateOklab = (from: string, to: string, t: number) => {
+  const start = hexToOklab(from)
+  const end = hexToOklab(to)
+  return oklabToHex(
+    start.map((component, index) => component + ((end[index] ?? 0) - component) * t)
+  )
+}
+
 describe("sent message bubble contrast", () => {
   it("keeps white text at WCAG AA on every colour stop of the sent gradient", () => {
     const gradient = messenger.match(/--messenger-bubble-sent-bg:\s*([^;]+);/)?.[1] ?? ""
@@ -100,6 +154,26 @@ describe("sent message bubble contrast", () => {
 
     for (const stop of stops) {
       expect(contrast(primitiveHex("color-white"), primitiveHex(stop))).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it("keeps white text at WCAG AA at every interpolated point of the sent gradient", () => {
+    const stops = sentGradientStops()
+    expect(stops.length).toBeGreaterThanOrEqual(2)
+    const first = primitiveHex(stops[0]!)
+    const last = primitiveHex(stops.at(-1)!)
+    const white = primitiveHex("color-white")
+
+    // The oklab helpers must round-trip exact stops, or the samples are meaningless.
+    expect(oklabToHex(hexToOklab(first))).toBe(first)
+    expect(oklabToHex(hexToOklab(last))).toBe(last)
+
+    // 101 samples cover the whole gradient, in sRGB and in oklab, the two
+    // interpolation spaces a browser may use for a linear-gradient.
+    for (let step = 0; step <= 100; step += 1) {
+      const t = step / 100
+      expect(contrast(white, interpolateSrgb(first, last, t))).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(white, interpolateOklab(first, last, t))).toBeGreaterThanOrEqual(4.5)
     }
   })
 

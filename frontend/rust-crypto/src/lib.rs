@@ -30,6 +30,10 @@ const MIN_PBKDF2_KEY_SIZE: usize = 1;
 const MAX_PBKDF2_KEY_SIZE: usize = 1_024;
 const MIN_SCRYPT_OUTPUT_LEN: usize = 10;
 const MAX_SCRYPT_OUTPUT_LEN: usize = 64;
+// AUD-414: the smallest cost used by RFC 7914's test vectors. Costs below it
+// (N=1 in particular) make the memory-hard primitive trivially cheap. Production
+// callers use N=16384, so this floor only rejects degenerate parameters.
+const MIN_SCRYPT_N: u32 = 16;
 
 fn validate_scrypt_output_len(dk_len: usize) -> Result<(), ErrorType> {
     if !(MIN_SCRYPT_OUTPUT_LEN..=MAX_SCRYPT_OUTPUT_LEN).contains(&dk_len) {
@@ -162,6 +166,9 @@ pub fn scrypt_derive(
         .checked_ilog2()
         .filter(|_| n.is_power_of_two())
         .ok_or_else(|| make_err("Invalid scrypt params: N must be a non-zero power of two"))?;
+    if n < MIN_SCRYPT_N {
+        return Err(make_err("Invalid scrypt params: N must be at least 16"));
+    }
     // Keep the old scrypt::Params::new(..., dk_len) validation order and
     // reject attacker-controlled lengths before any output allocation.
     validate_scrypt_output_len(dk_len)?;

@@ -1,10 +1,12 @@
-import { waitFor } from "@testing-library/react"
-import { CancelledError, QueryClient } from "@tanstack/react-query"
+import { act, renderHook, waitFor } from "@testing-library/react"
+import { CancelledError, QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { createElement, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { http, HttpResponse } from "msw"
 import { chatApi } from "@/api/chat"
 import type { Chat, ChatsListResponse, Message, MessagesListResponse } from "@/api/chat"
 import {
+  applyOwnReactionFrame,
   beginMessengerEditRefresh,
   beginMessengerOperation,
   classifyMessengerServerEdit,
@@ -15,6 +17,7 @@ import {
   getClearRefresh,
   projectMessengerMessages,
   runMessengerOperation,
+  useProjectedMessengerMessages,
 } from "@/hooks/messengerProjection"
 import { acceptBrowserSessionGeneration, invalidateSessionEpoch } from "@/stores/sessionEpoch"
 import { server } from "@/tests/mocks/server"
@@ -797,5 +800,331 @@ describe("clear maintenance boundary observations", () => {
       if (pendingRequest) await Promise.allSettled([pendingRequest])
       vi.useFakeTimers()
     }
+  })
+})
+
+describe("projection edge arms reached through live stores and replays", () => {
+  function subscribeStore(client: QueryClient) {
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children)
+    return renderHook(() => useProjectedMessengerMessages(undefined, accountId, chat.id), {
+      wrapper,
+    })
+  }
+
+  function storageEvent(key: string) {
+    window.dispatchEvent(new StorageEvent("storage", { key, newValue: "{}" }))
+  }
+
+  it("ignores a storage event for an unrelated key while an edit is pending", () => {
+    const target = projectionMessage()
+    const client = projectionClient([target])
+    subscribeStore(client)
+    let token: object | undefined
+    act(() => {
+      token = beginMessengerOperation(client, accountId, chat.id, {
+        kind: "edit",
+        messageId: target.id,
+        content: "still pending",
+      })
+      storageEvent("unrelated.preference")
+    })
+
+    expect(
+      projectMessengerMessages(client, accountId, chat.id, canonicalMessages(client))?.items[0]
+        ?.content
+    ).toBe("still pending")
+    act(() => {
+      expect(finishMessengerOperation(client, token, false)).toBe(true)
+    })
+  })
+
+  it("retires a successful clear's masking when another tab rotates the browser session", () => {
+    const client = projectionClient([projectionMessage()])
+    subscribeStore(client)
+    act(() => {
+      expect(acceptClear(client)).toBeDefined()
+    })
+    expect(
+      projectMessengerMessages(client, accountId, chat.id, canonicalMessages(client))?.items
+    ).toHaveLength(0)
+
+    act(() => {
+      localStorage.setItem(
+        generationKey,
+        JSON.stringify({ nonce: "rotated-elsewhere", hash: null })
+      )
+      storageEvent(generationKey)
+    })
+
+    expect(getClearRefresh(client, chat.id)).toBeUndefined()
+    expect(
+      projectMessengerMessages(client, accountId, chat.id, canonicalMessages(client))?.items
+    ).toHaveLength(1)
+  })
+
+  it("retires confirmed edit receipts when another tab rotates the browser session", async () => {
+    const target = projectionMessage()
+    const client = projectionClient([target])
+    subscribeStore(client)
+    await act(async () => {
+      await acceptEdit(client, target.id, "accepted")
+    })
+    expect(classifyMessengerServerEdit(client, chat.id, target.id, "accepted")).toMatchObject({
+      kind: "confirmed",
+    })
+
+    act(() => {
+      localStorage.setItem(
+        generationKey,
+        JSON.stringify({ nonce: "rotated-elsewhere", hash: null })
+      )
+      storageEvent(generationKey)
+    })
+
+    expect(classifyMessengerServerEdit(client, chat.id, target.id, "accepted")).toEqual({
+      kind: "normal",
+    })
+  })
+
+  it("keeps a reaction that the canonical message already reflects", () => {
+    const target = projectionMessage({
+      reactions: [{ emoji: "👍", count: 1, reacted_by_me: true }],
+    })
+    const client = projectionClient([target])
+    const token = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "reaction",
+      messageId: target.id,
+      emoji: "👍",
+      reacted: true,
+    })
+
+    const projected = projectMessengerMessages(
+      client,
+      accountId,
+      chat.id,
+      canonicalMessages(client)
+    )
+    expect(projected?.items[0]?.reactions).toEqual([{ emoji: "👍", count: 1, reacted_by_me: true }])
+    expect(finishMessengerOperation(client, token, false)).toBe(true)
+  })
+
+  it("does not apply a pending reaction to a message that is already deleted", () => {
+    const target = projectionMessage({ deleted_at: "2026-10-22T12:02:00.000Z", content: "" })
+    const client = projectionClient([target])
+    const token = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "reaction",
+      messageId: target.id,
+      emoji: "🔥",
+      reacted: true,
+    })
+
+    const projected = projectMessengerMessages(
+      client,
+      accountId,
+      chat.id,
+      canonicalMessages(client)
+    )
+    expect(projected?.items[0]).toEqual(target)
+    expect(finishMessengerOperation(client, token, false)).toBe(true)
+  })
+
+  it("applies an own reaction frame only to its target message and tolerates no loaded page", () => {
+    const first = projectionMessage()
+    const second = projectionMessage({ id: "second-message" })
+
+    expect(
+      applyOwnReactionFrame(undefined, { message_id: first.id, emoji: "👍", action: "added" })
+    ).toBeUndefined()
+    const updated = applyOwnReactionFrame(messagesPage([first, second]), {
+      message_id: first.id,
+      emoji: "👍",
+      action: "added",
+    })
+
+    expect(updated?.items[0]?.reactions).toEqual([{ emoji: "👍", count: 1, reacted_by_me: true }])
+    expect(updated?.items[1]).toBe(second)
+  })
+
+  it("drops operations retired by a session change when a new edit has no target", async () => {
+    const target = projectionMessage()
+    const client = projectionClient([target])
+    const retired = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "edit",
+      messageId: target.id,
+      content: "retired",
+    })
+    invalidateSessionEpoch()
+
+    const missing = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "edit",
+      messageId: "missing-message",
+      content: "no target",
+    })
+
+    expect(missing).toBeUndefined()
+    await expect(
+      runMessengerOperation(client, retired, async () => "unreachable")
+    ).rejects.toBeInstanceOf(CancelledError)
+  })
+
+  it("keeps the other confirmed receipts when one receipt's canonical target changes", async () => {
+    const first = projectionMessage()
+    const second = projectionMessage({ id: "second", content: "second canonical" })
+    const client = projectionClient([first, second])
+    await acceptEdit(client, first.id, "first accepted")
+    await acceptEdit(client, second.id, "second accepted")
+    client.setQueryData(
+      ["messages", chat.id],
+      messagesPage(
+        canonicalMessages(client).items.map((item) =>
+          item.id === first.id ? { ...item, content: "peer version" } : item
+        )
+      )
+    )
+
+    expect(classifyMessengerServerEdit(client, chat.id, first.id, "first accepted")).toEqual({
+      kind: "normal",
+    })
+    expect(
+      classifyMessengerServerEdit(client, chat.id, second.id, "second accepted")
+    ).toMatchObject({ kind: "confirmed" })
+  })
+
+  it("leaves an edit whose session already ended out of a refresh snapshot", async () => {
+    const target = projectionMessage()
+    const client = projectionClient([target])
+    await acceptEdit(client, target.id, "accepted")
+    invalidateSessionEpoch()
+
+    expect(beginMessengerEditRefresh(client, chat.id).size).toBe(0)
+  })
+
+  it("commits a clear over a reset message query and a reset chat list without a snapshot", async () => {
+    const target = projectionMessage()
+    const client = projectionClient([target])
+    client.setQueryData(["chats"], page(10))
+    await acceptEdit(client, target.id, "accepted before reset")
+    await client.resetQueries({ queryKey: ["messages", chat.id], exact: true })
+    await client.resetQueries({ queryKey: ["chats"], exact: true })
+    expect(client.getQueryData(["messages", chat.id])).toBeUndefined()
+    expect(client.getQueryData(["chats"])).toBeUndefined()
+
+    const clear = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "clear",
+      refreshChats: async () => page(0),
+    })
+    expect(finishMessengerOperation(client, clear, true)).toBe(true)
+
+    expect(client.getQueryData(["chats"])).toBeUndefined()
+    expect(
+      classifyMessengerServerEdit(client, chat.id, target.id, "accepted before reset")
+    ).toEqual({ kind: "normal" })
+  })
+
+  it("hides only messages ordered before a clear cutoff when a sibling timestamp is unordered", () => {
+    const valid = projectionMessage({ id: "valid", created_at: "2026-10-22T12:00:00.000Z" })
+    const unordered = projectionMessage({ id: "unordered", created_at: "not-a-timestamp" })
+    const client = projectionClient([valid, unordered])
+    const clear = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "clear",
+      refreshChats: async () => page(0),
+    })
+    const newer = projectionMessage({ id: "newer", created_at: "2026-10-22T12:05:00.000Z" })
+    client.setQueryData(["messages", chat.id], messagesPage([valid, unordered, newer]))
+
+    const visible = projectMessengerMessages(client, accountId, chat.id, canonicalMessages(client))
+    expect(visible?.items.map((item) => item.id)).toEqual(["newer"])
+    expect(finishMessengerOperation(client, clear, false)).toBe(true)
+  })
+
+  it("keeps a failed clear refresh invalidated across a cancelled refetch", async () => {
+    vi.useRealTimers()
+    try {
+      const client = projectionClient()
+      client.setQueryData(["chats"], page(10))
+      const clear = beginMessengerOperation(client, accountId, chat.id, {
+        kind: "clear",
+        refreshChats: () => Promise.reject(new Error("refresh failed")),
+      })
+      expect(finishMessengerOperation(client, clear, true)).toBe(true)
+      await waitFor(() => expect(client.getQueryState(["chats"])?.isInvalidated).toBe(true))
+
+      const refetch = client
+        .fetchQuery({
+          queryKey: ["chats"],
+          queryFn: () => new Promise<ChatsListResponse>(() => {}),
+        })
+        .catch(() => undefined)
+      await waitFor(() => expect(client.getQueryState(["chats"])?.fetchStatus).toBe("fetching"))
+      client.setQueryData(["chats"], page(0))
+      await client.cancelQueries({ queryKey: ["chats"], exact: true })
+      await refetch
+
+      expect(client.getQueryState(["chats"])?.isInvalidated).toBe(true)
+    } finally {
+      vi.useFakeTimers()
+    }
+  })
+
+  it("does not invalidate the chat list for a failed refresh after its session ended", async () => {
+    const client = projectionClient()
+    client.setQueryData(["chats"], page(10))
+    let rejectRefresh!: (reason: Error) => void
+    const clear = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "clear",
+      refreshChats: () =>
+        new Promise<ChatsListResponse>((_resolve, reject) => {
+          rejectRefresh = reject
+        }),
+    })
+    expect(finishMessengerOperation(client, clear, true)).toBe(true)
+    // The clear's own finish invalidates the list; a canonical write clears that
+    // flag so only a failed refresh could set it again.
+    client.setQueryData(["chats"], client.getQueryData(["chats"]))
+    expect(client.getQueryState(["chats"])?.isInvalidated).toBe(false)
+    invalidateSessionEpoch()
+
+    rejectRefresh(new Error("refresh failed after session end"))
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(client.getQueryState(["chats"])?.isInvalidated).toBe(false)
+  })
+
+  it("stops a clear reconciliation whose quiet period ends as the session changes", async () => {
+    const { refreshChats } = await startQuietClear()
+
+    vi.advanceTimersByTime(100)
+    invalidateSessionEpoch()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(refreshChats).toHaveBeenCalledTimes(3)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("merges a refreshed chat that the live list did not hold", async () => {
+    const client = projectionClient()
+    client.setQueryData(["chats"], {
+      items: [{ ...chat, unread_count: 10 }],
+      has_more: false,
+      next_cursor: null,
+    })
+    const clear = beginMessengerOperation(client, accountId, chat.id, {
+      kind: "clear",
+      refreshChats: async () => ({
+        items: [
+          { ...chat, unread_count: 3 },
+          { ...chat, id: "22222222-2222-4222-8222-222222222223", unread_count: 4 },
+        ],
+        has_more: false,
+        next_cursor: null,
+      }),
+    })
+    expect(finishMessengerOperation(client, clear, true)).toBe(true)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(
+      client.getQueryData<ChatsListResponse>(["chats"])?.items.map((item) => item.unread_count)
+    ).toEqual([3, 4])
   })
 })
