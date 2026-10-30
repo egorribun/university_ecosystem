@@ -2,7 +2,142 @@
 
 Обновлено: 2026-10-30 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Reviewed successor source — f8971624
+
+The next [reviewed source chain](https://github.com/egorribun/university_ecosystem/commit/f8971624264525b3dbd772fcc5b0b46820c9176a)
+contains five logical code/evidence commits across seventeen paths. Its results
+are not inherited from 3d83 or bd8; own CI and final coverage remain required.
+
+- Map: the hosted one-hunk formatting correction is applied. The same strict
+  verifier now reports one of 60 fixed local rejection stages without original
+  error text, paths, payloads or stacks. All predicates, call order, caps,
+  budgets and exit decisions are unchanged. Tests keep the existing positive
+  controls and all 29 negative variations, require exact expected stages and
+  test malformed-JSON privacy with a runtime-generated marker.
+- Chat: the loaded extent is refreshed authoritatively, with canonical query/
+  session ownership, cancellation and explicit page retry. The ten-file patch
+  includes nine helper and eight additional controller/lifecycle cases.
+  bd8's actual RED proves missing pagination UI and a missing second-page
+  refetch request; its account-transition assertions stopped at missing UI.
+  Do not claim that race was reproduced or that the successor tests pass yet.
+- Squawk: the inactive policy is rebound to the exact fully verified 3d83
+  capture. All 37 raw warnings, SQL, scanner, historical captures, expiry and
+  inactive status are preserved. Only provenance/fingerprints and two
+  path/identity consistency assertions change; this is not admission or
+  permission to run a migration.
+- Bundle workflow contract: bd8's backend shard 2 exposed a stale assertion
+  for a name-only download. The test now requires the exact artifact ID, path,
+  merge-multiple and digest-mismatch settings already used by the reviewed
+  workflow. Existing action pins, execution order and fail-closed assertions
+  are unchanged; this is a test consistency repair, not a workflow relaxation.
+
+On bd8, the focused Map contract suite passes **145/145**, including all 29
+negative variations and both ceiling controls. The fixture isolation regression
+also passes. Real same-run artifact downloads and digest checks succeed, but
+the final artifact verifier still rejects the evidence. **The operational
+286 KiB allowance is not yet proven**; the new fixed stage is diagnostic, not
+a speculative guard relaxation or causal fix. Frontend units are
+**10,467 PASS / four AUD-030 failures**, all in the cursor/lifetime test file.
+
+Next: obtain the successor's concrete Map rejection stage; fix only its proven
+cause, verify Chat ownership/lifecycle behavior and required coverage, then
+complete full exact-source CI. Obtain a fresh complete scanner inventory after
+this recapture before proposing any finite owner grant. Policy405 and
+baseline319 are unchanged. The accompanying **394-ID decision remains bound
+only to the completed 3d83 evidence below**, not these pending successor checks.
+AUD-030, AUD-334 and AUD-428 remain open.
+
+## Current source-bound checkpoint — 2026-10-30 06:10 UTC
+
+The [AUD-043/AUD-427 decision](../../audits/AUDIT-2026-10.md#scoped-aud-043-and-aud-427-acceptance-on-source-3d83fb27-2026-10-30)
+preserves all 392 prior IDs and adds only those two original criteria:
+**394/512 accepted; 118 unaccepted**. The evidence is bound to
+[source 3d83fb27](https://github.com/egorribun/university_ecosystem/commit/3d83fb27a2f7a91ddffc555afa8e12f369bbec09),
+tested merge `1eb4a25de262c255c97efdfdd327153c01b3c72a`, equal tree
+`9176b948347e840810b4091535848ff0fbd97eeb`.
+
+- AUD-043: the canonical/versioned news consumer path, cold-generation
+  preparation and fresh startup read snapshot are covered by 18 consumer,
+  six current-cache and two no-op cases. Their PASS is source-bound
+  **cohort-inferred**, not named-node output or a manifest-union receipt.
+  Authenticated event payloads are deliberately not globally warmed.
+- AUD-427: two actual ticket/revocation producer-to-consumer selectors have
+  named PASS in [Contract 123900734443](https://github.com/egorribun/university_ecosystem/actions/runs/41005719399/job/123900734443).
+  [Pact 123900050464](https://github.com/egorribun/university_ecosystem/actions/runs/41005719445/job/123900050464)
+  passes 29 cases and the real frontend parser accepts seven emitted frames,
+  rejecting four malformed controls. Transport replacements are explicit;
+  live Redis/NATS/deployment and AUD-428's wider census are not accepted.
+
+### Completed 3d83 evidence, not successor results
+
+All four backend shards completed: **22,505 PASS / 428 SKIP / 1 FAIL**.
+The sole failure is the old historical148 renderer source pin.
+Source-bound cohort inference also covers SQL fail-closed 21, the owned Redis
+launcher 32 plus exactly 12 approved-annotation controls, and three renderer
+Pool privacy controls. It is not printed named-PASS or merged coverage.
+The real [DB Performance job](https://github.com/egorribun/university_ecosystem/actions/runs/41005719450/job/123900050828)
+separately passes 212 cases with required capture enabled, 232 SQL statements
+and 80 EXPLAIN checks.
+
+Main [PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/41005719399/job/123901200220)
+passes **391 / 17 SKIP**, including 17 owned Redis contract cases and four
+AUD-340 PG controls; separate 13 chat/notification and five durable-replay
+cases pass. External opt-in skips are not full-stack proof.
+The [migration PG gate](https://github.com/egorribun/university_ecosystem/actions/runs/41005719399/job/123901200015)
+passes all seven real renderer isolation/catalog controls.
+Alembic separately passes renderer 41, diagnostic 132 and tenant 46 tests,
+but still fails with 37 raw Squawk warnings; admission remains inactive.
+
+Frontend unit results are **10,467 PASS / 2 AUD-030 FAIL**, 836 files.
+The WebSocket transport suite passes 120 cases; AUD-334 remains partial:
+a late generic rate-limit response may not trigger current-cursor recovery.
+[Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/41005719446/job/123904145258)
+is SUCCESS: 338 preflight, one browser-runtime and **48 live PASS / 2 SKIP**;
+NATS outage and cleanup succeed. Frozen-RC full smoke remains skipped.
+
+[Matrix 41005719399](https://github.com/egorribun/university_ecosystem/actions/runs/41005719399)
+is terminal FAILURE: **91 jobs = 63 SUCCESS / 12 FAILURE / 16 SKIPPED**.
+All 23 workflows are terminal (20 success, one failure, two skipped);
+141 checks are 103 success, 12 failure, 25 skipped and one neutral.
+There were no cancellations. Coverage Policy and Trusted Codecov are skipped.
+Root blockers are the old renderer pin, 62 unmatched technical-hash scanner
+identities, raw Squawk warnings, Map budget/fixture failures and the two chat
+pagination regressions. Derived aggregate failures are not new test failures.
+**There is no full-CI, merged-coverage or release acceptance.**
+
+### Published successor and ordered continuation
+
+[bd8cfe9860936f5c44ddc882d0ed38702d9dc506](https://github.com/egorribun/university_ecosystem/commit/bd8cfe9860936f5c44ddc882d0ed38702d9dc506)
+contains exactly nine reviewed paths in three logical commits: isolate the
+Map test fixture under existing ignored dependencies; implement the approved
+strict MapLibre 6.15.0 single noninitial vendor allowance; add two chat-list
+lifetime regression tests. No chat production fix is included.
+The [successor Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41012528353)
+must supply its own results; the completed 3d83 results do not transfer.
+
+1. Verify the Map positive control, all 29 negative evidence variations,
+   ceiling controls and actual same-run production artifact. The narrow
+   286 KiB allowance is an approved **6 KiB budget increase**, not an
+   optimization; every other general lazy chunk stays at 280 KiB.
+2. Obtain the new chat lifecycle semantic RED, then publish the separately
+   reviewed producer/consumer ownership fix and its tests; validate the
+   corrected source. AUD-030 remains open across its original four surfaces.
+3. Exercise delayed/repeated generic-rate-limit recovery before any AUD-334
+   source fix; prove finite automatic recovery and explicit manual recovery.
+4. Use actual renderer/SQL/Pool evidence for a bounded inactive Squawk
+   recapture. Preserve historical captures. Re-triage the final scanner
+   inventory and request only its exact finite owner-approved delta; the old
+   58-identity grant does not transfer to new paths/digests.
+
+The exact two S603 and one S104 annotations were separately owner-approved
+and are bounded by ADR-047 and the 12 source-scope tests; no broader exception
+is authorized. Policy405, baseline319, Gitleaks26, inactive Squawk admission,
+required checks, quality floors and GitHub-only/egorribun restrictions remain.
+No deployment, merge, force-push or new access is authorized here.
+
 ## Latest verified causal checkpoint — 2026-10-30
+
+Historical source778 checkpoint retained below; the current dated decision is above.
 
 The [source-bound AUD-512 decision](../../audits/AUDIT-2026-10.md#scoped-aud-512-callback-panic-acceptance-2026-10-30)
 preserves all 391 prior IDs and adds only the recovered NATS callback

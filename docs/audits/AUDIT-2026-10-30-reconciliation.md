@@ -1,5 +1,67 @@
 # Post-pause reconciliation — 2026-10-30
 
+## Reviewed source recovery after the bd8 regression receipts
+
+The [separate successor chain](https://github.com/egorribun/university_ecosystem/commit/f8971624264525b3dbd772fcc5b0b46820c9176a)
+contains the formatter correction, opaque fixed-stage Map diagnostics, the
+reviewed Chat ownership/pagination repair, an inactive 3d83 Squawk recapture
+and the stale bundle-download contract repair: five code/evidence commits
+across seventeen paths. The latter follows bd8's actual shard 2 failure and
+requires the current exact artifact-ID/path/merge/digest dictionary without
+changing any existing action pin, execution order or fail-closed assertion.
+Its own runtime and coverage evidence is pending. No Map predicate or budget
+is loosened by the diagnostic change, and no Squawk admission is activated.
+
+Actual bd8 Map contracts pass 145/145 (all 29 negative variations and both
+ceiling controls); the real artifact still fails the verifier after successful
+ID/digest downloads. The next stage receipt must identify the cause. Its Chat
+tests prove missing UI and a missing authoritative second-page refetch, not
+the later account-race assertions that the absent UI prevented from running.
+The new lifecycle/ownership tests still need their own GREEN.
+
+The following 394-ID decision uses only completed 3d83 evidence. The original
+136-path/126-row snapshot and all historical failures remain preserved below.
+
+## Subsequent AUD-043/AUD-427 decision and current limits
+
+The original 136-path manifest and 126-row matrix remain the historical
+8787b00e review. The later [source-bound decision](AUDIT-2026-10.md#scoped-aud-043-and-aud-427-acceptance-on-source-3d83fb27-2026-10-30)
+on 3d83fb27 preserves all 392 accepted IDs and adds only AUD-043 and AUD-427:
+**394 accepted / 118 unaccepted**.
+
+- The old AUD-043 partial classification is superseded only for its original
+  stale-namespace criterion. The canonical news consumer and cold-generation/
+  fresh-snapshot paths have 18+6+2 relevant cases supported by complete
+  source-bound four-shard cohort inference, not named logs, live service or
+  merged-coverage evidence. Authenticated events are not globally warmed.
+- AUD-427 now has two named production ticket/revocation contract passes and
+  actual WS emission consumed by the real frontend parser (seven accepted,
+  four malformed rejected). Explicit transport doubles remain; AUD-428's
+  broader weak-assertion census is still open.
+- The previous unapproved annotation defect was corrected: the owner later
+  approved exactly two local S603 and one S104 annotations. Own 3d83 Ruff
+  check/import/format pass, backend actually ran, and all 12 exact scope
+  controls are cohort-inferred PASS. No global exception was added.
+- AUD-334 remains partial despite the fixed queued-writer delivery race:
+  source tracing identifies a delayed generic-rate-limit recovery gap.
+  Its prepared boundary/repetition tests still require their own runtime RED
+  and bounded recovery proof. AUD-030 remains open beyond successful comments
+  and direct-link/message controls.
+
+Own 3d83 backend is 22,505 PASS / 428 SKIP / one old renderer-pin FAIL.
+The full Matrix is terminal FAILURE (63 success / 12 failure / 16 skipped);
+Coverage Policy and Codecov are skipped, not passed. Current scanner62 is a
+finite technical-digest inventory, not a waiver: policy405/baseline319 remain
+unchanged. Raw Squawk admission is still inactive.
+
+The published successor bd8cfe9 contains the approved source-bound Map286
+implementation, an isolated Map fixture and two chat lifecycle tests.
+Its own [Actions](https://github.com/egorribun/university_ecosystem/actions/runs/41012528353)
+must prove positive/negative controls and expose the remaining chat behavior.
+The budget change is a declared six-KiB tradeoff, not an optimization or
+proof of whole-application startup reachability. Historical review rows and
+their earlier failure evidence are retained, not silently rewritten.
+
 ## Subsequent source-bound decision on 778696a
 
 The original 136-path manifest and 126-row classification below are retained
