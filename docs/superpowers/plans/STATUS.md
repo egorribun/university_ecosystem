@@ -2,6 +2,117 @@
 
 Обновлено: 2026-10-30 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Completed 56ed5df evidence and reviewed causal successor — 2026-10-30 10:50 UTC
+
+The [56ed5df recovery](https://github.com/egorribun/university_ecosystem/commit/56ed5df3a31742730d9b3e8e7e2d9acc46182dd9)
+has completed its own hosted checks. The PR jobs checked out merge
+`3ea36c26c2941f44260569d5870790582bbc1e89`, not the literal branch SHA.
+Both commits have the identical complete Git tree
+`97dbc7ffe58e6c24f3dcd20afdcc9260ae76fe16`. The trusted-base policy-integrity
+job is a separate API review, not execution of PR code.
+
+- All four backend shards pass: **22,517 PASS / 428 SKIP / 0 FAIL**.
+  The aggregate job independently verifies the complete disjoint population
+  of **22,945 selected node IDs** and combines five coverage files. The old
+  historical-capture helper failures are resolved; historical security
+  controls and both no-transfer cases pass.
+- The [aggregate coverage gate](https://github.com/egorribun/university_ecosystem/actions/runs/41028695091/job/124003315196)
+  now executes rather than skipping, and **fails** its unchanged 100% patch-line
+  requirement: **1,495 changed executable lines / six missing**,
+  all at `app/tasks/email.py:51,57,60,87,91,98`. These are fail-closed
+  envelope/task-validation paths. This is not full branch-coverage proof.
+  Trusted Codecov remains skipped.
+- Frontend units pass **10,488 tests in 837 files**, including chat-list
+  integration 13/13 and helper 9/9. Its own differential report passes
+  **2,416/2,416 changed lines**. The branch diagnostic still has 35 zero-hit
+  arms and 11 unlocated entries; do not claim 100% branch coverage.
+- The real [Bundle job](https://github.com/egorribun/university_ecosystem/actions/runs/41028695091/job/123977106128)
+  passes all 145 focused cases, all 34 negative evidence variations and the
+  privacy control. Same-run production artifacts pass exact ID/digest binding
+  and the actual verifier: the single proven static-noninitial MapLibre 6.15.0
+  vendor chunk is **292,688 gzip bytes**, below **292,864 bytes (286 KiB)**.
+  The causal fix accepts the literal `?url` suffix only for its exact Vite
+  worker module; queries on CSS/main and all other worker query variants
+  remain rejected. Every other
+  general lazy chunk retains 280 KiB. This is the explicitly approved
+  **6 KiB budget increase**, not an optimization or dynamic/network closure.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/41028694947/job/123972929391)
+  passes 338 preflight checks, one browser-runtime check and 48 live cases
+  with two skips; NATS outage and cleanup pass. Frozen-RC full-stack smoke
+  remains skipped. Real PG integration passes 391 cases with 17 skips,
+  plus separate 13 chat/notification and five durable-replay cases; seven
+  renderer PG controls pass. These scopes are not deployment acceptance.
+
+The [Matrix run](https://github.com/egorribun/university_ecosystem/actions/runs/41028695091)
+is terminal **FAILURE**: **91 jobs = 71 SUCCESS / 5 FAILURE / 15 SKIPPED**.
+All 23 workflows are terminal (20 success, one failure, two skipped);
+141 checks are 111 success, five failure, 24 skipped and one neutral.
+There were no cancellations. The failures are security/types and baseline
+integrity for the same 89 unmatched technical hashes, raw Squawk's 37 warnings,
+the six missing email lines, and derived CI Success. CodeQL is successful.
+There is no full-CI, aggregate-coverage or release GREEN.
+
+The owner approved the exact
+[89-identity triage manifest](https://github.com/egorribun/university_ecosystem/blob/15349c991d5ef99098b452008f0f6813ba0b9561/docs/audits/evidence/security-digest-triage-2026-10-30.json)
+on 2026-10-30 at 10:21 UTC. The
+[reviewed causal source chain](https://github.com/egorribun/university_ecosystem/commit/42969212548b495d47d3e39742c8825223973ffa)
+appends those 89 exact identities to the byte-preserved 405-record prefix:
+**494 records**, within the unchanged 512 cap and 2027-01-10 expiry.
+The runtime loader binds exact identity and approval metadata. Whole-source
+byte pins and the complete population are independently enforced by CI source
+contracts, not runtime filesystem authentication. Six new collected tests
+exercise source/population, scope/old-grant, metadata/expiry and candidate/
+trusted-base boundaries; finite loops are not counted as separate tests.
+AGENTS and ADR-047 record this precise decision. No other hash inherits it.
+
+The baseline remains 319 identities and Gitleaks remains 26 fingerprints.
+The 20 stale baseline identities are separately informational, are not part
+of this grant and are not removed. Scanner rules and inactive Squawk admission
+are unchanged; all 37 raw warnings remain blocking. The review manifest itself
+is an immutable evidence artifact, not an independently active policy.
+Own-source scanner and negative-test results are still required.
+
+Only after 56ed's terminal checks,
+[34ebe406](https://github.com/egorribun/university_ecosystem/commit/34ebe406f6c7e07458763b8b21fd34de6567dc3c)
+published two test-only files. Its
+[frontend run](https://github.com/egorribun/university_ecosystem/actions/runs/41038438736)
+is terminal **10,489 PASS / four FAIL**, in 837 files; TypeScript, ESLint and
+Prettier pass. The aggregate stops at the failed-shard guard, so merged
+frontend/differential coverage does not run on this source.
+
+- DLQ: 14 old page tests pass; the new terminal-second-page-error test fails
+  at the active-query observer assertion (zero instead of one). Healthy
+  first-page, pending-placeholder and terminal-error state controls pass.
+  Its later DOM assertions are not reached. The
+  [minimal causal fix](https://github.com/egorribun/university_ecosystem/commit/ff6eee76d8048bcd30d671bd81c3de6610082a8d)
+  permits offset clamping only from successful non-placeholder current-page
+  data. Existing genuine shrink behavior and its request sequence
+  `[0,20,20,0]` are preserved; no retry UI, query-key, mutation or selection
+  change is introduced. Own-source regression GREEN remains required.
+- AUD-334: all five old cases and the 1,050 ms control pass; the 1,051 ms
+  and 5,000 ms cases lack a retry. The bounded-recovery case fails in its
+  first cycle, before the cap/manual/checkpoint tail. These are three actual
+  failures, not proof that the unreached assertions work. No WebSocket
+  production or ordinal-protocol change is included in this source chain.
+- The separate [email validation tests](https://github.com/egorribun/university_ecosystem/commit/1e9c9e95a4b8f51955bc34e8db4d19bbef8ce589)
+  add eight cases using real Fernet/signature/preparation behavior, healthy
+  controls, opaque rejection and input nonmutation for the six uncovered
+  guards. Email production code is unchanged. Static review is not proof of
+  aggregate coverage or of every possible mutant being killed.
+
+Current 34ebe backend/PG/Core observations do not inherit 56ed's complete
+results. This new reviewed source requires its own complete CI, scanner,
+coverage and scoped regression receipts. The AUD-334 causal design must also
+separate replay progress from transport health: a heartbeat can reset the
+network retry counter without advancing the saved sequence. Its additional
+boundedness counterexample is source-backed, not yet a hosted regression.
+
+**394/512 accepted; 118 unaccepted** is unchanged. The AUD-043/AUD-427
+acceptance below remains bound to its original 3d83 evidence.
+AUD-030, AUD-334 and AUD-428 remain open. Historical checkpoints below retain
+their original source/time scopes and are superseded as current status by
+this entry, not rewritten as results of a later commit.
+
 ## Reviewed successor source — f8971624
 
 The next [reviewed source chain](https://github.com/egorribun/university_ecosystem/commit/f8971624264525b3dbd772fcc5b0b46820c9176a)
