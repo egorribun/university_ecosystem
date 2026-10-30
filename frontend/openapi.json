@@ -2528,6 +2528,18 @@
           "likes_count": {
             "title": "Likes Count",
             "type": "integer"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only for cursor paging. A full final page may require one additional empty request before this becomes null.",
+            "title": "Next Cursor"
           }
         },
         "required": ["likes_count", "is_liked", "comments", "comments_count"],
@@ -11157,6 +11169,26 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Send 'start' to begin cursor paging, then pass next_cursor; omit for legacy offset paging.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Send 'start' to begin cursor paging, then pass next_cursor; omit for legacy offset paging.",
+              "title": "Cursor"
             }
           }
         ],

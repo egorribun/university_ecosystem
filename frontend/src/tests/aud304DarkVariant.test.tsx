@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
-import postcss, { type Rule } from "postcss"
+import postcss, { type AnyNode, type Rule } from "postcss"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext"
@@ -28,7 +28,7 @@ function backgroundRules(selectorFragment: string, valueFragment: string): Rule[
 function expectClassControlledBackground(element: HTMLElement, rules: Rule[], dark: boolean) {
   expect(rules.length).toBeGreaterThan(0)
   for (const rule of rules) {
-    let parent = rule.parent
+    let parent: AnyNode | undefined = rule.parent
     while (parent) {
       if (parent.type === "atrule" && parent.name === "media") {
         expect(parent.params).not.toMatch(/prefers-color-scheme/u)

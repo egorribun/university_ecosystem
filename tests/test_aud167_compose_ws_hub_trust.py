@@ -9,14 +9,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize(
-    "compose_file", ["docker-compose.full.yml", "docker-compose.go.yml"]
+    "compose_file", [ROOT / "docker-compose.full.yml", ROOT / "docker-compose.go.yml"]
 )
 def test_ws_hub_receives_explicit_proxy_peers_or_loopback_only_default(
-    compose_file: str,
+    compose_file: Path,
 ) -> None:
     compose = yaml.safe_load(
-        (ROOT / compose_file)
-        .read_text(encoding="utf-8")
+        compose_file.read_text(encoding="utf-8")
         .replace("!override", "")
         .replace("!reset", "")
     )

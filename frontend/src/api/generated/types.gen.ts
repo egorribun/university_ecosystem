@@ -1456,6 +1456,12 @@ export type NewsInteractionsOut = {
    * Likes Count
    */
   likes_count: number
+  /**
+   * Next Cursor
+   *
+   * Present only for cursor paging. A full final page may require one additional empty request before this becomes null.
+   */
+  next_cursor?: string | null
 }
 
 /**
@@ -6188,6 +6194,12 @@ export type GetNewsInteractApiV1NewsIdInteractionsGetData = {
      * Offset
      */
     offset?: number
+    /**
+     * Cursor
+     *
+     * Send 'start' to begin cursor paging, then pass next_cursor; omit for legacy offset paging.
+     */
+    cursor?: string | null
   }
   url: "/api/v1/news/{id}/interactions"
 }

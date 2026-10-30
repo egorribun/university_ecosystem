@@ -167,7 +167,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
     meta: { persist: false },
   })
   const interactions = interactionsQuery.data?.interactions
-  const commentsStatus = interactionsQuery.data?.commentsLoaded
+  const commentsStatus: "ready" | "loading" | "error" = interactionsQuery.data?.commentsLoaded
     ? "ready"
     : interactionsQuery.isError
       ? "error"

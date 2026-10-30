@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import re
 import subprocess
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -152,15 +154,44 @@ def _run_installer(
         "FAKE_VERSION": version,
         "FAKE_PIN_VERSION": pin_version,
     }
-    result = subprocess.run(
-        ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", script],
-        cwd=tmp_path,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=15,
-        check=False,
-    )
+    env.pop("BASH_ENV", None)
+
+    async def invoke() -> subprocess.CompletedProcess[str]:
+        command = [
+            "/bin/bash",
+            "--noprofile",
+            "--norc",
+            "-e",
+            "-o",
+            "pipefail",
+            "-c",
+            script,
+        ]
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=tmp_path,
+            env=env,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=15)
+        except BaseException:
+            if process.returncode is None:
+                with suppress(ProcessLookupError):
+                    process.kill()
+            await process.wait()
+            raise
+        assert process.returncode is not None
+        return subprocess.CompletedProcess(
+            command,
+            process.returncode,
+            stdout.decode("utf-8", errors="replace"),
+            stderr.decode("utf-8", errors="replace"),
+        )
+
+    result = asyncio.run(invoke())
     return result, runner_temp, env_file, event_log
 
 

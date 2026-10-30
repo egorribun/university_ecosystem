@@ -119,8 +119,11 @@ with open(os.environ["MFA_TEST_CALLS"], "a", encoding="utf-8") as calls:
     calls.write(operation + "\n")
 if operation == os.environ.get("MFA_TEST_BLOCK_AT"):
     Path(os.environ["MFA_TEST_READY"]).touch()
+    deadline = time.monotonic() + 10
     while not Path(os.environ["MFA_TEST_RELEASE"]).exists():
-        time.sleep(0.02)
+        if time.monotonic() >= deadline:
+            sys.exit(8)
+        time.sleep(0.02)  # bounded by the monotonic deadline above
 if operation == os.environ.get("MFA_TEST_FAIL_AT"):
     sys.exit(7)
 output.write_text(json.dumps(response), encoding="utf-8")

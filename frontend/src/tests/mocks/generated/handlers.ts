@@ -9312,6 +9312,7 @@ export function getGetNewsInteractApiV1NewsIdInteractionsGet200Response() {
     comments_count: faker.number.int(),
     is_liked: faker.datatype.boolean(),
     likes_count: faker.number.int(),
+    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
   };
 }
 

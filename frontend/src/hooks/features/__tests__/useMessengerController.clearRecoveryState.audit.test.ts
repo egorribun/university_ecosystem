@@ -183,7 +183,7 @@ it.each(["query replacement", "session retirement"] as const)(
 it("does not revive failed recovery after an observed cross-tab session round trip", async () => {
   const client = setup()
   const Wrapper = ({ children }: { children: ReactNode }) =>
-    createElement(QueryClientProvider, { client, children })
+    createElement(QueryClientProvider, { client }, children)
   const { unmount } = renderHook(() => useProjectedMessengerChats(undefined, accountId), {
     wrapper: Wrapper,
   })

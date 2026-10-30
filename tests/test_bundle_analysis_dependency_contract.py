@@ -34,7 +34,9 @@ def _step(job: dict[str, Any], name: str) -> tuple[int, dict[str, Any]]:
     return matches[0]
 
 
-def test_bundle_analysis_downloads_both_conditional_wasm_artifacts_as_build_does() -> None:
+def test_bundle_analysis_downloads_both_conditional_wasm_artifacts_as_build_does() -> (
+    None
+):
     jobs = _workflow()["jobs"]
     build = jobs["build"]
     analysis = jobs["bundle-analysis"]
@@ -78,8 +80,12 @@ def test_bundle_analysis_downloads_both_conditional_wasm_artifacts_as_build_does
 
 
 def test_bundle_parser_is_an_exact_locked_direct_dev_dependency() -> None:
-    manifest = json.loads((ROOT / "frontend" / "package.json").read_text(encoding="utf-8"))
-    lock = json.loads((ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    )
+    lock = json.loads(
+        (ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8")
+    )
     assert manifest["devDependencies"]["parse5"] == "8.0.1"
     assert lock["packages"][""]["devDependencies"]["parse5"] == "8.0.1"
     installed = lock["packages"]["node_modules/parse5"]
@@ -99,23 +105,28 @@ def test_bundle_analysis_installs_locked_dependencies_with_lifecycle_scripts() -
     assert setup["uses"] == build_setup["uses"]
     assert setup["with"]["node-version"] == build_setup["with"]["node-version"]
     assert setup_index < install_index
-    assert install == build_install == {
-        "name": "Install dependencies",
-        "run": "npm ci --no-audit --no-fund",
-    }
+    assert (
+        install
+        == build_install
+        == {
+            "name": "Install dependencies",
+            "run": "npm ci --no-audit --no-fund",
+        }
+    )
     npmrc = (ROOT / "frontend" / ".npmrc").read_text(encoding="utf-8")
     assert not re.search(r"(?im)^\s*(?:ignore-scripts|omit|production)\s*=", npmrc)
     for scope in (workflow, analysis, install):
         env = scope.get("env", {})
         assert isinstance(env, dict)
-        assert not {
-            key.lower().replace("-", "_")
-            for key in env
-        }.intersection({"npm_config_ignore_scripts", "npm_config_omit", "npm_config_production"})
+        assert not {key.lower().replace("-", "_") for key in env}.intersection(
+            {"npm_config_ignore_scripts", "npm_config_omit", "npm_config_production"}
+        )
         assert str(env.get("NODE_ENV", "")).lower() != "production"
 
 
-def test_bundle_analysis_tests_and_analyzes_only_after_install_and_artifact_download() -> None:
+def test_bundle_analysis_tests_and_analyzes_only_after_install_and_artifact_download() -> (
+    None
+):
     analysis = _workflow()["jobs"]["bundle-analysis"]
     install_index, _ = _step(analysis, "Install dependencies")
     download_index, download = _step(analysis, "Download production bundle")

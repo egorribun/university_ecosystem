@@ -5,9 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from tests import conftest as capture
+
 pytest_plugins = ["pytester"]
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_PROJECT_ROOT = Path(capture.__file__).resolve().parents[1]
 
 
 def _prepare_capture_case(
