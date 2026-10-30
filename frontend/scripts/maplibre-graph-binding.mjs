@@ -460,8 +460,10 @@ function validateAuxiliary(bytes, name) {
       requireInput(nodes <= 100_000)
       requireInput(
         node.type !== "ImportDeclaration" &&
-          !((node.type === "ExportNamedDeclaration" || node.type === "ExportAllDeclaration") &&
-            node.source)
+          !(
+            (node.type === "ExportNamedDeclaration" || node.type === "ExportAllDeclaration") &&
+            node.source
+          )
       )
       if (node.type === "ImportExpression") {
         requireInput(
