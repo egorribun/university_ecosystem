@@ -5,7 +5,13 @@ from __future__ import annotations
 import asyncio
 import importlib.machinery
 import importlib.util
+import json
+import re
+import runpy
 import secrets
+import shutil
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 from types import CodeType, SimpleNamespace
@@ -592,3 +598,376 @@ def test_revocation_probe_refuses_replacement_even_with_copied_marker(
     assert cache.deleted == [f"session:{redis.jti}"]
     assert redis.deleted == []
     assert redis.revocation_count == (0 if replacement_point == "ack" else 1)
+
+
+class _OwnedRedisLauncherTransport:
+    """Docker/pytest transport double; launcher admission and cleanup stay real."""
+
+    image = (
+        "redis:7-alpine@sha256:"
+        "e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"
+    )
+    ids = ("a" * 64, "b" * 64)
+
+    def __init__(self, fault: str = "", pytest_status: int = 0) -> None:
+        self.fault = fault
+        self.pytest_status = pytest_status
+        self.started = False
+        self.markers: dict[str, tuple[str, str, int]] = {}
+        self.created: list[str] = []
+        self.deleted: list[str] = []
+        self.private: list[str] = []
+        self.argv_private = False
+        self.handoff_valid = False
+        self.pytest_args: list[str] = []
+        self.transport_canary = "synthetic-" + uuid.uuid4().hex
+        self.server_ids = {self.ids[0]: "c" * 40, self.ids[1]: "d" * 40}
+        self.info_counts = dict.fromkeys(self.ids, 0)
+
+    def run(self, command: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        if command[0] == sys.executable:
+            self.started = True
+            self.pytest_args = command
+            env = kwargs["env"]
+            admitted = []
+            for container_id, prefix in zip(
+                self.ids, ("AUD428_REDIS", "AUD428_REVOCATION_REDIS"), strict=True
+            ):
+                marker = self.markers.get(container_id)
+                admitted.append(
+                    marker is not None
+                    and env.get(prefix + "_OWNER_KEY") == marker[0]
+                    and env.get(prefix + "_OWNER_VALUE") == marker[1]
+                    and marker[2] == 7200
+                )
+            self.handoff_valid = all(admitted) and env.get("AUD428_SENTINEL") == "kept"
+            if self.fault == "cleanup_identity":
+                self.server_ids[self.ids[1]] = "e" * 40
+            elif self.fault == "cleanup_marker":
+                key, _, ttl = self.markers[self.ids[1]]
+                self.markers[self.ids[1]] = (key, secrets.token_hex(32), ttl)
+            return subprocess.CompletedProcess(command, self.pytest_status)
+
+        assert command[0] == "/usr/bin/docker"
+        assert kwargs["check"] is False
+        assert kwargs["capture_output"] is True
+        assert kwargs["timeout"] == 15
+        value = kwargs["input"]
+        if value is not None:
+            self.private.append(value)
+            self.argv_private |= any(value in arg for arg in command)
+        if command[1] == "inspect":
+            container_id = command[2]
+            second = container_id == self.ids[1]
+            if self.fault == "docker_nonzero":
+                return subprocess.CompletedProcess(
+                    command,
+                    1,
+                    stdout=self.transport_canary,
+                    stderr=self.transport_canary,
+                )
+            if self.fault == "inspect_error":
+                raise OSError(self.transport_canary)
+            record = {
+                "Id": container_id,
+                "State": {"Running": not (second and self.fault == "stopped")},
+                "Config": {
+                    "Image": (
+                        "unexpected" if second and self.fault == "image" else self.image
+                    )
+                },
+                "HostConfig": {
+                    "PortBindings": {
+                        "6379/tcp": [
+                            {
+                                "HostIp": "",
+                                "HostPort": (
+                                    "6399"
+                                    if second and self.fault == "port"
+                                    else "6380" if second else "6379"
+                                ),
+                            }
+                        ]
+                    }
+                },
+            }
+            if self.fault == "inspect_json":
+                output = "invalid-json"
+            else:
+                output = json.dumps([] if self.fault == "inspect_shape" else [record])
+        else:
+            assert command[1:3] == ["exec", "-i"]
+            container_id = command[3]
+            assert container_id in self.ids
+            assert command[4:8] == ["redis-cli", "--raw", "-n", "0"]
+            args = command[8:]
+            if args[0] == "-x":
+                args = args[1:]
+            else:
+                assert value is None
+            second = container_id == self.ids[1]
+            if args == ["INFO", "server"]:
+                self.info_counts[container_id] += 1
+                run_id = self.server_ids[container_id]
+                if (
+                    second
+                    and self.fault == "identity_before_write"
+                    and self.info_counts[container_id] > 1
+                ):
+                    run_id = "e" * 40
+                if second and self.fault == "same_server":
+                    run_id = self.server_ids[self.ids[0]]
+                if second and self.fault == "invalid_run_id":
+                    run_id = "invalid"
+                output = "run_id:" + run_id
+            elif args[0] == "EVAL" and "'SET'" in args[1]:
+                assert args[2] == "1"
+                assert "'NX','EX'" in args[1]
+                assert args[4] == "7200"
+                key = args[3]
+                assert re.fullmatch(r"aud428-owner:[0-9a-f]{32}", key)
+                assert isinstance(value, str)
+                value_valid = re.fullmatch(r"[0-9a-f]{64}", value) is not None
+                assert value_valid, "ownership value must be bounded generated hex"
+                if second and self.fault == "set_rejected":
+                    output = ""
+                else:
+                    self.markers[container_id] = (key, value, 7200)
+                    self.created.append(container_id)
+                    if second and self.fault == "set_uncertain":
+                        raise subprocess.TimeoutExpired(
+                            command, 15, output=self.transport_canary
+                        )
+                    output = "OK"
+            elif args[0] == "GET":
+                output = self.markers[container_id][1]
+                if second and self.fault == "readback":
+                    output = "non-ASCII-\u00e9"
+            elif args[0] == "TTL":
+                output = "7200"
+                if second and self.fault == "ttl_missing":
+                    output = "-1"
+                elif second and self.fault == "ttl_short":
+                    output = "3599"
+                elif second and self.fault == "ttl_unbounded":
+                    output = "7201"
+            else:
+                assert args[0] == "EVAL" and "'DEL'" in args[1]
+                assert "redis.call('GET',KEYS[1]) == ARGV[1]" in args[1]
+                marker = self.markers.get(container_id)
+                if marker is not None and marker[:2] == (args[3], value):
+                    self.deleted.append(container_id)
+                    del self.markers[container_id]
+                    output = "1"
+                else:
+                    output = "0"
+        return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
+
+
+def _owned_redis_launcher(
+    monkeypatch: pytest.MonkeyPatch, transport: _OwnedRedisLauncherTransport
+) -> Any:
+    root = Path(__file__).resolve().parents[1]
+    path = root / "scripts/quality/run_owned_redis_contracts.py"
+    module = runpy.run_path(str(path))
+    monkeypatch.setattr(module["shutil"], "which", lambda _name: "/usr/bin/docker")
+    monkeypatch.setattr(module["subprocess"], "run", transport.run)
+    for name, value in {
+        "RUN_INTEGRATION_TESTS": "1",
+        "REDIS_URL": "redis://localhost:6379",
+        "REVOCATION_REDIS_URL": "redis://localhost:6380/0",
+        "AUD428_CACHE_CONTAINER_ID": transport.ids[0],
+        "AUD428_REVOCATION_CONTAINER_ID": transport.ids[1],
+        "AUD428_SENTINEL": "kept",
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("CACHE_REDIS_URL", raising=False)
+    return module["main"]
+
+
+def _assert_launcher_output_is_bounded(
+    transport: _OwnedRedisLauncherTransport, captured: Any
+) -> None:
+    ordinary = "\n".join(
+        line
+        for line in captured.out.splitlines()
+        if not line.startswith("::add-mask::")
+    ) + captured.err
+    private_exposed = any(
+        value in ordinary for value in [*transport.private, transport.transport_canary]
+    )
+    assert not private_exposed, "launcher diagnostics exposed private control data"
+    assert not transport.argv_private, "marker value appeared in process arguments"
+
+
+def test_redis_launcher_is_bound_to_the_existing_integration_services() -> None:
+    import yaml
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = yaml.safe_load(
+        (root / ".github/workflows/reusable-backend-tests.yml").read_text()
+    )
+    job = workflow["jobs"]["integration-tests"]
+    assert job["timeout-minutes"] == 60
+    for name, port in (("redis", 6379), ("revocation-redis", 6380)):
+        assert job["services"][name]["image"] == _OwnedRedisLauncherTransport.image
+        assert job["services"][name]["ports"] == [f"{port}:6379"]
+    step = next(
+        item for item in job["steps"] if item.get("name") == "Run integration tests"
+    )
+    assert step["env"]["AUD428_CACHE_CONTAINER_ID"] == "${{ job.services.redis.id }}"
+    assert step["env"]["AUD428_REVOCATION_CONTAINER_ID"] == (
+        "${{ job.services['revocation-redis'].id }}"
+    )
+    assert step["shell"] == "pwsh"
+    run = step["run"]
+    launcher = "uv run python scripts/quality/run_owned_redis_contracts.py @pytestArgs"
+    assert launcher in run
+    assert "uv run pytest @pytestArgs" not in run
+    assert '"-x"' in run
+    assert "$pytestArgs += $integrationShardArgs" in run
+
+
+@pytest.mark.parametrize("pytest_status", [0, 7])
+def test_owned_redis_launcher_hands_off_then_cleans_exact_markers(
+    pytest_status: int, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    transport = _OwnedRedisLauncherTransport(pytest_status=pytest_status)
+    main = _owned_redis_launcher(monkeypatch, transport)
+    args = ["tests/integration/", "-v", "--tb=short", "-x"]
+    status = main(args)
+    captured = capsys.readouterr()
+    assert status == pytest_status
+    assert transport.handoff_valid
+    assert transport.pytest_args == [sys.executable, "-m", "pytest", *args]
+    assert transport.created == list(transport.ids)
+    assert transport.deleted == list(reversed(transport.ids))
+    markers_empty = not transport.markers
+    assert markers_empty, "confirmed test markers must be cleaned"
+    established = "OWNED_REDIS_CONTRACTS_ESTABLISHED" in captured.out
+    assert established, "launcher must report established ownership"
+    _assert_launcher_output_is_bounded(transport, captured)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "docker_missing",
+        "missing_id",
+        "equal_ids",
+        "integration_disabled",
+        "cache_url_empty",
+        "url_override",
+        "redis_url_override",
+        "revocation_url_override",
+        "inspect_error",
+        "docker_nonzero",
+        "inspect_json",
+        "inspect_shape",
+        "stopped",
+        "image",
+        "port",
+        "same_server",
+        "invalid_run_id",
+    ],
+)
+def test_owned_redis_launcher_rejects_admission_before_any_marker_write(
+    fault: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    transport = _OwnedRedisLauncherTransport(fault)
+    main = _owned_redis_launcher(monkeypatch, transport)
+    if fault == "docker_missing":
+        monkeypatch.setattr(shutil, "which", lambda _name: None)
+    elif fault == "integration_disabled":
+        monkeypatch.setenv("RUN_INTEGRATION_TESTS", "0")
+    elif fault == "missing_id":
+        monkeypatch.delenv("AUD428_CACHE_CONTAINER_ID")
+    elif fault == "equal_ids":
+        monkeypatch.setenv("AUD428_REVOCATION_CONTAINER_ID", transport.ids[0])
+    elif fault == "cache_url_empty":
+        monkeypatch.setenv("CACHE_REDIS_URL", "")
+    elif fault == "url_override":
+        monkeypatch.setenv("CACHE_REDIS_URL", "redis://unowned.invalid:6379/0")
+    elif fault == "redis_url_override":
+        monkeypatch.setenv("REDIS_URL", "redis://unowned.invalid:6379/0")
+    elif fault == "revocation_url_override":
+        monkeypatch.setenv("REVOCATION_REDIS_URL", "redis://unowned.invalid:6380/0")
+    status = main(["tests/integration/"])
+    captured = capsys.readouterr()
+    assert status == 1
+    assert not transport.started
+    assert transport.created == []
+    assert transport.deleted == []
+    _assert_launcher_output_is_bounded(transport, captured)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "identity_before_write",
+        "set_rejected",
+        "set_uncertain",
+        "readback",
+        "ttl_missing",
+        "ttl_short",
+        "ttl_unbounded",
+    ],
+)
+def test_owned_redis_launcher_does_not_grant_partial_or_unverified_ownership(
+    fault: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    transport = _OwnedRedisLauncherTransport(fault)
+    main = _owned_redis_launcher(monkeypatch, transport)
+    status = main(["tests/integration/"])
+    captured = capsys.readouterr()
+    assert status == 1
+    assert not transport.started
+    assert transport.ids[0] in transport.deleted
+    if fault == "set_uncertain":
+        # Only the atomically expiring unacknowledged marker remains.
+        assert list(transport.markers) == [transport.ids[1]]
+        expiry_is_bounded = transport.markers[transport.ids[1]][2] == 7200
+        assert expiry_is_bounded, "unconfirmed write must retain its atomic expiry"
+        assert transport.ids[1] not in transport.deleted
+    else:
+        markers_empty = not transport.markers
+        assert markers_empty, "confirmed test markers must be cleaned"
+    _assert_launcher_output_is_bounded(transport, captured)
+
+
+@pytest.mark.parametrize("fault", ["cleanup_identity", "cleanup_marker"])
+@pytest.mark.parametrize("pytest_status", [0, 7])
+def test_owned_redis_launcher_cleanup_cannot_touch_a_replaced_owner(
+    fault: str,
+    pytest_status: int,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    transport = _OwnedRedisLauncherTransport(fault, pytest_status)
+    main = _owned_redis_launcher(monkeypatch, transport)
+    status = main(["tests/integration/"])
+    captured = capsys.readouterr()
+    assert status == (pytest_status or 1)
+    assert transport.handoff_valid
+    assert transport.deleted == [transport.ids[0]]
+    assert list(transport.markers) == [transport.ids[1]]
+    _assert_launcher_output_is_bounded(transport, captured)
+
+
+def test_owned_redis_launcher_entrypoint_preserves_argument_boundaries(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    transport = _OwnedRedisLauncherTransport(pytest_status=7)
+    _owned_redis_launcher(monkeypatch, transport)
+    root = Path(__file__).resolve().parents[1]
+    path = root / "scripts/quality/run_owned_redis_contracts.py"
+    args = ["tests/integration/", "-k", "revocation or keyspace", "-x"]
+    monkeypatch.setattr(sys, "argv", [str(path), *args])
+    with pytest.raises(SystemExit) as error:
+        runpy.run_path(str(path), run_name="__main__")
+    captured = capsys.readouterr()
+    assert error.value.code == 7
+    assert transport.pytest_args == [sys.executable, "-m", "pytest", *args]
+    markers_empty = not transport.markers
+    assert markers_empty, "confirmed test markers must be cleaned"
+    _assert_launcher_output_is_bounded(transport, captured)

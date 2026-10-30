@@ -685,6 +685,8 @@ jobs:
                   INTEGRATION_SHARD_ID: ${{ inputs.integration-shard-id }}
                   INTEGRATION_NUM_SHARDS: ${{ inputs.integration-num-shards }}
                   INTEGRATION_TEST_PATTERN: ${{ inputs.integration-test-pattern }}
+                  AUD428_CACHE_CONTAINER_ID: ${{ job.services.redis.id }}
+                  AUD428_REVOCATION_CONTAINER_ID: ${{ job.services['revocation-redis'].id }}
               run: |
                   $integrationShardArgs = @()
                   $integrationShardId = [int]$env:INTEGRATION_SHARD_ID
@@ -718,7 +720,7 @@ jobs:
                     "--ignore=tests/performance",
                     "--ignore=tests/test_schemathesis_api.py"
                   )
-                  uv run pytest @pytestArgs
+                  uv run python scripts/quality/run_owned_redis_contracts.py @pytestArgs
 
             - name: Verify durable chat replay PostgreSQL regressions
               if: ${{ !cancelled() && steps.aud262343_postgres.outcome == 'success' }}
