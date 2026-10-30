@@ -1,5 +1,47 @@
 # Post-pause reconciliation — 2026-10-30
 
+## Subsequent six-finding decision on bb2dea6c
+
+The original complete 136-path manifest and 126-row classification below remain
+the historical 8787b00e review, not a claim that those historical statuses are
+current. A [later source-bound decision](AUDIT-2026-10.md#scoped-six-finding-acceptance-on-source-bb2dea6c-2026-10-30)
+preserves all 394 accepted IDs and adds only AUD-030, AUD-310, AUD-409,
+AUD-462, AUD-463 and AUD-476: **400 accepted / 112 unaccepted**.
+
+- AUD-030's original four surfaces now have own-source UI/query evidence:
+  comments 6+19, DLQ 15+31, chats 13+9 and the new real Map composition case
+  1 PASS. The Map case reaches marker51 through the actual cursor hook/query,
+  including pending, retention and exhaustion; SDK/canvas boundaries remain
+  explicit. This supersedes only the historical open/proof-gap classification.
+- AUD-310 and AUD-409 have 55 distinct named PASS receipts in the own-source
+  Contract job. Malformed/empty/conflicting hook input fails closed; required
+  absent/non-directory/empty roots are blocked. Stop truthfully describes
+  its configured Ruff/TypeScript/Go-vet scope without removing the separate
+  mandatory Python type-check and test obligations. Unknown names in valid
+  tool envelopes are not silently reclassified as malformed payloads.
+- AUD-462/463/476 have direct named `go test -v -race` receipts in the same
+  source-equivalent ws-hub Unit job. The keyed membership mutex is released
+  across external authorization/socket writes while revocation permits and
+  fences remain; disconnect uses a bounded 16-worker close pool; personal
+  notifications route to every exact-user session and never fall back to
+  broadcast. Blocking Session/auth and direct NATS-input doubles are explicit;
+  the two-session close case uses real loopback Gorilla WebSockets. No
+  universal teardown deadline, deployed broker/browser delivery or unrelated
+  gateway global-hook test-fixture repair is claimed.
+- Actual checkout is PR merge `aabcbbca7166a0b676c4bc31eef041fb7b21f097`,
+  source `bb2dea6c0afc135f39cc7cc4c92f24582fe754e5`; both whole trees are
+  `b805d96a727efcb406b105fa7cc86123e0e4390f`. Finding-specific evidence is
+  not transferred from a different tree or trusted-base policy job.
+- AUD-334 remains open: the new raw invalid-resume-token/controller composition
+  proof passes, but the three delayed generic-rate-limit/bounded-recovery
+  failures remain. Their later cap/manual assertions are not reached.
+  AUD-447 remains open because fail-closed delivery does not remove retained
+  plaintext from malformed legacy PENDING rows. Neither is a new closure.
+- Own frontend is 10,492 PASS / 3 FAIL / 0 SKIP; merged and changed-line
+  coverage are skipped behind the failed-shard guard. No full-CI, backend,
+  deployed infrastructure or release GREEN is inferred. Policy494,
+  baseline319, Gitleaks26 and all existing gates are unchanged.
+
 ## Reviewed source recovery after the bd8 regression receipts
 
 The [separate successor chain](https://github.com/egorribun/university_ecosystem/commit/f8971624264525b3dbd772fcc5b0b46820c9176a)

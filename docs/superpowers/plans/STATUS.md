@@ -2,6 +2,131 @@
 
 Обновлено: 2026-10-30 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+
+## Source-bound bb2 checkpoint and scoped registry update — 2026-10-30 14:04 UTC
+
+The current accepted lower bound is **400/512 (78.1%)**;
+**112 IDs remain unaccepted**. This publication records only
+AUD-030, AUD-310, AUD-409, AUD-462, AUD-463 and AUD-476, preserving all prior 394 accepted IDs. The detailed
+[acceptance decision](../../audits/AUDIT-2026-10.md#scoped-six-finding-acceptance-on-source-bb2dea6c-2026-10-30)
+and [reconciliation](../../audits/AUDIT-2026-10-30-reconciliation.md)
+retain the exact criteria, source/test bindings and proof limits.
+
+Verified code source:
+[bb2dea6c0afc135f39cc7cc4c92f24582fe754e5](https://github.com/egorribun/university_ecosystem/commit/bb2dea6c0afc135f39cc7cc4c92f24582fe754e5).
+Actual PR checkout was merge `aabcbbca7166a0b676c4bc31eef041fb7b21f097`;
+its complete tree equals the branch source's
+`b805d96a727efcb406b105fa7cc86123e0e4390f`.
+These are source-equivalent own-run receipts, not a literal branch checkout
+or inherited success from 4979. This documentation successor changes no
+production source or gate and requires its own required checks.
+
+### Completed own-source validation
+
+The [Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759)
+is terminal **FAILURE** (all-page capture **2026-10-30 14:02 UTC**):
+**91 jobs = 70 SUCCESS / 5 FAILURE / 16 SKIPPED**.
+All 23 workflows are terminal (20 success, one failure, two skipped);
+the complete two-page check inventory contains **141 checks: 110 SUCCESS,
+5 FAILURE, 25 SKIPPED and 1 NEUTRAL**. No active or cancelled result remains.
+
+| Python shard | Own job | PASS | SKIP | FAIL |
+| --- | --- | ---: | ---: | ---: |
+| 0 | [124071613937](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124071613937) | 4826 | 111 | 0 |
+| 1 | [124071614246](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124071614246) | 5503 | 88 | 0 |
+| 2 | [124084392208](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124084392208) | 4857 | 146 | 0 |
+| 3 | [124086057739](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124086057739) | 7345 | 83 | 0 |
+
+The complete four-shard total is **22,531 PASS / 428 SKIP / 0 FAIL**.
+The repaired MFA policy-count assertion and eight added email controls are
+**source-bound cohort-inferred PASS**, not separately printed node receipts.
+The previous sole Python failure is gone. Shard2 explicitly reports
+`app/tasks/email.py` **172 statements / 0 missed / 54 branches / 0 partial,
+100%**. This is file/shard evidence, not a merged-coverage result.
+The 849+240 shard0 preflight passes are separate and not added to that total.
+
+- Frontend: **10,492 PASS / 3 FAIL / 0 SKIP**, 838 files; lint/type/format/i18n
+  pass. The new Map51 composition case passes by name; the raw
+  invalid-resume-token/controller file passes both cases. The three existing
+  AUD-334 failures remain; frontend merged/changed-line coverage is skipped.
+- [Contract](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124069275935):
+  3,590 consumer, 688 security and 41 scoped cases pass. The 55 hook cases
+  and all six Oct30 policy definitions are explicitly named PASS.
+  The separate baseline verifier reports 319 baseline identities,
+  418 reviewed exact matches, 20 stale identities and zero new unmatched
+  findings. The finite policy stays 494; no stale identity is removed.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/41057693920/job/124069271091):
+  338 preflight, one browser-runtime and 48 live PASS / 2 SKIP; NATS outage
+  and cleanup pass. [Owned PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124071614068)
+  has 391 PASS / 17 SKIP, plus separate 13 and five-case groups;
+  renderer controls have 41 ordinary and seven PostgreSQL passes.
+  These are owned test topologies, not deployed-infrastructure acceptance.
+- [Bundle](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124075566637):
+  145/145 PASS with all 34 negative variations reached; same-run production
+  artifacts satisfy the exact source/ID/digest contract and actual verifier.
+  The specific static-noninitial MapLibre6.15 vendor chunk is
+  **292,688 gzip bytes ≤ 292,864 bytes (286 KiB)**; other lazy chunks remain
+  280 KiB. Production/native pass; native has 818 PASS / 6 SKIP and finalHTML
+  36/36 PASS. Computed-import inventory remains incomplete, so no dynamic
+  or network completeness is claimed.
+- [Cargo Deny](https://github.com/egorribun/university_ecosystem/actions/runs/41057693580)
+  initially failed one job during action resolution, before checkout/scan.
+  The same existing pin resolved for the other crates and exists upstream.
+  Exactly one failed-job retry, on the same source with no code/pin change,
+  completed attempt2 SUCCESS. This was not a vulnerability or invalid-pin
+  finding; successful sibling executions were carried forward, not rerun.
+- Current gateway race-enabled jobs pass, but that does **not** repair or
+  invalidate the independently observed 4979 global-hook test-fixture race.
+  Its reviewed unpublished fix is separate from the ws-hub accepted criteria.
+
+The five failures are precisely:
+
+1. [Security/types](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124069275823):
+   mypy passes; detect-secrets fails on the existing four baseline line-number
+   changes and generation metadata, not a newly authorized hash inventory.
+2. [Alembic](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124071612628):
+   unchanged raw Squawk **13+24 = 37** findings.
+3. [Frontend shard2](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124072660022):
+   the three AUD-334 failures.
+4. [Frontend aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124078544925):
+   derived failed-shard guard.
+5. [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124103429485):
+   derived aggregate failure.
+
+[Coverage Policy](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124103429692)
+and [Trusted Codecov](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124103431253)
+are **SKIPPED**, not passed; CodeQL succeeds.
+No complete current coverage, full-CI, deployment or release GREEN is claimed.
+
+
+### Remaining work and permission boundary
+
+- AUD-334 remains open. Current delayed generic-rate-limit failures are real;
+  the later cap/manual assertions have not been reached. The independent raw
+  invalid-resume-token/controller-composition proof passes, but is not a
+  closure of delayed rejection recovery or retry-budget safety. A bounded
+  frontend design has been reviewed; no new wire ACK/ordinal or production
+  recovery change is published with this checkpoint.
+- AUD-447 remains open. Encrypted new submissions and fail-closed handling
+  of reached valid legacy rows do not remove retained plaintext in malformed
+  or dormant legacy storage. No deployment-data cleanup is claimed.
+- The separate reviewed three-file metadata/test package remains unpublished
+  while its specific public-publication permission is pending. It is not
+  included indirectly in this docs update. The already observed baseline
+  metadata drift remains a real gate failure, not a newly authorized
+  security disposition.
+- Raw Squawk's 37 findings remain blocking. The exact-capture validators are
+  not an active migration admission or permission to migrate populated data.
+- Policy494, baseline319, Gitleaks26, required contexts and all quality floors
+  remain unchanged. Static Map286 admission is the approved six-KiB budget
+  tradeoff, not optimization or proof of dynamic/network completeness.
+
+Next: finish the pending permission-dependent package only after the explicit
+grant and a fresh branch/source reconciliation; obtain its own CI. Continue
+AUD-334's demonstrated RED-to-GREEN work with ownership, bounded retries and
+real-parser controls, then address the separately open storage/infrastructure
+criteria. Do not infer deployment or release acceptance from this checkpoint.
+
 ## Completed 56ed5df evidence and reviewed causal successor — 2026-10-30 10:50 UTC
 
 The [56ed5df recovery](https://github.com/egorribun/university_ecosystem/commit/56ed5df3a31742730d9b3e8e7e2d9acc46182dd9)

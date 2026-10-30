@@ -6,7 +6,9 @@ release claims require fresh evidence under the master plan.
 
 ## Current quality-closure roadmap
 
-- [Current accepted audit lower bound: 394/512 (77.0%)](AUDIT-2026-10.md#scoped-aud-043-and-aud-427-acceptance-on-source-3d83fb27-2026-10-30) — preserves all 392 prior IDs and adds only AUD-043/427 on source 3d83fb27: explicit cohort-inferred warmup proof and named Redis/production WS producer-consumer receipts. 118 remain unaccepted; no full-CI, merged-coverage, live-infrastructure or release claim.
+- [Current accepted audit lower bound: 400/512 (78.1%)](AUDIT-2026-10.md#scoped-six-finding-acceptance-on-source-bb2dea6c-2026-10-30) — preserves all 394 prior IDs and adds only AUD-030/310/409/462/463/476 on source bb2dea6c: four original UI-pagination surfaces, 55 named hook/Stop controls and exact named ws-hub race-test receipts. 112 remain unaccepted; mock/loopback, static, actual merge-tree and full-CI/coverage limits are explicit. No deployment or unrelated gateway-fixture-race closure.
+
+- [Historical accepted audit lower bound: 394/512 (77.0%)](AUDIT-2026-10.md#scoped-aud-043-and-aud-427-acceptance-on-source-3d83fb27-2026-10-30) — preserves all 392 prior IDs and adds only AUD-043/427 on source 3d83fb27: explicit cohort-inferred warmup proof and named Redis/production WS producer-consumer receipts. 118 remain unaccepted; no full-CI, merged-coverage, live-infrastructure or release claim.
 
 - [Historical accepted audit lower bound: 392/512 (76.6%)](AUDIT-2026-10.md#scoped-aud-512-callback-panic-acceptance-2026-10-30) — preserves all 391 prior IDs and adds only AUD-512 with real callback-path and hosted race-test receipts. 120 remain unaccepted; no live-broker acknowledgement, whole-Go, full-CI or release claim.
 - [Historical accepted audit lower bound: 391/512 (76.4%)](AUDIT-2026-10.md#scoped-aud-155-aud-320-aud-406-aud-486-and-aud-500-acceptance-2026-10-30) — preserves all 386 prior IDs and adds only AUD-155/320/406/486/500 with independently checked source-bound receipts. 121 remained unaccepted; no full-CI, merged-coverage, live-browser or native-Windows claim.
