@@ -30,6 +30,8 @@ def _prepare_capture_case(
         "PYTHONPATH",
         str(_PROJECT_ROOT) + os.pathsep + os.environ.get("PYTHONPATH", ""),
     )
+    # A serial child must not inherit its outer xdist worker's log suffix.
+    monkeypatch.delenv("PYTEST_XDIST_WORKER", raising=False)
     monkeypatch.setenv("AUD_DBPERF_CAPTURE_ROOT", str(capture_root))
     monkeypatch.setenv("AUD_DBPERF_CAPTURE_SCENARIO", scenario)
     if required:
@@ -38,6 +40,29 @@ def _prepare_capture_case(
         monkeypatch.delenv(
             "UNIVERSITY_ECOSYSTEM_DB_PERF_CAPTURE_REQUIRED", raising=False
         )
+
+    # Isolate the real capture listener/hooks from application autouse SQL.
+    # Missing hooks remain observable through the unchanged exit assertions.
+    pytester.makepyfile(
+        dbperf_capture_plugin="""
+        import pytest
+        from tests import conftest as capture
+
+        def pytest_configure(config):
+            capture.pytest_configure(config)
+
+        def pytest_sessionfinish(session, exitstatus):
+            callback = getattr(capture, 'pytest_sessionfinish', None)
+            if callback is not None:
+                callback(session, exitstatus)
+
+        @pytest.hookimpl(optionalhook=True)
+        def pytest_testnodedown(node, error):
+            callback = getattr(capture, 'pytest_testnodedown', None)
+            if callback is not None:
+                callback(node, error)
+        """
+    )
 
     pytester.makepyfile(
         test_capture="""
@@ -82,7 +107,7 @@ def _run_capture_case(pytester: pytest.Pytester, workers: int, *extra: str):
     return pytester.runpytest_subprocess(
         "--noconftest",
         "-p",
-        "tests.conftest",
+        "dbperf_capture_plugin",
         "-q",
         "-n",
         str(workers),
