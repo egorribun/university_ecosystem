@@ -48,6 +48,9 @@ def test_write_failure_never_discards_a_later_retry(
     _capture(statement)
     _capture(statement)
     assert log_path.read_text(encoding="utf-8") == statement + "\n"
+    session = SimpleNamespace(config=SimpleNamespace(), exitstatus=0)
+    capture.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == (1 if required else 0)
 
 
 def test_threads_record_complete_unique_statements(

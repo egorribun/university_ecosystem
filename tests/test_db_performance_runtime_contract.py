@@ -88,3 +88,17 @@ def test_db_performance_keeps_existing_database_and_explain_safety() -> None:
         "--log-dir",
         "tests",
     ]
+
+
+def test_db_performance_requires_capture_only_in_the_owned_capture_step() -> None:
+    job = _job()
+    marker = "UNIVERSITY_ECOSYSTEM_DB_PERF_CAPTURE_REQUIRED"
+    assert WORKFLOW.read_text(encoding="utf-8").count(marker) == 1
+    assert marker not in job.get("env", {})
+    steps = job["steps"]
+    owners = [step for step in steps if marker in step.get("env", {})]
+    assert len(owners) == 1
+    assert owners[0]["name"] == "Run Pytest to capture query logs"
+    assert owners[0]["env"][marker] == "1"
+    assert "if" not in owners[0]
+    assert "continue-on-error" not in owners[0]

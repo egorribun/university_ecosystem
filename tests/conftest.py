@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
+from threading import Lock
 from typing import TYPE_CHECKING, Any, cast
 
 # Add project root to sys.path
@@ -928,12 +929,20 @@ def assert_max_queries(db_session):
 from sqlalchemy import Engine, event
 
 _logged_queries: set[str] = set()
+_query_log_lock = Lock()
+_require_query_capture = False
+_required_query_log_failed = False
+_worker_capture_failed = False
+_worker_captured_query = False
+_QUERY_CAPTURE_SIGNAL = "university_ecosystem_db_perf_capture"
 
 
 @event.listens_for(Engine, "before_cursor_execute")
 def _log_query_before_execute(
     conn, cursor, statement, parameters, context, executing_many
 ):
+    global _required_query_log_failed
+
     stmt_upper = statement.strip().upper()
     if not any(
         stmt_upper.startswith(kw)
@@ -942,19 +951,77 @@ def _log_query_before_execute(
         return
 
     normalized_stmt = " ".join(statement.split())
-    if normalized_stmt in _logged_queries:
+    with _query_log_lock:
+        if normalized_stmt in _logged_queries:
+            return
+
+        worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+        log_suffix = f"_{worker_id}" if worker_id else ""
+        log_path = Path(PROJECT_ROOT) / f"tests/queries{log_suffix}.log"
+        line = normalized_stmt + "\n"
+        try:
+            with open(log_path, "a", encoding="utf-8") as log_file:
+                if log_file.write(line) != len(line):
+                    raise OSError("Incomplete query-log write")
+        except Exception:
+            if _require_query_capture:
+                _required_query_log_failed = True
+                raise OSError("DB performance query capture failed") from None
+            return
+
+        # Closing the file is part of success. A failed append stays retryable.
+        _logged_queries.add(normalized_stmt)
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node: Any, error: object | None) -> None:
+    global _worker_capture_failed, _worker_captured_query
+
+    if not _require_query_capture:
         return
-    _logged_queries.add(normalized_stmt)
+    output = getattr(node, "workeroutput", None)
+    signal = output.get(_QUERY_CAPTURE_SIGNAL) if isinstance(output, dict) else None
+    if (
+        error is not None
+        or not isinstance(signal, dict)
+        or set(signal) != {"failed", "captured"}
+        or type(signal["failed"]) is not bool
+        or type(signal["captured"]) is not bool
+    ):
+        _worker_capture_failed = True
+        return
+    _worker_capture_failed |= signal["failed"]
+    _worker_captured_query |= signal["captured"]
 
-    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
-    log_suffix = f"_{worker_id}" if worker_id else ""
-    log_path = Path(PROJECT_ROOT) / f"tests/queries{log_suffix}.log"
 
-    try:
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(normalized_stmt + "\n")
-    except Exception:  # noqa: S110
-        pass
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if not _require_query_capture:
+        return
+    worker_output = getattr(session.config, "workeroutput", None)
+    if isinstance(worker_output, dict):
+        worker_output[_QUERY_CAPTURE_SIGNAL] = {
+            "failed": _required_query_log_failed,
+            "captured": bool(_logged_queries),
+        }
+        # An idle worker is valid; the controller requires a complete union.
+        return
+
+    distributed = bool(
+        getattr(getattr(session.config, "option", None), "numprocesses", 0)
+    )
+    captured = _worker_captured_query or (not distributed and bool(_logged_queries))
+    if _required_query_log_failed or _worker_capture_failed or not captured:
+        if session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        plugin_manager = getattr(session.config, "pluginmanager", None)
+        reporter = (
+            plugin_manager.getplugin("terminalreporter")
+            if plugin_manager is not None
+            else None
+        )
+        if reporter is not None:
+            reporter.write_sep("=", "DB performance query capture incomplete")
 
 
 @pytest.fixture(autouse=True)
@@ -1074,6 +1141,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    global _require_query_capture, _required_query_log_failed
+    global _worker_capture_failed, _worker_captured_query
+
+    with _query_log_lock:
+        _logged_queries.clear()
+        _require_query_capture = (
+            os.environ.get("UNIVERSITY_ECOSYSTEM_DB_PERF_CAPTURE_REQUIRED") == "1"
+        )
+        _required_query_log_failed = False
+        _worker_capture_failed = False
+        _worker_captured_query = False
+
     invocation_args = tuple(str(arg) for arg in config.invocation_params.args)
     explicit_basetemp = any(
         arg == "--basetemp" or arg.startswith("--basetemp=") for arg in invocation_args

@@ -125,6 +125,7 @@ jobs:
                   SECRET_KEY: test-secret-key-for-ci-perf-gate-only  # pragma: allowlist secret
                   ENVIRONMENT: testing
                   UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
+                  UNIVERSITY_ECOSYSTEM_DB_PERF_CAPTURE_REQUIRED: "1"
               run: |
                   # Run only repository tests — this step exists solely to emit
                   # SQL query logs that db_explain_check.py will analyze.
