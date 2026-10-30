@@ -6009,7 +6009,7 @@ def _historical148_reconstruct_sources(
     # retained historical evidence; it does not make current bytes an approval.
     lines = validator_source.decode("utf-8").splitlines(keepends=True)
     current_label = (
-        "# Reproducible from the committed historical148 policy and 36f70a0f capture.\n"
+        "# Reproducible from the committed historical148 policy and 3d83fb27 capture.\n"
     )
     historical_label = (
         "# Reproducible from the committed historical148 policy and 15eaaa capture.\n"
@@ -6319,7 +6319,7 @@ def _historical148_current_inputs() -> tuple[bytes, bytes, bytes, bytes]:
         (root / "scripts/quality/validate_historical148_squawk.py").read_bytes(),
         (root / "tests/fixtures/historical148-squawk-capture-15eaaa.json").read_bytes(),
         (
-            root / "tests/fixtures/historical148-squawk-capture-36f70a0f.json"
+            root / "tests/fixtures/historical148-squawk-capture-3d83fb27.json"
         ).read_bytes(),
     )
 
@@ -6516,9 +6516,17 @@ def test_historical148_changed_current_literals_remain_unapproved() -> None:
     }
 
 
-def test_historical148_current_capture_cannot_inherit_old_path_approvals() -> None:
+@pytest.mark.parametrize(
+    "capture_path",
+    [
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+    ],
+)
+def test_historical148_current_capture_cannot_inherit_old_path_approvals(
+    capture_path: str,
+) -> None:
     root = Path(__file__).resolve().parents[1]
-    capture_path = "tests/fixtures/historical148-squawk-capture-36f70a0f.json"
     values = re.findall(
         r'"([0-9a-f]{40}|[0-9a-f]{64})"',
         (root / capture_path).read_text(encoding="utf-8"),
