@@ -575,6 +575,7 @@ function validateCandidate(metadata, byName) {
  * This API does not authenticate arbitrary caller-supplied context or prove runtime closure.
  */
 export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
+  let stage = "input-shape"
   try {
     requireInput(
       exactKeys(evidence, [
@@ -589,6 +590,7 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
         "workspace",
       ])
     )
+    stage = "input-identities"
     requireInput(
       commitId(evidence.checkoutSha) &&
         commitId(evidence.treeSha) &&
@@ -599,57 +601,78 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
         typeof evidence.runAttempt === "string" &&
         /^[1-9][0-9]{0,9}$/u.test(evidence.runAttempt)
     )
+    stage = "workspace-directory"
     const workspace = await ownedDirectory(evidence.workspace)
+    stage = "client-directory"
     const client = await ownedDirectory(path.resolve(clientDir))
+    stage = "no-follow-capabilities"
     requireInput(
       [constants.O_NOFOLLOW, constants.O_NONBLOCK].every(
         (flag) => Number.isSafeInteger(flag) && flag > 0
       )
     )
     for (const file of [evidence.metadataPath, evidence.htmlReportPath]) {
+      stage = "evidence-outside-client"
       requireInput(typeof file === "string" && !file.startsWith(client + path.sep))
     }
+    stage = "git-client"
     const git = sourceGit(workspace)
     const text = (args) => git(args).toString("utf8").trim()
+    stage = "checkout-git-identity"
     requireInput(
       text(["rev-parse", "--show-toplevel"]) === workspace &&
         text(["rev-parse", "--verify", "HEAD"]) === evidence.checkoutSha &&
         text(["rev-parse", "HEAD^{tree}"]) === evidence.treeSha
     )
+    stage = "commit-read"
     const rawCommit = git(["cat-file", "commit", evidence.checkoutSha], 65_536)
     const headerEnd = rawCommit.indexOf("\n\n")
+    stage = "commit-header"
     requireInput(headerEnd > 0)
     const headers = rawCommit.subarray(0, headerEnd).toString("utf8").split("\n")
     const parents = headers
       .filter((line) => line.startsWith("parent "))
       .map((line) => line.slice(7))
+    stage = "parent-identities"
     requireInput(parents.length <= 16 && parents.every(commitId))
+    stage = "parent-uniqueness"
     requireInput(new Set(parents).size === parents.length)
     const sources = new Map()
     for (const relative of POLICY_SOURCE_PATHS) {
+      stage = "source-read"
       const actual = await readFingerprint(workspace, relative, true, 2 * 1024 * 1024)
+      stage = "source-git-blob"
       const committed = git(
         ["cat-file", "blob", evidence.checkoutSha + ":" + relative],
         2 * 1024 * 1024
       )
+      stage = "source-byte-match"
       requireInput(actual.bytes.equals(committed))
       sources.set(relative, actual.bytes)
     }
     for (const name of ["maplibre-graph-binding.mjs", "check-bundle-budget.mjs"]) {
+      stage = "executing-source-read"
       const executing = await evidenceFile(
         fileURLToPath(new URL("./" + name, import.meta.url)),
         2 * 1024 * 1024
       )
+      stage = "executing-source-match"
       requireInput(executing.bytes.equals(sources.get("frontend/scripts/" + name)))
     }
+    stage = "metadata-read"
     const metadataFile = await evidenceFile(evidence.metadataPath, FILE_LIMIT)
+    stage = "html-report-read"
     const htmlFile = await evidenceFile(evidence.htmlReportPath, 65_536)
+    stage = "evidence-hashes"
     requireInput(
       metadataFile.sha256 === evidence.metadataSha256 &&
         htmlFile.sha256 === evidence.htmlReportSha256
     )
+    stage = "metadata-json"
     const metadata = parseJson(metadataFile.bytes)
+    stage = "html-report-json"
     const report = parseJson(htmlFile.bytes)
+    stage = "metadata-source-binding"
     requireInput(
       exactKeys(metadata, [
         "graph",
@@ -664,6 +687,7 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
           sha256(sources.get("frontend/scripts/maplibre-build-metadata.mjs")) &&
         metadata.viteConfigSha256 === sha256(sources.get("frontend/vite.config.mts"))
     )
+    stage = "report-provenance"
     requireInput(
       exactKeys(report, [
         "checkedSourceFiles",
@@ -689,9 +713,12 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
         report.runContext.runAttempt === evidence.runAttempt
     )
     const context = report.eventContext
+    stage = "event-context-shape"
     requireInput(exactKeys(context, ["eventName", "githubSha", "prBaseSha", "prHeadSha"]))
+    stage = "event-checkout"
     requireInput(context.githubSha === evidence.checkoutSha)
     if (context.eventName === "pull_request") {
+      stage = "merge-parent-binding"
       requireInput(
         parents.length === 2 &&
           parents[0] === context.prBaseSha &&
@@ -699,6 +726,7 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
           report.relationship === "merge-parents-match-event-context"
       )
     } else {
+      stage = "push-context-binding"
       requireInput(
         context.eventName === "push" &&
           context.prBaseSha === null &&
@@ -706,60 +734,85 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
           report.relationship === "checkout-only"
       )
     }
+    stage = "capture-source-shape"
     requireInput(exactKeys(report.checkedSourceFiles, [...CAPTURE_SOURCE_PATHS].sort()))
     for (const relative of CAPTURE_SOURCE_PATHS) {
+      stage = "capture-source-hash"
       requireInput(report.checkedSourceFiles[relative] === sha256(sources.get(relative)))
     }
+    stage = "toolchain-claim"
     requireInput(
       exactKeys(report.toolchain, ["babelParser", "jsdom"]) &&
         report.toolchain.babelParser === "8.0.7" &&
         report.toolchain.jsdom === "30.1.3"
     )
+    stage = "toolchain-resolver"
     const require = createRequire(path.join(workspace, "frontend/package.json"))
+    stage = "lock-json"
     const lock = parseJson(sources.get("frontend/package-lock.json"))
     for (const [name, version] of [
       ["jsdom", "30.1.3"],
       ["@babel/parser", "8.0.7"],
     ]) {
+      stage = "toolchain-manifest-read"
       const toolFile = await evidenceFile(require.resolve(name + "/package.json"), 2 * 1024 * 1024)
+      stage = "toolchain-manifest-json"
       const tool = parseJson(toolFile.bytes)
+      stage = "toolchain-installed-version"
       requireInput(
         tool.name === name &&
           tool.version === version &&
           lock.packages?.["node_modules/" + name]?.version === version
       )
     }
+    stage = "installed-package-read"
     const installed = await readFingerprint(
       workspace,
       "frontend/node_modules/maplibre-gl/package.json",
       true,
       2 * 1024 * 1024
     )
+    stage = "package-validation"
     validatePackage(metadata, sources, installed.bytes)
+    stage = "graph-validation"
     const { byName } = validateGraph(metadata)
+    stage = "graph-static-complete"
     requireInput(metadata.graph.complete && metadata.graph.unresolvedStaticImportCount === 0)
+    stage = "candidate-validation"
     const candidate = validateCandidate(metadata, byName)
+    stage = "candidate-read"
     const bytes = await readFingerprint(client, candidate.fileName, true)
+    stage = "candidate-gzip"
     const gzip = gzipSync(bytes.bytes, { level: 9 })
+    stage = "candidate-byte-match"
     requireInput(
       matchesFingerprint(bytes, candidate) &&
         gzip.byteLength === candidate.gzipBytes &&
         sha256(gzip) === candidate.gzipSha256
     )
     for (const name of AUXILIARY_PATHS) {
+      stage = "auxiliary-disjointness"
       requireInput(!byName.has(name))
+      stage = "auxiliary-read"
       const auxiliary = await readFingerprint(client, name, true)
+      stage = "auxiliary-source-match"
       requireInput(auxiliary.bytes.equals(sources.get("frontend/public/" + name)))
+      stage = "auxiliary-parse"
       validateAuxiliary(auxiliary.bytes, name)
     }
+    stage = "inventory-recompute"
     const inventory = await inspectFinalHtml(client)
+    stage = "inventory-match"
     requireInput(inventory !== null && equalJson(inventory, report.inventory))
+    stage = "binding-recompute"
     const binding = await inspectMapLibreGraphBinding(client, metadata)
+    stage = "binding-present"
     requireInput(binding !== null)
     const pending = [...metadata.graph.entryFiles]
     for (const document of binding.documents) {
       for (const root of document.roots) {
         if (root.assetPath !== null) {
+          stage = "html-root-membership"
           requireInput(byName.has(root.assetPath) || AUXILIARY_PATHS.includes(root.assetPath))
           if (byName.has(root.assetPath)) pending.push(root.assetPath)
         }
@@ -768,6 +821,7 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
             root.assetPath === "theme-init.js" &&
             edge.kind === "dynamic" &&
             edge.assetPath === "static-shell-i18n.js"
+          stage = "literal-edge-membership"
           requireInput(byName.has(edge.assetPath) || auxiliaryEdge)
           if (edge.kind === "static") pending.push(edge.assetPath)
         }
@@ -776,17 +830,23 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
     const reachable = new Set()
     while (pending.length > 0) {
       const name = pending.pop()
+      stage = "closure-node"
       requireInput(byName.has(name))
       if (reachable.has(name)) continue
       reachable.add(name)
       pending.push(...byName.get(name).imports)
     }
+    stage = "candidate-noninitial"
     requireInput(!reachable.has(candidate.fileName))
+    stage = "checkout-recheck"
     requireInput(text(["rev-parse", "--verify", "HEAD"]) === evidence.checkoutSha)
     for (const [relative, original] of sources) {
+      stage = "source-reread"
       const current = await readFingerprint(workspace, relative, true, 2 * 1024 * 1024)
+      stage = "source-recheck"
       requireInput(current.bytes.equals(original))
     }
+    stage = "evidence-recheck"
     requireInput(
       (await evidenceFile(evidence.metadataPath, FILE_LIMIT)).sha256 === evidence.metadataSha256 &&
         (await evidenceFile(evidence.htmlReportPath, 65_536)).sha256 === evidence.htmlReportSha256
@@ -801,6 +861,8 @@ export async function verifyMapLibreBudgetAllowance(clientDir, evidence) {
       runtimeClosure: "unproved",
     }
   } catch {
-    throw new Error("MapLibre budget evidence rejected")
+    const error = new Error("MapLibre budget evidence rejected: " + stage)
+    error.stack = error.message
+    throw error
   }
 }

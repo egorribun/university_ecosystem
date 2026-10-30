@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFileSync, spawnSync } from "node:child_process"
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { existsSync, writeFileSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -1391,6 +1391,113 @@ test("admits only a proven MapLibre 6.15 chunk within the separate lazy ceiling"
 })
 
 test("invalid MapLibre evidence cannot grant a lazy budget allowance", async () => {
+  const opaqueCanary = "owned-" + randomUUID()
+  const knownStages = new Set([
+    "input-shape",
+    "input-identities",
+    "workspace-directory",
+    "client-directory",
+    "no-follow-capabilities",
+    "evidence-outside-client",
+    "git-client",
+    "checkout-git-identity",
+    "commit-read",
+    "commit-header",
+    "parent-identities",
+    "parent-uniqueness",
+    "source-read",
+    "source-git-blob",
+    "source-byte-match",
+    "executing-source-read",
+    "executing-source-match",
+    "metadata-read",
+    "html-report-read",
+    "evidence-hashes",
+    "metadata-json",
+    "html-report-json",
+    "metadata-source-binding",
+    "report-provenance",
+    "event-context-shape",
+    "event-checkout",
+    "merge-parent-binding",
+    "push-context-binding",
+    "capture-source-shape",
+    "capture-source-hash",
+    "toolchain-claim",
+    "toolchain-resolver",
+    "lock-json",
+    "toolchain-manifest-read",
+    "toolchain-manifest-json",
+    "toolchain-installed-version",
+    "installed-package-read",
+    "package-validation",
+    "graph-validation",
+    "graph-static-complete",
+    "candidate-validation",
+    "candidate-read",
+    "candidate-gzip",
+    "candidate-byte-match",
+    "auxiliary-disjointness",
+    "auxiliary-read",
+    "auxiliary-source-match",
+    "auxiliary-parse",
+    "inventory-recompute",
+    "inventory-match",
+    "binding-recompute",
+    "binding-present",
+    "html-root-membership",
+    "literal-edge-membership",
+    "closure-node",
+    "candidate-noninitial",
+    "checkout-recheck",
+    "source-reread",
+    "source-recheck",
+    "evidence-recheck",
+  ])
+  const expectedStages = {
+    "metadata-content-hash": "evidence-hashes",
+    "wrong-run": "report-provenance",
+    "wrong-attempt": "report-provenance",
+    "wrong-checkout": "checkout-git-identity",
+    "wrong-tree": "checkout-git-identity",
+    "wrong-version": "package-validation",
+    "LHCI-profile": "package-validation",
+    "unresolved-static-import": "graph-static-complete",
+    "wrong-integrity": "package-validation",
+    "wrong-producer": "metadata-source-binding",
+    "wrong-vite-source": "metadata-source-binding",
+    "missing-module": "candidate-validation",
+    "duplicate-module": "candidate-validation",
+    "foreign-module": "candidate-validation",
+    "forged-module-id": "candidate-validation",
+    "candidate-count-0": "candidate-validation",
+    "candidate-count-2": "graph-validation",
+    "candidate-count-3": "graph-validation",
+    "changed-detached-chunk": "binding-present",
+    "missing-detached-chunk": "binding-present",
+    "changed-final-document": "inventory-match",
+    "changed-auxiliary-asset": "auxiliary-source-match",
+    "changed-tracked-auxiliary-source": "source-byte-match",
+    "unknown-static-target": "graph-validation",
+    "initial-static-closure": "candidate-noninitial",
+    "non-entry-HTML-static-closure": "candidate-noninitial",
+    "renamed-non-vendor-candidate": "candidate-validation",
+    "direct-HTML-candidate": "candidate-noninitial",
+    "unknown-HTML-root": "html-root-membership",
+  }
+  const rejectedAt = (stage, fixture) => (error) => {
+    assert.ok(knownStages.has(stage))
+    assert.ok(error instanceof Error)
+    assert.equal(
+      error.message === "MapLibre budget evidence rejected: " + stage,
+      true,
+      "MapLibre rejection must match its fixed stage"
+    )
+    assert.equal(error.stack === error.message, true, "MapLibre rejection stack must be opaque")
+    assert.equal(error.message.includes(fixture.workspace), false)
+    assert.equal(error.message.includes(opaqueCanary), false)
+    return true
+  }
   const changedMetadata = (change) => (fixture) => changePolicyMetadata(fixture, change)
   const cases = [
     ["metadata-content-hash", (fixture) => writeFile(fixture.evidence.metadataPath, "{}")],
@@ -1596,7 +1703,13 @@ test("invalid MapLibre evidence cannot grant a lazy budget allowance", async () 
       const control = await policyReport(fixture)
       assert.doesNotThrow(() => assertBundleBudgets(control), name + ": accepting control")
       await mutate(fixture)
-      await assert.rejects(policyReport(fixture), /MapLibre budget evidence rejected/u, name)
+      await assert.rejects(policyReport(fixture), rejectedAt(expectedStages[name], fixture), name)
+      if (name === "metadata-content-hash") {
+        const malformed = Buffer.from('{"private":' + opaqueCanary)
+        await writeFile(fixture.evidence.metadataPath, malformed)
+        fixture.evidence.metadataSha256 = sha256(malformed)
+        await assert.rejects(policyReport(fixture), rejectedAt("metadata-json", fixture))
+      }
     } finally {
       await rm(fixture.workspace, { recursive: true, force: true })
     }
