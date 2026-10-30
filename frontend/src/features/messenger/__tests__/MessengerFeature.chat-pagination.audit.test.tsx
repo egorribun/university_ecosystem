@@ -422,3 +422,246 @@ describe("AUD030 loaded chat-list lifetime", () => {
     }
   })
 })
+
+function renderChatListController() {
+  const { client, Wrapper } = environment()
+  const HookWrapper = ({ children }: { children: ReactNode }) => (
+    <Wrapper>
+      <MessengerProvider>{children}</MessengerProvider>
+    </Wrapper>
+  )
+  return {
+    client,
+    ...renderHook(() => useMessengerController(), { wrapper: HookWrapper }),
+  }
+}
+
+describe("AUD030 cursor response ownership", () => {
+  it.each(["canonical write", "refetch"] as const)(
+    "rejects a stale page after a %s and retries from the retained list",
+    async (collision) => {
+      let resolve!: (value: ChatsListResponse) => void
+      const pending = new Promise<ChatsListResponse>((done) => {
+        resolve = done
+      })
+      let defer = true
+      const requests = vi.spyOn(chatApi, "getChats").mockImplementation((cursor) => {
+        if (cursor === undefined) return Promise.resolve(firstPage)
+        return defer
+          ? pending
+          : Promise.resolve({ ...lastPage, items: [firstPage.items[0]!, ...lastPage.items] })
+      })
+      const view = renderChatListController()
+      let attempt = Promise.resolve()
+      try {
+        await waitFor(() => expect(view.result.current.contacts).toHaveLength(20))
+        act(() => {
+          attempt = view.result.current.handleLoadMoreChats()
+          expect(view.result.current.handleLoadMoreChats()).toBe(attempt)
+        })
+        await waitFor(() =>
+          expect(requests.mock.calls.filter(([cursor]) => cursor !== undefined)).toHaveLength(1)
+        )
+
+        if (collision === "canonical write") {
+          act(() => {
+            view.client.setQueryData<ChatsListResponse>(["chats"], {
+              ...firstPage,
+              items: firstPage.items.map((chat, index) =>
+                index === 0 ? { ...chat, name: "Newer canonical name" } : chat
+              ),
+            })
+          })
+        } else {
+          await act(async () => {
+            await view.client.invalidateQueries({ queryKey: ["chats"], exact: true })
+          })
+        }
+        await act(async () => {
+          resolve(lastPage)
+          await attempt
+        })
+        expect(view.result.current.contacts).toHaveLength(20)
+        expect(view.result.current.moreChatsError).toBe(true)
+
+        defer = false
+        await act(async () => {
+          await view.result.current.handleLoadMoreChats()
+        })
+        expect(view.result.current.contacts).toHaveLength(21)
+        expect(view.result.current.moreChatsError).toBe(false)
+        expect(view.result.current.contacts[0]?.name).toBe(
+          collision === "canonical write" ? "Newer canonical name" : "Conversation 1"
+        )
+        expect(view.result.current.hasMoreChats).toBe(false)
+        await act(async () => {
+          await view.result.current.handleLoadMoreChats()
+        })
+        expect(requests.mock.calls.filter(([cursor]) => cursor !== undefined)).toHaveLength(2)
+      } finally {
+        view.unmount()
+        try {
+          await view.client.cancelQueries()
+        } finally {
+          resolve(lastPage)
+          await attempt
+        }
+      }
+    }
+  )
+
+  it.each(["missing cursor", "repeated cursor", "no new rows"] as const)(
+    "keeps a %s response retryable without replacing the list",
+    async (failure) => {
+      const badPage: ChatsListResponse = {
+        items: failure === "no new rows" ? firstPage.items : lastPage.items,
+        has_more: true,
+        next_cursor:
+          failure === "missing cursor"
+            ? null
+            : failure === "repeated cursor"
+              ? "chat-page-2"
+              : "chat-page-3",
+      }
+      vi.spyOn(chatApi, "getChats").mockImplementation((cursor) =>
+        Promise.resolve(cursor === undefined ? firstPage : badPage)
+      )
+      const view = renderChatListController()
+      await waitFor(() => expect(view.result.current.contacts).toHaveLength(20))
+
+      await act(async () => {
+        await view.result.current.handleLoadMoreChats()
+      })
+
+      expect(view.result.current.moreChatsError).toBe(true)
+      expect(view.result.current.isLoadingMoreChats).toBe(false)
+      expect(view.client.getQueryData(["chats"])).toEqual(firstPage)
+    }
+  )
+
+  it("retires a removed query without blocking the replacement query's next page", async () => {
+    let resolve!: (value: ChatsListResponse) => void
+    const pending = new Promise<ChatsListResponse>((done) => {
+      resolve = done
+    })
+    const oldRequest: { signal?: AbortSignal } = {}
+    const replacement: ChatsListResponse = {
+      ...firstPage,
+      items: firstPage.items.map((chat) => ({ ...chat, name: "Replacement " + chat.name })),
+    }
+    let replaced = false
+    vi.spyOn(chatApi, "getChats").mockImplementation((cursor, _limit, signal) => {
+      if (cursor === undefined) return Promise.resolve(replaced ? replacement : firstPage)
+      if (replaced) return Promise.resolve(lastPage)
+      oldRequest.signal = signal
+      return pending
+    })
+    const view = renderChatListController()
+    let attempt = Promise.resolve()
+    try {
+      await waitFor(() => expect(view.result.current.contacts).toHaveLength(20))
+      act(() => {
+        attempt = view.result.current.handleLoadMoreChats()
+      })
+      await waitFor(() => expect(oldRequest.signal).toBeInstanceOf(AbortSignal))
+      act(() => {
+        replaced = true
+        view.client.removeQueries({ queryKey: ["chats"], exact: true })
+        view.client.setQueryData(["chats"], replacement)
+        view.rerender()
+      })
+      await waitFor(() =>
+        expect(view.result.current.contacts[0]?.name).toBe("Replacement Conversation 1")
+      )
+      expect(oldRequest.signal?.aborted).toBe(true)
+      expect(view.result.current.isLoadingMoreChats).toBe(false)
+
+      await act(async () => {
+        await view.result.current.handleLoadMoreChats()
+      })
+      expect(view.result.current.contacts).toHaveLength(21)
+      const current = view.client.getQueryData(["chats"])
+      await act(async () => {
+        resolve({
+          ...lastPage,
+          items: [{ ...chats[20]!, id: "retired-chat", name: "Retired conversation" }],
+        })
+        await attempt
+      })
+      expect(view.client.getQueryData(["chats"])).toBe(current)
+      expect(view.result.current.contacts.some(({ id }) => id === "retired-chat")).toBe(false)
+    } finally {
+      view.unmount()
+      try {
+        await view.client.cancelQueries()
+      } finally {
+        resolve(lastPage)
+        await attempt
+      }
+    }
+  })
+
+  it("aborts an unmounted page owner without appending its late transport result", async () => {
+    let resolve!: (value: ChatsListResponse) => void
+    const pending = new Promise<ChatsListResponse>((done) => {
+      resolve = done
+    })
+    const request: { signal?: AbortSignal } = {}
+    vi.spyOn(chatApi, "getChats").mockImplementation((cursor, _limit, signal) => {
+      if (cursor === undefined) return Promise.resolve(firstPage)
+      request.signal = signal
+      return pending
+    })
+    const view = renderChatListController()
+    let attempt = Promise.resolve()
+    try {
+      await waitFor(() => expect(view.result.current.contacts).toHaveLength(20))
+      act(() => {
+        attempt = view.result.current.handleLoadMoreChats()
+      })
+      await waitFor(() => expect(request.signal).toBeInstanceOf(AbortSignal))
+      view.unmount()
+      expect(request.signal?.aborted).toBe(true)
+      resolve(lastPage)
+      await attempt
+      expect(
+        view.client
+          .getQueryData<ChatsListResponse>(["chats"])
+          ?.items.some(({ id }) => id === "chat-21")
+      ).not.toBe(true)
+    } finally {
+      view.unmount()
+      resolve(lastPage)
+      await attempt
+    }
+  })
+})
+
+describe("AUD030 queued-page ownership", () => {
+  it("does not dispatch a queued page after same-tick session rotation", async () => {
+    const { invalidateSessionEpoch } = await import("@/stores/sessionEpoch")
+    const requests = vi.spyOn(chatApi, "getChats").mockImplementation((cursor) =>
+      Promise.resolve(cursor === undefined ? firstPage : lastPage)
+    )
+    const view = renderChatListController()
+    let attempt = Promise.resolve()
+    try {
+      await waitFor(() => expect(view.result.current.contacts).toHaveLength(20))
+      expect(requests).toHaveBeenCalledTimes(1)
+      act(() => {
+        attempt = view.result.current.handleLoadMoreChats()
+        invalidateSessionEpoch()
+      })
+      await act(async () => {
+        await attempt
+      })
+
+      expect(requests.mock.calls.filter(([cursor]) => cursor !== undefined)).toHaveLength(0)
+      expect(view.client.getQueryData(["chats"])).toEqual(firstPage)
+      expect(view.result.current.isLoadingMoreChats).toBe(false)
+    } finally {
+      view.unmount()
+      await attempt
+    }
+  })
+})

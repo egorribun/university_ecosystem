@@ -17,19 +17,27 @@ import { useMessenger } from "@/contexts/MessengerContext"
 import {
   chatApi,
   type Chat,
+  type ChatsListResponse,
   type Message as ApiMessage,
   type MessagesListResponse,
 } from "@/api/chat"
 // Wave 180 SW3 — extracted queryOptions factories close W134 §Honesty #10
 // (W161 SW2 concern #1: query gate inconsistency). See api/hooks/messenger.ts
 // header docblock for the full rationale.
-import { chatsQueryOptions, chatQueryOptions, messagesQueryOptions } from "@/api/hooks/messenger"
+import {
+  CHAT_LIST_PAGE_SIZE,
+  chatQueryOptions,
+  chatsQueryKey,
+  chatsQueryOptions,
+  fetchLoadedChats,
+  messagesQueryOptions,
+} from "@/api/hooks/messenger"
 import client from "@/api/client"
 import { chatDisplayInfo } from "@/components/messenger/chatDisplay"
 import type { User } from "@/types/User"
 import type { Message as UiMessage, Contact } from "@/components/messenger"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
-import { isCurrentBrowserSession } from "@/stores/sessionEpoch"
+import { captureSessionEpoch, isCurrentBrowserSession } from "@/stores/sessionEpoch"
 import {
   beginMessengerOperation,
   beginMessengerEditRefresh,
@@ -284,6 +292,26 @@ export const useMessengerController = () => {
   const olderHistoryAbortRef = useRef<AbortController | null>(null)
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
   const [olderMessagesError, setOlderMessagesError] = useState(false)
+  const chatPageRequestRef = useRef<Promise<void> | null>(null)
+  const chatPageAbortRef = useRef<AbortController | null>(null)
+  const chatPageGenerationRef = useRef(0)
+  const [isLoadingMoreChats, setIsLoadingMoreChats] = useState(false)
+  const [moreChatsError, setMoreChatsError] = useState(false)
+
+  useIsomorphicLayoutEffect(() => {
+    chatPageGenerationRef.current += 1
+    chatPageAbortRef.current?.abort()
+    chatPageAbortRef.current = null
+    chatPageRequestRef.current = null
+    setIsLoadingMoreChats(false)
+    setMoreChatsError(false)
+    return () => {
+      chatPageGenerationRef.current += 1
+      chatPageAbortRef.current?.abort()
+      chatPageAbortRef.current = null
+      chatPageRequestRef.current = null
+    }
+  }, [accountId, sessionIsCurrent])
 
   useEffect(() => {
     // Snapshot the ref to a local variable so the cleanup closure references
@@ -323,14 +351,106 @@ export const useMessengerController = () => {
   const {
     data: canonicalChats,
     isLoading: chatsLoading,
+    isFetching: chatsFetching,
     isError: chatsError,
     refetch: refetchChats,
   } = useQuery({
-    ...chatsQueryOptions(),
+    ...chatsQueryOptions(queryClient),
     enabled: !!user,
   })
   const chatsData = useProjectedMessengerChats(canonicalChats, accountId)
   const chats = useMemo(() => chatsData?.items ?? [], [chatsData?.items])
+
+  const handleLoadMoreChats = useCallback((): Promise<void> => {
+    if (chatPageRequestRef.current) return chatPageRequestRef.current
+    const cache = queryClient.getQueryCache()
+    const query = cache.find({ queryKey: chatsQueryKey, exact: true })
+    const before = queryClient.getQueryData<ChatsListResponse>(chatsQueryKey)
+    const cursor = before?.next_cursor
+    if (
+      !accountId ||
+      !sessionIsCurrent ||
+      !query ||
+      query.state.fetchStatus !== "idle" ||
+      !before?.has_more ||
+      !cursor
+    )
+      return Promise.resolve()
+
+    const generation = chatPageGenerationRef.current
+    const updateCount = query.state.dataUpdateCount
+    const ownsSession = captureSessionEpoch()
+    const abortController = new AbortController()
+    chatPageAbortRef.current = abortController
+    setIsLoadingMoreChats(true)
+    setMoreChatsError(false)
+    const ownsRequest = () =>
+      !abortController.signal.aborted &&
+      chatPageGenerationRef.current === generation &&
+      ownsSession() &&
+      cache.find({ queryKey: chatsQueryKey, exact: true }) === query
+    const detach = cache.subscribe((event) => {
+      if (event.query === query && event.type === "removed") abortController.abort()
+    })
+    const retire = () => {
+      detach()
+      if (chatPageAbortRef.current === abortController) {
+        chatPageAbortRef.current = null
+        chatPageRequestRef.current = null
+        if (chatPageGenerationRef.current === generation) {
+          setIsLoadingMoreChats(false)
+          setMoreChatsError(false)
+        }
+      }
+    }
+    abortController.signal.addEventListener("abort", retire, { once: true })
+
+    const request = Promise.resolve()
+      .then(() =>
+        !ownsRequest()
+          ? undefined
+          : chatApi.getChats(cursor, CHAT_LIST_PAGE_SIZE, abortController.signal)
+      )
+      .then((page) => {
+        if (!page || !ownsRequest()) return
+        // Refetches and canonical live writes own their newer cache version.
+        // Do not append an older cursor response across that boundary.
+        if (
+          query.state.fetchStatus !== "idle" ||
+          query.state.dataUpdateCount !== updateCount ||
+          queryClient.getQueryData(chatsQueryKey) !== before
+        )
+          throw new Error("The chat list changed during pagination")
+        if (page.has_more && (!page.next_cursor || page.next_cursor === cursor))
+          throw new Error("Chat list cursor did not advance")
+        const known = new Set(before.items.map(({ id }) => id))
+        const added = page.items.filter(({ id }) => {
+          if (known.has(id)) return false
+          known.add(id)
+          return true
+        })
+        if (page.has_more && added.length === 0)
+          throw new Error("Chat list cursor returned no new conversations")
+        queryClient.setQueryData<ChatsListResponse>(chatsQueryKey, {
+          ...page,
+          items: [...before.items, ...added],
+        })
+      })
+      .catch(() => {
+        if (ownsRequest()) setMoreChatsError(true)
+      })
+      .finally(() => {
+        detach()
+        abortController.signal.removeEventListener("abort", retire)
+        if (chatPageRequestRef.current === request) {
+          chatPageRequestRef.current = null
+          chatPageAbortRef.current = null
+          if (chatPageGenerationRef.current === generation) setIsLoadingMoreChats(false)
+        }
+      })
+    chatPageRequestRef.current = request
+    return request
+  }, [accountId, queryClient, sessionIsCurrent])
 
   // Wave 180 SW3 — single-chat fallback useQuery (fires when chat is NOT in
   // the cached list yet, e.g. direct URL navigation). Spreads chatQueryOptions
@@ -724,7 +844,7 @@ export const useMessengerController = () => {
       void queryClient.cancelQueries({ queryKey: ["chats"] })
       variables[OPERATION_RECEIPT] = beginMessengerOperation(queryClient, accountId, chatId, {
         kind: "clear",
-        refreshChats: () => chatApi.getChats(),
+        refreshChats: () => fetchLoadedChats(queryClient),
       })
       return variables[OPERATION_RECEIPT]
     },
@@ -1372,6 +1492,11 @@ export const useMessengerController = () => {
     olderMessagesError,
     handleLoadOlderMessages,
     chatsLoading,
+    chatsFetching,
+    hasMoreChats: Boolean(canonicalChats?.has_more && canonicalChats.next_cursor),
+    isLoadingMoreChats,
+    moreChatsError,
+    handleLoadMoreChats,
     messagesLoading,
     // Wave 184 SW3 (Path B) — fetch-failure flags + refetch handles for
     // ContactList + ChatWindow error empty-state branches with retry CTA.

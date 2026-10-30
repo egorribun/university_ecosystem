@@ -70,6 +70,11 @@
     "messages": "Loading messages…",
     "users": "Loading users…"
   },
+  "pagination": {
+    "loadMoreChats": "Load more conversations",
+    "loadingMoreChats": "Loading more conversations…",
+    "loadMoreError": "Couldn't load more conversations. Try again."
+  },
   "history": {
     "loadOlder": "Load older messages",
     "loadingOlder": "Loading older messages…",

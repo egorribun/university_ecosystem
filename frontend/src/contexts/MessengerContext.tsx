@@ -2,8 +2,9 @@ import { useMemo, useState, useEffect, type ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useChatWebSocket } from "@/hooks/useChatWebSocket"
 import { useProjectedMessengerChats } from "@/hooks/messengerProjection"
+import { fetchLoadedChats } from "@/api/hooks/messenger"
 import { useAuth } from "./AuthContext"
-import { chatApi, type PresenceStatus, type ChatsListResponse, type Chat } from "@/api/chat"
+import type { PresenceStatus, ChatsListResponse, Chat } from "@/api/chat"
 
 import { getUnreadChatCount, MessengerContext, useMessenger } from "./MessengerContextCore"
 
@@ -101,7 +102,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
 
   const { data: canonicalChats } = useQuery({
     queryKey: ["chats"],
-    queryFn: () => chatApi.getChats(),
+    queryFn: ({ signal }) => fetchLoadedChats(queryClient, signal),
     enabled: realtimeEnabled,
   })
   const chatsData = useProjectedMessengerChats(canonicalChats, user?.id ?? null)

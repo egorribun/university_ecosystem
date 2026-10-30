@@ -35,6 +35,11 @@ interface MessengerSidebarProps {
    * when the user clicks the Retry button inside the error empty state.
    */
   onRetry?: () => void
+  hasMoreChats?: boolean
+  isLoadingMoreChats?: boolean
+  isRefreshingChats?: boolean
+  moreChatsError?: boolean
+  onLoadMoreChats?: () => Promise<void>
 }
 
 const MOBILE_MENU_WIDTH = 300
@@ -47,6 +52,11 @@ export function MessengerSidebar({
   isLoading = false,
   isError = false,
   onRetry,
+  hasMoreChats = false,
+  isLoadingMoreChats = false,
+  isRefreshingChats = false,
+  moreChatsError = false,
+  onLoadMoreChats,
 }: MessengerSidebarProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
@@ -154,6 +164,32 @@ export function MessengerSidebar({
         isError={isError}
         onRetry={onRetry}
       />
+
+      {hasMoreChats && !isLoading && !isError && onLoadMoreChats && (
+        <div className="shrink-0 px-4 pb-4 pt-2">
+          {moreChatsError && (
+            <p role="alert" className="mb-2 text-sm text-(--text-secondary)">
+              {t("messenger:pagination.loadMoreError")}
+            </p>
+          )}
+          <m.button
+            type="button"
+            disabled={isLoadingMoreChats || isRefreshingChats}
+            onClick={() => {
+              void onLoadMoreChats()
+            }}
+            className="w-full min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold text-msg-active transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+          >
+            {t(
+              isLoadingMoreChats
+                ? "messenger:pagination.loadingMoreChats"
+                : moreChatsError
+                  ? "messenger:error.retry"
+                  : "messenger:pagination.loadMoreChats"
+            )}
+          </m.button>
+        </div>
+      )}
     </m.div>
   )
 }

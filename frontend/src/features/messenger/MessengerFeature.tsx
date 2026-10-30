@@ -70,6 +70,11 @@ function MessengerFeatureContent() {
     // can render while async fetches are in-flight. Defensive UX for low-bandwidth
     // users + first-paint feedback.
     chatsLoading,
+    chatsFetching,
+    hasMoreChats,
+    isLoadingMoreChats,
+    moreChatsError,
+    handleLoadMoreChats,
     messagesLoading,
     // Wave 184 SW3 (Path B) — lifted query error flags + refetch handles
     // for ContactList + ChatWindow fetch-failure empty-state branches with
@@ -174,6 +179,11 @@ function MessengerFeatureContent() {
       setIsNewChatModalOpen={setIsNewChatModalOpen}
       isLoading={chatsLoading}
       isError={chatsError}
+      hasMoreChats={hasMoreChats}
+      isLoadingMoreChats={isLoadingMoreChats}
+      isRefreshingChats={chatsFetching}
+      moreChatsError={moreChatsError}
+      onLoadMoreChats={handleLoadMoreChats}
       onRetry={() => {
         void refetchChats()
       }}
