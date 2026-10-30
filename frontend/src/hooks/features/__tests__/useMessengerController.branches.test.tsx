@@ -312,19 +312,62 @@ describe("useMessengerController — branch top-up", () => {
       expect(mocks.sendLeave).toHaveBeenCalledTimes(2)
     })
 
-    it("waits for a reconnect before joining an open chat", async () => {
+    it("registers an offline room once and leaves transport rejoin to the socket hook", async () => {
       mocks.isConnectedRef.current = false
       seedChat("offline-chat")
       const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
 
       await waitFor(() => expect(result.current.selectedChatId).toBe("offline-chat"))
-      expect(mocks.sendJoin).not.toHaveBeenCalled()
+      expect(mocks.sendJoin).toHaveBeenCalledWith("offline-chat")
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
 
       mocks.isConnectedRef.current = true
       rerender()
 
-      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("offline-chat"))
       expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+    })
+
+    it("registers only the current account and retires same-route membership on logout", async () => {
+      seedChat("account-room")
+      mocks.authUserRef.current = null
+      const { HookWrapper } = createQueryHarness()
+      const { result, rerender, unmount } = renderHook(() => useMessengerController(), {
+        wrapper: HookWrapper,
+      })
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("account-room"))
+      expect(mocks.sendJoin).not.toHaveBeenCalled()
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+
+      mocks.authUserRef.current = { ...mocks.testUser }
+      rerender()
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("account-room"))
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+
+      mocks.authUserRef.current = { ...mocks.testUser, full_name: "Updated profile" }
+      rerender()
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+
+      mocks.authUserRef.current = { ...mocks.testUser, id: "replacement-account" }
+      rerender()
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledTimes(2))
+      expect(mocks.sendJoin).toHaveBeenNthCalledWith(2, "account-room")
+      expect(mocks.sendLeave).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).toHaveBeenCalledWith("account-room")
+
+      mocks.authUserRef.current = null
+      rerender()
+      expect(mocks.sendLeave).toHaveBeenCalledTimes(2)
+      expect(mocks.sendLeave).toHaveBeenNthCalledWith(2, "account-room")
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(2)
+
+      unmount()
+      expect(mocks.sendLeave).toHaveBeenCalledTimes(2)
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(2)
     })
 
     it("refetches the open chat messages after a socket disconnect and reconnect", async () => {
@@ -340,14 +383,16 @@ describe("useMessengerController — branch top-up", () => {
 
       mocks.isConnectedRef.current = false
       rerender()
-      await waitFor(() => expect(mocks.sendLeave).toHaveBeenCalledWith("reconnected-chat"))
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
 
       mocks.isConnectedRef.current = true
       rerender()
 
-      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledTimes(2))
       await waitFor(() => expect(mocks.chatApi.getMessages).toHaveBeenCalledTimes(2))
       expect(mocks.chatApi.getMessages.mock.calls[1]?.[0]).toBe("reconnected-chat")
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
     })
   })
 
@@ -2479,6 +2524,8 @@ describe("useMessengerController — branch top-up", () => {
 
     expect(mocks.chatApi.getChat).not.toHaveBeenCalled()
     expect(mocks.chatApi.getMessages).not.toHaveBeenCalled()
+    expect(mocks.sendJoin).not.toHaveBeenCalled()
+    expect(mocks.sendLeave).not.toHaveBeenCalled()
   })
 
   it("counts a group read receipt at the exact message timestamp", async () => {

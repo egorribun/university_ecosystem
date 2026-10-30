@@ -1031,24 +1031,19 @@ export const useMessengerController = () => {
     return () => document.removeEventListener("visibilitychange", onVisible)
   }, [selectedChatId, markAsRead])
 
-  // Wave 204 SW6 — join the ws-hub room for the open chat so the browser
-  // receives live chat.{chatId} fan-out (new_message + read frames the backend
-  // bridges in W204 SW2). Without joining, ws-hub's collectRecipients returns
-  // nil for the empty room and nothing is delivered. Re-runs on selectedChatId
-  // change (cleanup leaves the previous room, then joins the new one) AND on
-  // isConnected flipping true (rejoin after a (re)connect — complements the
-  // hook's ws.onopen rejoin; both idempotent server-side). This completes the
-  // live flip: end of W204 SW6 = new_message + read receipts flip without a
-  // refetch. Independent of the W203 SW7/SW8 markRead effects above.
+  // Room membership follows the logical account/room, not transport liveness.
+  // sendJoin records the desired room while offline; the socket hook rejoins
+  // it on open. A transient disconnect must not call sendLeave and erase the
+  // observed replay-rejection debt that bounds automatic recovery.
+  // Account changes still retire the old scope even when the route is unchanged.
   useEffect(() => {
-    if (!selectedChatId || !isConnected) return
+    if (!accountId || !selectedChatId) return
     sendJoin(selectedChatId)
     return () => sendLeave(selectedChatId)
-  }, [selectedChatId, isConnected, sendJoin, sendLeave])
+  }, [accountId, selectedChatId, sendJoin, sendLeave])
 
-  // A room leave clears the socket hook's active-room ref. When the socket
-  // reconnects, join the room effect above restores live delivery; also refresh
-  // the open history so frames missed while disconnected are recovered.
+  // Refresh the open history after reconnect independently of room membership,
+  // so frames missed while disconnected are recovered through REST.
   const previousConnectionRef = useRef(isConnected)
   useEffect(() => {
     const reconnected = !previousConnectionRef.current && isConnected
