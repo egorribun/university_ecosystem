@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { test } from "node:test"
+import { gzipSync } from "node:zlib"
 
 import {
   BUNDLE_BUDGETS,
@@ -781,6 +782,67 @@ test("preserves legal omitted end tags, void elements and inert browser contexts
         report.assets.filter((asset) => asset.isInitial).map((asset) => asset.path),
         ["client/assets/index-ABC.js"]
       )
+    }
+  } finally {
+    await rm(distDir, { recursive: true, force: true })
+  }
+})
+
+test("counts the producer low-priority preload and plain module only once", async () => {
+  const distDir = await createBundleFixture()
+  const preload = '<link rel="modulepreload" fetchpriority="low" href="/assets/index-ABC.js">'
+  const script = '<script type="module" async src="/assets/index-ABC.js"></script>'
+  const content = Buffer.from("export const producerFixture = true;\n")
+  const expectedGzipBytes = gzipSync(content, { level: 9 }).byteLength
+  try {
+    await writeFile(path.join(distDir, "client", "assets", "index-ABC.js"), content)
+    for (const html of [preload + script, script + preload]) {
+      await writeFile(path.join(distDir, "client", "index.html"), html)
+      const report = await analyzeBundle(distDir)
+      const initial = report.assets.filter((asset) => asset.isInitial)
+      assert.deepEqual(initial.map((asset) => asset.path), ["client/assets/index-ABC.js"])
+      assert.equal(report.summary.initialJsAssetCount, 1)
+      assert.equal(initial[0].rawBytes, content.byteLength)
+      assert.equal(initial[0].gzipBytes, expectedGzipBytes)
+      assert.equal(report.summary.initialJsGzipBytes, expectedGzipBytes)
+      assertBundleBudgets(report)
+    }
+  } finally {
+    await rm(distDir, { recursive: true, force: true })
+  }
+})
+
+test("keeps qualified and non-producer duplicate roots closed", async () => {
+  const distDir = await createBundleFixture()
+  const href = 'href="/assets/index-ABC.js"'
+  const src = 'src="/assets/index-ABC.js"'
+  const preload = `<link rel="modulepreload" fetchpriority="low" ${href}>`
+  const script = `<script type="module" ${src}></script>`
+  const pairs = [
+    ...['crossorigin="anonymous"', 'integrity="fixture"', 'referrerpolicy="no-referrer"'].flatMap(
+      (attribute) => [
+        [`<link rel="modulepreload" fetchpriority="low" ${attribute} ${href}>`, script],
+        [preload, `<script type="module" ${attribute} ${src}></script>`],
+      ]
+    ),
+    ...["high", "auto", "", "LOW"].map((priority) => [
+      `<link rel="modulepreload" fetchpriority="${priority}" ${href}>`,
+      script,
+    ]),
+    [
+      `<link rel="modulepreload" ${href}>`,
+      `<script type="module" fetchpriority="low" ${src}></script>`,
+    ],
+    [preload, `<script ${src}></script>`],
+    [preload, `<link rel="modulepreload" ${href}>`],
+    [preload, preload],
+  ]
+  try {
+    for (const pair of pairs) {
+      for (const roots of [pair, [...pair].reverse()]) {
+        await writeFile(path.join(distDir, "client", "index.html"), roots.join("\n"))
+        await assert.rejects(analyzeBundle(distDir), /unsupported|invalid|malformed/iu)
+      }
     }
   } finally {
     await rm(distDir, { recursive: true, force: true })

@@ -137,10 +137,29 @@ function extractInitialAssetPaths(html, htmlRelativeDirectory) {
       ["crossorigin", "integrity", "referrerpolicy", "fetchpriority"].every(
         (attribute) => htmlAttribute(node, attribute) === undefined
       )
-    if (moduleRoots.has(assetPath) && (!moduleRoots.get(assetPath) || !unqualifiedModule)) {
-      throw invalidHtml()
-    }
-    moduleRoots.set(assetPath, unqualifiedModule)
+    const plainModuleScript = unqualifiedModule && node.tagName === "script"
+    const lowPriorityPreload =
+      isModule &&
+      node.tagName === "link" &&
+      htmlAttribute(node, "rel") === "modulepreload" &&
+      htmlAttribute(node, "fetchpriority") === "low" &&
+      ["crossorigin", "integrity", "referrerpolicy"].every(
+        (attribute) => htmlAttribute(node, attribute) === undefined
+      )
+    const previous = moduleRoots.get(assetPath)
+    const ordinaryDuplicate = previous?.unqualifiedModule && unqualifiedModule
+    // The pinned producer pairs one low-priority preload with one plain module.
+    // Keep other qualified duplicates closed; this is unique-asset accounting.
+    const producerDuplicate =
+      (previous?.plainModuleScript && lowPriorityPreload) ||
+      (previous?.lowPriorityPreload && plainModuleScript)
+    if (previous && !ordinaryDuplicate && !producerDuplicate) throw invalidHtml()
+    moduleRoots.set(
+      assetPath,
+      previous
+        ? { unqualifiedModule: ordinaryDuplicate }
+        : { unqualifiedModule, plainModuleScript, lowPriorityPreload }
+    )
     initialPaths.add(assetPath)
   }
   const pending = [{ node: document, foreign: false }]
