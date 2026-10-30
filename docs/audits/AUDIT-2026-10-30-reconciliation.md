@@ -1,5 +1,229 @@
 # Post-pause reconciliation — 2026-10-30
 
+## Complete 112-finding reconciliation on source 1cf19a9b
+
+This supersedes the *current-status interpretation* of earlier matrices, not
+their historical record. Every one of the 112 IDs unaccepted at the 400-ID
+checkpoint was re-read against its original criterion, current source,
+test selection and actual own-source receipts. The original full 136-path
+post-pause manifest below remains the historical 8787b00e review; it is not
+relabeled as a new source-diff review.
+
+The [criterion-specific decision](AUDIT-2026-10.md#scoped-35-finding-reconciliation-on-source-1cf19a9b-2026-10-30)
+accepts exactly 35 IDs, preserving all 400 prior IDs:
+**435/512 accepted; 77 remain unaccepted**. The full 112-ID partition is:
+
+| Current classification | Count |
+| --- | ---: |
+| Accepted on bounded original criterion | 35 |
+| Source-fixed, missing applicable execution proof | 10 |
+| Partial | 30 |
+| Original defect remains | 34 |
+| Not verified | 2 |
+| Original asserted cause unproven; separate related risks remain | 1 |
+| **Total reviewed** | **112** |
+
+The 35 additions are AUD-045, AUD-137, AUD-192, AUD-193, AUD-236, AUD-250, AUD-253, AUD-260, AUD-262, AUD-271, AUD-304, AUD-316, AUD-317, AUD-319, AUD-363, AUD-366, AUD-369, AUD-370, AUD-371, AUD-382, AUD-383, AUD-385, AUD-386, AUD-389, AUD-390, AUD-391, AUD-401, AUD-407, AUD-417, AUD-425, AUD-479, AUD-485, AUD-487, AUD-495, AUD-510.
+No AUD-151/308, AUD-334, AUD-447 or Squawk activation is hidden in this count.
+
+Source `1cf19a9b2e8f8f4e0b4d6bc91a309225c92cda13` and actual PR checkout
+`c92fc01282e3f41dd9e2a60be6547fc087d95c28` share the complete tree
+`3c42edbf6830f359059411c0310a07feef6613e8`.
+Own Matrix 41069697810 is terminal FAILURE: backend 22,531 PASS /428 SKIP /0 FAIL,
+frontend 10,492 PASS /3 FAIL /0 SKIP; coverage gates SKIP.
+The linked decision contains full job URLs, named-vs-cohort inference rules,
+116 immutable source/test bindings and per-finding limitations. Ordinary
+Python PASS below is explicitly cohort-inferred, not a named-node receipt.
+Current source-changing successors require their own validation.
+
+| ID | Original criterion | Current classification | Exact disposition / remaining proof |
+| --- | --- | --- | --- |
+| AUD-045 | Pruner не распознаёт monthly names из исторической миграции | accepted-scoped | Historical YYYY_MM and runtime yYYYYmMM monthly partition names use the same retention calculation through the actual Rust/PyO3 consumer and Python caller. Rust job 124110243869: 97 PASS, four named aud045 historical-month controls; ordinary Python guard is cohort-inferred PASS. Limit: 13 owned-PG pruner cases SKIP. No destructive PostgreSQL pruning, Windows .pyd or deployment proof. |
+| AUD-073 | Белый текст отправленных сообщений имеет недостаточный контраст на светлом violet gradient | source-fixed-awaiting-proof | Numerical stop/token controls 6 PASS (#7c3aed/#9333ea white ratios 5.699/5.382); complete interpolated/composited gradient and actual computed cascade remain unproved. Bounded browser fixture has not run. |
+| AUD-137 | SSR-проверка сырых ключей не замечает обычный fallback i18next | accepted-scoped | Requested-locale validation rejects ordinary i18next fallback even when no raw qualified translation key remains; the live SSR spec consumes the same helpers. MainLayout SSR 6 PASS (124113373165), NewsHeader SSR 6 PASS (124113373285); Core helper bindings/negative controls PASS. Limit: Real renderToString/i18next and production matcher, not a completed full live hydration/browser run. |
+| AUD-151 | Проверка JS-ошибок не ждёт готовности приложения | source-fixed-awaiting-proof | Readiness/error helper logic is source-fixed, but its 2+5 existing Node tests were absent from canonical hosted selection. Own 923 selection regression is now actual RED; no helper execution is inferred. |
+| AUD-154 | Delivery test ждёт marker, которого нет в status renderer | source-fixed-awaiting-proof | Real Sent/Read ChatWindow markers pass within 63 tests; the modified realtime delivery locator/server-response chain remains behind REALTIME_E2E and has not run. |
+| AUD-164 | Backend видит IP gateway: все анонимы делят лимиты login/register/MFA/reset | partial | Actual two-client trusted Caddy→gateway→backend identity/spoof composition not proved. Existing binder rejects Docker IpcMode=private while its synthetic fixture uses empty metadata. |
+| AUD-167 | Rate-limit gateway и ws-hub сводится к одному IP прокси | partial | Actual proxy-peer/rate-limit two-client composition remains unproved; local header/source controls do not substitute for the full trusted chain. |
+| AUD-169 | file-processor не стартует в staging/prod: revocation-Redis закрыт NetworkPolicy | partial | Helm egress/DNS/CIDR declarations repaired, but existing owner hold for actual Secret Redis URL/endpoints/DNAT/JWKS refresh remains; owned runtime harness not run. |
+| AUD-178 | Токен сброса пароля попадает в access log (Referer) и в CSP-отчёты | partial | Fragment migration/new log-redaction controls pass; legacy query/path data in an early CSP document-uri before client migration remains unproved. Separate live harness is unselected. |
+| AUD-188 | JWKS file-processor запрещён NetworkPolicy: через ~24 ч отклоняются все RS256-токены | partial | Ingress/egress source rules improved; actual deployment endpoints, DNAT/CIDRs and required service dependencies remain unverified under the existing owner hold. |
+| AUD-189 | NetworkPolicy разрешает TCP/443 и DNS любому адресату, включая сервисы кластера | partial | DNS/CIDR and auth egress source repaired; actual endpoints/JWKS refresh/runtime topology remain unproved. Do not restate the original broad missing-rule claim. |
+| AUD-192 | Postgres, Valkey, SpiceDB, Temporal и MinIO подключены к сети public вместе с frontend | accepted-scoped | Frontend no longer shares its network with the five storage services; unsafe namespace, link and host bypass variants are rejected while explicit local access remains. Own ordinary cohort PASS, including seven rendered Compose stacks and full/full-live. Docker/config-render helper did not skip. Limit: Declaration and actual Compose-render topology proof, not deployed network packets or host compromise resistance. |
+| AUD-193 | Docker socket смонтирован в Alloy: `:ro` не ограничивает Docker API | accepted-scoped | Alloy no longer receives the Docker socket. Only the isolated unpublished proxy can access it; request allowlist and metadata projection are fail-closed. Gateway job 124112218630: named StreamingUnmodifiedCancellation, DockerMetadataProjectionRedaction, RequestAllowlistNegativeControls, AllowedContainerListValidatedPathQuery, StreamingTrailersDiscardedEOF PASS under go test -v -race; Compose controls cohort-inferred PASS. Limit: Owned loopback HTTP/stream/cancellation and transport doubles; no real Docker-daemon/Alloy/Loki deployment. Proxy package statement coverage is not universal branch coverage. |
+| AUD-208 | Squawk-гейт проверяет пустой SQL для guard-миграций и ослаблен исключениями | partial | Finite 148 matcher remains prepared-inactive. All 11 current pins match, but tuple-merge graph rendering, all 141 other strict migrations, owned admission and actual consumer fail-closed controls remain absent. Raw 37 warnings still fail. |
+| AUD-226 | Tier-0 миграции (`alembic/versions/**`) выпадают из требования 100% покрытия | partial | The 131-file unchanged migration coverage baseline is a bounded exception, not proof of 100% migration coverage or a complete merged report. |
+| AUD-231 | SSR-страницы frontend отдаются без CSP, nonce-схема не работает | source-fixed-awaiting-proof | SSR entry nonce 14 PASS uses a TanStack double; HTTP5 CSP controls use stub SSR/static HTML. Actual compiled SSR→trusted-script/header nonce and untrusted-script negative composition remains missing. |
+| AUD-236 | Вышедшая вкладка остаётся стейл-привязанной и отменяет публичные запросы | accepted-scoped | Stale signed-out tabs may perform fixed same-origin public News/Schedule reads without credentials or the private-session fence; private calls and account-isolated query keys remain guarded. Own frontend: anonymous News 10, Schedule 5, interaction 3, client 12, dashboard 3 and boundary 2 PASS (124113373068/165/273). Limit: Actual hooks/QueryClient/StorageEvent composition; HTTP/SDK/event delivery use doubles. Not real multi-tab browser/deployment proof. |
+| AUD-244 | `zizmor.yml` отключает 15 аудитов, включая template-injection и dangerous-triggers | unfixed | Fifteen zizmor disables remain. |
+| AUD-245 | Trivy-исключения KSV глобальные (без путей), срок пересмотра истёк | unfixed | Ten global SPIRE KSV suppressions lack bounded path/expiry disposition. |
+| AUD-250 | Метрики кэш-Redis (9121) доступны любому pod; revocation-store это закрывает, app-chart нет | accepted-scoped | Redis metrics 9121 ingress is limited to the approved monitoring namespace/pods; Redis 6379 access remains separately bounded. Own cohort PASS: actual Helm rendering, all selecting-policy union, allowed monitoring and arbitrary-pod denial, widening negatives. Limit: Rendered policy, not live CNI packet enforcement. |
+| AUD-251 | SPIRE agent получает кластерный nodes/proxy get/list/watch | unfixed | SPIRE node/proxy get/list/watch permissions remain broad. |
+| AUD-253 | Лаунчер пишет .env.docker с секретами с umask по умолчанию на POSIX | accepted-scoped | The POSIX launcher creates private environment files at mode 0600 before the first secret byte, including permissive umask, collision and cleanup paths. Own cohort PASS with real pwsh and umask 000; missing pwsh would fail, not silently skip. Limit: POSIX file creation scope only; no Windows ACL assertion. |
+| AUD-260 | Неограниченные выборки в скачивании вложений, посещаемости событий и приёме CWV | accepted-scoped | Attachment download filters identity before LIMIT2; legacy event traversal is bounded 100+1 and paginated reads use page+1; CWV retention performs ordered bounded 500 deletion. Own ordinary endpoint/service/SQLite cohort PASS for all three original surfaces. Limit: Separate PostgreSQL category-regex case SKIP. No claim that every optional database/filter test ran. |
+| AUD-262 | Сбой Redis после commit даёт 500 при успешной отправке и дубликат при повторе | accepted-scoped | Keyed chat sends atomically commit message, event and durable receipt; expected post-commit Redis failures no longer turn committed sends into 500/duplicate retries. Replays reauthorize current membership and sender/chat scope. Own PG 124112218268: durable 5 named PASS (3.05s), lifecycle 27 and schema 12 named PASS; ordinary 7 cohort-inferred PASS. Actual PostgreSQL commits/new sessions, lost acknowledgements, lease-loss contention, receipt migration/FORCE RLS and uniqueness controls. Limit: Redis/completion failures are injected. Applies to current keyed writers and fixed 24h receipt lifetime, not historical cache-only/mixed-old writers, unkeyed requests, indefinite replay or external exactly-once delivery. |
+| AUD-269 | Reconcile 202603280001 удаляет ~15 индексов горячих путей без восстановления | unfixed | Eight non-equivalent hot indexes remain lost; HNSW rename is excluded from that count. |
+| AUD-270 | Cutover UUID делает TRUNCATE ... CASCADE дочерней таблицы вместо остановки | unfixed | TRUNCATE CASCADE applies to the dependent-table branch, not merely a partition-child cleanup. |
+| AUD-271 | Копирование партиций не сбрасывает SERIAL-последовательности: дубли id | accepted-scoped | Partition migration resets each copied table's SERIAL sequence using pg_get_serial_sequence, MAX and setval so subsequent generated IDs do not collide. Own PG 124112218268: three named actual-upgrade controls PASS for copied positive IDs, empty tables and nonpositive legacy IDs, followed by real inserts. Limit: Scoped generated-ID correctness, not migration coverage-floor acceptance or every populated-database risk. |
+| AUD-272 | UNIQUE «delivery once» включает attempted_at и не препятствует повторным пушам | unfixed | Uniqueness includes attempted_at/nullable values and the later reconciler preserves that weakness. |
+| AUD-274 | Миграция 202511240001 теряет DND и часовой пояс пользователей | unfixed | DND/timezone columns are dropped before the later backfill. |
+| AUD-275 | Индексы на messages и users строятся без CONCURRENTLY, docstring обещает обратное | partial | Blocking CREATE INDEX remains; removal of the false concurrent-build comment does not remove the locking risk. |
+| AUD-277 | RLS с политикой USING(true) на восьми таблицах не изолирует данные | original-cause-unproven | Permissive TRUE combined with restrictive policy is not by itself the asserted bypass. Original cause unproven; separate NULL-tenant/GUC concerns remain under 360/450. |
+| AUD-278 | GIN-индекс events.search_vector удалён и не восстановлен | unfixed | GIN restoration exists only in downgrade, not the upgrade path. |
+| AUD-304 | Утилиты dark: следуют системной теме, а не выбору пользователя | accepted-scoped | Tailwind dark utilities follow the selected class theme rather than the OS preference; light/dark/system choices and later OS changes preserve that distinction. Own frontend 8 PASS (124113373068), native class-variant contract PASS; actual selector matching and theme context with SSR html-only control. Limit: No browser pixel/paint claim. |
+| AUD-308 | Архитектурные и токен-гейты не запускаются в CI, два набора тестов мёртвые | partial | Boundary/token checks existed but two architecture suites and the full tokens:check command were omitted from the hosted Node gate. Own 923 now reproduces the omission; no closure before the corrected selection actually runs. |
+| AUD-309 | live_stand.py: вызовы без таймаута и бесконечное ожидание блокировки | unfixed | Generic live-stand runner/git/npm/Chromium/Playwright/status subprocesses and POSIX/Windows lock acquisition remain unbounded. |
+| AUD-311 | Tier-0 правила сопоставляют каталоги: security-модули по имени вне Tier 0 | unfixed | Tier0 directory mapping misses audit_service. |
+| AUD-313 | Гейт owned-stand основан на переменных окружения; сид переписывает пароль администратора | unfixed | Live-seed ownership checks only environment/postgres host and still reconcile an existing admin password; stricter separate admin-smoke/demo preservation does not repair this route. |
+| AUD-316 | .env.example: ключи без потребителя и нерабочий EVENT_FILE_SCANNER_ALLOW_ON_UNAVAILABLE | accepted-scoped | The example removes dead SPICEDB_HOST/PORT and SPICEDB_PG_SSLMODE inputs, uses SPICEDB_ENDPOINT, documents profiling's process-environment (not Settings dotenv) boundary, and removes the nonfunctional scanner allow-on-unavailable flag. Own ordinary cohort PASS: every original key, real Settings→SpiceDBClient endpoint, dotenv-only NoOp vs exported-env PyroscopeProfiler/address, both Compose env_file bindings, and fail-closed scanner consumer controls. Limit: No live SpiceDB/profiling/ClamAV network claim; scanner unavailability is injected at the client seam. |
+| AUD-317 | Гейт MOD-30-01 слабее того, что описано в app/AGENTS.md | accepted-scoped | MOD-30-01 enforces SQLAlchemy relationship lazy="noload" or an explicit unique nonempty exemption, including statically recognized aliases, as required by app/AGENTS. Own cohort PASS:15 actual extracted Python subprocess controls, including malformed/alias/static-negative cases. Limit: Static AST contract, not arbitrary runtime metaprogramming analysis. |
+| AUD-319 | Тест «тайминг-атак» проверяет только stdlib `secrets.compare_digest` | accepted-scoped | The timing-security regression now exercises the application's CSRFMiddleware signed POST path and rejects a forced HMAC comparison failure instead of only testing stdlib. Own ordinary cohort PASS: real ASGI middleware positive path and forced-false 403 control. Limit: Application-bound functional regression, not statistical constant-time proof or coverage of all compare_digest call sites. |
+| AUD-321 | E2E: условные проверки с веткой-annotation делают тест зелёным | source-fixed-awaiting-proof | Unconditional 429/retry handling is repaired and Axios 2999/3000 boundary passes; the two E2E oracles/fixtures themselves are unexecuted. |
+| AUD-322 | Интеграционные тесты событий и chaos молча пропускаются | partial | Actual event CRUD 6 PostgreSQL PASS; active chaos login/chat cases still skip. Five own chaos skips are not success. |
+| AUD-327 | Upgrade через `148642dd1207` падает на legacy-БД с пользователями в верхнем регистре ролей | unfixed | Uppercase legacy enum values are added/used in one transaction; dedicated PostgreSQL case SKIP. Empty-chain success is not populated-upgrade proof. |
+| AUD-332 | Тесты «when_supported» создают symlink без проверки привилегий | unfixed | Windows when_supported handling does not probe symlink privilege. |
+| AUD-334 | Replay пропускается при rate limit или выключенном replay, пропуск не досылается | partial | Actual delayed generic rate-limit failures at 1051/5000ms and the bounded-recovery first cycle remain. Later cap/manual assertions are not reached. Invalid-token/network controls pass separately; new bounded recovery regression is not yet executed. |
+| AUD-346 | Nightly chaos-loadtest всегда зелёный: dry-run отключает все проверки | unfixed | Nightly dry-run does not execute actual recovery. |
+| AUD-347 | MinIO chaos-набор в nightly никогда не выполняется: заданы не те переменные | source-fixed-awaiting-proof | MinIO environment/selection fixed; actual non-skipped ToxiProxy/MinIO execution absent. |
+| AUD-348 | Апгрейд 148642dd1207 удаляет Spotify-токены из users без переноса | partial | Backfill precedes DROP, but an existing empty destination row is excluded and can lose a legacy token. Dedicated PostgreSQL proof SKIP. |
+| AUD-351 | 202603280001 падает на непустой notification_queue_jobs: integer record_id → UUID | unfixed | Integer record_id::text::uuid conversion remains. |
+| AUD-360 | RLS: строки с tenant_id IS NULL видны всем тенантам, а приложение tenant_id не пишет (`alembic/versions/202607230001_multi_tenant_rls.py:153-161`) | unfixed | NULL tenant rows remain visible; News model/INSERT omit tenant_id. Dedicated PostgreSQL proof SKIP. |
+| AUD-363 | WS /ws/chat не перепроверяет сессию после подключения (`app/api/websocket.py:201-256`) | accepted-scoped | Long-lived backend WebSocket activity rechecks the current session/MFA epoch instead of trusting only the connection-time authentication. Own ordinary cohort PASS: actual FastAPI WebSocket/manager and SQLite session/MFA changes, negative bypass controls; Redis/ticket boundaries doubled. Limit: Four owned PostgreSQL borrowed-session/RLS cases SKIP. No PostgreSQL tenant-isolation/pool or deployed revocation-latency claim. |
+| AUD-366 | /healthz без аутентификации отдаёт версии миграций и параметры пула (`app/api/health.py:159-166`) | accepted-scoped | Anonymous health responses no longer expose pool/revision detail; cache hits, misses and preseeded detailed cache retain the redacted response and failure status. Own ordinary cohort PASS: six actual anonymous HTTP/cache/brief/liveness cases, dependency probes doubled and 503 retained. Limit: Response-surface proof, not production dependency availability. |
+| AUD-369 | TLS к Temporal не включается без FP_TEMPORAL_API_KEY_FILE (`services/file-processor/cmd/file-processor/main.go:353-355, 357-390`) | accepted-scoped | Temporal TLS is configured independently of an API-key file; production/staging reject insecure transport while the explicit development path and API-key compatibility remain. Own file-processor Go job 124112218578: named TLSClientHello/development plaintext and environment controls PASS under -race. Real config→connectTemporal→SDK Dial→owned loopback peer inspects the first five bytes. Limit: TLS ClientHello proof, not completed certificate negotiation, Temporal server authorization or deployment. |
+| AUD-370 | Приватные вложения отдаются inline с типом из конфигурируемого allowlist (`app/services/private_attachments.py:157-169`) | accepted-scoped | Private attachments inline only fixed JPEG/PNG/WebP/GIF types; other content is attachment with nosniff and private/no-store headers, with caller authorization/storage checks preserved. Own ordinary cohort PASS:10 actual ASGI header cases plus chat/event producer-consumer controls. Limit: No universal browser sniffing or unsafe-format rendering claim. |
+| AUD-371 | Документированный флаг EVENT_FILE_SCANNER_ALLOW_ON_UNAVAILABLE не читается, тесты зелёные на моке (`app/services/file_scanner.py:231-246`) | accepted-scoped | Scanner unavailability fails closed through actual breaker/client/upload/chat consumer paths, without the retired permissive override. Own ordinary cohort PASS: real breaker and injected Clamd transport failure; bytes/upload/chat reject without saving. Limit: Transport failure seam, not a real deployed antivirus service. |
+| AUD-373 | Внутренние HTTP-вызовы backend без TLS несут токены и identity (`charts/university-ecosystem/templates/gateway-deployment.yaml:86-87`) | unfixed | Backend token-bearing HTTP hop remains unencrypted. |
+| AUD-375 | Replay очередей SW без CSRF-заголовка, без удаления при 403 и без взаимоисключения (`frontend/src/sw/offline.ts:279-291`) | partial | Legacy service-worker safe-hold controls pass, but CSRF/session replay 403 and cross-worker ownership remain unproved. |
+| AUD-378 | «SLSA Provenance Dry-Run» в `ci-success` проверяет только существование `ci.yml` (`ci.yml:864-898`) | unfixed | Provenance verifier checks version/ci.yml only, not an attestation. |
+| AUD-380 | `.semgrep.yml` заявляет запуск Semgrep в CI, но такого job нет (`.semgrep.yml:20-21`) | unfixed | Promised Semgrep job is absent. |
+| AUD-381 | DAST, Scorecard и sqlmap не блокируют и не публикуют находки (`scorecard.yml:77`) | partial | Some SARIF producers exist; Nuclei/Scorecard thresholds and SQLMap artifact threshold remain absent, ZAP producer unproved. |
+| AUD-382 | `mfa-key-overlap.sh`: пароль пишется в файл до `chmod 600` и не удаляется (`.github/deployment-smoke/mfa-key-overlap.sh:78-82`) | accepted-scoped | MFA smoke secret-bearing temporary files are private before first write and cleaned up across success, failure and signals without deleting foreign paths. Own ordinary cohort PASS with actual Bash and umask 000. Limit: curl/jq doubles; not live MFA verification. |
+| AUD-383 | `db-perf-gate` маскирует ошибки создания партиций через `\|\| echo WARN` (`.github/workflows/db-perf-gate.yml:74-107`) | accepted-scoped | The database-performance partition validation gate preserves SQL/client failure before later diagnostic commands instead of masking exit status. Own ordinary cohort PASS: actual extracted Bash, four-table positive control and psqldouble SQL/client failures. Limit: Shell exit propagation, not database performance or live partition health. |
+| AUD-384 | Slack-уведомление nightly не отправляется: `env` шага используется в его `if` (`.github/workflows/nightly-full-gate.yml:1066-1074.`) | unfixed | A step-level if refers to a value available only in that step's env. |
+| AUD-385 | Legacy-проверки `backend-tests-*-dummy` становятся skipped (зелёными) при падении тестов (`ci.yml:2974-2988`) | accepted-scoped | Both legacy backend compatibility jobs run under always() and accept only successful backend-tests; failure, cancelled, skipped, missing and unexpected outcomes fail closed. Own ordinary cohort PASS: YAML binding and actual extracted Bash positive/negative states. Limit: Gate semantics, not a manufactured GitHub scheduler failure. |
+| AUD-386 | `vuln-gate` для push в main пропускается при падении report-job (`skipped`) (`sbom.yml:267-274`) | accepted-scoped | The SBOM/security aggregate fails closed for eligible required jobs instead of accepting absent/failed results, preserving main/non-PR eligibility. Own ordinary cohort PASS: actual extracted Bash and source-bound eligibility controls. Limit: No privileged main workflow invocation claimed. |
+| AUD-389 | pgvector-фолбэк в startup не перехватывает ошибки БД и не работает внутри прерванной транзакции (`app/core/lifespan.py:158-196`) | accepted-scoped | Optional pgvector startup handles only the expected extension errors inside a SAVEPOINT; search-enabled or unrelated missing-type failures remain fatal and the outer transaction remains usable where recovery is permitted. Own PG 124112218268: four named real-PostgreSQL cases PASS, including recovery, enabled-search failure, missing-type refusal and installed-extension positive control. Limit: The CREATE EXTENSION target is deliberately nonexistent in failure cases; transaction/savepoint/error are real. Not complete deployed startup proof. |
+| AUD-390 | Ответы новостей помечены `Cache-Control: public`, хотя содержат личное `is_liked` (`app/api/news.py:66`) | accepted-scoped | User/tenant-personalized cached endpoints set private cache policy before lookup and keep identities separate across miss/hit/304/passthrough, preventing personalized News from public-cache treatment. Own ordinary cohort PASS: real Request/Response/MemoryCache with authenticated/idless/tenant cases; actual anonymous News HTTP and decorator/signature binding checked. Limit: Authenticated News producer-consumer binding plus direct decorator runtime, not an asserted authenticated News HTTP end-to-end receipt. |
+| AUD-391 | Монитор воркера по умолчанию слушает `0.0.0.0` без аутентификации (`app/core/config/notifications.py:71-72`) | accepted-scoped | Notifications monitoring defaults to 127.0.0.1; explicit container binding remains deliberate and its host publication is loopback-only. Own ordinary cohort PASS: actual Settings→run_worker default/override composition and exact Compose host-publish controls. Limit: Monitoring starter is mocked; no actual listening-socket/deployment claim. |
+| AUD-392 | Проверка утёкших паролей (HIBP) выключена по умолчанию и не требуется в production (`app/core/config/mixins/mfa_settings.py:42`) | unfixed | HIBP defaults off for registration/admin-create; reset/change checks are unconditional. Do not describe all password paths as disabled. |
+| AUD-393 | Миграции глотают ошибки DDL и мутируют модульное состояние (`alembic/versions/202602010004_drop_legacy_columns.py:117-140`) | partial | Module mutation repaired; broad DDL exception-and-continue behavior remains. |
+| AUD-399 | Блок test в vite.config.mts и src/test/setup.ts никогда не загружаются (`frontend/vite.config.mts:513-527`) | unfixed | Vite test setup is dead configuration differing from the actual Vitest setup. |
+| AUD-400 | Правило workbox.runtimeCaching для API мёртвое и с неверным путём (`frontend/vite.config.mts:251-272`) | partial | Actual custom service-worker routing 10 PASS; dead injectManifest Workbox runtimeCaching configuration still declares the wrong /api policy. |
+| AUD-401 | VAPID-ключ стенда создаётся с umask-правами и только потом получает 0600 (`scripts/live_stand.py:683-688`) | accepted-scoped | VAPID private-file creation uses exclusive/no-follow mode 0600 before the first write, with collision and serialization cleanup controls. Own ordinary cohort PASS: actual POSIX umask 0/fstat/empty-first-open/collision/close tests. Limit: Windows ACL behavior is only a seam, not native-Windows execution. |
+| AUD-407 | Реестр mutation-исключений принимает будущие created_on и срок без предела (`scripts/quality/validate_quality_contract.py:662-676`) | accepted-scoped | Mutation exclusions reject future dates, expired entries and lifetimes beyond 30 days instead of treating them as valid. Own ordinary cohort PASS: five direct date-boundary controls against the production loader. Limit: No new exclusion or expiry extension. |
+| AUD-414 | scrypt_derive принимает N=1, pbkdf2_derive принимает одну итерацию (`frontend/rust-crypto/src/lib.rs:27`) | unfixed | PBKDF2 low cost is an intentional RFC primitive vector; only actual app caller uses 100000/256. scrypt N=1 is accepted by primitive; actual caller uses 16384/r8/p1/dk32. No external weak-cost route found, primitive hardening remains open; do not silently change RFC vectors. |
+| AUD-416 | wasm-fuzzer завершается с кодом 0 без фаззинга и нигде не подключён (`frontend/scripts/wasm-fuzzer.mjs:14-26`) | unfixed | Fuzzer may exit0 without artifacts; fixed tiny seeds/unselected execution do not establish the intended property. |
+| AUD-417 | Chaos-оркестратор не откатывает фаулт при сбоях и утверждает нулевую потерю данных (`scripts/chaos/run_chaos_loadtest.py:206-258`) | accepted-scoped | Chaos orchestration always attempts UID-bound cleanup for known owned faults and reports cleanup failure; an unknown create outcome requires explicit manual recovery rather than a false cleanup/data-loss claim. Own ordinary cohort PASS:70 actual orchestrator/CLI/signal-callback controls. Limit: kubectl/API/HTTP/load use doubles; no live fault injection or data-loss acceptance. |
+| AUD-420 | Rescue bundle и archive-inventory из INDEX.md и MVP-плана на диске отсутствуют (`docs/audits/INDEX.md:111-121, 139-143`) | not-verified | Private owner rescue-bundle location/inventory is unverified. No private access or restoration is authorized by this review. |
+| AUD-422 | CONFIGURATION.md покрывает 95 из 290 полей Settings; часть переменных мимо Settings (`CONFIGURATION.md:89-90`) | partial | CONFIG remains explicitly nonexhaustive; SMTP_MFA_TOTAL_TIMEOUT_SECONDS, NOTIFICATIONS_SCHEDULER_POLL_SECONDS and NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS are undocumented. |
+| AUD-423 | Числа, пути и значения по умолчанию в README/SECURITY/DEPLOY/AGENTS расходятся с кодом (`README.md:228, README.ru.md:226`) | partial | Selected documentation repairs exist; complete original multi-document semantic consistency remains unproved. No new mismatch is invented. |
+| AUD-425 | STATUS.md утверждает согласованность 82 Markdown и даёт checkpoint, отстающий от HEAD (`docs/superpowers/plans/STATUS.md:131, 24`) | accepted-scoped | The current checkpoint replaces the false Markdown-link success claim with dated source-bound results and explicit unresolved gates; current authored relative links are checked. Own complete Python cohort includes test_current_authored_markdown_relative_links_resolve; no target skip/failure/xfail/quarantine. Current STATUS source reviewed. Limit: Cohort-inferred relative-link proof and truthful checkpoint only, not external links or correctness of every retained historical appendix. |
+| AUD-426 | MFA-тесты гонки заменяют DB-атомарность на asyncio.Lock (`tests/security/test_mfa_race.py:21-34`) | partial | Real PostgreSQL MFA proof exists, but two distinct challenges/direct verify do not prove same-challenge consumption/HTTP step-up concurrency; old Lock shim remains. |
+| AUD-428 | Около 140 Python, 17 Go и ~30 TS-блоков тестов без проверок результата (`Python`) | partial | Complete cross-language weak-assertion census remains incomplete. |
+| AUD-429 | E2E realtime-набор и визуальные тесты в CI не выполняются (`frontend/tests/e2e/chat-realtime.spec.ts:21, 24`) | partial | Nightly realtime environment remains unset and visual checks are manual-only. |
+| AUD-432 | E2E-live contract-тесты проверяют текст spec-файлов регулярками (`frontend/tests/e2e-live/auth-login-lockout.contract.test.mjs:15-60`) | partial | Owned Core actually ran 7 specs with 48 PASS/2 SKIP; broader lockout/full-SSR/registration suites remain unselected or checked only by source contracts. |
+| AUD-433 | Промежуточное состояние свежей цепочки: notifications без партиций, записи падают до `202607020001` (`alembic/versions/148642dd1207_fix_missing_tables.py:~818-838`) | unfixed | Historical notifications partition parent has no child; a fixture-created default child is not the migration fix. Dedicated PostgreSQL case SKIP. |
+| AUD-434 | `alembic check` не сравнивает server default; `push_subscriptions.topics` расходится с моделью (`alembic/env.py:170-180`) | unfixed | compare_server_default remains absent; topics Python default differs from SQL default. |
+| AUD-436 | live_stand: whoami ищется через PATH, в Git Bash получается GNU-утилита (уточнено) (`scripts/live_stand.py:414–433 _windows_user_sid`) | source-fixed-awaiting-proof | System32 resolver source repaired; exact Windows-only case SKIP. ACL-byte tests mock the resolver and do not prove native path choice. |
+| AUD-438 | /metrics ws-hub доступен без аутентификации, в отличие от backend и gateway (`services/ws-hub/main.go:485`) | unfixed | ws-hub metrics endpoint remains unauthenticated. |
+| AUD-447 | Токен сброса пароля хранится открытым текстом в dead_letter_jobs (`app/services/auth_service.py:166-176`) | partial | New/reached valid payload protection is proved, but malformed/hash-mismatch/duplicate-key payload is deliberately retained as bad_bytes; dormant rows and historical error text are not cleaned. Actual PG dedup-lock PASS is not plaintext-removal proof. |
+| AUD-449 | OAuth-код Spotify попадает в access-логи Caddy и gunicorn (`services/caddy/Caddyfile:195-201`) | source-fixed-awaiting-proof | Caddy filter source removes OAuth code, but Python regex emulation is not an actual emitted-log negative receipt. |
+| AUD-450 | RLS-политика тенанта снимается обычным GUC app.bypass_rls (латентно) (`alembic/versions/202607230001_multi_tenant_rls.py:156-163`) | unfixed | Ordinary GUC bypass remains a latent database-boundary concern; dedicated PostgreSQL proof SKIP. No remote HTTP exploit is claimed. |
+| AUD-454 | Гонка кэша участников чата: удалённый участник получает кадры до 1 часа (`app/api/ws/connection_manager.py:283-338`) | partial | Poisoned cache no longer authorizes the next broadcast: three ordinary controls pass via fresh DB lookup/fail-closed. Four borrowed-session PostgreSQL cases SKIP; in-flight/live boundary remains unproved. No surviving one-hour-cache bug is asserted. |
+| AUD-455 | Повторный запуск nightly Stryker падает на дублях evidence из кэша (`.github/workflows/nightly-full-gate.yml:213-219, 232-237, 333-338`) | unfixed | Attempt-free Stryker cache can republish old evidence under a new attempt; aggregate rejects duplicate evidence. This is a source counterfactual, not an observed rerun. |
+| AUD-456 | Тест LHCI-пути CSRF проходит по MODE=test и не проверяет LHCI (`frontend/src/api/__tests__/client.closure.test.ts:72-81`) | unfixed | LHCI branch is already before MODE=test, but its test is non-discriminating: deleting that branch still passes through MODE=test; production 25 controls do not set VITE_LHCI. |
+| AUD-474 | Проверка «отказ CSRF не оставляет cookie» всегда истинна: cookie удаляется до чтения | source-fixed-awaiting-proof | Cookie observation now precedes cleanup in source; only regex contract passes, not execution of the sequence and negative reorder. |
+| AUD-477 | Oversize-сообщение с последовательностью тихо отбрасывается после ACK | unfixed | NATS acknowledges enqueue before a later oversized-message drop without resynchronization. |
+| AUD-478 | Durable-настройки NATS не применяются, cache.invalidate переигрывает 7 дней | unfixed | Durable configuration is stored but not used; cache-invalidation subscription remains DeliverAll without durable identity. |
+| AUD-479 | dependency-review: allow-ghsas для двух HIGH GHSA fast-uri без владельца и срока (подтверждает AUD-379; сейчас инертно) | accepted-scoped | The global high-severity GHSA allowlist is removed; dependency-review preflight rejects its reintroduction even when inherited unchanged from the base. Own ordinary cohort PASS:11 allowlist/preflight controls bound before the dependency-review action. Limit: No new advisory waiver and no claim that every external vulnerability database is complete. |
+| AUD-480 | PR-гейты не покрывают medium/low npm, dev-зависимости и unfixed (Trivy FS) | partial | Current npm audit includes dev dependencies; medium/low omission and Trivy ignore-unfixed/node_modules gaps remain. |
+| AUD-482 | Caddy-образ: Go-зависимости разрешаются при сборке, lock в репозитории отсутствует, вне govulncheck и osv | partial | Caddy xcaddy full dependency graph remains unlocked and no complete final-binary scan is established; four overrides do not constitute the whole graph. |
+| AUD-483 | osv-scanner (Go) запускается только на main: 75 открытых алертов (12 ID); stdlib-находки основаны на директиве `go 1.26.4` | partial | Main-only OSV gap remains; PR govulncheck/toolchain changes are partial. Historical 75/12 alert counts are not current observations. |
+| AUD-484 | Устаревшие открытые алерты (code-scanning и Dependabot) не отражают текущие lock-файлы | not-verified | No permitted alert-specific GitHub endpoint is available to verify remote alert state; scanner success is not remote-alert closure. |
+| AUD-485 | govulncheck молча пропускает модули при сбое go list (`.github/workflows/reusable-security-audit.yml:517-528`) | accepted-scoped | Go vulnerability audit rejects empty module discovery and preserves package-discovery/scanner failures, continuing other modules without masking the failed outcome. A successfully discovered module with no packages remains valid. Own ordinary cohort PASS:12 actual extracted Bash controls with go/govulncheck stubs. Limit: Execution/exit policy, not live vulnerability-database completeness. |
+| AUD-487 | Проверка cross-repository в security-policy никогда не срабатывает (`.github/workflows/reusable-security-audit.yml:55, 63-66`) | accepted-scoped | Security branch-diff consumers validate exact same-repository head/base identity and syntax before fetching refs, rejecting foreign/missing/malformed scope. Own ordinary cohort PASS:56 actual Bash/git-stub controls across seven consumers. Limit: No privileged live fork run claimed. |
+| AUD-489 | Мёртвая копия подписи аудита и тест, который проверяет её, а не прод (`app/utils/audit.py:11-51`) | partial | Dead signature helper and mirrored test remain disconnected from all 354 reviewed app Python callers. Independent production tests do exist; do not claim total absence of production signature tests. |
+| AUD-490 | IDEMPOTENCY_HMAC_SECRET не требуется в production вопреки комментарию (`app/core/config/integrations.py:42-43, 68-138`) | unfixed | IDEMPOTENCY_HMAC_SECRET is optional/empty and falls back to unkeyed BLAKE2b; FILE support does not make it mandatory. |
+| AUD-495 | cached() отбрасывает первый аргумент-объект и даёт общий ключ (латентно) (`app/deps/cache.py:689-692`) | accepted-scoped | Cached free/static functions retain the first business argument in cache keys while instance/class methods omit only their bound receiver. Own ordinary cohort PASS with real MemoryCache for instance/class/free/static functions and controlled logging failures. Limit: Not universal collision resistance for arbitrary object stringification. |
+| AUD-501 | Тест паузы в скрытой вкладке не проверяет заморозку прогресса во время скрытия (`frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:84, 90-100`) | source-fixed-awaiting-proof | Hidden-progress assertions and negative handler control are source-fixed; seven regex mutants pass, not actual hidden clock/RAF/oracle execution. |
+| AUD-503 | Метки владения в инвентаре маршрутов расходятся с кодом (ICS, WebSocket /chat) (`scripts/check_route_dependency_inventory.py:187, 317-325`) | partial | All WEBSOCKET ownership still says worker_internal despite actual ASGI/chat/session consumers; ICS mapping was repaired. |
+| AUD-506 | Temporal: ключи JWKS по HTTP и noop-авторизация принимают подменённые токены (`services/temporal/config.yaml:100-107`) | unfixed | Temporal HTTP/JWKS and empty-authorizer concerns are separate from accepted file-processor SDK transport TLS. |
+| AUD-510 | Битая политика покрытия фронтенда молча заменяется эвристикой (`scripts/quality/validate_quality_contract.py:1275-1312`) | accepted-scoped | Malformed or missing coverage-source policy fails closed in both validator and normalizer instead of silently falling back to broad defaults. Own ordinary cohort PASS:102 malformed UTF-8/duplicate/missing/glob/tracked-source and producer-agreement controls. Limit: Synthetic metric/input controls; not merged-coverage success. All existing floors remain. |
+
+### Squawk: current inactive-plan feasibility, not an admission
+
+The read-only review covers all 142 migration full texts and their literal
+revision graph:142 parsed revisions, one root/head, no missing parent or
+duplicate revision, and 10 tuple-merge nodes. Existing metadata parser
+`be2a19f8a918cfc6ae082c5ba83748f7c3829ba6` accepts only string/None parents,
+so merge-aware parent-state rendering is a source-level blocker if those
+nodes are reached, not 10 observed runtime failures.
+
+All 11 source bindings in current policy
+`f7179f7b8f0ac3e84b3af4a9ed3a2e92b569e923` match.
+The compiled historical capture is 3d83fb27. The proposal blob
+`dfd859c3fd7c7a8e13cf0bda5e68b8135c2af3d8` still labels 36f70a0f as current
+at lines 295/352: a concrete documentation drift, recorded rather than silently
+used as authority. The policy remains **prepared-inactive**, expiring
+**2026-11-13T00:00:00Z**.
+
+Own Alembic job 124112216254 checked only historical revision 148642dd1207
+before raw 13+24 warnings failed; later upgrade/downgrade/single-head/drift
+steps skipped. Current 323 historical-policy controls and the 41 renderer-lifecycle +
+7 real-PostgreSQL controls prove existing bounded components, not
+an activated adapter or all-other-migration success.
+
+Remaining controls are graph-aware parent-state rendering (including merge
+nodes), strict receipts for all 141 other migrations, fresh owned scratch
+admission and expected post-state checks, source/run/file-ownership binding
+in an actual consumer adapter, and real-shell negative cases for changed
+warnings, expiry, nonhistorical migration errors and rejected admission.
+No suppression, production database action, arbitrary historical rewrite,
+new hash allowance or automatic activation is made by this review.
+
+### Corrections to earlier partial descriptions
+
+- AUD-316 covers every originally cited environment key, not only ClamAV:
+  dead SpiceDB inputs are removed, SPICEDB_ENDPOINT has its real consumer,
+  profiling's process-environment boundary and both Compose injections are
+  tested. No live profiling/SpiceDB service is claimed.
+- AUD-277's permissive TRUE policy combined with a restrictive policy is
+  not by itself the asserted bypass; AUD-360/450 remain separate.
+- AUD-454 no longer authorizes the next broadcast from poisoned cache;
+  the remaining borrowed-session/in-flight boundary is not repaired by
+  reasserting the obsolete hour-long-cache cause.
+- AUD-392 affects registration/admin-create defaults, not unconditional
+  reset/change checks. AUD-426 has real PostgreSQL evidence, but not the
+  missing same-challenge/HTTP consumption case.
+- AUD-480 currently includes npm dev dependencies. AUD-456's LHCI branch
+  is already ordered before MODE=test; its test is still nondiscriminating.
+- AUD-432's owned Core stand did run; only the broader unselected suites
+  remain unproved. AUD-489 has independent production tests despite the
+  dead mirrored utility test. Historical alert counts are not current
+  observations of AUD-483/484.
+
+### Follow-on execution gap, separate from acceptance
+
+The tests-only successor 923dc6f adds no implementation change. Its actual
+[Native/WASM job 124151502993](https://github.com/egorribun/university_ecosystem/actions/runs/41080879440/job/124151502993)
+reproduces the missing canonical Node selection: one blocking stage instead
+of two. The healthy control and all 19 negative variations pass; total 819 PASS /
+1 FAIL /6 SKIP. A separate pinned Prettier diagnostic changes only quote
+spelling of the same runtime string. The independently reviewed bounded recovery selects the five
+already existing AUD-151/AUD-308 suites and the full tokens:check command,
+without changing dependencies, lock graph, assertions or workflow gates.
+Their own successful execution is still required before any additional
+AUD-151/308 acceptance.
+
+The separately reviewed three-file test/metadata package has explicit owner
+publication permission: four baseline line moves/time only (all 319 identities
+unchanged), gateway test-hook shutdown ownership, and one bounded WebSocket
+recovery regression. Permission is not runtime PASS. AUD-334 production
+behavior is unchanged and remains open.
+
+## Retained historical reconciliation checkpoints
+
 ## Subsequent six-finding decision on bb2dea6c
 
 The original complete 136-path manifest and 126-row classification below remain

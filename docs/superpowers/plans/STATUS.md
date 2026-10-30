@@ -3,6 +3,185 @@
 Обновлено: 2026-10-30 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 
+## Complete remaining-finding reconciliation and own-source checkpoint — 2026-10-30
+
+The accepted lower bound is **435/512 (85.0%)**, with **77 IDs unaccepted**.
+All 112 previously unaccepted findings were reconciled against their original
+criteria, current source and actual test selection:35 scoped acceptances,
+10 source-fixed/proof-pending,30 partial,34 unfixed,2 unverified and 1 whose
+original asserted cause remains unproven. No missing execution was converted
+to success and no acceptance criterion was broadened to require deployment
+where the original finding concerns a local parser/configuration contract.
+
+The [35-finding decision](../../audits/AUDIT-2026-10.md#scoped-35-finding-reconciliation-on-source-1cf19a9b-2026-10-30)
+contains exact source/test bindings and named-vs-cohort evidence.
+The [complete 112-row matrix](../../audits/AUDIT-2026-10-30-reconciliation.md#complete-112-finding-reconciliation-on-source-1cf19a9b)
+preserves every residual, the original 136-path review manifest, and corrected
+descriptions of earlier partial findings.
+
+### Verified source and terminal results
+
+Verified source is
+[1cf19a9b2e8f8f4e0b4d6bc91a309225c92cda13](https://github.com/egorribun/university_ecosystem/commit/1cf19a9b2e8f8f4e0b4d6bc91a309225c92cda13).
+Actual PR checkout `c92fc01282e3f41dd9e2a60be6547fc087d95c28` has the same
+complete tree `3c42edbf6830f359059411c0310a07feef6613e8`.
+This is source equivalence, not a literal branch checkout or inherited green.
+The trusted-base security-policy job is separate.
+
+[Matrix 41069697810](https://github.com/egorribun/university_ecosystem/actions/runs/41069697810)
+is terminal FAILURE:91 jobs=70 SUCCESS/5 FAILURE/16 SKIPPED.
+All 23 workflows are terminal (20 success/1 failure/2 skipped), and all 141
+checks are 110 success/5 failure/25 skipped/1 neutral. No active or cancelled
+results remain on that source.
+
+- Backend: 22,531 PASS /428 SKIP /0 FAIL, all four shards terminal.
+  The 849+240 preflights are separate. Ordinary Python acceptance is explicitly
+  cohort-inferred from complete raw logs and deterministic selection, not
+  separately printed named nodes or a downloaded union manifest.
+- Owned PostgreSQL: 391 PASS/17 SKIP plus separate 13 and 5 PASS groups.
+  AUD-262 durable 5/lifecycle 27/schema 12, AUD-271 sequence 3 and AUD-389
+  recovery 4 have direct named own-source proof. AUD-045's13 pruner cases,
+  AUD-363/454's4 borrowed-session cases and AUD-260's category-regex case
+  remain SKIP; no such optional proof is claimed by their narrower decisions.
+- Contract: 3590 consumer +688 security +41 scoped PASS.
+  Renderer lifecycle 41 + 7 real-PostgreSQL PASS. Baseline verifier 319 identities,
+  418 exact reviewed matches,20 stale and 0 unmatched; policy remains 494.
+- Frontend: 10,492 PASS/3 FAIL/0 SKIP across 838 files. The only three failures
+  are existing AUD-334 delayed generic-rate-limit/bounded-recovery cases.
+  Their later cap/manual assertions are not reached.
+- Owned Core 41069697071/job 124110237575:338 preflight,1 browser-runtime,
+ 48 live PASS/2 SKIP across 7 actual specs; NATS outage/cleanup PASS.
+  Broader full-stack/SSR/story suites are not inferred to have executed.
+- Map 51 real-query/UI composition, production build and static bundle
+  verifier PASS. MapLibre 6.15 noninitial vendor-map 292,688 gzip bytes is within
+  the approved 286 KiB ceiling; every other lazy chunk retains 280 KiB.
+  This is the accepted budget tradeoff, not optimization or deployed WebGL proof.
+- CodeQL, pre-commit and the relevant scoped Go/Rust named tests PASS.
+  Coverage Policy 124146790592 and Trusted Codecov 124146791816 are SKIPPED.
+
+The five failed jobs are security/types 124110243436 (mypy PASS, four baseline
+metadata line changes), Alembic124112216254 (raw 13+24 Squawk warnings),
+frontend shard2 124113373285, frontend aggregate 124117030294 and derived
+CI Success 124146788916. Full CI, merged coverage and release are **not green**.
+
+### Published successor 160 and its own execution
+
+The published runtime/test source is
+[160e7f122b235f52210f23b354bb59dfb80e5bbc](https://github.com/egorribun/university_ecosystem/commit/160e7f122b235f52210f23b354bb59dfb80e5bbc).
+Actual PR checkout `50449681f1c2f48602bc7ee1df3fedc39445fc16` has the same
+complete tree `df9a960eace6ab7c9b7128eae00ce9c1efe15f1f`.
+Its two reviewed commits changed exactly five files: baseline metadata,
+gateway test-hook cleanup, the added heartbeat/recovery test, the Node script
+selection and the exact formatter quote. No production behavior, dependency
+graph, lockfile, workflow or policy inventory changed.
+The 35 acceptances and the frozen 112-row classifications above remain based
+on terminal **1cf**, not this successor. Later execution results below update
+the operational evidence without silently adding accepted IDs; the seven new
+AUD-151 helper receipts still need a separate original-criterion decision.
+
+Own [Matrix 41086029385](https://github.com/egorribun/university_ecosystem/actions/runs/41086029385)
+at **2026-10-30 16:24:50 UTC** has **82 jobs: 64 SUCCESS / 4 FAILURE /
+12 SKIPPED / 2 RUNNING**. Only backend shards 0/1 are running, their counts are
+not terminal, and shards 2/3 are not yet materialized. No cancellation is
+observed at that capture. **160 is not full-CI or merged-coverage GREEN.**
+
+Completed own-source receipts:
+- Security/types 124168643762: mypy and detect-secrets PASS; the four baseline
+  line moves now match with no metadata diff. All 319 identities are unchanged.
+- Gateway integration 124169467280: actual `go test -tags integration -race`
+  package PASS, with no reported race/failure/skip. Verbose Unit 124169468595
+  separately names InvalidHTTP3AddressDoesNotBlockShutdown and
+  LogsHTTP3ListenError PASS. This verifies the test-cleanup repair, not a new
+  production shutdown/deployment guarantee.
+- Contract 124168643130:3590 consumer +688 security +41 scoped PASS.
+  Owned PostgreSQL 124169468550:391 PASS/17 SKIP plus separate13 and5 PASS.
+  Renderer PostgreSQL 7 named PASS. Alembic lifecycle 41, diagnostic 132 and
+  tenant 46 PASS; unchanged raw 13+24 Squawk warnings still fail Alembic.
+- [Owned Core 41086028960](https://github.com/egorribun/university_ecosystem/actions/runs/41086028960)
+  completed SUCCESS 16:22:32:338 preflight +1 browser +48 live PASS/2 SKIP,
+  NATS outage and owned cleanup SUCCESS. Receipt artifact 12992763538.
+- All four frontend shards are terminal: **10,492 PASS /4 FAIL /0 SKIP**,
+  838 files. All four failures are AUD-334. The new healthy-heartbeat case
+  reaches all 11 current-checkpoint/pong/replay-unavailable cycles and then
+  observes **12 transports instead of at most11** at test line 332.
+  Later isConnected/timer assertions are not reached. The previous three
+  delayed-rejection/bounded-tail failures remain separate.
+- Lint/pinned Prettier, TypeScript/ESLint/i18n, Production and Bundle PASS.
+  Actual Map artifact limits remain 286/280 KiB; no optimization is claimed.
+  The frontend aggregate fails before merged/client/branch/diff coverage,
+  so none of those coverage reports is a new success.
+- [Native124169621163](https://github.com/egorribun/university_ecosystem/actions/runs/41086029385/job/124169621163):
+  canonical selection and the healthy control/all 19 mutation cases PASS.
+  The previously omitted AUD-151 helper suites now have2+5 named PASS;
+  UI-barrel 1 and token-validator 3 (including full-source assertion) PASS.
+  Micromatch has 12 PASS/1 FAIL: its obsolete Docker-stage fixture splits on
+  `FROM base AS builder`, while the actual builder inherits `deps`.
+  It fails before adapter-transfer assertions, not on engine semantics.
+  Total Node 850 =843 PASS/1 FAIL/6 SKIP. The final standalone
+  `&& npm run tokens:check` is correctly **NOT EXECUTED** after that failure.
+  The separate worker/export group is skipped after the Node failure.
+  AUD-151/308 are not added to the frozen 435 decision.
+
+This successor's bounded recovery changes only
+`frontend/scripts/boundary-micromatch-compat.test.mjs` plus these four
+documents. It models the actual dependency-stage inheritance and filtered
+source overlay, keeps every existing engine assertion, and adds finite
+source/absent-engine negatives. It does not restore a redundant production
+COPY or weaken the blocking Node command. The fresh-process negative uses
+the supported Node no-global-search-paths option so a HOME/NODE_PATH module
+cannot hide a missing local engine. This is a source/filesystem fixture
+repair, not an actual Docker-build receipt. Its own execution, final
+standalone token command and all required checks are still pending.
+
+### Actual previous-run cancellation, not an inferred failure
+
+The tests-only [923 run 41080879440](https://github.com/egorribun/university_ecosystem/actions/runs/41080879440)
+is terminal **CANCELLED** after publication of 160. Its final 91 jobs are
+64 SUCCESS /9 FAILURE /14 SKIPPED /4 CANCELLED; all 23 workflows are
+20 SUCCESS /2 SKIPPED /1 CANCELLED. All 141 checks are104 SUCCESS /
+9 FAILURE /23 SKIPPED /4 CANCELLED /1 NEUTRAL, with none active.
+
+Backend 0/1 actually completed **10,329 PASS /199 SKIP /0 FAIL**.
+Backend 2/3 jobs 124165103478/124167014301 were cancelled, as were
+Coverage 124167930595 and Trusted Codecov 124167932626. Backend compatibility
+wrappers and derived CI then failed; those are not new measured pytest
+failures. No full923 backend or coverage success is claimed.
+The completed 923 semantic RED (one instead of two Node stages), healthy
+control/all 19 negatives and pinned quote diagnostic are retained as the
+tests-first evidence for 160; production/backend Python bytes were identical
+to fully terminal 1cf. The next source likewise must not inherit GREEN.
+
+### Ordered remaining work and boundaries
+
+1. Finish the one-file Docker-inheritance fixture repair, then require every
+   newly selected Node suite and the final standalone token command to pass.
+   Preserve the measured selection/negative/formatter results as source-bound
+   receipts, not inherited GREEN for the successor.
+2. Keep AUD-334 open. Four failures are observed: the original delayed/capped
+   cases and the new healthy-heartbeat case reaching 12 rather than 11 transports.
+   Its later state/timer assertions and the original manual-restart tail remain
+   unreached. Review the bounded causal repair and all lifecycle/send paths;
+   do not create replay debt merely from a quiet healthy pending resume.
+3. Keep AUD-447 open: malformed/hash-mismatch/duplicate-key legacy rows retain
+   plaintext bad_bytes, and dormant/history cleanup is unproved. No automatic
+   production database cleanup is authorized by the current source review.
+4. Squawk finite 148 remains prepared-inactive and expires 2026-11-13T00:00:00Z.
+   All 11 current pins match, but graph-aware 10 merge nodes, strict receipts
+   for 141 other migrations, fresh owned admission/post-state and actual
+   fail-closed consumer controls are missing. The proposal's36f capture label
+   is stale relative to compiled 3d83; raw 37 warnings remain blocking.
+5. Continue the 77-row residual plan using exact evidence gaps, not blanket
+   infrastructure requirements or historical alert totals. Private rescue
+   bundle and remote alert state remain unverified, not assumed clean.
+
+Policy 494, cap 512, expiry 2027-01-10, baseline 319, Gitleaks 26, required 78 contexts,
+blocking CodeQL, hooks and all floors remain unchanged. No new dispositions,
+removal of the 20 stale identities, Squawk activation, force-push, merge or
+deployment is part of this checkpoint.
+
+## Retained historical checkpoints
+
+
 ## Source-bound bb2 checkpoint and scoped registry update — 2026-10-30 14:04 UTC
 
 The current accepted lower bound is **400/512 (78.1%)**;

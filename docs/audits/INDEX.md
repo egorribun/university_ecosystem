@@ -6,7 +6,9 @@ release claims require fresh evidence under the master plan.
 
 ## Current quality-closure roadmap
 
-- [Current accepted audit lower bound: 400/512 (78.1%)](AUDIT-2026-10.md#scoped-six-finding-acceptance-on-source-bb2dea6c-2026-10-30) — preserves all 394 prior IDs and adds only AUD-030/310/409/462/463/476 on source bb2dea6c: four original UI-pagination surfaces, 55 named hook/Stop controls and exact named ws-hub race-test receipts. 112 remain unaccepted; mock/loopback, static, actual merge-tree and full-CI/coverage limits are explicit. No deployment or unrelated gateway-fixture-race closure.
+- [Current accepted audit lower bound: 435/512 (85.0%)](AUDIT-2026-10.md#scoped-35-finding-reconciliation-on-source-1cf19a9b-2026-10-30) — all 112 previously unaccepted IDs reconciled: 35 criterion-specific additions, 77 retained open. Own 1cf terminal backend has 22,531 PASS / 428 SKIP / 0 FAIL, but full CI remains red. Named and cohort-inferred receipts, actual merge/source equivalence, explicit skipped PostgreSQL boundaries and no-deployment limits are recorded. [Complete 112-row matrix](AUDIT-2026-10-30-reconciliation.md#complete-112-finding-reconciliation-on-source-1cf19a9b).
+
+- [Historical accepted audit lower bound: 400/512 (78.1%)](AUDIT-2026-10.md#scoped-six-finding-acceptance-on-source-bb2dea6c-2026-10-30) — preserves all 394 prior IDs and adds only AUD-030/310/409/462/463/476 on source bb2dea6c: four original UI-pagination surfaces, 55 named hook/Stop controls and exact named ws-hub race-test receipts. 112 remain unaccepted; mock/loopback, static, actual merge-tree and full-CI/coverage limits are explicit. No deployment or unrelated gateway-fixture-race closure.
 
 - [Historical accepted audit lower bound: 394/512 (77.0%)](AUDIT-2026-10.md#scoped-aud-043-and-aud-427-acceptance-on-source-3d83fb27-2026-10-30) — preserves all 392 prior IDs and adds only AUD-043/427 on source 3d83fb27: explicit cohort-inferred warmup proof and named Redis/production WS producer-consumer receipts. 118 remain unaccepted; no full-CI, merged-coverage, live-infrastructure or release claim.
 
