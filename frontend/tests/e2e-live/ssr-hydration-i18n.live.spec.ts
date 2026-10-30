@@ -284,9 +284,9 @@ async function assertDashboardHydratesAndNavigatesInLanguage(
       expectedPageHeadSnapshot(language, "dashboard")
     )
     expect(serverMarkup?.includes('data-ssr-auth="authenticated:student"')).toBe(true)
-    expect(
-      matchesMainSkipLinkLocale(serverMarkup ?? null, MAIN_SKIP_LINK_CATALOGS[language])
-    ).toBe(true)
+    expect(matchesMainSkipLinkLocale(serverMarkup ?? null, MAIN_SKIP_LINK_CATALOGS[language])).toBe(
+      true
+    )
 
     await page.waitForFunction(() => window.__APP_HYDRATED === true)
     await expect(page.locator("html")).toHaveAttribute("lang", language)

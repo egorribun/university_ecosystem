@@ -96,7 +96,13 @@ type StoryAdminItemProps = {
   onRefresh: () => void
 }
 
-function StoryAdminItem({ story, nowTick, localeCode, formatDate, onRefresh }: StoryAdminItemProps) {
+function StoryAdminItem({
+  story,
+  nowTick,
+  localeCode,
+  formatDate,
+  onRefresh,
+}: StoryAdminItemProps) {
   const { t } = useTranslation(["stories", "common"])
   const [publishedAt, setPublishedAt] = useState(() => formatInputDate(story.published_at))
   const [expiresAt, setExpiresAt] = useState(() => formatInputDate(story.expires_at))

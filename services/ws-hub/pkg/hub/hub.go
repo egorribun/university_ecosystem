@@ -1981,8 +1981,8 @@ func (h *Hub) failClosedRoomMembershipDrainAt(
 // A panic is an unconfirmed operation, not proof that the NATS event is poison.
 func runAuthorizationCallback(callback func()) (completed bool) {
 	defer func() {
-		if !completed {
-			_ = recover()
+		if recover() != nil {
+			completed = false
 		}
 	}()
 	callback()

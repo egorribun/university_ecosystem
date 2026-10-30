@@ -118,7 +118,10 @@ describe("AUD-375: worker lifecycle keeps legacy queues on hold", () => {
       const worker = await startWorker()
       await Promise.all([
         sendMessage(worker.listeners),
-        sendMessage(worker.listeners, SERVICE_WORKER_MESSAGE_TYPES.PROCESS_NOTIFICATION_CLICK_QUEUE),
+        sendMessage(
+          worker.listeners,
+          SERVICE_WORKER_MESSAGE_TYPES.PROCESS_NOTIFICATION_CLICK_QUEUE
+        ),
         sendSync(worker.listeners, "navigation-sync"),
         sendSync(worker.listeners, "news-interaction:sync"),
         sendSync(worker.listeners, "sync-offline-mutations"),
