@@ -10,7 +10,7 @@ import pytest
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import text
 from sqlalchemy.exc import InvalidRequestError
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.models as models
 from app.api.deps.etag import generate_cache_key
@@ -240,12 +240,14 @@ async def test_startup_skips_system_event_warmup_for_auth_only_endpoint(
         patch("app.repositories.unit_of_work.uow_from_session"),
     ):
         settings.cache_warmup_enabled = True
-        session_factory.return_value.__aenter__.return_value = MagicMock()
+        session = AsyncMock(spec=AsyncSession)
+        session_factory.return_value.__aenter__.return_value = session
         event_service.return_value.get_events = AsyncMock(
             return_value={"items": [], "has_more": False}
         )
         await cache_warmup.warm_cache()
 
+    session.rollback.assert_awaited_once()
     event_service.assert_not_called()
 
 
