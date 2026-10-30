@@ -302,3 +302,123 @@ describe("AUD030 chat-list cursor reachability", () => {
     expect(client.getQueryData<ChatsListResponse>(["chats"])?.next_cursor).toBe("chat-page-2")
   })
 })
+
+describe("AUD030 loaded chat-list lifetime", () => {
+  it("refetches the loaded extent without dropping the tail during read invalidation", async () => {
+    const refreshedFirst: ChatsListResponse = {
+      ...firstPage,
+      items: firstPage.items.map((chat, index) =>
+        index === 0 ? { ...chat, name: "Updated conversation" } : chat
+      ),
+    }
+    const cursors: Array<string | undefined> = []
+    vi.spyOn(chatApi, "getChats").mockImplementation((cursor) => {
+      cursors.push(cursor)
+      if (cursor === undefined) return Promise.resolve(refreshedFirst)
+      if (cursor === "chat-page-2") return Promise.resolve(lastPage)
+      return Promise.reject(new Error("Unexpected chat cursor"))
+    })
+    const { client, Wrapper } = environment()
+    // This is a valid loaded aggregate, not evidence that current UI can create it.
+    client.setQueryData<ChatsListResponse>(["chats"], {
+      items: chats,
+      has_more: false,
+      next_cursor: null,
+    })
+    const HookWrapper = ({ children }: { children: ReactNode }) => (
+      <Wrapper>
+        <MessengerProvider>{children}</MessengerProvider>
+      </Wrapper>
+    )
+    const { result, rerender } = renderHook(() => useMessengerController(), {
+      wrapper: HookWrapper,
+    })
+    await waitFor(() => expect(result.current.contacts).toHaveLength(21))
+    expect(cursors).toEqual([])
+
+    await act(async () => {
+      await result.current.refetchChats()
+    })
+    await waitFor(() => expect(result.current.contacts).toHaveLength(21))
+    expect(result.current.contacts[0]?.name).toBe("Updated conversation")
+    expect(cursors).toEqual([undefined, "chat-page-2"])
+    expect(client.getQueryData<ChatsListResponse>(["chats"])).toMatchObject({
+      has_more: false,
+      next_cursor: null,
+    })
+
+    // Selecting the tail chat invokes the real markRead mutation, which invalidates
+    // the shared list observed by both the controller and MessengerProvider.
+    state.chatId = "chat-21"
+    rerender()
+    await waitFor(() => expect(chatApi.markRead).toHaveBeenCalledWith("chat-21"))
+    await waitFor(() =>
+      expect(cursors).toEqual([undefined, "chat-page-2", undefined, "chat-page-2"])
+    )
+    await waitFor(() => expect(client.isFetching()).toBe(0))
+    expect(result.current.activeChat?.id).toBe("chat-21")
+    expect(result.current.contacts.map(({ id }) => id)).toEqual(chats.map(({ id }) => id))
+  })
+
+  it("retires the old account's pending page before its late response", async () => {
+    const previousUser = state.user
+    const nextUser = { ...previousUser, id: "next-user", email: "next@example.test" }
+    const nextAccountChat: Chat = {
+      ...chats[0]!,
+      id: "next-account-chat",
+      name: "Next account conversation",
+      created_by: nextUser.id,
+      participants: [nextUser, peer],
+    }
+    const nextAccountPage: ChatsListResponse = {
+      items: [nextAccountChat],
+      has_more: false,
+      next_cursor: null,
+    }
+    let resolveNext!: (page: ChatsListResponse) => void
+    const pendingPage = new Promise<ChatsListResponse>((resolve) => {
+      resolveNext = resolve
+    })
+    const oldRequest: { signal?: AbortSignal } = {}
+    vi.spyOn(chatApi, "getChats").mockImplementation((cursor, _limit, signal) => {
+      if (state.user.id === nextUser.id) return Promise.resolve(nextAccountPage)
+      if (cursor === undefined) return Promise.resolve(firstPage)
+      if (cursor === "chat-page-2") {
+        oldRequest.signal = signal
+        // Deliberately ignore cancellation: ownership must reject a late response.
+        return pendingPage
+      }
+      return Promise.reject(new Error("Unexpected chat cursor"))
+    })
+    const { client, Wrapper } = environment()
+    const view = render(<MessengerFeature />, { wrapper: Wrapper })
+    try {
+      await screen.findByRole("button", { name: "Conversation 20" })
+      fireEvent.click(screen.getByRole("button", { name: moreLabel }))
+      await waitFor(() => expect(oldRequest.signal).toBeInstanceOf(AbortSignal))
+
+      await act(async () => {
+        await client.cancelQueries()
+        client.clear()
+        state.user = nextUser
+        client.setQueryData(["chats"], nextAccountPage)
+        view.rerender(<MessengerFeature />)
+      })
+      await screen.findByRole("button", { name: "Next account conversation" })
+      expect(oldRequest.signal?.aborted).toBe(true)
+
+      await act(async () => resolveNext(lastPage))
+      expect(visibleContacts()).toHaveLength(1)
+      expect(screen.queryByRole("button", { name: "Conversation 21" })).toBeNull()
+      expect(client.getQueryData<ChatsListResponse>(["chats"])).toEqual(nextAccountPage)
+    } finally {
+      try {
+        view.unmount()
+        await client.cancelQueries()
+      } finally {
+        state.user = previousUser
+        resolveNext(lastPage)
+      }
+    }
+  })
+})
