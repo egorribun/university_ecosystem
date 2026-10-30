@@ -135,8 +135,10 @@ def test_bundle_analysis_tests_and_analyzes_only_after_install_and_artifact_down
     upload_index, _ = _step(analysis, "Upload bundle report")
 
     assert download["with"] == {
-        "name": "frontend-dist",
+        "artifact-ids": "${{ needs.build.outputs.bundle-artifact-id }}",
         "path": "${{ inputs.working-directory }}/dist",
+        "merge-multiple": True,
+        "digest-mismatch": "error",
     }
     assert re.fullmatch(r"actions/download-artifact@[0-9a-f]{40}", download["uses"])
     assert "if" not in analysis
