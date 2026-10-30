@@ -15,7 +15,7 @@ import unicodedata
 from collections import defaultdict
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from pathlib import Path, PurePosixPath
 from typing import NoReturn, cast
@@ -3153,6 +3153,33 @@ def _parse_generated_at(value: str) -> datetime:
         ) from error
 
 
+def _utc_today() -> date:
+    """Return the real UTC calendar date that bounds time-boxed exceptions."""
+    return datetime.now(UTC).date()
+
+
+def _legacy_baseline_expiry_errors(contract: dict[str, object]) -> list[str]:
+    """Reject the legacy migration exemption once its real UTC expiry has passed.
+
+    ``generated_at`` is caller-supplied, so the contract's general date checks
+    cannot be the only guard for the finite migration exemption.  The exemption
+    is withdrawn on the real date, regardless of the timestamp a caller passes.
+    """
+    tier0 = contract.get("tier0")
+    policy = (
+        tier0.get("legacy_migration_baselines") if isinstance(tier0, dict) else None
+    )
+    expires_on = policy.get("expires_on") if isinstance(policy, dict) else None
+    if not isinstance(expires_on, str):
+        return []
+    if _utc_today() >= date.fromisoformat(expires_on):
+        return [
+            f"tier0.legacy_migration_baselines expired on {expires_on}; "
+            "the migration exemption is no longer valid"
+        ]
+    return []
+
+
 def _load_contract(path: Path, generated_at: datetime) -> _ContractConfiguration:
     try:
         text = path.read_text(encoding="utf-8")
@@ -3172,6 +3199,8 @@ def _load_contract(path: Path, generated_at: datetime) -> _ContractConfiguration
         raise _InputError("malformed contract: root must be an object")
 
     contract_errors = validate_contract(contract, today=generated_at.date())
+    if not contract_errors:
+        contract_errors = _legacy_baseline_expiry_errors(contract)
     if contract_errors:
         raise _InputError(f"malformed contract: {'; '.join(contract_errors)}")
 
@@ -4225,9 +4254,148 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
     )
 
 
+COVERAGE_GAP_DIAGNOSTIC_PREFIX = "QUALITY_COVERAGE_GAPS "
+COVERAGE_GAP_CLASSIFICATION = "parsed-counters-not-provenance-validated"
+COVERAGE_GAP_FILES_PER_COMPONENT = 32
+# One diagnostic line, including its trailing newline, stays under 16 KiB.
+COVERAGE_GAP_LINE_LIMIT_BYTES = 16384
+
+
+def _coverage_gap_metrics(
+    metrics: Mapping[str, object],
+    names: Collection[str] = METRICS,
+) -> dict[str, dict[str, object]]:
+    """Return the named measured metrics that leave a counted unit uncovered."""
+    gaps: dict[str, dict[str, object]] = {}
+    for metric_name in names:
+        metric = cast(dict[str, object], metrics[metric_name])
+        status = metric.get("status")
+        covered = metric.get("covered")
+        total = metric.get("total")
+        if (
+            status not in {"native", "derived"}
+            or isinstance(covered, bool)
+            or not isinstance(covered, int)
+            or isinstance(total, bool)
+            or not isinstance(total, int)
+            or covered >= total
+        ):
+            continue
+        gaps[metric_name] = {
+            "status": status,
+            "covered": covered,
+            "total": total,
+            "missing": total - covered,
+        }
+    return gaps
+
+
+def _coverage_gap_files(
+    file_metrics: Mapping[str, Mapping[str, object]],
+    names: Collection[str] = METRICS,
+) -> list[dict[str, object]]:
+    files: list[dict[str, object]] = []
+    for path in sorted(file_metrics):
+        gaps = _coverage_gap_metrics(file_metrics[path], names)
+        if gaps:
+            files.append({"path": path, "metrics": gaps})
+    return files
+
+
+def _coverage_gap_sections(
+    *,
+    components: Mapping[str, object],
+    reports_by_component: Mapping[str, Sequence[_ParsedReport]],
+    tier0: Mapping[str, object],
+    legacy_records: Mapping[str, object],
+) -> list[tuple[str, list[dict[str, object]]]]:
+    """Collect uncovered files for failed components and unexempt Tier 0 files.
+
+    Unchanged legacy migration baselines are exempt only from their listed
+    residual misses; every other uncovered file remains visible.
+    """
+    sections: list[tuple[str, list[dict[str, object]]]] = []
+    for component in COVERAGE_COMPONENTS:
+        entry = cast(dict[str, object], components[component])
+        if entry["status"] != "failed":
+            continue
+        # Only metrics short at component level explain the failure; derived
+        # file counters that the component contract does not enforce are omitted.
+        failing = frozenset(
+            _coverage_gap_metrics(cast(dict[str, object], entry["metrics"]))
+        )
+        exempt = legacy_records if component == "python" else {}
+        file_metrics: dict[str, dict[str, dict[str, object]]] = {}
+        for report in reports_by_component.get(component, ()):
+            file_metrics.update(report.file_metrics)
+        files = _coverage_gap_files(
+            {
+                path: metrics
+                for path, metrics in file_metrics.items()
+                if path not in exempt
+            },
+            failing,
+        )
+        if files:
+            sections.append((component, files))
+
+    tier0_metrics: dict[str, dict[str, dict[str, object]]] = {}
+    for entry in cast(list[dict[str, object]], tier0["files"]):
+        path = cast(str, entry["path"])
+        if entry["component"] == "python" and path in legacy_records:
+            continue
+        tier0_metrics[path] = cast(dict[str, dict[str, object]], entry["metrics"])
+    tier0_failing = frozenset(
+        _coverage_gap_metrics(cast(dict[str, object], tier0["coverage"]))
+    )
+    tier0_files = _coverage_gap_files(tier0_metrics, tier0_failing)
+    if tier0_files:
+        sections.append(("tier0", tier0_files))
+    return sections
+
+
+def _coverage_gap_diagnostic_lines(
+    sections: Sequence[tuple[str, list[dict[str, object]]]],
+) -> list[str]:
+    """Render source-free gap counters as one bounded, deterministic JSON line.
+
+    Each component lists at most ``COVERAGE_GAP_FILES_PER_COMPONENT`` files in
+    path order and reports the omitted count.  Trailing files are dropped
+    further if the rendered line would exceed the byte limit.  The diagnostic
+    never changes validation errors, the manifest or the process status.
+    """
+    if not sections:
+        return []
+    keep = [min(len(files), COVERAGE_GAP_FILES_PER_COMPONENT) for _, files in sections]
+
+    def render() -> str:
+        payload = {
+            "classification": COVERAGE_GAP_CLASSIFICATION,
+            "components": [
+                {
+                    "component": component,
+                    "files": files[:count],
+                    "omitted_files": len(files) - count,
+                }
+                for (component, files), count in zip(sections, keep, strict=True)
+            ],
+        }
+        return COVERAGE_GAP_DIAGNOSTIC_PREFIX + json.dumps(
+            payload, sort_keys=True, separators=(",", ":")
+        )
+
+    line = render()
+    # ``json.dumps`` escapes to ASCII by default, so characters equal bytes.
+    while len(line) + 1 > COVERAGE_GAP_LINE_LIMIT_BYTES and any(keep):
+        index = max(position for position, count in enumerate(keep) if count)
+        keep[index] -= 1
+        line = render()
+    return [line]
+
+
 def _build_manifest(
     invocation: _PreparedInvocation,
-) -> tuple[dict[str, object], list[str], list[str], Path]:
+) -> tuple[dict[str, object], list[str], list[str], Path, list[str]]:
     arguments = invocation.arguments
     output_path = invocation.output_path
     report_inputs = invocation.report_inputs
@@ -4464,6 +4632,20 @@ def _build_manifest(
     if isinstance(tier0_errors, list):
         validation_errors.extend(str(error) for error in tier0_errors)
         validation_errors = sorted(set(validation_errors))
+    gap_lines: list[str] = []
+    if (
+        validation_errors
+        and not structural_errors
+        and not any(evidence_errors_by_component.values())
+    ):
+        gap_lines = _coverage_gap_diagnostic_lines(
+            _coverage_gap_sections(
+                components=components,
+                reports_by_component=reports_by_component,
+                tier0=tier0,
+                legacy_records=legacy_migration_records,
+            )
+        )
     manifest: dict[str, object] = {
         "schema_version": 3,
         # ``commit_sha`` is retained as a compatibility alias for consumers
@@ -4518,7 +4700,7 @@ def _build_manifest(
                 "valid": False,
                 "errors": validation_errors,
             }
-    return manifest, validation_errors, structural_errors, output_path
+    return manifest, validation_errors, structural_errors, output_path, gap_lines
 
 
 def _write_manifest(output_path: Path, manifest: dict[str, object]) -> None:
@@ -4580,9 +4762,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     try:
-        manifest, validation_errors, structural_errors, output_path = _build_manifest(
-            invocation
-        )
+        (
+            manifest,
+            validation_errors,
+            structural_errors,
+            output_path,
+            gap_lines,
+        ) = _build_manifest(invocation)
         _write_manifest(output_path, manifest)
     except _InputError as error:
         _print_error(str(error))
@@ -4591,6 +4777,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if validation_errors:
         for validation_error in validation_errors:
             _print_error(validation_error)
+        for gap_line in gap_lines:
+            print(gap_line, file=sys.stderr)
         return 2 if structural_errors else 1
 
     print("Quality coverage artifacts are valid.")
