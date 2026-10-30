@@ -176,4 +176,109 @@ describe("AUD-334 rejected resume recovery", () => {
     expect(sentJoins(socket)).toHaveLength(0)
     expect(socket.close).not.toHaveBeenCalled()
   })
+
+  it.each([1_050, 1_051, 5_000])("recovers a current resume after %i ms", async (delay) => {
+    const session = await connect()
+    try {
+      writeReplayCheckpoint(USER, ROOM, 12, "saved-cursor", ROOM)
+      act(() => session.result.current.sendJoin(ROOM))
+      expect(sentJoins(session.socket)).toStrictEqual([
+        { type: "join", room: ROOM, resume_token: "saved-cursor" },
+      ])
+      // No room, account, transport or checkpoint change makes this request obsolete.
+      await act(() => vi.advanceTimersByTimeAsync(delay))
+      expect(session.socket.close).not.toHaveBeenCalled()
+      act(() => session.socket.receive({ type: "rate_limit_exceeded" }))
+      await act(() => vi.advanceTimersByTimeAsync(1_050))
+
+      expect(AuditSocket.instances.length).toBeLessThanOrEqual(2)
+      const currentSocket = AuditSocket.instances.at(-1)!
+      if (currentSocket !== session.socket) {
+        act(() => currentSocket.onopen?.())
+      }
+      expect(AuditSocket.instances.flatMap(sentJoins)).toStrictEqual([
+        { type: "join", room: ROOM, resume_token: "saved-cursor" },
+        { type: "join", room: ROOM, resume_token: "saved-cursor" },
+      ])
+    } finally {
+      session.unmount()
+    }
+  })
+
+  it("bounds repeated late rejections and preserves explicit manual recovery", async () => {
+    const session = await connect()
+    try {
+      writeReplayCheckpoint(USER, ROOM, 12, "saved-cursor", ROOM)
+      act(() => session.result.current.sendJoin(ROOM))
+
+      for (let reconnects = 0; reconnects <= 10; reconnects += 1) {
+        const socket = AuditSocket.instances.at(-1)!
+        expect(sentJoins(socket)).toStrictEqual([
+          { type: "join", room: ROOM, resume_token: "saved-cursor" },
+        ])
+        await act(() => vi.advanceTimersByTimeAsync(1_051))
+        act(() => {
+          for (let duplicate = 0; duplicate < 3; duplicate += 1) {
+            socket.receive({ type: "rate_limit_exceeded" })
+          }
+        })
+        await act(() => vi.advanceTimersByTimeAsync(1_050))
+        expect(AuditSocket.instances).toHaveLength(reconnects + 1)
+        expect(sentJoins(socket)).toStrictEqual([
+          { type: "join", room: ROOM, resume_token: "saved-cursor" },
+          { type: "join", room: ROOM, resume_token: "saved-cursor" },
+        ])
+
+        await act(() => vi.advanceTimersByTimeAsync(1_051))
+        act(() => {
+          for (let duplicate = 0; duplicate < 3; duplicate += 1) {
+            socket.receive({ type: "rate_limit_exceeded" })
+          }
+        })
+        expect(socket.close).toHaveBeenCalledOnce()
+        expect(socket.close).toHaveBeenCalledWith(4002, "replay_unavailable")
+        expect(session.result.current.isConnected).toBe(false)
+        if (reconnects < 10) {
+          await act(() => vi.advanceTimersByTimeAsync(60_000))
+          expect(AuditSocket.instances).toHaveLength(reconnects + 2)
+          act(() => AuditSocket.instances.at(-1)!.onopen?.())
+        }
+      }
+
+      await act(() => vi.advanceTimersByTimeAsync(60_000))
+      expect(AuditSocket.instances).toHaveLength(11)
+      expect(mocks.logError).toHaveBeenCalledWith(
+        "[ws] Max reconnect attempts reached; giving up. Manual reconnect required.",
+        { attempts: 10, lastCode: 4002 }
+      )
+      expect(vi.getTimerCount()).toBe(0)
+
+      act(() => session.result.current.reconnect())
+      await act(() => vi.advanceTimersByTimeAsync(0))
+      expect(AuditSocket.instances).toHaveLength(12)
+      const recoveredSocket = AuditSocket.instances.at(-1)!
+      act(() => recoveredSocket.onopen?.())
+      expect(sentJoins(recoveredSocket)).toStrictEqual([
+        { type: "join", room: ROOM, resume_token: "saved-cursor" },
+      ])
+      expect(session.result.current.isConnected).toBe(true)
+      act(() =>
+        recoveredSocket.receive({
+          type: "replay_checkpoint",
+          room: ROOM,
+          seq: 13,
+          resume_token: "recovered-cursor",
+          replayed: true,
+          payload: { type: "replay_checkpoint", chat_id: ROOM },
+        })
+      )
+      act(() => session.result.current.sendJoin(ROOM))
+      expect(sentJoins(recoveredSocket)).toStrictEqual([
+        { type: "join", room: ROOM, resume_token: "saved-cursor" },
+        { type: "join", room: ROOM, resume_token: "recovered-cursor" },
+      ])
+    } finally {
+      session.unmount()
+    }
+  })
 })
