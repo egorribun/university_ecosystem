@@ -105,7 +105,7 @@ const ErrorSchema = v.object({
 
 // Wave 204 SW3 — ws-hub emits this directly to the client socket when a client
 // exceeds its outgoing message rate (client.go:178). Acknowledged in the union
-// so the hook stops logging it as an invalid frame; no handler action today.
+// so the hook accepts it and can correlate a recent resume join for bounded retry.
 const RateLimitExceededSchema = v.object({ type: v.literal("rate_limit_exceeded") })
 
 const NewMessageSchema = v.object({

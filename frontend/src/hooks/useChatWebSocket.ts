@@ -412,6 +412,12 @@ export function useChatWebSocket({
   const accountEpochRef = useRef(0)
   const lastConnectedAccountEpochRef = useRef<number | null>(null)
   const activeRoomRef = useRef<string | null>(null)
+  const lastResumeJoinRef = useRef<{
+    socket: WebSocket
+    room: string
+    resumeToken: string
+    sentAt: number
+  } | null>(null)
   // At-least-once delivery can replay a message after it has left the smaller
   // render cache. Keep transport deduplication independent and bounded for the
   // complete authenticated hook session, including reconnects.
@@ -449,7 +455,23 @@ export function useChatWebSocket({
 
   useEffect(() => retainReplayCheckpoints(currentUserId), [currentUserId])
 
+  const sendRoomJoin = useConstant(
+    () => (ws: WebSocket, frame: ReturnType<typeof joinFrame>) => {
+      lastResumeJoinRef.current = null
+      ws.send(JSON.stringify(frame))
+      if (typeof frame.resume_token === "string") {
+        lastResumeJoinRef.current = {
+          socket: ws,
+          room: frame.room,
+          resumeToken: frame.resume_token,
+          sentAt: Date.now(),
+        }
+      }
+    }
+  )
+
   const cleanup = useConstant(() => () => {
+    lastResumeJoinRef.current = null
     clearTimeout(reconnectTimeoutRef.current)
     heartbeatCleanupRef.current?.()
     heartbeatCleanupRef.current = null
@@ -611,6 +633,7 @@ export function useChatWebSocket({
         let heartbeatDisposed = false
         let replayJoinRetryTimeout: ReturnType<typeof setTimeout> | undefined
         let replayJoinRetryAttempted = false
+        let replayJoinRetryRoom: string | undefined
 
         const clearHeartbeatTimers = () => {
           clearInterval(heartbeatInterval)
@@ -629,18 +652,28 @@ export function useChatWebSocket({
         }
 
         const scheduleReplayJoinRetry = (room: string) => {
-          if (
-            replayJoinRetryAttempted ||
-            replayJoinRetryTimeout !== undefined ||
-            !currentUserId ||
-            activeRoomRef.current !== room
-          ) {
-            return
-          }
+          if (!currentUserId || activeRoomRef.current !== room) return
           const checkpoint = peekReplayCheckpoint(currentUserId, room)
           if (checkpoint === undefined) return
 
-          replayJoinRetryAttempted = true
+          if (replayJoinRetryRoom !== room) {
+            clearTimeout(replayJoinRetryTimeout)
+            replayJoinRetryTimeout = undefined
+            replayJoinRetryRoom = room
+            replayJoinRetryAttempted = false
+          }
+          // Coalesce repeated rejection frames while the one retry is pending.
+          if (replayJoinRetryTimeout !== undefined) return
+          if (replayJoinRetryAttempted) {
+            finishOwnedTransport(
+              ws,
+              REPLAY_UNAVAILABLE_CLOSE_CODE,
+              true,
+              REPLAY_UNAVAILABLE_CLOSE_REASON
+            )
+            return
+          }
+
           replayJoinRetryTimeout = setTimeout(() => {
             replayJoinRetryTimeout = undefined
             // ownsTransport binds the retry to this socket's authenticated account epoch.
@@ -659,14 +692,13 @@ export function useChatWebSocket({
             ) {
               return
             }
+            replayJoinRetryAttempted = true
             try {
-              ws.send(
-                JSON.stringify({
-                  type: "join",
-                  room,
-                  resume_token: checkpoint.resumeToken,
-                })
-              )
+              sendRoomJoin(ws, {
+                type: "join",
+                room,
+                resume_token: checkpoint.resumeToken,
+              })
             } catch {
               /* WS closed between the ownership check and send. */
             }
@@ -741,7 +773,7 @@ export function useChatWebSocket({
           // nothing after a reconnect until the next chat-select.
           if (activeRoomRef.current) {
             try {
-              ws.send(JSON.stringify(joinFrame(currentUserId, activeRoomRef.current)))
+              sendRoomJoin(ws, joinFrame(currentUserId, activeRoomRef.current))
             } catch {
               /* WS closed between open and send — the next connect re-joins */
             }
@@ -1114,6 +1146,21 @@ export function useChatWebSocket({
                 break
               }
 
+              case "rate_limit_exceeded": {
+                const recent = lastResumeJoinRef.current
+                if (
+                  recent?.socket === ws &&
+                  recent.room === activeRoomRef.current &&
+                  Date.now() >= recent.sentAt &&
+                  Date.now() - recent.sentAt <= REPLAY_JOIN_RETRY_DELAY_MS &&
+                  peekReplayCheckpoint(currentUserId, recent.room)?.resumeToken ===
+                    recent.resumeToken
+                ) {
+                  scheduleReplayJoinRetry(recent.room)
+                }
+                break
+              }
+
               case "error":
                 if (validated.code === "replay_join_rate_limited" && validated.room !== undefined) {
                   scheduleReplayJoinRetry(validated.room)
@@ -1188,7 +1235,7 @@ export function useChatWebSocket({
         logError("[WebSocket] Failed to connect:", e)
       }
     })() // end async IIFE — ticket fetch + WS connect
-  }, [enabled, currentUserId, finishOwnedTransport, queryClient, wsStore])
+  }, [enabled, currentUserId, finishOwnedTransport, queryClient, sendRoomJoin, wsStore])
 
   // Only refs, the constant cleanup and the provider's store are captured.
   const disconnect = useConstant(() => () => {
@@ -1268,7 +1315,7 @@ export function useChatWebSocket({
     if (!ws) return
     try {
       // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send.
-      ws.send(JSON.stringify(joinFrame(currentUserIdRef.current, roomId)))
+      sendRoomJoin(ws, joinFrame(currentUserIdRef.current, roomId))
     } catch {
       /* WS closed between readyState check and send — onopen re-joins activeRoomRef */
     }
