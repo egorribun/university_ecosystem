@@ -1123,6 +1123,8 @@ const policySourcePaths = [
   "frontend/scripts/build-orchestrated.mjs",
   "frontend/scripts/post-build-shell.mjs",
   "frontend/scripts/maplibre-build-metadata.mjs",
+  "frontend/scripts/maplibre-graph-binding.mjs",
+  "frontend/scripts/check-bundle-budget.mjs",
   "frontend/public/theme-init.js",
   "frontend/public/static-shell-i18n.js",
 ]
@@ -1140,7 +1142,7 @@ function policyPayload(blocks) {
 
 async function makePolicyFixture(change = () => {}) {
   const directory = fileURLToPath(new URL("..", import.meta.url))
-  const workspace = await mkdtemp(path.join(directory, ".maplibre-budget-"))
+  const workspace = await mkdtemp(path.join(directory, "node_modules", ".maplibre-budget-"))
   const frontend = path.join(workspace, "frontend")
   const outputDir = path.join(frontend, "dist", "client")
   const temporary = path.join(workspace, "runner-temp")
@@ -1601,12 +1603,12 @@ test("invalid MapLibre evidence cannot grant a lazy budget allowance", async () 
   }
 })
 
-test("keeps every other lazy asset at 280 KiB and the MapLibre ceiling at 286", async () => {
+test("keeps every other lazy asset at 280 KiB and the MapLibre ceiling at 286", async (t) => {
   const cases = [
     [
       "other-lazy-over-280",
       (fixture) => {
-        fixture.bundle["assets/Detached-A.js"].code = policyPayload(8900)
+        fixture.bundle["assets/Detached-A.js"].code = policyPayload(8960)
       },
       /Detached-A\.js.*280 KiB/u,
     ],
@@ -1637,8 +1639,10 @@ test("keeps every other lazy asset at 280 KiB and the MapLibre ceiling at 286", 
         }).byteLength
         assert.ok(otherSize > 280 * 1024 && otherSize < mapSize)
         assert.ok(mapSize <= 286 * 1024)
+        t.diagnostic(`MapLibre gzip bytes=${mapSize}; other lazy gzip bytes=${otherSize}`)
       } else {
         assert.ok(mapSize > 286 * 1024)
+        t.diagnostic(`Oversized MapLibre gzip bytes=${mapSize}`)
       }
       const report = await policyReport(fixture)
       assert.equal(report.budgets.generalLazyJsGzipKb, 280)
