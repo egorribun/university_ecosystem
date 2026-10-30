@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -323,90 +322,3 @@ def test_source_binding_order_rejects_unsafe_producer_mutations(mutation: str) -
 
     with pytest.raises(AssertionError):
         _assert_source_binding_order(workflow)
-
-
-def _assert_bounded_candidate_export(workflow: dict[str, Any]) -> None:
-    build = workflow["jobs"]["build"]
-    steps = build["steps"]
-    export = _step(build, "Export bounded WASM candidate postimages")
-    names = [step.get("name") for step in steps]
-    assert (
-        names.index("Bind checked-in package bytes to source inventory")
-        < names.index("Write immutable WASM provenance")
-        < names.index(export["name"])
-        < names.index("Upload immutable E2E WASM modules")
-    )
-    assert export["env"] == {"SOURCE_SHA": "${{ github.sha }}"}
-    assert export["working-directory"] == "frontend"
-    run = str(export["run"])
-    crypto = run.split("const cryptoPaths = [", 1)[1].split("]", 1)[0]
-    assert re.findall(r'"([^"]+)"', crypto) == [
-        "rust-crypto/pkg/package.json",
-        "rust-crypto/pkg/uni_wasm_crypto.d.ts",
-        "rust-crypto/pkg/uni_wasm_crypto.js",
-        "rust-crypto/pkg/uni_wasm_crypto_bg.wasm",
-    ]
-    sanitizer = run.split("const sanitizerPaths = [", 1)[1].split("]", 1)[0]
-    assert re.findall(r'"([^"]+)"', sanitizer) == [
-        "wasm-sanitizer/pkg/package.json",
-        "wasm-sanitizer/pkg/wasm_sanitizer.d.ts",
-        "wasm-sanitizer/pkg/wasm_sanitizer.js",
-        "wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm",
-    ]
-    for required in (
-        'test "$(git rev-parse HEAD)" = "$SOURCE_SHA"',
-        "git show HEAD:frontend/WASM_SOURCE_PROVENANCE.json",
-        "info.isFile()",
-        "info.isSymbolicLink()",
-        "prior.size !== bytes.length || prior.sha256 !== digest",
-        "bytes.length > 131072",
-        "totalBytes > 524288",
-        'bytes.toString("base64")',
-        'createHash("sha256")',
-        'createHash("sha1")',
-        "source_sha: sourceSha",
-    ):
-        assert required in run
-    assert run.count("console.log(") == 2
-    assert run.index("totalBytes > 524288") < run.index("console.log(")
-    assert run.count("process.env.") == 2
-    assert "process.env.RUNNER_TEMP" in run
-    assert "process.env.SOURCE_SHA" in run
-    assert "GITHUB_TOKEN" not in run
-
-
-def test_temporary_candidate_export_is_bounded_and_source_bound() -> None:
-    _assert_bounded_candidate_export(_load(PRODUCER_PATH))
-
-
-@pytest.mark.parametrize(
-    "mutation",
-    ("extra-path", "larger-file", "sanitizer-drift", "early-export", "extra-output"),
-)
-def test_temporary_candidate_export_rejects_scope_changes(mutation: str) -> None:
-    workflow = deepcopy(_load(PRODUCER_PATH))
-    _assert_bounded_candidate_export(workflow)
-    build = workflow["jobs"]["build"]
-    export = _step(build, "Export bounded WASM candidate postimages")
-    if mutation == "extra-path":
-        export["run"] = export["run"].replace(
-            "const cryptoPaths = [", 'const cryptoPaths = ["other.json",'
-        )
-    elif mutation == "larger-file":
-        export["run"] = export["run"].replace(
-            "bytes.length > 131072", "bytes.length > 262144"
-        )
-    elif mutation == "sanitizer-drift":
-        export["run"] = export["run"].replace(
-            "prior.size !== bytes.length || prior.sha256 !== digest", "false"
-        )
-    elif mutation == "early-export":
-        build["steps"].remove(export)
-        build["steps"].insert(0, export)
-    elif mutation == "extra-output":
-        export["run"] += '\nconsole.log("unexpected output")\n'
-    else:
-        raise AssertionError("unknown export mutation")
-
-    with pytest.raises(AssertionError):
-        _assert_bounded_candidate_export(workflow)
