@@ -1524,6 +1524,11 @@ func (c *Client) tryWriteQueuedMessage(
 	if wait != nil {
 		return wait, nil
 	}
+	// Replay rejection cancels the session under this room admission lock.
+	// Authorization before waiting for the permit cannot observe that change.
+	if c.ctx != nil && c.ctx.Err() != nil {
+		return nil, errSessionInactive
+	}
 	return nil, c.writeQueuedFrame(msg, ok, room, roomScoped)
 }
 
