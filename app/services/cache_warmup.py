@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from fastapi.encoders import jsonable_encoder
 
 from app.api.schedule import _SCHEDULE_CACHE_TTL_SECONDS
+from app.core.cache_versioning import news_cache_version
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.logging import get_logger
@@ -197,6 +198,12 @@ async def warm_cache() -> None:
             # One AsyncSession cannot safely run concurrent database operations.
             await _warm_schedule(cache, db)
             await _warm_stats(cache, db)
+            if not get_current_tenant() and not get_bypass_rls():
+                await news_cache_version.prepare_warmup(cache)
+            # This startup-owned session contains only warmup reads. Discard
+            # their snapshot before news resolves its generation and queries,
+            # so old rows cannot be published under a newer invalidation.
+            await db.rollback()
             await _warm_news(cache, db)
         except (ConnectionError, TimeoutError, OSError):  # RZ-28-01 + PERF-25-02
             # RZ-20-04: Narrowed — cache warmup is best-effort.

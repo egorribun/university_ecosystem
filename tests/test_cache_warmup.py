@@ -98,7 +98,7 @@ async def test_warm_cache_enabled():
         patch("app.services.cache_warmup._warm_news") as mock_warm_news,
     ):
         mock_settings.cache_warmup_enabled = True
-        mock_cache = MagicMock()
+        mock_cache = AsyncMock()
         mock_cache.enabled = True
         mock_get_cache.return_value = mock_cache
 
@@ -110,6 +110,7 @@ async def test_warm_cache_enabled():
         mock_warm_schedule.assert_called_once()
         mock_warm_stats.assert_called_once()
         mock_warm_news.assert_called_once()
+        mock_db.rollback.assert_awaited_once()
 
 
 @pytest.mark.asyncio

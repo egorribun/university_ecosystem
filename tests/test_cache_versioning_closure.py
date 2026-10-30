@@ -152,3 +152,20 @@ async def test_non_redis_and_disabled_fallbacks_and_deterministic_key():
     )
     assert key.startswith("events:list:7:en:")
     assert len(key.rsplit(":", 1)[-1]) == 64
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["disabled", "redis"])
+async def test_prepare_warmup_does_not_touch_disabled_or_redis_caches(kind):
+    manager = CacheVersionManager(prefix="news:list")
+    cache = MagicMock(spec=MemoryCache) if kind == "disabled" else _redis_cache()
+    cache.enabled = kind == "redis"
+
+    with patch(
+        "app.core.cache_versioning.get_cache_client", new_callable=AsyncMock
+    ) as get_client:
+        await manager.prepare_warmup(cache)
+
+    cache.get.assert_not_called()
+    cache.set.assert_not_called()
+    get_client.assert_not_called()
