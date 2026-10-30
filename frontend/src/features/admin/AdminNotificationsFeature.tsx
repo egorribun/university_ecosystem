@@ -275,13 +275,18 @@ export function AdminNotificationsFeature() {
   const currentPage = Math.floor(deadLetterOffset / ADMIN_DEAD_LETTER_PAGE_SIZE) + 1
   const maxBrowsableJobs = ADMIN_DEAD_LETTER_MAX_OFFSET + ADMIN_DEAD_LETTER_PAGE_SIZE
 
+  const canClampPage = listQuery.isSuccess && !listQuery.isPlaceholderData
+
   useEffect(() => {
+    // Only current-page success can prove shrinkage; errors and the previous
+    // page's placeholder do not provide an authoritative total.
+    if (!canClampPage) return
     const lastOffset = Math.min(
       ADMIN_DEAD_LETTER_MAX_OFFSET,
       Math.max(0, (pageCount - 1) * ADMIN_DEAD_LETTER_PAGE_SIZE)
     )
     if (deadLetterOffset > lastOffset) setDeadLetterOffset(lastOffset)
-  }, [deadLetterOffset, pageCount])
+  }, [canClampPage, deadLetterOffset, pageCount])
 
   const disableActions =
     listQuery.isFetching ||
