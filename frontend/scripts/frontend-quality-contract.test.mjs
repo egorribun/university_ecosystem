@@ -1114,3 +1114,85 @@ for (const target of ["server", "preview"]) {
     }
   )
 }
+
+const auditNodeSuites = [
+  "tests/e2e/aud151-readiness.test.mjs",
+  "scripts/aud151-news-errors.test.mjs",
+  "scripts/ui-barrel-boundary.test.mjs",
+  "scripts/boundary-micromatch-compat.test.mjs",
+  "scripts/validate-css-token-closure.test.mjs",
+]
+
+function assertAuditNodeSelection(scripts) {
+  const command = scripts["test:wasm"]
+  assert.equal(typeof command, "string")
+  assert.doesNotMatch(command, /[\r\n\t]/u)
+  const stages = command.split(" && ")
+  assert.equal(stages.length, 2, "audit checks need exactly two blocking stages")
+  assert.equal(stages[1], "npm run tokens:check")
+  const args = stages[0].split(" ")
+  assert.deepEqual(args.slice(0, 2), ["node", "--test"])
+  const suites = args.slice(2)
+  for (const suite of suites) {
+    assert.match(
+      suite,
+      /^(?:\.\.\/)?(?:[A-Za-z0-9_][A-Za-z0-9_-]*\/)+[A-Za-z0-9_][A-Za-z0-9_.-]*\.test\.mjs$/u,
+      "the Node stage accepts only explicit test paths, not filters or shell syntax"
+    )
+  }
+  for (const suite of auditNodeSuites) {
+    assert.equal(
+      suites.filter((candidate) => candidate === suite).length,
+      1,
+      "the Node stage must execute " + suite + " exactly once"
+    )
+  }
+  assert.equal(scripts["tokens:check"], "node ./scripts/validate-css-token-closure.mjs")
+}
+
+test("canonical Node gate executes the AUD-151 and AUD-308 checks", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  assertAuditNodeSelection(packageJson.scripts)
+})
+
+test("audit selection rejects omissions, filters and nonblocking substitutes", () => {
+  const command = ["node", "--test", ...auditNodeSuites].join(" ") + " && npm run tokens:check"
+  const scripts = {
+    "test:wasm": command,
+    "tokens:check": "node ./scripts/validate-css-token-closure.mjs",
+  }
+  assert.doesNotThrow(() => assertAuditNodeSelection(scripts))
+
+  const commands = [
+    ...auditNodeSuites.map((suite) => ["missing " + suite, command.replace(" " + suite, "")]),
+    ["duplicate", command.replace("node --test ", "node --test " + auditNodeSuites[0] + " ")],
+    ["name filter", command.replace("node --test ", "node --test --test-name-pattern=none ")],
+    ["skip filter", command.replace("node --test ", "node --test --test-skip-pattern=. ")],
+    ["test-only", command.replace("node --test ", "node --test --test-only ")],
+    ["echo", command.replace("node --test ", "echo node --test ")],
+    ["semicolon", command.replace(" && ", "; ")],
+    ["or", command.replace(" && ", " || ")],
+    ["background", command.replace(" && ", " & ")],
+    ["masked Node failure", command.replace(" && ", " || true && ")],
+    ["masked final failure", command + " || true"],
+    ["tokens sync", command.replace("npm run tokens:check", "npm run tokens:sync")],
+  ]
+  for (const [name, candidate] of commands) {
+    assert.throws(
+      () => assertAuditNodeSelection({ ...scripts, "test:wasm": candidate }),
+      { code: "ERR_ASSERTION" },
+      name
+    )
+  }
+  for (const candidate of [
+    "node -e \"process.exit(0)\"",
+    "node ./scripts/sync-tokens.mjs",
+    "node ./scripts/validate-css-token-closure.mjs --root tests/fixtures",
+  ]) {
+    assert.throws(
+      () => assertAuditNodeSelection({ ...scripts, "tokens:check": candidate }),
+      { code: "ERR_ASSERTION" },
+      candidate
+    )
+  }
+})
