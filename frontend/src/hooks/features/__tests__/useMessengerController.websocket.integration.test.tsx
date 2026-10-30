@@ -541,3 +541,251 @@ it("reconciles a delivered replay record and a REST-only tail after an untyped c
     }
   }
 })
+
+it("bounds rejected replay recovery through the real provider and controller", async () => {
+  const { clearReplayCheckpoints, peekReplayCheckpoint, writeReplayCheckpoint } =
+    await import("@/hooks/chatReplayCheckpoints")
+  const { withExpectedConsole } = await import("@/tests/strictConsole")
+  const retryLimitMessage =
+    "[ws] Max reconnect attempts reached; giving up. Manual reconnect required."
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+  clearReplayCheckpoints(mocks.user.id)
+  const session = renderHook(() => useMessengerController(), { wrapper: createWrapper() })
+  try {
+    // Let the actual query/projection setup settle before controlling transport time.
+    // The socket stays CONNECTING, so no heartbeat timer exists yet.
+    await waitFor(() => expect(ControlledWebSocket.instances).toHaveLength(1))
+    await waitFor(() =>
+      expect(session.result.current.messages.map(({ id }) => id)).toContain(initialMessage.id)
+    )
+    expect(ControlledWebSocket.instances[0]!.readyState).toBe(ControlledWebSocket.CONNECTING)
+    writeReplayCheckpoint(mocks.user.id, chat.id, 12, "composition-rejected-cursor", chat.id)
+    const initialFetchCount = mocks.chatApi.getMessages.mock.calls.length
+    let lastFetchCount = initialFetchCount
+    vi.useFakeTimers({
+      toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    })
+    await act(async () => ControlledWebSocket.instances[0]!.open())
+
+    await withExpectedConsole(
+      "error",
+      (args) => {
+        if (args[0] !== retryLimitMessage) return false
+        expect(args).toStrictEqual([retryLimitMessage, { attempts: 10, lastCode: 4002 }])
+        return true
+      },
+      () =>
+        withExpectedConsole(
+          "error",
+          (args) => {
+            if (args[0] !== "[WebSocket] Server error:") return false
+            expect(args).toStrictEqual([
+              "[WebSocket] Server error:",
+              { type: "error", room: chat.id, code: "replay_unavailable" },
+            ])
+            return true
+          },
+          async () => {
+            for (let reconnects = 0; reconnects <= 10; reconnects += 1) {
+              const socket = ControlledWebSocket.instances.at(-1)!
+              expect(ControlledWebSocket.instances).toHaveLength(reconnects + 1)
+              expect(isTransportConnected).toBe(true)
+              expect(framesOfType(socket, "join")).toEqual([
+                { type: "join", room: chat.id, resume_token: "composition-rejected-cursor" },
+              ])
+
+              await act(() => vi.advanceTimersByTimeAsync(30_000))
+              expect(mocks.chatApi.getMessages.mock.calls.slice(lastFetchCount)).toContainEqual([
+                chat.id,
+                undefined,
+                50,
+                expect.any(AbortSignal),
+              ])
+              lastFetchCount = mocks.chatApi.getMessages.mock.calls.length
+              const pings = socket.sent
+                .map((value) => JSON.parse(value) as { type: string; nonce?: string })
+                .filter(({ type }) => type === "heartbeat_ping")
+              expect(pings).toHaveLength(1)
+              expect(pings[0]!.nonce).toMatch(/^[0-9a-f]{32}$/)
+              await act(async () =>
+                socket.onmessage?.({
+                  data: JSON.stringify({ type: "heartbeat_pong", nonce: pings[0]!.nonce }),
+                } as MessageEvent)
+              )
+              await act(() => vi.advanceTimersByTimeAsync(10_001))
+              expect(socket.readyState).toBe(ControlledWebSocket.OPEN)
+              expect(isTransportConnected).toBe(true)
+              expect(peekReplayCheckpoint(mocks.user.id, chat.id)).toEqual({
+                sequence: 12,
+                resumeToken: "composition-rejected-cursor",
+              })
+
+              await act(async () =>
+                socket.onmessage?.({
+                  data: JSON.stringify({
+                    type: "error",
+                    room: chat.id,
+                    code: "replay_unavailable",
+                  }),
+                } as MessageEvent)
+              )
+              expect(socket.readyState).toBe(ControlledWebSocket.CLOSED)
+              expect(isTransportConnected).toBe(false)
+              if (reconnects < 10) {
+                await act(() => vi.advanceTimersByTimeAsync(60_000))
+                expect(ControlledWebSocket.instances).toHaveLength(reconnects + 2)
+                await act(async () => ControlledWebSocket.instances.at(-1)!.open())
+              }
+            }
+
+            await act(() => vi.advanceTimersByTimeAsync(60_000))
+            expect(ControlledWebSocket.instances).toHaveLength(11)
+            expect(isTransportConnected).toBe(false)
+            expect(mocks.ticketPost).toHaveBeenCalledTimes(11)
+            expect(mocks.chatApi.getMessages.mock.calls.length).toBeGreaterThanOrEqual(
+              initialFetchCount + 11
+            )
+            expect(peekReplayCheckpoint(mocks.user.id, chat.id)).toEqual({
+              sequence: 12,
+              resumeToken: "composition-rejected-cursor",
+            })
+          },
+          11
+        ),
+      1
+    )
+  } finally {
+    try {
+      session.unmount()
+    } finally {
+      vi.useRealTimers()
+      clearReplayCheckpoints(mocks.user.id)
+    }
+  }
+})
+
+for (const transition of ["room", "account"] as const) {
+  it(`retires old replay debt when the controller changes its ${transition}`, async () => {
+    const { clearReplayCheckpoints, peekReplayCheckpoint, writeReplayCheckpoint } =
+      await import("@/hooks/chatReplayCheckpoints")
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+    vi.mocked(Math.random).mockReturnValue(0.5)
+    const originalUser = { ...mocks.user }
+    const replacementUserId = "replacement-account"
+    const otherRoom = "chat-replacement"
+    const nextRoom = transition === "room" ? otherRoom : chat.id
+    const nextUserId = transition === "account" ? replacementUserId : originalUser.id
+    const otherChat: Chat = { ...chat, id: otherRoom }
+    mocks.chatApi.getChats.mockResolvedValue({
+      items: [chat, otherChat],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.chatApi.getChat.mockImplementation(async (room: string) =>
+      room === otherRoom ? otherChat : chat
+    )
+    mocks.chatApi.getMessages.mockImplementation(
+      async (room: string): Promise<MessagesListResponse> => ({
+        items: [
+          {
+            ...initialMessage,
+            id: room === chat.id ? initialMessage.id : "message-in-replacement-room",
+            chat_id: room,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+    )
+    clearReplayCheckpoints(originalUser.id)
+    clearReplayCheckpoints(replacementUserId)
+    const session = renderHook(() => useMessengerController(), { wrapper: createWrapper() })
+    try {
+      await waitFor(() => expect(ControlledWebSocket.instances).toHaveLength(1))
+      await waitFor(() =>
+        expect(session.result.current.messages.map(({ id }) => id)).toContain(initialMessage.id)
+      )
+      expect(ControlledWebSocket.instances[0]!.readyState).toBe(ControlledWebSocket.CONNECTING)
+      writeReplayCheckpoint(originalUser.id, chat.id, 12, "same-cursor-text", chat.id)
+      vi.useFakeTimers({
+        toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+      })
+      const original = ControlledWebSocket.instances[0]!
+      await act(async () => original.open())
+      expect(framesOfType(original, "join")).toEqual([
+        { type: "join", room: chat.id, resume_token: "same-cursor-text" },
+      ])
+      const rejectJoin = () =>
+        original.onmessage?.({
+          data: JSON.stringify({ type: "rate_limit_exceeded" }),
+        } as MessageEvent)
+      await act(async () => rejectJoin())
+      await act(() => vi.advanceTimersByTimeAsync(1_050))
+      expect(framesOfType(original, "join")).toHaveLength(2)
+      await act(async () => rejectJoin())
+      expect(original.readyState).toBe(ControlledWebSocket.CLOSED)
+      expect(isTransportConnected).toBe(false)
+
+      // This is an intentional logical-scope change, not transport cleanup.
+      // Equal sequence/token text prevents value differences from hiding an account leak.
+      writeReplayCheckpoint(nextUserId, nextRoom, 12, "same-cursor-text", nextRoom)
+      if (transition === "room") mocks.chatId = nextRoom
+      else mocks.user.id = nextUserId
+      await act(async () => session.rerender())
+      await act(() => vi.advanceTimersByTimeAsync(500))
+      expect(ControlledWebSocket.instances).toHaveLength(2)
+      const replacement = ControlledWebSocket.instances[1]!
+      await act(async () => replacement.open())
+      expect(isTransportConnected).toBe(true)
+      expect(framesOfType(replacement, "join")).toEqual([
+        { type: "join", room: nextRoom, resume_token: "same-cursor-text" },
+      ])
+      if (transition === "account") {
+        expect(peekReplayCheckpoint(originalUser.id, chat.id)).toBeUndefined()
+      }
+
+      // Spend a retry in the new scope before the healthy pong. Otherwise an
+      // already-zero account counter would make the reset assertion vacuous.
+      await act(async () => replacement.loseConnection(1006))
+      await act(() => vi.advanceTimersByTimeAsync(60_000))
+      expect(ControlledWebSocket.instances).toHaveLength(3)
+      const healthy = ControlledWebSocket.instances[2]!
+      await act(async () => healthy.open())
+      expect(framesOfType(healthy, "join")).toEqual([
+        { type: "join", room: nextRoom, resume_token: "same-cursor-text" },
+      ])
+      await act(() => vi.advanceTimersByTimeAsync(30_000))
+      const pings = healthy.sent
+        .map((value) => JSON.parse(value) as { type: string; nonce?: string })
+        .filter(({ type }) => type === "heartbeat_ping")
+      expect(pings).toHaveLength(1)
+      expect(pings[0]!.nonce).toMatch(/^[0-9a-f]{32}$/)
+      await act(async () =>
+        healthy.onmessage?.({
+          data: JSON.stringify({ type: "heartbeat_pong", nonce: pings[0]!.nonce }),
+        } as MessageEvent)
+      )
+      await act(() => vi.advanceTimersByTimeAsync(10_001))
+      expect(healthy.readyState).toBe(ControlledWebSocket.OPEN)
+      expect(isTransportConnected).toBe(true)
+      await act(async () => healthy.loseConnection(1006))
+      await act(() => vi.advanceTimersByTimeAsync(499))
+      expect(ControlledWebSocket.instances).toHaveLength(3)
+      await act(() => vi.advanceTimersByTimeAsync(1))
+      expect(ControlledWebSocket.instances).toHaveLength(4)
+      expect(peekReplayCheckpoint(nextUserId, nextRoom)).toEqual({
+        sequence: 12,
+        resumeToken: "same-cursor-text",
+      })
+    } finally {
+      try {
+        session.unmount()
+      } finally {
+        vi.useRealTimers()
+        clearReplayCheckpoints(originalUser.id)
+        clearReplayCheckpoints(replacementUserId)
+        Object.assign(mocks.user, originalUser)
+      }
+    }
+  })
+}
