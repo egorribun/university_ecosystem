@@ -2,7 +2,79 @@
 
 Обновлено: 2026-10-30 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Current post-pause reconciliation — 2026-10-30
+## Latest verified causal checkpoint — 2026-10-30
+
+The [source-bound AUD-512 decision](../../audits/AUDIT-2026-10.md#scoped-aud-512-callback-panic-acceptance-2026-10-30)
+preserves all 391 prior IDs and adds only the recovered NATS callback
+termination defect: **392/512 accepted; 120 unaccepted**. All 11 named callback,
+panic, disposition and retry controls pass on source
+[778696a](https://github.com/egorribun/university_ecosystem/commit/778696a428c1e2da3f27e012afac3b9284836e49),
+not a live-broker acknowledgement or complete Go/CI acceptance.
+
+The six-commit, nineteen-file source batch contains causal changes for News
+cursor, frontend replay, cache-warmup and bundle-parser behavior, aligns
+generated/linted artifacts, and separately adds the deterministic Go queued-writer regression
+and isolated SQL-capture fixtures. Its own evidence is source-bound:
+
+- Frontend: **10,466 PASS**, 835 files, including News comment/retry **19/19**
+  and replay **5/5**. Differential coverage is **2,297/2,297 lines (100%)**
+  across 186 eligible changed files, not backend or repository-wide coverage.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40989558368/job/123848395611)
+  is terminal **SUCCESS**: 338 preflight checks, one browser-runtime check,
+  live **48 PASS / 2 SKIP**, NATS outage and cleanup steps pass.
+  Frozen-RC full-stack smoke remains skipped.
+- Bundle focused contracts **140/140 PASS**, but the real production HTML is
+  rejected on its duplicate module root. Source tracing identifies the pinned
+  TanStack modulepreload `fetchpriority=low`; raw serialized attributes are not
+  in the retained bounded report. This is a parser compatibility investigation,
+  not a demonstrated size-budget overrun or permission to weaken budgets.
+- Go reproduces the new AUD-334 signed-frame delivery race in four execution
+  lanes. The separate AUD-512 controls and ws-hub lint pass; whole-Go does not.
+- Main PostgreSQL integration stops at the unchanged disposable Redis ownership
+  guard: **299 PASS / 12 SKIP / 1 FAIL**. CI did not provision its required
+  markers; product Redis assertions were not reached. All four AUD-340 PG
+  controls pass, with separate migration/replay cohorts not added to that total.
+- Contract Tests finish with **3,589 PASS / 1 renderer-source-pin FAIL**,
+  plus separate 681 security and 41 scoped controls. No whole-job GREEN.
+- All four backend shards are terminal: **22,433 PASS / 428 SKIP / 22 FAIL**.
+  Shards0/1/2/3 respectively report 4552/126/9, 5218/54/0, 5975/136/13 and
+  6688/112/0 (PASS/SKIP/FAIL). The 22 failures are SQL capture17
+  (eight worker and nine corrected-fixture negatives), Squawk3, renderer pin1
+  and one stale async warmup-session double. Corrected capture healthy/optional
+  controls and the six AUD-043 plus two no-op controls are cohort-inferred,
+  not printed named-PASS receipts; the startup consumer fixture still fails.
+- [Matrix40989558553](https://github.com/egorribun/university_ecosystem/actions/runs/40989558553)
+  is terminal **FAILURE**: 91 jobs, **60 SUCCESS / 15 FAILURE / 16 SKIP**.
+  All 23 workflows finish with 19 success, two failures (Matrix and Go Fuzzing)
+  and two skips. The 141 checks report 99 success, 16 failure, 25 skip and one
+  neutral, with no active checks or cancellations. Coverage Policy and Codecov
+  are skipped, not passed. These results do not transfer to the successor.
+
+The earlier docs-only d9f806f Matrix was **cancelled** when 778 was published:
+backend0/1 and two coverage jobs were cancelled; shards2/3 never started.
+Its docs checks passed, but no complete backend receipt exists. The earlier
+be88 production run below remains a separate fully terminal failed checkpoint.
+
+The successor
+[source-repair chain](https://github.com/egorribun/university_ecosystem/commit/00ae0cede7ee2f53dbb94965c225e7cd9307a546)
+contains fifteen reviewed code/test/workflow paths: Go cancellation, exact
+formatter output, Squawk exit/privacy propagation, the bounded producer HTML
+pair, owned Redis marker lifecycle, the async warmup fixture and required SQL
+capture. It preserves all existing negative assertions and gates. Its own
+runtime/formatter/required-CI results are still needed; no GREEN is inherited
+from source778. The accompanying registry decision adds only the independently
+proven source-bound AUD-512, not acceptance of these unverified successor fixes.
+
+Next: complete the corrected source's own full CI and address any demonstrated
+remaining cause without lowering a gate. AUD-030 remains partial because the
+chat list still consumes only the first twenty entries;
+successful comment pagination does not close that original four-surface finding.
+Only after stable renderer evidence and actual scanner triage may a new finite
+hash disposition be proposed to the owner. Policy405, baseline319, Gitleaks26,
+inactive Map286/Squawk admission, all floors and branch/access restrictions
+remain unchanged.
+
+## Post-pause reconciliation snapshot — 2026-10-30
 
 All **136 changed paths** between ec9a4d58 and 8787b00e were reviewed against
 complete untruncated Git trees, and all **126 previously open IDs** classified.

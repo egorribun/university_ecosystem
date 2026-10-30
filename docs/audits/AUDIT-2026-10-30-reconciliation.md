@@ -1,5 +1,22 @@
 # Post-pause reconciliation — 2026-10-30
 
+## Subsequent source-bound decision on 778696a
+
+The original 136-path manifest and 126-row classification below are retained
+as the reviewed 8787b00e snapshot, not silently rewritten by later test results.
+A subsequent [scoped AUD-512 acceptance](AUDIT-2026-10.md#scoped-aud-512-callback-panic-acceptance-2026-10-30)
+adds only that ID to the published 391: **392 accepted, 120 unaccepted**.
+Its real callback wrappers and all 11 named race-test controls pass on source
+778696a; the same Go job fails the separate AUD-334 writer regression.
+No real-broker acknowledgement or full-CI acceptance is claimed.
+
+On the same source, all 10,466 frontend tests pass, including the previous
+News/replay regressions. AUD-030 nevertheless remains partial: the chat-list
+UI still reads the first twenty entries without exposing next-page state.
+The original matrix's source-only and partial labels are not automatically
+promoted by unrelated green tests. [STATUS](../superpowers/plans/STATUS.md)
+records the exact current evidence and remaining CI boundaries.
+
 ## Scope and complete coverage
 
 Reviewed [source 8787b00e3a9e6c59ce4156366fdbd9f856a4952c](https://github.com/egorribun/university_ecosystem/commit/8787b00e3a9e6c59ce4156366fdbd9f856a4952c) against

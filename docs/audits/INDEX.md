@@ -6,7 +6,8 @@ release claims require fresh evidence under the master plan.
 
 ## Current quality-closure roadmap
 
-- [Current accepted audit lower bound: 391/512 (76.4%)](AUDIT-2026-10.md#scoped-aud-155-aud-320-aud-406-aud-486-and-aud-500-acceptance-2026-10-30) — preserves all 386 prior IDs and adds only AUD-155/320/406/486/500 with independently checked source-bound receipts. 121 remain unaccepted; no full-CI, merged-coverage, live-browser or native-Windows claim.
+- [Current accepted audit lower bound: 392/512 (76.6%)](AUDIT-2026-10.md#scoped-aud-512-callback-panic-acceptance-2026-10-30) — preserves all 391 prior IDs and adds only AUD-512 with real callback-path and hosted race-test receipts. 120 remain unaccepted; no live-broker acknowledgement, whole-Go, full-CI or release claim.
+- [Historical accepted audit lower bound: 391/512 (76.4%)](AUDIT-2026-10.md#scoped-aud-155-aud-320-aud-406-aud-486-and-aud-500-acceptance-2026-10-30) — preserves all 386 prior IDs and adds only AUD-155/320/406/486/500 with independently checked source-bound receipts. 121 remained unaccepted; no full-CI, merged-coverage, live-browser or native-Windows claim.
 - [Complete post-pause review and reconciliation](AUDIT-2026-10-30-reconciliation.md) — all 136 changed paths and all 126 previously open IDs, exact reviewed-head CI, affected accepted criteria and explicit remaining blockers.
 
 - [Active MVP closure status](../superpowers/plans/STATUS.md) — the current
