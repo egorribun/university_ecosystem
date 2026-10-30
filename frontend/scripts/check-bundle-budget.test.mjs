@@ -187,8 +187,8 @@ test("classifies unquoted attributes, spacing and relation tokens", async () => 
       path.join(distDir, "client", "index.html"),
       [
         '<LINK HREF = /assets/vendor-react-ABC.js REL = "preload modulepreload">',
-        '<LINK REL = stylesheet HREF = /assets/index-ABC.css>',
-        '<SCRIPT TYPE = module SRC = /assets/index-ABC.js></SCRIPT>',
+        "<LINK REL = stylesheet HREF = /assets/index-ABC.css>",
+        "<SCRIPT TYPE = module SRC = /assets/index-ABC.js></SCRIPT>",
       ].join("\n")
     )
 
@@ -280,7 +280,7 @@ test("does not treat inert template or scripting-enabled noscript contents as ro
   try {
     await writeFile(
       path.join(distDir, "client", "index.html"),
-      '<!DOCTYPE html><html><head>' +
+      "<!DOCTYPE html><html><head>" +
         '<template><base href="/other/"><link rel="modulepreload" href="/assets/Feature-ABC.js"></template>' +
         '<noscript><link rel="modulepreload" href="/assets/vendor-react-ABC.js"></noscript>' +
         '</head><body><script type="module" src="/assets/index-ABC.js"></script></body></html>'
@@ -309,7 +309,10 @@ test("ignores links discarded by browser parsing and accepts passive SVG icons",
 
     const report = await analyzeBundle(distDir)
 
-    assert.equal(report.assets.find((asset) => asset.path.endsWith("/Feature-ABC.js")).isInitial, false)
+    assert.equal(
+      report.assets.find((asset) => asset.path.endsWith("/Feature-ABC.js")).isInitial,
+      false
+    )
   } finally {
     await rm(distDir, { recursive: true, force: true })
   }
@@ -326,7 +329,10 @@ test("uses decoded HTML attributes for supported local paths", async () => {
 
     const report = await analyzeBundle(distDir)
 
-    assert.equal(report.assets.find((asset) => asset.path.endsWith("/Feature-ABC.js")).isInitial, true)
+    assert.equal(
+      report.assets.find((asset) => asset.path.endsWith("/Feature-ABC.js")).isInitial,
+      true
+    )
   } finally {
     await rm(distDir, { recursive: true, force: true })
   }
@@ -380,7 +386,10 @@ test("enforces the raw ceiling on highly compressible lazy .mjs dictionaries", a
     assert.equal(dictionary.isPasswordDictionary, false)
     assert.ok(dictionary.gzipBytes < BUNDLE_BUDGETS.generalLazyJsGzipKb * 1024)
     assert.equal(report.summary.largestPasswordDictionaryRawPath, `client/assets/${name}`)
-    assert.throws(() => assertBundleBudgets(report), /vendor-password-strength-en-RAW\.mjs.*raw budget/u)
+    assert.throws(
+      () => assertBundleBudgets(report),
+      /vendor-password-strength-en-RAW\.mjs.*raw budget/u
+    )
   } finally {
     await rm(distDir, { recursive: true, force: true })
   }
@@ -404,7 +413,10 @@ test("only deduplicates unqualified module roots with the same asset path", asyn
       '<link rel="modulepreload" href="/assets/Feature-ABC.js">' +
         '<script src="/assets/Feature-ABC.js"></script>',
     ]) {
-      await writeFile(entry, fragment + '<script type="module" src="/assets/index-ABC.js"></script>')
+      await writeFile(
+        entry,
+        fragment + '<script type="module" src="/assets/index-ABC.js"></script>'
+      )
       await assert.rejects(analyzeBundle(distDir), /unsupported|invalid|malformed/iu, fragment)
     }
   } finally {
@@ -466,7 +478,10 @@ test("does not count a link inside a correctly closed double-escaped script", as
 
     const report = await analyzeBundle(distDir)
 
-    assert.equal(report.assets.find((asset) => asset.path.endsWith("/Feature-ABC.js")).isInitial, false)
+    assert.equal(
+      report.assets.find((asset) => asset.path.endsWith("/Feature-ABC.js")).isInitial,
+      false
+    )
   } finally {
     await rm(distDir, { recursive: true, force: true })
   }
@@ -474,10 +489,7 @@ test("does not count a link inside a correctly closed double-escaped script", as
 
 test("does not exempt lazy chunks mentioned only in comments or raw text", async () => {
   const fakeLink = '<link rel="modulepreload" href="/assets/Feature-ABC.js">'
-  const fragments = [
-    `<!-- ${fakeLink} -->`,
-    `<script>const sample = '${fakeLink}'</script>`,
-  ]
+  const fragments = [`<!-- ${fakeLink} -->`, `<script>const sample = '${fakeLink}'</script>`]
   const largeBytes = Buffer.concat(
     Array.from({ length: 9500 }, (_, index) => createHash("sha256").update(String(index)).digest())
   )
@@ -553,9 +565,9 @@ test("rejects ambiguous HTML grammar instead of guessing initial roots", async (
     '<script type="module" src="/assets/index-ABC.js" nomodule></script>',
     '<link rel="modulepreload" href="/assets/Feature-ABC.js"',
     '<!-- text --!><link rel="modulepreload" href="/assets/Feature-ABC.js"> -->',
-    '<!--->',
-    '<div><span></div></span>',
-    '<iframe>unterminated',
+    "<!--->",
+    "<div><span></div></span>",
+    "<iframe>unterminated",
   ]
 
   for (const fragment of fragments) {
@@ -602,9 +614,7 @@ test("checks the raw maximum even when another dictionary has the largest gzip s
   const gzipPath = "client/assets/vendor-password-strength-ru-GZIP.js"
   try {
     const mixedBytes = Buffer.concat(
-      Array.from({ length: 512 }, (_, index) =>
-        createHash("sha256").update(String(index)).digest()
-      )
+      Array.from({ length: 512 }, (_, index) => createHash("sha256").update(String(index)).digest())
     )
     await writeFile(
       path.join(distDir, rawPath),
@@ -620,7 +630,10 @@ test("checks the raw maximum even when another dictionary has the largest gzip s
     assert.equal(report.summary.largestPasswordDictionaryPath, gzipPath)
     assert.equal(report.summary.largestPasswordDictionaryRawPath, rawPath)
     assert.equal(report.summary.largestPasswordDictionaryRawBytes, rawAsset.rawBytes)
-    assert.throws(() => assertBundleBudgets(report), /vendor-password-strength-en-RAW\.js.*raw budget/u)
+    assert.throws(
+      () => assertBundleBudgets(report),
+      /vendor-password-strength-en-RAW\.js.*raw budget/u
+    )
   } finally {
     await rm(distDir, { recursive: true, force: true })
   }
@@ -742,4 +755,34 @@ test("Vite chunk warnings use the largest machine-enforced raw chunk budget", as
 
   assert.match(source, /chunkSizeWarningLimit:\s*BUNDLE_BUDGETS\.passwordDictionaryRawKb/u)
   assert.doesNotMatch(source, /chunkSizeWarningLimit:\s*\d+/u)
+})
+
+test("preserves legal omitted end tags, void elements and inert browser contexts", async () => {
+  const distDir = await createBundleFixture()
+  const script = '<script type="module" src="/assets/index-ABC.js"></script>'
+  const documents = [
+    "<ul><li>one<li>two</ul><dl><dt>term<dd>definition</dl>" +
+      "<p>paragraph<div>block</div>" +
+      '<select><optgroup label="group"><option>one<option>two</select>' +
+      "<table><colgroup><col><thead><tr><th>head<tbody><tr><td>cell</table>" +
+      script,
+    "<!doctype html><html><head><title>Fixture</title><body><br><hr><img><input>" + script,
+    '<svg><g><path d="M0 0"/></g></svg>' + script,
+    "<template><div><span></div></span>" +
+      '<link rel="modulepreload" href="/assets/Feature-ABC.js"></template>' +
+      '<noscript><link rel="modulepreload" href="/assets/vendor-react-ABC.js"></noscript>' +
+      script,
+  ]
+  try {
+    for (const html of documents) {
+      await writeFile(path.join(distDir, "client", "index.html"), html)
+      const report = await analyzeBundle(distDir)
+      assert.deepEqual(
+        report.assets.filter((asset) => asset.isInitial).map((asset) => asset.path),
+        ["client/assets/index-ABC.js"]
+      )
+    }
+  } finally {
+    await rm(distDir, { recursive: true, force: true })
+  }
 })

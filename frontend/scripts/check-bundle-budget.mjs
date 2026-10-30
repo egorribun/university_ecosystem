@@ -11,6 +11,52 @@ const ASSET_EXTENSIONS = new Set([".js", ".mjs", ".css"])
 const HTML_LIMIT = 1024 * 1024
 const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml"
 
+// parse5 preserves browser tree recovery without reporting every mismatched end
+// tag. Require a real closing token where HTML does not permit its omission.
+// Void names follow parse5's HTML serializer, including its legacy void tags.
+const HTML_VOID_ELEMENTS = new Set([
+  "area",
+  "base",
+  "basefont",
+  "bgsound",
+  "br",
+  "col",
+  "embed",
+  "frame",
+  "hr",
+  "img",
+  "input",
+  "keygen",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+])
+const HTML_OPTIONAL_END_TAGS = new Set([
+  "html",
+  "head",
+  "body",
+  "li",
+  "dt",
+  "dd",
+  "p",
+  "rb",
+  "rt",
+  "rtc",
+  "rp",
+  "optgroup",
+  "option",
+  "colgroup",
+  "thead",
+  "tbody",
+  "tfoot",
+  "tr",
+  "td",
+  "th",
+])
+
 // Transfer budgets are baseline ratchets, not substitutes for route-level LHCI.
 // Password dictionaries are isolated, user-intent-loaded chunks and therefore
 // have their own bounded ceiling instead of weakening the general lazy limit.
@@ -75,6 +121,7 @@ function extractInitialAssetPaths(html, htmlRelativeDirectory) {
   let parseError = false
   const document = parse(html, {
     scriptingEnabled: true,
+    sourceCodeLocationInfo: true,
     onParseError(error) {
       if (error.code !== "missing-doctype") parseError = true
     },
@@ -104,6 +151,15 @@ function extractInitialAssetPaths(html, htmlRelativeDirectory) {
     if (inForeign && (name === "script" || name === "link")) throw invalidHtml()
 
     if (node.namespaceURI === HTML_NAMESPACE) {
+      const location = node.sourceCodeLocation
+      if (
+        location &&
+        !location.endTag &&
+        !HTML_VOID_ELEMENTS.has(name) &&
+        !HTML_OPTIONAL_END_TAGS.has(name)
+      ) {
+        throw invalidHtml()
+      }
       if (name === "template") continue
       if (name === "base" && htmlAttribute(node, "href") !== undefined) throw invalidHtml()
 
@@ -146,7 +202,9 @@ function extractInitialAssetPaths(html, htmlRelativeDirectory) {
         }
         if (modulePreload || stylesheet || scriptPreload || stylePreload) {
           if (
-            rel.some((token) => token && !["modulepreload", "stylesheet", "preload"].includes(token)) ||
+            rel.some(
+              (token) => token && !["modulepreload", "stylesheet", "preload"].includes(token)
+            ) ||
             htmlAttribute(node, "media") !== undefined ||
             htmlAttribute(node, "disabled") !== undefined ||
             htmlAttribute(node, "type") !== undefined ||
@@ -262,10 +320,15 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
   const passwordDictionaryAssets = javascriptAssets.filter(
     (asset) => !asset.isInitial && asset.isPasswordDictionary
   )
+  const passwordDictionaryRawAssets = javascriptAssets.filter(
+    (asset) =>
+      !asset.isInitial &&
+      /(?:^|\/)vendor-password-strength-(?:en|ru)-[^/]+\.m?js$/u.test(asset.path)
+  )
   const main = largestBy(mainAssets, "rawBytes")
   const largestGeneralLazy = largestBy(generalLazyAssets, "gzipBytes")
   const largestPasswordDictionary = largestBy(passwordDictionaryAssets, "gzipBytes")
-  const largestPasswordDictionaryRaw = largestBy(passwordDictionaryAssets, "rawBytes")
+  const largestPasswordDictionaryRaw = largestBy(passwordDictionaryRawAssets, "rawBytes")
   const sum = (items, field) => items.reduce((total, asset) => total + asset[field], 0)
 
   return {
