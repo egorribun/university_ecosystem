@@ -1156,9 +1156,8 @@ jobs:
             fi
             # AUD148_ORDINARY_TRAPS_RESET_END
             [ -z "$migration" ] && continue
-            read -r revision down_revision < <(
-              uv run python scripts/quality/read_alembic_revision.py "$migration"
-            )
+            revision_metadata="$(uv run python scripts/quality/read_alembic_revision.py "$migration")"
+            read -r revision down_revision <<< "$revision_metadata"
             echo "Checking $migration ($down_revision -> $revision)"
             sql_file="$sql_dir/$revision.sql"
             uv run python -m scripts.quality.render_live_alembic_sql "$migration" "$sql_file"
@@ -1340,13 +1339,63 @@ jobs:
         run: |
           set -euo pipefail
           print_bounded() {
-            local file="$1" limit="$2" bytes
-            bytes="$(wc -c < "$file")"
-            head -c "$limit" "$file"
-            if [ "$bytes" -gt "$limit" ]; then
-              echo "::error::AUD148 diagnostic output exceeded $limit bytes"
-              return 1
-            fi
+            local file="$1" limit="$2"
+            uv run python - "$file" "$limit" "${3:-log}" <<'AUD148_PRINT'
+          import json
+          import os
+          import sys
+
+          limit = int(sys.argv[2])
+          try:
+              with open(sys.argv[1], "rb") as source:
+                  data = source.read(limit + 1)
+          except OSError:
+              print("::error::AUD148 diagnostic output could not be read")
+              raise SystemExit(1) from None
+          if len(data) > limit:
+              print("::error::AUD148 diagnostic output exceeded its byte limit")
+              raise SystemExit(1)
+
+          private_values = {
+              value
+              for name in ("SECRET_KEY", "DATABASE_URL")
+              if (value := os.environ.get(name, ""))
+          }
+          needles = {
+              representation.encode("utf-8")
+              for value in private_values
+              for representation in (
+                  value,
+                  json.dumps(value, ensure_ascii=True)[1:-1],
+                  json.dumps(value, ensure_ascii=False)[1:-1],
+              )
+          }
+          if not any(needle in data for needle in needles):
+              sys.stdout.buffer.write(data)
+              raise SystemExit(0)
+          if sys.argv[3] == "metadata":
+              # Never publish changed SQL or metadata under the original hash markers.
+              output = (
+                  b"AUD148_DIAGNOSTIC_METADATA_BEGIN\n"
+                  b"AUD148_OMITTED_PRIVATE_RUNTIME_CONTEXT\n"
+                  b"AUD148_DIAGNOSTIC_METADATA_END\n"
+                  b"AUD148_EXPANDED_SQL_BEGIN\n"
+                  b"AUD148_OMITTED_PRIVATE_RUNTIME_CONTEXT\n"
+                  b"AUD148_EXPANDED_SQL_END\n"
+              )
+          else:
+              for needle in sorted(needles, key=len, reverse=True):
+                  data = data.replace(needle, b"[REDACTED]")
+              output = b"AUD148_DIAGNOSTIC_OUTPUT_REDACTED_NOT_RAW\n" + data
+          if len(output) > limit:
+              output = b"::error::AUD148 diagnostic output exceeded its byte limit\n"
+          if any(needle in output for needle in needles):
+              output = b"AUD148_DIAGNOSTIC_OUTPUT_OMITTED\n"
+              if any(needle in output for needle in needles):
+                  output = b""
+          sys.stdout.buffer.write(output)
+          raise SystemExit(1)
+          AUD148_PRINT
           }
           test_log="$(mktemp)"
           trace_root=".pytest_tmp/aud148-expanded"
@@ -1429,7 +1478,10 @@ jobs:
             --exclude prefer-timestamp-tz --exclude disallowed-unique-constraint
             --exclude require-enum-value-ordering
           )
-          uv run python - "$sql_file" "$json_file" "${squawk_args[@]}" <<'PY'
+          metadata_log="$(mktemp)"
+          trap 'rm -f -- "$metadata_log"' EXIT
+          diagnostic_status=0
+          uv run python - "$sql_file" "$json_file" "${squawk_args[@]}" > "$metadata_log" <<'PY'
           import hashlib
           import json
           import os
@@ -1507,6 +1559,9 @@ jobs:
           print(sql_text, end="" if sql_text.endswith("\n") else "\n")
           print("AUD148_EXPANDED_SQL_END")
           PY
+          if ! print_bounded "$metadata_log" 131072 metadata; then
+            diagnostic_status=1
+          fi
           lint_log="$(mktemp)"
           lint_status=0
           AUD148_EXPANDED_SHA256=""
@@ -1521,7 +1576,7 @@ jobs:
           raw_expanded_exit="$lint_status"
           echo "AUD148_EXPANDED_SQUAWK_BEGIN"
           if ! print_bounded "$lint_log" 131072; then
-            [ "$lint_status" -ne 0 ] || lint_status=1
+            diagnostic_status=1
           fi
           echo "AUD148_EXPANDED_SQUAWK_END"
           echo "AUD148_EXPANDED_SQUAWK_EXIT=$lint_status"
@@ -1769,6 +1824,9 @@ jobs:
           fi
           if [[ "$lint_status" -eq 0 && "$capture_status" -ne 0 ]]; then
             exit "$capture_status"
+          fi
+          if [[ "$lint_status" -eq 0 && "$diagnostic_status" -ne 0 ]]; then
+            exit "$diagnostic_status"
           fi
           exit "$lint_status"
 

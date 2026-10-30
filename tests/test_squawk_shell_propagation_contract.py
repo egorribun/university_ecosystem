@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import runpy
 import secrets
 import shutil
 import subprocess
@@ -256,6 +257,9 @@ elif [[ "$1" == run && "$2" == python && "$3" == - ]]; then
   elif [[ "$4" == *squawk-linux-x64 ]]; then
     printf 'COLLECTOR_RAN\\n'
     exit "$TEST_COLLECTOR_EXIT"
+  elif [[ "${5:-}" == 131072 && ( "${6:-}" == log || "${6:-}" == metadata ) ]]; then
+    shift 2
+    exec "$TEST_PYTHON_EXECUTABLE" "$@"
   elif [[ "${TEST_RUN_METADATA:-0}" == 1 ]]; then
     shift 2
     exec "$TEST_PYTHON_EXECUTABLE" "$@"
@@ -286,6 +290,7 @@ fi
     monkeypatch.setenv("RUNNER_TEMP", runner_temp.as_posix())
     monkeypatch.setenv("TMPDIR", temp_dir.as_posix())
     monkeypatch.setenv("AUD148_ORDINARY_SQL", "controlled-ordinary.sql")
+    monkeypatch.setenv("TEST_PYTHON_EXECUTABLE", Path(sys.executable).as_posix())
     for name in ("TEST_PREPARED_ARTIFACTS", "TEST_RUN_METADATA", "TEST_SCANNER_TEXT"):
         monkeypatch.delenv(name, raising=False)
 
@@ -408,3 +413,118 @@ def test_diagnostic_step_does_not_print_private_runtime_context(
         pytest.fail(
             "diagnostic output exposed synthetic private context", pytrace=False
         )
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["clean", "private-log", "private-metadata", "escaped-metadata", "oversized"],
+)
+def test_diagnostic_printer_checks_bounds_and_private_forms_before_output(
+    case: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    job = yaml.safe_load(
+        (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )["jobs"]["alembic-migrations"]
+    step = next(
+        step for step in job["steps"] if step.get("id") == "migration-ddl-evidence"
+    )
+    opening = "<<'AUD148_PRINT'\n"
+    assert step["run"].count(opening) == 1, "one bounded privacy printer is required"
+    body = step["run"].split(opening, 1)[1]
+    body = body.split("\nAUD148_PRINT\n", 1)[0]
+    script = tmp_path / "printer.py"
+    script.write_text(body, encoding="utf-8")
+    input_path = tmp_path / "diagnostic.log"
+
+    def invoke(data: bytes, mode: str):
+        input_path.write_bytes(data)
+        monkeypatch.setattr(sys, "argv", [str(script), str(input_path), "131072", mode])
+        status = 0
+        try:
+            runpy.run_path(str(script), run_name="__main__")
+        except SystemExit as error:
+            status = error.code
+        finally:
+            output = capsys.readouterr()
+        return status, output.out, output.err
+
+    monkeypatch.setenv("SECRET_KEY", "")
+    monkeypatch.setenv("DATABASE_URL", "")
+    clean = "PUBLIC_DIAGNOSTIC\nПривет\n".encode()
+    status, stdout, stderr = invoke(clean, "metadata")
+    assert status == 0
+    assert stdout.encode() == clean
+    assert stderr == ""
+    if case == "clean":
+        return
+
+    canary = secrets.token_urlsafe(24)
+    private = f'postgresql://{canary}/"Привет"\n'
+    monkeypatch.setenv("SECRET_KEY", "" if case == "private-metadata" else private)
+    monkeypatch.setenv("DATABASE_URL", private if case == "private-metadata" else "")
+    mode = "metadata" if "metadata" in case else "log"
+    if case == "oversized":
+        prefix = b"PARTIAL_OUTPUT_MUST_NOT_BE_PRINTED\n"
+        payload = prefix + b"x" * (131073 - len(prefix))
+    elif case == "escaped-metadata":
+        payload = json.dumps({"sql": private}, ensure_ascii=True).encode()
+    else:
+        payload = b"PUBLIC_BEFORE\n" + private.encode() + b"PUBLIC_AFTER\n"
+    status, stdout, stderr = invoke(payload, mode)
+    opaque = canary not in stdout + stderr
+    assert opaque, "diagnostic printer exposed synthetic private context"
+    assert status == 1
+    assert stderr == ""
+    if case == "oversized":
+        assert "PARTIAL_OUTPUT_MUST_NOT_BE_PRINTED" not in stdout
+        assert stdout == "::error::AUD148 diagnostic output exceeded its byte limit\n"
+        monkeypatch.setenv("SECRET_KEY", canary)
+        monkeypatch.setenv("DATABASE_URL", "")
+        payload = b"x" * (131072 - len(canary)) + canary.encode()
+        status, stdout, stderr = invoke(payload, "log")
+        opaque = canary not in stdout + stderr
+        assert opaque, "bounded redaction exposed synthetic private context"
+        assert status == 1
+        assert stdout == "::error::AUD148 diagnostic output exceeded its byte limit\n"
+        assert stderr == ""
+    elif mode == "metadata":
+        assert stdout == (
+            "AUD148_DIAGNOSTIC_METADATA_BEGIN\n"
+            "AUD148_OMITTED_PRIVATE_RUNTIME_CONTEXT\n"
+            "AUD148_DIAGNOSTIC_METADATA_END\n"
+            "AUD148_EXPANDED_SQL_BEGIN\n"
+            "AUD148_OMITTED_PRIVATE_RUNTIME_CONTEXT\n"
+            "AUD148_EXPANDED_SQL_END\n"
+        )
+    else:
+        assert stdout.startswith("AUD148_DIAGNOSTIC_OUTPUT_REDACTED_NOT_RAW\n")
+        assert "PUBLIC_BEFORE" in stdout
+        assert "PUBLIC_AFTER" in stdout
+        monkeypatch.setenv("SECRET_KEY", "REDACTED")
+        monkeypatch.setenv("DATABASE_URL", "")
+        status, stdout, stderr = invoke(b"REDACTED\n", "log")
+        assert status == 1
+        assert stdout == "AUD148_DIAGNOSTIC_OUTPUT_OMITTED\n"
+        assert stderr == ""
+        monkeypatch.setenv("DATABASE_URL", "OMITTED")
+        status, stdout, stderr = invoke(b"REDACTED\n", "log")
+        assert status == 1
+        assert stdout == ""
+        assert stderr == ""
+
+
+def test_private_diagnostics_fail_after_successful_raw_scan_and_collector(
+    diagnostic_gate, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    canary = secrets.token_urlsafe(24)
+    monkeypatch.setenv("SECRET_KEY", canary)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("TEST_SCANNER_TEXT", canary)
+    status, stdout, stderr = diagnostic_gate(0, 0, quiet=True)
+    opaque = canary not in stdout + stderr
+    assert opaque, "diagnostic output exposed synthetic private context"
+    assert status == 1
+    assert "RAW_SCANNER_RAN" in stdout
+    assert "COLLECTOR_RAN" in stdout
+    assert "AUD148_EXPANDED_SQUAWK_EXIT=0" in stdout
+    assert "AUD148_DIAGNOSTIC_OUTPUT_REDACTED_NOT_RAW" in stdout
