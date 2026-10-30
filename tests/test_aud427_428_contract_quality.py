@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import importlib.machinery
 import importlib.util
+import io
 import json
 import re
 import runpy
@@ -12,6 +14,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tokenize
 import uuid
 from pathlib import Path
 from types import CodeType, SimpleNamespace
@@ -976,3 +979,175 @@ def test_owned_redis_launcher_entrypoint_preserves_argument_boundaries(
     markers_empty = not transport.markers
     assert markers_empty, "confirmed test markers must be cleaned"
     _assert_launcher_output_is_bounded(transport, captured)
+
+
+def _assert_owned_redis_ruff_scopes(source: str) -> None:
+    """Accept only the three approved sites, never a general Ruff exemption."""
+    tree = ast.parse(source)
+    comments = [
+        (token.start[0], token.string)
+        for token in tokenize.generate_tokens(io.StringIO(source).readline)
+        if token.type == tokenize.COMMENT
+        and re.search(r"\bnoqa\b", token.string, re.IGNORECASE)
+    ]
+    expected_comments: list[tuple[int, str]] = []
+    calls = {
+        "_command": (
+            "subprocess.run([docker, *args], input=value, text=True, "
+            "capture_output=True, check=False, timeout=15)"
+        ),
+        "main": (
+            "subprocess.run([sys.executable, '-m', 'pytest', "
+            "*(sys.argv[1:] if args is None else args)], "
+            "env=child_env, check=False)"
+        ),
+    }
+    reasons = {
+        "_command": "# noqa: S603 -- resolved Docker, fixed arguments",
+        "main": "# noqa: S603 -- current interpreter, pytest arguments",
+    }
+
+    def function(name: str) -> ast.FunctionDef:
+        matches = [
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == name
+        ]
+        assert len(matches) == 1, "approved function identity must be unique"
+        return matches[0]
+
+    def is_subprocess_run(node: ast.AST) -> bool:
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "subprocess"
+            and node.func.attr == "run"
+        )
+
+    def lexical_nodes(root: ast.AST) -> list[ast.AST]:
+        pending: list[ast.AST] = (
+            list(root.body) if isinstance(root, ast.FunctionDef) else [root]
+        )
+        nodes = []
+        while pending:
+            node = pending.pop()
+            if isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+            ):
+                continue
+            nodes.append(node)
+            pending.extend(ast.iter_child_nodes(node))
+        return nodes
+
+    assert sum(is_subprocess_run(node) for node in ast.walk(tree)) == 2
+    for name, expression in calls.items():
+        matches = [
+            node for node in lexical_nodes(function(name)) if is_subprocess_run(node)
+        ]
+        assert len(matches) == 1, "annotation must bind one approved subprocess call"
+        expected = ast.parse(expression, mode="eval").body
+        assert ast.dump(matches[0]) == ast.dump(expected)
+        expected_comments.append((matches[0].lineno, reasons[name]))
+
+    assignments = [
+        node
+        for node in lexical_nodes(function("_inspect"))
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == "valid"
+    ]
+    assert len(assignments) == 1, "HostIp grant belongs to the admission predicate"
+    expected_comparison = ast.parse(
+        "binding['HostIp'] in ('', '0.0.0.0', '::', '127.0.0.1', '::1')",
+        mode="eval",
+    ).body
+    comparisons = [
+        node
+        for node in lexical_nodes(assignments[0].value)
+        if isinstance(node, ast.Compare)
+        and ast.dump(node) == ast.dump(expected_comparison)
+    ]
+    assert len(comparisons) == 1, "HostIp grant must remain a metadata comparison"
+    addresses = comparisons[0].comparators[0]
+    assert isinstance(addresses, ast.Tuple)
+    address = addresses.elts[1]
+    expected_comments.append(
+        (
+            address.lineno,
+            "# noqa: S104 -- inspected runner metadata, not a bind",
+        )
+    )
+    assert sorted(comments) == sorted(expected_comments)
+
+
+def test_owned_redis_launcher_ruff_annotations_are_source_bound() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "scripts/quality/run_owned_redis_contracts.py").read_text()
+    _assert_owned_redis_ruff_scopes(source)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "extra",
+        "missing",
+        "moved",
+        "nested_relocation",
+        "broad",
+        "file_level",
+        "extra_rule",
+        "docker_executable",
+        "pytest_executable",
+        "shell",
+        "comparison_context",
+    ],
+)
+def test_owned_redis_launcher_ruff_scope_rejects_unapproved_changes(
+    mutation: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "scripts/quality/run_owned_redis_contracts.py").read_text()
+    docker_comment = "# noqa: S603 -- resolved Docker, fixed arguments"
+    host_comment = "# noqa: S104 -- inspected runner metadata, not a bind"
+    replacements = {
+        "extra": ("import hmac\n", "import hmac  # noqa: S603\n"),
+        "missing": ("  " + docker_comment, ""),
+        "moved": (
+            "    try:\n        result = subprocess.run(  " + docker_comment,
+            "    try:  " + docker_comment + "\n        result = subprocess.run(",
+        ),
+        "nested_relocation": (
+            "    try:\n        result = subprocess.run(",
+            "    try:\n        def relocated():\n            result = subprocess.run(",
+        ),
+        "broad": (host_comment, "# noqa"),
+        "file_level": (
+            "from __future__ import annotations\n",
+            "# ruff: noqa\nfrom __future__ import annotations\n",
+        ),
+        "extra_rule": (
+            docker_comment,
+            "# noqa: S603, S104 -- resolved Docker, fixed arguments",
+        ),
+        "docker_executable": ("[docker, *args]", "[unapproved_docker, *args]"),
+        "pytest_executable": (
+            '[sys.executable, "-m", "pytest"',
+            '[unapproved_python, "-m", "pytest"',
+        ),
+        "shell": (
+            "            env=child_env,\n            check=False,",
+            "            env=child_env,\n            check=False,\n"
+            "            shell=True,",
+        ),
+        "comparison_context": (
+            'binding["HostIp"] in (',
+            "bind_host_ip(",
+        ),
+    }
+    before, after = replacements[mutation]
+    assert source.count(before) == 1
+    mutated = source.replace(before, after)
+    with pytest.raises(AssertionError):
+        _assert_owned_redis_ruff_scopes(mutated)

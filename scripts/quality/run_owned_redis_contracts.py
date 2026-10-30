@@ -46,7 +46,7 @@ class Store:
 
 def _command(docker: str, *args: str, value: str | None = None) -> str:
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 -- resolved Docker, fixed arguments
             [docker, *args],
             input=value,
             text=True,
@@ -76,7 +76,13 @@ def _inspect(docker: str, container_id: str, port: int) -> None:
             and bool(bindings)
             and all(
                 binding["HostPort"] == str(port)
-                and binding["HostIp"] in ("", "0.0.0.0", "::", "127.0.0.1", "::1")
+                and binding["HostIp"] in (
+                    "",
+                    "0.0.0.0",  # noqa: S104 -- inspected runner metadata, not a bind
+                    "::",
+                    "127.0.0.1",
+                    "::1",
+                )
                 for binding in bindings
             )
         )
@@ -198,7 +204,7 @@ def main(args: list[str] | None = None) -> int:
             child_env[f"{store.prefix}_OWNER_KEY"] = store.key
             child_env[f"{store.prefix}_OWNER_VALUE"] = store.value
         print("OWNED_REDIS_CONTRACTS_ESTABLISHED", flush=True)
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 -- current interpreter, pytest arguments
             [sys.executable, "-m", "pytest", *(sys.argv[1:] if args is None else args)],
             env=child_env,
             check=False,

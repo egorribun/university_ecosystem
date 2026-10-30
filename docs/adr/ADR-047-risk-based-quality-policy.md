@@ -1152,3 +1152,40 @@ to new paths, fingerprints or whole-source bindings. Existing mismatches remain
 blocking. Capture the actual scanner inventory before proposing any new finite
 approval and corresponding negative tests; no blanket hash exception, expiry
 extension or implied owner authorization is introduced here.
+
+## Three source-bound Redis integration Ruff annotations
+
+The owner explicitly approved this limited scope on 2026-10-30. Exactly three
+line-level annotations are authorized in
+`scripts/quality/run_owned_redis_contracts.py`:
+
+- S603 on `subprocess.run` in `_command`: the resolved Docker executable, fixed
+  argument structure, bounded transport timeout, and runtime marker value supplied
+  through stdin, without a shell.
+- S603 on `subprocess.run` in `main`: `sys.executable` with `-m pytest`,
+  preserving the reviewed integration arguments and child environment, without
+  a shell.
+- S104 on the single `"0.0.0.0"` literal in `_inspect` that is compared with
+  Docker inspect `HostIp` metadata. This site validates the existing service
+  binding metadata; it does not create or configure a listener.
+
+No additional or relocated annotation, broad or file-level suppression, Ruff
+configuration change, or general S603/S104 exception is authorized. The earlier
+coverage-worker grant remains separate and unchanged. Source-bound positive and
+negative tests bind the exact subprocess calls and metadata comparison, including
+their lexical function owners; extra, missing, moved, nested, broad, expanded-rule
+and changed-call annotations must be rejected. Normal Ruff checks and
+final-source hosted verification remain mandatory.
+
+The two S603 annotations were initially published without this required separate
+authorization. Independent review identified that mistake, and commit
+`65254d0a5d58542d283a920d9b56e7e5be630e44` removed them to restore the strict gate.
+Its own Actions run reported the two S603 sites and the S104 comparison as errors.
+This later decision permits only the three reviewed sites above; it does not
+retroactively make the earlier policy review complete.
+
+The 319-entry detect-secrets baseline, 405 finite dispositions, 26 Gitleaks
+fingerprints, required CI contexts, hooks and coverage floors remain unchanged.
+No additional hash identity is admitted by this decision. The annotations and
+scope tests establish neither Redis runtime acceptance nor full CI, release or
+deployment readiness; those still require their own evidence.
