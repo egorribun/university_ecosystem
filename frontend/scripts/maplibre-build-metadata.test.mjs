@@ -6,7 +6,11 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os"
 import path from "node:path"
 import test from "node:test"
+import { fileURLToPath } from "node:url"
 import { gzipSync } from "node:zlib"
+
+import { analyzeBundle, assertBundleBudgets } from "./check-bundle-budget.mjs"
+import { inspectFinalHtml } from "./final-html-root-inventory.mjs"
 
 const helperUrl = new URL("./maplibre-build-metadata.mjs", import.meta.url)
 const sha256 = (value) => createHash("sha256").update(value).digest("hex")
@@ -1108,4 +1112,537 @@ test("compiler graph bounds external edges before writing evidence", async (t) =
       await rm(fixture.root, { recursive: true, force: true })
     }
   })
+})
+
+const policySourcePaths = [
+  ".github/workflows/reusable-frontend-tests.yml",
+  "frontend/package.json",
+  "frontend/package-lock.json",
+  "frontend/vite.config.mts",
+  "frontend/scripts/final-html-root-inventory.mjs",
+  "frontend/scripts/build-orchestrated.mjs",
+  "frontend/scripts/post-build-shell.mjs",
+  "frontend/scripts/maplibre-build-metadata.mjs",
+  "frontend/public/theme-init.js",
+  "frontend/public/static-shell-i18n.js",
+]
+
+function policyPayload(blocks) {
+  const bytes = Buffer.concat(
+    Array.from({ length: blocks }, (_, index) =>
+      createHash("sha256").update("owned MapLibre budget fixture " + index).digest()
+    )
+  )
+  return 'export const ownedPayload = "' + bytes.toString("base64") + '";\n'
+}
+
+async function makePolicyFixture(change = () => {}) {
+  const directory = fileURLToPath(new URL("..", import.meta.url))
+  const workspace = await mkdtemp(path.join(directory, ".maplibre-budget-"))
+  const frontend = path.join(workspace, "frontend")
+  const outputDir = path.join(frontend, "dist", "client")
+  const temporary = path.join(workspace, "runner-temp")
+  try {
+    await mkdir(path.join(outputDir, "assets"), { recursive: true })
+    await mkdir(temporary)
+    for (const relative of policySourcePaths) {
+      const destination = path.join(workspace, relative)
+      await mkdir(path.dirname(destination), { recursive: true })
+      await writeFile(destination, await readFile(new URL("../../" + relative, import.meta.url)))
+    }
+    const installedDir = path.join(frontend, "node_modules", "maplibre-gl")
+    await mkdir(installedDir, { recursive: true })
+    await writeFile(
+      path.join(installedDir, "package.json"),
+      await readFile(new URL("../node_modules/maplibre-gl/package.json", import.meta.url))
+    )
+    const contents = {
+      "assets/index-A.js": 'export const loadMap = () => import("./Map-A.js")\n',
+      "assets/Map-A.js": 'import "./vendor-map-A.js"\nexport const route = true\n',
+      "assets/vendor-map-A.js": policyPayload(9000),
+      "assets/Detached-A.js": "export const detached = true\n",
+    }
+    const chunk = (fileName, options = {}) => ({
+      type: "chunk",
+      fileName,
+      code: contents[fileName],
+      imports: options.imports ?? [],
+      dynamicImports: options.dynamicImports ?? [],
+      isEntry: options.isEntry ?? false,
+      isDynamicEntry: options.isDynamicEntry ?? false,
+      modules: options.modules ?? {},
+    })
+    const bundle = {
+      "assets/index-A.js": chunk("assets/index-A.js", {
+        isEntry: true,
+        dynamicImports: ["assets/Map-A.js"],
+      }),
+      "assets/Map-A.js": chunk("assets/Map-A.js", {
+        isDynamicEntry: true,
+        imports: ["assets/vendor-map-A.js"],
+      }),
+      "assets/vendor-map-A.js": chunk("assets/vendor-map-A.js", {
+        modules: Object.fromEntries(
+          ["maplibre-gl.css", "maplibre-gl.mjs", "maplibre-gl-worker.mjs"].map((name) => [
+            path.join(installedDir, "dist", name),
+            { renderedLength: name.endsWith(".css") ? 0 : 1 },
+          ])
+        ),
+      }),
+      "assets/Detached-A.js": chunk("assets/Detached-A.js"),
+    }
+    const fixture = {
+      workspace,
+      frontend,
+      outputDir,
+      temporary,
+      contents,
+      bundle,
+      html:
+        '<!doctype html><html><head><script src="/theme-init.js"></script></head><body>' +
+        '<script type="module" src="/assets/index-A.js"></script></body></html>',
+    }
+    await change(fixture)
+    for (const item of Object.values(bundle)) {
+      await writeFile(path.join(outputDir, item.fileName), item.code)
+    }
+    for (const name of ["theme-init.js", "static-shell-i18n.js"]) {
+      await writeFile(
+        path.join(outputDir, name),
+        await readFile(path.join(frontend, "public", name))
+      )
+    }
+    for (const name of ["_shell.html", "index.html"]) {
+      await writeFile(path.join(outputDir, name), fixture.html)
+    }
+    const gitEnvironment = {
+      PATH: process.env.PATH || "",
+      HOME: workspace,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_OPTIONAL_LOCKS: "0",
+      GIT_NO_LAZY_FETCH: "1",
+      GIT_NO_REPLACE_OBJECTS: "1",
+      LC_ALL: "C",
+    }
+    const git = (...args) =>
+      execFileSync("git", ["--no-pager", "-c", "core.fsmonitor=false", ...args], {
+        cwd: workspace,
+        env: gitEnvironment,
+        encoding: "utf8",
+        timeout: 5000,
+        maxBuffer: 4096,
+        stdio: ["ignore", "pipe", "pipe"],
+      }).trim()
+    git("init", "--quiet", "--initial-branch=egorribun")
+    git("add", "--", ...policySourcePaths)
+    git(
+      "-c",
+      "user.name=Owned Budget Fixture",
+      "-c",
+      "user.email=budget@example.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--quiet",
+      "-m",
+      "owned budget fixture"
+    )
+    const checkoutSha = git("rev-parse", "--verify", "HEAD")
+    const treeSha = git("rev-parse", "HEAD^{tree}")
+    const metadataPath = path.join(temporary, "maplibre-inventory-1234-1-" + checkoutSha + ".json")
+    const producer = (await loadProducer())({ outputPath: metadataPath, isLhci: false })
+    producer.configResolved({
+      root: frontend,
+      command: "build",
+      mode: "production",
+      isProduction: true,
+      env: { VITE_LHCI: "false" },
+    })
+    await producer.writeBundle.call(
+      {
+        environment: {
+          name: "client",
+          config: {
+            consumer: "client",
+            isWorker: false,
+            build: {
+              minify: "oxc",
+              sourcemap: "hidden",
+              target: ["chrome111", "edge111", "firefox114", "safari16.4", "ios16.4"],
+            },
+          },
+        },
+      },
+      { dir: outputDir, format: "es" },
+      bundle
+    )
+    const workflow = await readFile(inventoryWorkflowUrl, "utf8")
+    const opening = "          node --input-type=module <<'FINAL_HTML_INVENTORY'\n"
+    const closing = "          FINAL_HTML_INVENTORY"
+    assert.equal(workflow.split(opening).length, 2)
+    const start = workflow.indexOf(opening) + opening.length
+    const end = workflow.indexOf(closing, start)
+    assert.ok(end > start)
+    const program = workflow
+      .slice(start, end)
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => {
+        assert.ok(line.startsWith("          "))
+        return line.slice(10)
+      })
+      .join("\n")
+    const result = spawnSync(process.execPath, ["--input-type=module"], {
+      cwd: frontend,
+      input: program,
+      env: {
+        PATH: process.env.PATH || "",
+        HOME: workspace,
+        NODE_OPTIONS: "--max-old-space-size=512 --max-semi-space-size=16",
+        GITHUB_WORKSPACE: workspace,
+        GITHUB_SHA: checkoutSha,
+        GITHUB_RUN_ID: "1234",
+        GITHUB_RUN_ATTEMPT: "1",
+        GITHUB_EVENT_NAME: "push",
+        RUNNER_TEMP: temporary,
+      },
+      encoding: "utf8",
+      timeout: 30_000,
+      maxBuffer: 65_536,
+    })
+    assert.equal(result.error, undefined)
+    assert.equal(result.status, 0, "owned final HTML capture must succeed")
+    assert.equal(result.stderr, "")
+    assert.equal(result.stdout.includes(workspace), false)
+    const htmlReportPath = path.join(
+      temporary,
+      "final-html-inventory-1234-1-" + checkoutSha + ".json"
+    )
+    const evidence = {
+      workspace,
+      metadataPath,
+      htmlReportPath,
+      metadataSha256: sha256(await readFile(metadataPath)),
+      htmlReportSha256: sha256(await readFile(htmlReportPath)),
+      checkoutSha,
+      treeSha,
+      runId: "1234",
+      runAttempt: "1",
+    }
+    return { ...fixture, evidence }
+  } catch (error) {
+    await rm(workspace, { recursive: true, force: true })
+    throw error
+  }
+}
+
+async function policyReport(fixture) {
+  return analyzeBundle(path.join(fixture.frontend, "dist"), {
+    mapLibreEvidence: fixture.evidence,
+  })
+}
+
+async function changePolicyMetadata(fixture, change) {
+  const metadata = JSON.parse(await readFile(fixture.evidence.metadataPath, "utf8"))
+  change(metadata)
+  const bytes = Buffer.from(JSON.stringify(metadata))
+  await writeFile(fixture.evidence.metadataPath, bytes)
+  fixture.evidence.metadataSha256 = sha256(bytes)
+}
+
+async function refreshPolicyHtml(fixture) {
+  const report = JSON.parse(await readFile(fixture.evidence.htmlReportPath, "utf8"))
+  report.inventory = await inspectFinalHtml(fixture.outputDir)
+  assert.ok(report.inventory, "mutated owned HTML must still produce a valid diagnostic")
+  const bytes = Buffer.from(JSON.stringify(report))
+  await writeFile(fixture.evidence.htmlReportPath, bytes)
+  fixture.evidence.htmlReportSha256 = sha256(bytes)
+}
+
+test("admits only a proven MapLibre 6.15 chunk within the separate lazy ceiling", async () => {
+  const fixture = await makePolicyFixture()
+  try {
+    const bytes = Buffer.from(fixture.bundle["assets/vendor-map-A.js"].code)
+    const compressed = gzipSync(bytes, { level: 9 }).byteLength
+    assert.ok(compressed > 280 * 1024 && compressed <= 286 * 1024)
+
+    const ordinary = await analyzeBundle(path.join(fixture.frontend, "dist"))
+    assert.throws(() => assertBundleBudgets(ordinary), /vendor-map-A\.js.*280 KiB/u)
+
+    const report = await policyReport(fixture)
+    assert.doesNotThrow(
+      () => assertBundleBudgets(report),
+      "valid build-bound MapLibre evidence must admit only the separate 286 KiB ceiling"
+    )
+    assert.equal(report.budgets.generalLazyJsGzipKb, 280)
+    const candidate = report.assets.find((asset) => asset.path === "client/assets/vendor-map-A.js")
+    assert.equal(candidate.isInitial, false)
+    assert.equal(candidate.rawBytes, bytes.byteLength)
+    assert.equal(candidate.gzipBytes, compressed)
+  } finally {
+    await rm(fixture.workspace, { recursive: true, force: true })
+  }
+})
+
+test("invalid MapLibre evidence cannot grant a lazy budget allowance", async () => {
+  const changedMetadata = (change) => (fixture) => changePolicyMetadata(fixture, change)
+  const cases = [
+    ["metadata-content-hash", (fixture) => writeFile(fixture.evidence.metadataPath, "{}")],
+    [
+      "wrong-run",
+      (fixture) => {
+        fixture.evidence.runId = "1235"
+      },
+    ],
+    [
+      "wrong-attempt",
+      (fixture) => {
+        fixture.evidence.runAttempt = "2"
+      },
+    ],
+    [
+      "wrong-checkout",
+      (fixture) => {
+        fixture.evidence.checkoutSha = "0".repeat(40)
+      },
+    ],
+    [
+      "wrong-tree",
+      (fixture) => {
+        fixture.evidence.treeSha = "0".repeat(40)
+      },
+    ],
+    [
+      "wrong-version",
+      changedMetadata((metadata) => {
+        metadata.package.installedVersion = "6.16.0"
+      }),
+    ],
+    [
+      "LHCI-profile",
+      changedMetadata((metadata) => {
+        metadata.profile.lhci = true
+      }),
+    ],
+    [
+      "unresolved-static-import",
+      changedMetadata((metadata) => {
+        metadata.graph.unresolvedStaticImportCount = 1
+        metadata.graph.complete = false
+      }),
+    ],
+    [
+      "wrong-integrity",
+      changedMetadata((metadata) => {
+        metadata.package.lockIntegrity += "x"
+      }),
+    ],
+    [
+      "wrong-producer",
+      changedMetadata((metadata) => {
+        metadata.producerSha256 = "0".repeat(64)
+      }),
+    ],
+    [
+      "wrong-vite-source",
+      changedMetadata((metadata) => {
+        metadata.viteConfigSha256 = "0".repeat(64)
+      }),
+    ],
+    [
+      "missing-module",
+      changedMetadata((metadata) => {
+        metadata.mapLibreChunks[0].modules.pop()
+      }),
+    ],
+    [
+      "duplicate-module",
+      changedMetadata((metadata) => {
+        metadata.mapLibreChunks[0].modules.push(metadata.mapLibreChunks[0].modules[0])
+      }),
+    ],
+    [
+      "foreign-module",
+      changedMetadata((metadata) => {
+        metadata.mapLibreChunks[0].modules[0].package = "other"
+      }),
+    ],
+    [
+      "forged-module-id",
+      changedMetadata((metadata) => {
+        metadata.mapLibreChunks[0].modules[0].idSha256 = "0".repeat(64)
+      }),
+    ],
+    ...[0, 2, 3].map((count) => [
+      "candidate-count-" + count,
+      changedMetadata((metadata) => {
+        metadata.mapLibreChunks = Array(count).fill(metadata.mapLibreChunks[0])
+      }),
+    ]),
+    [
+      "changed-detached-chunk",
+      (fixture) => writeFile(path.join(fixture.outputDir, "assets/Detached-A.js"), "changed"),
+    ],
+    [
+      "missing-detached-chunk",
+      (fixture) => rm(path.join(fixture.outputDir, "assets/Detached-A.js")),
+    ],
+    [
+      "changed-final-document",
+      (fixture) => writeFile(path.join(fixture.outputDir, "index.html"), fixture.html + "\n"),
+    ],
+    [
+      "changed-auxiliary-asset",
+      (fixture) => writeFile(path.join(fixture.outputDir, "theme-init.js"), "void 0;\n"),
+    ],
+    [
+      "changed-tracked-auxiliary-source",
+      (fixture) => writeFile(path.join(fixture.frontend, "public", "theme-init.js"), "void 0;\n"),
+    ],
+    [
+      "unknown-static-target",
+      changedMetadata((metadata) => {
+        metadata.graph.chunks.find((chunk) => chunk.isEntry).imports.push("assets/unknown.js")
+      }),
+    ],
+    [
+      "initial-static-closure",
+      async (fixture) => {
+        const code = 'import "./vendor-map-A.js"\n' + fixture.contents["assets/index-A.js"]
+        await writeFile(path.join(fixture.outputDir, "assets/index-A.js"), code)
+        await changePolicyMetadata(fixture, (metadata) => {
+          const entry = metadata.graph.chunks.find((chunk) => chunk.isEntry)
+          entry.imports.push("assets/vendor-map-A.js")
+          entry.rawBytes = Buffer.byteLength(code)
+          entry.sha256 = sha256(code)
+          metadata.mapLibreChunks[0].staticEntryReachable = false
+        })
+        await refreshPolicyHtml(fixture)
+      },
+    ],
+    [
+      "non-entry-HTML-static-closure",
+      async (fixture) => {
+        const html = fixture.html.replace(
+          "</body>",
+          '<script type="module" src="/assets/Map-A.js"></script></body>'
+        )
+        for (const name of ["_shell.html", "index.html"]) {
+          await writeFile(path.join(fixture.outputDir, name), html)
+        }
+        await refreshPolicyHtml(fixture)
+      },
+    ],
+    [
+      "renamed-non-vendor-candidate",
+      async (fixture) => {
+        const oldName = "assets/vendor-map-A.js"
+        const newName = "assets/renamed-map-A.js"
+        const code = 'import "./renamed-map-A.js"\nexport const route = true\n'
+        await writeFile(
+          path.join(fixture.outputDir, newName),
+          await readFile(path.join(fixture.outputDir, oldName))
+        )
+        await rm(path.join(fixture.outputDir, oldName))
+        await writeFile(path.join(fixture.outputDir, "assets/Map-A.js"), code)
+        await changePolicyMetadata(fixture, (metadata) => {
+          metadata.mapLibreChunks[0].fileName = newName
+          metadata.graph.chunks.find((chunk) => chunk.fileName === oldName).fileName = newName
+          const route = metadata.graph.chunks.find((chunk) => chunk.fileName === "assets/Map-A.js")
+          route.imports = [newName]
+          route.rawBytes = Buffer.byteLength(code)
+          route.sha256 = sha256(code)
+          metadata.graph.chunks.sort((left, right) => left.fileName.localeCompare(right.fileName))
+        })
+      },
+    ],
+    [
+      "direct-HTML-candidate",
+      async (fixture) => {
+        const html = fixture.html.replace(
+          "</body>",
+          '<script type="module" src="/assets/vendor-map-A.js"></script></body>'
+        )
+        for (const name of ["_shell.html", "index.html"]) {
+          await writeFile(path.join(fixture.outputDir, name), html)
+        }
+        await refreshPolicyHtml(fixture)
+      },
+    ],
+    [
+      "unknown-HTML-root",
+      async (fixture) => {
+        await writeFile(path.join(fixture.outputDir, "assets/Unknown-A.js"), "export const x = 1\n")
+        const html = fixture.html.replace(
+          "</body>",
+          '<script type="module" src="/assets/Unknown-A.js"></script></body>'
+        )
+        for (const name of ["_shell.html", "index.html"]) {
+          await writeFile(path.join(fixture.outputDir, name), html)
+        }
+        await refreshPolicyHtml(fixture)
+      },
+    ],
+  ]
+  for (const [name, mutate] of cases) {
+    const fixture = await makePolicyFixture()
+    try {
+      const control = await policyReport(fixture)
+      assert.doesNotThrow(() => assertBundleBudgets(control), name + ": accepting control")
+      await mutate(fixture)
+      await assert.rejects(policyReport(fixture), /MapLibre budget evidence rejected/u, name)
+    } finally {
+      await rm(fixture.workspace, { recursive: true, force: true })
+    }
+  }
+})
+
+test("keeps every other lazy asset at 280 KiB and the MapLibre ceiling at 286", async () => {
+  const cases = [
+    [
+      "other-lazy-over-280",
+      (fixture) => {
+        fixture.bundle["assets/Detached-A.js"].code = policyPayload(8900)
+      },
+      /Detached-A\.js.*280 KiB/u,
+    ],
+    [
+      "MapLibre-over-286",
+      (fixture) => {
+        fixture.bundle["assets/vendor-map-A.js"].code = policyPayload(9300)
+      },
+      /vendor-map-A\.js.*286 KiB/u,
+    ],
+  ]
+  for (const [name, change, expected] of cases) {
+    const control = await makePolicyFixture()
+    try {
+      const accepted = await policyReport(control)
+      assert.doesNotThrow(() => assertBundleBudgets(accepted), name + ": accepting control")
+    } finally {
+      await rm(control.workspace, { recursive: true, force: true })
+    }
+    const fixture = await makePolicyFixture(change)
+    try {
+      const mapSize = gzipSync(Buffer.from(fixture.bundle["assets/vendor-map-A.js"].code), {
+        level: 9,
+      }).byteLength
+      if (name === "other-lazy-over-280") {
+        const otherSize = gzipSync(Buffer.from(fixture.bundle["assets/Detached-A.js"].code), {
+          level: 9,
+        }).byteLength
+        assert.ok(otherSize > 280 * 1024 && otherSize < mapSize)
+        assert.ok(mapSize <= 286 * 1024)
+      } else {
+        assert.ok(mapSize > 286 * 1024)
+      }
+      const report = await policyReport(fixture)
+      assert.equal(report.budgets.generalLazyJsGzipKb, 280)
+      assert.throws(() => assertBundleBudgets(report), expected)
+    } finally {
+      await rm(fixture.workspace, { recursive: true, force: true })
+    }
+  }
 })
