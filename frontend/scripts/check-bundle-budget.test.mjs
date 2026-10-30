@@ -800,7 +800,10 @@ test("counts the producer low-priority preload and plain module only once", asyn
       await writeFile(path.join(distDir, "client", "index.html"), html)
       const report = await analyzeBundle(distDir)
       const initial = report.assets.filter((asset) => asset.isInitial)
-      assert.deepEqual(initial.map((asset) => asset.path), ["client/assets/index-ABC.js"])
+      assert.deepEqual(
+        initial.map((asset) => asset.path),
+        ["client/assets/index-ABC.js"]
+      )
       assert.equal(report.summary.initialJsAssetCount, 1)
       assert.equal(initial[0].rawBytes, content.byteLength)
       assert.equal(initial[0].gzipBytes, expectedGzipBytes)

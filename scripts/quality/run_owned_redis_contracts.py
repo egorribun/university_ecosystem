@@ -46,7 +46,7 @@ class Store:
 
 def _command(docker: str, *args: str, value: str | None = None) -> str:
     try:
-        result = subprocess.run(  # noqa: S603 -- resolved Docker, fixed arguments
+        result = subprocess.run(
             [docker, *args],
             input=value,
             text=True,
@@ -198,7 +198,7 @@ def main(args: list[str] | None = None) -> int:
             child_env[f"{store.prefix}_OWNER_KEY"] = store.key
             child_env[f"{store.prefix}_OWNER_VALUE"] = store.value
         print("OWNED_REDIS_CONTRACTS_ESTABLISHED", flush=True)
-        result = subprocess.run(  # noqa: S603 -- current interpreter, pytest arguments
+        result = subprocess.run(
             [sys.executable, "-m", "pytest", *(sys.argv[1:] if args is None else args)],
             env=child_env,
             check=False,

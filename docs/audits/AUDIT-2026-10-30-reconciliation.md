@@ -445,3 +445,67 @@ establishes completeness; no compare truncation or deletion is omitted.
 | `tests/test_squawk_shell_propagation_contract.py` | added | `9ed89095a77a80eed52f4030af7f33dcc4f577eb` |
 | `tests/test_vapid_private_file_aud401.py` | added | `404c781710907e3b7d031c39f1bc810ec3761dbc` |
 | `tests/test_verify_secrets_baseline.py` | modified | `110b1080dc452334b712fbf3b1e844cba65c8f4e` |
+
+## Проверка 4b83ddc7 и восстановление строгой проверки Ruff
+
+Source: [4b83ddc75b7c0842c38350351330e19dd2a634c2](https://github.com/egorribun/university_ecosystem/commit/4b83ddc75b7c0842c38350351330e19dd2a634c2).
+Проверенный merge commit — `2080de7b4995ccea3549863091babab10462ccf7`; оба
+имеют tree `7e5cd43d198b410a5363a2f71f2dc5a4948ee938`. Все 23 workflow
+завершены: 20 success, 1 failure, 2 skipped; отмен и активных запусков нет.
+Это не полный GREEN и не новая приёмка: реестр остаётся **392/512**, открыты 120.
+
+- [Matrix 40996751214](https://github.com/egorribun/university_ecosystem/actions/runs/40996751214):
+  21 success / 9 failure / 30 skipped. Backend shards, PostgreSQL integration,
+  Alembic и Matrix Go race не исполнялись после fast-lint failure.
+- Frontend: 10 466 PASS в 835 файлах; aggregate проверил provenance четырёх
+  shards и 2 297 изменённых строк, 0 missing, 100% differential coverage.
+  Production build и 142 focused bundle checks PASS. Реальный analyzer больше
+  не отклоняет HTML producer pair; остаётся один MapLibre chunk 285.83 KiB при
+  действующем лимите 280 KiB. Лимит 286 KiB ещё не активирован.
+- [Owned Core 40996750786](https://github.com/egorribun/university_ecosystem/actions/runs/40996750786):
+  338 preflight PASS, 1 browser PASS, live 48 PASS / 2 SKIP; NATS outage и cleanup
+  SUCCESS. Receipt artifact: `12952541787`. Это owned Core topology, не
+  frozen-RC full-stack или production deployment proof.
+- [Go Fuzzing 40996751231](https://github.com/egorribun/university_ecosystem/actions/runs/40996751231):
+  новый AUD334 race-window regression явно PASS в обоих hub invocations.
+  Это запуск без `-race`; пропущенная Matrix race-проверка им не заменяется.
+- [DB Performance 40996751094](https://github.com/egorribun/university_ecosystem/actions/runs/40996751094):
+  required SQL capture действительно включён; 212 repository tests PASS,
+  232 unique SQL, 80 EXPLAIN checks PASS. Это healthy capture proof, а не
+  выполнение всех новых отрицательных capture regressions.
+- Contract: 3 589 PASS / 1 FAIL (старый renderer source pin); security 681 PASS,
+  scoped 41 PASS. Новые Squawk shell20, Redis launcher32 и полный Python
+  regression cohort на этом source не исполнялись.
+
+### Исправление пропуска policy review
+
+Независимая повторная проверка обнаружила два новых `noqa: S603` в
+`scripts/quality/run_owned_redis_contracts.py`, опубликованных без требуемого
+отдельного owner grant. Это конкретный пропуск первоначального implementation
+review. Прежнее разрешение ADR-047 для coverage worker на них не распространяется.
+
+В этом consistency-пакете оба неподтверждённых S603 комментария удалены без
+изменения runtime-логики. Новый предложенный S104 комментарий не публикуется.
+Ожидается строгий Ruff RED на двух subprocess sites и сравнении Docker HostIp;
+это прогноз для нового source, а не уже выполненная проверка. Запрос на ровно
+три source-bound annotations остаётся открытым. Ни молчаливого расширения
+исключения, ни маскирования литерала, ни изменения Ruff configuration нет.
+
+Повторно проверены annotation additions полного post-pause compare и полные
+тексты восьми файлов, чьи patches GitHub не вернул. Других новых suppressions
+не обнаружено. Директива NewsComments `jsx-a11y/no-autofocus` уже существовала
+в том же компоненте на исходном checkpoint; она не является новой находкой.
+
+Два тестовых файла приведены к точным hosted Ruff/Prettier postimages.
+В `.secrets.baseline` изменены только два номера строк chart metadata
+(572 → 573, 573 → 574) и время генерации; все 319 identities, статусы и настройки
+сохранены. Это не разрешение новых scanner findings: собственный hook 4b83
+сообщил 62 unmatched path/type/hash identities. Полный metadata-only triage
+сопоставлен с публичными техническими fingerprints, но policy 405 не изменена
+и новое разрешение на эти identities не получено.
+
+Следующие независимые шаги: завершить source-bound Map286 contract и тесты в
+ранее согласованных границах; после отдельного решения по Ruff проверить новый
+source полностью, получить actual Alembic capture и только затем согласовать
+окончательный finite hash delta. Ни старые GREEN, ни этот snapshot не заменяют
+проверки следующего SHA.

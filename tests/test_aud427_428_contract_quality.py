@@ -684,7 +684,9 @@ class _OwnedRedisLauncherTransport:
                                 "HostPort": (
                                     "6399"
                                     if second and self.fault == "port"
-                                    else "6380" if second else "6379"
+                                    else "6380"
+                                    if second
+                                    else "6379"
                                 ),
                             }
                         ]
@@ -788,11 +790,14 @@ def _owned_redis_launcher(
 def _assert_launcher_output_is_bounded(
     transport: _OwnedRedisLauncherTransport, captured: Any
 ) -> None:
-    ordinary = "\n".join(
-        line
-        for line in captured.out.splitlines()
-        if not line.startswith("::add-mask::")
-    ) + captured.err
+    ordinary = (
+        "\n".join(
+            line
+            for line in captured.out.splitlines()
+            if not line.startswith("::add-mask::")
+        )
+        + captured.err
+    )
     private_exposed = any(
         value in ordinary for value in [*transport.private, transport.transport_canary]
     )
