@@ -2,7 +2,46 @@
 
 Обновлено: 2026-10-30 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Autonomous audit resumption — 2026-10-30
+## Current post-pause reconciliation — 2026-10-30
+
+All **136 changed paths** between ec9a4d58 and 8787b00e were reviewed against
+complete untruncated Git trees, and all **126 previously open IDs** classified.
+The [complete matrix and manifest](../../audits/AUDIT-2026-10-30-reconciliation.md)
+separate actual regressions, source-only repairs and unverified infrastructure.
+The [independently reviewed scoped decision](../../audits/AUDIT-2026-10.md#scoped-aud-155-aud-320-aud-406-aud-486-and-aud-500-acceptance-2026-10-30)
+preserves 386 IDs and adds only AUD-155/320/406/486/500:
+**391/512 accepted; 121 unaccepted**.
+
+Reviewed source8787 has terminal Matrix **16 success / 14 failure / 30 skipped**;
+its backend was skipped after pre-commit. Its 23 workflows are18 success,
+3 failure and2 skipped. These are not full-CI or release acceptance.
+
+[Recovery be88aed](https://github.com/egorribun/university_ecosystem/commit/be88aed8053c3230342e7c7cf517f62fa3abc0e4)
+contains thirteen independently reviewed consistency changes, not behavioral
+cursor/replay fixes. Its own [Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/40980172611)
+reports all 91 jobs terminal: **58 success / 17 failure / 16 skipped**.
+Pre-commit, inventory, WASM contracts, OpenAPI/types and MSW drift pass.
+Four backend shards total **22,425 PASS / 428 SKIP / 28 FAIL**, excluding
+separate preflight cohorts. Failures: SQL capture 19, Squawk shell/privacy 3,
+cold-cache/generation 4, renderer pin 1 and OpenAPI snapshot 1.
+The refreshed Matrix summary is terminal FAILURE; all 23 workflows are
+20 success / one failure / two skipped, with no cancellations.
+Coverage Policy is skipped, not passed. Tested merge f175a7326 has the same
+tree2a88693f as be88; no full-CI or merged-coverage acceptance is claimed.
+[Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40980172506) is terminal SUCCESS.
+Existing cursor/replay/bundle failures, migration/source-pin and60 unmatched
+technical-hash scan findings remain separate blockers. New frontend formatting
+and ws-hub lint failures are being repaired; no gate is weakened.
+
+Next: finish this source's necessary runtime receipts, repair the demonstrated
+cursor/replay and raw-bundle/parser causes in bounded reviewed batches, then
+reconcile fresh stable renderer capture and exact scanner inventory.
+Any new finite hash disposition needs its own owner decision; prior58 approval
+does not transfer. Preserve policy405/baseline319/Gitleaks26, inactive Map286
+and Squawk admission, exact-SHA checks, branch egorribun and non-force updates.
+No merge, deployment, production-data migration or new access is implied.
+
+## Initial resumption checkpoint — 2026-10-30
 
 The owner explicitly resumed autonomous audit work on 2026-10-30. The safe-pause
 checkpoint below is historical and no longer restricts that continuation. At
