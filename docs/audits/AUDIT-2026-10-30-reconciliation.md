@@ -1,5 +1,41 @@
 # Post-pause reconciliation — 2026-10-30
 
+## Scoped progress after the 112-finding reconciliation
+
+The accepted lower bound is **437/512 (85.4%)**, with **75 IDs unaccepted**.
+The [new original-criterion decision](AUDIT-2026-10.md#scoped-aud-151-and-aud-308-acceptance-on-source-c6a3d39b--2026-10-30)
+adds only AUD-151 and AUD-308 using actual source-c6 Native execution, precise
+immutable bindings and explicit proof limits. All 435 prior accepted IDs are
+preserved. The complete historical 112-row review below remains anchored to
+source 1cf; it is not relabeled as a fresh full-repository review.
+
+The retained residual classification changes only by these two decisions:
+**9 source-fixed/proof-pending, 29 partial, 34 original defects remaining,
+2 unverified and 1 original asserted cause unproven =75 unaccepted IDs**.
+
+| ID | Current disposition | Exact evidence / limit |
+| --- | --- | --- |
+| AUD-151 | accepted-scoped | Own c6 Native job 124188402770 executes the real readiness 2 / error 5 controls; listeners remain until hydration and actual route readiness, with failure cleanup. E2E consumes those helpers. EventEmitter/FakePage proof, not the unexecuted browser error-injection spec. |
+| AUD-308 | accepted-scoped | Same blocking job executes architecture 18 / UI 1 / micromatch 13 / token 3, healthy selection plus 19 negative mutations, then actual standalone tokens:check (1017 definitions/646 references). Docker-stage modeling is not a Docker-build receipt; six unrelated Node skips remain skips. |
+| AUD-334 | partial; not accepted | Own fc70 has 31 hook PASS, 3 real parser/provider/controller composition PASS and 2 Go loopback midstream/error-timeout cases PASS under race detection. A source-level controller cleanup seam still clears replay-rejection debt on transient disconnect; its real repeated-rejection/healthy-heartbeat cap regression has not yet executed. Generic wire errors have no exact request correlation. No cross-process/deployment proof. |
+| AUD-447 | partial; not accepted | Existing malformed/duplicate/hash-mismatch rows retain plaintext. Source tracing shows that a repair followed by the existing protection exception would roll back before broker commit. Dormant/history and historical error text remain unprotected. Six bounded persisted SQLite regressions are staged in the accompanying tests-only commit; their hosted execution is pending. The lossless-storage design remains analysis, not production maintenance. |
+
+The c6 Matrix is terminal FAILURE (71 success/4 failure/16 skipped,
+no cancellation), despite 22,531 backend PASS / 428 SKIP / 0 FAIL. Coverage gates
+are skipped. Its four failures are Alembic, frontend shard 2, frontend aggregate
+and derived CI Success. The fc70 successor has its own terminal validation: all four backend shards
+pass 22,531 tests with 428 skips and no failures; all four frontend shards
+pass 10,518 tests. Alembic, Coverage & Quality Policy and derived CI Success
+remain failed. The strict coverage normalizer reports 13 diagnostic failures;
+Python changed-line coverage passes, but whole-component and Tier 0 floors
+do not. These are not waived or equated with failed unit assertions. The [frontend aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/41104111514/job/124237016644)
+merges all four coverage reports and verifies 2457 changed lines at 100% line
+coverage, with no assertion of 100% branch metrics. Neither that
+receipt nor the scoped decisions establishes repository-wide quality/release
+acceptance.
+No policy inventory, waiver, retry cap, baseline or migration admission changes
+are part of these decisions.
+
 ## Complete 112-finding reconciliation on source 1cf19a9b
 
 This supersedes the *current-status interpretation* of earlier matrices, not
