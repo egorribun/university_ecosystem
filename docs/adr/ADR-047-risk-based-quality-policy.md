@@ -1189,3 +1189,60 @@ fingerprints, required CI contexts, hooks and coverage floors remain unchanged.
 No additional hash identity is admitted by this decision. The annotations and
 scope tests establish neither Redis runtime acceptance nor full CI, release or
 deployment readiness; those still require their own evidence.
+
+
+## Eighty-nine exact public integrity dispositions (2026-10-30)
+
+The owner explicitly approved the finite
+[89-identity manifest](https://github.com/egorribun/university_ecosystem/blob/15349c991d5ef99098b452008f0f6813ba0b9561/docs/audits/evidence/security-digest-triage-2026-10-30.json)
+on 2026-10-30. This is a separate decision, not a transfer of the earlier
+58-identity approval. The ordered 405-record prefix and all of its metadata
+remain unchanged; the approved union becomes **494** within the unchanged
+512-record cap.
+
+The actual [pre-commit scan](https://github.com/egorribun/university_ecosystem/actions/runs/41028695091/job/123972932796)
+and [baseline-integrity check](https://github.com/egorribun/university_ecosystem/actions/runs/41028695091/job/123974070270)
+reported the same 89 unmatched identities on source
+`56ed5df3a31742730d9b3e8e7e2d9acc46182dd9`. Their actual PR checkout
+`3ea36c26c2941f44260569d5870790582bbc1e89` has the identical complete Git tree
+`97dbc7ffe58e6c24f3dcd20afdcc9260ae76fe16`. Each reported public literal was
+checked against its immutable source blob and detector fingerprint. The seven
+source blobs remain identical in the test-only successor `34ebe406`.
+
+All additions use category `public_integrity_digest`, detector
+`Hex High Entropy String`, owner `egorribun`, review date 2026-10-30 and the
+unchanged expiry **2027-01-10**. The manifest contains:
+
+- four identities in `quality/historical148-squawk-policy.json`;
+- one in `scripts/quality/run_owned_redis_contracts.py`;
+- two in `scripts/quality/validate_historical148_squawk.py`;
+- 27 each in the retained `35aeedeb`, `36f70a0f` and `3d83fb27`
+  historical148 capture fixtures;
+- one in `tests/test_aud427_428_contract_quality.py`.
+
+These are 37 Git source identities, 39 SQL digests, six trace-source digests,
+three Squawk binary checksums, two compiled canonical-document digests and two
+Redis OCI digests. They are public integrity values, not credentials.
+The authorization covers only the manifest's exact path/type/digest tuples
+and reviewed source bindings. Diagnostic line numbers are not identities;
+an unrelated path, changed value or unapproved additional finding does not
+inherit this decision.
+
+Source-bound positive and negative controls must preserve the exact old prefix
+and metadata, require the complete approved addition, reject modified source
+bindings and altered path/type/digest/category/owner/expiry, and reject
+duplicates, wildcard or extra identities and untrusted candidate expansion.
+The old historical-58 reconstruction and no-transfer controls remain required.
+Approval does not establish final-source scanner or test success.
+
+The 319-identity detect-secrets baseline is unchanged. Its separately reported
+20 stale identities are informational, are not part of this grant and are not
+removed. The 26 Gitleaks fingerprints, scanner rules, expiry caps, required
+contexts, hooks, blocking CodeQL and coverage floors also remain unchanged.
+No baseline addition, inline secret pragma, broad hash exclusion or automatic
+approval is authorized.
+
+This decision does not activate the prepared Squawk recognizer, suppress its
+37 raw warnings, accept migration execution risks, alter migration bytes or
+authorize deployment. The historical148 preparation's 2026-11-13 expiry is
+separate and unchanged. No audit finding is accepted by this policy update.
