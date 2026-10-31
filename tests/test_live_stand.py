@@ -11384,7 +11384,12 @@ def test_live_caddy_probe_emits_only_fixed_stage_code_on_failure(
     assert str(caught.value) == "Caddy access-log redaction proof failed"
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err == f"live_caddy_probe_failure_stage={expected_stage}\n"
+    expected_diagnostics = f"live_caddy_probe_failure_stage={expected_stage}\n"
+    if failure == "log-size":
+        expected_diagnostics += _aud174_capture_budget_line(
+            _aud174_capture_budget_metadata(overflow_origin="returned_size")
+        )
+    assert captured.err == expected_diagnostics
     assert secret_text not in captured.err
     assert password_nonce not in captured.err
     assert all(value not in captured.err for value in correlations.values())
@@ -12979,7 +12984,12 @@ def test_live_caddy_real_reader_failure_diagnostics_and_final_pin_precedence(
     captured = capsys.readouterr()
     assert str(caught.value) == live_stand._LIVE_CADDY_PROBE_FAILURE
     assert captured.out == ""
-    assert captured.err == f"live_caddy_probe_failure_stage={stage}\n"
+    expected_diagnostics = f"live_caddy_probe_failure_stage={stage}\n"
+    if stage == "log_size":
+        expected_diagnostics += _aud174_capture_budget_line(
+            _aud174_capture_budget_metadata(overflow_origin="reader_limit")
+        )
+    assert captured.err == expected_diagnostics
     if failure == "wait":
         assert wait_attempts
     assert pin_calls == [container_pin, container_pin]
@@ -14536,3 +14546,290 @@ def test_live_reset_url_runner_emits_failure_stdout_only_and_preserves_exit(
     assert captured.err == ""
     assert private not in captured.out
     assert completed.stdout == completed.stderr == b""
+
+
+def _aud174_capture_budget_metadata(
+    *,
+    window_count: int = 1,
+    capture_ordinal: int = 1,
+    previous_capture_bytes: int = 0,
+    overflow_origin: str = "reader_limit",
+) -> dict[str, object]:
+    return {
+        "window_count": window_count,
+        "capture_ordinal": capture_ordinal,
+        "previous_capture_bytes": previous_capture_bytes,
+        "remaining_budget": (
+            live_stand._LIVE_CADDY_PROBE_MAX_BYTES - previous_capture_bytes
+        ),
+        "overflow_origin": overflow_origin,
+    }
+
+
+def _aud174_capture_budget_line(metadata: Mapping[str, object]) -> str:
+    encoded = json.dumps(dict(metadata), sort_keys=True, separators=(",", ":"))
+    return f"live_caddy_probe_capture_budget={encoded}\n"
+
+
+@pytest.mark.parametrize(
+    ("window_count", "capture_ordinal", "previous_bytes", "origin"),
+    [
+        (1, 1, 0, "reader_limit"),
+        (2, 1, 0, "returned_size"),
+        (2, 2, 7, "reader_limit"),
+        (2, 2, live_stand._LIVE_CADDY_PROBE_MAX_BYTES, "returned_size"),
+    ],
+)
+def test_live_caddy_capture_budget_emits_only_valid_closed_metadata(
+    capsys: pytest.CaptureFixture[str],
+    window_count: int,
+    capture_ordinal: int,
+    previous_bytes: int,
+    origin: str,
+) -> None:
+    metadata = _aud174_capture_budget_metadata(
+        window_count=window_count,
+        capture_ordinal=capture_ordinal,
+        previous_capture_bytes=previous_bytes,
+        overflow_origin=origin,
+    )
+    live_stand._emit_live_caddy_probe_budget(metadata)
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == _aud174_capture_budget_line(metadata)
+    assert len(captured.err) < 256
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "window_count",
+        "capture_ordinal",
+        "previous_capture_bytes",
+        "remaining_budget",
+    ],
+)
+@pytest.mark.parametrize("kind", ["boolean", "string", "float"])
+def test_live_caddy_capture_budget_rejects_coercible_numeric_types(
+    capsys: pytest.CaptureFixture[str], field: str, kind: str
+) -> None:
+    metadata = _aud174_capture_budget_metadata()
+    canary = uuid4().hex
+    metadata[field] = {"boolean": True, "string": canary, "float": 1.0}[kind]
+    live_stand._emit_live_caddy_probe_budget(metadata)
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("window_count", 0),
+        ("window_count", 3),
+        ("capture_ordinal", 0),
+        ("capture_ordinal", 2),
+        ("previous_capture_bytes", -1),
+        ("previous_capture_bytes", live_stand._LIVE_CADDY_PROBE_MAX_BYTES + 1),
+        ("remaining_budget", -1),
+        ("remaining_budget", live_stand._LIVE_CADDY_PROBE_MAX_BYTES + 1),
+        ("remaining_budget", live_stand._LIVE_CADDY_PROBE_MAX_BYTES - 1),
+        ("overflow_origin", True),
+        ("overflow_origin", 1.0),
+    ],
+)
+def test_live_caddy_capture_budget_rejects_ranges_and_inconsistent_budget(
+    capsys: pytest.CaptureFixture[str], field: str, value: object
+) -> None:
+    metadata = _aud174_capture_budget_metadata()
+    metadata[field] = value
+    live_stand._emit_live_caddy_probe_budget(metadata)
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize(
+    "mutation", ["not-dict", "missing-key", "extra-key", "origin", "first-prior"]
+)
+def test_live_caddy_capture_budget_rejects_unknown_shape_without_echo(
+    capsys: pytest.CaptureFixture[str], mutation: str
+) -> None:
+    canary = uuid4().hex
+    metadata: object = _aud174_capture_budget_metadata()
+    assert isinstance(metadata, dict)
+    if mutation == "not-dict":
+        metadata = [canary]
+    elif mutation == "missing-key":
+        del metadata["window_count"]
+    elif mutation == "extra-key":
+        metadata[canary] = canary
+    elif mutation == "origin":
+        metadata["overflow_origin"] = canary
+    else:
+        metadata["previous_capture_bytes"] = 1
+        metadata["remaining_budget"] = live_stand._LIVE_CADDY_PROBE_MAX_BYTES - 1
+    live_stand._emit_live_caddy_probe_budget(metadata)
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize(("window_count", "capture_ordinal"), [(1, 1), (2, 1), (2, 2)])
+@pytest.mark.parametrize("origin", ["reader_limit", "returned_size"])
+def test_live_caddy_probe_overflow_reports_only_current_capture_budget(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    window_count: int,
+    capture_ordinal: int,
+    origin: str,
+) -> None:
+    password_nonce = uuid4().hex
+    correlations = {"desktop": uuid4().hex, "mobile": uuid4().hex}
+    canary = uuid4().hex
+    pins: list[object] = []
+    reads: list[dict[str, Any]] = []
+    returned: list[subprocess.CompletedProcess[bytes]] = []
+    previous_bytes = 0
+
+    def read_logs(
+        command: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[bytes]:
+        nonlocal previous_bytes
+        reads.append(dict(kwargs))
+        if len(reads) == capture_ordinal:
+            if origin == "reader_limit":
+                raise live_stand._LiveBoundedReadFailure("output_limit")
+            stdout = b"x" * kwargs["maximum_bytes"] + canary.encode("ascii")
+        else:
+            stdout = _aud174_access_log_row(
+                f"/login?probe={correlations['desktop']}&password=REDACTED",
+                timestamp=live_stand._caddy_probe_timestamp_argument(
+                    completed_at["desktop"]
+                ),
+            )
+            previous_bytes += len(stdout)
+        completed = subprocess.CompletedProcess(command, 0, stdout=stdout, stderr=b"")
+        returned.append(completed)
+        return completed
+
+    owner, directory, pin, completed_at, context = _aud174_diagnostic_verifier_inputs(
+        monkeypatch,
+        tmp_path,
+        password_nonce=password_nonce,
+        correlations=correlations,
+        pin_check=lambda *_args, **_kwargs: pins.append(True),
+        log_reader=read_logs,
+    )
+    if window_count == 2:
+        completed_at["mobile"] += 120_000
+    with pytest.raises(live_stand.StandError) as caught:
+        live_stand._verify_live_caddy_probe_log(
+            owner,
+            directory,
+            started_at_ms=1_797_999_999_000,
+            finished_at_ms=1_798_000_130_000,
+            password_nonce=password_nonce,
+            correlation_ids=correlations,
+            container_pin=pin,
+            docker_context=context,
+        )
+    expected = _aud174_capture_budget_metadata(
+        window_count=window_count,
+        capture_ordinal=capture_ordinal,
+        previous_capture_bytes=previous_bytes,
+        overflow_origin=origin,
+    )
+    captured = capsys.readouterr()
+    assert str(caught.value) == live_stand._LIVE_CADDY_PROBE_FAILURE
+    assert captured.out == ""
+    assert captured.err == (
+        "live_caddy_probe_failure_stage=log_size\n"
+        + _aud174_capture_budget_line(expected)
+    )
+    assert len(reads) == capture_ordinal
+    assert reads[-1]["maximum_bytes"] == expected["remaining_budget"]
+    assert len(pins) == 2
+    assert all(item.stdout == item.stderr == b"" for item in returned)
+    for private in (canary, password_nonce, *correlations.values()):
+        assert private not in captured.err
+        assert private not in str(caught.value)
+
+
+@pytest.mark.parametrize("window_count", [1, 2])
+def test_live_caddy_probe_exact_capture_cap_emits_no_budget_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    window_count: int,
+) -> None:
+    password_nonce = uuid4().hex
+    correlations = {"desktop": uuid4().hex, "mobile": uuid4().hex}
+    pins: list[object] = []
+    returned: list[subprocess.CompletedProcess[bytes]] = []
+    received_bytes = 0
+
+    def read_logs(
+        command: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[bytes]:
+        nonlocal received_bytes
+        ordinal = len(returned) + 1
+        projects = (
+            tuple(correlations)
+            if window_count == 1
+            else (("desktop",) if ordinal == 1 else ("mobile",))
+        )
+        rows = b"".join(
+            _aud174_access_log_row(
+                f"/login?probe={correlations[project]}&password=REDACTED",
+                timestamp=live_stand._caddy_probe_timestamp_argument(
+                    completed_at[project]
+                ),
+            )
+            for project in projects
+        )
+        padding = b""
+        if ordinal == window_count:
+            padding = _aud174_access_log_row(
+                "/health",
+                message="",
+                timestamp=live_stand._caddy_probe_timestamp_argument(
+                    completed_at[projects[-1]]
+                ),
+            )
+            padding_bytes = kwargs["maximum_bytes"] - len(rows) - len(padding)
+            assert padding_bytes > 0
+            assert padding.count(b'"msg": ""') == 1
+            padding = padding.replace(
+                b'"msg": ""', b'"msg": "' + b"x" * padding_bytes + b'"', 1
+            )
+        received_bytes += len(rows) + len(padding)
+        completed = subprocess.CompletedProcess(command, 0, stdout=rows, stderr=padding)
+        returned.append(completed)
+        return completed
+
+    owner, directory, pin, completed_at, context = _aud174_diagnostic_verifier_inputs(
+        monkeypatch,
+        tmp_path,
+        password_nonce=password_nonce,
+        correlations=correlations,
+        pin_check=lambda *_args, **_kwargs: pins.append(True),
+        log_reader=read_logs,
+    )
+    if window_count == 2:
+        completed_at["mobile"] += 120_000
+    live_stand._verify_live_caddy_probe_log(
+        owner,
+        directory,
+        started_at_ms=1_797_999_999_000,
+        finished_at_ms=1_798_000_130_000,
+        password_nonce=password_nonce,
+        correlation_ids=correlations,
+        container_pin=pin,
+        docker_context=context,
+    )
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out == "live Caddy access-log redaction=verified projects=2\n"
+    assert received_bytes == live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+    assert len(returned) == window_count
+    assert len(pins) == 2
+    assert all(item.stdout == item.stderr == b"" for item in returned)
