@@ -19,7 +19,7 @@ _UPSTREAM_REQUIREMENTS = {
 # Treat the selected dependency versions as minimum security floors.
 # Future higher replacements remain compatible with these floors.
 _SELECTED_VERSION_FLOORS = {
-    "github.com/go-jose/go-jose/v4": "v4.1.6",
+    "github.com/go-jose/go-jose/v4": "v4.1.7",
     "golang.org/x/net": "v0.60.0",
     "golang.org/x/text": "v0.42.0",
     "google.golang.org/grpc": "v1.83.2",

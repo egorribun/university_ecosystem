@@ -180,7 +180,7 @@ require (
 // passed as --replace flags; each target must stay at or above the upstream floor
 // that services/caddy/Dockerfile's tests pin.
 replace (
-	github.com/go-jose/go-jose/v4 => github.com/go-jose/go-jose/v4 v4.1.6
+	github.com/go-jose/go-jose/v4 => github.com/go-jose/go-jose/v4 v4.1.7
 	golang.org/x/net => golang.org/x/net v0.60.0
 	golang.org/x/text => golang.org/x/text v0.42.0
 	google.golang.org/grpc => google.golang.org/grpc v1.83.2
