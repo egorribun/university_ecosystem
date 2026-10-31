@@ -27,7 +27,7 @@ import {
 import {
   readPasswordResetUrlState,
   withPasswordResetUrlDiagnostic,
-  type PasswordResetUrlPhase,
+  type ResetUrlPhase,
 } from "./password-reset-url-state"
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import { reportLivePasswordResetRegistrationFailure } from "./live-ui-diagnostic"
@@ -103,7 +103,7 @@ const expectResetTokenRemovedFromUrl = async (
   page: Page,
   token: string,
   project: string,
-  phase: PasswordResetUrlPhase
+  phase: ResetUrlPhase
 ) => {
   await withPasswordResetUrlDiagnostic(
     project,

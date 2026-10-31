@@ -5,7 +5,7 @@ export interface PasswordResetUrlState {
   tokenUrlAbsent: boolean
 }
 
-export type PasswordResetUrlPhase = "history" | "reopen"
+export type ResetUrlPhase = "history" | "reopen"
 type ReadPasswordResetUrlState = () => Promise<PasswordResetUrlState>
 
 const emittedPhases = new Set<string>()
@@ -24,7 +24,7 @@ export function readPasswordResetUrlState(candidate: string): PasswordResetUrlSt
 
 function reportPasswordResetUrlState(
   project: string,
-  phase: PasswordResetUrlPhase,
+  phase: ResetUrlPhase,
   snapshot: PasswordResetUrlState
 ): void {
   if (
@@ -59,7 +59,7 @@ function reportPasswordResetUrlState(
 /** Observe the existing assertion without changing its timing or rejection. */
 export async function withPasswordResetUrlDiagnostic(
   project: string,
-  phase: PasswordResetUrlPhase,
+  phase: ResetUrlPhase,
   read: ReadPasswordResetUrlState,
   assertion: (observe: ReadPasswordResetUrlState) => Promise<void>
 ): Promise<void> {
