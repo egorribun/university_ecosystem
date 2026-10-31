@@ -7373,9 +7373,12 @@ def test_aud447_allocation_trusted_loader_refuses_candidate_only_expansion(
         json.dumps(_disposition_document(*records)), encoding="utf-8"
     )
     today = verifier.date(2026, 10, 31)
-    assert verifier.load_trusted_base_false_positive_dispositions(
-        prior_sha, repository_root=repository, today=today
-    ) == set()
+    assert (
+        verifier.load_trusted_base_false_positive_dispositions(
+            prior_sha, repository_root=repository, today=today
+        )
+        == set()
+    )
     approved = verifier.load_owner_authored_candidate_false_positive_dispositions(
         repository_root=repository, today=today
     )
@@ -7388,9 +7391,12 @@ def test_aud447_allocation_trusted_loader_refuses_candidate_only_expansion(
     policy_path.write_text(
         json.dumps(_disposition_document(*changed)), encoding="utf-8"
     )
-    assert verifier.load_trusted_base_false_positive_dispositions(
-        accepted_sha, repository_root=repository, today=today
-    ) == approved
+    assert (
+        verifier.load_trusted_base_false_positive_dispositions(
+            accepted_sha, repository_root=repository, today=today
+        )
+        == approved
+    )
     with pytest.raises(verifier.BaselineArtifactError):
         verifier.load_owner_authored_candidate_false_positive_dispositions(
             repository_root=repository, today=today

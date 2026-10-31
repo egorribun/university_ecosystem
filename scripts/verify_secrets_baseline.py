@@ -5239,10 +5239,7 @@ def validate_false_positive_dispositions(
             path in _AUD447_CI_ALLOCATION_PATHS
             or tuple(raw_digest_bytes) in _AUD447_CI_ALLOCATION_DIGESTS
         ) and not (
-            (
-                aud447_evidence is not None
-                and category == _AUD447_CI_ALLOCATION_CATEGORY
-            )
+            (aud447_evidence is not None and category == _AUD447_CI_ALLOCATION_CATEGORY)
             or (
                 exact_source_identity in _AUD447_PRIOR_QUALITY_IDENTITIES
                 and category == "public_integrity_digest"
