@@ -1231,6 +1231,208 @@ jobs:
           go-version: "1.26.10"
           cache: true
 
+      # Temporary authenticated metadata capture; retire both steps after use.
+      - name: Set up Python for approved go-jose checksum capture
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        timeout-minutes: 5
+        with:
+          python-version: "3.14"
+
+      - name: Capture authenticated approved go-jose checksums
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          python -I -B <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+          import selectors
+          import shutil
+          import signal
+          import subprocess
+          import sys
+          import tempfile
+          import time
+
+          LIMIT = 65_536
+          MODULE = "github.com/go-jose/go-jose/v4"
+          VERSION = "v4.1.7"
+
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate JSON key")
+                  result[key] = value
+              return result
+
+          def reject_constant(value):
+              raise ValueError("non-finite JSON value")
+
+          def decode_json(data):
+              return json.loads(
+                  data.decode("utf-8"),
+                  object_pairs_hook=unique_object,
+                  parse_constant=reject_constant,
+              )
+
+          def bounded(command, cwd, environment, seconds):
+              deadline = time.monotonic() + seconds
+              process = subprocess.Popen(
+                  command,
+                  cwd=cwd,
+                  env=environment,
+                  stdin=subprocess.DEVNULL,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+                  shell=False,
+                  start_new_session=True,
+              )
+              try:
+                  output = bytearray()
+                  total = 0
+                  with selectors.DefaultSelector() as selector:
+                      selector.register(process.stdout, selectors.EVENT_READ, True)
+                      selector.register(process.stderr, selectors.EVENT_READ, False)
+                      while selector.get_map():
+                          remaining = deadline - time.monotonic()
+                          if remaining <= 0:
+                              raise TimeoutError("capture deadline")
+                          events = selector.select(remaining)
+                          if not events:
+                              raise TimeoutError("capture deadline")
+                          for key, _ in events:
+                              block = os.read(key.fileobj.fileno(), 8192)
+                              if not block:
+                                  selector.unregister(key.fileobj)
+                                  continue
+                              total += len(block)
+                              if total > LIMIT:
+                                  raise ValueError("capture output limit")
+                              if key.data:
+                                  output.extend(block)
+                      remaining = deadline - time.monotonic()
+                      if remaining <= 0:
+                          raise TimeoutError("capture deadline")
+                      if process.wait(timeout=remaining) != 0:
+                          raise ValueError("capture process failed")
+                  return bytes(output)
+              finally:
+                  try:
+                      if process.returncode is None:
+                          try:
+                              os.killpg(process.pid, signal.SIGKILL)
+                          except ProcessLookupError:
+                              pass
+                          process.wait(timeout=5)
+                  finally:
+                      process.stdout.close()
+                      process.stderr.close()
+
+          def validate_metadata(data):
+              metadata = decode_json(data)
+              if not isinstance(metadata, dict):
+                  raise ValueError("metadata object required")
+              if "Error" in metadata or "Reuse" in metadata:
+                  raise ValueError("error or reused metadata")
+              if metadata.get("Path") != MODULE:
+                  raise ValueError("unexpected module")
+              if metadata.get("Version") != VERSION:
+                  raise ValueError("unexpected version")
+              for key in ("Sum", "GoModSum"):
+                  value = metadata.get(key)
+                  if not isinstance(value, str) or not value.startswith("h1:"):
+                      raise ValueError("invalid checksum")
+                  encoded = value[3:]
+                  digest = base64.b64decode(encoded, validate=True)
+                  if len(digest) != 32:
+                      raise ValueError("invalid checksum length")
+                  if base64.b64encode(digest).decode("ascii") != encoded:
+                      raise ValueError("noncanonical checksum")
+              return {
+                  key: metadata[key]
+                  for key in ("Path", "Version", "Sum", "GoModSum")
+              }
+
+          def capture():
+              if sys.version_info[:2] != (3, 14):
+                  raise ValueError("unexpected Python version")
+              go = shutil.which("go")
+              if go is None:
+                  raise ValueError("Go unavailable")
+              go = str(Path(go).resolve(strict=True))
+              workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve(strict=True)
+              temporary_root = Path(os.environ["RUNNER_TEMP"]).resolve(strict=True)
+              if temporary_root.is_relative_to(workspace):
+                  raise ValueError("temporary storage overlaps checkout")
+
+              with tempfile.TemporaryDirectory(
+                  prefix="approved-go-jose-",
+                  dir=temporary_root,
+              ) as temporary:
+                  root = Path(temporary)
+                  cwd = root / "work"
+                  cwd.mkdir()
+                  environment = os.environ.copy()
+                  environment.update({
+                      "GOWORK": "off",
+                      "GOTOOLCHAIN": "local",
+                      "GOPATH": str(root / "gopath"),
+                      "GOMODCACHE": str(root / "modcache"),
+                  })
+                  expected = {
+                      "GOVERSION": "go1.26.10",
+                      "GOMOD": "/dev/null",
+                      "GOWORK": "off",
+                      "GOTOOLCHAIN": "local",
+                      "GOPATH": environment["GOPATH"],
+                      "GOMODCACHE": environment["GOMODCACHE"],
+                      "GOSUMDB": "sum.golang.org",
+                      "GONOSUMDB": "",
+                      "GOPRIVATE": "",
+                      "GONOPROXY": "",
+                      "GOINSECURE": "",
+                      "GOFLAGS": "",
+                  }
+                  names = (*expected, "GOPROXY", "GOAUTH")
+                  settings = decode_json(bounded(
+                      [go, "env", "-json", *names],
+                      cwd,
+                      environment,
+                      10,
+                  ))
+                  if not isinstance(settings, dict) or set(settings) != set(names):
+                      raise ValueError("unexpected Go configuration")
+                  if any(settings[key] != value for key, value in expected.items()):
+                      raise ValueError("unsafe Go configuration")
+                  if settings["GOPROXY"] not in (
+                      "https://proxy.golang.org",
+                      "https://proxy.golang.org,direct",
+                  ):
+                      raise ValueError("unexpected module proxy")
+                  if settings["GOAUTH"] not in ("netrc", "off"):
+                      raise ValueError("unexpected authentication helper")
+
+                  # Child-only restrictions: no direct VCS fallback or credentials.
+                  environment["GOPROXY"] = "https://proxy.golang.org"
+                  environment["GOAUTH"] = "off"
+                  result = validate_metadata(bounded(
+                      [go, "mod", "download", "-json", MODULE + "@" + VERSION],
+                      cwd,
+                      environment,
+                      60,
+                  ))
+              return result
+
+          try:
+              result = capture()
+              print(json.dumps(result, separators=(",", ":")))
+          except Exception:
+              print("approved go-jose checksum capture failed", file=sys.stderr)
+              sys.exit(1)
+          PY
+
       - name: Install govulncheck
         # The version resolves to an immutable Go module (content-addressed via sum DB).
         # Scorecard goCommand: version tag is equivalent to commit pinning for Go modules.  # nosec
