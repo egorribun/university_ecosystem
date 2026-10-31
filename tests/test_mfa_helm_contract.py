@@ -700,6 +700,7 @@ def test_deploy_renderer_executes_canonical_staging_without_required_markers(
     # Reserved TEST-NET only, provided through the existing values-file input.
     gateway_jwks["egressCIDRs"] = ["192.0.2.0/24"]
     # Reserved TEST-NET/documentation proxy peers are fixture-only.
+    staging_values["backend"]["config"]["trustedProxies"] = ["192.0.2.13/32"]
     staging_values["gateway"]["config"]["trustedProxies"] = [
         "192.0.2.11/32",
         "2001:db8::11",

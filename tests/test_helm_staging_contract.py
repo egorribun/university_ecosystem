@@ -958,8 +958,9 @@ def test_values_schema_rejects_unknown_staging_sensitive_keys(
 
 
 def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
-    # The MFA active key ID is checked before the marker scan; supply it so the
-    # render reaches the unresolved-marker rejection this test asserts.
+    # The MFA active key ID and backend proxy peers precede the marker scan.
+    # Supply only these prerequisites; keep every REQUIRED_ marker unresolved.
+    # Reserved TEST-NET peer is fixture-only, never deployment topology.
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         [
             _helm(),
@@ -971,6 +972,8 @@ def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
             str(STAGING_VALUES),
             "--set",
             f"backend.config.mfaTotpActiveEncryptionKeyId={MFA_TOTP_ACTIVE_KEY_ID}",
+            "--set-json",
+            'backend.config.trustedProxies=["192.0.2.13/32"]',
         ],
         check=False,
         capture_output=True,
