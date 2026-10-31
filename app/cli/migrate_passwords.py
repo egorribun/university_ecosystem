@@ -16,6 +16,7 @@ from typing import Annotated, Any
 import typer
 from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
 from app.core.tenant import bypass_rls_ctx, set_bypass_rls
@@ -51,7 +52,7 @@ def _bcrypt_predicate() -> Any:
     )
 
 
-def _is_postgresql(session: Any) -> bool:
+def _is_postgresql(session: AsyncSession) -> bool:
     try:
         return session.get_bind().dialect.name == "postgresql"
     except (SQLAlchemyError, OSError):
