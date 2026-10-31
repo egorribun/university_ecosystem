@@ -208,8 +208,8 @@ jobs:
           test "$(stat --format='%h' "$root/PREFLIGHT_ARTIFACT.json")" = "1"
 
       # A failed-jobs rerun may reuse only an exact producer cache from this
-      # workflow run and SHA. The cache is transport, never release evidence:
-      # this attempt always publishes its own artifact for the aggregate.
+      # workflow run and SHA. Cache is transport, never release evidence:
+      # verify the original artifact or publish its unchanged producer bytes.
       - name: Restore exact successful shard
         id: restore_nightly_stryker_shard
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -224,6 +224,67 @@ jobs:
           STRYKER_PREFLIGHT_MODE: validate
         run: npm run test:mutation
 
+      - name: Validate cached nightly shard producer
+        id: validate_cached_shard
+        if: ${{ steps.restore_nightly_stryker_shard.outputs.cache-hit == 'true' }}
+        working-directory: frontend
+        env:
+          STRYKER_PREFLIGHT_MODE: validate-cached
+        run: npm run test:mutation
+
+      - name: Select immutable cached shard publication
+        id: select_cached_shard
+        if: ${{ steps.restore_nightly_stryker_shard.outputs.cache-hit == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCER_ATTEMPT: ${{ steps.validate_cached_shard.outputs.producer_attempt }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/select_same_run_artifact_cli.py \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/nightly-full-gate.yml" \
+            --artifact-prefix "nightly-frontend-mutation-shard-" \
+            --artifact-suffix "" \
+            --producer-attempt "$PRODUCER_ATTEMPT" \
+            --shard-index "${{ matrix.shard-index }}" \
+            --shard-count "$STRYKER_SHARD_COUNT" \
+            --attempt-policy current-or-earlier \
+            --allow-empty
+
+      - name: Download selected cached shard publication
+        if: ${{ steps.restore_nightly_stryker_shard.outputs.cache-hit == 'true' && steps.select_cached_shard.outputs.has_candidate == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ steps.select_cached_shard.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: frontend/reports/mutation/cached-publication
+
+      - name: Verify selected cached shard publication
+        if: ${{ steps.restore_nightly_stryker_shard.outputs.cache-hit == 'true' && steps.select_cached_shard.outputs.has_candidate == 'true' }}
+        working-directory: frontend
+        env:
+          STRYKER_PREFLIGHT_MODE: verify-cached
+        run: npm run test:mutation
+
+      - name: Publish missing cached shard evidence
+        if: ${{ steps.restore_nightly_stryker_shard.outputs.cache-hit == 'true' && steps.select_cached_shard.outputs.has_candidate == 'false' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ steps.validate_cached_shard.outputs.artifact_name }}
+          path: |
+            frontend/reports/mutation/shards/**/mutation.json
+            frontend/reports/mutation/shards/**/SHARD_EVIDENCE.json
+          if-no-files-found: error
+          overwrite: false
+
       - name: Run fresh nightly Stryker shard
         if: ${{ steps.restore_nightly_stryker_shard.outputs.cache-hit != 'true' }}
         working-directory: frontend
@@ -236,11 +297,9 @@ jobs:
           path: frontend/reports/mutation/shards
           key: stryker-shard-v1-${{ github.run_id }}-${{ github.sha }}-${{ matrix.shard-index }}
 
-      # Upload directly from the producer. AUD-455: a cache hit restores evidence
-      # that an earlier attempt of this same run already published under its own
-      # producer attempt. Re-publishing it under this attempt duplicates that
-      # producer attempt, which the aggregate rejects, so a restored shard is not
-      # uploaded again; the aggregate selects the earlier attempt's artifact.
+      # Fresh execution retains partial-evidence upload on failure. Cached
+      # producers use the exact-original publication path above; they are never
+      # relabelled as this attempt or blindly duplicated in the aggregate.
       - name: Upload current-attempt shard evidence
         if: ${{ always() && steps.restore_nightly_stryker_shard.outputs.cache-hit != 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
