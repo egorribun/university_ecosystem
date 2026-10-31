@@ -6412,6 +6412,232 @@ test("aggregates mixed prior and current same-run shard candidates on a failed-j
   )
 })
 
+for (const [scenario, failFirstUpload] of [
+  ["recovers a cached producer after its first upload failed", true],
+  ["reuses already-published cached evidence without duplicating its producer", false],
+]) {
+  test(`AUD455 nightly shard publication ${scenario}`, async (t) => {
+    const { loadExternalShardResults } = await import(runnerUrl)
+    const workflow = yamlLoad(
+      await readFile(
+        new URL("../../.github/workflows/nightly-full-gate.yml", import.meta.url),
+        "utf8"
+      )
+    )
+    const job = workflow.jobs["frontend-mutation-shards"]
+    const restoreIndex = job.steps.findIndex(({ id }) => id === "restore_nightly_stryker_shard")
+    assert.notEqual(restoreIndex, -1)
+    const restore = job.steps[restoreIndex]
+    const steps = job.steps.slice(restoreIndex)
+    const shardPlan = [
+      { id: "shard-000", files: ["src/a.ts"], mutantCount: 3 },
+      { id: "shard-001", files: ["src/b.ts"], mutantCount: 5 },
+    ]
+    const before = {
+      revision: "a".repeat(40),
+      sourceHeadSha: "b".repeat(40),
+      baseSha: "c".repeat(40),
+      baseRef: "main",
+      evidenceDigest: "b".repeat(64),
+    }
+    const preflightDigest = "c".repeat(64)
+    const reportText = `${JSON.stringify({
+      schemaVersion: "1.0",
+      config: {},
+      files: {},
+    })}\n`
+    const original = shardPlan.map((shard, index) => ({
+      index,
+      reportText,
+      evidenceText: `${JSON.stringify({
+        schemaVersion: "1.0",
+        runId: `producer-1-${index}`,
+        shardId: shard.id,
+        shardIndex: index,
+        shardCount: 2,
+        ...before,
+        preflightDigest,
+        workflowRunId: "42",
+        workflowRunAttempt: "1",
+        files: shard.files,
+        mutantCount: shard.mutantCount,
+        reportSha256: createHash("sha256").update(reportText).digest("hex"),
+      })}\n`,
+    }))
+    const cache = new Map()
+    const catalog = new Map()
+    const mutationCalls = []
+    const uploadFailure = new Error("injected artifact upload transport failure")
+
+    function render(value, attempt, index) {
+      const context = {
+        "github.run_id": "42",
+        "github.run_attempt": attempt,
+        "github.sha": before.revision,
+        "matrix.shard-index": String(index),
+      }
+      return value.replace(/\$\{\{\s*(.*?)\s*\}\}/gu, (_, expression) => {
+        assert.ok(Object.hasOwn(context, expression), `unsupported template: ${expression}`)
+        return context[expression]
+      })
+    }
+
+    // This is deliberately not a general Actions emulator. Unknown expressions
+    // fail rather than being treated as successful or silently skipped.
+    function enabled(step, cacheHit, failed) {
+      const match = /^\$\{\{\s*(.*?)\s*\}\}$/u.exec(step.if ?? "${{ success() }}")
+      assert.ok(match, `unsupported condition: ${step.if}`)
+      const terms = match[1].split("&&").map((term) => term.trim())
+      let explicitStatus = false
+      const values = terms.map((term) => {
+        if (term === "always()" || term === "success()") {
+          explicitStatus = true
+          return term === "always()" || !failed
+        }
+        const comparison =
+          /^steps\.([a-zA-Z0-9_]+)\.outputs\.cache-hit\s*(!=|==)\s*'true'$/u.exec(term)
+        assert.ok(comparison, `unsupported condition term: ${term}`)
+        assert.equal(comparison[1], restore.id)
+        return comparison[2] === "!=" ? cacheHit !== "true" : cacheHit === "true"
+      })
+      // GitHub adds success() when no status-check function is present.
+      return values.every(Boolean) && (explicitStatus || !failed)
+    }
+
+    // Validate the whole selected suffix, including steps whose condition will
+    // be false. A future production recovery helper must be exercised, not
+    // replaced by invented successful behavior in this adapter.
+    const operations = steps.map((step) => {
+      let kind
+      if (step.uses?.startsWith("actions/cache/restore@")) {
+        assert.equal(step, restore)
+        kind = "restore"
+      } else if (step.uses?.startsWith("actions/cache/save@")) {
+        kind = "save"
+      } else if (step.uses?.startsWith("actions/upload-artifact@")) {
+        kind = "upload"
+      } else if (
+        step.run === "npm run test:mutation" &&
+        step["working-directory"] === "frontend"
+      ) {
+        const mode = step.env?.STRYKER_PREFLIGHT_MODE
+        assert.ok(mode === undefined || mode === "validate")
+        kind = mode === "validate" ? "validate" : "execute"
+      }
+      assert.ok(kind, `unsupported publication step: ${step.name}`)
+      assert.equal(typeof (step["continue-on-error"] ?? false), "boolean")
+      return { step, kind }
+    })
+    assert.equal(typeof (job["continue-on-error"] ?? false), "boolean")
+
+    function runAttempt(attempt, index) {
+      let cacheHit = ""
+      let workspace
+      let failed = false
+      for (const { step, kind } of operations) {
+        if (!enabled(step, cacheHit, failed)) continue
+        try {
+          if (kind === "restore" || kind === "save") {
+            assert.equal(step.with.path, "frontend/reports/mutation/shards")
+            const key = render(step.with.key, attempt, index)
+            if (kind === "restore") {
+              assert.equal(step.with["restore-keys"], undefined)
+              workspace = cache.has(key) ? { ...cache.get(key) } : undefined
+              cacheHit = workspace ? "true" : ""
+            } else {
+              assert.ok(workspace, "cache save requires completed producer evidence")
+              if (!cache.has(key)) cache.set(key, { ...workspace })
+            }
+          } else if (kind === "validate") {
+            // Successful immutable preflight is a fixed precondition here.
+            // Validation does not execute mutation or publish shard evidence.
+          } else if (kind === "execute") {
+            mutationCalls.push(`${attempt}:${index}`)
+            assert.equal(attempt, "1", "cached producer must not be recomputed")
+            workspace = { ...original[index] }
+          } else {
+            assert.equal(step.with["if-no-files-found"], "error")
+            assert.notEqual(step.with.overwrite, true)
+            assert.deepEqual(step.with.path.trim().split(/\r?\n/u), [
+              "frontend/reports/mutation/shards/**/mutation.json",
+              "frontend/reports/mutation/shards/**/SHARD_EVIDENCE.json",
+            ])
+            assert.ok(workspace, "artifact upload requires producer evidence")
+            if (failFirstUpload && attempt === "1" && index === 1) {
+              throw uploadFailure
+            }
+            const name = render(step.with.name, attempt, index)
+            assert.equal(catalog.has(name), false, "artifact transport is immutable")
+            catalog.set(name, { ...workspace })
+          }
+        } catch (error) {
+          // Only the intentionally injected remote transport error is modeled.
+          // Unsupported behavior and sentinel/assertion failures escape.
+          if (error !== uploadFailure) throw error
+          if (step["continue-on-error"] !== true) failed = true
+        }
+      }
+      return failed && job["continue-on-error"] !== true
+    }
+
+    assert.equal(runAttempt("1", 0), false)
+    assert.equal(
+      runAttempt("1", 1),
+      failFirstUpload,
+      "an artifact upload failure must remain a hard job failure"
+    )
+    assert.equal(cache.size, 2, "completed computation must survive upload failure")
+    assert.equal(runAttempt("2", 1), false)
+    assert.deepEqual(mutationCalls, ["1:0", "1:1"])
+
+    for (const bytes of [...cache.values(), ...catalog.values()]) {
+      assert.deepEqual(
+        bytes,
+        original[bytes.index],
+        "transport must not rewrite the producer attempt or either evidence file"
+      )
+    }
+
+    const aggregate = workflow.jobs["frontend-mutation-tests-full"]
+    const download = aggregate.steps.find(
+      ({ name }) => name === "Download all nightly frontend mutation shards from same run"
+    )
+    assert.ok(download)
+    assert.ok(download.uses.startsWith("actions/download-artifact@"))
+    assert.equal(download.with["merge-multiple"], false)
+    const pattern = render(download.with.pattern, "2", 0)
+    assert.ok(pattern.endsWith("*"))
+    assert.equal(pattern.indexOf("*"), pattern.length - 1)
+    const prefix = pattern.slice(0, -1)
+    const root = await mkdtemp(path.join(os.tmpdir(), "stryker-publication-"))
+    t.after(() => rm(root, { recursive: true, force: true }))
+    for (const [name, bytes] of catalog) {
+      if (!name.startsWith(prefix)) continue
+      const directory = path.join(root, name, shardPlan[bytes.index].id)
+      await mkdir(directory, { recursive: true })
+      await writeFile(path.join(directory, "mutation.json"), bytes.reportText)
+      await writeFile(path.join(directory, "SHARD_EVIDENCE.json"), bytes.evidenceText)
+    }
+
+    // Actual production aggregate oracle, not a modeled shard-count assertion.
+    const results = await loadExternalShardResults({
+      aggregateRoot: root,
+      shardPlan,
+      before,
+      preflightDigest,
+      workflowRunId: "42",
+      workflowRunAttempt: "2",
+    })
+    assert.deepEqual(
+      results.map(({ id, producerAttempt }) => [id, producerAttempt]),
+      [
+        ["shard-000", 1],
+        ["shard-001", 1],
+      ]
+    )
+  })
+}
+
 test("rejects ambiguous, foreign-run, and future external shard candidates", async (t) => {
   const { loadExternalShardResults } = await import(runnerUrl)
   const root = await mkdtemp(path.join(os.tmpdir(), "stryker-attempt-invalid-"))
