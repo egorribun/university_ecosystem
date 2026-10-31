@@ -265,6 +265,10 @@ class CheckovHelmCoverageContracts(unittest.TestCase):
                 "nats.container.image.digest": pinned_chart_images[
                     "nats.container.image.digest"
                 ],
+                "backend.config.trustedProxies": [
+                    "192.0.2.13/32",
+                    "2001:db8::13",
+                ],
                 "gateway.config.trustedProxies": [
                     "192.0.2.11/32",
                     "2001:db8::11",

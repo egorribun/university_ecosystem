@@ -441,7 +441,7 @@
           "check_name_template": "Auto Merge Dependabot Patches",
           "expected_timeout_minutes": 5,
           "expected_duration_seconds": 300,
-          "guard": "github.actor == 'dependabot[bot]'",
+          "guard": "github.event.pull_request.user.id == 49699333",
           "needs": [],
           "artifacts": [],
           "retry_policy": {
@@ -4479,7 +4479,14 @@
           "needs": [
             "verify-default-branch-dispatch"
           ],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "sqlmap-output-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "sqlmap-output/",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "review-required",
             "first_failure_preserved": false,

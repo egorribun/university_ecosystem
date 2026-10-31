@@ -58,7 +58,7 @@ def test_workflow_captures_same_files_after_both_unchanged_raw_gates() -> None:
     raw = '"$squawk_binary_path" "${squawk_args[@]}" "$sql_file"'
     assert ordinary_run.count(raw) == expanded_run.count(raw) == 1
     assert ordinary_run.rstrip().endswith(raw + '\ndone <<< "$changed_files"')
-    assert expanded_run.rstrip().endswith('exit "$admission_status"')
+    assert expanded_run.rstrip().endswith('exit "$lint_status"')
     assert '"$sql_file" > "$lint_log" 2>&1 || lint_status=$?' in expanded_run
     raw_status = 'raw_expanded_exit="$lint_status"'
     assert raw_status in expanded_run
@@ -74,20 +74,22 @@ def test_workflow_captures_same_files_after_both_unchanged_raw_gates() -> None:
     assert ordinary_run.index("aud148_ordinary_sha256=") < ordinary_run.index(raw)
     assert ordinary_run.index("aud148_ordinary_identity=") < ordinary_run.index(raw)
     assert expanded["env"]["AUD148_ORDINARY_SQL"] == (
-        "${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_sql }}"
+        "${{ steps.migration-squawk.outputs.aud148_ordinary_sql }}"
     )
     assert expanded["env"]["AUD148_ORDINARY_SHA256"] == (
-        "${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_sha256 }}"
+        "${{ steps.migration-squawk.outputs.aud148_ordinary_sha256 }}"
     )
     assert expanded["env"]["AUD148_ORDINARY_IDENTITY"] == (
-        "${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_identity }}"
+        "${{ steps.migration-squawk.outputs.aud148_ordinary_identity }}"
     )
     assert expanded["env"]["AUD148_RAW_ORDINARY_EXIT"] == (
-        "${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_exit }}"
+        "${{ steps.migration-squawk.outputs.aud148_ordinary_exit }}"
     )
     assert 'if [[ -n "$AUD148_ORDINARY_SQL" ]]; then' in expanded_run
     assert "AUD148_SQUAWK_JSON_SKIPPED" in expanded_run
-    assert 'if [[ "$capture_status" -ne 0 ]]; then' in expanded_run
+    assert (
+        'if [[ "$lint_status" -eq 0 && "$capture_status" -ne 0 ]]; then' in expanded_run
+    )
     assert 'exit "$capture_status"' in expanded_run
     assert _args(ordinary_run) == _args(expanded_run)
     assert "continue-on-error" not in ordinary

@@ -246,9 +246,6 @@ printf 'controlled-checkout\\n'
 set -eu
 if [[ "$1" == run && "$2" == pytest ]]; then
   exit "$TEST_PYTEST_EXIT"
-elif [[ "$1" == run && "$2" == python && "$3" == -m && "$4" == scripts.quality.historical148_squawk_admission ]]; then
-  printf 'ADMISSION_RAN\n'
-  exit "$TEST_ADMISSION_EXIT"
 elif [[ "$1" == run && "$2" == python && "$3" == - ]]; then
   if [[ "$4" == .pytest_tmp/aud148-expanded ]]; then
     mkdir -p "$4"
@@ -293,10 +290,6 @@ fi
     monkeypatch.setenv("RUNNER_TEMP", runner_temp.as_posix())
     monkeypatch.setenv("TMPDIR", temp_dir.as_posix())
     monkeypatch.setenv("AUD148_ORDINARY_SQL", "controlled-ordinary.sql")
-    monkeypatch.setenv("AUD148_RAW_ORDINARY_EXIT", "1")
-    monkeypatch.setenv("AUD148_ORDINARY_JSON", "controlled-ordinary.json")
-    monkeypatch.setenv("AUD148_ORDINARY_JSON_EXIT", "1")
-    monkeypatch.setenv("AUD148_ORDINARY_STDERR", "controlled-ordinary.stderr")
     monkeypatch.setenv("TEST_PYTHON_EXECUTABLE", Path(sys.executable).as_posix())
     for name in ("TEST_PREPARED_ARTIFACTS", "TEST_RUN_METADATA", "TEST_SCANNER_TEXT"):
         monkeypatch.delenv(name, raising=False)
@@ -307,12 +300,10 @@ fi
         pytest_exit: int = 0,
         *,
         quiet: bool = False,
-        admission_exit: int = 0,
     ):
         monkeypatch.setenv("TEST_SCANNER_EXIT", str(scanner_exit))
         monkeypatch.setenv("TEST_COLLECTOR_EXIT", str(collector_exit))
         monkeypatch.setenv("TEST_PYTEST_EXIT", str(pytest_exit))
-        monkeypatch.setenv("TEST_ADMISSION_EXIT", str(admission_exit))
         args = _bash_command(bash, script_path)
         if quiet:
             process = pytester.popen(args, stdin=None)
@@ -329,28 +320,16 @@ fi
 
 
 @pytest.mark.parametrize(
-    ("scanner_exit", "collector_exit", "admission_exit", "expected"),
-    [(0, 0, 0, 0), (0, 0, 1, 1), (23, 0, 0, 0), (0, 17, 0, 17), (23, 17, 1, 17)],
+    ("scanner_exit", "collector_exit", "expected"),
+    [(0, 0, 0), (23, 0, 23), (0, 17, 17), (23, 17, 23)],
 )
-def test_diagnostic_step_propagates_collector_failures_and_the_admission_verdict(
-    diagnostic_gate,
-    scanner_exit: int,
-    collector_exit: int,
-    admission_exit: int,
-    expected: int,
+def test_diagnostic_step_propagates_raw_and_collector_failures(
+    diagnostic_gate, scanner_exit: int, collector_exit: int, expected: int
 ) -> None:
-    """Collector failures are fatal; otherwise the job exit is the admission verdict.
-
-    The shell cannot judge the raw scanner exit. The Python admission requires the
-    recorded raw failure (1) and rejects any other value, so a raw 23 with an
-    accepted admission is only the stub verdict used by this propagation fixture.
-    """
-    result = diagnostic_gate(
-        scanner_exit, collector_exit, admission_exit=admission_exit
-    )
+    result = diagnostic_gate(scanner_exit, collector_exit)
     assert result.ret == expected
-    for marker in ("RAW_SCANNER_RAN", "COLLECTOR_RAN", "ADMISSION_RAN"):
-        assert marker in result.stdout.str(), marker
+    assert "RAW_SCANNER_RAN" in result.stdout.str()
+    assert "COLLECTOR_RAN" in result.stdout.str()
 
 
 def test_diagnostic_step_stops_after_failed_focused_tests(diagnostic_gate) -> None:
@@ -424,7 +403,9 @@ def test_diagnostic_step_does_not_print_private_runtime_context(
         "RAW_SCANNER_RAN",
         "COLLECTOR_RAN",
     )
-    if status != 17 or not all(marker in stdout for marker in markers):
+    if status != (23 if scanner_exit else 17) or not all(
+        marker in stdout for marker in markers
+    ):
         pytest.fail(
             "diagnostic shell did not reach the expected boundaries", pytrace=False
         )
