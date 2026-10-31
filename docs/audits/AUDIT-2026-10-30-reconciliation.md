@@ -1,6 +1,108 @@
 # Post-pause reconciliation — 2026-10-30
 
+## Current 71-finding reconciliation — 2026-10-31
+
+The [latest original-criterion decision](AUDIT-2026-10.md#scoped-five-finding-acceptance-and-aud-350-correction--2026-10-31)
+changes **437 to 441 accepted / 71 open** by explicitly reopening **AUD-350**
+and accepting **AUD-244/399/400/477/489**. The valid UTC receipt is retained,
+not relabeled as proof against table rewrite/locking. All other accepted IDs
+are preserved. This is a scoped registry correction, not a full-CI/release claim.
+
+The [complete new review](AUDIT-2026-10-31-review.md) covers one commit and all
+98 changed paths from adb5c91f to 112efb38, plus every one of the 75 IDs open at
+that reviewed source. Its source tree equals the tested PR merge tree.
+The matrix below is the exact remaining complement after the five acceptances
+and one reopening: **18 S / 38 P / 12 U / 3 N = 71**.
+S means source-fixed with applicable proof unestablished; P partial;
+U original defect remaining; N not verified or original cause unproven.
+Unchanged source dispositions are carried forward with their explicit limits,
+not treated as fresh execution or inherited GREEN.
+
+The 112 Matrix is terminal FAILURE: backend **22,662 PASS /27 FAIL /430 SKIP**,
+frontend **10,647 PASS**, Matrix 91 jobs **60 success /15 failure /16 skipped**.
+Owned Core is **46 PASS /2 FAIL /2 SKIP**. Required gates, baseline 315,
+policy 494 and inactive Squawk admission are unchanged. AUD-311/490 remain S:
+completed shard outcomes alone do not replace the skipped collected-universe
+and selected-union verifier. New Nuclei/SW regressions remain separate,
+unexecuted candidates until their own source run.
+
+| ID | Class | Exact evidence boundary / remaining condition |
+| --- | --- | --- |
+| AUD-073 | S | Fresh 7 numerical/source tests pass; 101 gradient samples do not establish browser cascade/compositing contrast. |
+| AUD-154 | S | Renderer markers repaired; actual realtime E2E locator/response chain unproved. |
+| AUD-164 | P | Mandatory proxy configuration and Helm wiring retained; real two-client spoof-resistant limiter composition unproved. |
+| AUD-167 | P | Trusted-proxy and rate-limit composition requires real topology proof. |
+| AUD-169 | P | Declaration repairs retained; actual Secret URL, endpoints, DNAT and dependencies remain owner-proof hold. |
+| AUD-178 | P | Fragment/referrer/redaction repairs retained; legacy URL CSP/Referer/emitted-log chain unproved. |
+| AUD-188 | P | JWKS policy declarations improved; actual endpoint/refresh topology unproved. |
+| AUD-189 | P | Tighter egress declarations retained; actual topology unproved. |
+| AUD-208 | P | Raw warning gate remains strict; finite Squawk admission is prepared-inactive. |
+| AUD-226 | P | Real-UTC expiry enforcement retained; finite 131-file exception and complete migration coverage remain. |
+| AUD-231 | S | Helpers/stubs do not prove compiled SSR CSP/nonce composition and untrusted-script negatives. |
+| AUD-245 | U | Global SPIRE Trivy suppressions still lack bounded path/expiry disposition. |
+| AUD-251 | P | List/watch removed; cluster-wide nodes/proxy GET and live RBAC proof remain. |
+| AUD-269 | S | Eight non-equivalent indexes preserved in source; applicable populated-chain proof unestablished. |
+| AUD-270 | S | Source refuses instead of truncating; populated-chain proof unestablished. |
+| AUD-272 | U | attempted_at/nullable uniqueness weakness remains. |
+| AUD-274 | S | Parent preserves DND/timezone columns; three current preservation tests error before bodies on DuplicateColumn. |
+| AUD-275 | P | Concurrent reply index added; interrupted/invalid-index recovery and users-index scope remain. |
+| AUD-277 | N | Original USING(true) bypass cause was not established independently of restrictive policies; assess NULL/GUC separately. |
+| AUD-278 | S | Events GIN restoration moved into upgrade; applicable PostgreSQL proof unestablished. |
+| AUD-309 | U | Generic live-stand subprocess and POSIX/Windows lock waits remain unbounded. |
+| AUD-311 | S | Filename Tier0 ownership rules added; four cases have only conditional cohort-pass inference because actual collection-union verification was skipped. |
+| AUD-313 | U | Owned-stand environment/host checks and existing-admin password reconciliation remain. |
+| AUD-321 | S | Conditional E2E handling repaired; affected fixtures/oracles unexecuted in reviewed evidence. |
+| AUD-322 | P | Selected event CRUD proof does not establish active chaos execution. |
+| AUD-327 | U | Legacy-role enum addition/use in one transaction remains; empty-chain success is insufficient. |
+| AUD-332 | U | Windows symlink tests still lack native privilege probe. |
+| AUD-334 | P | Named admission-refusal controls pass; blocked-writer and current/superseded replay composition remain. |
+| AUD-346 | U | Nightly chaos dry-run does not execute recovery. |
+| AUD-347 | S | MinIO source selection repaired; non-skipped ToxiProxy/MinIO execution unestablished. |
+| AUD-348 | P | Backfill precedes DROP; existing empty destination rows may still exclude legacy Spotify values. |
+| AUD-350 | P | Reopened: valid target-column UTC conversion proof retained, but direct ALTER remains and the original populated-table rewrite/locking criterion is not established. Single-call AST binding is not full-revision proof. |
+| AUD-351 | S | Source handles incompatible queue IDs; authentic populated-row PostgreSQL preservation unproved. |
+| AUD-360 | P | NULL rows hidden and INSERT triggers stamp tenants; all ordinary API producers remain unproved. |
+| AUD-373 | U | Token-bearing backend HTTP hop remains unencrypted; Temporal JWKS HTTPS is another boundary. |
+| AUD-375 | P | CSRF forwarding and genuine terminal 403 deletion repaired; cross-worker fallback and stale batch credentials remain. |
+| AUD-378 | U | Version/ci.yml checks are not SLSA attestation verification. |
+| AUD-380 | U | Promised Semgrep CI job remains absent. |
+| AUD-381 | P | Scanner gates added, but Nuclei native-array parser and SQLMap completion/result retention are defective. |
+| AUD-384 | S | Slack if now consumes step output; configured/unconfigured actual notification execution unproved. |
+| AUD-392 | P | Nonlocal HIBP requirement repaired; original merged weak-password-default criterion remains. |
+| AUD-393 | P | Specific DDL/module cleanup improved; complete historical behavior/proof remains incomplete. |
+| AUD-414 | P | Scrypt floor raised; PBKDF2 permits one iteration. Approved RFC-vector scope unchanged. |
+| AUD-416 | P | Fresh 9 fail-closed harness controls pass; actual selected fuzz campaign unproved. |
+| AUD-420 | N | Private rescue inventory/location unverified; no private access authorized by this review. |
+| AUD-422 | P | Additional settings documented; original timeout/poll/retention documentation remains incomplete. |
+| AUD-423 | P | Baseline count and selected settings aligned; full cross-document consistency unproved. |
+| AUD-426 | P | PostgreSQL work does not prove same-challenge HTTP step-up concurrency; old Lock shim remains. |
+| AUD-428 | P | Individual tests improved; complete cross-language assertion census incomplete. |
+| AUD-429 | P | Realtime environment selection and manual-only visual execution remain. |
+| AUD-432 | P | Owned-core selected specs do not prove broader lockout/full-SSR/registration contracts. |
+| AUD-433 | U | Fixture-created notification partitions do not repair historical migrations. |
+| AUD-434 | P | Topics model/default inventory improved; compare_server_default remains absent. |
+| AUD-436 | S | System32 whoami resolution repaired; native Windows execution unproved. |
+| AUD-438 | P | Private metrics listener/lifecycle tests pass with 100% reported statement coverage; deployment isolation unproved. |
+| AUD-447 | P | DLQ privacy tombstones improved; stale-overwrite races, historical errors and forged/escaped markers remain. |
+| AUD-449 | S | Caddy filters repaired; actual production Caddy/Gunicorn emitted-log negatives unproved. |
+| AUD-450 | S | Ordinary GUC bypass removed; applicable current ordinary-role negatives not established here. |
+| AUD-454 | P | Fresh-DB fail-closed broadcast repair retained; borrowed-session/in-flight/live boundary remains. |
+| AUD-455 | P | Cache-hit upload suppression avoids duplicates but cache-before-publication leaves failed-upload retries artifactless. |
+| AUD-456 | U | LHCI MODE=test oracle remains nondiscriminating. |
+| AUD-474 | S | Cookie observation reordered before cleanup; actual sequence/negative-reorder proof unestablished. |
+| AUD-478 | P | Bounded revocation replay added; startup/shared-L2 admission barrier and retention>7 days remain. |
+| AUD-480 | P | Dev dependency scan added; medium/low and ignore-unfixed/node_modules scope gaps remain. |
+| AUD-482 | P | Caddy graph locked and built/scanned; govulncheck coverage and actual v3 advisory remain. |
+| AUD-483 | P | Recursive read-only PR OSV inventory added; full applicable OSV/stdlib result validation unestablished. |
+| AUD-484 | N | Current alert-specific remote security state not inspected; scan success is insufficient. |
+| AUD-490 | S | Mandatory nonlocal idempotency secret retained; seven cases have only conditional cohort-pass inference because actual collection-union verification was skipped. |
+| AUD-501 | S | Hidden-tab assertion/negative handler repaired; real hidden-clock/RAF execution unproved. |
+| AUD-503 | P | ICS ownership corrected; WebSocket ownership still disagrees with actual consumers. |
+| AUD-506 | P | Temporal HTTPS/default authorizer repaired; service-token producer still lacks required permissions. |
+
 ## Scoped progress after the 112-finding reconciliation
+
+The following block is the historical 437-ID checkpoint; the current 441-ID decision and 71-ID complement are above.
 
 The accepted lower bound is **437/512 (85.4%)**, with **75 IDs unaccepted**.
 The [new original-criterion decision](AUDIT-2026-10.md#scoped-aud-151-and-aud-308-acceptance-on-source-c6a3d39b--2026-10-30)

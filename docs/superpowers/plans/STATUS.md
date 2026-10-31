@@ -1,7 +1,162 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-30 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-31 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+
+## Полная сверка после паузы и уточнение приёмки — 2026-10-31 06:49 UTC
+
+Текущий реестр — **441/512 (86,1%)**, **71 ID открыт**.
+Это не только увеличение счётчика: **AUD-350 переоткрыт**, а
+**AUD-244/399/400/477/489 приняты** по исходным ограниченным критериям.
+[Решение и точные квитанции](../../audits/AUDIT-2026-10.md#scoped-five-finding-acceptance-and-aud-350-correction--2026-10-31)
+сохраняют действующее доказательство UTC-конверсии AUD-350, но больше не
+выдают его за устранение переписывания таблицы и эксплуатационных рисков.
+
+[Полный новый обзор](../../audits/AUDIT-2026-10-31-review.md):
+один коммит `112efb38055caa8ce46717e3d6c23333bc07be4d` после `adb5c91f`,
+**98 путей = 87 modified + 11 added**, без удалений и переименований.
+Полные нетранкированные Git trees и compare согласованы; просмотрены все
+новые строки, изменённые участки и связанные producer/consumer-контексты,
+а не только ошибки CI. Это не повторное построчное ревью несвязанного
+неизменённого кода всего репозитория.
+Все **75 ранее открытых ID** классифицированы. После пяти приёмок и
+переоткрытия AUD-350 [точный остаток](../../audits/AUDIT-2026-10-30-reconciliation.md#current-71-finding-reconciliation--2026-10-31):
+**18 source-fixed/proof-pending, 38 partial, 12 unfixed, 3 unverified/original-cause-unproven**.
+AUD-311/490 не приняты: условный вывод по cohort не заменяет skipped-проверку
+единства коллекции и полного непересекающегося объединения shards.
+
+### Проверенный source 112 и завершённые проверки
+
+Фактический PR checkout `a0314c8854715c76400a24c114fdb3ba90b4f540` и source
+112 имеют одно полное дерево `47ff2d083a9e8f57e4dfddd8fae96bb86b969ba5`.
+Это source-equivalent evidence, не буквальный direct-head checkout,
+не production deployment и не перенос GREEN на будущий source.
+
+- [Matrix 41169911427](https://github.com/egorribun/university_ecosystem/actions/runs/41169911427):
+  terminal FAILURE; все **91 job = 60 SUCCESS / 15 FAILURE / 16 SKIPPED**.
+  Активных и отменённых jobs нет. Всего **23 workflow = 17 SUCCESS /
+  4 FAILURE / 2 SKIPPED**.
+- Backend unit: **22 662 PASS / 27 FAIL / 430 SKIP**. Shards 0/1/2/3:
+  4338/6210/5034/7080 PASS, 7/0/6/14 FAIL, 113/85/127/105 SKIP.
+  Последний завершён в 05:54:21 UTC. Coverage/collection-union verification
+  skipped; полного backend GREEN нет.
+- Frontend: **10 647 PASS в 846 файлах**; 14 изменённых test files, 252 cases.
+  Changed-line aggregate — 100%, не все branch/function/component metrics.
+- [Owned Core 41169911345](https://github.com/egorribun/university_ecosystem/actions/runs/41169911345):
+  **46 PASS / 2 FAIL / 2 SKIP**, preflight 338 и adapter 1 PASS.
+  Оба отказа — составной URL-cleanliness poll при повторном открытии used
+  reset link, до replay submission. Причина wrong route против retained
+  token ещё не разделена; это не доказательство обхода backend replay guard.
+- Contract: 3580 PASS / 12 FAIL; отдельные 688 и 41 PASS.
+  PostgreSQL integration: 110 PASS / 1 FAIL на AUD-258 visibility fixture;
+  это не установленная потеря физической строки. Alembic: 127 PASS /
+  2 FAIL / 3 setup ERROR на повторном добавлении DND columns.
+- DB migration gate: 91 focused и два реальных PostgreSQL UTC-case PASS,
+  затем password inventory sentinel FAIL: SELECT-only reader не видит
+  скрытые RLS строки и получает ложный zero. Исправлять fail-closed проверку
+  полномочий, не возвращать bypass через обычный GUC.
+- ws-hub unit/race и четыре integration packages PASS; lint FAIL:
+  cognitive complexity 34 в SubscribeToNATS при пределе 30. Никакого
+  suppressing pragma или изменения порога нет.
+- Checkov не начинает сканирование из-за отсутствующего proxy prerequisite
+  в сгенерированной fixture. Npm audit и Trivy FS/FE подтверждают
+  follow-redirects 1.16.1 HIGH; отдельный Dependency Review удерживает
+  go-jose/v3 и несовпавшую license-manifest identity.
+  Caddy Trivy с ignore-unfixed не доказывает отсутствие v3-риска.
+- Zizmor upload SUCCESS содержит **115 findings (92 note / 1 warning /
+  22 error)**. Приёмка AUD-244 означает удаление прежних подавлений,
+  не чистый SARIF. Полный CI, coverage policy и release остаются красными.
+
+### Собственный завершённый 1d5 и следующий исправленный source
+
+Опубликованный source `1d5a968dda9d19ea86a6d3369d9d7ba8884e25fd`
+прошёл свой запуск. PR checkout `ddb033fbe9a7bc7a258b795db19ad88356967916`
+имеет то же дерево `6baf148c4dede974d06637234c728e05545e445c`.
+Первый update_ref был отклонён и не выполнен; после конкретного разрешения
+одна non-force CAS retry прошла, branch/full-tree readback совпал.
+
+- [Matrix 41176285302](https://github.com/egorribun/university_ecosystem/actions/runs/41176285302)
+  terminal FAILURE в 06:37:16 UTC: **60 jobs = 20 SUCCESS / 10 FAILURE /
+  30 SKIPPED**, активных и отменённых нет. Это не прежняя 91-job matrix:
+  backend fan-out не запустился после fast-lint отказа.
+- Fast precommit: все hooks кроме Ruff format PASS; один новый Nuclei assert
+  требует только другого переноса скобок. Security/types PASS.
+  Backend matrix SKIPPED, оба aggregate FAIL на этом skip; **новые восемь
+  Nuclei cases не исполнялись**. Это formatting defect и отсутствие proof,
+  а не доказанный parser RED.
+- Catalog теперь PASS: **59 workflows / 184 jobs**. Следующий inventory шаг
+  выявил ровно два orphan contracts — Compose proxy и Temporal JWKS;
+  причина в неподдержанном статическим finder формате root/path, не в
+  исполнении production security guards.
+- Frontend: **10 648 PASS / 2 semantic FAIL в 847 файлах**. Новые SW3 cases
+  дают 2 FAIL /1 PASS: stale proof при same-session rotation приводит к
+  отправке второго запроса и удалению строки; при account transition второй
+  запрос старого владельца отправлен. Последующие retention/retrigger
+  assertions второго случая не достигнуты. Stable-proof genuine403/no-retry
+  positive PASS. Это контролируемые unit-boundary receipts, не browser/backend
+  интеграция. Build/WASM/typecheck/ESLint/Prettier PASS; aggregate FAIL,
+  merged/differential coverage и production-only client contracts SKIPPED.
+- Contract: **3588 PASS / 4 FAIL**, отдельно 688 и 41 PASS. Все четыре отказа —
+  прежний full-backend frozen-source binding, не Nuclei execution.
+- [Core 41176282622](https://github.com/egorribun/university_ecosystem/actions/runs/41176282622)
+  terminal FAILURE в 06:40:20: **46 PASS / 2 FAIL / 2 SKIP**, preflight 338 и adapter 1
+  PASS. Обе ошибки по-прежнему composite URL-cleanliness до replay submission.
+  NATS outage SKIPPED, owned-container cleanup SUCCESS.
+- Node audit успешно получил авторитетные name/version/tarball/SHA-512
+  metadata follow-redirects 1.16.2; затем audit исходного lock 1.16.1 ожидаемо
+  FAIL на известном HIGH. Это не install proof новой версии.
+
+Кодовая основа этого документа —
+[f92080ee5127c336b31c3c46414e20a6730d2735](https://github.com/egorribun/university_ecosystem/commit/f92080ee5127c336b31c3c46414e20a6730d2735).
+Его восемь путей разделены на logical contract-recovery и security commits:
+точный hosted Ruff postimage; два canonical test path исправления без
+изменения checker; OSV contract ровно двух известных producer pairs с
+положительным serialized control и восемью отрицательными мутациями;
+один follow-redirects lock record (ровно version/resolved/integrity);
+удаление выполненного временного capture и его temporary test;
+[ADR-050](../../adr/ADR-050-security-release-cooldown-exceptions.md).
+
+В этом successor нет SW production fix, Go metadata scaffold, go-jose update,
+новых scanner dispositions или изменений gate. Прежний 1d5 полностью завершён
+до перехода; его jobs не отменялись ради successor. Собственные результаты
+исправленного source на момент записи этого checkpoint **ещё не получены**.
+
+### Порядок оставшейся ограниченной работы
+
+1. Проверить собственные fast lint/inventory, реальный npm-ci/audit/Trivy
+   нового lock и фактическое исполнение Nuclei 8; предполагаемый RED не
+   подменяет receipt. Известные SW 2 semantic FAIL пока остаются открытыми.
+2. Отдельно исправить подтверждённый inter-row proof cache SW после causal
+   review: fresh proof перед следующей отправкой, неизменный владелец прохода
+   и record.sessionNonce, остановка без перезаписи ownership/retry/idempotency
+   при смене владельца/отсутствии proof. Genuine terminal 401/403 deletion/no-retry
+   сохраняется. Это не обещание атомарности между proof и самой отправкой.
+3. Получить go-jose/v4.1.7 суммы через изолированный authenticated Go sumdb
+   capture, не из checkout sums/старого module cache. Подготовленный wrapper
+   ещё не опубликован и не проверен. Затем ровно согласованные 13 файлов:
+   пять graphs/sums, существующий probe override, два pin contracts;
+   compatibility 32/33 и malformed-key controls, собственный CI.
+   [ADR-050](../../adr/ADR-050-security-release-cooldown-exceptions.md) фиксирует
+   разовое owner cooldown решение для follow-redirects 1.16.2 и go-jose/v4.1.7.
+   Общие 7 days/.npmrc не менялись; v3 этим не исправляется.
+4. Отдельно после applicable RED/review восстановить password authority
+   fail-closed check и доказанные migration fixtures. Full-backend source pins,
+   DND historical binding и Core reset причина требуют самостоятельной сверки,
+   а не замены требований или возврата обычного GUC bypass.
+5. AUD-478 открыт. Дополнительная regression preparation остановлена системной
+   проверкой инструмента; обход не выполнялся. Это ограничение выполнения,
+   не новый runtime result и не closure.
+Current baseline **315** уже опубликован пользователем: удалены только
+четыре ранее разрешённые устаревшие Secret Keyword identities, добавлений нет.
+Policy **494**, cap **512**, expiry **2027-01-10**, Gitleaks **26**,
+required **78**, blocking CodeQL, hooks, coverage floors и prepared-inactive
+Squawk сохранены. Исторические числа ниже относятся к своим checkpoint.
+Синхронизация оставшихся старых policy summaries в ADR-047/docs README
+не означает новое разрешение scanner findings.
+
+Этот блок фиксирует проверенный source и последующие ограничения. Проверки
+нового docs/source commit ещё нужны; результаты 112 на него не наследуются.
+Следующие старые разделы сохранены как история, не текущий оперативный статус.
 
 ## Текущая приёмка и полный CI исходного кода — 2026-10-30 19:20 UTC
 
