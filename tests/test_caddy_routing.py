@@ -367,7 +367,7 @@ def test_legacy_reset_links_redirect_to_fragment_form_before_any_document() -> N
         assert (
             'handle @legacy_reset_query { header Cache-Control "no-store" '
             "route { rewrite * ?legacy-token={query.token} "
-            "redir /reset-password#{http.request.uri.query} 302 } }"
+            "redir * /reset-password#{http.request.uri.query} 302 } }"
         ) in squashed, f"{relative_path} must redirect the query form to the fragment"
         assert (
             "@legacy_reset_path { path_regexp legacy_reset ^/reset-password/([^/]+)$ }"
@@ -376,7 +376,7 @@ def test_legacy_reset_links_redirect_to_fragment_form_before_any_document() -> N
         assert (
             'handle @legacy_reset_path { header Cache-Control "no-store" '
             "route { rewrite * ?legacy-token={re.legacy_reset.1} "
-            "redir /reset-password#{http.request.uri.query} 302 } }"
+            "redir * /reset-password#{http.request.uri.query} 302 } }"
         ) in squashed, f"{relative_path} must redirect the path form to the fragment"
         assert squashed.index("handle @legacy_reset_path") < squashed.index(
             "handle { reverse_proxy frontend:3000"

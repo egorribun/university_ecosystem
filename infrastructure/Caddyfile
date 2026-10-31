@@ -73,7 +73,7 @@
 		header Cache-Control "no-store"
 		route {
 			rewrite * ?legacy-token={query.token}
-			redir /reset-password#{http.request.uri.query} 302
+			redir * /reset-password#{http.request.uri.query} 302
 		}
 	}
 	@legacy_reset_path {
@@ -84,7 +84,7 @@
 		header Cache-Control "no-store"
 		route {
 			rewrite * ?legacy-token={re.legacy_reset.1}
-			redir /reset-password#{http.request.uri.query} 302
+			redir * /reset-password#{http.request.uri.query} 302
 		}
 	}
 
