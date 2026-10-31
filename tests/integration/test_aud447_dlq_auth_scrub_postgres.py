@@ -1,8 +1,10 @@
 """PostgreSQL behaviour of the AUD-447 dead_letter_jobs token scrub.
 
-Set RUN_INTEGRATION_TESTS=1 and AUD447_POSTGRES_DATABASE_URL to a disposable
-PostgreSQL server (postgresql+psycopg://...). The fixture builds a connection-local
-temporary dead_letter_jobs table and rolls it back, so no durable state changes.
+Requires the explicit test/test PostgreSQL service on 127.0.0.1:5432/test,
+RUN_INTEGRATION_TESTS=1, ENVIRONMENT=testing, and the existing database-reset
+acknowledgment. AUD447_POSTGRES_DATABASE_URL must use postgresql+psycopg.
+The fixture verifies its connection-local temporary table and active outer
+transaction before migration execution, then rolls all fixture changes back.
 """
 
 from __future__ import annotations
@@ -70,9 +72,67 @@ def _load_migration() -> ModuleType:
     return module
 
 
+_OWNED_TARGET_ERROR = (
+    "AUD-447 PostgreSQL requires the explicit owned integration target"
+)
+_OWNED_TEMP_ERROR = (
+    "AUD-447 PostgreSQL requires its active transaction and temporary table"
+)
+
+
+def _owned_postgres_url() -> sa.engine.URL:
+    if (
+        os.getenv("RUN_INTEGRATION_TESTS") != "1"
+        or os.getenv("ENVIRONMENT") != "testing"
+        or os.getenv("UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET") != "1"
+    ):
+        raise ValueError(_OWNED_TARGET_ERROR)
+    try:
+        url = sa.engine.make_url(os.getenv("AUD447_POSTGRES_DATABASE_URL", ""))
+        valid = (
+            url.drivername == "postgresql+psycopg"
+            and url.host == "127.0.0.1"
+            and url.port == 5432
+            and url.database == "test"
+            and url.username == "test"
+            and url.password == "test"
+            and not url.query
+        )
+    except (sa.exc.ArgumentError, ValueError):
+        raise ValueError(_OWNED_TARGET_ERROR) from None
+    if not valid:
+        raise ValueError(_OWNED_TARGET_ERROR)
+    return url
+
+
+def _assert_owned_temp_table(
+    conn: sa.Connection, transaction: sa.engine.Transaction | None
+) -> None:
+    if (
+        conn.dialect.name != "postgresql"
+        or transaction is None
+        or not transaction.is_active
+        or conn.get_transaction() is not transaction
+    ):
+        raise RuntimeError(_OWNED_TEMP_ERROR)
+    relation = conn.execute(
+        sa.text(
+            "SELECT c.relpersistence, "
+            "c.relnamespace = pg_catalog.pg_my_temp_schema() "
+            "FROM pg_catalog.pg_class AS c "
+            "WHERE c.oid = pg_catalog.to_regclass('dead_letter_jobs')"
+        )
+    ).one_or_none()
+    if relation is None or relation[0] != "t" or relation[1] is not True:
+        raise RuntimeError(_OWNED_TEMP_ERROR)
+
+
 @pytest.fixture
 def connection() -> Iterator[sa.Connection]:
-    engine = sa.create_engine(os.environ["AUD447_POSTGRES_DATABASE_URL"])
+    engine = sa.create_engine(
+        _owned_postgres_url(),
+        connect_args={"hostaddr": "127.0.0.1", "connect_timeout": 5},
+    )
     try:
         with engine.connect() as conn:
             transaction = conn.begin()
@@ -90,6 +150,7 @@ def connection() -> Iterator[sa.Connection]:
                         ") ON COMMIT DROP"
                     )
                 )
+                _assert_owned_temp_table(conn, transaction)
                 yield conn
             finally:
                 if transaction.is_active:
@@ -122,6 +183,8 @@ def _snapshot(conn: sa.Connection) -> list[tuple[Any, ...]]:
 
 
 def _run(monkeypatch: pytest.MonkeyPatch, conn: sa.Connection, batch_size: int) -> None:
+    transaction = conn.get_transaction()
+    _assert_owned_temp_table(conn, transaction)
     migration = _load_migration()
     monkeypatch.setattr(migration, "_BATCH_SIZE", batch_size)
     monkeypatch.setattr(
@@ -130,6 +193,7 @@ def _run(monkeypatch: pytest.MonkeyPatch, conn: sa.Connection, batch_size: int) 
         Operations(MigrationContext.configure(connection=conn)),
     )
     migration.upgrade()
+    _assert_owned_temp_table(conn, transaction)
 
 
 def _job(row_id: int, payload: str, error: str | None = None, **extra: Any) -> dict:

@@ -682,6 +682,7 @@ jobs:
               env:
                   # Explicitly opt this probe into the job's disposable PostgreSQL service.
                   AUD350_POSTGRES_DATABASE_URL: ${{ env.DATABASE_URL }}
+                  AUD447_POSTGRES_DATABASE_URL: postgresql+psycopg://test:test@127.0.0.1:5432/test
                   INTEGRATION_SHARD_ID: ${{ inputs.integration-shard-id }}
                   INTEGRATION_NUM_SHARDS: ${{ inputs.integration-num-shards }}
                   INTEGRATION_TEST_PATTERN: ${{ inputs.integration-test-pattern }}

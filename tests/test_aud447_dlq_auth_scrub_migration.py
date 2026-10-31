@@ -10,6 +10,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -17,6 +19,7 @@ from typing import Any
 import pytest
 
 from app.workers.dead_letter_queue import _QUARANTINED_AUTH_PAYLOAD
+from tests.integration import test_aud447_dlq_auth_scrub_postgres as postgres_fixture
 
 MIGRATION = (
     Path(__file__).resolve().parents[1]
@@ -282,3 +285,222 @@ def test_downgrade_is_an_explicit_noop() -> None:
 def test_migration_source_does_not_import_application_code() -> None:
     source = MIGRATION.read_text(encoding="utf-8")
     assert re.search(r"^\s*(?:from|import)\s+app", source, re.MULTILINE) is None
+
+
+_OWNED_AUD447_URL = "postgresql+psycopg://test:test@127.0.0.1:5432/test"
+
+
+def _aud447_owned_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RUN_INTEGRATION_TESTS", "1")
+    monkeypatch.setenv("ENVIRONMENT", "testing")
+    monkeypatch.setenv("UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET", "1")
+    monkeypatch.setenv("AUD447_POSTGRES_DATABASE_URL", _OWNED_AUD447_URL)
+
+
+def _aud447_deny_engine_creation(*_args: Any, **_kwargs: Any) -> None:
+    pytest.fail("Invalid AUD-447 allocation reached engine creation")
+
+
+def test_owned_postgres_target_accepts_only_the_explicit_synchronous_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _aud447_owned_environment(monkeypatch)
+
+    url = postgres_fixture._owned_postgres_url()
+
+    assert (
+        url.drivername,
+        url.host,
+        url.port,
+        url.database,
+        url.username,
+        url.password,
+        dict(url.query),
+    ) == ("postgresql+psycopg", "127.0.0.1", 5432, "test", "test", "test", {})
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        pytest.param("", id="missing"),
+        pytest.param("not-a-url", id="malformed"),
+        pytest.param(
+            "postgresql+asyncpg://test:test@127.0.0.1:5432/test",
+            id="async-driver",
+        ),
+        pytest.param("sqlite:///:memory:", id="sqlite"),
+        pytest.param("postgresql+psycopg://test:test@192.0.2.1:5432/test", id="remote"),
+        pytest.param(
+            "postgresql+psycopg://test:test@localhost:5432/test",
+            id="dns-name",
+        ),
+        pytest.param(
+            "postgresql+psycopg://test:test@127.0.0.1:5433/test",
+            id="wrong-port",
+        ),
+        pytest.param(
+            "postgresql+psycopg://test:test@127.0.0.1/test",
+            id="missing-port",
+        ),
+        pytest.param(
+            "postgresql+psycopg://other:test@127.0.0.1:5432/test",
+            id="wrong-user",
+        ),
+        pytest.param(
+            "postgresql+psycopg://test:other@127.0.0.1:5432/test",
+            id="wrong-password",
+        ),
+        pytest.param(
+            "postgresql+psycopg://test:test@127.0.0.1:5432/other",
+            id="wrong-database",
+        ),
+        pytest.param(_OWNED_AUD447_URL + "?hostaddr=192.0.2.1", id="host-override"),
+        pytest.param(
+            _OWNED_AUD447_URL + "?options=-csearch_path=public",
+            id="options-override",
+        ),
+    ],
+)
+def test_owned_postgres_target_rejects_unsafe_allocation_before_connect(
+    monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    _aud447_owned_environment(monkeypatch)
+    monkeypatch.setenv("AUD447_POSTGRES_DATABASE_URL", target)
+    monkeypatch.setenv("DATABASE_URL", _OWNED_AUD447_URL)
+    monkeypatch.setattr(
+        postgres_fixture.sa, "create_engine", _aud447_deny_engine_creation
+    )
+
+    with pytest.raises(ValueError) as failure:
+        next(postgres_fixture.connection.__wrapped__())
+
+    assert str(failure.value) == postgres_fixture._OWNED_TARGET_ERROR
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("RUN_INTEGRATION_TESTS", None),
+        ("RUN_INTEGRATION_TESTS", "0"),
+        ("ENVIRONMENT", None),
+        ("ENVIRONMENT", "production"),
+        ("UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET", None),
+        ("UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET", "0"),
+    ],
+)
+def test_owned_postgres_target_requires_explicit_integration_acknowledgments(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str | None
+) -> None:
+    _aud447_owned_environment(monkeypatch)
+    if value is None:
+        monkeypatch.delenv(name)
+    else:
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(
+        postgres_fixture.sa, "create_engine", _aud447_deny_engine_creation
+    )
+
+    with pytest.raises(ValueError) as failure:
+        next(postgres_fixture.connection.__wrapped__())
+
+    assert str(failure.value) == postgres_fixture._OWNED_TARGET_ERROR
+
+
+@pytest.mark.parametrize(
+    ("relation", "active", "owns_transaction", "dialect", "missing_transaction"),
+    [
+        (None, True, True, "postgresql", False),
+        (("p", True), True, True, "postgresql", False),
+        (("t", False), True, True, "postgresql", False),
+        (("t", None), True, True, "postgresql", False),
+        (("t", True), False, True, "postgresql", False),
+        (("t", True), True, False, "postgresql", False),
+        (("t", True), True, True, "sqlite", False),
+        (("t", True), True, True, "postgresql", True),
+    ],
+    ids=[
+        "missing-relation",
+        "persistent-relation",
+        "foreign-namespace",
+        "unknown-namespace",
+        "inactive-transaction",
+        "different-transaction",
+        "wrong-dialect",
+        "missing-transaction",
+    ],
+)
+def test_owned_postgres_guard_rejects_non_owned_table_or_transaction(
+    relation: tuple[str, bool | None] | None,
+    active: bool,
+    owns_transaction: bool,
+    dialect: str,
+    missing_transaction: bool,
+) -> None:
+    transaction = None if missing_transaction else SimpleNamespace(is_active=active)
+    connection = SimpleNamespace(
+        dialect=SimpleNamespace(name=dialect),
+        get_transaction=lambda: transaction if owns_transaction else object(),
+        execute=lambda _statement: SimpleNamespace(one_or_none=lambda: relation),
+    )
+
+    with pytest.raises(RuntimeError) as failure:
+        postgres_fixture._assert_owned_temp_table(connection, transaction)
+
+    assert str(failure.value) == postgres_fixture._OWNED_TEMP_ERROR
+
+
+@pytest.mark.parametrize("body_fails", [False, True], ids=["normal", "exception"])
+def test_owned_postgres_fixture_pins_connection_and_rolls_back_its_transaction(
+    monkeypatch: pytest.MonkeyPatch, body_fails: bool
+) -> None:
+    _aud447_owned_environment(monkeypatch)
+    events: list[str] = []
+    statements: list[str] = []
+    transaction = SimpleNamespace(is_active=True)
+
+    def rollback() -> None:
+        events.append("rollback")
+        transaction.is_active = False
+
+    transaction.rollback = rollback
+
+    def execute(statement: Any) -> Any:
+        statements.append(str(statement))
+        return SimpleNamespace(one_or_none=lambda: ("t", True))
+
+    connection = SimpleNamespace(
+        dialect=SimpleNamespace(name="postgresql"),
+        begin=lambda: transaction,
+        get_transaction=lambda: transaction,
+        execute=execute,
+    )
+
+    @contextmanager
+    def connect() -> Iterator[Any]:
+        yield connection
+
+    engine = SimpleNamespace(connect=connect, dispose=lambda: events.append("dispose"))
+
+    def create_engine(url: Any, *, connect_args: dict[str, object]) -> Any:
+        assert url == postgres_fixture.sa.engine.make_url(_OWNED_AUD447_URL)
+        assert connect_args == {"hostaddr": "127.0.0.1", "connect_timeout": 5}
+        return engine
+
+    monkeypatch.setattr(postgres_fixture.sa, "create_engine", create_engine)
+    fixture = postgres_fixture.connection.__wrapped__()
+    assert next(fixture) is connection
+    assert statements[0].startswith("CREATE TEMP TABLE dead_letter_jobs")
+    assert "ON COMMIT DROP" in statements[0]
+    assert "pg_catalog.pg_my_temp_schema()" in statements[1]
+    assert "pg_catalog.to_regclass('dead_letter_jobs')" in statements[1]
+    assert transaction.is_active is True
+
+    if body_fails:
+        with pytest.raises(RuntimeError, match="^synthetic body failure$"):
+            fixture.throw(RuntimeError("synthetic body failure"))
+    else:
+        with pytest.raises(StopIteration):
+            next(fixture)
+
+    assert events == ["rollback", "dispose"]
+    assert transaction.is_active is False

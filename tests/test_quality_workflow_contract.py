@@ -7456,3 +7456,101 @@ def test_aud350_integration_caller_passes_its_owned_postgres_target() -> None:
     )
     assert "if" not in step
     assert "continue-on-error" not in step
+
+
+def _assert_aud447_owned_postgres_allocation(workflow: dict) -> None:
+    job = workflow["jobs"]["integration-tests"]
+    step = _provenance_step(job, "Run integration tests")
+    variable = "AUD447_POSTGRES_DATABASE_URL"
+    assert step["env"][variable] == "postgresql+psycopg://test:test@127.0.0.1:5432/test"
+    assert job["env"]["ENVIRONMENT"] == "testing"
+    assert job["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    assert job["env"]["UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"] == "1"
+    assert job["env"]["DATABASE_URL"] == (
+        "postgresql+asyncpg://test:test@localhost:5432/test"
+    )
+    assert variable not in workflow.get("env", {})
+    assert variable not in job["env"]
+    assert variable not in workflow["jobs"]["unit-tests"].get("env", {})
+    service = job["services"]["postgres"]
+    assert service["image"].startswith("pgvector/pgvector:pg17@sha256:")
+    assert service["env"] == {
+        "POSTGRES_USER": "test",
+        "POSTGRES_PASSWORD": "test",
+        "POSTGRES_DB": "test",
+    }
+    assert service["ports"] == ["5432:5432"]
+    assert "if" not in step
+    assert "continue-on-error" not in step
+    assert step["env"]["INTEGRATION_TEST_PATTERN"] == (
+        "${{ inputs.integration-test-pattern }}"
+    )
+    assert "$env:INTEGRATION_TEST_PATTERN" in step["run"]
+    assert (
+        "--ignore=tests/integration/test_aud447_dlq_auth_scrub_postgres.py"
+        not in step["run"]
+    )
+
+
+def test_aud447_postgres_regressions_use_the_explicit_owned_service() -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    _assert_aud447_owned_postgres_allocation(workflow)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "missing-url",
+        "generic-url",
+        "global-url",
+        "job-url",
+        "unit-url",
+        "integration-disabled",
+        "reset-unacknowledged",
+        "production-environment",
+        "different-service-credentials",
+        "different-service-port",
+        "conditional-step",
+        "nonblocking-step",
+    ],
+)
+def test_aud447_postgres_allocation_rejects_unsafe_workflow_mutations(
+    case: str,
+) -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_aud447_owned_postgres_allocation(workflow)
+    candidate = deepcopy(workflow)
+    job = candidate["jobs"]["integration-tests"]
+    step = _provenance_step(job, "Run integration tests")
+    variable = "AUD447_POSTGRES_DATABASE_URL"
+    target = step["env"][variable]
+
+    if case == "missing-url":
+        del step["env"][variable]
+    elif case == "generic-url":
+        step["env"][variable] = "${{ env.DATABASE_URL }}"
+    elif case == "global-url":
+        candidate.setdefault("env", {})[variable] = target
+    elif case == "job-url":
+        job["env"][variable] = target
+    elif case == "unit-url":
+        candidate["jobs"]["unit-tests"].setdefault("env", {})[variable] = target
+    elif case == "integration-disabled":
+        job["env"]["RUN_INTEGRATION_TESTS"] = "0"
+    elif case == "reset-unacknowledged":
+        job["env"]["UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"] = "0"
+    elif case == "production-environment":
+        job["env"]["ENVIRONMENT"] = "production"
+    elif case == "different-service-credentials":
+        job["services"]["postgres"]["env"]["POSTGRES_DB"] = "other"
+    elif case == "different-service-port":
+        job["services"]["postgres"]["ports"] = ["5433:5432"]
+    elif case == "conditional-step":
+        step["if"] = "false"
+    else:
+        assert case == "nonblocking-step"
+        step["continue-on-error"] = True
+
+    with pytest.raises((AssertionError, KeyError)):
+        _assert_aud447_owned_postgres_allocation(candidate)
