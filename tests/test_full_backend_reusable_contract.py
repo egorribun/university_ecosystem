@@ -61,7 +61,11 @@ def _baseline() -> dict[str, object]:
             FULL_BACKEND.read_bytes()
         ).hexdigest(),
     }
-    assert actual_source_files == value["source_files"]
+    try:
+        assert actual_source_files == value["source_files"]
+    except AssertionError:
+        _emit_binding_diagnostic()
+        raise
     return value
 
 
@@ -193,6 +197,43 @@ def _normalize_approved_action_pin_updates(
 
     normalized_job["steps"] = normalized_steps
     return normalized_job
+
+
+def _emit_binding_diagnostic() -> None:
+    """Report only the canonical current job digest after a source mismatch."""
+    digest: str | None
+    try:
+        job = _jobs(_load(NIGHTLY))["frontend-mutation-shards"]
+        assert isinstance(job, dict)
+        normalized_job = _normalize_approved_action_pin_updates(
+            job, workflow_id="nightly", job_id="frontend-mutation-shards"
+        )
+        digest = _digest(normalized_job)
+    except (
+        OSError,
+        yaml.YAMLError,
+        AssertionError,
+        KeyError,
+        TypeError,
+        ValueError,
+        RecursionError,
+    ):
+        digest = None
+    payload = {
+        "schema": "full-backend-binding-diagnostic-v1",
+        "status": "unavailable",
+    }
+    if isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
+        payload["status"] = "available"
+        payload["frontend_mutation_shards_sha256"] = digest
+    if sys.stderr is None:
+        return
+    try:
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        sys.stderr.write(encoded + "\n")
+        sys.stderr.flush()
+    except (OSError, ValueError):
+        return
 
 
 def _assert_preserved_job_digest(
