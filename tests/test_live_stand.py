@@ -14421,3 +14421,117 @@ def test_live_reset_registration_v2_runner_uses_failure_stdout_only(
     assert captured.err == ""
     assert private not in captured.out
     assert completed.stdout == completed.stderr == b""
+
+
+_RESET_URL_DIAGNOSTIC_LINE = (
+    "UE_LIVE_RESET_URL_V1 project=desktop phase=reopen reset_route=false "
+    "token_query_absent=true token_fragment_absent=true token_url_absent=true\n"
+)
+
+
+def test_live_reset_url_parser_preserves_the_emitter_boolean_record() -> None:
+    assert live_stand._live_playwright_reset_url_observations(
+        _RESET_URL_DIAGNOSTIC_LINE
+    ) == [("desktop", "reopen", False, True, True, True)]
+    assert live_stand._live_playwright_reset_url_observations(
+        _RESET_URL_DIAGNOSTIC_LINE.replace("\n", "\r\n")
+    ) == [("desktop", "reopen", False, True, True, True)]
+    for field in (
+        "reset_route",
+        "token_query_absent",
+        "token_fragment_absent",
+        "token_url_absent",
+    ):
+        original = "false" if field == "reset_route" else "true"
+        for invalid in ("0", "1", "True", "FALSE", "null", "private"):
+            malformed = _RESET_URL_DIAGNOSTIC_LINE.replace(
+                f"{field}={original}", f"{field}={invalid}"
+            )
+            assert live_stand._live_playwright_reset_url_observations(malformed) == []
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "",
+        _RESET_URL_DIAGNOSTIC_LINE.rstrip("\n"),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("desktop", "private"),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("reopen", "private"),
+        _RESET_URL_DIAGNOSTIC_LINE.replace(" phase=", " extra=private phase="),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("reset_route=false ", ""),
+        _RESET_URL_DIAGNOSTIC_LINE.replace(
+            "reset_route=false ", "reset_route=false reset_route=true "
+        ),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("\n", " extra=private\n"),
+        "private " + _RESET_URL_DIAGNOSTIC_LINE,
+        "private\r" + _RESET_URL_DIAGNOSTIC_LINE,
+        "private\v" + _RESET_URL_DIAGNOSTIC_LINE,
+        "private\u2028" + _RESET_URL_DIAGNOSTIC_LINE,
+        "\x1b[31m" + _RESET_URL_DIAGNOSTIC_LINE,
+        _RESET_URL_DIAGNOSTIC_LINE.replace("\n", "\r\r\n"),
+        "x" * 161 + "\n",
+    ],
+)
+def test_live_reset_url_parser_rejects_unknown_or_untrusted_framing(
+    output: str,
+) -> None:
+    assert live_stand._live_playwright_reset_url_observations(output) == []
+
+
+def test_live_reset_url_parser_keeps_first_pair_and_caps_all_four_pairs() -> None:
+    expected = [
+        (project, phase, False, True, True, True)
+        for project in ("desktop", "mobile")
+        for phase in ("history", "reopen")
+    ]
+    rows = []
+    for project, phase, *_flags in expected:
+        row = _RESET_URL_DIAGNOSTIC_LINE.replace("desktop", project).replace(
+            "reopen", phase
+        )
+        rows.extend((row, row, row.replace("reset_route=false", "reset_route=true")))
+    assert live_stand._live_playwright_reset_url_observations("".join(rows)) == expected
+
+
+@pytest.mark.parametrize("return_code", [0, 1, 23])
+def test_live_reset_url_runner_emits_failure_stdout_only_and_preserves_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    stderr_only = _RESET_URL_DIAGNOSTIC_LINE.replace("desktop", "mobile").replace(
+        "reopen", "history"
+    )
+    private = "private-body https://private.invalid/?token=hidden"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(
+            _RESET_URL_DIAGNOSTIC_LINE + _RESET_URL_DIAGNOSTIC_LINE + private + "\n"
+        ).encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    if return_code:
+        with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E reset-url project=desktop phase=reopen reset_route=false "
+            "token_query_absent=true token_fragment_absent=true token_url_absent=true"
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+    assert completed.stdout == completed.stderr == b""

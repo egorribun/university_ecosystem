@@ -6245,6 +6245,44 @@ def _validated_registration_admission_diag(value: object) -> dict[str, object] |
     return dict(record)
 
 
+_PLAYWRIGHT_RESET_URL_LINE = re.compile(
+    r"UE_LIVE_RESET_URL_V1 project=(desktop|mobile) phase=(history|reopen) "
+    r"reset_route=(true|false) token_query_absent=(true|false) "
+    r"token_fragment_absent=(true|false) token_url_absent=(true|false)"
+)
+
+
+def _live_playwright_reset_url_observations(
+    output: str,
+) -> list[tuple[str, str, bool, bool, bool, bool]]:
+    """Retain only the first completed boolean observation per project/phase."""
+    records: list[tuple[str, str, bool, bool, bool, bool]] = []
+    seen: set[tuple[str, str]] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 160 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_RESET_URL_LINE.fullmatch(line)
+        if match is None:
+            continue
+        key = (match.group(1), match.group(2))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append(
+            (
+                *key,
+                match.group(3) == "true",
+                match.group(4) == "true",
+                match.group(5) == "true",
+                match.group(6) == "true",
+            )
+        )
+        if len(records) == 4:
+            break
+    return records
+
+
 _PLAYWRIGHT_RESET_REGISTRATION_LINE = re.compile(
     r"UE_LIVE_RESET_REGISTRATION_V1 project=(desktop|mobile) "
     r"step=(arm-response|click|await-response)"
@@ -7890,6 +7928,9 @@ def _run_live_playwright(
         if return_code != 0
         else []
     )
+    reset_url_observations = (
+        _live_playwright_reset_url_observations(stdout) if return_code != 0 else []
+    )
     reset_registration_steps = (
         _live_playwright_reset_registration_steps(stdout) if return_code != 0 else []
     )
@@ -8037,6 +8078,14 @@ def _run_live_playwright(
     for record in auth_registration_diagnostics:
         print(
             "live E2E auth registration " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
+    for project, phase, route, query, fragment, href in reset_url_observations:
+        print(
+            f"live E2E reset-url project={project} phase={phase} "
+            f"reset_route={str(route).lower()} token_query_absent={str(query).lower()} "
+            f"token_fragment_absent={str(fragment).lower()} "
+            f"token_url_absent={str(href).lower()}",
             flush=True,
         )
     for project, step in reset_registration_steps:

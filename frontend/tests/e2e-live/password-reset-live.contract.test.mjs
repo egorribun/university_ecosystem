@@ -3,11 +3,14 @@ import { Buffer } from "node:buffer"
 import console from "node:console"
 import { readFileSync } from "node:fs"
 import { URL, fileURLToPath } from "node:url"
+import process from "node:process"
 import test from "node:test"
+import { runInNewContext } from "node:vm"
 
 const specPath = fileURLToPath(new URL("./password-reset.live.spec.ts", import.meta.url))
 const configPath = fileURLToPath(new URL("../../playwright.live.config.ts", import.meta.url))
 const fixturePath = fileURLToPath(new URL("./fixtures.ts", import.meta.url))
+const urlStateUrl = new URL("./password-reset-url-state.ts", import.meta.url)
 
 test("password reset rejects redirect abuse, reuse, and cleanup outside its own user", () => {
   const source = readFileSync(specPath, "utf8")
@@ -22,7 +25,7 @@ test("password reset rejects redirect abuse, reuse, and cleanup outside its own 
   assert.match(source, /redirect-target\.invalid/u)
   assert.match(source, /searchParams\.set\("redirect"/u)
   assert.match(source, /openResetLink\(page, resetUrl\.href\)/u)
-  assert.match(source, /searchParams\.has\("token"\)/u)
+  assert.match(readFileSync(urlStateUrl, "utf8"), /searchParams\.has\("token"\)/u)
   assert.match(source, /await page\.goBack\(\)/u)
   assert.match(source, /toHaveURL\(new URL\("\/login", resetOrigin\)\.href\)/u)
   assert.match(source, /new URL\(page\.url\(\)\)\.search === ""/u)
@@ -597,5 +600,303 @@ test("owned reset identity HTTP receipts", { timeout: 10_000 }, async (t) => {
       for (const [name, original] of originals) console[name] = original
     }
     assert.deepEqual(output, [])
+  })
+})
+
+test("password reset observes both cleanup phases without changing the original poll", () => {
+  const source = readFileSync(specPath, "utf8")
+  const start = source.indexOf("const expectResetTokenRemovedFromUrl =")
+  const end = source.indexOf("\n}", start)
+  assert.ok(start >= 0 && end > start)
+  const removal = source.slice(start, end + 2)
+  assert.match(removal, /await withPasswordResetUrlDiagnostic\(\s*project,\s*phase,/u)
+  assert.match(removal, /\(\) => page\.evaluate\(readPasswordResetUrlState, token\)/u)
+  assert.match(removal, /const state = await observe\(\)/u)
+  assert.match(
+    removal,
+    /state\.resetRoute\s*&&\s*state\.tokenQueryAbsent\s*&&\s*state\.tokenFragmentAbsent\s*&&\s*state\.tokenUrlAbsent/u
+  )
+  assert.equal([...removal.matchAll(/\.poll\(/gu)].length, 1)
+  assert.match(removal, /\.toBe\(true\)/u)
+  assert.doesNotMatch(removal, /timeout|catch|console|JSON\.stringify|toBeTruthy|soft/u)
+  for (const phase of ["history", "reopen"]) {
+    assert.equal(
+      source.split(
+        'await expectResetTokenRemovedFromUrl(page, token, testInfo.project.name, "' + phase + '")'
+      ).length - 1,
+      1
+    )
+  }
+})
+
+test("reset URL snapshots serialize safely and distinguish the four predicates", async (t) => {
+  const { readPasswordResetUrlState } = await import(urlStateUrl.href)
+  const source = Function.prototype.toString.call(readPasswordResetUrlState)
+  const candidate = "reset-private-canary"
+  const origin = "https://reset-diagnostic.invalid"
+  const keys = ["resetRoute", "tokenQueryAbsent", "tokenFragmentAbsent", "tokenUrlAbsent"]
+  const cases = [
+    ["clean reset route", "/reset-password?redirect=%2Flogin#section", [true, true, true, true]],
+    ["wrong clean route", "/login", [false, true, true, true]],
+    ["empty token query", "/reset-password?token=", [true, false, true, true]],
+    ["encoded token query key", "/reset-password?%74oken=", [true, false, true, true]],
+    [
+      "retained fragment candidate",
+      "/reset-password#token=" + candidate,
+      [true, true, false, false],
+    ],
+    [
+      "candidate in another query field",
+      "/reset-password?hint=" + candidate,
+      [true, true, true, false],
+    ],
+    [
+      "candidate in token query",
+      "/reset-password?token=" + candidate,
+      [true, false, true, false],
+    ],
+    ["case-sensitive route", "/RESET-PASSWORD", [false, true, true, true]],
+  ]
+
+  for (const [name, path, expected] of cases) {
+    await t.test(name, () => {
+      const output = []
+      const browserConsole = Object.fromEntries(
+        ["log", "info", "warn", "error", "debug"].map((level) => [
+          level,
+          (...args) => output.push(args),
+        ])
+      )
+      const href = origin + path
+      // Exercise the actual serialized function, with no module closure.
+      // This is trusted test code, not a sandbox for untrusted input.
+      const snapshot = runInNewContext(
+        "(" + source + ")(candidate)",
+        {
+          URL,
+          window: Object.freeze({ location: Object.freeze({ href }) }),
+          candidate,
+          console: browserConsole,
+        },
+        { timeout: 1_000 }
+      )
+      assert.deepEqual(Reflect.ownKeys(snapshot), keys)
+      assert.deepEqual(
+        Object.values(snapshot).map((value) => typeof value),
+        ["boolean", "boolean", "boolean", "boolean"]
+      )
+      assert.deepEqual(
+        keys.map((key) => snapshot[key]),
+        expected
+      )
+      assert.deepEqual(output, [])
+      const encoded = JSON.stringify(snapshot)
+      assert.equal(encoded.includes(candidate), false)
+      assert.equal(encoded.includes(origin), false)
+      assert.equal(encoded.includes(href), false)
+    })
+  }
+})
+
+test("reset URL failure observation emits only a bounded canonical stdout protocol", async (t) => {
+  const canonical =
+    "UE_LIVE_RESET_URL_V1 project=desktop phase=reopen reset_route=false " +
+    "token_query_absent=true token_fragment_absent=true token_url_absent=true\n"
+  const valid = {
+    resetRoute: false,
+    tokenQueryAbsent: true,
+    tokenFragmentAbsent: true,
+    tokenUrlAbsent: true,
+  }
+  const privateMarker = "private-reset-detail-must-not-escape"
+
+  async function fresh(label) {
+    return import(urlStateUrl.href + "?contract=" + label)
+  }
+
+  async function capture(action) {
+    const output = []
+    const original = process.stdout.write
+    process.stdout.write = (chunk) => {
+      output.push(String(chunk))
+      return true
+    }
+    try {
+      await action()
+    } finally {
+      process.stdout.write = original
+    }
+    return output
+  }
+
+  async function rejected(observe, read, project = "desktop", phase = "reopen") {
+    const original = new Error(privateMarker)
+    await assert.rejects(
+      () =>
+        observe(project, phase, read, async (sample) => {
+          await sample()
+          throw original
+        }),
+      (error) => error === original
+    )
+  }
+
+  await t.test("actual emitter produces the exact parser-bound record", async () => {
+    const { withPasswordResetUrlDiagnostic: observe } = await fresh("canonical")
+    const output = await capture(() => rejected(observe, async () => valid))
+    assert.deepEqual(output, [canonical])
+    assert.equal(output.join("").includes(privateMarker), false)
+  })
+
+  await t.test("validated primitive values are not read again while formatting", async () => {
+    const { withPasswordResetUrlDiagnostic: observe } = await fresh("single-read")
+    let reads = 0
+    const state = {
+      ...valid,
+      get resetRoute() {
+        reads += 1
+        return reads === 1 ? false : privateMarker
+      },
+    }
+    const output = await capture(() => rejected(observe, async () => state))
+    assert.equal(reads, 1)
+    assert.deepEqual(output, [canonical])
+  })
+
+  await t.test("successful assertions emit nothing and read only when polled", async () => {
+    const { withPasswordResetUrlDiagnostic: observe } = await fresh("success")
+    let reads = 0
+    const output = await capture(() =>
+      observe(
+        "desktop",
+        "reopen",
+        async () => {
+          reads += 1
+          return valid
+        },
+        async (sample) => {
+          assert.equal(reads, 0)
+          assert.equal(await sample(), valid)
+          assert.equal(reads, 1)
+        }
+      )
+    )
+    assert.equal(reads, 1)
+    assert.deepEqual(output, [])
+  })
+
+  await t.test("no completed read or a later failed read cannot fabricate a snapshot", async () => {
+    const { withPasswordResetUrlDiagnostic: observe } = await fresh("read-failure")
+    for (const readsBeforeFailure of [0, 1]) {
+      const original = new Error(privateMarker)
+      let reads = 0
+      const output = await capture(async () => {
+        await assert.rejects(
+          () =>
+            observe(
+              "desktop",
+              "reopen",
+              async () => {
+                if (reads++ === readsBeforeFailure) throw original
+                return valid
+              },
+              async (sample) => {
+                await sample()
+                await sample()
+              }
+            ),
+          (error) => error === original
+        )
+      })
+      assert.deepEqual(output, [])
+    }
+    const original = new Error(privateMarker)
+    const output = await capture(async () => {
+      await assert.rejects(
+        () =>
+          observe(
+            "desktop",
+            "reopen",
+            async () => valid,
+            async () => {
+              throw original
+            }
+          ),
+        (error) => error === original
+      )
+    })
+    assert.deepEqual(output, [])
+  })
+
+  await t.test("only the last completed poll observation is reported", async () => {
+    const { withPasswordResetUrlDiagnostic: observe } = await fresh("latest")
+    const original = new Error(privateMarker)
+    let reads = 0
+    const output = await capture(async () => {
+      await assert.rejects(
+        () =>
+          observe(
+            "desktop",
+            "reopen",
+            async () => (reads++ === 0 ? { ...valid, resetRoute: true } : valid),
+            async (sample) => {
+              await sample()
+              await sample()
+              throw original
+            }
+          ),
+        (error) => error === original
+      )
+    })
+    assert.equal(reads, 2)
+    assert.deepEqual(output, [canonical])
+  })
+
+  await t.test("unknown enums, extra fields and nonboolean values never enter stdout", async () => {
+    const { withPasswordResetUrlDiagnostic: observe } = await fresh("invalid")
+    const output = await capture(async () => {
+      for (const project of ["", "private", "desktop\n", null, {}]) {
+        await rejected(observe, async () => valid, project)
+      }
+      for (const phase of ["", "private", "reopen\n", null, {}]) {
+        await rejected(observe, async () => valid, "desktop", phase)
+      }
+      const malformed = [undefined, null, [], {}, { ...valid, extra: privateMarker }]
+      for (const key of Object.keys(valid)) {
+        for (const value of [undefined, null, 0, 1, "true", privateMarker]) {
+          malformed.push({ ...valid, [key]: value })
+        }
+      }
+      for (const state of malformed) await rejected(observe, async () => state)
+    })
+    assert.deepEqual(output, [])
+  })
+
+  await t.test("only the first observation per project and phase is emitted", async () => {
+    const { withPasswordResetUrlDiagnostic: observe } = await fresh("bounded")
+    const output = await capture(async () => {
+      for (const project of ["desktop", "mobile"]) {
+        for (const phase of ["history", "reopen"]) {
+          await rejected(observe, async () => valid, project, phase)
+          await rejected(observe, async () => ({ ...valid, resetRoute: true }), project, phase)
+        }
+      }
+    })
+    assert.equal(output.length, 4)
+    assert.equal(new Set(output).size, 4)
+    assert.ok(output.every((row) => row.length <= 160 && row.endsWith("\n")))
+  })
+
+  await t.test("a broken diagnostic stream preserves the identical assertion failure", async () => {
+    const { withPasswordResetUrlDiagnostic: observe } = await fresh("broken-stream")
+    const originalWrite = process.stdout.write
+    process.stdout.write = () => {
+      throw new Error(privateMarker)
+    }
+    try {
+      await rejected(observe, async () => valid)
+    } finally {
+      process.stdout.write = originalWrite
+    }
   })
 })

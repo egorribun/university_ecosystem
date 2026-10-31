@@ -24,6 +24,11 @@ import {
   findOwnedResetUserId,
   readOwnedResetUserId,
 } from "./password-reset-account-identity"
+import {
+  readPasswordResetUrlState,
+  withPasswordResetUrlDiagnostic,
+  type PasswordResetUrlPhase,
+} from "./password-reset-url-state"
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import { reportLivePasswordResetRegistrationFailure } from "./live-ui-diagnostic"
 import {
@@ -94,20 +99,30 @@ const expectResetFragmentAvailableForReload = async (page: Page, token: string) 
     .toBe(true)
 }
 
-const expectResetTokenRemovedFromUrl = async (page: Page, token: string) => {
-  await expect
-    .poll(() =>
-      page.evaluate((candidate) => {
-        const current = new URL(window.location.href)
-        return (
-          current.pathname === "/reset-password" &&
-          !current.searchParams.has("token") &&
-          !current.hash.includes(candidate) &&
-          !window.location.href.includes(candidate)
-        )
-      }, token)
-    )
-    .toBe(true)
+const expectResetTokenRemovedFromUrl = async (
+  page: Page,
+  token: string,
+  project: string,
+  phase: PasswordResetUrlPhase
+) => {
+  await withPasswordResetUrlDiagnostic(
+    project,
+    phase,
+    () => page.evaluate(readPasswordResetUrlState, token),
+    async (observe) => {
+      await expect
+        .poll(async () => {
+          const state = await observe()
+          return (
+            state.resetRoute &&
+            state.tokenQueryAbsent &&
+            state.tokenFragmentAbsent &&
+            state.tokenUrlAbsent
+          )
+        })
+        .toBe(true)
+    }
+  )
 }
 
 test("a student resets with the Mailpit link without retaining tokens or following hostile redirects", async ({
@@ -263,7 +278,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   expect(new URL(page.url()).search === "").toBe(true)
 
   await page.goBack()
-  await expectResetTokenRemovedFromUrl(page, token)
+  await expectResetTokenRemovedFromUrl(page, token, testInfo.project.name, "history")
   const historyKeptResetRoute = await page.evaluate((target) => {
     const current = new URL(window.location.href)
     return current.pathname === "/reset-password" && current.searchParams.get("redirect") === target
@@ -286,7 +301,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   const replayUrl = new URL("/reset-password", page.url())
   replayUrl.searchParams.set("token", token)
   await openResetLink(page, replayUrl.href)
-  await expectResetTokenRemovedFromUrl(page, token)
+  await expectResetTokenRemovedFromUrl(page, token, testInfo.project.name, "reopen")
   const replayPassword = freshPassword()
   await page.getByLabel("Пароль", { exact: true }).fill(replayPassword)
   await page.getByLabel("Повторите пароль", { exact: true }).fill(replayPassword)
