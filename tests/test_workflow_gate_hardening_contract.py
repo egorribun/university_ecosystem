@@ -221,6 +221,118 @@ def test_dast_nuclei_gate_consumes_native_json_export(
         )
 
 
+@pytest.mark.parametrize(
+    ("export", "blocking_count"),
+    [
+        pytest.param(_nuclei_export("info"), 0, id="canonical-info"),
+        pytest.param(_nuclei_export("low"), 0, id="canonical-low"),
+        pytest.param(_nuclei_export("unknown"), 0, id="canonical-unknown"),
+        pytest.param(
+            json.dumps(
+                [
+                    json.loads(_nuclei_export(severity))[0]
+                    for severity in ("medium", "high", "critical")
+                ],
+                indent=2,
+            ),
+            2,
+            id="pretty-mixed-findings",
+        ),
+        pytest.param(
+            json.dumps(
+                [
+                    json.loads(_nuclei_export(severity))[0]
+                    for severity in ("medium", "high", "critical")
+                ],
+                separators=(",", ":"),
+            ),
+            2,
+            id="minified-mixed-findings",
+        ),
+        pytest.param(
+            _nuclei_export("high").replace('"high"', '"\\u0068igh"'),
+            1,
+            id="json-escaped-high",
+        ),
+    ],
+)
+def test_dast_nuclei_gate_preserves_native_severity_and_json_equivalence(
+    nuclei_gate,
+    export: str,
+    blocking_count: int,
+) -> None:
+    result = nuclei_gate(export)
+    stdout = result.stdout.str()
+    stderr = result.stderr.str()
+    diagnostic = f"exit={result.ret}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    clean_message = "Nuclei reported no high or critical findings."
+
+    if blocking_count:
+        assert result.ret == 1, diagnostic
+        assert f"Nuclei reported {blocking_count} high or critical" in stderr, (
+            diagnostic
+        )
+        assert clean_message not in stdout + stderr, diagnostic
+    else:
+        assert result.ret == 0, diagnostic
+        assert clean_message in stdout, diagnostic
+
+
+@pytest.mark.parametrize(
+    "export",
+    [
+        pytest.param(" \n\t", id="whitespace-only"),
+        pytest.param("[]\n[]", id="two-array-documents"),
+        pytest.param("{}\n{}", id="jsonl-object-documents"),
+        pytest.param(_nuclei_export("medium") + "\n[]", id="extra-empty-document"),
+        pytest.param("null", id="null-root"),
+        pytest.param("true", id="boolean-root"),
+        pytest.param("1", id="number-root"),
+        pytest.param('"finding"', id="string-root"),
+        pytest.param("[null]", id="null-member"),
+        pytest.param("[[]]", id="array-member"),
+        pytest.param("[true]", id="boolean-member"),
+        pytest.param("[1]", id="number-member"),
+        pytest.param('["finding"]', id="string-member"),
+        pytest.param("[{}]", id="missing-info"),
+        pytest.param('[{"info":null}]', id="null-info"),
+        pytest.param('[{"info":[]}]', id="array-info"),
+        pytest.param('[{"info":{}}]', id="missing-severity"),
+        pytest.param('[{"info":{"severity":null}}]', id="null-severity"),
+        pytest.param('[{"info":{"severity":1}}]', id="numeric-severity"),
+        pytest.param('[{"info":{"severity":true}}]', id="boolean-severity"),
+        pytest.param('[{"info":{"severity":[]}}]', id="array-severity"),
+        pytest.param('[{"info":{"severity":{}}}]', id="object-severity"),
+        pytest.param(_nuclei_export(""), id="undefined-severity"),
+        pytest.param(_nuclei_export("HIGH"), id="noncanonical-severity"),
+        pytest.param(_nuclei_export(" high "), id="padded-severity"),
+        pytest.param(_nuclei_export("unrecognized"), id="unsupported-severity"),
+        pytest.param(
+            json.dumps([json.loads(_nuclei_export("medium"))[0], None]),
+            id="valid-medium-then-malformed-member",
+        ),
+        pytest.param(
+            json.dumps([json.loads(_nuclei_export("high"))[0], {}]),
+            id="validate-whole-array-before-blocking-count",
+        ),
+    ],
+)
+def test_dast_nuclei_gate_rejects_invalid_evidence_before_counting(
+    nuclei_gate,
+    export: str,
+) -> None:
+    result = nuclei_gate(export)
+    stdout = result.stdout.str()
+    stderr = result.stderr.str()
+    diagnostic = f"exit={result.ret}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+
+    assert result.ret == 1, diagnostic
+    assert "Could not validate Nuclei JSON export" in stderr, diagnostic
+    assert "the scan result is unknown" in stderr, diagnostic
+    assert "Nuclei reported no high or critical findings." not in stdout + stderr
+    assert "high or critical finding(s)." not in stdout + stderr
+
+
 def test_scorecard_fails_on_high_severity_after_sarif_upload() -> None:
     job = _load("scorecard.yml")["jobs"]["analysis"]
     names = _names(job)

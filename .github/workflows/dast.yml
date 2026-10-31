@@ -142,7 +142,30 @@ jobs:
             echo "::error::Nuclei produced no JSON export; the scan result is unknown." >&2
             exit 1
           fi
-          blocking_count="$(jq -s '[.[] | select(.info.severity == "high" or .info.severity == "critical")] | length' nuclei-results.json)"
+          # Native -json-export writes one array, including [] for no findings.
+          # Validate every record before applying the unchanged severity threshold.
+          if ! blocking_count="$(jq -es '
+            if length != 1 or (.[0] | type) != "array" then
+              error("expected exactly one native Nuclei JSON array")
+            else
+              .[0]
+              | if all(.[];
+                  type == "object"
+                  and (.info | type) == "object"
+                  and (.info.severity | IN(
+                    "info", "low", "medium", "high", "critical", "unknown"
+                  )))
+                then
+                  [.[] | select(.info.severity == "high" or .info.severity == "critical")]
+                  | length
+                else
+                  error("invalid native Nuclei finding")
+                end
+            end
+          ' nuclei-results.json)"; then
+            echo "::error::Could not validate Nuclei JSON export; the scan result is unknown." >&2
+            exit 1
+          fi
           if [[ "$blocking_count" -ne 0 ]]; then
             echo "::error::Nuclei reported $blocking_count high or critical finding(s)." >&2
             exit 1
