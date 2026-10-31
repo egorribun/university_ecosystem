@@ -350,3 +350,257 @@ def test_migration_owned_tenant_index_conflict_fails_closed() -> None:
         "ix_users_tenant_id",
     ):
         build_migration_metadata(runtime)
+
+
+_HOT_INDEX_SPECS = {
+    "ix_chat_participants_user_id_chat_id": (
+        "chat_participants",
+        "user_id, chat_id",
+        "",
+        "202603060001",
+    ),
+    "ix_chat_participants_chat_id_user_id": (
+        "chat_participants",
+        "chat_id, user_id",
+        "",
+        "202603060001",
+    ),
+    "ix_messages_unread_chat_sender": (
+        "messages",
+        "chat_id, sender_id",
+        " WHERE read_status = FALSE",
+        "202603070001",
+    ),
+    "idx_messages_chat_pagination_covering": (
+        "messages",
+        "chat_id, created_at DESC, id DESC",
+        " INCLUDE (sender_id, read_status)",
+        "202603170001",
+    ),
+    "idx_news_comment_cursor": (
+        "news_comments",
+        "news_id, created_at, id",
+        "",
+        "202603150001",
+    ),
+    "ix_stored_events_pending_created": (
+        "stored_events",
+        "created_at, id",
+        " WHERE processed_at IS NULL",
+        "202603140002",
+    ),
+    "ix_stored_events_pending_aggregate_created": (
+        "stored_events",
+        "aggregate_id, created_at, id",
+        " WHERE processed_at IS NULL",
+        "202603140002",
+    ),
+    "ix_stored_events_aggregate_uuid": (
+        "stored_events",
+        "aggregate_id_uuid, sequence_number",
+        " WHERE processed_at IS NULL AND aggregate_id_uuid IS NOT NULL",
+        "202603140003",
+    ),
+}
+_HOT_TABLE_COLUMNS = {
+    "chat_participants": ("chat_id", "user_id"),
+    "messages": ("id", "chat_id", "sender_id", "created_at", "read_status"),
+    "news_comments": ("id", "news_id", "created_at"),
+    "stored_events": (
+        "id",
+        "aggregate_id",
+        "created_at",
+        "processed_at",
+        "aggregate_id_uuid",
+        "sequence_number",
+    ),
+}
+
+
+def _hot_index_runtime(
+    *,
+    omit_table: str | None = None,
+    omit_column: tuple[str, str] | None = None,
+) -> sa.MetaData:
+    metadata = _runtime_metadata()
+    definitions = {
+        "chat_participants": (
+            sa.Column("chat_id", sa.UUID(), primary_key=True),
+            sa.Column("user_id", sa.UUID(), primary_key=True),
+        ),
+        "messages": (
+            sa.Column("id", sa.UUID(), primary_key=True),
+            sa.Column("chat_id", sa.UUID(), nullable=False),
+            sa.Column("sender_id", sa.UUID(), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("read_status", sa.Boolean(), nullable=False),
+        ),
+        "news_comments": (
+            sa.Column("id", sa.UUID(), primary_key=True),
+            sa.Column("news_id", sa.UUID(), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        ),
+        "stored_events": (
+            sa.Column("id", sa.UUID(), primary_key=True),
+            sa.Column("aggregate_id", sa.String(100), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("processed_at", sa.DateTime(timezone=True)),
+            sa.Column("aggregate_id_uuid", sa.UUID()),
+            sa.Column("sequence_number", sa.BigInteger()),
+        ),
+    }
+    for table_name, columns in definitions.items():
+        if table_name == omit_table:
+            continue
+        selected = [
+            column for column in columns if (table_name, column.name) != omit_column
+        ]
+        sa.Table(table_name, metadata, *selected)
+    sa.Index("ix_hot_fixture_active_id", metadata.tables["active_content"].c.id)
+    return metadata
+
+
+def _hot_metadata_snapshot(metadata: sa.MetaData) -> dict[str, object]:
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateIndex, CreateTable
+
+    dialect = postgresql.dialect()
+    return {
+        name: (
+            id(table),
+            tuple(id(column) for column in table.c),
+            str(CreateTable(table).compile(dialect=dialect)),
+            tuple(
+                sorted(
+                    (
+                        str(index.name),
+                        id(index),
+                        str(CreateIndex(index).compile(dialect=dialect)),
+                    )
+                    for index in table.indexes
+                )
+            ),
+        )
+        for name, table in metadata.tables.items()
+    }
+
+
+@pytest.mark.parametrize("index_name", tuple(_HOT_INDEX_SPECS))
+def test_migration_metadata_keeps_exact_postgresql_hot_index(index_name: str) -> None:
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateIndex
+
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _hot_index_runtime()
+    before = _hot_metadata_snapshot(runtime)
+    target = build_migration_metadata(runtime)
+    table_name, columns, suffix, revision = _HOT_INDEX_SPECS[index_name]
+    indexes = {index.name: index for index in target.tables[table_name].indexes}
+    assert _hot_metadata_snapshot(runtime) == before
+    assert index_name in indexes, f"missing migration-owned index: {index_name}"
+    index = indexes[index_name]
+    assert index.table is target.tables[table_name]
+    assert index.unique is False
+    actual = str(CreateIndex(index).compile(dialect=postgresql.dialect()))
+    expected = f"CREATE INDEX {index_name} ON {table_name} ({columns}){suffix}"
+    assert " ".join(actual.split()).upper() == expected.upper()
+    assert index.info["migration_owned_by_revision"] == revision
+
+
+def test_migration_metadata_retains_hot_indexes_without_changing_runtime_base() -> None:
+    from app import models
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = models.Base.metadata
+    before = _hot_metadata_snapshot(runtime)
+    target = build_migration_metadata(runtime)
+    assert _hot_metadata_snapshot(runtime) == before
+    for table_name in _HOT_TABLE_COLUMNS:
+        expected = {
+            name
+            for name, (owner, _columns, _suffix, _revision) in _HOT_INDEX_SPECS.items()
+            if owner == table_name
+        }
+        expected.update(index.name for index in runtime.tables[table_name].indexes)
+        if table_name == "messages":
+            expected.add("ix_messages_tenant_id")
+        assert {index.name for index in target.tables[table_name].indexes} == expected
+
+
+@pytest.mark.parametrize("index_name", tuple(_HOT_INDEX_SPECS))
+def test_migration_owned_hot_index_rejects_competing_runtime_name(
+    index_name: str,
+) -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _hot_index_runtime()
+    table_name = _HOT_INDEX_SPECS[index_name][0]
+    table = runtime.tables[table_name]
+    sa.Index(index_name, next(iter(table.c)), unique=True)
+    before = _hot_metadata_snapshot(runtime)
+    with pytest.raises(ValueError, match="competing runtime ownership"):
+        build_migration_metadata(runtime)
+    assert _hot_metadata_snapshot(runtime) == before
+
+
+@pytest.mark.parametrize(
+    ("table_name", "column_name"),
+    [
+        (table_name, column_name)
+        for table_name, columns in _HOT_TABLE_COLUMNS.items()
+        for column_name in columns
+    ],
+)
+def test_migration_owned_hot_index_rejects_missing_required_column(
+    table_name: str,
+    column_name: str,
+) -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _hot_index_runtime(omit_column=(table_name, column_name))
+    assert column_name not in runtime.tables[table_name].c
+    before = _hot_metadata_snapshot(runtime)
+    with pytest.raises(ValueError, match="missing required column"):
+        build_migration_metadata(runtime)
+    assert _hot_metadata_snapshot(runtime) == before
+
+
+@pytest.mark.parametrize("table_name", tuple(_HOT_TABLE_COLUMNS))
+def test_migration_metadata_does_not_invent_absent_hot_tables(table_name: str) -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _hot_index_runtime(omit_table=table_name)
+    before = _hot_metadata_snapshot(runtime)
+    target = build_migration_metadata(runtime)
+    assert table_name not in target.tables
+    assert set(target.tables) == set(runtime.tables) | {"user_stats", "vector_chunks"}
+    assert _hot_metadata_snapshot(runtime) == before
+
+
+def test_migration_metadata_clones_are_independent_of_runtime_and_each_other() -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _hot_index_runtime()
+    before = _hot_metadata_snapshot(runtime)
+    first = build_migration_metadata(runtime)
+    second = build_migration_metadata(runtime)
+    assert set(first.tables) == set(second.tables)
+    for table_name, table in first.tables.items():
+        other = second.tables[table_name]
+        assert table is not other
+        assert {id(column) for column in table.c}.isdisjoint(
+            id(column) for column in other.c
+        )
+        assert {id(index) for index in table.indexes}.isdisjoint(
+            id(index) for index in other.indexes
+        )
+    first_table = first.tables["active_content"]
+    second_table = second.tables["active_content"]
+    (first_index,) = first_table.indexes
+    (second_index,) = second_table.indexes
+    first_index.unique = True
+    first_table.c.id.nullable = True
+    assert second_index.unique is False
+    assert second_table.c.id.nullable is False
+    assert _hot_metadata_snapshot(runtime) == before
