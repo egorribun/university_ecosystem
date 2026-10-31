@@ -12,9 +12,9 @@ from pathlib import Path
 
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-BASE_COMPOSE = "docker-compose.yml"
-PROD_COMPOSE = "docker-compose.prod.yml"
+ROOT = Path(__file__).resolve().parents[1]
+BASE_COMPOSE = ROOT / "docker-compose.yml"
+PROD_COMPOSE = ROOT / "docker-compose.prod.yml"
 BACKEND_IMAGE_SERVICES = (
     "backend",
     "notifications-worker",
@@ -28,9 +28,9 @@ DEV_SUBNET_DEFAULTS = {
 }
 
 
-def _compose(relative_path: str) -> dict:
+def _compose(path: Path) -> dict:
     # Compose merge tags are not YAML; the sibling compose contracts strip them the same way.
-    source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    source = path.read_text(encoding="utf-8")
     return yaml.safe_load(source.replace("!override", "").replace("!reset", ""))
 
 
@@ -67,7 +67,7 @@ def test_production_idempotency_key_is_a_required_file_secret_for_every_backend_
 def test_production_overlay_header_documents_the_new_required_sources() -> None:
     header = "\n".join(
         line
-        for line in (REPO_ROOT / PROD_COMPOSE).read_text(encoding="utf-8").splitlines()
+        for line in PROD_COMPOSE.read_text(encoding="utf-8").splitlines()
         if line.startswith("#")
     )
     assert (

@@ -18,16 +18,19 @@ from pathlib import Path
 import pytest
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-TEMPORAL_ENTRYPOINT = REPO_ROOT / "services" / "temporal" / "entrypoint.sh"
-TEMPORAL_CONFIG = REPO_ROOT / "services" / "temporal" / "config.yaml"
+ROOT = Path(__file__).resolve().parents[1]
+TEMPORAL_ENTRYPOINT = ROOT / "services" / "temporal" / "entrypoint.sh"
+TEMPORAL_CONFIG = ROOT / "services" / "temporal" / "config.yaml"
 JWKS_URL = "https://caddy:8443/.well-known/jwks.json"
-COMPOSE_STACKS = ("docker-compose.yml", "docker-compose.full.yml")
+COMPOSE_STACKS = {
+    "docker-compose.yml": ROOT / "docker-compose.yml",
+    "docker-compose.full.yml": ROOT / "docker-compose.full.yml",
+}
 
 
 def _compose(relative_path: str) -> dict:
     # Compose merge tags are not YAML; the sibling compose contracts strip them the same way.
-    source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    source = COMPOSE_STACKS[relative_path].read_text(encoding="utf-8")
     return yaml.safe_load(source.replace("!override", "").replace("!reset", ""))
 
 

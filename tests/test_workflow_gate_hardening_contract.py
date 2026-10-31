@@ -216,9 +216,9 @@ def test_dast_nuclei_gate_consumes_native_json_export(
     if blocking_count is not None:
         # A jq type error must not satisfy the high/critical negative control.
         assert result.ret == 1, diagnostic
-        assert (
-            f"Nuclei reported {blocking_count} high or critical" in stderr
-        ), diagnostic
+        assert f"Nuclei reported {blocking_count} high or critical" in stderr, (
+            diagnostic
+        )
 
 
 def test_scorecard_fails_on_high_severity_after_sarif_upload() -> None:
