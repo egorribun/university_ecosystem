@@ -7,7 +7,7 @@ import {
   NOTIFICATION_INTERACTIONS_DB_NAME as CLICK_DB_NAME,
   NOTIFICATION_INTERACTIONS_DB_VERSION as DB_VERSION,
 } from "../constants/notificationInteractionsDb"
-import { requestReplayCredentials, type OfflineReplayCredentials } from "./replayCredentials"
+import { requestReplayCredentials } from "./replayCredentials"
 import {
   isExpiredOtherSessionRecord,
   isRetryableReplayStatus,
@@ -292,11 +292,12 @@ async function replayHeldRecords(): Promise<void> {
   try {
     const credentials = await requestReplayCredentials()
     if (!credentials) return
+    const passSessionNonce = credentials.sessionNonce
     const now = Date.now()
     for (const store of REPLAY_STORES) {
       const records = (await db.getAll(store)) as QueuedRecord[]
       for (const record of records) {
-        await replayRecord(db, store, record, credentials, now)
+        if ((await replayRecord(db, store, record, passSessionNonce, now)) === "stop") return
       }
     }
   } finally {
@@ -308,12 +309,12 @@ async function replayRecord(
   db: ReplayDatabase,
   store: ReplayStore,
   record: QueuedRecord,
-  credentials: OfflineReplayCredentials,
+  passSessionNonce: string,
   now: number
-): Promise<void> {
+): Promise<"stop" | undefined> {
   // An unbound record has no proven owner, so no window can release it.
   if (!record.sessionNonce) return
-  if (record.sessionNonce !== credentials.sessionNonce) {
+  if (record.sessionNonce !== passSessionNonce) {
     if (isExpiredOtherSessionRecord(record.timestamp, now)) {
       await db.delete(store, record.id)
       warn("Dropped expired offline record from another browser session", { store, id: record.id })
@@ -324,6 +325,10 @@ async function replayRecord(
   const target = replayTarget(store, record)
   // A navigation has no request to replay, so it stays queued until a window consumes it.
   if (!target || (record.nextAttemptAt ?? 0) > now) return
+
+  // Recheck only send-eligible rows, without adopting another session during this pass.
+  const credentials = await requestReplayCredentials()
+  if (!credentials || credentials.sessionNonce !== passSessionNonce) return "stop"
 
   const attempt = await deliver(target, record, credentials.csrfToken)
   if (attempt.status === "delivered") {
