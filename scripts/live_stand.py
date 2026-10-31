@@ -8331,6 +8331,7 @@ _LIVE_CADDY_PROBE_TOTAL_TIMEOUT_SECONDS = 25
 _LIVE_CADDY_PROBE_FAILURE = "Caddy access-log redaction proof failed"
 _LIVE_CADDY_PROBE_DIAGNOSTIC_PREFIX = "live_caddy_probe_failure_stage="
 _LIVE_CADDY_PROBE_BUDGET_PREFIX = "live_caddy_probe_capture_budget="
+_LIVE_CADDY_PROBE_FIRST_CAPTURE_PREFIX = "live_caddy_probe_first_capture="
 _LIVE_CADDY_PROBE_DIAGNOSTIC_CODES = frozenset(
     {
         "input_validation",
@@ -8369,6 +8370,7 @@ class _LiveCaddyProbeStageFailure(StandError):
             else "internal"
         )
         self.capture_budget = capture_budget if self.stage == "log_size" else None
+        self.first_capture_summary: dict[str, int] | None = None
         super().__init__(_LIVE_CADDY_PROBE_FAILURE)
 
 
@@ -8432,6 +8434,99 @@ def _emit_live_caddy_probe_budget(metadata: object) -> None:
         sys.stderr.flush()
     except (OSError, ValueError):
         pass
+
+
+def _summarize_live_caddy_first_capture(
+    stdout: bytes, stderr: bytes, capture_budget: object
+) -> dict[str, int] | None:
+    """Count only retained first-capture bytes after a second-capture overflow."""
+    integer_fields = (
+        "window_count",
+        "capture_ordinal",
+        "previous_capture_bytes",
+        "remaining_budget",
+    )
+    if (
+        type(stdout) is not bytes
+        or type(stderr) is not bytes
+        or type(capture_budget) is not dict
+        or set(capture_budget) != {*integer_fields, "overflow_origin"}
+        or any(type(capture_budget[field]) is not int for field in integer_fields)
+    ):
+        return None
+    previous_bytes = len(stdout) + len(stderr)
+    if (
+        capture_budget["window_count"] != 2
+        or capture_budget["capture_ordinal"] != 2
+        or not 0 <= previous_bytes <= _LIVE_CADDY_PROBE_MAX_BYTES
+        or capture_budget["previous_capture_bytes"] != previous_bytes
+        or capture_budget["remaining_budget"]
+        != _LIVE_CADDY_PROBE_MAX_BYTES - previous_bytes
+        or type(capture_budget["overflow_origin"]) is not str
+        or capture_budget["overflow_origin"] not in ("reader_limit", "returned_size")
+        or (stdout and not stdout.endswith(b"\n"))
+        or (stderr and not stderr.endswith(b"\n"))
+    ):
+        return None
+    summary = {"schema_version": 1, "capture_ordinal": 1}
+    for name, data in (("stdout", stdout), ("stderr", stderr)):
+        complete_lines = 0
+        maximum_line_bytes = 0
+        line_start = 0
+        while (line_end := data.find(b"\n", line_start)) != -1:
+            complete_lines += 1
+            maximum_line_bytes = max(maximum_line_bytes, line_end - line_start)
+            line_start = line_end + 1
+        summary[f"{name}_bytes"] = len(data)
+        summary[f"{name}_complete_lines"] = complete_lines
+        summary[f"{name}_max_line_bytes"] = max(
+            maximum_line_bytes, len(data) - line_start
+        )
+    return summary
+
+
+def _emit_live_caddy_first_capture_summary(metadata: object) -> None:
+    """Emit only a closed, bounded numeric summary; diagnostic faults stay silent."""
+    fields = {
+        "schema_version",
+        "capture_ordinal",
+        "stdout_bytes",
+        "stderr_bytes",
+        "stdout_complete_lines",
+        "stderr_complete_lines",
+        "stdout_max_line_bytes",
+        "stderr_max_line_bytes",
+    }
+    if (
+        type(metadata) is not dict
+        or set(metadata) != fields
+        or any(type(value) is not int for value in metadata.values())
+        or metadata["schema_version"] != 1
+        or metadata["capture_ordinal"] != 1
+        or any(
+            not 0 <= value <= _LIVE_CADDY_PROBE_MAX_BYTES for value in metadata.values()
+        )
+        or metadata["stdout_bytes"] + metadata["stderr_bytes"]
+        > _LIVE_CADDY_PROBE_MAX_BYTES
+    ):
+        return
+    for name in ("stdout", "stderr"):
+        size = metadata[f"{name}_bytes"]
+        lines = metadata[f"{name}_complete_lines"]
+        maximum = metadata[f"{name}_max_line_bytes"]
+        if lines > size or maximum > size - lines or (size > 0 and lines == 0):
+            return
+    if sys.stderr is None:
+        return
+    try:
+        encoded = json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+        line = f"{_LIVE_CADDY_PROBE_FIRST_CAPTURE_PREFIX}{encoded}\n"
+        if len(line) > 512:
+            return
+        sys.stderr.write(line)
+        sys.stderr.flush()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return
 
 
 @dataclass(frozen=True, slots=True)
@@ -9662,7 +9757,11 @@ def _read_live_caddy_probe_logs(
             raise _LiveCaddyProbeStageFailure(invalid_stage)
         stage = "deadline"
         _live_probe_remaining(deadline)
-    except _LiveCaddyProbeStageFailure:
+    except _LiveCaddyProbeStageFailure as error:
+        if error.stage == "log_size":
+            error.first_capture_summary = _summarize_live_caddy_first_capture(
+                stdout, stderr, error.capture_budget
+            )
         raise
     except (
         OSError,
@@ -9759,6 +9858,7 @@ def _verify_live_caddy_probe_log(
         _emit_live_caddy_probe_diagnostic(error.stage)
         if error.stage == "log_size":
             _emit_live_caddy_probe_budget(error.capture_budget)
+            _emit_live_caddy_first_capture_summary(error.first_capture_summary)
         raise StandError(_LIVE_CADDY_PROBE_FAILURE) from None
     except (OSError, RuntimeError, StandError, subprocess.SubprocessError):
         _emit_live_caddy_probe_diagnostic(stage)
