@@ -353,6 +353,42 @@ def test_osv_release_manager_can_reextract_a_paired_replacement() -> None:
         assert matched.group("currentDigest") == next_digest
 
 
+def _serialize_osv_workflow_fixture(workflow: dict) -> str:
+    """Preserve literal run bytes without changing the raw Renovate matcher."""
+
+    class LiteralRunDumper(yaml.SafeDumper):
+        pass
+
+    def represent_string(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
+        style = "|" if "\n" in value else None
+        return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
+
+    LiteralRunDumper.add_representer(str, represent_string)
+    serialized = yaml.dump(
+        workflow,
+        Dumper=LiteralRunDumper,
+        sort_keys=False,
+        width=4096,
+    )
+    assert yaml.safe_load(serialized) == workflow
+    return serialized
+
+
+def test_osv_fixture_serialization_preserves_run_bytes_without_global_changes() -> None:
+    run = 'printf "%s\\n" "quoted value"\n'
+    workflow = {"jobs": {"fixture": {"steps": [{"run": run}]}}}
+    original_representer = yaml.SafeDumper.yaml_representers[str]
+    original_serialized = yaml.safe_dump(workflow, sort_keys=False, width=4096)
+
+    serialized = _serialize_osv_workflow_fixture(workflow)
+
+    assert yaml.safe_load(serialized)["jobs"]["fixture"]["steps"][0]["run"] == run
+    assert "run: |\n" in serialized
+    assert 'printf "%s\\n" "quoted value"' in serialized
+    assert yaml.SafeDumper.yaml_representers[str] is original_representer
+    assert yaml.safe_dump(workflow, sort_keys=False, width=4096) == original_serialized
+
+
 @pytest.mark.parametrize(
     "mutation",
     (
@@ -377,9 +413,9 @@ def test_osv_release_pair_inventory_rejects_missing_extra_or_drift(
     )
     matcher = _python_regex(manager["matchStrings"][0])
     workflow = yaml.safe_load(_text(".github/workflows/sbom.yml"))
-    # Keep each literal Renovate pair intact; prove serialization is healthy
-    # before any rejected mutation can satisfy its negative oracle.
-    _osv_release_pairs(yaml.safe_dump(workflow, sort_keys=False, width=4096), matcher)
+    # Preserve the producer run strings as literal YAML; the serialized positive
+    # must pass before any rejected mutation can satisfy its negative oracle.
+    _osv_release_pairs(_serialize_osv_workflow_fixture(workflow), matcher)
     main_steps = workflow["jobs"]["sbom-go"]["steps"]
     pr_steps = workflow["jobs"]["vuln-gate-pr"]["steps"]
     main_install = next(
@@ -413,6 +449,4 @@ def test_osv_release_pair_inventory_rejects_missing_extra_or_drift(
         pr_install["run"] = pr_install["run"].replace(old_value, new_value, 1)
 
     with pytest.raises(AssertionError):
-        _osv_release_pairs(
-            yaml.safe_dump(workflow, sort_keys=False, width=4096), matcher
-        )
+        _osv_release_pairs(_serialize_osv_workflow_fixture(workflow), matcher)
