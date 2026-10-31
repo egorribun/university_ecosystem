@@ -1222,6 +1222,214 @@ def test_reusable_helm_consumer_uses_same_run_verified_artifact_before_build() -
         assert "helm dependency build" not in helm
 
 
+def _binding_diagnostic_input(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[Path, str, str, str]:
+    updates = _APPROVED_ACTION_PIN_REFRESHES[("nightly", "frontend-mutation-shards")]
+    assert len(updates) == 1
+    current_ref, (frozen_ref, count) = next(iter(updates.items()))
+    assert count == 1
+    path = tmp_path / "nightly.yml"
+    monkeypatch.setitem(globals(), "NIGHTLY", path)
+    canary = "opaque-π-" + os.urandom(12).hex()
+    return path, canary, current_ref, frozen_ref
+
+
+@pytest.mark.parametrize("delta", ["unchanged", "added", "removed", "modified"])
+def test_binding_diagnostic_reports_exact_current_job_without_raw_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    delta: str,
+) -> None:
+    path, canary, current_ref, frozen_ref = _binding_diagnostic_input(
+        monkeypatch, tmp_path
+    )
+    job = {"name": canary, "steps": [{"uses": current_ref}, {"run": "true"}]}
+    expected = {"name": canary, "steps": [{"uses": frozen_ref}, {"run": "true"}]}
+    if delta == "added":
+        job["steps"].append({"run": "printf added"})
+        expected["steps"].append({"run": "printf added"})
+    elif delta == "removed":
+        job["steps"].pop()
+        expected["steps"].pop()
+    elif delta == "modified":
+        job["steps"][1]["run"] = "printf changed"
+        expected["steps"][1]["run"] = "printf changed"
+    path.write_text(
+        json.dumps({"jobs": {"frontend-mutation-shards": job}}), encoding="utf-8"
+    )
+    before = path.read_bytes()
+    with pytest.raises(AssertionError) as caught:
+        _baseline()
+    assert caught.traceback[-1].frame.code.name == "_baseline"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert len(captured.err.splitlines()) == 1
+    expected_digest = hashlib.sha256(
+        json.dumps(
+            expected, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    ).hexdigest()
+    assert json.loads(captured.err) == {
+        "schema": "full-backend-binding-diagnostic-v1",
+        "status": "available",
+        "frontend_mutation_shards_sha256": expected_digest,
+    }
+    assert len(captured.err) < 256
+    assert canary not in captured.err
+    assert canary not in str(caught.value)
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "yaml",
+        "missing-job",
+        "bad-job",
+        "bad-steps",
+        "missing-pin",
+        "duplicate-pin",
+        "foreign-pin",
+        "frozen-pin",
+        "read-error",
+        "decode-error",
+        "digest-error",
+        "nonhex-digest",
+        "uppercase-digest",
+        "short-digest",
+        "long-digest",
+        "nonstring-digest",
+    ],
+)
+def test_binding_diagnostic_unavailable_preserves_the_original_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    defect: str,
+) -> None:
+    path, canary, current_ref, frozen_ref = _binding_diagnostic_input(
+        monkeypatch, tmp_path
+    )
+    job = {"name": canary, "steps": [{"uses": current_ref}]}
+    workflow = {"jobs": {"frontend-mutation-shards": job}}
+    if defect == "missing-job":
+        workflow["jobs"].clear()
+    elif defect == "bad-job":
+        workflow["jobs"]["frontend-mutation-shards"] = canary
+    elif defect == "bad-steps":
+        job["steps"] = None
+    elif defect == "missing-pin":
+        job["steps"].clear()
+    elif defect == "duplicate-pin":
+        job["steps"].append({"uses": current_ref})
+    elif defect == "foreign-pin":
+        job["steps"][0]["uses"] = current_ref.split("@")[0] + "@" + canary
+    elif defect == "frozen-pin":
+        job["steps"][0]["uses"] = frozen_ref
+    path.write_text(json.dumps(workflow), encoding="utf-8")
+    if defect == "yaml":
+        path.write_text("jobs: [" + canary, encoding="utf-8")
+    elif defect == "decode-error":
+        path.write_bytes(b"\xff" + canary.encode("utf-8"))
+    elif defect == "read-error":
+
+        def fail_read(_path: Path) -> dict[str, object]:
+            raise OSError(canary)
+
+        monkeypatch.setitem(globals(), "_load", fail_read)
+    elif defect == "digest-error":
+
+        def fail_digest(_value: object) -> str:
+            raise ValueError(canary)
+
+        monkeypatch.setitem(globals(), "_digest", fail_digest)
+    elif defect.endswith("-digest"):
+        invalid_digest = {
+            "nonhex-digest": canary,
+            "uppercase-digest": "F" * 64,
+            "short-digest": "a" * 63,
+            "long-digest": "a" * 65,
+            "nonstring-digest": True,
+        }[defect]
+        monkeypatch.setitem(globals(), "_digest", lambda _value: invalid_digest)
+    with pytest.raises(AssertionError) as caught:
+        _baseline()
+    assert caught.traceback[-1].frame.code.name == "_baseline"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert len(captured.err.splitlines()) == 1
+    assert json.loads(captured.err) == {
+        "schema": "full-backend-binding-diagnostic-v1",
+        "status": "unavailable",
+    }
+    assert len(captured.err) < 256
+    assert canary not in captured.err
+    assert canary not in str(caught.value)
+
+
+@pytest.mark.parametrize("case", ["matching-source", "invalid-origin"])
+def test_binding_diagnostic_does_not_run_outside_the_source_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    value = yaml.safe_load(BASELINE.read_text(encoding="utf-8"))
+    value["source_files"] = {
+        "nightly": hashlib.sha256(NIGHTLY.read_bytes()).hexdigest(),
+        "manual": hashlib.sha256(MANUAL.read_bytes()).hexdigest(),
+        "reusable_full_backend_mutation": hashlib.sha256(
+            FULL_BACKEND.read_bytes()
+        ).hexdigest(),
+    }
+    if case == "invalid-origin":
+        value["origin_commit"] = "not-the-reviewed-origin"
+    path = tmp_path / "baseline.yaml"
+    path.write_text(yaml.safe_dump(value), encoding="utf-8")
+    monkeypatch.setitem(globals(), "BASELINE", path)
+    if case == "matching-source":
+        assert _baseline() == value
+    else:
+        with pytest.raises(AssertionError) as caught:
+            _baseline()
+        assert caught.traceback[-1].frame.code.name == "_baseline"
+    captured = capsys.readouterr()
+    assert captured.out == captured.err == ""
+
+
+@pytest.mark.parametrize("error_type", [OSError, ValueError])
+def test_binding_diagnostic_output_failure_does_not_replace_the_assertion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, error_type: type[Exception]
+) -> None:
+    path, canary, current_ref, _ = _binding_diagnostic_input(monkeypatch, tmp_path)
+    path.write_text(
+        json.dumps(
+            {
+                "jobs": {
+                    "frontend-mutation-shards": {
+                        "name": canary,
+                        "steps": [{"uses": current_ref}],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class UnavailableStderr:
+        def write(self, _value: str) -> int:
+            raise error_type(canary)
+
+    with monkeypatch.context() as context:
+        context.setattr(sys, "stderr", UnavailableStderr())
+        with pytest.raises(AssertionError) as caught:
+            _baseline()
+    assert caught.traceback[-1].frame.code.name == "_baseline"
+    assert canary not in str(caught.value)
+
+
 if __name__ == "__main__":
     import pytest
 
