@@ -6730,7 +6730,7 @@ test("AUD455 rejects changed bytes in otherwise valid downloads", async (t) => {
   for (const change of ["evidence whitespace", "producer attempt", "report whitespace"]) {
     await t.test(change, async (t) => {
       const fixture = await cachedShardPublicationFixture(t)
-      let evidenceText = fixture.evidenceText
+      let evidenceText
       let reportText = fixture.reportText
       if (change === "evidence whitespace") {
         evidenceText = JSON.stringify(fixture.evidence) + "\n"

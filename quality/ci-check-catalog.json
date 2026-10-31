@@ -2793,6 +2793,12 @@
           ],
           "artifacts": [
             {
+              "name_pattern": "${{ steps.validate_cached_shard.outputs.artifact_name }}",
+              "path_pattern": "frontend/reports/mutation/shards/**/mutation.json\nfrontend/reports/mutation/shards/**/SHARD_EVIDENCE.json\n",
+              "required": false,
+              "provenance": "none"
+            },
+            {
               "name_pattern": "nightly-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}",
               "path_pattern": "frontend/reports/mutation/shards/**/mutation.json\nfrontend/reports/mutation/shards/**/SHARD_EVIDENCE.json\n",
               "required": false,

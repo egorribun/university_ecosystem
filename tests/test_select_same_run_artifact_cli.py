@@ -1498,8 +1498,7 @@ def test_exact_shard_selects_original_producer_not_latest_or_sibling(
         request=network,
     )
     expected_name = (
-        f"nightly-frontend-mutation-shard-{RUN_ID}-"
-        f"{producer_attempt}-{shard_index}"
+        f"nightly-frontend-mutation-shard-{RUN_ID}-{producer_attempt}-{shard_index}"
     )
     assert result == selector.SelectionResult(
         True,
@@ -1514,9 +1513,7 @@ def test_exact_shard_selects_original_producer_not_latest_or_sibling(
         f"artifact_id={expected_id}\n"
         f"artifact_name={expected_name}\n"
         f"producer_attempt={producer_attempt}\n"
-        "artifact_digest=sha256:"
-        + "b" * 64
-        + "\n"
+        "artifact_digest=sha256:" + "b" * 64 + "\n"
     )
     assert network.requests[-1].path.endswith("page=2")
 
