@@ -1938,9 +1938,9 @@ describe("ResetPassword behaviour details", () => {
       })
       await waitFor(() => expect(navigationOptions.length).toBe(2))
       expect(router.history.location.state.__TSR_index).toBe(sourceState.__TSR_index)
-      expect(
-        router.history.location.state.__TSR_key ?? router.history.location.state.key
-      ).not.toBe(sourceKey)
+      expect(router.history.location.state.__TSR_key ?? router.history.location.state.key).not.toBe(
+        sourceKey
+      )
       expect(new URLSearchParams(router.state.location.hash).has("legacy-token")).toBe(true)
       expect(await screen.findByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
 
