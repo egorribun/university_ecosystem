@@ -69,7 +69,7 @@ test("runner verifies exact per-project rows in complete, bounded windows from t
   runnerHas(/nonce_bytes in output or nonce_bytes in stderr/u)
   runnerHas(/REDACTED/u)
   runnerHas(/set\(observed\) != set\(LIVE_CADDY_PROBE_PROJECTS\)/u)
-  runnerHas(/_PLAYWRIGHT_SKIP_IDENTITY_LIMIT\s*=\s*216/u)
+  runnerHas(/_PLAYWRIGHT_SKIP_IDENTITY_LIMIT\s*=\s*220/u)
   assert.match(spec, /test\.describe\.configure\(\{\s*retries:\s*0\s*\}\)/u)
 })
 

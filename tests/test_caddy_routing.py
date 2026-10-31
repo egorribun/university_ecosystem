@@ -357,7 +357,7 @@ def test_oauth_callback_uri_redacts_code_and_state_in_access_logs() -> None:
 
 
 def test_legacy_reset_links_redirect_to_fragment_form_before_any_document() -> None:
-    """AUD-178: query and path reset links are moved to the fragment form at the edge."""
+    """AUD-178: legacy-only fragments preserve edge privacy and client cleanup."""
     for relative_path in EDGE_CADDYFILES:
         squashed = _squashed_caddyfile(relative_path)
         assert (
@@ -366,7 +366,8 @@ def test_legacy_reset_links_redirect_to_fragment_form_before_any_document() -> N
         ), f"{relative_path} must match the legacy query-string reset link"
         assert (
             'handle @legacy_reset_query { header Cache-Control "no-store" '
-            "redir @legacy_reset_query /reset-password#token={query.token} 302 }"
+            "route { rewrite * ?legacy-token={query.token} "
+            "redir /reset-password#{http.request.uri.query} 302 } }"
         ) in squashed, f"{relative_path} must redirect the query form to the fragment"
         assert (
             "@legacy_reset_path { path_regexp legacy_reset ^/reset-password/([^/]+)$ }"
@@ -374,11 +375,43 @@ def test_legacy_reset_links_redirect_to_fragment_form_before_any_document() -> N
         ), f"{relative_path} must match the legacy path-form reset link"
         assert (
             'handle @legacy_reset_path { header Cache-Control "no-store" '
-            "redir @legacy_reset_path /reset-password#token={re.legacy_reset.1} 302 }"
+            "route { rewrite * ?legacy-token={re.legacy_reset.1} "
+            "redir /reset-password#{http.request.uri.query} 302 } }"
         ) in squashed, f"{relative_path} must redirect the path form to the fragment"
         assert squashed.index("handle @legacy_reset_path") < squashed.index(
             "handle { reverse_proxy frontend:3000"
         ), f"{relative_path} must declare the reset redirects before the SSR default"
+
+
+def test_rewrite_debug_uri_uses_the_same_bounded_redaction_as_request_uri() -> None:
+    """The new rewrite target is a separate top-level debug field, not request.uri."""
+    from uuid import uuid4
+
+    marker = f"rewrite-redaction-{uuid4().hex}"
+    reset_uris = (
+        f"/reset-password?legacy-token={marker}",
+        f"/reset-password?legacy-token=prefix%26token%3D{marker}",
+        f"/reset-password/{marker}?legacy-token={marker}",
+        f"/reset-password/prefix%26token%3D{marker}?legacy-token={marker}",
+    )
+    ordinary_uri = f"/dashboard?tab=events&marker={marker}"
+    for relative_path in EDGE_CADDYFILES:
+        content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        global_options, separator, _sites = content.partition("\n}\n")
+        assert separator
+        blocks = re.findall(
+            r"^[ \t]+uri\s+multi_regexp\s*\{(.*?)(?=\n[ \t]*\})",
+            global_options,
+            re.MULTILINE | re.DOTALL,
+        )
+        assert len(blocks) == 1, "The runtime logger must filter its rewrite URI"
+        operations = re.findall(
+            r"^\s*regexp\s+(\S+)\s+(\S+)\s*$", blocks[0], re.MULTILINE
+        )
+        assert operations == _caddy_uri_filter_blocks(content)[0]
+        for uri in reset_uris:
+            assert _apply_caddy_uri_filter(operations, uri) == "[REDACTED]"
+        assert _apply_caddy_uri_filter(operations, ordinary_uri) == ordinary_uri
 
 
 def test_access_logs_drop_headers_that_can_carry_a_reset_token() -> None:

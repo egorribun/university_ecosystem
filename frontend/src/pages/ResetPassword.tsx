@@ -144,8 +144,29 @@ function tokenFromHash(hash: string) {
   return new URLSearchParams(hash).get("token") ?? ""
 }
 
-function hashWithoutToken(hash: string) {
+function readLegacyFragment(hash: string) {
   const parameters = new URLSearchParams(hash)
+  const values = parameters.getAll("legacy-token")
+  const [value = ""] = values
+  return {
+    present: values.length > 0,
+    token: values.length === 1 ? value : "",
+  }
+}
+
+function hashWithoutLegacyToken(hash: string) {
+  const parts = hash.split("&")
+  const firstRemoved = new URLSearchParams(parts[0]).has("legacy-token")
+  const retained = parts
+    .filter(
+      (part, index) => !new URLSearchParams(index === 0 ? part : `&${part}`).has("legacy-token")
+    )
+    .join("&")
+  return firstRemoved && retained.startsWith("?") ? `&${retained}` : retained
+}
+
+function hashWithoutToken(hash: string) {
+  const parameters = new URLSearchParams(hashWithoutLegacyToken(hash))
   parameters.delete("token")
   return parameters.toString()
 }
@@ -190,6 +211,7 @@ export default function ResetPassword() {
   const routeStateToken =
     (locationState as { resetPasswordToken?: string }).resetPasswordToken || ""
   const fragmentToken = tokenFromHash(hash)
+  const { present: hasLegacyFragment, token: legacyFragmentToken } = readLegacyFragment(hash)
   const historyEntryKey = getHistoryEntryKey(locationState)
   const historyEntryIndex = getHistoryEntryIndex(locationState)
   const migrationMarker =
@@ -251,7 +273,8 @@ export default function ResetPassword() {
       capturedLegacyToken.sourceIndex === historyEntryIndex &&
       capturedLegacyToken.targetPath === pathname &&
       !queryToken &&
-      !routeStateToken
+      !routeStateToken &&
+      !hasLegacyFragment
     ) {
       return capturedLegacyToken.token
     }
@@ -260,8 +283,9 @@ export default function ResetPassword() {
   const resolveCurrentResetToken = (now?: number) => {
     if (fragmentToken) return fragmentToken
 
-    const legacySourceToken = routeToken || queryToken || routeStateToken
-    if (legacySourceToken) {
+    const legacySourceToken = routeToken || queryToken || routeStateToken || legacyFragmentToken
+    if (legacySourceToken || hasLegacyFragment) {
+      if (!legacySourceToken) return ""
       const captured = capturedLegacyToken
       if (!captured || captured.token !== legacySourceToken) return ""
       return getCapturedLegacyTokenValue(now)
@@ -296,8 +320,8 @@ export default function ResetPassword() {
   // Replace legacy bearer URLs with a clean entry. Completion can retain a token
   // only for the exact REPLACE history key observed for this migration.
   useEffect(() => {
-    const legacyToken = routeToken || queryToken || routeStateToken
-    if (!legacyToken || !historyEntryKey) {
+    const legacyToken = routeToken || queryToken || routeStateToken || legacyFragmentToken
+    if ((!legacyToken && !hasLegacyFragment) || !historyEntryKey) {
       const currentOwner = legacyMigrationOwnerRef.current
       if (currentOwner && !currentOwner.targetObserved) {
         invalidateLegacyMigration(currentOwner)
@@ -325,7 +349,10 @@ export default function ResetPassword() {
     legacyMigrationOwnerRef.current = owner
     const ownsMigration = () =>
       componentMountedRef.current && legacyMigrationOwnerRef.current === owner
-    if (!fragmentToken) {
+    if (!legacyToken && hasLegacyFragment) {
+      forgetLegacyResetToken(historyEntryKey)
+      setCapturedLegacyToken(null)
+    } else if (!fragmentToken) {
       setCapturedLegacyToken({
         key: historyEntryKey,
         token: legacyToken,
@@ -345,6 +372,8 @@ export default function ResetPassword() {
       if (state.__resetPasswordMigration !== migrationId) return
       if (historyEntryIndex !== null && location.state.__TSR_index !== historyEntryIndex) return
       if (new URLSearchParams(location.search).has("token")) return
+      const historyHash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash
+      if (readLegacyFragment(historyHash).present) return
       const targetKey = getHistoryEntryKey(location.state)
       if (!targetKey) return
       const current = pendingLegacyMigrationRef.current!
@@ -362,7 +391,7 @@ export default function ResetPassword() {
         delete next.token
         return next
       },
-      hash,
+      hash: hashWithoutLegacyToken(hash),
       state: (previous) => {
         const next = { ...previous } as Record<string, unknown>
         delete next.resetPasswordToken
@@ -391,10 +420,11 @@ export default function ResetPassword() {
           destination.pathname === targetPath &&
           !destinationSearch.token &&
           !destinationState.resetPasswordToken &&
+          !readLegacyFragment(destination.hash).present &&
           (historyEntryIndex === null ||
             router.history.location.state.__TSR_index === historyEntryIndex)
 
-        if (!fragmentToken && isExactDestination && expiresAt > Date.now()) {
+        if (!fragmentToken && legacyToken && isExactDestination && expiresAt > Date.now()) {
           rememberLegacyResetToken(destinationKey, legacyToken, expiresAt)
           forgetLegacyResetToken(historyEntryKey)
           setCapturedLegacyToken({
@@ -438,10 +468,12 @@ export default function ResetPassword() {
     }
   }, [
     fragmentToken,
+    hasLegacyFragment,
     hash,
     historyEntryIndex,
     historyEntryKey,
     invalidateLegacyMigration,
+    legacyFragmentToken,
     migrationMarker,
     navigate,
     pathname,
@@ -549,7 +581,7 @@ export default function ResetPassword() {
       setIsSuccess(true)
       forgetLegacyResetToken(historyEntryKey)
       setCapturedLegacyToken(null)
-      if (fragmentToken || routeToken || queryToken || routeStateToken) {
+      if (fragmentToken || hasLegacyFragment || routeToken || queryToken || routeStateToken) {
         void navigate({
           to: routeToken ? "/reset-password" : ".",
           search: (previous: Record<string, unknown>) => {

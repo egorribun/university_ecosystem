@@ -1654,6 +1654,315 @@ describe("ResetPassword behaviour details", () => {
       await pendingReplacement
     }
   })
+  it.each([
+    { label: "plain", key: "legacy-token", strictMode: false },
+    { label: "encoded under StrictMode", key: "%6cegacy%2Dtoken", strictMode: true },
+  ])("captures a $label transit token and preserves retry", async ({ key, strictMode }) => {
+    const token = `transit-${randomUUID()}/+%&token=not-the-canonical-token`
+    const payloads: unknown[] = []
+    let attempts = 0
+    server.use(
+      http.post("*/password/reset", async ({ request }) => {
+        payloads.push(await request.json())
+        attempts += 1
+        return attempts === 1
+          ? HttpResponse.json({}, { status: 500 })
+          : HttpResponse.json({ ok: true })
+      })
+    )
+    mockBreachRange()
+    const user = userEvent.setup()
+    const router = await renderQueryResetRoute(
+      `/reset?source=email#tab=security&${key}=${encodeURIComponent(token)}`,
+      undefined,
+      strictMode
+    )
+
+    try {
+      await waitFor(() => expect(router.state.location.hash).toBe("tab=security"))
+      expect(router.state.location.search).toHaveProperty("source", "email")
+      expect(router.history.location.state.__TSR_index).toBe(1)
+      expect(JSON.stringify(router.state.location.state)).not.toContain(token)
+      expect(payloads).toEqual([])
+
+      await fillMatchingPasswords(user)
+      expect(await screen.findByText(tAuth("reset.errorGeneric"))).toBeInTheDocument()
+      expect(router.state.location.hash).toBe("tab=security")
+
+      await user.click(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+      expect(await screen.findByText(tAuth("reset.successTitle"))).toBeInTheDocument()
+      expect(payloads).toEqual([
+        { password: "Password123!", token },
+        { password: "Password123!", token },
+      ])
+    } finally {
+      cleanup()
+      router.history.destroy()
+    }
+  })
+
+  it.each(["empty", "duplicate", "empty-first"] as const)(
+    "scrubs %s transit fields without submitting a token",
+    async (kind) => {
+      const token = `malformed-${randomUUID()}`
+      const fragment =
+        kind === "empty"
+          ? "legacy-token="
+          : kind === "duplicate"
+            ? `legacy-token=${token}&%6cegacy%2Dtoken=${token}`
+            : `legacy-token=&legacy-token=${token}`
+      const post = vi.spyOn(api, "post")
+      mockBreachRange()
+      const user = userEvent.setup()
+      const router = await renderQueryResetRoute(`/reset?source=email#${fragment}&tab=security`)
+
+      try {
+        await waitFor(() => expect(router.state.location.hash).toBe("tab=security"))
+        expect(router.state.location.search).toHaveProperty("source", "email")
+        expect(router.state.location.state).not.toHaveProperty("resetPasswordToken")
+        expect(await screen.findByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
+
+        await fillMatchingPasswords(user)
+        expect(post).not.toHaveBeenCalled()
+        expect(screen.getByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
+      } finally {
+        cleanup()
+        router.history.destroy()
+      }
+    }
+  )
+
+  it("preserves canonical reload and retry while scrubbing malformed transit", async () => {
+    const canonical = `canonical-${randomUUID()}`
+    const transit = `ignored-${randomUUID()}`
+    const payloads: unknown[] = []
+    let attempts = 0
+    server.use(
+      http.post("*/password/reset", async ({ request }) => {
+        payloads.push(await request.json())
+        attempts += 1
+        return attempts === 1
+          ? HttpResponse.json({}, { status: 500 })
+          : HttpResponse.json({ ok: true })
+      })
+    )
+    mockBreachRange()
+    const user = userEvent.setup()
+    let router = await renderQueryResetRoute(
+      `/reset#legacy-token=${transit}&token=${canonical}&%6cegacy%2Dtoken=${transit}&tab=security`
+    )
+
+    try {
+      const canonicalHash = `token=${canonical}&tab=security`
+      await waitFor(() => expect(router.state.location.hash).toBe(canonicalHash))
+      expect(JSON.stringify(router.state.location.state)).not.toContain(canonical)
+      expect(JSON.stringify(router.state.location.state)).not.toContain(transit)
+
+      await fillMatchingPasswords(user)
+      expect(await screen.findByText(tAuth("reset.errorGeneric"))).toBeInTheDocument()
+      expect(router.state.location.hash).toBe(canonicalHash)
+
+      const restoredPath = router.state.location.href
+      cleanup()
+      router.history.destroy()
+      router = await renderQueryResetRoute(restoredPath)
+      await screen.findByRole("button", { name: tAuth("reset.saveButton") })
+      expect(router.state.location.hash).toBe(canonicalHash)
+
+      await fillMatchingPasswords(user)
+      expect(await screen.findByText(tAuth("reset.successTitle"))).toBeInTheDocument()
+      await waitFor(() => expect(router.state.location.hash).toBe("tab=security"))
+      expect(payloads).toEqual([
+        { password: "Password123!", token: canonical },
+        { password: "Password123!", token: canonical },
+      ])
+    } finally {
+      cleanup()
+      router.history.destroy()
+    }
+  })
+
+  it.each([
+    { source: "query", anchor: "reset-password-input", expected: "reset-password-input" },
+    { source: "query", anchor: "reset%2Dpassword-input", expected: "reset-password-input" },
+    {
+      source: "transit",
+      anchor: "tab=two%20words&reset-password-input",
+      expected: "tab=two words&reset-password-input",
+    },
+    {
+      source: "transit",
+      anchor: "tab=two+words&reset%2Dpassword-input",
+      expected: "tab=two+words&reset-password-input",
+    },
+    {
+      source: "transit",
+      anchor: "tab=x&?legacy-token=keep",
+      expected: "tab=x&?legacy-token=keep",
+    },
+  ])("preserves $source parsed navigation anchor $anchor", async ({ source, anchor, expected }) => {
+    const token = `anchor-${randomUUID()}`
+    const post = vi.spyOn(api, "post")
+    const target =
+      source === "query"
+        ? `/reset?token=${token}#${anchor}`
+        : `/reset#${anchor}&%6cegacy%2Dtoken=${token}`
+    const router = await renderQueryResetRoute(target)
+
+    try {
+      await waitFor(() => expect(router.state.location.hash).toBe(expected))
+      expect(router.state.location.search).not.toHaveProperty("token")
+      expect(JSON.stringify(router.state.location.state)).not.toContain(token)
+      expect(post).not.toHaveBeenCalled()
+    } finally {
+      cleanup()
+      router.history.destroy()
+    }
+  })
+
+  it.each(["token", "legacy-token"] as const)(
+    "does not promote a literal ?%s key after removing transit",
+    async (key) => {
+      const token = `transit-${randomUUID()}`
+      const unrelated = `anchor-${randomUUID()}`
+      const payloads: unknown[] = []
+      server.use(
+        http.post("*/password/reset", async ({ request }) => {
+          payloads.push(await request.json())
+          return HttpResponse.json({ ok: true })
+        })
+      )
+      mockBreachRange()
+      const user = userEvent.setup()
+      const router = await renderQueryResetRoute(
+        `/reset#legacy-token=${token}&?${key}=${unrelated}`
+      )
+
+      try {
+        await waitFor(() => expect(router.state.location.hash).toBe(`&?${key}=${unrelated}`))
+        const fragment = new URLSearchParams(router.state.location.hash)
+        expect(fragment.has("token")).toBe(false)
+        expect(fragment.has("legacy-token")).toBe(false)
+        expect(payloads).toEqual([])
+
+        await fillMatchingPasswords(user)
+        expect(await screen.findByText(tAuth("reset.successTitle"))).toBeInTheDocument()
+        expect(payloads).toEqual([{ password: "Password123!", token }])
+      } finally {
+        cleanup()
+        router.history.destroy()
+      }
+    }
+  )
+
+  it.each(["leading", "later"] as const)(
+    "does not reinterpret a %s literal hash as a transit field",
+    async (position) => {
+      const token = `literal-${randomUUID()}`
+      const hash =
+        position === "leading" ? `#legacy-token=${token}` : `tab=x&#legacy-token=${token}`
+      const post = vi.spyOn(api, "post")
+      let navigationCalls = 0
+      const router = await renderQueryResetRoute(`/reset#${hash}`, (candidate) => {
+        vi.spyOn(candidate, "navigate").mockImplementation(async () => {
+          navigationCalls += 1
+        })
+      })
+
+      try {
+        expect(await screen.findByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
+        expect(router.state.location.hash).toBe(hash)
+        expect(navigationCalls).toBe(0)
+        expect(post).not.toHaveBeenCalled()
+      } finally {
+        cleanup()
+        router.history.destroy()
+      }
+    }
+  )
+
+  it("refuses a captured transit token at its original 45-minute deadline", async () => {
+    const token = `expiry-${randomUUID()}`
+    const post = vi.spyOn(api, "post")
+    const now = Date.now()
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now)
+    mockBreachRange()
+    const user = userEvent.setup()
+    const router = await renderQueryResetRoute(`/reset#legacy-token=${token}`)
+
+    try {
+      await waitFor(() => expect(router.state.location.hash).toBe(""))
+      await user.type(passwordInput(), "Password123!")
+      await user.type(confirmInput(), "Password123!")
+
+      clock.mockReturnValue(now + 45 * 60 * 1000)
+      await user.click(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+
+      expect(await screen.findByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
+      expect(post).not.toHaveBeenCalled()
+    } finally {
+      cleanup()
+      router.history.destroy()
+      clock.mockRestore()
+    }
+  })
+
+  it("does not submit a captured token after a replacement retains malformed transit", async () => {
+    const token = `replacement-${randomUUID()}`
+    const post = vi.spyOn(api, "post")
+    const navigationOptions: ResetNavigateOptions[] = []
+    const pending: Promise<void>[] = []
+    const finish: Array<() => void> = []
+    mockBreachRange()
+    const user = userEvent.setup()
+    const router = await renderQueryResetRoute(`/reset#legacy-token=${token}`, (candidate) => {
+      vi.spyOn(candidate, "navigate").mockImplementation((options) => {
+        navigationOptions.push(options)
+        const promise = new Promise<void>((resolve) => finish.push(resolve))
+        pending.push(promise)
+        return promise
+      })
+    })
+
+    try {
+      await waitFor(() => expect(navigationOptions.length).toBe(1))
+      const sourceState = { ...router.history.location.state }
+      const sourceKey = sourceState.__TSR_key ?? sourceState.key
+      const updater = navigationOptions[0]?.state
+      if (typeof updater !== "function") throw new Error("Missing transit state updater")
+      const replacementState = updater(sourceState) as Record<string, unknown>
+      expect(typeof replacementState.__resetPasswordMigration).toBe("string")
+
+      await act(async () => {
+        router.history.replace(`/reset#legacy-token=&%6cegacy%2Dtoken=${token}`, replacementState)
+      })
+      await waitFor(() => expect(navigationOptions.length).toBe(2))
+      expect(router.history.location.state.__TSR_index).toBe(sourceState.__TSR_index)
+      expect(
+        router.history.location.state.__TSR_key ?? router.history.location.state.key
+      ).not.toBe(sourceKey)
+      expect(new URLSearchParams(router.state.location.hash).has("legacy-token")).toBe(true)
+      expect(await screen.findByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
+
+      await fillMatchingPasswords(user)
+      expect(post).not.toHaveBeenCalled()
+
+      await act(async () => {
+        for (const complete of finish) complete()
+        await Promise.all(pending)
+      })
+      expect(navigationOptions.length).toBe(2)
+      expect(screen.getByText(tAuth("reset.invalidLink"))).toBeInTheDocument()
+      expect(post).not.toHaveBeenCalled()
+    } finally {
+      cleanup()
+      await act(async () => {
+        for (const complete of finish) complete()
+        await Promise.all(pending)
+      })
+      router.history.destroy()
+    }
+  })
 })
 
 describe("reset password validation locale regression", () => {

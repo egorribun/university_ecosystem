@@ -21,6 +21,15 @@
 				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
 				regexp (?i)([?&])(?:s|%73)(?:t|%74)(?:a|%61)(?:t|%74)(?:e|%65)=[^&]* ${1}state=REDACTED
 			}
+			# The rewrite handler also logs its target URI as a top-level field.
+			uri multi_regexp {
+				regexp (?i)^[^?]*(?:^|/|%2f|\x5c|%5c)(?:r|%72)(?:e|%65)(?:s|%73)(?:e|%65)(?:t|%74)(?:-|%2d)(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)(?:$|/|%2f|\x5c|%5c|\?|%3f|%).*$ [REDACTED]
+				regexp (?i)([?&])(?:t|%74)(?:o|%6f)(?:k|%6b)(?:e|%65)(?:n|%6e)=[^&]* ${1}token=REDACTED
+				regexp (?i)([?&])(?:t|%74)(?:i|%69)(?:c|%63)(?:k|%6b)(?:e|%65)(?:t|%74)=[^&]* ${1}ticket=REDACTED
+				regexp (?i)([?&])(?:c|%63)(?:o|%6f)(?:d|%64)(?:e|%65)=[^&]* ${1}code=REDACTED
+				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
+				regexp (?i)([?&])(?:s|%73)(?:t|%74)(?:a|%61)(?:t|%74)(?:e|%65)=[^&]* ${1}state=REDACTED
+			}
 			request>headers>Referer delete
 			resp_headers>Location delete
 		}
@@ -50,23 +59,33 @@
 	}
 
 	# AUD-178: a legacy reset link carries the bearer token in the query string
-	# or the path. Move it to the fragment form at the edge, before a document
+	# or the path. Move it to a legacy-only fragment at the edge, before a document
 	# that still contains the token can reach access logs, CSP reports or a
 	# Referer header. Browsers never send URL fragments to the server.
+	# The client captures this transit form in memory and scrubs it on hydration;
+	# canonical #token links remain reloadable until a successful reset.
 	@legacy_reset_query {
 		path /reset-password
 		expression {query.token} != ""
 	}
+	# Native query rewriting escapes the opaque value before fragment transport.
 	handle @legacy_reset_query {
 		header Cache-Control "no-store"
-		redir @legacy_reset_query /reset-password#token={query.token} 302
+		route {
+			rewrite * ?legacy-token={query.token}
+			redir /reset-password#{http.request.uri.query} 302
+		}
 	}
 	@legacy_reset_path {
 		path_regexp legacy_reset ^/reset-password/([^/]+)$
 	}
+	# Native query rewriting escapes the opaque value before fragment transport.
 	handle @legacy_reset_path {
 		header Cache-Control "no-store"
-		redir @legacy_reset_path /reset-password#token={re.legacy_reset.1} 302
+		route {
+			rewrite * ?legacy-token={re.legacy_reset.1}
+			redir /reset-password#{http.request.uri.query} 302
+		}
 	}
 
 	# Compression

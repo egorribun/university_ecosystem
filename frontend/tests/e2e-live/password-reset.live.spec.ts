@@ -428,3 +428,93 @@ test("a student resets with the Mailpit link without retaining tokens or followi
     await withinReplayTail(retryTailDeadlineAtMs, () => assertReplayFeedback(retryTailDeadlineAtMs))
   }
 })
+
+for (const source of ["query", "path"] as const) {
+  test(`legacy ${source} reset entry removes its token after the edge redirect`, async ({
+    page,
+  }, testInfo) => {
+    const deadlineAtMs = readPlaywrightTestSlotDeadlineAtMs(
+      testInfo,
+      REGISTRATION_MAX_TEST_TIMEOUT_MS
+    )
+    if (deadlineAtMs === null) throw new Error("Legacy reset boundary deadline unavailable")
+
+    const marker = `synthetic-${randomUUID()}+%&token=not-canonical#fragment`
+    const target = new URL("/reset-password", ownedSessionOrigin())
+    if (source === "query") {
+      target.searchParams.set("token", marker)
+    } else {
+      target.pathname += `/${encodeURIComponent(marker)}`
+    }
+
+    const response = await page
+      .goto(target.href, {
+        waitUntil: "commit",
+        timeout: boundedReplayTimeout(deadlineAtMs, 45_000),
+      })
+      .catch(() => {
+        throw new Error("The legacy reset boundary navigation failed")
+      })
+    if (!response) throw new Error("The legacy reset boundary document was not observed")
+    expect(response.status()).toBe(200)
+    expect(response.fromServiceWorker()).toBe(false)
+
+    const redirectRequest = response.request().redirectedFrom()
+    if (!redirectRequest) throw new Error("The legacy reset boundary redirect was not observed")
+    expect(redirectRequest.redirectedFrom() === null).toBe(true)
+    expect(redirectRequest.isNavigationRequest()).toBe(true)
+    expect(redirectRequest.method() === "GET").toBe(true)
+    expect(redirectRequest.url() === target.href).toBe(true)
+
+    const redirectResponse = await redirectRequest.response()
+    if (!redirectResponse) throw new Error("The legacy reset boundary response was not observed")
+    expect(redirectResponse.status()).toBe(302)
+    expect(redirectResponse.fromServiceWorker()).toBe(false)
+
+    let redirectTarget: URL
+    let documentTarget: URL
+    try {
+      const location = redirectResponse.headers()["location"]
+      if (!location) throw new Error("Missing redirect destination")
+      redirectTarget = new URL(location, target.origin)
+      documentTarget = new URL(response.request().url())
+    } catch {
+      throw new Error("The legacy reset boundary destinations were invalid")
+    }
+
+    // Assert finite observations only; never expose the marker or destination.
+    expect(
+      redirectTarget.origin === target.origin &&
+        redirectTarget.pathname === "/reset-password" &&
+        !redirectTarget.searchParams.has("token") &&
+        new URLSearchParams(redirectTarget.hash.slice(1)).get("legacy-token") === marker &&
+        !new URLSearchParams(redirectTarget.hash.slice(1)).has("token")
+    ).toBe(true)
+    expect(
+      documentTarget.origin === target.origin &&
+        documentTarget.pathname === "/reset-password" &&
+        !documentTarget.searchParams.has("token") &&
+        !documentTarget.href.includes(marker)
+    ).toBe(true)
+
+    await page.waitForFunction(() => window.__APP_HYDRATED === true, undefined, {
+      timeout: boundedReplayTimeout(deadlineAtMs, RESET_REPLAY_ACTION_TIMEOUT_MS),
+    })
+    await expectWithinReplayDeadline(deadlineAtMs)
+      .poll(async () => {
+        const state = await page.evaluate(readPasswordResetUrlState, marker)
+        const fragmentFieldsAbsent = await page.evaluate(() => {
+          const fragment = new URLSearchParams(window.location.hash.slice(1))
+          return !fragment.has("legacy-token") && !fragment.has("token")
+        })
+        return (
+          state.resetRoute &&
+          state.tokenQueryAbsent &&
+          state.tokenFragmentAbsent &&
+          state.tokenUrlAbsent &&
+          fragmentFieldsAbsent
+        )
+      })
+      .toBe(true)
+  })
+}
