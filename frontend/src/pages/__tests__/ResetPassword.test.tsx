@@ -1655,3 +1655,25 @@ describe("ResetPassword behaviour details", () => {
     }
   })
 })
+
+describe("reset password validation locale regression", () => {
+  it("renders password validation in the active Russian language provider", async () => {
+    const selectedLanguage = window.__UE_SELECTED_LANG__
+    window.__UE_SELECTED_LANG__ = "ru"
+    try {
+      const user = userEvent.setup()
+      await renderWithToken()
+      const password = document.querySelector<HTMLInputElement>("#reset-password-input")!
+      await user.type(password, "short")
+      await user.tab()
+      await waitFor(() => expect(password).toHaveAttribute("aria-invalid", "true"))
+      const error = document.getElementById(password.getAttribute("aria-describedby")!)
+      expect(error?.textContent).toBe("Пароль должен содержать не менее 8 символов")
+    } finally {
+      cleanup()
+      await i18n.changeLanguage("en")
+      if (selectedLanguage === undefined) delete window.__UE_SELECTED_LANG__
+      else window.__UE_SELECTED_LANG__ = selectedLanguage
+    }
+  })
+})

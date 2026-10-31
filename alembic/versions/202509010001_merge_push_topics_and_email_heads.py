@@ -11,7 +11,9 @@ depends_on = None
 
 def upgrade() -> None:
     """Consolidate the divergent migration branches."""
+    pass
 
 
 def downgrade() -> None:
     """No downgrade steps for merge migration."""
+    pass

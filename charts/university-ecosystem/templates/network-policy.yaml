@@ -19,6 +19,16 @@
 {{- if or (eq (len .Values.networkPolicy.dns.namespaceSelector) 0) (eq (len .Values.networkPolicy.dns.podSelector) 0) -}}
   {{- fail "networkPolicy.dns namespaceSelector and podSelector must both identify the cluster DNS pods" -}}
 {{- end -}}
+{{- range $cidr := list "10.0.0.0/8" "100.64.0.0/10" "172.16.0.0/12" "192.168.0.0/16" "169.254.0.0/16" -}}
+  {{- if not (has $cidr $.Values.networkPolicy.httpsEgress.exceptIPv4CIDRs) -}}
+    {{- fail (printf "networkPolicy.httpsEgress.exceptIPv4CIDRs must include %s" $cidr) -}}
+  {{- end -}}
+{{- end -}}
+{{- range $cidr := list "fc00::/7" "fe80::/10" -}}
+  {{- if not (has $cidr $.Values.networkPolicy.httpsEgress.exceptIPv6CIDRs) -}}
+    {{- fail (printf "networkPolicy.httpsEgress.exceptIPv6CIDRs must include %s" $cidr) -}}
+  {{- end -}}
+{{- end -}}
 {{- if has .Values.global.environment (list "staging" "production") -}}
   {{- if eq (len .Values.networkPolicy.gatewayJWKS.egressCIDRs) 0 -}}
     {{- fail "networkPolicy.gatewayJWKS.egressCIDRs must contain owner-verified CIDRs for the external HTTPS JWKS issuer in staging/production" -}}
@@ -237,6 +247,15 @@ spec:
         - protocol: TCP
           port: {{ .Values.wsHub.service.port }}
     {{- end }}
+    # Prometheus scraping of the scrape-only metrics listener (AUD-438). The
+    # public WebSocket port above is never opened to the monitoring namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: {{ .Values.wsHub.metrics.port }}
   egress:
     - to:
         - podSelector:

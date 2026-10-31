@@ -24,8 +24,7 @@ def _table_exists(bind, table_name: str) -> bool:
 
 
 def _column_exists(bind, table_name: str, column_name: str) -> bool:
-    if not _table_exists(bind, table_name):
-        return False
+    # Callers check the table first, so the column lookup needs no guard here.
     inspector = sa.inspect(bind)
     return any(col["name"] == column_name for col in inspector.get_columns(table_name))
 
@@ -59,7 +58,16 @@ def upgrade() -> None:
                 nullable=True,
             ),
         )
-        op.create_index(_INDEX_NAME, _TABLE_NAME, [_COLUMN_NAME])
+        # AUD-275: a plain CREATE INDEX takes a SHARE lock that blocks every
+        # message write for the whole build. CONCURRENTLY runs outside the
+        # migration transaction, which is why it sits in an autocommit block.
+        with op.get_context().autocommit_block():
+            op.create_index(
+                _INDEX_NAME,
+                _TABLE_NAME,
+                [_COLUMN_NAME],
+                postgresql_concurrently=True,
+            )
 
 
 def downgrade() -> None:

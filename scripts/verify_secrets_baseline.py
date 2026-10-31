@@ -67,6 +67,7 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
             (".github/workflows/ci.yml", "Basic Auth Credentials"),
             (".github/workflows/ci.yml", "Secret Keyword"),
             (".github/workflows/nightly-full-gate.yml", "Secret Keyword"),
+            ("tests/test_live_stand.py", "Secret Keyword"),
             (
                 "frontend/scripts/frontend-quality-contract.test.mjs",
                 "Secret Keyword",
@@ -96,6 +97,10 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
     "public_package_integrity_metadata": frozenset(
         {
             (
+                "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+                "Base64 High Entropy String",
+            ),
+            (
                 "frontend/scripts/stryker-inventory.test.mjs",
                 "Base64 High Entropy String",
             ),
@@ -105,6 +110,18 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
             ),
             (
                 "frontend/src/assets/fonts/inter-latin-cyrillic-400.provenance.json",
+                "Base64 High Entropy String",
+            ),
+            (
+                "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs",
+                "Base64 High Entropy String",
+            ),
+            (
+                "frontend/scripts/react-compiler-zod-compat.test.mjs",
+                "Base64 High Entropy String",
+            ),
+            (
+                "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json",
                 "Base64 High Entropy String",
             ),
         }
@@ -161,6 +178,12 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
     ),
 }
 _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
+    "synthetic_achievement_url_test_fixture": (
+        "synthetic profile achievement URL test fixture",
+        "reserved example.test host",
+        "embedded-auth rejection coverage",
+        "not credential material",
+    ),
     "public_compose_inspection_test_sentinel": (
         "public Compose inspection test sentinel",
         "live-stand-inspection-placeholder",
@@ -180,12 +203,32 @@ _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS = {
         "secret-related source identifier or required key-list expression",
         "not credential material",
     ),
+    "auth_validation_ui_copy": (
+        "English auth validation UI copy",
+        "user-visible password validation messages",
+        "not credential material",
+    ),
+    "aud253_private_env_mode_test_fixture": (
+        "AUD-253 private environment-file mode test fixture",
+        "not credential material",
+    ),
+    "aud495_cache_key_redaction_test_fixture": (
+        "AUD-495 cache-key log-redaction test fixture",
+        "synthetic canary used only by mocked backend tests",
+        "tests assert logger output omits the canary",
+        "not credential material",
+    ),
 }
 _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES = frozenset(
     {
         "external_kubernetes_secret_reference",
         "source_contract_identifier",
         "public_compose_inspection_test_sentinel",
+        "synthetic_achievement_url_test_fixture",
+        "auth_validation_ui_copy",
+        "aud253_private_env_mode_test_fixture",
+        "aud495_cache_key_redaction_test_fixture",
+        "public_alembic_revision_identifier",
     }
 )
 _FALSE_POSITIVE_CATEGORIES = (
@@ -412,6 +455,110 @@ _V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES = frozenset(
             (
                 *(248, 237, 176, 97, 148, 41, 246, 135, 86, 11),
                 *(12, 80, 246, 227, 80, 183, 82, 39, 146, 12),
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                85,
+                158,
+                8,
+                17,
+                13,
+                217,
+                219,
+                104,
+                145,
+                111,
+                194,
+                19,
+                60,
+                251,
+                92,
+                240,
+                212,
+                85,
+                113,
+                116,
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                94,
+                40,
+                155,
+                35,
+                12,
+                205,
+                36,
+                191,
+                27,
+                93,
+                89,
+                252,
+                6,
+                36,
+                193,
+                174,
+                240,
+                78,
+                30,
+                64,
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                228,
+                251,
+                163,
+                207,
+                40,
+                164,
+                144,
+                11,
+                26,
+                225,
+                79,
+                240,
+                197,
+                199,
+                12,
+                121,
+                37,
+                113,
+                215,
+                216,
+            ),
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                109,
+                237,
+                50,
+                137,
+                135,
+                161,
+                1,
+                220,
+                60,
+                104,
+                144,
+                173,
+                229,
+                20,
+                90,
+                76,
+                18,
+                192,
+                224,
+                154,
             ),
         ),
     }
@@ -714,6 +861,28 @@ _C6_CODE_FRAGMENT_IDENTITIES = frozenset(
         ),
     }
 )
+_PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES = frozenset(
+    {
+        (
+            "frontend/src/components/ui/PageRouteSEO.tsx",
+            "Secret Keyword",
+            (
+                *(246, 11, 35, 176, 57, 187, 96, 181, 93, 29),
+                *(195, 205, 161, 83, 22, 254, 236, 136, 40, 118),
+            ),
+        ),
+        (
+            "frontend/src/components/ui/PageRouteSEO.tsx",
+            "Secret Keyword",
+            (
+                *(13, 39, 13, 74, 47, 213, 87, 245, 102, 242),
+                *(14, 180, 169, 34, 53, 125, 169, 142, 149, 34),
+            ),
+        ),
+    }
+)
+
+
 _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES = frozenset(
     {
         (
@@ -765,6 +934,7 @@ _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES = frozenset(
             ),
         ),
         *_C6_CODE_FRAGMENT_IDENTITIES,
+        *_PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES,
     }
 )
 
@@ -781,13 +951,1454 @@ _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES = frozenset(
     }
 )
 
+_SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES = frozenset(
+    {
+        (
+            "frontend/src/components/profile/__tests__/profileUtils.closure.test.ts",
+            "Basic Auth Credentials",
+            (
+                *(157, 78, 30, 35, 189, 91, 114, 112, 70, 169),
+                *(227, 180, 183, 219, 87, 189, 141, 110, 230, 132),
+            ),
+        ),
+    }
+)
+
+
+_AUTH_VALIDATION_UI_COPY_IDENTITIES = frozenset(
+    {
+        (
+            "frontend/src/i18n/locales/en/auth.json",
+            "Secret Keyword",
+            (
+                *(62, 125, 86, 169, 88, 4, 255, 60, 50, 43),
+                *(151, 167, 231, 205, 186, 37, 220, 146, 9, 87),
+            ),
+        ),
+        (
+            "frontend/src/i18n/locales/en/auth.json",
+            "Secret Keyword",
+            (
+                *(81, 214, 154, 230, 4, 109, 42, 59, 226, 69),
+                *(68, 157, 91, 56, 22, 93, 93, 120, 222, 245),
+            ),
+        ),
+        (
+            "frontend/src/i18n/locales/en/auth.json",
+            "Secret Keyword",
+            (
+                *(214, 156, 59, 26, 197, 75, 231, 218, 54, 102),
+                *(217, 147, 123, 156, 120, 231, 195, 9, 214, 232),
+            ),
+        ),
+    }
+)
+
+_AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                249,
+                234,
+                225,
+                154,
+                241,
+                219,
+                19,
+                25,
+                164,
+                195,
+                226,
+                60,
+                70,
+                145,
+                159,
+                13,
+                181,
+                232,
+                96,
+                104,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                209,
+                97,
+                7,
+                76,
+                56,
+                168,
+                75,
+                219,
+                177,
+                81,
+                156,
+                145,
+                146,
+                126,
+                11,
+                18,
+                227,
+                102,
+                242,
+                240,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                237,
+                247,
+                83,
+                211,
+                2,
+                60,
+                48,
+                7,
+                117,
+                85,
+                234,
+                204,
+                176,
+                92,
+                16,
+                249,
+                59,
+                248,
+                247,
+                232,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                39,
+                64,
+                185,
+                186,
+                132,
+                70,
+                33,
+                101,
+                34,
+                113,
+                107,
+                165,
+                89,
+                20,
+                200,
+                218,
+                104,
+                254,
+                31,
+                74,
+            ),
+        ),
+        (
+            "tests/test_aud253_private_env_files.py",
+            "Base64 High Entropy String",
+            (
+                34,
+                37,
+                215,
+                151,
+                209,
+                211,
+                130,
+                49,
+                24,
+                25,
+                155,
+                23,
+                171,
+                12,
+                127,
+                17,
+                161,
+                125,
+                42,
+                47,
+            ),
+        ),
+    }
+)
+
+_TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES = frozenset(
+    {
+        (
+            "scripts/quality/validate_trivy_kyverno_fixture.py",
+            "Hex High Entropy String",
+            (
+                208,
+                194,
+                211,
+                202,
+                127,
+                191,
+                176,
+                34,
+                28,
+                45,
+                65,
+                104,
+                252,
+                218,
+                78,
+                167,
+                15,
+                212,
+                3,
+                158,
+            ),
+        ),
+        (
+            "scripts/quality/validate_trivy_kyverno_fixture.py",
+            "Hex High Entropy String",
+            (
+                224,
+                192,
+                166,
+                76,
+                174,
+                89,
+                98,
+                209,
+                14,
+                59,
+                156,
+                41,
+                28,
+                44,
+                108,
+                70,
+                149,
+                242,
+                195,
+                91,
+            ),
+        ),
+    }
+)
+
+_TRIVY_KYVERNO_PUBLIC_CHECKSUM_DIGESTS = frozenset(
+    identity[2] for identity in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+)
+_AUD253_PRIVATE_ENV_MODE_TEST_DIGESTS = frozenset(
+    identity[2] for identity in _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_cache_object_keys_aud495.py",
+            "Secret Keyword",
+            (
+                158,
+                96,
+                27,
+                174,
+                156,
+                212,
+                227,
+                7,
+                93,
+                85,
+                133,
+                139,
+                237,
+                131,
+                255,
+                78,
+                75,
+                253,
+                255,
+                16,
+            ),
+        ),
+        (
+            "tests/test_cache_object_keys_aud495.py",
+            "Secret Keyword",
+            (
+                206,
+                224,
+                34,
+                26,
+                248,
+                78,
+                22,
+                250,
+                97,
+                128,
+                240,
+                96,
+                14,
+                161,
+                75,
+                225,
+                205,
+                151,
+                196,
+                143,
+            ),
+        ),
+    }
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_DIGESTS = frozenset(
+    identity[2] for identity in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH = "tests/test_cache_object_keys_aud495.py"
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY = (
+    "aud495_cache_key_redaction_test_fixture"
+)
+_TRIVY_KYVERNO_VALIDATOR_PATH = "scripts/quality/validate_trivy_kyverno_fixture.py"
+
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH = "tests/test_verify_secrets_baseline.py"
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY = (
+    _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH,
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        121,
+        18,
+        205,
+        213,
+        192,
+        120,
+        136,
+        208,
+        61,
+        126,
+        251,
+        249,
+        119,
+        59,
+        133,
+        113,
+        22,
+        198,
+        10,
+        132,
+    ),
+)
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES = frozenset(
+    {_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY}
+)
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_DIGESTS = frozenset(
+    {_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY[2]}
+)
+_PUBLIC_IMMUTABLE_315_POLICY_PREFIX_EVIDENCE_MARKERS = {
+    _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITY: (
+        "Public SHA-256 integrity digest of immutable 315-record disposition prefix",
+        "source-contract test guard in tests/test_verify_secrets_baseline.py",
+        "not credential material",
+    ),
+}
+
+_AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY = (
+    "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        75,
+        241,
+        247,
+        240,
+        201,
+        124,
+        150,
+        116,
+        118,
+        155,
+        103,
+        137,
+        228,
+        223,
+        153,
+        93,
+        208,
+        224,
+        145,
+        58,
+    ),
+)
+_AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY = (
+    "tests/test_security_hardening_workflow_contract.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        116,
+        79,
+        1,
+        159,
+        42,
+        240,
+        146,
+        15,
+        51,
+        94,
+        143,
+        149,
+        179,
+        231,
+        153,
+        242,
+        31,
+        254,
+        116,
+        173,
+    ),
+)
+_AUD247_SQUAWK_PUBLIC_CHECKSUM_EVIDENCE_MARKERS = (
+    "Public Squawk v2.67.0 SHA-256 checksum literal",
+    "literal in tests/test_security_hardening_workflow_contract.py as SQUAWK_SHA256",
+    "GitHub release asset API digest and local checksum agree",
+    "release asset is mutable",
+    "binary was not executed",
+    "not credential material",
+)
+
+_AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY = (
+    "tests/test_verify_secrets_baseline.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        200,
+        36,
+        105,
+        58,
+        159,
+        122,
+        4,
+        140,
+        251,
+        170,
+        213,
+        164,
+        38,
+        210,
+        200,
+        58,
+        142,
+        211,
+        129,
+        137,
+    ),
+)
+_AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY = (
+    "tests/test_verify_secrets_baseline.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        73,
+        167,
+        128,
+        111,
+        78,
+        205,
+        84,
+        128,
+        139,
+        99,
+        249,
+        165,
+        3,
+        236,
+        79,
+        56,
+        147,
+        246,
+        140,
+        151,
+    ),
+)
+_AUD495_PUBLIC_HISTORICAL_FINGERPRINT_IDENTITIES = frozenset(
+    {
+        _AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY,
+        _AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY,
+    }
+)
+_OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY = {
+    _AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY: "public_integrity_digest",
+    _AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY: "independent_contract_fingerprint",
+    _AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY: "independent_contract_fingerprint",
+}
+_OCT24_PUBLIC_DIGEST_BYTES = frozenset(
+    identity[2] for identity in _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY
+)
+_OCT24_PUBLIC_DIGEST_RESERVED_PATH_TYPES = frozenset(
+    (identity[0], identity[1]) for identity in _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY
+)
+_OCT24_PUBLIC_DIGEST_EVIDENCE_MARKERS = {
+    _AUD350_PUBLIC_MIGRATION_DIGEST_IDENTITY: (
+        "Public SHA-256 integrity digest of the frozen AUD-350 migration fixture",
+        "independent source-contract guard in "
+        "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+        "not credential material",
+    ),
+    _AUD495_PUBLIC_FIRST_FINGERPRINT_IDENTITY: (
+        "Public detect-secrets SHA-1 identity of the first historical "
+        "AUD-495 cache-key canary",
+        "independent source-contract guard in tests/test_verify_secrets_baseline.py",
+        "original canary record retains its "
+        "aud495_cache_key_redaction_test_fixture category",
+        "not credential material",
+    ),
+    _AUD495_PUBLIC_SECOND_FINGERPRINT_IDENTITY: (
+        "Public detect-secrets SHA-1 identity of the second historical "
+        "AUD-495 cache-key canary",
+        "independent source-contract guard in tests/test_verify_secrets_baseline.py",
+        "original canary record retains its "
+        "aud495_cache_key_redaction_test_fixture category",
+        "not credential material",
+    ),
+}
+
+_TRIVY_KYVERNO_EXACT_EVIDENCE_MARKERS = {
+    (
+        "scripts/quality/validate_trivy_kyverno_fixture.py",
+        "Hex High Entropy String",
+        (
+            208,
+            194,
+            211,
+            202,
+            127,
+            191,
+            176,
+            34,
+            28,
+            45,
+            65,
+            104,
+            252,
+            218,
+            78,
+            167,
+            15,
+            212,
+            3,
+            158,
+        ),
+    ): (
+        "Public integrity checksum",
+        "public SHA-256 checksum of the pinned Kyverno fixture bytes",
+        "not credential material",
+    ),
+    (
+        "scripts/quality/validate_trivy_kyverno_fixture.py",
+        "Hex High Entropy String",
+        (
+            224,
+            192,
+            166,
+            76,
+            174,
+            89,
+            98,
+            209,
+            14,
+            59,
+            156,
+            41,
+            28,
+            44,
+            108,
+            70,
+            149,
+            242,
+            195,
+            91,
+        ),
+    ): (
+        "Public integrity checksum",
+        "public SHA-256 checksum of the complete candidate Trivy ignore policy",
+        "not credential material",
+    ),
+}
+
+_ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY = (
+    "frontend/scripts/generate-zod-root-lock-candidate.mjs",
+    "Hex High Entropy String",
+    (
+        93,
+        153,
+        98,
+        228,
+        62,
+        95,
+        145,
+        81,
+        122,
+        89,
+        127,
+        149,
+        156,
+        66,
+        233,
+        25,
+        253,
+        139,
+        106,
+        91,
+    ),
+)
+_LOGGING_PUBLIC_METADATA_LABEL_IDENTITY = (
+    "tests/test_logging_pii_redaction_contract.py",
+    "Secret Keyword",
+    (
+        241,
+        119,
+        30,
+        46,
+        101,
+        173,
+        30,
+        82,
+        73,
+        135,
+        104,
+        15,
+        34,
+        136,
+        138,
+        34,
+        211,
+        106,
+        94,
+        148,
+    ),
+)
+_PUBLIC_ALEMBIC_REVISION_IDENTITY = (
+    "tests/integration/test_migration_148642dd1207.py",
+    "Hex High Entropy String",
+    (
+        174,
+        174,
+        131,
+        77,
+        96,
+        48,
+        11,
+        115,
+        251,
+        85,
+        202,
+        160,
+        255,
+        71,
+        89,
+        188,
+        236,
+        209,
+        111,
+        134,
+    ),
+)
+_PUBLIC_COMPILER_GOLDEN_SOURCE_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+    "Hex High Entropy String",
+    (
+        243,
+        24,
+        34,
+        108,
+        78,
+        41,
+        162,
+        36,
+        129,
+        21,
+        226,
+        107,
+        34,
+        108,
+        32,
+        104,
+        57,
+        178,
+        58,
+        118,
+    ),
+)
+_PUBLIC_COMPILER_GOLDEN_PACKAGE_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+    "Base64 High Entropy String",
+    (
+        69,
+        230,
+        158,
+        112,
+        111,
+        161,
+        38,
+        145,
+        4,
+        233,
+        113,
+        13,
+        46,
+        236,
+        50,
+        51,
+        249,
+        168,
+        228,
+        195,
+    ),
+)
+_PUBLIC_COMPILER_GOLDEN_BUNDLE_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+    "Hex High Entropy String",
+    (
+        234,
+        253,
+        112,
+        114,
+        99,
+        21,
+        100,
+        47,
+        245,
+        255,
+        254,
+        206,
+        137,
+        143,
+        67,
+        238,
+        254,
+        4,
+        2,
+        186,
+    ),
+)
+_PUBLIC_COMPILER_GOLDEN_FORMATTER_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json",
+    "Hex High Entropy String",
+    (
+        94,
+        84,
+        58,
+        79,
+        142,
+        129,
+        187,
+        45,
+        47,
+        248,
+        117,
+        139,
+        130,
+        137,
+        195,
+        56,
+        251,
+        33,
+        156,
+        105,
+    ),
+)
+_LIVE_REGISTRATION_PRIVATE_FIELD_IDENTITY = (
+    "tests/test_live_stand.py",
+    "Secret Keyword",
+    (
+        168,
+        153,
+        163,
+        54,
+        208,
+        140,
+        140,
+        91,
+        29,
+        67,
+        114,
+        254,
+        148,
+        83,
+        90,
+        153,
+        76,
+        25,
+        192,
+        185,
+    ),
+)
+_NODE_REACT_COMPILER_ARCHIVE_SRI_IDENTITY = (
+    "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs",
+    "Base64 High Entropy String",
+    (
+        174,
+        154,
+        194,
+        84,
+        247,
+        11,
+        223,
+        254,
+        122,
+        239,
+        5,
+        80,
+        53,
+        205,
+        193,
+        169,
+        67,
+        199,
+        156,
+        111,
+    ),
+)
+
+_NODE_REACT_COMPILER_ARCHIVE_SHA256_IDENTITY = (
+    "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs",
+    "Hex High Entropy String",
+    (
+        26,
+        49,
+        114,
+        186,
+        43,
+        22,
+        174,
+        128,
+        61,
+        43,
+        160,
+        193,
+        36,
+        137,
+        56,
+        96,
+        11,
+        165,
+        146,
+        11,
+    ),
+)
+
+_NODE_REACT_COMPILER_TEST_ZOD_GITHEAD_IDENTITY = (
+    "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs",
+    "Hex High Entropy String",
+    (
+        93,
+        153,
+        98,
+        228,
+        62,
+        95,
+        145,
+        81,
+        122,
+        89,
+        127,
+        149,
+        156,
+        66,
+        233,
+        25,
+        253,
+        139,
+        106,
+        91,
+    ),
+)
+
+_NODE_REACT_COMPILER_FORMATTER_ENTRY_SHA256_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json",
+    "Hex High Entropy String",
+    (
+        91,
+        251,
+        135,
+        233,
+        63,
+        145,
+        132,
+        241,
+        227,
+        80,
+        8,
+        3,
+        247,
+        78,
+        120,
+        46,
+        55,
+        215,
+        134,
+        186,
+    ),
+)
+
+_NODE_REACT_COMPILER_FORMATTER_SRI_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json",
+    "Base64 High Entropy String",
+    (
+        232,
+        220,
+        217,
+        217,
+        137,
+        28,
+        61,
+        234,
+        124,
+        90,
+        29,
+        103,
+        27,
+        149,
+        12,
+        28,
+        176,
+        93,
+        104,
+        29,
+    ),
+)
+
+_NODE_REACT_COMPILER_FACADE_SRI_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat.test.mjs",
+    "Base64 High Entropy String",
+    (
+        174,
+        154,
+        194,
+        84,
+        247,
+        11,
+        223,
+        254,
+        122,
+        239,
+        5,
+        80,
+        53,
+        205,
+        193,
+        169,
+        67,
+        199,
+        156,
+        111,
+    ),
+)
+
+_NODE_REACT_COMPILER_FACADE_SHA256_IDENTITY = (
+    "frontend/scripts/react-compiler-zod-compat.test.mjs",
+    "Hex High Entropy String",
+    (
+        26,
+        49,
+        114,
+        186,
+        43,
+        22,
+        174,
+        128,
+        61,
+        43,
+        160,
+        193,
+        36,
+        137,
+        56,
+        96,
+        11,
+        165,
+        146,
+        11,
+    ),
+)
+_NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY = {
+    _NODE_REACT_COMPILER_ARCHIVE_SRI_IDENTITY: "public_package_integrity_metadata",
+    _NODE_REACT_COMPILER_ARCHIVE_SHA256_IDENTITY: "public_integrity_digest",
+    _NODE_REACT_COMPILER_TEST_ZOD_GITHEAD_IDENTITY: "public_integrity_digest",
+    _NODE_REACT_COMPILER_FORMATTER_ENTRY_SHA256_IDENTITY: "public_integrity_digest",
+    _NODE_REACT_COMPILER_FORMATTER_SRI_IDENTITY: "public_package_integrity_metadata",
+    _NODE_REACT_COMPILER_FACADE_SRI_IDENTITY: "public_package_integrity_metadata",
+    _NODE_REACT_COMPILER_FACADE_SHA256_IDENTITY: "public_integrity_digest",
+}
+_NODE_REACT_COMPILER_PUBLIC_METADATA_PATHS = frozenset(
+    identity[0]
+    for identity in _NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY
+)
+_NODE_REACT_COMPILER_PUBLIC_METADATA_DIGESTS = frozenset(
+    identity[2]
+    for identity in _NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY
+)
+# The same public zod v4.6.7 commit identifier is already approved at its existing
+# generator path; retain that exact historic identity while reserving this digest.
+_NODE_REACT_COMPILER_DIGEST_COLLISION_EXCEPTIONS = frozenset(
+    {_ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY}
+)
+_NODE_REACT_COMPILER_PUBLIC_METADATA_EVIDENCE_MARKERS = {
+    _NODE_REACT_COMPILER_ARCHIVE_SRI_IDENTITY: (
+        "Public first-party package SHA-512 SRI",
+        "ARCHIVE_INTEGRITY",
+        "file:vendor/react-compiler-zod-compat-1.0.0.tgz",
+        "verified archive bytes",
+        "candidate lock metadata",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_ARCHIVE_SHA256_IDENTITY: (
+        "Public first-party archive SHA-256",
+        "ARCHIVE_SHA256",
+        "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz",
+        "four archived payload files match source",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_TEST_ZOD_GITHEAD_IDENTITY: (
+        "Public Git commit identifier for zod@4.6.7 registry metadata",
+        "EXPECTED_ZOD_SOURCE_SHA",
+        "official v4.6.7 tag",
+        "deterministic registryMetadata test fixture",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_FORMATTER_ENTRY_SHA256_IDENTITY: (
+        "Public SHA-256 of package/v4/index.js",
+        "zod-validation-error@4.0.2",
+        "official npm tarball",
+        "formatterEntryPath test",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_FORMATTER_SRI_IDENTITY: (
+        "Public npm SHA-512 integrity",
+        "zod-validation-error@4.0.2",
+        "official registry metadata",
+        "downloaded tarball bytes match",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_FACADE_SRI_IDENTITY: (
+        "Public first-party package SHA-512 SRI",
+        "FACADE_INTEGRITY",
+        "file:vendor/react-compiler-zod-compat-1.0.0.tgz",
+        "verified archive bytes",
+        "candidate lock metadata",
+        "not credential material",
+    ),
+    _NODE_REACT_COMPILER_FACADE_SHA256_IDENTITY: (
+        "Public first-party archive SHA-256",
+        "FACADE_SHA256",
+        "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz",
+        "four archived payload files match source",
+        "not credential material",
+    ),
+}
+
+_PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY = {
+    _LIVE_REGISTRATION_PRIVATE_FIELD_IDENTITY: "ci_test_contract_sentinel",
+    _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: "public_integrity_digest",
+    _LOGGING_PUBLIC_METADATA_LABEL_IDENTITY: "source_contract_identifier",
+    _PUBLIC_ALEMBIC_REVISION_IDENTITY: "public_alembic_revision_identifier",
+    _PUBLIC_COMPILER_GOLDEN_SOURCE_IDENTITY: "public_integrity_digest",
+    _PUBLIC_COMPILER_GOLDEN_PACKAGE_IDENTITY: "public_package_integrity_metadata",
+    _PUBLIC_COMPILER_GOLDEN_BUNDLE_IDENTITY: "public_integrity_digest",
+    _PUBLIC_COMPILER_GOLDEN_FORMATTER_IDENTITY: "public_integrity_digest",
+}
+_PUBLIC_SOURCE_METADATA_PATHS = frozenset(
+    identity[0] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
+)
+_PUBLIC_SOURCE_METADATA_DIGESTS = frozenset(
+    identity[2] for identity in _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY
+)
+_PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS = {
+    _LIVE_REGISTRATION_PRIVATE_FIELD_IDENTITY: (
+        "Synthetic invalid private-field test sentinel",
+        "tests/test_live_stand.py::"
+        "test_live_reset_registration_v2_rejects_private_fields_and_wrong_types",
+        "sole exact password-field fixture is serialized into "
+        "the invalid V2 observation corpus and rejected by the parser",
+        "never credentials or request data",
+        "not credential material",
+    ),
+    _PUBLIC_COMPILER_GOLDEN_SOURCE_IDENTITY: (
+        "Public Git commit identifier",
+        "sourceSha",
+        "pre-override React compiler golden",
+        "source revision of the hosted legacy capture",
+        "not credential material",
+    ),
+    _PUBLIC_COMPILER_GOLDEN_PACKAGE_IDENTITY: (
+        "Public npm SHA-512 integrity",
+        "compilerIntegrity",
+        "eslint-plugin-react-compiler@19.1.0-rc.2",
+        "matches the unchanged current lockfile",
+        "not credential material",
+    ),
+    _PUBLIC_COMPILER_GOLDEN_BUNDLE_IDENTITY: (
+        "Public SHA-256 artifact checksum",
+        "compilerBundleSha256",
+        "unchanged official rc.2 dist/index.js",
+        "not credential material",
+    ),
+    _PUBLIC_COMPILER_GOLDEN_FORMATTER_IDENTITY: (
+        "Public SHA-256 artifact checksum",
+        "formatterEntrySha256",
+        "historical pre-override zod-validation-error@3.5.4 entry file",
+        "not the adapter formatter",
+        "not credential material",
+    ),
+    _PUBLIC_ALEMBIC_REVISION_IDENTITY: (
+        "Public Alembic revision identifier for the groups sequence successor",
+        "command.upgrade target in "
+        "tests/integration/test_migration_148642dd1207.py::"
+        "test_groups_successors_do_not_require_the_duplicate_id_index",
+        "exact public revision definition and down_revision identify "
+        "the immediate successor of the audited groups cutover",
+        "not credential material",
+    ),
+    _ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY: (
+        "Public upstream Git commit identifier for colinhacks/zod v4.6.7",
+        "EXPECTED_ZOD_SOURCE_SHA in "
+        "frontend/scripts/generate-zod-root-lock-candidate.mjs",
+        "official Git tag and hosted mature registry metadata agree",
+        "used for exact registry source-identity comparison",
+        "not credential material",
+    ),
+    _LOGGING_PUBLIC_METADATA_LABEL_IDENTITY: (
+        "Public signing-key name csrf-signing-key in the secret_name metadata field",
+        "tests/test_logging_pii_redaction_contract.py::"
+        "test_sensitive_field_matching_preserves_related_nonsecret_metadata",
+        "negative control requires this identifier to survive real log redaction",
+        "not credential material",
+    ),
+}
+
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
+    "public_alembic_revision_identifier": {_PUBLIC_ALEMBIC_REVISION_IDENTITY},
+    "synthetic_achievement_url_test_fixture": (
+        _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES
+    ),
     "public_compose_inspection_test_sentinel": (
         _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES
     ),
     "external_kubernetes_secret_reference": _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES,
-    "source_contract_identifier": _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES,
+    "source_contract_identifier": (
+        _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES
+        | {_LOGGING_PUBLIC_METADATA_LABEL_IDENTITY}
+    ),
+    "auth_validation_ui_copy": _AUTH_VALIDATION_UI_COPY_IDENTITIES,
+    "aud253_private_env_mode_test_fixture": (
+        _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+    ),
+    "aud495_cache_key_redaction_test_fixture": (
+        _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+    ),
 }
+
+_PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY = (
+    "tests/helpers/migration_148642dd1207_trace.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        164,
+        0,
+        65,
+        251,
+        120,
+        113,
+        88,
+        100,
+        53,
+        123,
+        197,
+        89,
+        175,
+        34,
+        4,
+        26,
+        104,
+        189,
+        125,
+        80,
+    ),
+)
+_PUBLIC_GIT_BLOB_ORCHESTRATOR_SOURCE_REBIND_IDENTITY = (
+    "tests/test_mfa_webauthn_tombstone.py",
+    _FALSE_POSITIVE_ALLOWED_TYPE,
+    (
+        109,
+        246,
+        200,
+        201,
+        38,
+        194,
+        24,
+        95,
+        0,
+        19,
+        55,
+        55,
+        242,
+        153,
+        216,
+        45,
+        114,
+        223,
+        180,
+        240,
+    ),
+)
+
+_PUBLIC_GIT_BLOB_IDENTITIES = frozenset(
+    {
+        (
+            "tests/helpers/migration_148642dd1207_trace.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                68,
+                206,
+                125,
+                127,
+                3,
+                60,
+                194,
+                207,
+                158,
+                109,
+                182,
+                148,
+                201,
+                31,
+                221,
+                196,
+                89,
+                5,
+                101,
+                163,
+            ),
+        ),
+        (
+            "tests/test_mfa_webauthn_tombstone.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                109,
+                67,
+                120,
+                143,
+                21,
+                122,
+                30,
+                20,
+                91,
+                168,
+                79,
+                9,
+                37,
+                165,
+                80,
+                183,
+                80,
+                124,
+                201,
+                40,
+            ),
+        ),
+        (
+            "tests/helpers/migration_148642dd1207_trace.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                78,
+                36,
+                66,
+                114,
+                42,
+                111,
+                201,
+                231,
+                78,
+                231,
+                157,
+                23,
+                62,
+                86,
+                214,
+                140,
+                152,
+                235,
+                118,
+                215,
+            ),
+        ),
+        (
+            "tests/test_mfa_webauthn_tombstone.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                120,
+                244,
+                112,
+                145,
+                78,
+                179,
+                236,
+                151,
+                175,
+                133,
+                0,
+                251,
+                201,
+                135,
+                203,
+                98,
+                231,
+                245,
+                249,
+                83,
+            ),
+        ),
+        (
+            "tests/helpers/migration_148642dd1207_trace.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                129,
+                182,
+                175,
+                46,
+                84,
+                127,
+                57,
+                186,
+                226,
+                169,
+                181,
+                52,
+                185,
+                20,
+                29,
+                88,
+                247,
+                214,
+                196,
+                40,
+            ),
+        ),
+        (
+            "tests/test_mfa_webauthn_tombstone.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                32,
+                87,
+                220,
+                238,
+                65,
+                56,
+                74,
+                173,
+                160,
+                109,
+                167,
+                158,
+                154,
+                251,
+                29,
+                7,
+                25,
+                76,
+                152,
+                145,
+            ),
+        ),
+        (
+            "tests/helpers/migration_148642dd1207_trace.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                61,
+                18,
+                225,
+                35,
+                20,
+                181,
+                232,
+                224,
+                158,
+                7,
+                236,
+                140,
+                119,
+                214,
+                26,
+                47,
+                69,
+                105,
+                11,
+                255,
+            ),
+        ),
+        (
+            "tests/test_mfa_webauthn_tombstone.py",
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            (
+                8,
+                134,
+                59,
+                8,
+                97,
+                25,
+                239,
+                115,
+                186,
+                55,
+                39,
+                151,
+                107,
+                170,
+                223,
+                60,
+                12,
+                240,
+                148,
+                10,
+            ),
+        ),
+        _PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY,
+        _PUBLIC_GIT_BLOB_ORCHESTRATOR_SOURCE_REBIND_IDENTITY,
+    }
+)
+_PUBLIC_GIT_BLOB_DIGESTS = frozenset(
+    identity[2] for identity in _PUBLIC_GIT_BLOB_IDENTITIES
+)
+_PUBLIC_GIT_BLOB_PATHS = frozenset(
+    identity[0] for identity in _PUBLIC_GIT_BLOB_IDENTITIES
+)
+_PUBLIC_GIT_BLOB_EVIDENCE_MARKERS = {
+    "tests/helpers/migration_148642dd1207_trace.py": (
+        "Public Git SHA-1 integrity digest of "
+        "alembic/versions/148642dd1207_fix_missing_tables.py",
+        "source-bound five-site migration diagnostic assignment SOURCE_GIT_BLOB",
+        "Git blob framing binds all source bytes",
+        "not credential material",
+    ),
+    "tests/test_mfa_webauthn_tombstone.py": (
+        "Public Git SHA-1 integrity digest of "
+        "tests/test_migration_148642dd1207_orchestrator.py",
+        "source-bound historical migration reference guard assignment "
+        "HISTORICAL_ORCHESTRATOR_BLOB",
+        "Git blob framing binds all source bytes",
+        "not credential material",
+    ),
+}
+
+_PUBLIC_GIT_BLOB_EXACT_EVIDENCE_MARKERS = {
+    _PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY: (
+        "Public Git SHA-1 integrity digest of "
+        "alembic/versions/148642dd1207_fix_missing_tables.py",
+        "working tree based on c90e6163",
+        "Git blob framing binds all source bytes",
+        "not credential material",
+    ),
+    _PUBLIC_GIT_BLOB_ORCHESTRATOR_SOURCE_REBIND_IDENTITY: (
+        "Public Git SHA-1 integrity digest of "
+        "tests/test_migration_148642dd1207_orchestrator.py",
+        "source-bound historical migration reference guard assignment "
+        "HISTORICAL_ORCHESTRATOR_BLOB",
+        "Git blob framing binds all source bytes",
+        "not credential material",
+    ),
+}
+
+
 _FALSE_POSITIVE_IDENTITY_FIELDS = frozenset({"path", "type", "hashed_secret_bytes"})
 _FALSE_POSITIVE_RECORD_FIELDS = frozenset(
     {
@@ -800,13 +2411,2266 @@ _FALSE_POSITIVE_RECORD_FIELDS = frozenset(
         "approval_status",
     }
 )
+_HISTORICAL148_PUBLIC_INTEGRITY_REFERENCES = {
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            134,
+            9,
+            183,
+            189,
+            149,
+            252,
+            132,
+            183,
+            164,
+            190,
+            132,
+            230,
+            38,
+            30,
+            31,
+            159,
+            193,
+            254,
+            59,
+            108,
+        ),
+    ): "quality/historical148-squawk-policy.json:15",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            89,
+            41,
+            49,
+            205,
+            215,
+            183,
+            138,
+            151,
+            174,
+            249,
+            160,
+            10,
+            249,
+            22,
+            99,
+            225,
+            245,
+            19,
+            142,
+            151,
+        ),
+    ): "quality/historical148-squawk-policy.json:16",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            148,
+            49,
+            123,
+            126,
+            142,
+            214,
+            12,
+            181,
+            106,
+            156,
+            21,
+            247,
+            229,
+            153,
+            45,
+            19,
+            139,
+            244,
+            235,
+            160,
+        ),
+    ): "quality/historical148-squawk-policy.json:25",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            238,
+            214,
+            204,
+            147,
+            39,
+            89,
+            13,
+            133,
+            52,
+            206,
+            214,
+            112,
+            62,
+            140,
+            9,
+            180,
+            211,
+            134,
+            204,
+            187,
+        ),
+    ): "quality/historical148-squawk-policy.json:26",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            136,
+            122,
+            45,
+            245,
+            59,
+            132,
+            147,
+            170,
+            66,
+            4,
+            175,
+            233,
+            201,
+            144,
+            80,
+            149,
+            94,
+            216,
+            69,
+            23,
+        ),
+    ): "quality/historical148-squawk-policy.json:27",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            164,
+            0,
+            65,
+            251,
+            120,
+            113,
+            88,
+            100,
+            53,
+            123,
+            197,
+            89,
+            175,
+            34,
+            4,
+            26,
+            104,
+            189,
+            125,
+            80,
+        ),
+    ): "quality/historical148-squawk-policy.json:28",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            246,
+            172,
+            33,
+            1,
+            2,
+            191,
+            86,
+            69,
+            61,
+            143,
+            244,
+            247,
+            150,
+            225,
+            217,
+            23,
+            179,
+            195,
+            155,
+            116,
+        ),
+    ): "quality/historical148-squawk-policy.json:29",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            105,
+            63,
+            195,
+            182,
+            182,
+            116,
+            134,
+            152,
+            234,
+            136,
+            228,
+            113,
+            227,
+            174,
+            153,
+            176,
+            43,
+            153,
+            204,
+            254,
+        ),
+    ): "quality/historical148-squawk-policy.json:30",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            68,
+            157,
+            134,
+            105,
+            231,
+            193,
+            172,
+            93,
+            152,
+            61,
+            180,
+            218,
+            9,
+            112,
+            186,
+            202,
+            198,
+            69,
+            186,
+            172,
+        ),
+    ): "quality/historical148-squawk-policy.json:31",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            235,
+            194,
+            217,
+            41,
+            222,
+            227,
+            225,
+            116,
+            120,
+            59,
+            149,
+            15,
+            152,
+            24,
+            175,
+            229,
+            173,
+            153,
+            70,
+            170,
+        ),
+    ): "quality/historical148-squawk-policy.json:32",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            6,
+            234,
+            8,
+            50,
+            220,
+            59,
+            61,
+            188,
+            143,
+            6,
+            140,
+            1,
+            143,
+            241,
+            138,
+            92,
+            4,
+            142,
+            224,
+            6,
+        ),
+    ): "quality/historical148-squawk-policy.json:33",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            190,
+            125,
+            166,
+            64,
+            127,
+            146,
+            134,
+            62,
+            131,
+            179,
+            170,
+            212,
+            77,
+            245,
+            193,
+            240,
+            88,
+            92,
+            10,
+            237,
+        ),
+    ): "quality/historical148-squawk-policy.json:34",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            116,
+            79,
+            1,
+            159,
+            42,
+            240,
+            146,
+            15,
+            51,
+            94,
+            143,
+            149,
+            179,
+            231,
+            153,
+            242,
+            31,
+            254,
+            116,
+            173,
+        ),
+    ): "quality/historical148-squawk-policy.json:38",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            231,
+            39,
+            195,
+            67,
+            107,
+            108,
+            24,
+            78,
+            229,
+            226,
+            16,
+            29,
+            47,
+            42,
+            195,
+            191,
+            103,
+            172,
+            203,
+            5,
+        ),
+    ): "quality/historical148-squawk-policy.json:60",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            130,
+            215,
+            65,
+            218,
+            128,
+            71,
+            107,
+            18,
+            244,
+            71,
+            139,
+            237,
+            13,
+            247,
+            5,
+            157,
+            58,
+            163,
+            184,
+            137,
+        ),
+    ): "quality/historical148-squawk-policy.json:213",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            42,
+            50,
+            215,
+            192,
+            136,
+            63,
+            204,
+            100,
+            205,
+            116,
+            181,
+            164,
+            17,
+            81,
+            69,
+            2,
+            141,
+            5,
+            75,
+            240,
+        ),
+    ): "quality/historical148-squawk-policy.json:488",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            175,
+            228,
+            103,
+            122,
+            76,
+            199,
+            111,
+            142,
+            156,
+            145,
+            227,
+            246,
+            169,
+            54,
+            128,
+            143,
+            151,
+            233,
+            26,
+            132,
+        ),
+    ): "quality/historical148-squawk-policy.json:489",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            22,
+            41,
+            29,
+            236,
+            253,
+            142,
+            232,
+            77,
+            255,
+            239,
+            111,
+            39,
+            140,
+            139,
+            168,
+            165,
+            69,
+            191,
+            28,
+            21,
+        ),
+    ): "quality/historical148-squawk-policy.json:497",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            124,
+            59,
+            108,
+            193,
+            2,
+            174,
+            190,
+            178,
+            2,
+            127,
+            124,
+            91,
+            43,
+            149,
+            199,
+            111,
+            148,
+            211,
+            42,
+            100,
+        ),
+    ): "quality/historical148-squawk-policy.json:503",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            18,
+            19,
+            134,
+            200,
+            48,
+            23,
+            3,
+            162,
+            4,
+            171,
+            62,
+            24,
+            13,
+            110,
+            200,
+            249,
+            8,
+            152,
+            64,
+            108,
+        ),
+    ): "quality/historical148-squawk-policy.json:509",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            32,
+            248,
+            26,
+            179,
+            3,
+            213,
+            141,
+            242,
+            244,
+            139,
+            84,
+            120,
+            214,
+            251,
+            91,
+            170,
+            53,
+            47,
+            118,
+            231,
+        ),
+    ): "quality/historical148-squawk-policy.json:515",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            12,
+            162,
+            5,
+            155,
+            91,
+            177,
+            254,
+            141,
+            252,
+            129,
+            183,
+            114,
+            59,
+            200,
+            122,
+            38,
+            158,
+            172,
+            108,
+            124,
+        ),
+    ): "quality/historical148-squawk-policy.json:521",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            166,
+            24,
+            128,
+            117,
+            249,
+            216,
+            41,
+            161,
+            27,
+            28,
+            132,
+            198,
+            138,
+            52,
+            191,
+            226,
+            194,
+            12,
+            76,
+            90,
+        ),
+    ): "quality/historical148-squawk-policy.json:527",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            120,
+            157,
+            72,
+            240,
+            105,
+            0,
+            135,
+            233,
+            36,
+            249,
+            178,
+            155,
+            109,
+            206,
+            173,
+            92,
+            79,
+            213,
+            154,
+            45,
+        ),
+    ): "quality/historical148-squawk-policy.json:533",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            138,
+            160,
+            35,
+            238,
+            171,
+            136,
+            160,
+            241,
+            110,
+            132,
+            139,
+            240,
+            188,
+            130,
+            60,
+            84,
+            46,
+            252,
+            27,
+            203,
+        ),
+    ): "quality/historical148-squawk-policy.json:539",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            134,
+            41,
+            122,
+            245,
+            119,
+            246,
+            7,
+            73,
+            11,
+            135,
+            17,
+            151,
+            1,
+            93,
+            103,
+            130,
+            67,
+            162,
+            84,
+            201,
+        ),
+    ): "quality/historical148-squawk-policy.json:545",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            106,
+            174,
+            91,
+            25,
+            82,
+            146,
+            110,
+            102,
+            131,
+            190,
+            249,
+            213,
+            10,
+            198,
+            97,
+            164,
+            125,
+            76,
+            51,
+            198,
+        ),
+    ): "quality/historical148-squawk-policy.json:551",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            133,
+            90,
+            196,
+            171,
+            216,
+            143,
+            3,
+            207,
+            225,
+            142,
+            108,
+            110,
+            190,
+            212,
+            163,
+            15,
+            232,
+            13,
+            142,
+            84,
+        ),
+    ): "quality/historical148-squawk-policy.json:557",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            36,
+            222,
+            138,
+            208,
+            215,
+            144,
+            33,
+            131,
+            73,
+            200,
+            61,
+            119,
+            6,
+            7,
+            39,
+            171,
+            249,
+            54,
+            7,
+            87,
+        ),
+    ): "quality/historical148-squawk-policy.json:583",
+    (
+        "scripts/quality/validate_historical148_squawk.py",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            184,
+            43,
+            81,
+            64,
+            202,
+            66,
+            185,
+            90,
+            156,
+            195,
+            202,
+            227,
+            40,
+            46,
+            166,
+            85,
+            135,
+            254,
+            101,
+            69,
+        ),
+    ): "scripts/quality/validate_historical148_squawk.py:19",
+    (
+        "scripts/quality/validate_historical148_squawk.py",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            193,
+            50,
+            57,
+            69,
+            61,
+            65,
+            192,
+            13,
+            182,
+            89,
+            224,
+            236,
+            139,
+            2,
+            232,
+            72,
+            189,
+            206,
+            33,
+            181,
+        ),
+    ): "scripts/quality/validate_historical148_squawk.py:20",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            134,
+            9,
+            183,
+            189,
+            149,
+            252,
+            132,
+            183,
+            164,
+            190,
+            132,
+            230,
+            38,
+            30,
+            31,
+            159,
+            193,
+            254,
+            59,
+            108,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:4",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            89,
+            41,
+            49,
+            205,
+            215,
+            183,
+            138,
+            151,
+            174,
+            249,
+            160,
+            10,
+            249,
+            22,
+            99,
+            225,
+            245,
+            19,
+            142,
+            151,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:5",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            148,
+            49,
+            123,
+            126,
+            142,
+            214,
+            12,
+            181,
+            106,
+            156,
+            21,
+            247,
+            229,
+            153,
+            45,
+            19,
+            139,
+            244,
+            235,
+            160,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:23",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            238,
+            214,
+            204,
+            147,
+            39,
+            89,
+            13,
+            133,
+            52,
+            206,
+            214,
+            112,
+            62,
+            140,
+            9,
+            180,
+            211,
+            134,
+            204,
+            187,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:24",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            136,
+            122,
+            45,
+            245,
+            59,
+            132,
+            147,
+            170,
+            66,
+            4,
+            175,
+            233,
+            201,
+            144,
+            80,
+            149,
+            94,
+            216,
+            69,
+            23,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:25",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            164,
+            0,
+            65,
+            251,
+            120,
+            113,
+            88,
+            100,
+            53,
+            123,
+            197,
+            89,
+            175,
+            34,
+            4,
+            26,
+            104,
+            189,
+            125,
+            80,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:26",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            246,
+            172,
+            33,
+            1,
+            2,
+            191,
+            86,
+            69,
+            61,
+            143,
+            244,
+            247,
+            150,
+            225,
+            217,
+            23,
+            179,
+            195,
+            155,
+            116,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:27",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            105,
+            63,
+            195,
+            182,
+            182,
+            116,
+            134,
+            152,
+            234,
+            136,
+            228,
+            113,
+            227,
+            174,
+            153,
+            176,
+            43,
+            153,
+            204,
+            254,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:28",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            68,
+            157,
+            134,
+            105,
+            231,
+            193,
+            172,
+            93,
+            152,
+            61,
+            180,
+            218,
+            9,
+            112,
+            186,
+            202,
+            198,
+            69,
+            186,
+            172,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:29",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            235,
+            194,
+            217,
+            41,
+            222,
+            227,
+            225,
+            116,
+            120,
+            59,
+            149,
+            15,
+            152,
+            24,
+            175,
+            229,
+            173,
+            153,
+            70,
+            170,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:30",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            231,
+            39,
+            195,
+            67,
+            107,
+            108,
+            24,
+            78,
+            229,
+            226,
+            16,
+            29,
+            47,
+            42,
+            195,
+            191,
+            103,
+            172,
+            203,
+            5,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:35",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            116,
+            79,
+            1,
+            159,
+            42,
+            240,
+            146,
+            15,
+            51,
+            94,
+            143,
+            149,
+            179,
+            231,
+            153,
+            242,
+            31,
+            254,
+            116,
+            173,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:52",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            130,
+            215,
+            65,
+            218,
+            128,
+            71,
+            107,
+            18,
+            244,
+            71,
+            139,
+            237,
+            13,
+            247,
+            5,
+            157,
+            58,
+            163,
+            184,
+            137,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:62",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            42,
+            50,
+            215,
+            192,
+            136,
+            63,
+            204,
+            100,
+            205,
+            116,
+            181,
+            164,
+            17,
+            81,
+            69,
+            2,
+            141,
+            5,
+            75,
+            240,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:63",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            175,
+            228,
+            103,
+            122,
+            76,
+            199,
+            111,
+            142,
+            156,
+            145,
+            227,
+            246,
+            169,
+            54,
+            128,
+            143,
+            151,
+            233,
+            26,
+            132,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:64",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            22,
+            41,
+            29,
+            236,
+            253,
+            142,
+            232,
+            77,
+            255,
+            239,
+            111,
+            39,
+            140,
+            139,
+            168,
+            165,
+            69,
+            191,
+            28,
+            21,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:72",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            124,
+            59,
+            108,
+            193,
+            2,
+            174,
+            190,
+            178,
+            2,
+            127,
+            124,
+            91,
+            43,
+            149,
+            199,
+            111,
+            148,
+            211,
+            42,
+            100,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:78",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            18,
+            19,
+            134,
+            200,
+            48,
+            23,
+            3,
+            162,
+            4,
+            171,
+            62,
+            24,
+            13,
+            110,
+            200,
+            249,
+            8,
+            152,
+            64,
+            108,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:84",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            32,
+            248,
+            26,
+            179,
+            3,
+            213,
+            141,
+            242,
+            244,
+            139,
+            84,
+            120,
+            214,
+            251,
+            91,
+            170,
+            53,
+            47,
+            118,
+            231,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:90",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            12,
+            162,
+            5,
+            155,
+            91,
+            177,
+            254,
+            141,
+            252,
+            129,
+            183,
+            114,
+            59,
+            200,
+            122,
+            38,
+            158,
+            172,
+            108,
+            124,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:96",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            166,
+            24,
+            128,
+            117,
+            249,
+            216,
+            41,
+            161,
+            27,
+            28,
+            132,
+            198,
+            138,
+            52,
+            191,
+            226,
+            194,
+            12,
+            76,
+            90,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:102",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            120,
+            157,
+            72,
+            240,
+            105,
+            0,
+            135,
+            233,
+            36,
+            249,
+            178,
+            155,
+            109,
+            206,
+            173,
+            92,
+            79,
+            213,
+            154,
+            45,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:108",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            138,
+            160,
+            35,
+            238,
+            171,
+            136,
+            160,
+            241,
+            110,
+            132,
+            139,
+            240,
+            188,
+            130,
+            60,
+            84,
+            46,
+            252,
+            27,
+            203,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:114",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            134,
+            41,
+            122,
+            245,
+            119,
+            246,
+            7,
+            73,
+            11,
+            135,
+            17,
+            151,
+            1,
+            93,
+            103,
+            130,
+            67,
+            162,
+            84,
+            201,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:120",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            106,
+            174,
+            91,
+            25,
+            82,
+            146,
+            110,
+            102,
+            131,
+            190,
+            249,
+            213,
+            10,
+            198,
+            97,
+            164,
+            125,
+            76,
+            51,
+            198,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:126",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            133,
+            90,
+            196,
+            171,
+            216,
+            143,
+            3,
+            207,
+            225,
+            142,
+            108,
+            110,
+            190,
+            212,
+            163,
+            15,
+            232,
+            13,
+            142,
+            84,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:132",
+    (
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            36,
+            222,
+            138,
+            208,
+            215,
+            144,
+            33,
+            131,
+            73,
+            200,
+            61,
+            119,
+            6,
+            7,
+            39,
+            171,
+            249,
+            54,
+            7,
+            87,
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-15eaaa.json:158",
+}
+_HISTORICAL148_PUBLIC_INTEGRITY_IDENTITIES = frozenset(
+    _HISTORICAL148_PUBLIC_INTEGRITY_REFERENCES
+)
+_HISTORICAL148_PUBLIC_INTEGRITY_PATHS = frozenset(
+    identity[0] for identity in _HISTORICAL148_PUBLIC_INTEGRITY_IDENTITIES
+)
+_HISTORICAL148_PUBLIC_INTEGRITY_DIGESTS = frozenset(
+    identity[2] for identity in _HISTORICAL148_PUBLIC_INTEGRITY_IDENTITIES
+)
+_HISTORICAL148_PREEXISTING_COLLISION_IDENTITIES = frozenset(
+    {
+        _PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY,
+        _AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY,
+    }
+)
+
+
+# The October-30 approval is separate from the historical 58-entry grant.
+# Runtime admission binds exact finding identity and review metadata. Source-byte
+# provenance is independently pinned by the repository contract tests.
+_OCT30_PUBLIC_INTEGRITY_REFERENCES = {
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(24, 24, 178, 111, 219, 70, 195, 46, 85, 224),
+            *(161, 86, 43, 31, 51, 56, 249, 186, 146, 20),
+        ),
+    ): "quality/historical148-squawk-policy.json:15",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(173, 229, 153, 207, 176, 251, 134, 51, 100, 201),
+            *(161, 249, 124, 92, 217, 245, 129, 232, 101, 88),
+        ),
+    ): "quality/historical148-squawk-policy.json:16",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(3, 117, 195, 104, 182, 214, 82, 250, 150, 198),
+            *(210, 29, 231, 94, 66, 105, 52, 171, 230, 73),
+        ),
+    ): "quality/historical148-squawk-policy.json:31",
+    (
+        "quality/historical148-squawk-policy.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(52, 230, 35, 156, 104, 131, 82, 148, 123, 112),
+            *(21, 179, 19, 33, 3, 197, 45, 103, 28, 27),
+        ),
+    ): "quality/historical148-squawk-policy.json:583",
+    (
+        "scripts/quality/run_owned_redis_contracts.py",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(46, 189, 77, 185, 156, 96, 198, 127, 63, 202),
+            *(57, 237, 177, 194, 107, 90, 65, 152, 51, 157),
+        ),
+    ): "scripts/quality/run_owned_redis_contracts.py:23",
+    (
+        "scripts/quality/validate_historical148_squawk.py",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(233, 202, 218, 213, 86, 50, 221, 12, 156, 8),
+            *(112, 47, 74, 245, 67, 32, 139, 94, 218, 6),
+        ),
+    ): "scripts/quality/validate_historical148_squawk.py:19",
+    (
+        "scripts/quality/validate_historical148_squawk.py",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(223, 221, 236, 112, 233, 112, 37, 186, 195, 133),
+            *(14, 137, 162, 218, 185, 134, 37, 197, 247, 114),
+        ),
+    ): "scripts/quality/validate_historical148_squawk.py:20",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(67, 22, 44, 85, 216, 127, 106, 255, 184, 145),
+            *(17, 212, 230, 38, 81, 28, 173, 235, 87, 123),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:4",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(227, 246, 166, 255, 219, 248, 181, 108, 160, 130),
+            *(148, 25, 158, 135, 105, 1, 184, 250, 211, 156),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:5",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(148, 49, 123, 126, 142, 214, 12, 181, 106, 156),
+            *(21, 247, 229, 153, 45, 19, 139, 244, 235, 160),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:23",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(238, 214, 204, 147, 39, 89, 13, 133, 52, 206),
+            *(214, 112, 62, 140, 9, 180, 211, 134, 204, 187),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:24",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(136, 122, 45, 245, 59, 132, 147, 170, 66, 4),
+            *(175, 233, 201, 144, 80, 149, 94, 216, 69, 23),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:25",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(164, 0, 65, 251, 120, 113, 88, 100, 53, 123),
+            *(197, 89, 175, 34, 4, 26, 104, 189, 125, 80),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:26",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(246, 172, 33, 1, 2, 191, 86, 69, 61, 143),
+            *(244, 247, 150, 225, 217, 23, 179, 195, 155, 116),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:27",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(105, 63, 195, 182, 182, 116, 134, 152, 234, 136),
+            *(228, 113, 227, 174, 153, 176, 43, 153, 204, 254),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:28",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(208, 119, 18, 139, 19, 208, 140, 95, 55, 113),
+            *(178, 103, 8, 66, 231, 146, 227, 146, 234, 36),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:29",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(235, 194, 217, 41, 222, 227, 225, 116, 120, 59),
+            *(149, 15, 152, 24, 175, 229, 173, 153, 70, 170),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:30",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(231, 39, 195, 67, 107, 108, 24, 78, 229, 226),
+            *(16, 29, 47, 42, 195, 191, 103, 172, 203, 5),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:35",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(116, 79, 1, 159, 42, 240, 146, 15, 51, 94),
+            *(143, 149, 179, 231, 153, 242, 31, 254, 116, 173),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:52",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(130, 215, 65, 218, 128, 71, 107, 18, 244, 71),
+            *(139, 237, 13, 247, 5, 157, 58, 163, 184, 137),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:62",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(42, 50, 215, 192, 136, 63, 204, 100, 205, 116),
+            *(181, 164, 17, 81, 69, 2, 141, 5, 75, 240),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:63",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(175, 228, 103, 122, 76, 199, 111, 142, 156, 145),
+            *(227, 246, 169, 54, 128, 143, 151, 233, 26, 132),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:64",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(22, 41, 29, 236, 253, 142, 232, 77, 255, 239),
+            *(111, 39, 140, 139, 168, 165, 69, 191, 28, 21),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:72",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(124, 59, 108, 193, 2, 174, 190, 178, 2, 127),
+            *(124, 91, 43, 149, 199, 111, 148, 211, 42, 100),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:78",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(18, 19, 134, 200, 48, 23, 3, 162, 4, 171),
+            *(62, 24, 13, 110, 200, 249, 8, 152, 64, 108),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:84",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(32, 248, 26, 179, 3, 213, 141, 242, 244, 139),
+            *(84, 120, 214, 251, 91, 170, 53, 47, 118, 231),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:90",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(12, 162, 5, 155, 91, 177, 254, 141, 252, 129),
+            *(183, 114, 59, 200, 122, 38, 158, 172, 108, 124),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:96",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(166, 24, 128, 117, 249, 216, 41, 161, 27, 28),
+            *(132, 198, 138, 52, 191, 226, 194, 12, 76, 90),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:102",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(120, 157, 72, 240, 105, 0, 135, 233, 36, 249),
+            *(178, 155, 109, 206, 173, 92, 79, 213, 154, 45),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:108",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(138, 160, 35, 238, 171, 136, 160, 241, 110, 132),
+            *(139, 240, 188, 130, 60, 84, 46, 252, 27, 203),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:114",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(134, 41, 122, 245, 119, 246, 7, 73, 11, 135),
+            *(17, 151, 1, 93, 103, 130, 67, 162, 84, 201),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:120",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(106, 174, 91, 25, 82, 146, 110, 102, 131, 190),
+            *(249, 213, 10, 198, 97, 164, 125, 76, 51, 198),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:126",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(133, 90, 196, 171, 216, 143, 3, 207, 225, 142),
+            *(108, 110, 190, 212, 163, 15, 232, 13, 142, 84),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:132",
+    (
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(69, 41, 183, 76, 65, 124, 60, 18, 213, 157),
+            *(134, 222, 16, 125, 141, 184, 225, 60, 47, 232),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-35aeedeb.json:158",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(109, 135, 220, 149, 243, 16, 151, 86, 66, 208),
+            *(44, 83, 28, 166, 58, 158, 227, 45, 41, 136),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:4",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(42, 103, 169, 33, 196, 54, 160, 221, 16, 182),
+            *(2, 151, 31, 44, 219, 178, 108, 207, 220, 76),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:5",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(148, 49, 123, 126, 142, 214, 12, 181, 106, 156),
+            *(21, 247, 229, 153, 45, 19, 139, 244, 235, 160),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:23",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(238, 214, 204, 147, 39, 89, 13, 133, 52, 206),
+            *(214, 112, 62, 140, 9, 180, 211, 134, 204, 187),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:24",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(136, 122, 45, 245, 59, 132, 147, 170, 66, 4),
+            *(175, 233, 201, 144, 80, 149, 94, 216, 69, 23),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:25",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(164, 0, 65, 251, 120, 113, 88, 100, 53, 123),
+            *(197, 89, 175, 34, 4, 26, 104, 189, 125, 80),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:26",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(246, 172, 33, 1, 2, 191, 86, 69, 61, 143),
+            *(244, 247, 150, 225, 217, 23, 179, 195, 155, 116),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:27",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(105, 63, 195, 182, 182, 116, 134, 152, 234, 136),
+            *(228, 113, 227, 174, 153, 176, 43, 153, 204, 254),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:28",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(88, 3, 217, 210, 47, 10, 56, 78, 150, 208),
+            *(126, 20, 159, 195, 160, 110, 75, 193, 83, 90),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:29",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(235, 194, 217, 41, 222, 227, 225, 116, 120, 59),
+            *(149, 15, 152, 24, 175, 229, 173, 153, 70, 170),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:30",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(231, 39, 195, 67, 107, 108, 24, 78, 229, 226),
+            *(16, 29, 47, 42, 195, 191, 103, 172, 203, 5),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:35",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(116, 79, 1, 159, 42, 240, 146, 15, 51, 94),
+            *(143, 149, 179, 231, 153, 242, 31, 254, 116, 173),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:52",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(130, 215, 65, 218, 128, 71, 107, 18, 244, 71),
+            *(139, 237, 13, 247, 5, 157, 58, 163, 184, 137),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:62",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(42, 50, 215, 192, 136, 63, 204, 100, 205, 116),
+            *(181, 164, 17, 81, 69, 2, 141, 5, 75, 240),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:63",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(175, 228, 103, 122, 76, 199, 111, 142, 156, 145),
+            *(227, 246, 169, 54, 128, 143, 151, 233, 26, 132),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:64",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(22, 41, 29, 236, 253, 142, 232, 77, 255, 239),
+            *(111, 39, 140, 139, 168, 165, 69, 191, 28, 21),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:72",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(124, 59, 108, 193, 2, 174, 190, 178, 2, 127),
+            *(124, 91, 43, 149, 199, 111, 148, 211, 42, 100),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:78",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(18, 19, 134, 200, 48, 23, 3, 162, 4, 171),
+            *(62, 24, 13, 110, 200, 249, 8, 152, 64, 108),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:84",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(32, 248, 26, 179, 3, 213, 141, 242, 244, 139),
+            *(84, 120, 214, 251, 91, 170, 53, 47, 118, 231),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:90",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(12, 162, 5, 155, 91, 177, 254, 141, 252, 129),
+            *(183, 114, 59, 200, 122, 38, 158, 172, 108, 124),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:96",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(166, 24, 128, 117, 249, 216, 41, 161, 27, 28),
+            *(132, 198, 138, 52, 191, 226, 194, 12, 76, 90),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:102",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(120, 157, 72, 240, 105, 0, 135, 233, 36, 249),
+            *(178, 155, 109, 206, 173, 92, 79, 213, 154, 45),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:108",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(138, 160, 35, 238, 171, 136, 160, 241, 110, 132),
+            *(139, 240, 188, 130, 60, 84, 46, 252, 27, 203),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:114",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(134, 41, 122, 245, 119, 246, 7, 73, 11, 135),
+            *(17, 151, 1, 93, 103, 130, 67, 162, 84, 201),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:120",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(106, 174, 91, 25, 82, 146, 110, 102, 131, 190),
+            *(249, 213, 10, 198, 97, 164, 125, 76, 51, 198),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:126",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(133, 90, 196, 171, 216, 143, 3, 207, 225, 142),
+            *(108, 110, 190, 212, 163, 15, 232, 13, 142, 84),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:132",
+    (
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(69, 41, 183, 76, 65, 124, 60, 18, 213, 157),
+            *(134, 222, 16, 125, 141, 184, 225, 60, 47, 232),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-36f70a0f.json:158",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(24, 24, 178, 111, 219, 70, 195, 46, 85, 224),
+            *(161, 86, 43, 31, 51, 56, 249, 186, 146, 20),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:4",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(173, 229, 153, 207, 176, 251, 134, 51, 100, 201),
+            *(161, 249, 124, 92, 217, 245, 129, 232, 101, 88),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:5",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(148, 49, 123, 126, 142, 214, 12, 181, 106, 156),
+            *(21, 247, 229, 153, 45, 19, 139, 244, 235, 160),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:23",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(238, 214, 204, 147, 39, 89, 13, 133, 52, 206),
+            *(214, 112, 62, 140, 9, 180, 211, 134, 204, 187),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:24",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(136, 122, 45, 245, 59, 132, 147, 170, 66, 4),
+            *(175, 233, 201, 144, 80, 149, 94, 216, 69, 23),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:25",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(164, 0, 65, 251, 120, 113, 88, 100, 53, 123),
+            *(197, 89, 175, 34, 4, 26, 104, 189, 125, 80),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:26",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(246, 172, 33, 1, 2, 191, 86, 69, 61, 143),
+            *(244, 247, 150, 225, 217, 23, 179, 195, 155, 116),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:27",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(105, 63, 195, 182, 182, 116, 134, 152, 234, 136),
+            *(228, 113, 227, 174, 153, 176, 43, 153, 204, 254),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:28",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(3, 117, 195, 104, 182, 214, 82, 250, 150, 198),
+            *(210, 29, 231, 94, 66, 105, 52, 171, 230, 73),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:29",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(235, 194, 217, 41, 222, 227, 225, 116, 120, 59),
+            *(149, 15, 152, 24, 175, 229, 173, 153, 70, 170),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:30",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(231, 39, 195, 67, 107, 108, 24, 78, 229, 226),
+            *(16, 29, 47, 42, 195, 191, 103, 172, 203, 5),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:35",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(116, 79, 1, 159, 42, 240, 146, 15, 51, 94),
+            *(143, 149, 179, 231, 153, 242, 31, 254, 116, 173),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:52",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(130, 215, 65, 218, 128, 71, 107, 18, 244, 71),
+            *(139, 237, 13, 247, 5, 157, 58, 163, 184, 137),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:62",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(42, 50, 215, 192, 136, 63, 204, 100, 205, 116),
+            *(181, 164, 17, 81, 69, 2, 141, 5, 75, 240),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:63",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(175, 228, 103, 122, 76, 199, 111, 142, 156, 145),
+            *(227, 246, 169, 54, 128, 143, 151, 233, 26, 132),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:64",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(22, 41, 29, 236, 253, 142, 232, 77, 255, 239),
+            *(111, 39, 140, 139, 168, 165, 69, 191, 28, 21),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:72",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(124, 59, 108, 193, 2, 174, 190, 178, 2, 127),
+            *(124, 91, 43, 149, 199, 111, 148, 211, 42, 100),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:78",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(18, 19, 134, 200, 48, 23, 3, 162, 4, 171),
+            *(62, 24, 13, 110, 200, 249, 8, 152, 64, 108),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:84",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(32, 248, 26, 179, 3, 213, 141, 242, 244, 139),
+            *(84, 120, 214, 251, 91, 170, 53, 47, 118, 231),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:90",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(12, 162, 5, 155, 91, 177, 254, 141, 252, 129),
+            *(183, 114, 59, 200, 122, 38, 158, 172, 108, 124),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:96",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(166, 24, 128, 117, 249, 216, 41, 161, 27, 28),
+            *(132, 198, 138, 52, 191, 226, 194, 12, 76, 90),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:102",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(120, 157, 72, 240, 105, 0, 135, 233, 36, 249),
+            *(178, 155, 109, 206, 173, 92, 79, 213, 154, 45),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:108",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(138, 160, 35, 238, 171, 136, 160, 241, 110, 132),
+            *(139, 240, 188, 130, 60, 84, 46, 252, 27, 203),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:114",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(134, 41, 122, 245, 119, 246, 7, 73, 11, 135),
+            *(17, 151, 1, 93, 103, 130, 67, 162, 84, 201),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:120",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(106, 174, 91, 25, 82, 146, 110, 102, 131, 190),
+            *(249, 213, 10, 198, 97, 164, 125, 76, 51, 198),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:126",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(133, 90, 196, 171, 216, 143, 3, 207, 225, 142),
+            *(108, 110, 190, 212, 163, 15, 232, 13, 142, 84),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:132",
+    (
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(52, 230, 35, 156, 104, 131, 82, 148, 123, 112),
+            *(21, 179, 19, 33, 3, 197, 45, 103, 28, 27),
+        ),
+    ): "tests/fixtures/historical148-squawk-capture-3d83fb27.json:158",
+    (
+        "tests/test_aud427_428_contract_quality.py",
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            *(46, 189, 77, 185, 156, 96, 198, 127, 63, 202),
+            *(57, 237, 177, 194, 107, 90, 65, 152, 51, 157),
+        ),
+    ): "tests/test_aud427_428_contract_quality.py:611",
+}
+_OCT30_PUBLIC_INTEGRITY_IDENTITIES = frozenset(_OCT30_PUBLIC_INTEGRITY_REFERENCES)
+_OCT30_PUBLIC_INTEGRITY_PATHS = frozenset(
+    identity[0] for identity in _OCT30_PUBLIC_INTEGRITY_IDENTITIES
+)
+_OCT30_PUBLIC_INTEGRITY_DIGESTS = frozenset(
+    identity[2] for identity in _OCT30_PUBLIC_INTEGRITY_IDENTITIES
+)
+
+
 _FALSE_POSITIVE_DOCUMENT_FIELDS = frozenset({"schema_version", "records"})
 _FALSE_POSITIVE_POLICY_PATH = "quality/security-false-positive-dispositions.json"
 _FALSE_POSITIVE_RECORD_LIMIT = 512
 _FALSE_POSITIVE_EVIDENCE_LIMIT = 1000
 _FALSE_POSITIVE_OWNER_LIMIT = 120
 _FALSE_POSITIVE_PLACEHOLDER_OWNERS = frozenset(
-    {"", "owner", "pending", "tbd", "unknown", "n/a", "todo"}
+    {"", "owner", "pending", "pending_owner_review", "tbd", "unknown", "n/a", "todo"}
 )
 _DISPOSITION_WILDCARDS = frozenset("*?[]")
 
@@ -1280,6 +5144,183 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        historical148_identity = (
+            exact_source_identity in _HISTORICAL148_PUBLIC_INTEGRITY_IDENTITIES
+        )
+        oct30_reference = _OCT30_PUBLIC_INTEGRITY_REFERENCES.get(exact_source_identity)
+        oct30_approved = (
+            oct30_reference is not None
+            and category == "public_integrity_digest"
+            and record.get("evidence")
+            == (
+                "Public October-30 integrity metadata; exact source reference "
+                f"{oct30_reference}; approved finite 89-entry source-bound digest "
+                "inventory; not credential material; no Squawk admission or "
+                "migration-risk waiver."
+            )
+            and record.get("owner") == "egorribun"
+            and record.get("reviewed_on") == "2026-10-30"
+            and record.get("expires_on") == "2027-01-10"
+            and record.get("approval_status") == "approved"
+        )
+        if (
+            path in _HISTORICAL148_PUBLIC_INTEGRITY_PATHS
+            or tuple(raw_digest_bytes) in _HISTORICAL148_PUBLIC_INTEGRITY_DIGESTS
+        ) and (
+            (
+                not historical148_identity
+                and not oct30_approved
+                and exact_source_identity
+                not in _HISTORICAL148_PREEXISTING_COLLISION_IDENTITIES
+            )
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: historical-148 integrity identity changed scope"
+            )
+        if tuple(raw_digest_bytes) == _AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY[2] and (
+            (
+                exact_source_identity != _AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
+                and not historical148_identity
+                and not oct30_approved
+            )
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-247 Squawk checksum identity changed scope"
+            )
+        if tuple(raw_digest_bytes) in _AUD253_PRIVATE_ENV_MODE_TEST_DIGESTS and (
+            exact_source_identity
+            not in _AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+            or category != "aud253_private_env_mode_test_fixture"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-253 private env fixture identity changed scope"
+            )
+        if (
+            path == _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH
+            and finding_type == "Secret Keyword"
+            and (
+                exact_source_identity
+                not in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+                or category != _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+            )
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-495 cache-key fixture identity changed scope"
+            )
+        if tuple(
+            raw_digest_bytes
+        ) in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_DIGESTS and (
+            exact_source_identity
+            not in _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES
+            or category != _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-495 cache-key fixture identity changed scope"
+            )
+
+        node_metadata_category = (
+            _NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY.get(
+                exact_source_identity
+            )
+        )
+        if (
+            path in _NODE_REACT_COMPILER_PUBLIC_METADATA_PATHS
+            or tuple(raw_digest_bytes) in _NODE_REACT_COMPILER_PUBLIC_METADATA_DIGESTS
+        ) and (
+            node_metadata_category is None
+            and exact_source_identity
+            not in _NODE_REACT_COMPILER_DIGEST_COLLISION_EXCEPTIONS
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Node React Compiler metadata identity changed scope"
+            )
+        if node_metadata_category is not None and category != node_metadata_category:
+            raise BaselineArtifactError(
+                f"{artifact}: Node React Compiler metadata category changed"
+            )
+
+        metadata_category = _PUBLIC_SOURCE_METADATA_CATEGORY_BY_IDENTITY.get(
+            exact_source_identity
+        )
+        if (
+            path in _PUBLIC_SOURCE_METADATA_PATHS
+            or tuple(raw_digest_bytes) in _PUBLIC_SOURCE_METADATA_DIGESTS
+        ) and (
+            (metadata_category is None or category != metadata_category)
+            and (node_metadata_category is None or category != node_metadata_category)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public source metadata identity changed scope"
+            )
+
+        if (
+            path in _PUBLIC_GIT_BLOB_PATHS
+            or tuple(raw_digest_bytes) in _PUBLIC_GIT_BLOB_DIGESTS
+        ) and (
+            (
+                exact_source_identity not in _PUBLIC_GIT_BLOB_IDENTITIES
+                and not historical148_identity
+                and not oct30_approved
+            )
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public Git blob identity changed scope"
+            )
+
+        if (
+            path in _OCT30_PUBLIC_INTEGRITY_PATHS
+            or tuple(raw_digest_bytes) in _OCT30_PUBLIC_INTEGRITY_DIGESTS
+        ) and not oct30_approved:
+            prior_identity = (
+                historical148_identity
+                or exact_source_identity
+                in _HISTORICAL148_PREEXISTING_COLLISION_IDENTITIES
+            )
+            if not prior_identity or category != "public_integrity_digest":
+                raise BaselineArtifactError(
+                    f"{artifact}: October-30 integrity identity or approval "
+                    "changed scope"
+                )
+
+        oct24_category = _OCT24_PUBLIC_DIGEST_CATEGORY_BY_IDENTITY.get(
+            exact_source_identity
+        )
+        if (
+            tuple(raw_digest_bytes) in _OCT24_PUBLIC_DIGEST_BYTES
+            or (path, finding_type) in _OCT24_PUBLIC_DIGEST_RESERVED_PATH_TYPES
+        ) and (
+            exact_source_identity not in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+        ):
+            if oct24_category is None or category != oct24_category:
+                raise BaselineArtifactError(
+                    f"{artifact}: October 24 public digest identity changed scope"
+                )
+
+        if (
+            (
+                path == _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH
+                and finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
+                and exact_source_identity
+                not in _AUD495_PUBLIC_HISTORICAL_FINGERPRINT_IDENTITIES
+            )
+            or tuple(raw_digest_bytes) in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_DIGESTS
+        ) and (
+            exact_source_identity not in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: immutable policy-prefix digest identity changed scope"
+            )
+        if tuple(raw_digest_bytes) in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_DIGESTS and (
+            exact_source_identity not in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+            or category != "public_integrity_digest"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Trivy Kyverno checksum identity changed scope"
+            )
         if (
             exact_source_identity in _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES
             and category != "public_compose_inspection_test_sentinel"
@@ -1294,8 +5335,40 @@ def validate_false_positive_dispositions(
             raise BaselineArtifactError(
                 f"{artifact}: exact source-contract identity changed category"
             )
+        if (
+            exact_source_identity in _SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES
+            and category != "synthetic_achievement_url_test_fixture"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: synthetic achievement URL fixture changed category"
+            )
+        if (
+            exact_source_identity in _AUTH_VALIDATION_UI_COPY_IDENTITIES
+            and category != "auth_validation_ui_copy"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: auth validation UI copy identity changed category"
+            )
         if category in _FALSE_POSITIVE_HEX_CATEGORIES:
             category_matches = finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
+            if (
+                category == "public_integrity_digest"
+                and path == _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH
+            ):
+                category_matches = (
+                    category_matches
+                    and exact_source_identity
+                    in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+                )
+            if (
+                category == "public_integrity_digest"
+                and path == _TRIVY_KYVERNO_VALIDATOR_PATH
+            ):
+                category_matches = (
+                    category_matches
+                    and exact_source_identity
+                    in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+                )
             if category == "independent_contract_fingerprint":
                 exact_v4_identity = (
                     path,
@@ -1303,7 +5376,10 @@ def validate_false_positive_dispositions(
                     tuple(raw_digest_bytes),
                 ) in _V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
                 category_matches = category_matches and (
-                    path == _INDEPENDENT_CONTRACT_FINGERPRINT_PATH or exact_v4_identity
+                    path == _INDEPENDENT_CONTRACT_FINGERPRINT_PATH
+                    or exact_v4_identity
+                    or exact_source_identity
+                    in _AUD495_PUBLIC_HISTORICAL_FINGERPRINT_IDENTITIES
                 )
         elif category in _FALSE_POSITIVE_EXACT_IDENTITY_CATEGORIES:
             exact_identities = _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES.get(
@@ -1334,7 +5410,45 @@ def validate_false_positive_dispositions(
             )
         ):
             raise BaselineArtifactError(f"{artifact}: evidence is invalid")
+        if historical148_identity:
+            source_reference = _HISTORICAL148_PUBLIC_INTEGRITY_REFERENCES[
+                exact_source_identity
+            ]
+            expected_evidence = (
+                "Public historical-148 integrity metadata; exact source reference "
+                f"{source_reference}; source-bound diagnostic capture and validator "
+                "fingerprints; not credential material; no Squawk admission or "
+                "migration-risk waiver."
+            )
+            if evidence != expected_evidence:
+                raise BaselineArtifactError(
+                    f"{artifact}: historical-148 integrity evidence changed"
+                )
         required_evidence = _FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS.get(category, ())
+        required_evidence += _TRIVY_KYVERNO_EXACT_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
+        required_evidence += _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
+        required_evidence += _OCT24_PUBLIC_DIGEST_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
+        required_evidence += (
+            _AUD247_SQUAWK_PUBLIC_CHECKSUM_EVIDENCE_MARKERS
+            if exact_source_identity == _AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
+            else ()
+        )
+        if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES:
+            required_evidence += _PUBLIC_GIT_BLOB_EXACT_EVIDENCE_MARKERS.get(
+                exact_source_identity, _PUBLIC_GIT_BLOB_EVIDENCE_MARKERS[path]
+            )
+        required_evidence += _PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
+        required_evidence += _NODE_REACT_COMPILER_PUBLIC_METADATA_EVIDENCE_MARKERS.get(
+            exact_source_identity, ()
+        )
         if any(
             marker.casefold() not in evidence.casefold() for marker in required_evidence
         ):
@@ -1352,6 +5466,14 @@ def validate_false_positive_dispositions(
             or any(ord(character) < 32 or ord(character) == 127 for character in owner)
         ):
             raise BaselineArtifactError(f"{artifact}: owner metadata is invalid")
+        if (
+            exact_source_identity
+            in _NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY
+            and owner.casefold() == "pending_owner_review"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Node React Compiler owner review is pending"
+            )
         if record.get("approval_status") != "approved":
             raise BaselineArtifactError(f"{artifact}: record is not approved")
 
@@ -1376,11 +5498,130 @@ def validate_false_positive_dispositions(
         ):
             raise BaselineArtifactError(f"{artifact}: date range is invalid")
 
+        if historical148_identity and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-29"
+            or raw_expires != "2027-01-10"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: historical-148 integrity approval metadata changed"
+            )
+
+        if metadata_category is not None and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-24"
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public source metadata approval changed"
+            )
+
+        if exact_source_identity in _PUBLIC_GIT_BLOB_IDENTITIES and (
+            owner != "egorribun"
+            or raw_reviewed
+            != (
+                "2026-10-25"
+                if exact_source_identity
+                == _PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY
+                else "2026-10-26"
+                if exact_source_identity
+                == _PUBLIC_GIT_BLOB_ORCHESTRATOR_SOURCE_REBIND_IDENTITY
+                else "2026-10-24"
+            )
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: public Git blob approval metadata changed"
+            )
+
+        if oct24_category is not None and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-24"
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: October 24 public digest approval metadata changed"
+            )
+
+        if exact_source_identity == _AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-26"
+            or expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-247 Squawk checksum approval metadata changed"
+            )
+
+        if (
+            exact_source_identity
+            in _NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY
+            and (
+                owner != "egorribun"
+                or raw_reviewed != "2026-10-25"
+                or expires_on > date(2027, 1, 10)
+            )
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Node React Compiler approval metadata changed"
+            )
+
         if category == "public_compose_inspection_test_sentinel" and expires_on > date(
             2027, 1, 10
         ):
             raise BaselineArtifactError(
                 f"{artifact}: public Compose sentinel exceeds approved expiry"
+            )
+
+        if category == "synthetic_achievement_url_test_fixture" and expires_on > date(
+            2027, 1, 10
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: synthetic achievement URL fixture exceeds approved expiry"
+            )
+
+        if category == "auth_validation_ui_copy" and expires_on > date(2027, 1, 10):
+            raise BaselineArtifactError(
+                f"{artifact}: auth validation UI copy exceeds approved expiry"
+            )
+
+        if category == "aud253_private_env_mode_test_fixture" and expires_on > date(
+            2027, 1, 10
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-253 private env fixture exceeds approved expiry"
+            )
+
+        if (
+            category == _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+            and expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-495 cache-key fixture exceeds proposed expiry cap"
+            )
+
+        if (
+            exact_source_identity in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+            and expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: immutable policy-prefix digest exceeds proposed expiry"
+            )
+
+        if (
+            exact_source_identity in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+            and expires_on > date(2026, 11, 22)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: Trivy Kyverno checksum exceeds approved expiry"
+            )
+
+        if (
+            category == "source_contract_identifier"
+            and exact_source_identity in _PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES
+            and expires_on > date(2027, 1, 10)
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: page title route identifier exceeds approved expiry"
             )
 
         finding = FindingIdentity(path, finding_type, hashed_secret, 1)

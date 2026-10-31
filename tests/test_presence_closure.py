@@ -13,7 +13,7 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_presence_audience_uses_redis_cache_hit() -> None:
+async def test_presence_audience_ignores_redis_cache_hit() -> None:
     from app.api.ws import presence
 
     user_id = uuid.uuid4()
@@ -21,101 +21,82 @@ async def test_presence_audience_uses_redis_cache_hit() -> None:
     cache = AsyncMock()
     cache.enabled = True
     cache.get.return_value = SimpleNamespace(payload=list(audience))
-    with patch.object(presence, "get_cache", return_value=cache):
+    repo = MagicMock(get_presence_audience=AsyncMock(return_value=set()))
+
+    @asynccontextmanager
+    async def session_context():
+        yield MagicMock()
+
+    with (
+        patch.object(presence, "get_cache", return_value=cache),
+        patch.object(presence, "ChatRepository", return_value=repo),
+        patch.object(presence, "async_session", session_context),
+    ):
         result = await presence._get_presence_audience(user_id)
-    assert result == audience
+    assert result == set()
+    cache.get.assert_not_awaited()
     cache.set.assert_not_awaited()
+    repo.get_presence_audience.assert_awaited_once_with(user_id)
 
 
 @pytest.mark.asyncio
-async def test_presence_audience_refreshes_stale_memory_and_sets_redis() -> None:
+async def test_presence_audience_reloads_database_each_time() -> None:
     from app.api.ws import presence
 
     user_id = uuid.uuid4()
-    audience = {uuid.uuid4()}
-    presence._PRESENCE_DB_CACHE.clear()
-    loop = asyncio.get_running_loop()
-    presence._PRESENCE_DB_CACHE[user_id] = (
-        {uuid.uuid4()},
-        loop.time() - presence._PRESENCE_DB_CACHE_TTL - 1,
-    )
+    first, second = {uuid.uuid4()}, {uuid.uuid4()}
     repo = MagicMock()
-    repo.get_presence_audience = AsyncMock(return_value=audience)
+    repo.get_presence_audience = AsyncMock(side_effect=[first, second])
 
     @asynccontextmanager
     async def session_context():
         yield MagicMock()
 
-    cache = AsyncMock()
-    cache.enabled = True
-    cache.get.return_value = None
     with (
-        patch.object(presence, "get_cache", return_value=cache),
         patch.object(presence, "ChatRepository", return_value=repo),
         patch.object(presence, "async_session", session_context),
     ):
-        result = await presence._get_presence_audience(user_id)
-    assert result == audience
-    cache.set.assert_awaited_once()
-    presence._PRESENCE_DB_CACHE.clear()
+        assert await presence._get_presence_audience(user_id) == first
+        assert await presence._get_presence_audience(user_id) == second
+    assert repo.get_presence_audience.await_count == 2
 
 
 @pytest.mark.asyncio
-async def test_presence_audience_second_lock_check_returns_newly_cached_value() -> None:
+async def test_presence_audience_session_failure_is_not_suppressed() -> None:
     from app.api.ws import presence
 
     user_id = uuid.uuid4()
-    audience = {uuid.uuid4()}
-    presence._PRESENCE_DB_CACHE.clear()
 
-    class LockThatPopulatesCache:
-        async def __aenter__(self):
-            presence._PRESENCE_DB_CACHE[user_id] = (
-                audience,
-                asyncio.get_running_loop().time(),
-            )
-            return self
+    async def fail_session():
+        raise OSError("owned database outage")
 
-        async def __aexit__(self, *_args):
-            return None
+    @asynccontextmanager
+    async def session_context():
+        yield await fail_session()
 
-    cache = MagicMock(enabled=False)
-    with (
-        patch.object(presence, "get_cache", return_value=cache),
-        patch.object(
-            presence, "_get_presence_cache_lock", return_value=LockThatPopulatesCache()
-        ),
-    ):
-        result = await presence._get_presence_audience(user_id)
-    assert result == audience
-    presence._PRESENCE_DB_CACHE.clear()
+    with patch.object(presence, "async_session", session_context):
+        with pytest.raises(OSError, match="owned database outage"):
+            await presence._get_presence_audience(user_id)
 
 
 @pytest.mark.asyncio
-async def test_presence_audience_evicts_oldest_entry_at_cache_limit() -> None:
+async def test_presence_audience_query_failure_is_not_suppressed() -> None:
     from app.api.ws import presence
 
     user_id = uuid.uuid4()
-    audience = {uuid.uuid4()}
     repo = MagicMock()
-    repo.get_presence_audience = AsyncMock(return_value=audience)
+    repo.get_presence_audience = AsyncMock(side_effect=OSError("owned query outage"))
 
     @asynccontextmanager
     async def session_context():
         yield MagicMock()
 
-    cache = AsyncMock()
-    cache.enabled = True
-    cache.get.return_value = None
     with (
-        patch.object(presence, "_PRESENCE_DB_CACHE_MAX_SIZE", 0),
-        patch.object(presence, "get_cache", return_value=cache),
         patch.object(presence, "ChatRepository", return_value=repo),
         patch.object(presence, "async_session", session_context),
     ):
-        result = await presence._get_presence_audience(user_id)
-    assert result == audience
-    assert user_id not in presence._PRESENCE_DB_CACHE
+        with pytest.raises(OSError, match="owned query outage"):
+            await presence._get_presence_audience(user_id)
 
 
 @pytest.mark.asyncio

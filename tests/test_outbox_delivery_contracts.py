@@ -95,11 +95,12 @@ async def test_aggregate_sequence_precedes_recording_time(
     db_session.add_all([second, first])
     await db_session.flush()
     worker = OutboxWorker(batch_size=batch_size)
-    assert await worker.process_batch() == batch_size
-    if batch_size == 1:
-        await db_session.refresh(second)
-        assert second.processed_at is None
-        assert await worker.process_batch() == 1
+    # Each query selects at most one pending head per aggregate, even when the
+    # batch has room for more rows. The next poll drains the newly eligible head.
+    assert await worker.process_batch() == 1
+    await db_session.refresh(second)
+    assert second.processed_at is None
+    assert await worker.process_batch() == 1
     assert delivered == [str(first.id), str(second.id)]
     for row in (first, second):
         await db_session.refresh(row)
@@ -148,8 +149,15 @@ async def test_ordinary_retry_cannot_take_the_reserved_membership_slot(
     outbox_bus.subscribe(ChatParticipantRemoved.EVENT_TYPE, record)
     outbox_bus.subscribe("user.created", record)
     timestamp = datetime(2026, 1, 1, tzinfo=UTC)
-    ordinary_retry = user_created(created_at=timestamp, error_count=1)
-    fresh = user_created(created_at=timestamp + timedelta(seconds=1))
+    ordinary_retry = user_created(
+        created_at=timestamp,
+        error_count=1,
+        aggregate_id=uuid.UUID("00000000-0000-4000-8000-00000000000a"),
+    )
+    fresh = user_created(
+        created_at=timestamp + timedelta(seconds=1),
+        aggregate_id=uuid.UUID("00000000-0000-4000-8000-00000000000b"),
+    )
     revoke_retry = membership_retry(
         created_at=timestamp + timedelta(seconds=2), error_count=2
     )

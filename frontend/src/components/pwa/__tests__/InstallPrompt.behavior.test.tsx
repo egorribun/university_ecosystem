@@ -5,10 +5,15 @@ import { I18nextProvider } from "react-i18next"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import InstallPrompt from "@/components/pwa/InstallPrompt"
 import { LiveRegionProvider } from "@/components/ui/LiveRegionProvider"
+import { registerServiceWorker } from "@/push/register-sw"
 import {
+  clearPendingServiceWorkerUpdate,
   consumePendingPushEducation,
+  dispatchServiceWorkerUpdate,
+  getPendingServiceWorkerUpdate,
   PWA_REFRESH_EVENT,
   requestPushEducation,
+  type ServiceWorkerUpdateEventDetail,
 } from "@/app/pwaEvents"
 import type { NotificationToast, UsePushPreferencesOptions } from "@/hooks/usePushPreferences"
 import enCommon from "@/i18n/locales/en/common.json"
@@ -114,6 +119,8 @@ beforeEach(() => {
   previousAuth = { user: previousUser, loading }
   previousHistory = { url: window.location.href, state: window.history.state }
   consumePendingPushEducation(user.id)
+  const pendingUpdate = getPendingServiceWorkerUpdate()
+  if (pendingUpdate) clearPendingServiceWorkerUpdate(pendingUpdate)
   localStorage.clear()
   useAuthStore.setState({ user, loading: false })
   window.history.replaceState(null, "", "/events")
@@ -129,6 +136,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  const pendingUpdate = getPendingServiceWorkerUpdate()
+  if (pendingUpdate) clearPendingServiceWorkerUpdate(pendingUpdate)
   useAuthStore.setState(previousAuth)
   window.history.replaceState(previousHistory.state, "", previousHistory.url)
   consumePendingPushEducation(user.id)
@@ -143,6 +152,94 @@ afterEach(() => {
 })
 
 describe("InstallPrompt user behavior", () => {
+  it("replays pre-mount updates and still waits for user consent", async () => {
+    const waitingPostMessage = vi.fn()
+    const waitingWorker = { postMessage: waitingPostMessage } as unknown as ServiceWorker
+    const registration = {
+      active: null,
+      waiting: waitingWorker,
+      addEventListener: vi.fn(),
+    } as unknown as ServiceWorkerRegistration
+    const serviceWorkerContainer = {
+      controller: { postMessage: vi.fn() },
+      ready: Promise.resolve(registration),
+      register: vi.fn().mockResolvedValue(registration),
+      addEventListener: vi.fn(),
+    } as unknown as ServiceWorkerContainer
+    let unmount: (() => void) | undefined
+    const dispatchedUpdates: ServiceWorkerUpdateEventDetail[] = []
+    const handleUpdate = (event: Event) => {
+      dispatchedUpdates.push((event as CustomEvent<ServiceWorkerUpdateEventDetail>).detail)
+    }
+
+    window.addEventListener(PWA_REFRESH_EVENT, handleUpdate)
+    vi.stubGlobal("navigator", { serviceWorker: serviceWorkerContainer, onLine: true })
+    try {
+      expect(await registerServiceWorker()).toBe(registration)
+      expect(dispatchedUpdates).toHaveLength(1)
+      expect(dispatchedUpdates[0]?.update).toEqual(expect.any(Function))
+      const rendered = await renderPrompt()
+      unmount = rendered.unmount
+
+      const reload = screen.getByRole("button", { name: "Reload" })
+      expect(reload).toBeVisible()
+      expect(waitingPostMessage).not.toHaveBeenCalled()
+
+      await userEvent.setup().click(reload)
+
+      expect(waitingPostMessage).toHaveBeenCalledOnce()
+    } finally {
+      unmount?.()
+      window.removeEventListener(PWA_REFRESH_EVENT, handleUpdate)
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it("keeps a replacement update through remount and authorizes only its worker", async () => {
+    const firstUpdate = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const first: ServiceWorkerUpdateEventDetail = { update: firstUpdate }
+    act(() => dispatchServiceWorkerUpdate(first))
+    const firstView = await renderPrompt()
+    expect(screen.getByRole("button", { name: "Reload" })).toBeVisible()
+
+    const replacementUpdate = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const replacement: ServiceWorkerUpdateEventDetail = { update: replacementUpdate }
+    act(() => dispatchServiceWorkerUpdate(replacement))
+    expect(getPendingServiceWorkerUpdate()).toBe(replacement)
+    expect(firstUpdate).not.toHaveBeenCalled()
+    expect(replacementUpdate).not.toHaveBeenCalled()
+
+    firstView.unmount()
+    const replacementView = await renderPrompt()
+    expect(screen.getByRole("button", { name: "Reload" })).toBeVisible()
+    expect(replacementUpdate).not.toHaveBeenCalled()
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Reload" }))
+
+    expect(replacementUpdate).toHaveBeenCalledExactlyOnceWith()
+    expect(firstUpdate).not.toHaveBeenCalled()
+    expect(getPendingServiceWorkerUpdate()).toBeNull()
+    replacementView.unmount()
+  })
+
+  it("does not revive a dismissed update after InstallPrompt remounts", async () => {
+    const update = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const detail: ServiceWorkerUpdateEventDetail = { update }
+    act(() => dispatchServiceWorkerUpdate(detail))
+    const view = await renderPrompt()
+    expect(screen.getByRole("button", { name: "Reload" })).toBeVisible()
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+
+    expect(update).not.toHaveBeenCalled()
+    expect(getPendingServiceWorkerUpdate()).toBeNull()
+    view.unmount()
+
+    const remounted = await renderPrompt()
+    expect(screen.queryByRole("button", { name: "Reload" })).not.toBeInTheDocument()
+    remounted.unmount()
+  })
+
   it.each([
     {
       language: "en" as const,

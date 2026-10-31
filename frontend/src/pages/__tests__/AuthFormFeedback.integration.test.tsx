@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { AppProviders } from "@/AppProviders"
 import i18n from "@/i18n/config"
+import { acceptBrowserSessionGeneration } from "@/stores/sessionEpoch"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { createTestQueryClient } from "@/tests/helpers/renderWithRouter"
 import { server } from "@/tests/mocks/server"
@@ -64,6 +65,7 @@ async function renderPublicForm(Component: ComponentType, path: string, initialP
 describe("public form feedback with production providers", () => {
   beforeEach(() => {
     localStorage.clear()
+    acceptBrowserSessionGeneration()
     sessionStorage.clear()
     useAuthStore.setState({ user: null, loading: true, pendingMfa: null, authOperation: false })
     server.use(http.get("*/users/me", () => HttpResponse.json(null, { status: 401 })))

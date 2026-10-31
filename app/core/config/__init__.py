@@ -362,6 +362,32 @@ class Settings(
             raise ValueError("CWV exporter GitHub OIDC policy is incomplete")
         return self
 
+    # AUD-164 peer guard. Keep it after the pre-existing Settings validators:
+    # after-validators run in definition order and the first error wins, so the
+    # specific messages from the older guards must not be hidden by this one.
+    @model_validator(mode="after")
+    def _require_explicit_trusted_proxies(self) -> Settings:
+        """AUD-164: the staging/production HTTP API must name its gateway and edge peers.
+
+        With no trusted peer the API keys every request on the gateway socket
+        address, so all anonymous clients share one login, register, MFA and
+        password-reset bucket. Workers serve no client requests and development
+        keeps the no-trust default, so neither is required to list peers.
+        """
+        env = str(getattr(self, "environment", "production") or "production").lower()
+        process_role = str(getattr(self, "app_process_role", "api") or "api")
+        if (
+            process_role == "api"
+            and env in {"staging", "production"}
+            and not self.trusted_proxies_list
+        ):
+            raise ValueError(
+                "TRUSTED_PROXIES must list the gateway and edge CIDRs in "
+                "staging/production; an empty list shares login, register, MFA and "
+                "password-reset rate limits across all anonymous clients"
+            )
+        return self
+
     @cached_property
     def app_base_url_clean(self) -> str:
         for candidate in (self.app_base_url, self.frontend_origin):

@@ -2,7 +2,6 @@ import {
   queryOptions,
   useQuery,
   type QueryClient,
-  type QueryFunctionContext,
   type UseQueryOptions,
   type UseQueryResult,
 } from "@tanstack/react-query"
@@ -33,7 +32,33 @@ import { fetchDeadLetterQueue } from "@/api/notifications"
 
 export const adminDeadLetterQueueQueryKey = ["admin", "notifications", "dead-letter"] as const
 
-export type AdminDeadLetterQueueQueryKey = typeof adminDeadLetterQueueQueryKey
+export type AdminDeadLetterQueueQueryKey =
+  | typeof adminDeadLetterQueueQueryKey
+  | readonly [...typeof adminDeadLetterQueueQueryKey, AdminDeadLetterQueuePageParams]
+
+export const ADMIN_DEAD_LETTER_PAGE_SIZE = 20
+export const ADMIN_DEAD_LETTER_MAX_OFFSET = 10_000
+export const ADMIN_DEAD_LETTER_MAX_PAGE_COUNT =
+  Math.floor(ADMIN_DEAD_LETTER_MAX_OFFSET / ADMIN_DEAD_LETTER_PAGE_SIZE) + 1
+
+export const getAdminDeadLetterPageCount = (total: number): number =>
+  Math.max(
+    1,
+    Math.min(
+      ADMIN_DEAD_LETTER_MAX_PAGE_COUNT,
+      Math.ceil(Math.max(0, total) / ADMIN_DEAD_LETTER_PAGE_SIZE)
+    )
+  )
+
+export const hasNextAdminDeadLetterPage = (
+  offset: number,
+  loadedCount: number,
+  total: number
+): boolean =>
+  offset + ADMIN_DEAD_LETTER_PAGE_SIZE <= ADMIN_DEAD_LETTER_MAX_OFFSET &&
+  offset + loadedCount < total
+
+export type AdminDeadLetterQueuePageParams = { limit: number; offset: number }
 
 export type AdminDeadLetterQueueData = Awaited<ReturnType<typeof fetchDeadLetterQueue>>
 
@@ -59,13 +84,14 @@ const QUERY_GC_TIME_MS = 5 * 60_000
  * and refetch-replacement cancel in-flight axios requests cleanly. Closes
  * W163 SW3 NEW caveat (AdminNotifications signal propagation polish).
  */
-export const adminDeadLetterQueueQueryOptions = () =>
+export const adminDeadLetterQueueQueryOptions = (params?: AdminDeadLetterQueuePageParams) =>
   queryOptions({
-    queryKey: adminDeadLetterQueueQueryKey,
-    queryFn: async ({
-      signal,
-    }: QueryFunctionContext<AdminDeadLetterQueueQueryKey>): Promise<AdminDeadLetterQueueData> => {
-      return fetchDeadLetterQueue(undefined, signal)
+    queryKey:
+      !params || (params.offset === 0 && params.limit === ADMIN_DEAD_LETTER_PAGE_SIZE)
+        ? adminDeadLetterQueueQueryKey
+        : ([...adminDeadLetterQueueQueryKey, params] as const),
+    queryFn: async ({ signal }): Promise<AdminDeadLetterQueueData> => {
+      return fetchDeadLetterQueue(params, signal)
     },
     staleTime: QUERY_STALE_TIME_MS,
     gcTime: QUERY_GC_TIME_MS,

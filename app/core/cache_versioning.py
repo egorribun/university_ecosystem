@@ -74,6 +74,21 @@ class CacheVersionManager:
         # of stale payloads when an LRU/TTL evicts the generation entry.
         return uuid4().hex
 
+    async def prepare_warmup(self, cache: BaseCache) -> None:
+        """Initialize a reusable generation before a fresh warmup DB snapshot.
+
+        A delayed miss may rotate a newer generation. The warmup owner must
+        discard its earlier read transaction after this call, before querying
+        payloads. Ordinary readers must keep using the non-writing get_version.
+        """
+        cache = _shared_version_cache(cache)
+        if not cache.enabled or isinstance(cache, RedisCache):
+            return
+        entry = await cache.get(self.generation_key)
+        if entry is not None and isinstance(entry.payload, str) and entry.payload:
+            return
+        await self.increment(cache)
+
     async def increment(self, cache: BaseCache | None = None) -> None:
         """Atomically increment version."""
         if cache is None:

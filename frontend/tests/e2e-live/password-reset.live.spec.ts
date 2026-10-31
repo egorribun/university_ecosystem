@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { Page, Response } from "@playwright/test"
+import * as v from "valibot"
 import {
   withLiveRegistrationAdmission,
   awaitMail,
@@ -18,9 +19,29 @@ import {
   test,
 } from "./fixtures"
 
+import {
+  createOwnedResetAccount,
+  findOwnedResetUserId,
+  readOwnedResetUserId,
+} from "./password-reset-account-identity"
+import {
+  readPasswordResetUrlState,
+  withPasswordResetUrlDiagnostic,
+  type ResetUrlPhase,
+} from "./password-reset-url-state"
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import { reportLivePasswordResetRegistrationFailure } from "./live-ui-diagnostic"
-import { runPasswordResetRegistrationAction } from "./password-reset-registration-action"
+import {
+  createPasswordResetRegistrationDiagnostics,
+  createPasswordResetRegistrationTimeline,
+  runPasswordResetRegistrationAction,
+  withPasswordResetRegistrationTimeline,
+  withRegistrationTimeline,
+} from "./password-reset-registration-action"
+import {
+  readPlaywrightTestSlotDeadlineAtMs,
+  REGISTRATION_MAX_TEST_TIMEOUT_MS,
+} from "../../scripts/live-registration-admission.mjs"
 
 const RESET_LINK = /\/reset-password#token=([\w.~-]+)/
 const UNTRUSTED_REDIRECT = "https://redirect-target.invalid/landing"
@@ -78,53 +99,77 @@ const expectResetFragmentAvailableForReload = async (page: Page, token: string) 
     .toBe(true)
 }
 
-const expectResetTokenRemovedFromUrl = async (page: Page, token: string) => {
-  await expect
-    .poll(() =>
-      page.evaluate((candidate) => {
-        const current = new URL(window.location.href)
-        return (
-          current.pathname === "/reset-password" &&
-          !current.searchParams.has("token") &&
-          !current.hash.includes(candidate) &&
-          !window.location.href.includes(candidate)
-        )
-      }, token)
-    )
-    .toBe(true)
+const expectResetTokenRemovedFromUrl = async (
+  page: Page,
+  token: string,
+  project: string,
+  phase: ResetUrlPhase
+) => {
+  await withPasswordResetUrlDiagnostic(
+    project,
+    phase,
+    () => page.evaluate(readPasswordResetUrlState, token),
+    async (observe) => {
+      await expect
+        .poll(async () => {
+          const state = await observe()
+          return (
+            state.resetRoute &&
+            state.tokenQueryAbsent &&
+            state.tokenFragmentAbsent &&
+            state.tokenUrlAbsent
+          )
+        })
+        .toBe(true)
+    }
+  )
 }
 
 test("a student resets with the Mailpit link without retaining tokens or following hostile redirects", async ({
   page,
 }, testInfo) => {
   await stubBreachedPasswordLookup(page)
-  const email = `live-reset-${testInfo.project.name}-${randomUUID()}@university.dev`
+  const account = createOwnedResetAccount(testInfo.project.name, randomUUID())
+  const { email, fullName } = account
   const firstPassword = freshPassword()
   const newPassword = freshPassword()
 
   await page.goto("/register")
-  await page.getByLabel("Имя", { exact: true }).fill("Live Acceptance")
-  await page.getByRole("textbox", { name: "E-mail" }).fill(email)
-  await page.getByLabel("Пароль", { exact: true }).fill(firstPassword)
-  await page.getByLabel("Повторите пароль", { exact: true }).fill(firstPassword)
-  const registered = await withLiveRegistrationAdmission(page, 1, () =>
-    runPasswordResetRegistrationAction(
-      () =>
-        page.waitForResponse(
-          (response) =>
-            response.request().method() === "POST" &&
-            new URL(response.url()).pathname.endsWith("/auth/register")
-        ),
-      () => page.getByRole("button", { name: "Зарегистрироваться" }).click(),
-      (step) => reportLivePasswordResetRegistrationFailure(testInfo.project.name, step)
-    )
+  const registrationTimeline = createPasswordResetRegistrationTimeline(
+    page,
+    testInfo.project.name,
+    readPlaywrightTestSlotDeadlineAtMs(testInfo, REGISTRATION_MAX_TEST_TIMEOUT_MS)
   )
+  const registered = await withRegistrationTimeline(registrationTimeline, async () => {
+    await registrationTimeline.setup()
+    await page.getByLabel("Имя", { exact: true }).fill(fullName)
+    await page.getByRole("textbox", { name: "E-mail" }).fill(email)
+    await page.getByLabel("Пароль", { exact: true }).fill(firstPassword)
+    await page.getByLabel("Повторите пароль", { exact: true }).fill(firstPassword)
+    return withLiveRegistrationAdmission(page, 1, () =>
+      runPasswordResetRegistrationAction(
+        () =>
+          page.waitForResponse(
+            (response) =>
+              response.request().method() === "POST" &&
+              new URL(response.url()).pathname.endsWith("/auth/register")
+          ),
+        () => page.getByRole("button", { name: "Зарегистрироваться" }).click(),
+        (step) => reportLivePasswordResetRegistrationFailure(testInfo.project.name, step),
+        withPasswordResetRegistrationTimeline(
+          createPasswordResetRegistrationDiagnostics(
+            page,
+            testInfo.project.name,
+            ownedSessionOrigin(),
+            readPlaywrightTestSlotDeadlineAtMs(testInfo, REGISTRATION_MAX_TEST_TIMEOUT_MS)
+          ),
+          registrationTimeline
+        )
+      )
+    )
+  })
   expect(registered.ok()).toBe(true)
-  const registrationBody = (await registered.json()) as { id?: unknown }
-  if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {
-    throw new Error("Synthetic account registration returned no account id")
-  }
-  const createdUserId = registrationBody.id
+  const createdUser: { id: string | undefined } = { id: undefined }
   registerOwnedSessionCleanup(async (cleanupBrowser, cleanupDeadlineAtMs) => {
     const cleanupContext = await cleanupBrowser.newContext({
       baseURL: ownedSessionOrigin(),
@@ -134,6 +179,14 @@ test("a student resets with the Mailpit link without retaining tokens or followi
     try {
       const cleanupPage = await cleanupContext.newPage()
       await loginAs(cleanupPage, "admin", cleanupDeadlineAtMs, 5_000)
+      const cleanupUserId =
+        createdUser.id ??
+        (await findOwnedResetUserId(
+          cleanupPage.request,
+          ownedSessionOrigin(),
+          account,
+          boundedReplayTimeout(cleanupDeadlineAtMs, 5_000)
+        ))
       const deleteTimeoutMs = boundedReplayTimeout(cleanupDeadlineAtMs, 5_000)
       const deleteStatus = await cleanupPage.evaluate(
         async ({ userId, timeoutMs }) => {
@@ -162,7 +215,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
             window.clearTimeout(timer)
           }
         },
-        { userId: createdUserId, timeoutMs: deleteTimeoutMs }
+        { userId: cleanupUserId, timeoutMs: deleteTimeoutMs }
       )
       if (deleteStatus !== 200) throw new Error("Synthetic account cleanup did not return 200")
     } finally {
@@ -170,8 +223,30 @@ test("a student resets with the Mailpit link without retaining tokens or followi
     }
   })
 
+  let registrationBody: unknown
+  try {
+    registrationBody = await registered.json()
+  } catch {
+    throw new Error("Synthetic account registration returned an invalid receipt")
+  }
+  const RegistrationReceipt = v.strictObject({ status: v.literal("ok") })
+  if (!v.safeParse(RegistrationReceipt, registrationBody).success) {
+    throw new Error("Synthetic account registration returned an invalid receipt")
+  }
+
   await expect(page).toHaveURL(/\/login/)
   await loginWith(page, email, firstPassword)
+  const identityDeadlineAtMs = readPlaywrightTestSlotDeadlineAtMs(
+    testInfo,
+    REGISTRATION_MAX_TEST_TIMEOUT_MS
+  )
+  if (identityDeadlineAtMs === null) throw new Error("Owned reset account deadline unavailable")
+  createdUser.id = await readOwnedResetUserId(
+    page.request,
+    ownedSessionOrigin(),
+    account,
+    boundedReplayTimeout(identityDeadlineAtMs, 5_000)
+  )
   await page.context().clearCookies()
 
   await page.goto("/forgot-password")
@@ -188,6 +263,9 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   await expectResetFragmentAvailableForReload(page, token)
   await page.reload()
   await expectResetFragmentAvailableForReload(page, token)
+  await page.waitForFunction(() => window.__APP_HYDRATED === true, undefined, {
+    timeout: RESET_REPLAY_ACTION_TIMEOUT_MS,
+  })
   await page.getByLabel("Пароль", { exact: true }).fill(newPassword)
   await page.getByLabel("Повторите пароль", { exact: true }).fill(newPassword)
   await page.getByRole("button", { name: "Сохранить пароль" }).click()
@@ -200,7 +278,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   expect(new URL(page.url()).search === "").toBe(true)
 
   await page.goBack()
-  await expectResetTokenRemovedFromUrl(page, token)
+  await expectResetTokenRemovedFromUrl(page, token, testInfo.project.name, "history")
   const historyKeptResetRoute = await page.evaluate((target) => {
     const current = new URL(window.location.href)
     return current.pathname === "/reset-password" && current.searchParams.get("redirect") === target
@@ -223,7 +301,7 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   const replayUrl = new URL("/reset-password", page.url())
   replayUrl.searchParams.set("token", token)
   await openResetLink(page, replayUrl.href)
-  await expectResetTokenRemovedFromUrl(page, token)
+  await expectResetTokenRemovedFromUrl(page, token, testInfo.project.name, "reopen")
   const replayPassword = freshPassword()
   await page.getByLabel("Пароль", { exact: true }).fill(replayPassword)
   await page.getByLabel("Повторите пароль", { exact: true }).fill(replayPassword)

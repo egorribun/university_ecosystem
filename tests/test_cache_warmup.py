@@ -96,10 +96,9 @@ async def test_warm_cache_enabled():
         patch("app.services.cache_warmup._warm_schedule") as mock_warm_schedule,
         patch("app.services.cache_warmup._warm_stats") as mock_warm_stats,
         patch("app.services.cache_warmup._warm_news") as mock_warm_news,
-        patch("app.services.cache_warmup._warm_events") as mock_warm_events,
     ):
         mock_settings.cache_warmup_enabled = True
-        mock_cache = MagicMock()
+        mock_cache = AsyncMock()
         mock_cache.enabled = True
         mock_get_cache.return_value = mock_cache
 
@@ -111,7 +110,7 @@ async def test_warm_cache_enabled():
         mock_warm_schedule.assert_called_once()
         mock_warm_stats.assert_called_once()
         mock_warm_news.assert_called_once()
-        mock_warm_events.assert_called_once()
+        mock_db.rollback.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -198,10 +197,10 @@ async def test_warm_news():
         ]
         expected_keys = [
             generate_cache_key(
-                cache_prefix="ue:news:list",
+                cache_prefix="news:list",
                 version="v1",
                 locale=locale,
-                params={"limit": 20, "cursor": None},
+                params={"limit": 20, "cursor": None, "__tenant_id": ""},
             )
             for locale in ("ru", "en")
         ]
@@ -212,7 +211,7 @@ async def test_warm_news():
 
 
 # --------------------------------------------------------------------------- #
-# Track C (session 6) additions — early-return guards + _warm_events +         #
+# Track C (session 6) additions — early-return guards +                         #
 # _warm_schedule / _warm_stats wrappers + warm_cache backend-disabled/error.   #
 # --------------------------------------------------------------------------- #
 
@@ -314,32 +313,6 @@ async def test_warm_news_skips_when_cache_disabled():
 
 
 @pytest.mark.asyncio
-async def test_warm_events_skips_when_cache_disabled():
-    cache = AsyncMock()
-    cache.enabled = False
-    await cache_warmup._warm_events(cache, AsyncMock())
-    cache.set.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_warm_events_populates_both_locales():
-    cache = AsyncMock()
-    cache.enabled = True
-    cache.get.return_value = None
-    with (
-        patch("app.api.events._get_events_list_version", AsyncMock(return_value="v1")),
-        patch("app.repositories.unit_of_work.uow_from_session"),
-        patch("app.services.vector_service.VectorService"),
-        patch("app.services.event_service.EventService") as mock_event_service,
-    ):
-        mock_event_service.return_value.get_events = AsyncMock(
-            return_value={"items": [], "has_more": False, "next_cursor": None}
-        )
-        await cache_warmup._warm_events(cache, AsyncMock())
-    assert cache.set.call_count == 2  # ru + en
-
-
-@pytest.mark.asyncio
 async def test_warm_cache_skips_when_backend_disabled():
     with (
         patch("app.services.cache_warmup.settings") as ms,
@@ -364,7 +337,6 @@ async def test_warm_cache_swallows_connection_errors():
         ),
         patch("app.services.cache_warmup._warm_stats", AsyncMock()),
         patch("app.services.cache_warmup._warm_news", AsyncMock()),
-        patch("app.services.cache_warmup._warm_events", AsyncMock()),
     ):
         ms.cache_warmup_enabled = True
         backend = MagicMock()
@@ -373,31 +345,3 @@ async def test_warm_cache_swallows_connection_errors():
         msess.return_value.__aenter__.return_value = AsyncMock()
         # Must not raise — the except (ConnectionError, ...) handler swallows it.
         await cache_warmup.warm_cache()
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(("item_count", "has_more"), [(19, False), (20, True)])
-async def test_warm_news_marks_a_full_page_as_having_more(
-    item_count: int, has_more: bool
-) -> None:
-    mock_cache = AsyncMock()
-    mock_cache.enabled = True
-    mock_cache.get.return_value = None
-
-    with (
-        patch("app.api.news._get_news_list_version", AsyncMock(return_value="v1")),
-        patch("app.services.vector_service.VectorService"),
-        patch("app.repositories.unit_of_work.uow_from_session"),
-        patch("app.services.news_service.NewsService") as MockNewsService,
-        patch.object(cache_warmup, "jsonable_encoder", side_effect=lambda value: value),
-    ):
-        items = [object() for _ in range(item_count)]
-        MockNewsService.return_value.list_news = AsyncMock(
-            return_value=MagicMock(items=items)
-        )
-
-        await cache_warmup._warm_news(mock_cache, AsyncMock())
-
-    payloads = [c.args[1] for c in mock_cache.set.await_args_list]
-    assert [p["has_more"] for p in payloads] == [has_more, has_more]
-    assert all(p["items"] is items for p in payloads)

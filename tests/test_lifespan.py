@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from app.core.lifespan import (
     _handle_schema_and_extensions,
@@ -20,6 +20,10 @@ from app.core.lifespan import (
     lifespan,
 )
 from app.workers.outbox import OutboxWorker
+
+
+class _MissingVectorError(Exception):
+    sqlstate = "0A000"
 
 
 @pytest.mark.asyncio
@@ -284,11 +288,14 @@ async def test_handle_schema_and_extensions_pgvector_fail() -> None:
     ):
         mock_settings.auto_create_schema = True
         mock_settings.environment = "testing"
+        mock_settings.semantic_search_enabled = False
 
         mock_conn = AsyncMock()
         mock_conn.dialect.name = "postgresql"
-        # Executing extension creation raises OSError/ConnectionError
-        mock_conn.execute.side_effect = ConnectionError("extension fail")
+        mock_conn.begin_nested = MagicMock()
+        mock_conn.execute.side_effect = DBAPIError(
+            None, None, _MissingVectorError("extension fail")
+        )
 
         mock_begin_context = MagicMock()
         mock_begin_context.__aenter__.return_value = mock_conn
@@ -1007,7 +1014,7 @@ async def test_lifespan_edge_cases_coverage() -> None:
             with pytest.raises(RuntimeError, match="DB schema mismatch"):
                 await _verify_database_readiness()
 
-    # 5. pgvector creation failure OSError/ConnectionError in non-production (logs warning, disables semantic_search)
+    # 5. pgvector unavailable with semantic search already disabled
     with (
         patch("app.core.lifespan.settings") as mock_settings,
         patch("app.core.lifespan.engine") as mock_engine,
@@ -1015,10 +1022,14 @@ async def test_lifespan_edge_cases_coverage() -> None:
     ):
         mock_settings.auto_create_schema = True
         mock_settings.environment = "development"
+        mock_settings.semantic_search_enabled = False
         mock_conn = AsyncMock()
         mock_engine.begin.return_value.__aenter__.return_value = mock_conn
         mock_conn.dialect.name = "postgresql"
-        mock_conn.execute.side_effect = ConnectionError("pgvector connection failed")
+        mock_conn.begin_nested = MagicMock()
+        mock_conn.execute.side_effect = DBAPIError(
+            None, None, _MissingVectorError("extension unavailable")
+        )
 
         await _handle_schema_and_extensions()
         mock_flags.disable.assert_called_once_with("semantic_search_enabled")

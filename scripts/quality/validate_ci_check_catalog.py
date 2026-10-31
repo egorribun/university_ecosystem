@@ -45,6 +45,16 @@ RETRY_MARKERS = (
     "retry-all-errors",
     "retries",
 )
+# This finite textual exception is not a shell parser. Only the reviewed
+# positional selector is masked; preceding arguments must be literal test paths.
+_REVIEWED_PYTEST_SELECTOR = re.compile(
+    r"(?m)^([ \t]*uv run --frozen --no-sync pytest"
+    r"(?:[ \t]|\\\n)+"
+    r"(?:tests/[A-Za-z0-9_./:-]+(?:[ \t]|\\\n)+)*?)"
+    r"tests/test_outbox_worker\.py::"
+    r"test_durable_outbox_handler_failure_retries_without_pii"
+    r"(?=[ \t]|\\\n|$)"
+)
 NEEDS_DOT_ID = re.compile(r"\.\s*([A-Za-z_][A-Za-z0-9_-]*)")
 NEEDS_BRACKET_ID = re.compile(r"\[\s*(['\"])([A-Za-z_][A-Za-z0-9_-]*)\1\s*\]")
 
@@ -161,9 +171,18 @@ def _as_string(value: Any, *, field: str) -> str:
 
 
 def _is_retry_candidate(job: dict[str, Any]) -> bool:
+    probe = job.copy()
+    steps = job.get("steps")
+    if isinstance(steps, list):
+        probe["steps"] = [
+            {**step, "run": _REVIEWED_PYTEST_SELECTOR.sub(r"\1", step["run"])}
+            if isinstance(step, dict) and isinstance(step.get("run"), str)
+            else step
+            for step in steps
+        ]
     try:
         rendered = json.dumps(
-            job, ensure_ascii=False, sort_keys=True, default=str
+            probe, ensure_ascii=False, sort_keys=True, default=str
         ).lower()
     except (TypeError, ValueError):
         rendered = repr(job).lower()

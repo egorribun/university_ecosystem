@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,7 +118,7 @@ def test_shared_e2e_wasm_producer_is_immutable_and_fail_closed() -> None:
     second_build = "wasm-pack build wasm-sanitizer --target web --release"
     assert build_run.index(first_build) < build_run.index(second_build)
     assert "for attempt in 1 2 3" in build_run
-    assert "node scripts/verify-wasm-artifacts.mjs" in build_run
+    assert "node scripts/verify-wasm-artifacts.mjs" not in build_run
 
     source_provenance = _step(
         build, "Bind checked-in package bytes to source inventory"
@@ -125,6 +127,7 @@ def test_shared_e2e_wasm_producer_is_immutable_and_fail_closed() -> None:
     source_provenance_run = str(source_provenance["run"])
     assert "wasm-source-provenance.mjs" in source_provenance_run
     assert "writeSourceProvenance" in source_provenance_run
+    _assert_source_binding_order(workflow)
 
     upload = _step(build, "Upload immutable E2E WASM modules")
     assert upload["with"] == {
@@ -257,3 +260,65 @@ def test_nightly_browser_matrix_uses_shared_producer() -> None:
         "${{ needs.e2e-wasm-build.outputs.artifact_digest }}"
     )
     assert "e2e-wasm-build" in jobs["notify-failure"]["needs"]
+
+
+def _assert_source_binding_order(workflow: dict[str, Any]) -> None:
+    steps = workflow["jobs"]["build"]["steps"]
+    names = [step.get("name") for step in steps]
+    build_name = "Build immutable WASM modules"
+    bind_name = "Bind checked-in package bytes to source inventory"
+    publish_name = "Write immutable WASM provenance"
+    upload_name = "Upload immutable E2E WASM modules"
+    assert (
+        names.index(build_name)
+        < names.index(bind_name)
+        < names.index(publish_name)
+        < names.index(upload_name)
+    )
+    binding = _step(workflow["jobs"]["build"], bind_name)
+    run = str(binding["run"])
+    bind_call = "await writeSourceProvenance(process.cwd())"
+    verification = "node scripts/verify-wasm-artifacts.mjs"
+    assert run.count(bind_call) == 1
+    assert run.count(verification) == 1
+    assert run.index(bind_call) < run.index(verification)
+    build = _step(workflow["jobs"]["build"], build_name)
+    assert verification not in str(build["run"])
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "binding-before-build",
+        "publishing-before-binding",
+        "verification-before-binding",
+        "missing-verification",
+        "verification-before-build",
+    ),
+)
+def test_source_binding_order_rejects_unsafe_producer_mutations(mutation: str) -> None:
+    workflow = deepcopy(_load(PRODUCER_PATH))
+    _assert_source_binding_order(workflow)
+    build = workflow["jobs"]["build"]
+    steps = build["steps"]
+    binding = _step(build, "Bind checked-in package bytes to source inventory")
+    producer = _step(build, "Build immutable WASM modules")
+    publication = _step(build, "Write immutable WASM provenance")
+    verification = "node scripts/verify-wasm-artifacts.mjs"
+    if mutation == "binding-before-build":
+        steps.remove(binding)
+        steps.insert(steps.index(producer), binding)
+    elif mutation == "publishing-before-binding":
+        steps.remove(publication)
+        steps.insert(steps.index(binding), publication)
+    elif mutation == "verification-before-binding":
+        binding["run"] = verification + "\n" + binding["run"].replace(verification, "")
+    elif mutation == "missing-verification":
+        binding["run"] = binding["run"].replace(verification, "")
+    elif mutation == "verification-before-build":
+        producer["run"] = verification + "\n" + producer["run"]
+    else:
+        raise AssertionError("unknown producer mutation")
+
+    with pytest.raises(AssertionError):
+        _assert_source_binding_order(workflow)

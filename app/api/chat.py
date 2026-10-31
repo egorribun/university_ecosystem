@@ -11,6 +11,7 @@ Membership-derived chat reads use the primary component. A lagging read replica
 could otherwise keep authorizing a removed participant and return private data.
 """
 
+import re
 import uuid
 from typing import Annotated
 from urllib.parse import urlsplit, urlunsplit
@@ -213,9 +214,10 @@ async def download_chat_attachment(
 
     await ChatRepository(db).set_message_rls_user(current_user.id)
     # Match current hierarchical and flat legacy keys before loading rows.
-    # URL helpers inspect the path separately from query/fragment data, so the
-    # lookup allows those optional trailing components while keeping the key
-    # suffix exact. Escape LIKE metacharacters in the validated suffix.
+    # URL helpers inspect the path separately from query/fragment data. Match
+    # the key in the URL path before applying LIMIT, so a suffix occurring in
+    # a query or fragment cannot hide a live row or an ambiguous duplicate.
+    # Escape LIKE metacharacters in the validated suffix.
     key_suffixes = [f"/chat_uploads/chat_{chat_id}/{filename}"]
     if filename.startswith(f"chat_{chat_id}_"):
         key_suffixes.append(f"/chat_uploads/{filename}")
@@ -225,6 +227,12 @@ async def download_chat_attachment(
         for suffix in escaped_suffixes
         for trailing in ("", "?%", "#%")
     ]
+    path_matches = [
+        Attachment.url.regexp_match(
+            rf"^https?://[^/?#]+[^?#]*{re.escape(suffix)}([?#].*)?$"
+        )
+        for suffix in key_suffixes
+    ]
     attachment_rows = (
         await db.execute(
             select(Attachment)
@@ -233,6 +241,7 @@ async def download_chat_attachment(
                 Message.chat_id == chat_id,
                 Message.deleted_at.is_(None),
                 or_(*url_matches),
+                or_(*path_matches),
             )
             .limit(2)
         )

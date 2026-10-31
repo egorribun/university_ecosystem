@@ -1944,12 +1944,18 @@ describe("concurrent HTTP send ordering", () => {
         deliveries.push(result.current.handleSendMessage("second", []))
       })
       await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(2))
-      const optimisticIds = mocks.chatApi.sendMessage.mock.calls.map((call) => String(call[4]))
       await waitFor(() =>
-        expect(result.current.messages.map(({ id }) => id)).toEqual(
-          expect.arrayContaining(optimisticIds)
-        )
+        expect(result.current.messages.filter(({ id }) => id !== "history")).toHaveLength(2)
       )
+      const optimisticMessages = result.current.messages.filter(({ id }) => id !== "history")
+      expect(optimisticMessages.map(({ text }) => text)).toEqual(
+        expect.arrayContaining(["first", "second"])
+      )
+      const optimisticIds = optimisticMessages.map(({ id }) => id)
+      const idempotencyKeys = mocks.chatApi.sendMessage.mock.calls.map((call) => String(call[4]))
+      expect(new Set(optimisticIds).size).toBe(2)
+      expect(new Set(idempotencyKeys).size).toBe(2)
+      for (const key of idempotencyKeys) expect(optimisticIds).not.toContain(key)
       await act(async () => {
         resolveSecond(secondResponse)
         await deliveries[1]

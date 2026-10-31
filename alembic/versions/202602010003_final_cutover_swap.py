@@ -126,6 +126,27 @@ FK_TO_SWAP = [
 ]
 
 
+def _refuse_unmappable_child(bind, table: str, ref_table: str) -> None:
+    """Stop, rather than truncate, a child whose legacy references cannot be mapped.
+
+    AUD-270: the former ``TRUNCATE ... CASCADE`` also erased every table that
+    references ``table``, and the legacy IDs needed to map its rows were already
+    gone. An empty child needs no mapping, so it is left untouched. A non-empty
+    one fails the migration so an operator can restore data rather than lose it.
+    """
+    has_rows = bind.execute(
+        sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
+            f'SELECT EXISTS (SELECT 1 FROM "{table}")'
+        )
+    ).scalar()
+    if has_rows:
+        raise RuntimeError(
+            f"Referenced table {ref_table} is already migrated and legacy IDs are "
+            f"lost; refusing to map or truncate {table}, which still holds rows. "
+            "Restore the pre-cutover data before rerunning this revision."
+        )
+
+
 def upgrade():
     logger = logging.getLogger("alembic")
     bind = op.get_bind()
@@ -206,8 +227,6 @@ def upgrade():
             )
 
     # 2.2 Shadow FKs
-    truncated_tables = set()
-
     for table, legacy_col, shadow_col, ref_table in FK_TO_SWAP:
         # Check if table is being processed (it might have been filtered out
         # if already migrated)
@@ -243,18 +262,7 @@ def upgrade():
         )
 
         if ref_is_already_migrated:
-            if table not in truncated_tables:
-                logger.warning(
-                    f"Referenced table {ref_table} is already migrated and "
-                    "Legacy IDs are lost. "
-                    f"Cannot map records in {table}. TRUNCATING {table} to proceed."
-                )
-                bind.execute(
-                    sa.text(  # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
-                        f'TRUNCATE TABLE "{table}" CASCADE'
-                    )
-                )
-                truncated_tables.add(table)
+            _refuse_unmappable_child(bind, table, ref_table)
             continue
 
         logger.info(f"Populating {shadow_col} for {table}...")

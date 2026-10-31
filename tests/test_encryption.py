@@ -341,6 +341,7 @@ def _production_auth_settings_values(
         not in {"outbox-worker", "notifications-worker"},
         "cache_redis_url": "redis://cache.test:6379/0",
         "revocation_redis_url": "redis://revocation.test:6379/0",
+        "rate_limit_storage_backend": "redis",
         "rate_limit_storage_uri": "redis://rate-limit.test:6379/1",
         "event_file_scanner_enabled": True,
         "database_url": (
@@ -359,6 +360,9 @@ def _production_auth_settings_values(
         "audit_log_secret": secrets.token_urlsafe(48),
         "spicedb_preshared_key": secrets.token_urlsafe(32),
         "ws_hub_internal_secret": secrets.token_urlsafe(32),
+        # AUD-164 explicit API peers and AUD-490 idempotency HMAC key.
+        "trusted_proxies": "10.0.0.0/8",
+        "idempotency_hmac_secret": secrets.token_urlsafe(48),
         "elasticsearch_url": "https://search.test.invalid",
         "elasticsearch_password": secrets.token_urlsafe(32),
         "minio_secure": True,
@@ -414,6 +418,7 @@ def test_full_production_settings_require_totp_ring_for_auth_consumers(
         )
     )
     assert configured.environment == "production"
+    assert configured.rate_limit_storage_backend == "redis"
     assert configured.app_process_role == "api"
     assert configured.mfa_totp_active_encryption_key_id == "active"
     assert active_key not in repr(configured)
@@ -461,6 +466,7 @@ def test_non_auth_worker_settings_start_without_totp_keys(
     )
 
     assert configured.app_process_role == role
+    assert configured.rate_limit_storage_backend == "redis"
     assert configured.revocation_redis_access_enabled is False
     assert configured.mfa_totp_encryption_keys == ""
     assert configured.mfa_totp_active_encryption_key_id == ""

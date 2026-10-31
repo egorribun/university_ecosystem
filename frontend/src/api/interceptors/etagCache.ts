@@ -2,8 +2,9 @@ import { AxiosHeaders } from "axios"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 import { logWarning } from "@/app/logger"
 
-// ETag strings are persisted to localStorage for cross-reload cache hits.
-// Response payloads stay in memory only (RZ-NEW-04: no sensitive data in localStorage).
+// ETag strings may survive reloads, but automatic conditional requests require
+// a live response body and signing key. Response payloads stay in memory only
+// (RZ-NEW-04: no sensitive data in localStorage).
 //
 // DEBT-02 (audit Wave 11): versioned key so stale localStorage entries from
 // previous schema versions are ignored automatically after deployment.
@@ -286,7 +287,7 @@ export const applyEtagHeader = (config: InternalAxiosRequestConfig, etagKey: str
   const headers = AxiosHeaders.from(config.headers ?? {})
   if (!headers.has("if-none-match")) {
     const cachedTag = etagCache.get(etagKey)
-    if (cachedTag) {
+    if (cachedTag && responseCache.get(etagKey) && getSigningKey()) {
       headers.set("If-None-Match", cachedTag)
     }
   }

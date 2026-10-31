@@ -240,7 +240,9 @@ LIVE_CADDY_PROBE_SPEC = "tests/e2e-live/zzz-aud174-prehydration-caddy-log.live.s
 LIVE_CADDY_PROBE_PROJECTS = ("desktop", "mobile")
 LIVE_E2E_SMOKE_FILES = (
     "tests/e2e-live/auth-roles.live.spec.ts",
+    "tests/e2e-live/admin-notifications-rbac.live.spec.ts",
     "tests/e2e-live/password-reset.live.spec.ts",
+    "tests/e2e-live/pwa-offline-shell.live.spec.ts",
     "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
     "tests/e2e-live/settings-radio-focus.live.spec.ts",
     LIVE_CADDY_PROBE_SPEC,
@@ -730,14 +732,22 @@ def load_or_create_vapid(worktree: Path) -> dict[str, str]:
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with path.open("x", encoding="utf-8") as key_file:
-            key_file.write(json.dumps(keys))
-        if IN_PLACE_MODE and os.name == "nt":
-            _restrict_in_place_windows_state_file(path)
-        elif os.name != "nt":
-            path.chmod(0o600)
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
     except FileExistsError:
         return load_vapid(worktree)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", closefd=False) as key_file:
+            key_file.write(json.dumps(keys))
+    finally:
+        os.close(descriptor)
+    if IN_PLACE_MODE and os.name == "nt":
+        _restrict_in_place_windows_state_file(path)
+    elif os.name != "nt":
+        path.chmod(0o600)
     return keys
 
 
@@ -4434,13 +4444,30 @@ def _assert_no_ignored_in_place_build_sources() -> None:
         "--others",
         "--ignored",
         "--exclude-standard",
-        "--directory",
-        "--no-empty-directory",
+        "-z",
         "--",
         *IN_PLACE_BUILD_SOURCE_PATHS,
         *(f":(exclude,glob){path}" for path in IN_PLACE_DOCKERIGNORE_EXCLUSIONS),
     )
-    if ignored_sources:
+    source_roots = tuple(
+        os.path.normcase(path.rstrip("/")).replace(os.path.sep, "/")
+        for path in IN_PLACE_BUILD_SOURCE_PATHS
+    )
+
+    def is_in_place_source_path(path: str) -> bool:
+        normalized_path = os.path.normcase(path).replace(os.path.sep, "/")
+        return any(
+            normalized_path == source_root
+            or normalized_path.startswith(f"{source_root}/")
+            for source_root in source_roots
+        )
+
+    ignored_build_sources = (
+        path
+        for path in ignored_sources.split("\0")
+        if path and is_in_place_source_path(path)
+    )
+    if next(ignored_build_sources, None) is not None:
         raise StandError(
             "in-place source checkout contains ignored untracked files in Docker COPY paths"
         )
@@ -5177,6 +5204,7 @@ _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = (
     "tests/e2e-live/admin-stories-rbac.live.spec.ts",
     "tests/e2e-live/admin-stories-smoke.live.spec.ts",
     "tests/e2e-live/admin-users-rbac.live.spec.ts",
+    "tests/e2e-live/aud178-reset-referer-csp.live.spec.ts",
     "tests/e2e-live/auth-login-lockout.live.spec.ts",
     "tests/e2e-live/auth-roles.live.spec.ts",
     "tests/e2e-live/auth-safe-redirect.live.spec.ts",
@@ -6217,6 +6245,44 @@ def _validated_registration_admission_diag(value: object) -> dict[str, object] |
     return dict(record)
 
 
+_PLAYWRIGHT_RESET_URL_LINE = re.compile(
+    r"UE_LIVE_RESET_URL_V1 project=(desktop|mobile) phase=(history|reopen) "
+    r"reset_route=(true|false) token_query_absent=(true|false) "
+    r"token_fragment_absent=(true|false) token_url_absent=(true|false)"
+)
+
+
+def _live_playwright_reset_url_observations(
+    output: str,
+) -> list[tuple[str, str, bool, bool, bool, bool]]:
+    """Retain only the first completed boolean observation per project/phase."""
+    records: list[tuple[str, str, bool, bool, bool, bool]] = []
+    seen: set[tuple[str, str]] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 160 or not line.isprintable():
+            continue
+        match = _PLAYWRIGHT_RESET_URL_LINE.fullmatch(line)
+        if match is None:
+            continue
+        key = (match.group(1), match.group(2))
+        if key in seen:
+            continue
+        seen.add(key)
+        records.append(
+            (
+                *key,
+                match.group(3) == "true",
+                match.group(4) == "true",
+                match.group(5) == "true",
+                match.group(6) == "true",
+            )
+        )
+        if len(records) == 4:
+            break
+    return records
+
+
 _PLAYWRIGHT_RESET_REGISTRATION_LINE = re.compile(
     r"UE_LIVE_RESET_REGISTRATION_V1 project=(desktop|mobile) "
     r"step=(arm-response|click|await-response)"
@@ -6235,6 +6301,208 @@ def _live_playwright_reset_registration_steps(output: str) -> list[tuple[str, st
         record = (match.group(1), match.group(2))
         if record not in records:
             records.append(record)
+        if len(records) == 6:
+            break
+    return records
+
+
+_RESET_REGISTRATION_V2_ERROR_KEYS = (
+    "nameError",
+    "emailError",
+    "inviteError",
+    "passwordError",
+    "confirmError",
+    "rootError",
+)
+_RESET_REGISTRATION_V2_SNAPSHOT_KEYS = (
+    "hydrated",
+    "formPresent",
+    "formInvalid",
+    "formError",
+    *_RESET_REGISTRATION_V2_ERROR_KEYS,
+    "submitPresent",
+    "submitDisabled",
+    "submitBusy",
+)
+_RESET_REGISTRATION_V2_KEYS = (
+    "project",
+    "step",
+    "errorCategory",
+    "snapshot",
+    *_RESET_REGISTRATION_V2_SNAPSHOT_KEYS,
+    "csrfRequested",
+    "csrfResponse",
+    "csrfFailed",
+)
+
+
+def _validated_reset_registration_v2(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _RESET_REGISTRATION_V2_KEYS)
+    if record is None:
+        return None
+    allowed_values = {
+        "project": ("desktop", "mobile"),
+        "step": ("arm-response", "click", "await-response"),
+        "errorCategory": (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        ),
+        "snapshot": ("available", "unavailable"),
+        "csrfResponse": (
+            "not-observed",
+            "success",
+            "http-error",
+            "mixed",
+            "unavailable",
+        ),
+    }
+    if any(record[key] not in values for key, values in allowed_values.items()):
+        return None
+    boolean_keys = (
+        *_RESET_REGISTRATION_V2_SNAPSHOT_KEYS,
+        "csrfRequested",
+        "csrfFailed",
+    )
+    if any(type(record[key]) is not bool for key in boolean_keys):
+        return None
+    if record["snapshot"] == "unavailable" and any(
+        record[key] for key in _RESET_REGISTRATION_V2_SNAPSHOT_KEYS
+    ):
+        return None
+    if not record["formPresent"] and any(
+        record[key] for key in _RESET_REGISTRATION_V2_SNAPSHOT_KEYS[2:]
+    ):
+        return None
+    if not record["formError"] and any(
+        record[key] for key in _RESET_REGISTRATION_V2_ERROR_KEYS
+    ):
+        return None
+    if not record["submitPresent"] and (
+        record["submitDisabled"] or record["submitBusy"]
+    ):
+        return None
+    if not record["csrfRequested"] and (
+        record["csrfResponse"] != "not-observed" or record["csrfFailed"]
+    ):
+        return None
+    return dict(record)
+
+
+def _live_playwright_reset_registration_v2(output: str) -> list[dict[str, object]]:
+    prefix = "UE_LIVE_RESET_REGISTRATION_V2 "
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if len(line) > 1_024 or not line.isprintable() or not line.startswith(prefix):
+            continue
+        try:
+            value = json.loads(
+                line[len(prefix) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_reset_registration_v2(value)
+        if record is None:
+            continue
+        identity = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        records.append(record)
+        if len(records) == 6:
+            break
+    return records
+
+
+_RESET_REGISTRATION_V3_KEYS = (
+    "project",
+    "step",
+    "beforeName",
+    "afterName",
+    "beforeSubmit",
+)
+_RESET_REGISTRATION_V3_SNAPSHOT_KEYS = ("hydrated", "nameState", "nameError")
+
+
+def _validated_reset_registration_v3(value: object) -> dict[str, object] | None:
+    record = _auth_diag_object(value, _RESET_REGISTRATION_V3_KEYS)
+    if record is None:
+        return None
+    if not isinstance(record["project"], str) or record["project"] not in (
+        "desktop",
+        "mobile",
+    ):
+        return None
+    if not isinstance(record["step"], str) or record["step"] not in (
+        "arm-response",
+        "click",
+        "await-response",
+    ):
+        return None
+    for field in ("beforeName", "afterName", "beforeSubmit"):
+        if record[field] is None:
+            continue
+        snapshot_keys = (
+            (*_RESET_REGISTRATION_V3_SNAPSHOT_KEYS, "trigger")
+            if field == "beforeSubmit"
+            else _RESET_REGISTRATION_V3_SNAPSHOT_KEYS
+        )
+        snapshot = _auth_diag_object(record[field], snapshot_keys)
+        if snapshot is None or any(
+            type(snapshot[key]) is not bool for key in ("hydrated", "nameError")
+        ):
+            return None
+        state = snapshot["nameState"]
+        if not isinstance(state, str) or state not in (
+            "missing",
+            "empty",
+            "short",
+            "at-least-two",
+        ):
+            return None
+        if field == "beforeSubmit" and (
+            not isinstance(snapshot["trigger"], str)
+            or snapshot["trigger"] not in ("click", "invalid", "submit")
+        ):
+            return None
+    return dict(record)
+
+
+def _live_playwright_reset_registration_v3(output: str) -> list[dict[str, object]]:
+    prefix = "UE_LIVE_RESET_REGISTRATION_V3 "
+    records: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for line in output.split("\n")[:-1]:
+        line = line.removesuffix("\r")
+        if (
+            len(line.encode("utf-8")) > 1_024
+            or not line.isprintable()
+            or not line.startswith(prefix)
+        ):
+            continue
+        try:
+            value = json.loads(
+                line[len(prefix) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError):
+            continue
+        record = _validated_reset_registration_v3(value)
+        if record is None:
+            continue
+        identity = json.dumps(record, sort_keys=True, separators=(",", ":"))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        records.append(record)
         if len(records) == 6:
             break
     return records
@@ -7268,7 +7536,7 @@ _PLAYWRIGHT_SKIPPED_ROW_HEADER = re.compile(
     r"(?P<source>[^ :\t]{1,160}):(?P<line>[1-9][0-9]{0,4}):"
     r"(?P<column>[1-9][0-9]{0,4}) \u203a (?=.)"
 )
-_PLAYWRIGHT_FULL_COLLECTION_COUNT = 220
+_PLAYWRIGHT_FULL_COLLECTION_COUNT = 224
 _PLAYWRIGHT_SKIP_IDENTITY_LIMIT = 216
 _PLAYWRIGHT_SKIP_SCAN_LINE_LIMIT = 8192
 _PLAYWRIGHT_SKIP_LINE_LENGTH_LIMIT = 4096
@@ -7627,7 +7895,11 @@ def _run_live_playwright(
         )
         skip_accounting_passed = (
             _live_playwright_counts(stdout)
-            == {"passed": 212, "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)}
+            == {
+                "passed": _PLAYWRIGHT_FULL_COLLECTION_COUNT
+                - len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES),
+                "skipped": len(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES),
+            }
             and not skip_rejected_rows
             and not skip_overflow
             and sorted(skip_identities) == sorted(_PLAYWRIGHT_EXPECTED_SKIP_IDENTITIES)
@@ -7656,8 +7928,17 @@ def _run_live_playwright(
         if return_code != 0
         else []
     )
+    reset_url_observations = (
+        _live_playwright_reset_url_observations(stdout) if return_code != 0 else []
+    )
     reset_registration_steps = (
         _live_playwright_reset_registration_steps(stdout) if return_code != 0 else []
+    )
+    reset_registration_v2 = (
+        _live_playwright_reset_registration_v2(stdout) if return_code != 0 else []
+    )
+    reset_registration_v3 = (
+        _live_playwright_reset_registration_v3(stdout) if return_code != 0 else []
     )
     registration_admission_diagnostics = (
         _live_playwright_registration_admission_diagnostics(stdout)
@@ -7799,9 +8080,29 @@ def _run_live_playwright(
             "live E2E auth registration " + json.dumps(record, separators=(",", ":")),
             flush=True,
         )
+    for project, phase, route, query, fragment, href in reset_url_observations:
+        print(
+            f"live E2E reset-url project={project} phase={phase} "
+            f"reset_route={str(route).lower()} token_query_absent={str(query).lower()} "
+            f"token_fragment_absent={str(fragment).lower()} "
+            f"token_url_absent={str(href).lower()}",
+            flush=True,
+        )
     for project, step in reset_registration_steps:
         print(
             f"live E2E reset-registration project={project} step={step}",
+            flush=True,
+        )
+    for record in reset_registration_v2:
+        print(
+            "live E2E reset-registration-v2 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True),
+            flush=True,
+        )
+    for record in reset_registration_v3:
+        print(
+            "live E2E reset-registration-v3 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True),
             flush=True,
         )
     for record in registration_admission_diagnostics:
@@ -9863,6 +10164,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "nats-outage":
             try:
                 from scripts.owned_nats_coordinator import (
+                    BrokerProbePhase,
                     OutageCheckpoint,
                     OutageOutcome,
                     OutageResult,
@@ -9888,12 +10190,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                     and type(result.checkpoint) is not OutageCheckpoint
                 )
                 or (
+                    result.outcome is OutageOutcome.ACCEPTED
+                    and result.checkpoint is not None
+                )
+                or (
                     result.runtime_diagnostic is not None
                     and (
                         type(result.runtime_diagnostic) is not RuntimeObservationPhase
                         or result.outcome is not OutageOutcome.FAILED
                         or result.stage is not OutageStage.PREFLIGHT
                         or result.checkpoint is not OutageCheckpoint.OBSERVE_RUNTIME
+                    )
+                )
+                or (
+                    result.broker_diagnostic is not None
+                    and (
+                        type(result.broker_diagnostic) is not BrokerProbePhase
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.BROKER
+                        or result.checkpoint is not OutageCheckpoint.BROKER_PROBE
                     )
                 )
             ):
@@ -9912,10 +10227,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if result.runtime_diagnostic is None
                     else f" runtime_diagnostic={result.runtime_diagnostic.value}"
                 )
+                broker_diagnostic = (
+                    ""
+                    if result.broker_diagnostic is None
+                    else f" broker_diagnostic={result.broker_diagnostic.value}"
+                )
                 raise StandError(
                     "owned NATS acceptance failed "
                     f"outcome={result.outcome.value} stage={result.stage.value}"
-                    f"{checkpoint}{diagnostic}"
+                    f"{checkpoint}{diagnostic}{broker_diagnostic}"
                 )
         elif args.command == "up":
             up(args.ref, stack=args.stack)

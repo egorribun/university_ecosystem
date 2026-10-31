@@ -31,8 +31,8 @@ require (
 require (
 	github.com/alicebob/miniredis/v2 v2.40.0
 	github.com/lestrrat-go/httprc/v3 v3.0.6
-	github.com/moby/moby/api v1.55.0
-	github.com/quic-go/quic-go v0.63.0
+	github.com/moby/moby/api v1.56.1
+	github.com/quic-go/quic-go v0.64.1
 	github.com/quic-go/webtransport-go v0.13.0
 	github.com/sony/gobreaker/v2 v2.4.0
 	github.com/testcontainers/testcontainers-go v0.44.0
@@ -61,7 +61,7 @@ require (
 	github.com/dunglas/httpsfv v1.1.2 // indirect
 	github.com/ebitengine/purego v0.10.1 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.5 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.7 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect

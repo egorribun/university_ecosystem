@@ -29,6 +29,8 @@ jobs:
                     - 5432:5432
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                persist-credentials: false
             - name: Set up Python
               uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
               with:
@@ -75,13 +77,13 @@ jobs:
               env:
                   PGPASSWORD: test # pragma: allowlist secret
               run: |
+                  set -euo pipefail
                   # Create DEFAULT + prev/current/next-month partitions for every
                   # RANGE-partitioned table using IF NOT EXISTS so the step is
-                  # idempotent.  psql exits 0 even when the partition already exists.
+                  # idempotent. Existing partitions do not cause an error.
                   #
-                  # This is the authoritative safety-net: Alembic's 202607020001
-                  # migration should already have created these, but we guarantee it
-                  # here so that no Python-level fixture failure can block the tests.
+                  # Alembic's 202607020001 migration should already have created
+                  # these. Any failure here must stop the job before pytest.
                   PREV_MONTH=$(date -u -d "$(date +%Y-%m-01) -1 month" +%Y_%m)
                   CURR_MONTH=$(date -u +%Y_%m)
                   NEXT_MONTH=$(date -u -d "$(date +%Y-%m-01) +1 month" +%Y_%m)
@@ -91,7 +93,7 @@ jobs:
                   AFTER_NEXT=$(date -u -d "$(date +%Y-%m-01) +2 month" +%Y-%m-01)
 
                   for TABLE in data_access_logs notifications notification_deliveries failed_login_attempts; do
-                      psql -h localhost -U test -d test -c "
+                      psql -X -v ON_ERROR_STOP=1 -h localhost -U test -d test -c "
                         CREATE TABLE IF NOT EXISTS ${TABLE}_default
                           PARTITION OF ${TABLE} DEFAULT;
                         CREATE TABLE IF NOT EXISTS ${TABLE}_${PREV_MONTH}
@@ -103,11 +105,11 @@ jobs:
                         CREATE TABLE IF NOT EXISTS ${TABLE}_${NEXT_MONTH}
                           PARTITION OF ${TABLE}
                           FOR VALUES FROM ('${NEXT_START}') TO ('${AFTER_NEXT}');
-                      " 2>&1 || echo "WARN: partition step for ${TABLE} had errors (may be a non-partitioned table, ignored)"
+                      " 2>&1
                   done
 
                   echo '=== Final partition state ==='
-                  psql -h localhost -U test -d test -c "
+                  psql -X -v ON_ERROR_STOP=1 -h localhost -U test -d test -c "
                     SELECT parent.relname AS parent, child.relname AS child
                     FROM pg_inherits
                     JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
@@ -123,6 +125,7 @@ jobs:
                   SECRET_KEY: test-secret-key-for-ci-perf-gate-only  # pragma: allowlist secret
                   ENVIRONMENT: testing
                   UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
+                  UNIVERSITY_ECOSYSTEM_DB_PERF_CAPTURE_REQUIRED: "1"
               run: |
                   # Run only repository tests — this step exists solely to emit
                   # SQL query logs that db_explain_check.py will analyze.

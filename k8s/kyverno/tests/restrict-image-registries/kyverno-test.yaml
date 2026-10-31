@@ -14,6 +14,23 @@ resources:
   - suffix-bitnami-digest-pod.yaml
   - unpinned-bitnami-exporter-pod.yaml
   - unpinned-bitnami-nats-pod.yaml
+  - canonical-release-pod.yaml
+  - flagd-pod.yaml
+  - staging-dependencies-pod.yaml
+  - wrong-digest-redis-pod.yaml
+  - tagged-digest-redis-pod.yaml
+  - unpinned-redis-pod.yaml
+  - wrong-repository-redis-pod.yaml
+  - wrong-digest-exporter-pod.yaml
+  - wrong-digest-nats-pod.yaml
+  - unpinned-flagd-pod.yaml
+  - untrusted-ghcr-pod.yaml
+  - lookalike-ghcr-pod.yaml
+  - placeholder-ghcr-pod.yaml
+  - placeholder-registry-pod.yaml
+  - unknown-first-party-image-pod.yaml
+  - untrusted-initcontainer-pod.yaml
+  - untrusted-ephemeralcontainer-pod.yaml
 results:
   - policy: restrict-image-registries
     resources: [university-ecosystem/compliant-pod]
@@ -49,5 +66,73 @@ results:
     result: fail
   - policy: restrict-image-registries
     resources: [university-ecosystem/unpinned-bitnami-nats-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/canonical-release-pod]
+    kind: Pod
+    result: pass
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/flagd-pod]
+    kind: Pod
+    result: pass
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/staging-dependencies-pod]
+    kind: Pod
+    result: pass
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/unpinned-flagd-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/untrusted-ghcr-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/lookalike-ghcr-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/placeholder-ghcr-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/placeholder-registry-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/unknown-first-party-image-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/untrusted-initcontainer-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/untrusted-ephemeralcontainer-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/wrong-digest-redis-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/tagged-digest-redis-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/unpinned-redis-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/wrong-repository-redis-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/wrong-digest-exporter-pod]
+    kind: Pod
+    result: fail
+  - policy: restrict-image-registries
+    resources: [university-ecosystem/wrong-digest-nats-pod]
     kind: Pod
     result: fail

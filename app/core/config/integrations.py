@@ -39,8 +39,8 @@ class IntegrationSettings(BaseAppSettings):
     # RZ-W10-11: HMAC secret for idempotency key generation.
     # Signs (chat_id:user_id:client_key) so that idempotency keys cannot be
     # enumerated by an observer who can read the Idempotency-Key request header.
-    # Default empty string falls back to plain BLAKE2b for backward-compat.
-    # Must be set in production via IDEMPOTENCY_HMAC_SECRET env var.
+    # The empty default falls back to plain BLAKE2b for local runs only; staging
+    # and production reject it (AUD-490, _enforce_production_secrets).
     idempotency_hmac_secret: str = ""
 
     # RZ-20-02 (audit 2026-03-24): Support Docker Secrets / Kubernetes Secrets
@@ -139,6 +139,15 @@ class IntegrationSettings(BaseAppSettings):
                 "WS_HUB_INTERNAL_SECRET must be set in production. "
                 "An empty value leaves the ws-hub cache-invalidation endpoint "
                 "unauthenticated, allowing any internal actor to force users offline."
+            )
+
+        # AUD-490: an empty secret silently downgrades idempotency keys to unkeyed
+        # BLAKE2b, so an observer of the Idempotency-Key header can enumerate pairs.
+        if not self.idempotency_hmac_secret:
+            errors.append(
+                "IDEMPOTENCY_HMAC_SECRET must be set in production. "
+                "An empty value makes idempotency keys enumerable from the "
+                "Idempotency-Key request header."
             )
 
         if errors:

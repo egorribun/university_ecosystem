@@ -94,7 +94,11 @@ export function ReactionPill({
   const { getReferenceProps, getFloatingProps } = useInteractions([hover, focus, dismiss, role])
 
   // Fetch reactors only while the popover is open + we know which chat.
-  const { data: reactors = [], isLoading } = useQuery({
+  const {
+    data: reactors = [],
+    isError,
+    isLoading,
+  } = useQuery({
     ...reactorsQueryOptions(chatId ?? "", messageId, emoji),
     enabled: isOpen && !!chatId,
   })
@@ -149,8 +153,8 @@ export function ReactionPill({
         className={cn(
           "-m-2 inline-flex min-h-[44px] min-w-[44px] items-center gap-1 rounded-full border px-2 py-0.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)",
           reactedByMe
-            ? "border-(--color-violet-500)/(--opacity-medium) bg-(--color-violet-500)/(--opacity-soft) text-(--text-primary)"
-            : "border-(--color-violet-500)/(--opacity-faint) bg-(--bg-surface-raised)/(--opacity-medium) text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+            ? "border-(--color-violet-500)/[calc(var(--opacity-medium)*100%)] bg-(--color-violet-500)/[calc(var(--opacity-soft)*100%)] text-(--text-primary)"
+            : "border-(--color-violet-500)/[calc(var(--opacity-faint)*100%)] bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)] text-(--text-secondary) hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]"
         )}
       >
         <span aria-hidden="true">{emoji}</span>
@@ -163,7 +167,7 @@ export function ReactionPill({
             style={floatingStyles}
             {...floatingProps}
             data-reaction-ui
-            className="z-popover max-w-[16rem] rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-2.5 shadow-glass backdrop-blur-xl"
+            className="z-popover max-w-[16rem] rounded-xl border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-heavy)*100%)] p-2.5 shadow-glass backdrop-blur-xl"
           >
             <p className="mb-1.5 px-1 text-micro font-semibold uppercase tracking-wider text-(--text-secondary)">
               {t("messenger:reactions.whoReacted", { emoji })}
@@ -171,6 +175,10 @@ export function ReactionPill({
             {isLoading ? (
               <p className="px-1 py-1 text-sm text-(--text-secondary)">
                 {t("messenger:reactions.reactorsLoading")}
+              </p>
+            ) : isError ? (
+              <p role="alert" className="px-1 py-1 text-sm text-(--text-secondary)">
+                {t("messenger:reactions.reactorsError")}
               </p>
             ) : reactors.length === 0 ? (
               <p className="px-1 py-1 text-sm text-(--text-secondary)">

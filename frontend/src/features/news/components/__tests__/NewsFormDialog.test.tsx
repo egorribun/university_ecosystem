@@ -30,6 +30,7 @@ vi.mock("@/utils/telemetryContext", () => ({
 
 import { server } from "@/tests/mocks/server"
 import { NewsFormDialog } from "../NewsFormDialog"
+import { LanguageProvider } from "@/contexts/LanguageContext"
 
 // We must wrap the component in a QueryClientProvider because NewsFormDialog uses useQueryClient
 const renderWithProviders = (ui: React.ReactElement) => {
@@ -40,7 +41,11 @@ const renderWithProviders = (ui: React.ReactElement) => {
   })
 
   return {
-    ...render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>),
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <LanguageProvider>{ui}</LanguageProvider>
+      </QueryClientProvider>
+    ),
     queryClient,
   }
 }
@@ -53,6 +58,8 @@ describe("NewsFormDialog", () => {
   }
 
   beforeEach(() => {
+    window.__UE_SELECTED_LANG__ = "en"
+    localStorage.setItem("ue:language", "en")
     vi.clearAllMocks()
     telemetryMocks.capture.mockImplementation(() => ({ run: telemetryMocks.run }))
     server.resetHandlers()
@@ -264,6 +271,32 @@ describe("NewsFormDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/network error|network error/i)
   })
 
+  it("uses the translated generic fallback for a 422 response with Pydantic validation details", async () => {
+    const detail = [
+      {
+        type: "string_too_short",
+        loc: ["body", "title"],
+        msg: "String should have at least 1 character",
+      },
+    ]
+    window.__UE_SELECTED_LANG__ = "ru"
+    localStorage.setItem("ue:language", "ru")
+    server.use(http.post("*/news", () => HttpResponse.json({ detail }, { status: 422 })))
+
+    renderWithProviders(<NewsFormDialog {...defaultProps} />)
+    fireEvent.change(document.querySelector<HTMLInputElement>("#news-title")!, {
+      target: { value: "Новость" },
+    })
+    fireEvent.change(document.querySelector<HTMLTextAreaElement>("#news-content")!, {
+      target: { value: "Текст новости" },
+    })
+    fireEvent.submit(document.querySelector("form")!)
+
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Ошибка сохранения")
+    expect(defaultProps.onClose).not.toHaveBeenCalled()
+  })
+
   it("allows cancelling and supports a dialog without an onSuccess callback", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
@@ -289,5 +322,21 @@ describe("NewsFormDialog", () => {
       await screen.findByText("Title (EN) must be less than 100 characters")
     ).toBeInTheDocument()
     expect(screen.getByText("Content (EN) must be less than 3000 characters")).toBeInTheDocument()
+  })
+})
+
+describe("NewsFormDialog validation locale regression", () => {
+  it("renders required field validation in the active Russian language provider", async () => {
+    window.__UE_SELECTED_LANG__ = "ru"
+    localStorage.setItem("ue:language", "ru")
+    renderWithProviders(
+      <NewsFormDialog open onClose={() => undefined} onSuccess={() => undefined} />
+    )
+    fireEvent.submit(document.querySelector("form")!)
+    const title = document.querySelector<HTMLInputElement>("#news-title")!
+    const content = document.querySelector<HTMLTextAreaElement>("#news-content")!
+    await waitFor(() => expect(title.parentElement?.querySelector("p")).toBeInTheDocument())
+    expect(title.parentElement?.querySelector("p")?.textContent).toBe("Введите заголовок новости")
+    expect(content.parentElement?.querySelector("p")?.textContent).toBe("Введите текст новости")
   })
 })

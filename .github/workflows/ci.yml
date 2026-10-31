@@ -237,7 +237,11 @@ jobs:
         # RZ-14-06: the workflow-wide key is intentionally empty for every
         # event; generate an ephemeral 32-byte value only in this job.
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
       - name: Enforce Rate Limit Shim Deadline (TD-003)
         run: |
           count=$(git grep "from app.core import rate_limit" app/ | wc -l || echo "0")
@@ -264,15 +268,7 @@ jobs:
         # is the safe replacement.  This gate prevents future re-introduction.
         shell: bash
         run: |
-          # TD-W18-04 (audit 2026-03-23 Wave 18): exclude comments to prevent false
-          # positives (e.g. "# Do NOT import pickle" triggered the old gate).
-          result=$(grep -rn "import pickle\|from pickle\|pickle\.loads\|pickle\.dumps" app/ --include="*.py" | grep -v '^\s*#' | grep -v '# nosec' || true)
-          if [ -n "$result" ]; then
-            echo "::error::pickle usage detected in app/ — replace with Pydantic model_validate_json / model_dump_json (see RED-01 in Wave 13 audit)"
-            echo "$result"
-            exit 1
-          fi
-          echo "OK: no pickle usage found in app/"
+          python scripts/quality/check_no_pickle.py app/
 
       - name: "Enforce Python 3 except tuple syntax (RZ-25-01 / MOD-27-01)"
         # MOD-27-01: Fixed regex — previous `grep -v 'except ('` accidentally
@@ -291,56 +287,166 @@ jobs:
 
       - name: "MOD-30-01: Enforce lazy=noload on SQLAlchemy relationships"
         run: |
-          # All relationships in app/models/ must have explicit lazy= parameter
-          # to prevent N+1 queries.  See CLAUDE.md: "ALL relationships must have
-          # explicit lazy=\"noload\"".  Use '# noload-exempt: <reason>' for
-          # justified exceptions (e.g., lazy="joined" for 1:1).
-          #
-          # Multi-line aware: reads full relationship(...) calls across lines.
-          python3 -c "
-          import re, sys, pathlib
+          python3 - <<'PY'
+          import ast
+          import io
+          import pathlib
+          import re
+          import sys
+          import tokenize
+
+          def dotted_name(node):
+              if isinstance(node, ast.Name):
+                  return node.id
+              if isinstance(node, ast.Attribute):
+                  parent = dotted_name(node.value)
+                  return f'{parent}.{node.attr}' if parent else None
+              return None
+
+          def is_relationship_function(expression, names, modules):
+              if isinstance(expression, ast.Name) and expression.id in names:
+                  return True
+              name = dotted_name(expression)
+              return name is not None and any(
+                  name == f'{module}.relationship' for module in modules
+              )
+
+          def is_relationship_module(expression, modules):
+              return dotted_name(expression) in modules
+
+          def references_relationship(expression, names, modules):
+              for child in ast.walk(expression):
+                  if is_relationship_function(child, names, modules):
+                      return True
+              return False
+
+          def assignment_targets(target):
+              if isinstance(target, ast.Name):
+                  return (target.id,)
+              return ()
+
+          def add_static_aliases(tree, names, modules):
+              assignments = []
+              for item in ast.walk(tree):
+                  if isinstance(item, ast.Assign):
+                      assignments.extend(
+                          (name, item.value)
+                          for target in item.targets
+                          for name in assignment_targets(target)
+                      )
+                  elif isinstance(item, ast.AnnAssign) and item.value is not None:
+                      assignments.extend(
+                          (name, item.value) for name in assignment_targets(item.target)
+                      )
+              changed = True
+              while changed:
+                  changed = False
+                  for name, value in assignments:
+                      if is_relationship_module(value, modules) and name not in modules:
+                          modules.add(name)
+                          changed = True
+                      elif (
+                          references_relationship(value, names, modules)
+                          and name not in names
+                      ):
+                          names.add(name)
+                          changed = True
+
+          def has_exemption(call, lazy_keyword, comments, relationship_calls):
+              allowed_lines = {call.end_lineno, lazy_keyword.end_lineno}
+              for token in comments:
+                  line = token.start[0]
+                  if line not in allowed_lines or not re.match(
+                      r'#\s*noload-exempt:\s*\S', token.string
+                  ):
+                      continue
+                  calls_on_line = [
+                      candidate
+                      for candidate in relationship_calls
+                      if candidate.lineno <= line <= candidate.end_lineno
+                  ]
+                  if len(calls_on_line) == 1 and calls_on_line[0] is call:
+                      return True
+              return False
 
           models = pathlib.Path('app/models')
-          # Match relationship( ... ) spanning multiple lines
-          pat = re.compile(r'relationship\s*\(', re.MULTILINE)
+          if not models.is_dir():
+              print('::error::app/models directory is missing (MOD-30-01)')
+              sys.exit(2)
           violations = []
-          for f in sorted(models.rglob('*.py')):
-              if '__pycache__' in str(f):
-                  continue
-              text = f.read_text(encoding='utf-8')
-              lines = text.splitlines(keepends=True)
-              # Build line offset map
-              offsets = []
-              pos = 0
-              for line in lines:
-                  offsets.append(pos)
-                  pos += len(line)
-              for m in pat.finditer(text):
-                  start = m.start()
-                  # Find matching closing paren (handle nesting)
-                  depth, i = 1, m.end()
-                  while i < len(text) and depth > 0:
-                      if text[i] == '(':
-                          depth += 1
-                      elif text[i] == ')':
-                          depth -= 1
-                      i += 1
-                  block = text[start:i]
-                  # Line number (1-based)
-                  lineno = next(j + 1 for j in range(len(offsets) - 1, -1, -1) if offsets[j] <= start)
-                  if 'lazy=' in block or '# noload-exempt' in block:
+          for path in sorted(models.rglob('*.py')):
+              source = path.read_text(encoding='utf-8')
+              tree = ast.parse(source, filename=str(path))
+              relationship_names = {'relationship'}
+              relationship_modules = set()
+              for item in ast.walk(tree):
+                  if isinstance(item, ast.ImportFrom):
+                      if item.module == 'sqlalchemy.orm':
+                          relationship_names.update(
+                              alias.asname or alias.name
+                              for alias in item.names
+                              if alias.name == 'relationship'
+                          )
+                      elif item.module == 'sqlalchemy':
+                          relationship_modules.update(
+                              alias.asname or alias.name
+                              for alias in item.names
+                              if alias.name == 'orm'
+                          )
+                  elif isinstance(item, ast.Import):
+                      for alias in item.names:
+                          if alias.name == 'sqlalchemy.orm':
+                              relationship_modules.add(alias.asname or alias.name)
+                          elif alias.name == 'sqlalchemy':
+                              relationship_modules.add(
+                                  f'{alias.asname or alias.name}.orm'
+                              )
+              add_static_aliases(tree, relationship_names, relationship_modules)
+              comments = [
+                  token
+                  for token in tokenize.generate_tokens(io.StringIO(source).readline)
+                  if token.type == tokenize.COMMENT
+              ]
+              relationship_calls = [
+                  item
+                  for item in ast.walk(tree)
+                  if isinstance(item, ast.Call)
+                  and is_relationship_function(
+                      item.func, relationship_names, relationship_modules
+                  )
+              ]
+              for item in relationship_calls:
+                  lazy_keyword = next(
+                      (keyword for keyword in item.keywords if keyword.arg == 'lazy'),
+                      None,
+                  )
+                  lazy = lazy_keyword.value if lazy_keyword is not None else None
+                  if isinstance(lazy, ast.Constant) and lazy.value == 'noload':
                       continue
-                  violations.append(f'{f}:{lineno}:    {lines[lineno-1].rstrip()}')
-          if violations:
-              print('::error::Relationships without explicit lazy= found (MOD-30-01):')
-              print('\n'.join(violations))
-              print()
-              print('All relationships MUST have lazy=\"noload\" (see CLAUDE.md).')
-              print(\"Add '# noload-exempt: <reason>' for justified exceptions.\")
-              sys.exit(1)
-          print('OK: all relationships have explicit lazy= parameter')
-          "
+                  if lazy_keyword is not None and has_exemption(
+                      item, lazy_keyword, comments, relationship_calls
+                  ):
+                      continue
+                  if lazy_keyword is None:
+                      reason = 'missing an explicit lazy= argument'
+                  else:
+                      reason = (
+                          'lazy= must be literal "noload" or use a unique inline '#
+                          'noload-exempt reason'
+                      )
+                  violations.append(f'{path}:{item.lineno}: {reason}')
 
+          if violations:
+              print('::error::Invalid SQLAlchemy relationship lazy policy (MOD-30-01):')
+              print('\n'.join(violations))
+              print('All relationships MUST use lazy="noload".')
+              print('Exceptions require explicit lazy= and a unique inline exemption reason.')
+              sys.exit(1)
+          print(
+              'OK: all SQLAlchemy relationships use lazy="noload" or a documented '
+              'exemption'
+          )
+          PY
       - name: Validate docker compose configuration
         shell: pwsh
         run: |
@@ -508,7 +614,7 @@ jobs:
             !.venv/**
       - name: Run cspell
         id: cspell
-        uses: streetsidesoftware/cspell-action@6f3c77c1406bc930f944ba97e9801a22e42caf58 # v9.1.0
+        uses: streetsidesoftware/cspell-action@ce1816e4ce36532956ac6e983737392774b6e169 # v9.2.0
         with:
           config: "cspell.json"
           use_cspell_files: true
@@ -652,7 +758,11 @@ jobs:
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -828,7 +938,7 @@ jobs:
     uses: ./.github/workflows/reusable-security-audit.yml
     with:
       python-version: "3.14"
-      node-version: "24"
+      node-version: "24.21.0"
 
   # MOD-21-04 (audit 2026-03-25 Wave 21): Generate Software Bill of Materials
   # for supply chain security compliance (CycloneDX/SPDX).  Uploads as a build
@@ -927,16 +1037,55 @@ jobs:
       # MOD-NEW-008 (audit 2026-03-19): Integrate Squawk to automatically lint
       # Alembic migrations. Blocks destructive statements (DROP COLUMN, ALTER TYPE)
       # ensuring Zero-Downtime Deployment (ZDD) compatibility.
-      - name: Install Squawk Linter
-        uses: jaxxstorm/action-install-gh-release@25e24d2d23ae098373794ef1d6faecb48ee52da8 # v3.0.0
-        with:
-          repo: sbdchd/squawk
-          tag: v2.67.0
-          asset-name: squawk-linux-x64 # Specify explicit binary name
-          cache: enable
-          extension-matching: disable
-          rename-to: squawk
-          chmod: 0755
+      - name: Download and verify Squawk Linter
+        shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_OS:-}" != "Linux" || "${RUNNER_ARCH:-}" != "X64" ]]; then
+            echo "::error::Squawk v2.67.0 asset is supported only on Linux x64" >&2
+            exit 1
+          fi
+          if [[ "$(/usr/bin/uname -s)" != "Linux" || "$(/usr/bin/uname -m)" != "x86_64" ]]; then
+            echo "::error::Runner platform does not match the Squawk v2.67.0 Linux x64 asset" >&2
+            exit 1
+          fi
+          if [[ -z "${RUNNER_TEMP:-}" || "$RUNNER_TEMP" != /* ]]; then
+            echo "::error::RUNNER_TEMP must be an absolute path" >&2
+            exit 1
+          fi
+
+          expected_sha256="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+          asset_url="https://github.com/sbdchd/squawk/releases/download/v2.67.0/squawk-linux-x64"
+          if [[ ! "$expected_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Pinned Squawk SHA-256 is malformed" >&2
+            exit 1
+          fi
+
+          download_dir="$RUNNER_TEMP/university-ecosystem-tools/squawk/v2.67.0/linux-x64"
+          binary_path="$download_dir/squawk-linux-x64"
+          partial_path="$binary_path.partial"
+          if [[ -e "$download_dir" || -L "$download_dir" ]]; then
+            echo "::error::Refusing to reuse an existing Squawk download directory" >&2
+            exit 1
+          fi
+          /usr/bin/mkdir --parents -- "$download_dir"
+          /usr/bin/curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --max-redirs 5 --output "$partial_path" "$asset_url"
+          if [[ ! -f "$partial_path" || -L "$partial_path" || ! -s "$partial_path" ]]; then
+            echo "::error::Squawk release asset is missing or is not a regular nonempty file" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$partial_path" |
+            /usr/bin/sha256sum --check --strict
+          /usr/bin/chmod 0755 -- "$partial_path"
+          /usr/bin/mv -- "$partial_path" "$binary_path"
+          if [[ ! -f "$binary_path" || -L "$binary_path" || ! -x "$binary_path" ]]; then
+            echo "::error::Downloaded Squawk asset is missing or is not executable" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$binary_path" |
+            /usr/bin/sha256sum --check --strict
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -945,7 +1094,11 @@ jobs:
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -959,11 +1112,21 @@ jobs:
           uv sync --frozen
 
       - name: Lint Postgres Migrations (Squawk)
+        id: migration-squawk
         env:
           SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
+          AUD148_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+          squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/university-ecosystem-tools/squawk/v2.67.0/linux-x64/squawk-linux-x64"
+          expected_sha256="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+          if [[ ! -f "$squawk_binary_path" || -L "$squawk_binary_path" || ! -x "$squawk_binary_path" ]]; then
+            echo "::error::Verified Squawk executable is missing or is not executable" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+            /usr/bin/sha256sum --check --strict
           echo "Linting changed Alembic migrations for ZDD safety..."
           base_sha="${{ github.event.pull_request.base.sha }}"
           if [ -z "$base_sha" ]; then base_sha="HEAD~1"; fi
@@ -983,15 +1146,731 @@ jobs:
             --exclude require-enum-value-ordering
           )
           while IFS= read -r migration; do
+            # AUD148_ORDINARY_TRAPS_RESET_BEGIN
+            if [[ "${aud148_trap_active:-0}" == 1 ]]; then
+              trap - ERR EXIT
+              aud148_trap_active=0
+              if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+                printf 'aud148_ordinary_exit=0\n' >> "$GITHUB_OUTPUT" || :
+              fi
+            fi
+            # AUD148_ORDINARY_TRAPS_RESET_END
             [ -z "$migration" ] && continue
-            read -r revision down_revision < <(
-              uv run python scripts/quality/read_alembic_revision.py "$migration"
-            )
+            revision_metadata="$(uv run python scripts/quality/read_alembic_revision.py "$migration")"
+            read -r revision down_revision <<< "$revision_metadata"
             echo "Checking $migration ($down_revision -> $revision)"
             sql_file="$sql_dir/$revision.sql"
             uv run python -m scripts.quality.render_live_alembic_sql "$migration" "$sql_file"
-            squawk "${squawk_args[@]}" "$sql_file"
+            printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+              /usr/bin/sha256sum --check --strict
+            if [[ "$migration" == "alembic/versions/148642dd1207_fix_missing_tables.py" ]]; then
+              [[ "$revision" == "148642dd1207" && "$down_revision" == "f7aa476e968a" ]] || {
+                echo "::error::AUD148 ordinary capture: revision metadata mismatch" >&2
+                exit 1
+              }
+              git diff --quiet HEAD -- \
+                alembic/versions/148642dd1207_fix_missing_tables.py \
+                alembic/env.py alembic.ini \
+                scripts/quality/render_live_alembic_sql.py \
+                scripts/quality/read_alembic_revision.py \
+                .github/workflows/ci.yml .squawk.toml pyproject.toml uv.lock
+              AUD148_CHECKOUT_SHA="$(git rev-parse HEAD)"
+              AUD148_SQUAWK_BINARY_SHA256="$(/usr/bin/sha256sum -- "$squawk_binary_path" | /usr/bin/cut -d ' ' -f 1)"
+              AUD148_SQUAWK_VERSION="$("$squawk_binary_path" --version)"
+              export AUD148_CHECKOUT_SHA AUD148_SQUAWK_VERSION AUD148_SQUAWK_BINARY_SHA256
+              uv run python - "$sql_file" "${squawk_args[@]}" <<'AUD148_ORDINARY'
+          import hashlib
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          from scripts.quality.read_alembic_revision import (
+              RevisionMetadataError,
+              read_revision_metadata,
+          )
+
+
+          def fail(reason):
+              raise SystemExit("AUD148 ordinary capture: " + reason)
+
+
+          def regular_file(path):
+              absolute = path.absolute()
+              if any(part.is_symlink() for part in (absolute, *absolute.parents)):
+                  fail("symlink input is forbidden")
+              if not absolute.is_file():
+                  fail("input must be a regular file")
+              return absolute
+
+
+          def git_blob(path):
+              data = regular_file(Path(path)).read_bytes()
+              header = b"blob " + str(len(data)).encode("ascii") + b"\0"
+              return hashlib.sha1(header + data, usedforsecurity=False).hexdigest()
+
+
+          def capture():
+              sql_path = Path(sys.argv[1])
+              physical_sql = regular_file(sql_path)
+              if not 0 < physical_sql.stat().st_size <= 65536:
+                  fail("SQL input exceeds its byte limit or is empty")
+              with physical_sql.open("rb") as source:
+                  sql_bytes = source.read(65537)
+              if not 0 < len(sql_bytes) <= 65536:
+                  fail("SQL input exceeds its byte limit or is empty")
+              sql_text = sql_bytes.decode("utf-8")
+              for name in ("SECRET_KEY", "DATABASE_URL"):
+                  value = os.environ.get(name, "")
+                  if value and value in sql_text:
+                      fail("SQL input contains private runtime context")
+
+              checkout = os.environ.get("AUD148_CHECKOUT_SHA", "")
+              workflow = os.environ.get("GITHUB_SHA", "")
+              pr_head = os.environ.get("AUD148_PR_HEAD_SHA", "")
+              if not re.fullmatch(r"[0-9a-f]{40}", checkout) or checkout != workflow:
+                  fail("checkout provenance is invalid")
+              if pr_head and not re.fullmatch(r"[0-9a-f]{40}", pr_head):
+                  fail("pull request provenance is invalid")
+              run_id = os.environ.get("GITHUB_RUN_ID", "")
+              attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
+              if not all(re.fullmatch(r"[1-9][0-9]{0,19}", value) for value in (run_id, attempt)):
+                  fail("workflow run provenance is invalid")
+              if os.environ.get("GITHUB_JOB") != "alembic-migrations":
+                  fail("producer job is invalid")
+              version = os.environ.get("AUD148_SQUAWK_VERSION", "")
+              digest = os.environ.get("AUD148_SQUAWK_BINARY_SHA256", "")
+              if version != "squawk 2.67.0" or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                  fail("verified scanner provenance is invalid")
+
+              migration_path = "alembic/versions/148642dd1207_fix_missing_tables.py"
+              source_paths = (
+                  migration_path,
+                  "alembic/env.py",
+                  "alembic.ini",
+                  "scripts/quality/render_live_alembic_sql.py",
+                  "scripts/quality/read_alembic_revision.py",
+                  ".github/workflows/ci.yml",
+                  ".squawk.toml",
+                  "pyproject.toml",
+                  "uv.lock",
+              )
+              source_blobs = {name: git_blob(name) for name in source_paths}
+              revision, parent = read_revision_metadata(regular_file(Path(migration_path)))
+              if (revision, parent) != ("148642dd1207", "f7aa476e968a"):
+                  fail("migration metadata is invalid")
+              metadata = {
+                  "status": "diagnostic-only-not-an-exception",
+                  "scenario": "ordinary-parent-live",
+                  "checkout_sha": checkout,
+                  "workflow_sha": workflow,
+                  "pr_head_sha": pr_head or None,
+                  "workflow_run_id": run_id,
+                  "workflow_run_attempt": attempt,
+                  "producer_job": "alembic-migrations",
+                  "migration_path": migration_path,
+                  "revision": revision,
+                  "down_revision": parent,
+                  "source_blobs": source_blobs,
+                  "squawk_version": version,
+                  "squawk_binary_sha256": digest,
+                  "squawk_args": sys.argv[2:],
+                  "sql_file": str(sql_path),
+                  "sql_bytes": len(sql_bytes),
+                  "sql_sha256": hashlib.sha256(sql_bytes).hexdigest(),
+                  "sql": sql_text,
+                  "scanner_result": "not-yet-executed",
+              }
+              rendered = json.dumps(metadata, ensure_ascii=True, sort_keys=True, indent=2)
+              output = (
+                  "AUD148_ORDINARY_CAPTURE_BEGIN\n"
+                  + rendered
+                  + "\nAUD148_ORDINARY_CAPTURE_END\n"
+              )
+              if len(output.encode("utf-8")) > 131072:
+                  fail("log payload exceeds its output byte limit")
+              return output
+
+
+          try:
+              output = capture()
+          except (OSError, UnicodeError, RevisionMetadataError):
+              fail("input could not be read or decoded")
+          sys.stdout.write(output)
+          AUD148_ORDINARY
+              # Retain the file identity for the later diagnostic-only JSON pass.
+              # A handoff failure must not prevent the existing raw scan.
+              if ordinary_sha="$(/usr/bin/sha256sum -- "$sql_file" | /usr/bin/cut -d ' ' -f 1)" &&
+                 ordinary_identity="$(/usr/bin/stat -c '%d:%i' -- "$sql_file")"; then
+                printf 'aud148_ordinary_sql=%s\naud148_ordinary_sha256=%s\naud148_ordinary_identity=%s\n' \
+                  "$sql_file" "$ordinary_sha" "$ordinary_identity" >> "$GITHUB_OUTPUT" ||
+                  echo "AUD148 ordinary JSON handoff could not be recorded" >&2
+              else
+                echo "AUD148 ordinary JSON handoff could not be recorded" >&2
+              fi
+              # AUD148_ORDINARY_TRAPS_INSTALL_BEGIN
+              trap 'aud148_raw_exit=$?; trap - ERR EXIT; if [[ -n "${GITHUB_OUTPUT:-}" ]]; then printf "aud148_ordinary_exit=%s\n" "$aud148_raw_exit" >> "$GITHUB_OUTPUT" || :; fi; exit "$aud148_raw_exit"' ERR
+              trap 'aud148_raw_exit=$?; if [[ "$aud148_raw_exit" -eq 0 && -n "${GITHUB_OUTPUT:-}" ]]; then printf "aud148_ordinary_exit=0\n" >> "$GITHUB_OUTPUT" || :; fi; exit "$aud148_raw_exit"' EXIT
+              aud148_trap_active=1
+              # AUD148_ORDINARY_TRAPS_INSTALL_END
+            fi
+            "$squawk_binary_path" "${squawk_args[@]}" "$sql_file"
           done <<< "$changed_files"
+
+      - name: Collect bounded 148642dd1207 DDL evidence
+        id: migration-ddl-evidence
+        if: >-
+          ${{ !cancelled() &&
+              (steps.migration-squawk.outcome == 'success' ||
+               steps.migration-squawk.outcome == 'failure') }}
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          RUN_INTEGRATION_TESTS: "1"
+          ORIGINAL_SQUAWK_OUTCOME: ${{ steps.migration-squawk.outcome }}
+          AUD148_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          AUD148_ORDINARY_SQL: ${{ steps.migration-squawk.outputs.aud148_ordinary_sql }}
+          AUD148_ORDINARY_SHA256: ${{ steps.migration-squawk.outputs.aud148_ordinary_sha256 }}
+          AUD148_ORDINARY_IDENTITY: ${{ steps.migration-squawk.outputs.aud148_ordinary_identity }}
+          AUD148_RAW_ORDINARY_EXIT: ${{ steps.migration-squawk.outputs.aud148_ordinary_exit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          print_bounded() {
+            local file="$1" limit="$2"
+            uv run python - "$file" "$limit" "${3:-log}" <<'AUD148_PRINT'
+          import json
+          import os
+          import sys
+
+          limit = int(sys.argv[2])
+          try:
+              with open(sys.argv[1], "rb") as source:
+                  data = source.read(limit + 1)
+          except OSError:
+              print("::error::AUD148 diagnostic output could not be read")
+              raise SystemExit(1) from None
+          if len(data) > limit:
+              print("::error::AUD148 diagnostic output exceeded its byte limit")
+              raise SystemExit(1)
+
+          private_values = {
+              value
+              for name in ("SECRET_KEY", "DATABASE_URL")
+              if (value := os.environ.get(name, ""))
+          }
+          needles = {
+              representation.encode("utf-8")
+              for value in private_values
+              for representation in (
+                  value,
+                  json.dumps(value, ensure_ascii=True)[1:-1],
+                  json.dumps(value, ensure_ascii=False)[1:-1],
+              )
+          }
+          if not any(needle in data for needle in needles):
+              sys.stdout.buffer.write(data)
+              raise SystemExit(0)
+          if sys.argv[3] == "metadata":
+              # Never publish changed SQL or metadata under the original hash markers.
+              output = (
+                  b"AUD148_DIAGNOSTIC_METADATA_BEGIN\n"
+                  b"AUD148_OMITTED_PRIVATE_RUNTIME_CONTEXT\n"
+                  b"AUD148_DIAGNOSTIC_METADATA_END\n"
+                  b"AUD148_EXPANDED_SQL_BEGIN\n"
+                  b"AUD148_OMITTED_PRIVATE_RUNTIME_CONTEXT\n"
+                  b"AUD148_EXPANDED_SQL_END\n"
+              )
+          else:
+              for needle in sorted(needles, key=len, reverse=True):
+                  data = data.replace(needle, b"[REDACTED]")
+              output = b"AUD148_DIAGNOSTIC_OUTPUT_REDACTED_NOT_RAW\n" + data
+          if len(output) > limit:
+              output = b"::error::AUD148 diagnostic output exceeded its byte limit\n"
+          if any(needle in output for needle in needles):
+              output = b"AUD148_DIAGNOSTIC_OUTPUT_OMITTED\n"
+              if any(needle in output for needle in needles):
+                  output = b""
+          sys.stdout.buffer.write(output)
+          raise SystemExit(1)
+          AUD148_PRINT
+          }
+          test_log="$(mktemp)"
+          trace_root=".pytest_tmp/aud148-expanded"
+          mkdir -p "$(dirname "$trace_root")"
+          pytest_status=0
+          # Artifact discovery reads physical files; normal capture bounds setup logs.
+          uv run pytest -q --tb=short \
+            tests/test_migration_148642dd1207_trace.py \
+            tests/test_migration_148642dd1207_diagnostic_ci.py \
+            tests/test_migration_148642dd1207_safety.py \
+            tests/integration/test_migration_148642dd1207.py::test_expanded_ddl_inventory_matches_unmodified_populated_control \
+            tests/integration/test_migration_148642dd1207.py::test_convertible_orphan_rolls_back_cutover_and_diagnostic_rows \
+            tests/integration/test_migration_148642dd1207.py::test_existing_exact_shadow_check_is_reused_from_real_pg_catalog \
+            tests/integration/test_migration_148642dd1207.py::test_existing_shadow_check_rejects_wrong_real_pg_catalog_identity \
+            tests/integration/test_migration_148642dd1207.py::test_stale_shadow_value_aborts_before_fk_capture_with_exact_rollback \
+            tests/integration/test_migration_148642dd1207.py::test_shadow_cutover_omits_only_transient_validation_after_null_backfill \
+            tests/integration/test_migration_148642dd1207.py::test_groups_cutover_uses_only_the_exact_primary_key_index \
+            tests/integration/test_migration_148642dd1207.py::test_groups_index_drop_uses_fresh_locked_dependency \
+            tests/integration/test_migration_148642dd1207.py::test_groups_index_cutover_failure_restores_exact_catalog_and_data \
+            tests/integration/test_migration_148642dd1207.py::test_groups_key_helper_round_trip_restores_legacy_index_and_foreign_keys \
+            tests/integration/test_migration_148642dd1207.py::test_groups_successors_do_not_require_the_duplicate_id_index \
+            tests/integration/test_migration_148642dd1207.py::test_invalid_fk_value_aborts_shadow_conversion_without_data_loss \
+            tests/integration/test_migration_148642dd1207.py::test_upgrade_copies_spotify_state_and_skips_empty_legacy_rows \
+            tests/integration/test_migration_148642dd1207.py::test_upgrade_copies_available_fields_from_a_partial_legacy_schema \
+            tests/integration/test_migration_148642dd1207.py::test_upgrade_does_not_overwrite_existing_spotify_integration_rows \
+            tests/integration/test_migration_148642dd1207.py::test_upgrade_preserves_legacy_user_preferences \
+            tests/integration/test_migration_148642dd1207.py::test_upgrade_backfills_missing_preferences_without_overwriting_existing_rows \
+            tests/integration/test_migration_148642dd1207.py::test_null_legacy_enabled_aborts_upgrade_without_losing_preferences \
+            --basetemp="$trace_root" > "$test_log" 2>&1 || pytest_status=$?
+          echo "AUD148_FOCUSED_TESTS_BEGIN"
+          if ! print_bounded "$test_log" 131072; then
+            [ "$pytest_status" -ne 0 ] || pytest_status=1
+          fi
+          echo "AUD148_FOCUSED_TESTS_END"
+          if [ "$pytest_status" -ne 0 ]; then exit "$pytest_status"; fi
+          artifact_paths="$(mktemp)"
+          uv run python - "$trace_root" "$artifact_paths" <<'SELECT_AUD148'
+          import sys
+          from pathlib import Path
+
+          def fail_walk(error):
+              raise error
+
+
+          root = Path(sys.argv[1])
+          names = ("148642dd1207.expanded.sql", "148642dd1207.trace.json")
+          matches = {name: [] for name in names}
+          for directory, _, filenames in root.walk(on_error=fail_walk, follow_symlinks=False):
+              for name in names:
+                  path = directory / name
+                  if name in filenames and path.is_file() and not path.is_symlink():
+                      matches[name].append(path)
+          if any(len(matches[name]) != 1 for name in names):
+              raise SystemExit("AUD148 expected exactly one physical SQL/evidence pair")
+          sql_path, evidence_path = (matches[name][0] for name in names)
+          if sql_path.parent != evidence_path.parent:
+              raise SystemExit("AUD148 SQL and JSON are not from the same test")
+          Path(sys.argv[2]).write_bytes(
+              b"\0".join(str(path).encode() for path in (sql_path, evidence_path)) + b"\0"
+          )
+          SELECT_AUD148
+          mapfile -d '' -t evidence_files < "$artifact_paths"
+          sql_file="${evidence_files[0]}"
+          json_file="${evidence_files[1]}"
+          squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/university-ecosystem-tools/squawk/v2.67.0/linux-x64/squawk-linux-x64"
+          expected_sha256="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+          if [[ ! -f "$squawk_binary_path" || -L "$squawk_binary_path" || ! -x "$squawk_binary_path" ]]; then
+            echo "::error::Verified Squawk executable is missing or is not executable" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+            /usr/bin/sha256sum --check --strict
+          AUD148_CHECKOUT_SHA="$(git rev-parse HEAD)"
+          AUD148_SQUAWK_BINARY_SHA256="$(/usr/bin/sha256sum -- "$squawk_binary_path" | /usr/bin/cut -d ' ' -f 1)"
+          AUD148_SQUAWK_VERSION="$("$squawk_binary_path" --version)"
+          export AUD148_CHECKOUT_SHA AUD148_SQUAWK_VERSION AUD148_SQUAWK_BINARY_SHA256
+          squawk_args=(
+            --exclude prefer-robust-stmts --exclude prefer-text-field
+            --exclude prefer-bigint-over-int --exclude prefer-identity
+            --exclude prefer-timestamp-tz --exclude disallowed-unique-constraint
+            --exclude require-enum-value-ordering
+          )
+          metadata_log="$(mktemp)"
+          trap 'rm -f -- "$metadata_log"' EXIT
+          diagnostic_status=0
+          uv run python - "$sql_file" "$json_file" "${squawk_args[@]}" > "$metadata_log" <<'PY'
+          import hashlib
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          sql_path, evidence_path = map(Path, sys.argv[1:3])
+          if sql_path.stat().st_size > 65536 or evidence_path.stat().st_size > 4194304:
+              raise SystemExit("AUD148 evidence exceeds its input byte limit")
+          sql_bytes = sql_path.read_bytes()
+          sql_text = sql_bytes.decode("utf-8")
+          evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+          if evidence["status"] != "diagnostic-only-not-an-exception":
+              raise SystemExit("AUD148 evidence is not diagnostic-only")
+          if not sql_text.startswith("-- DIAGNOSTIC ONLY:"):
+              raise SystemExit("AUD148 expanded SQL is missing its diagnostic label")
+          if hashlib.sha256(sql_bytes).hexdigest() != evidence["expanded_sql_sha256"]:
+              raise SystemExit("AUD148 expanded SQL digest mismatch")
+
+          def git_blob(path):
+              data = Path(path).read_bytes()
+              header = b"blob " + str(len(data)).encode("ascii") + b"\0"
+              return hashlib.sha1(header + data, usedforsecurity=False).hexdigest()
+
+          migration_path = "alembic/versions/148642dd1207_fix_missing_tables.py"
+          if git_blob(migration_path) != evidence["migration_blob"]:
+              raise SystemExit("AUD148 migration source mismatch")
+          for key, path in (
+              ("helper_sha256", "tests/helpers/migration_148642dd1207_trace.py"),
+              ("fixture_sha256", "tests/integration/test_migration_148642dd1207.py"),
+          ):
+              if hashlib.sha256(Path(path).read_bytes()).hexdigest() != evidence[key]:
+                  raise SystemExit("AUD148 diagnostic source mismatch")
+          nested = evidence["nested_ddl"]
+          if not isinstance(nested, list) or not 1 <= len(nested) <= 100:
+              raise SystemExit("AUD148 nested inventory is not finite")
+          records = []
+          for entry in nested:
+              statement = entry["sql"]
+              digest = hashlib.sha256(statement.encode("utf-8")).hexdigest()
+              if not statement.startswith("ALTER TABLE ") or digest != entry["sql_sha256"]:
+                  raise SystemExit("AUD148 nested DDL identity mismatch")
+              keys = ("outer_ordinal", "site", "sql", "sql_sha256")
+              records.append({key: entry[key] for key in keys})
+          version = os.environ["AUD148_SQUAWK_VERSION"]
+          if "2.67.0" not in version.split() or len(version) > 128:
+              raise SystemExit("AUD148 requires the existing Squawk 2.67.0 binary")
+          metadata = {
+              "status": evidence["status"],
+              "checkout_sha": os.environ["AUD148_CHECKOUT_SHA"],
+              "workflow_sha": evidence["workflow_sha"],
+              "workflow_run_id": evidence["workflow_run_id"],
+              "original_squawk_outcome": os.environ["ORIGINAL_SQUAWK_OUTCOME"],
+              "migration_blob": evidence["migration_blob"],
+              "helper_sha256": evidence["helper_sha256"],
+              "fixture_sha256": evidence["fixture_sha256"],
+              "workflow_blob": git_blob(".github/workflows/ci.yml"),
+              "renderer_blob": git_blob("scripts/quality/render_live_alembic_sql.py"),
+              "squawk_config_blob": git_blob(".squawk.toml"),
+              "lockfile_blob": git_blob("uv.lock"),
+              "postgres_version": evidence["postgres_version"],
+              "squawk_version": version,
+              "squawk_binary_sha256": os.environ["AUD148_SQUAWK_BINARY_SHA256"],
+              "squawk_args": sys.argv[3:],
+              "expanded_sql_sha256": evidence["expanded_sql_sha256"],
+              "nested_ddl": records,
+          }
+          rendered = json.dumps(metadata, sort_keys=True, indent=2)
+          if len(rendered.encode("utf-8")) + len(sql_bytes) > 131072:
+              raise SystemExit("AUD148 log payload exceeds its output byte limit")
+          print("AUD148_DIAGNOSTIC_METADATA_BEGIN")
+          print(rendered)
+          print("AUD148_DIAGNOSTIC_METADATA_END")
+          print("AUD148_EXPANDED_SQL_BEGIN")
+          print(sql_text, end="" if sql_text.endswith("\n") else "\n")
+          print("AUD148_EXPANDED_SQL_END")
+          PY
+          if ! print_bounded "$metadata_log" 131072 metadata; then
+            diagnostic_status=1
+          fi
+          lint_log="$(mktemp)"
+          lint_status=0
+          AUD148_EXPANDED_SHA256=""
+          AUD148_EXPANDED_IDENTITY=""
+          if [[ -n "$AUD148_ORDINARY_SQL" ]]; then
+            AUD148_EXPANDED_SHA256="$(/usr/bin/sha256sum -- "$sql_file" | /usr/bin/cut -d ' ' -f 1)" || AUD148_EXPANDED_SHA256=""
+            AUD148_EXPANDED_IDENTITY="$(/usr/bin/stat -c '%d:%i' -- "$sql_file")" || AUD148_EXPANDED_IDENTITY=""
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+            /usr/bin/sha256sum --check --strict
+          "$squawk_binary_path" "${squawk_args[@]}" "$sql_file" > "$lint_log" 2>&1 || lint_status=$?
+          raw_expanded_exit="$lint_status"
+          echo "AUD148_EXPANDED_SQUAWK_BEGIN"
+          if ! print_bounded "$lint_log" 131072; then
+            diagnostic_status=1
+          fi
+          echo "AUD148_EXPANDED_SQUAWK_END"
+          echo "AUD148_EXPANDED_SQUAWK_EXIT=$lint_status"
+          capture_status=0
+          if [[ -n "$AUD148_ORDINARY_SQL" ]]; then
+            AUD148_RAW_EXPANDED_EXIT="$raw_expanded_exit"
+            AUD148_SQUAWK_BINARY_EXPECTED_SHA256="$expected_sha256"
+            export AUD148_EXPANDED_SHA256 AUD148_EXPANDED_IDENTITY AUD148_RAW_EXPANDED_EXIT AUD148_SQUAWK_BINARY_EXPECTED_SHA256
+            uv run python - "$squawk_binary_path" "$AUD148_ORDINARY_SQL" "$sql_file" "${squawk_args[@]}" <<'AUD148_JSON' || capture_status=$?
+          import hashlib
+          import json
+          import math
+          import os
+          import re
+          import resource
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+
+
+          def fail(reason):
+              raise SystemExit("AUD148 Squawk JSON: " + reason)
+
+
+          def contains_private(value):
+              if isinstance(value, str):
+                  return any(
+                      private and private in value
+                      for private in (os.environ.get("SECRET_KEY", ""), os.environ.get("DATABASE_URL", ""))
+                  )
+              if isinstance(value, dict):
+                  return any(
+                      contains_private(key) or contains_private(item)
+                      for key, item in value.items()
+                  )
+              if isinstance(value, list):
+                  return any(contains_private(item) for item in value)
+              return False
+
+
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError("duplicate JSON object key")
+                  result[key] = value
+              return result
+
+
+          def reject_constant(_value):
+              raise ValueError("non-finite JSON number")
+
+
+          def finite_float(value):
+              result = float(value)
+              if not math.isfinite(result):
+                  raise ValueError("non-finite JSON number")
+              return result
+
+
+          def physical(path):
+              absolute = path.absolute()
+              if any(part.is_symlink() for part in (absolute, *absolute.parents)):
+                  fail("symlink input is forbidden")
+              if not absolute.is_file():
+                  fail("input must be a regular file")
+              return absolute
+
+
+          def read_limited(path, limit):
+              with physical(path).open("rb") as source:
+                  data = source.read(limit + 1)
+              if not 0 < len(data) <= limit:
+                  fail("input is empty or exceeds its byte limit")
+              return data
+
+
+          def identity(path):
+              stat = physical(path).stat()
+              return f"{stat.st_dev}:{stat.st_ino}"
+
+
+          def validate():
+              binary, ordinary, expanded = map(Path, sys.argv[1:4])
+              args = sys.argv[4:]
+              exclusions = (
+                  "prefer-robust-stmts", "prefer-text-field", "prefer-bigint-over-int",
+                  "prefer-identity", "prefer-timestamp-tz", "disallowed-unique-constraint",
+                  "require-enum-value-ordering",
+              )
+              expected_args = [value for rule in exclusions for value in ("--exclude", rule)]
+              if args != expected_args:
+                  fail("scanner arguments do not match the raw gates")
+              expected_binary = os.environ.get("AUD148_SQUAWK_BINARY_EXPECTED_SHA256", "")
+              if not re.fullmatch(r"[0-9a-f]{64}", expected_binary):
+                  fail("scanner checksum is invalid")
+              if os.environ.get("AUD148_SQUAWK_BINARY_SHA256") != expected_binary:
+                  fail("scanner checksum provenance is invalid")
+              if os.environ.get("AUD148_SQUAWK_VERSION") != "squawk 2.67.0":
+                  fail("scanner version is invalid")
+              checkout = os.environ.get("AUD148_CHECKOUT_SHA", "")
+              if not re.fullmatch(r"[0-9a-f]{40}", checkout) or checkout != os.environ.get("GITHUB_SHA"):
+                  fail("checkout provenance is invalid")
+              pr_head = os.environ.get("AUD148_PR_HEAD_SHA", "")
+              if pr_head and not re.fullmatch(r"[0-9a-f]{40}", pr_head):
+                  fail("pull request provenance is invalid")
+              run_id = os.environ.get("GITHUB_RUN_ID", "")
+              attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
+              if not all(re.fullmatch(r"[1-9][0-9]{0,19}", value) for value in (run_id, attempt)):
+                  fail("workflow run provenance is invalid")
+              if os.environ.get("GITHUB_JOB") != "alembic-migrations":
+                  fail("producer job is invalid")
+              outcome = os.environ.get("ORIGINAL_SQUAWK_OUTCOME", "")
+              if outcome not in ("success", "failure"):
+                  fail("ordinary raw outcome is invalid")
+              ordinary_exit = os.environ.get("AUD148_RAW_ORDINARY_EXIT", "")
+              if not re.fullmatch(r"0|[1-9][0-9]{0,2}", ordinary_exit) or int(ordinary_exit) > 255:
+                  fail("ordinary raw exit is invalid")
+              if outcome == "success" and ordinary_exit != "0":
+                  fail("ordinary raw exit conflicts with the step outcome")
+              raw_exit = os.environ.get("AUD148_RAW_EXPANDED_EXIT", "")
+              if not re.fullmatch(r"0|[1-9][0-9]{0,2}", raw_exit) or int(raw_exit) > 255:
+                  fail("expanded raw exit is invalid")
+              if identity(ordinary) == identity(expanded):
+                  fail("SQL scenarios must be different physical files")
+              return binary, (ordinary, expanded), args, expected_binary, checkout, pr_head, run_id, attempt, outcome, int(ordinary_exit), int(raw_exit)
+
+
+          def verify_files(binary, sql_paths, expected_binary):
+              if hashlib.sha256(read_limited(binary, 67108864)).hexdigest() != expected_binary:
+                  fail("scanner checksum mismatch")
+              records = []
+              for path, prefix in zip(sql_paths, ("ORDINARY", "EXPANDED"), strict=True):
+                  if contains_private(str(path)):
+                      fail("SQL path contains private runtime context")
+                  data = read_limited(path, 65536)
+                  decoded = data.decode("utf-8")
+                  for name in ("SECRET_KEY", "DATABASE_URL"):
+                      private = os.environ.get(name, "")
+                      if private and private in decoded:
+                          fail("SQL contains private runtime context")
+                  digest = hashlib.sha256(data).hexdigest()
+                  physical_id = identity(path)
+                  if digest != os.environ.get(f"AUD148_{prefix}_SHA256"):
+                      fail("SQL checksum mismatch")
+                  if physical_id != os.environ.get(f"AUD148_{prefix}_IDENTITY"):
+                      fail("SQL physical identity mismatch")
+                  records.append((len(data), digest, physical_id))
+              return records
+
+
+          def scan(binary, path, args):
+              def limit_output_files():
+                  # This child-only kernel limit bounds each file during writes.
+                  resource.setrlimit(resource.RLIMIT_FSIZE, (131073, 131073))
+
+              with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+                  try:
+                      process = subprocess.run(
+                          [str(binary), *args, "--reporter", "json", str(path)],
+                          stdout=stdout, stderr=stderr, timeout=30, check=False,
+                          preexec_fn=limit_output_files,
+                      )
+                      exit_code = process.returncode
+                  except subprocess.TimeoutExpired:
+                      exit_code = None
+                  stdout.seek(0)
+                  stderr.seek(0)
+                  out = stdout.read(131073)
+                  err = stderr.read(16385)
+              if len(out) > 131072 or len(err) > 16384:
+                  fail("scanner output exceeds its byte limit")
+              out_text, err_text = out.decode("utf-8"), err.decode("utf-8")
+              try:
+                  parsed = json.loads(
+                      out_text, object_pairs_hook=unique_object,
+                      parse_constant=reject_constant, parse_float=finite_float,
+                  )
+              except (ValueError, RecursionError):
+                  parsed = None
+                  publishable = False
+              else:
+                  # stderr is untrusted and may encode private runtime values
+                  # in ways a substring check cannot identify safely.
+                  publishable = not err_text
+              if contains_private(out_text) or contains_private(err_text) or contains_private(parsed):
+                  fail("scanner output contains private runtime context")
+              valid = (
+                  isinstance(parsed, list)
+                  and all(isinstance(item, dict) and item.get("level") != "Error" for item in parsed)
+                  and exit_code in (0, 1)
+              )
+              return exit_code, out_text, err_text, valid, publishable
+
+
+          def capture():
+              binary, paths, args, expected, checkout, pr_head, run_id, attempt, outcome, ordinary_exit, raw_exit = validate()
+              records = verify_files(binary, paths, expected)
+              captures = []
+              valid = True
+              publishable = True
+              for path, scenario, (size, digest, physical_id) in zip(
+                  paths, ("ordinary-parent-live", "expanded-populated-diagnostic"), records, strict=True
+              ):
+                  exit_code, stdout, stderr, scan_valid, scan_publishable = scan(binary, path, args)
+                  verify_files(binary, paths, expected)
+                  captures.append({
+                      "scenario": scenario, "sql_path": str(path), "sql_bytes": size,
+                      "sql_sha256": digest, "sql_identity": physical_id, "exit_code": exit_code,
+                      "stdout": stdout, "stderr": stderr,
+                  })
+                  valid = valid and scan_valid
+                  publishable = publishable and scan_publishable
+              if not publishable:
+                  fail("scanner output cannot be safely published")
+              report = {
+                  "status": "diagnostic-only-not-an-exception", "checkout_sha": checkout,
+                  "workflow_sha": os.environ["GITHUB_SHA"], "pr_head_sha": pr_head or None,
+                  "workflow_run_id": run_id, "workflow_run_attempt": attempt,
+                  "producer_job": "alembic-migrations", "original_squawk_outcome": outcome,
+                  "raw_ordinary_exit": ordinary_exit, "raw_expanded_exit": raw_exit,
+                  "squawk_version": "squawk 2.67.0",
+                  "squawk_binary_sha256": expected, "squawk_args": args, "captures": captures,
+              }
+              if contains_private(report):
+                  fail("report contains private runtime context")
+              rendered = json.dumps(report, ensure_ascii=True, sort_keys=True, indent=2)
+              output = "AUD148_SQUAWK_JSON_BEGIN\n" + rendered + "\nAUD148_SQUAWK_JSON_END\n"
+              if len(output.encode("utf-8")) >= 262144:
+                  fail("log payload exceeds its byte limit")
+              return output, valid
+
+
+          try:
+              output, valid = capture()
+          except (OSError, UnicodeError, IndexError, RecursionError, subprocess.SubprocessError):
+              fail("input or scanner could not be read")
+          sys.stdout.write(output)
+          if not valid:
+              raise SystemExit(1)
+          AUD148_JSON
+          else
+            echo "AUD148_SQUAWK_JSON_SKIPPED: ordinary SQL was not handed off by the raw gate"
+          fi
+          if [[ "$lint_status" -eq 0 && "$capture_status" -ne 0 ]]; then
+            exit "$capture_status"
+          fi
+          if [[ "$lint_status" -eq 0 && "$diagnostic_status" -ne 0 ]]; then
+            exit "$diagnostic_status"
+          fi
+          exit "$lint_status"
+
+      - name: Verify owned PostgreSQL tenant-context acceptance
+        id: tenant-context-evidence
+        if: >-
+          ${{ !cancelled() &&
+              (steps.migration-squawk.outcome == 'success' ||
+               steps.migration-squawk.outcome == 'failure') }}
+        timeout-minutes: 3
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          RUN_INTEGRATION_TESTS: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d)"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          test_log="$probe_root/pytest.log"
+          pytest_status=0
+          uv run pytest -v --tb=short --show-capture=no --no-cov --maxfail=0 \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_content_outbox_restores_tenant_scope \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_legacy_null_tenant_content_ignores_worker_ambient_scope \
+            tests/test_outbox_tenant_context.py \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_unscoped_missing_content_retains_retry_and_dlq_evidence \
+            tests/test_event_handlers_behavior_closure.py::test_created_notification_handler_skips_deleted_source_record \
+            tests/test_event_handlers_behavior_closure.py::test_comment_notification_fails_closed_when_news_or_author_disappears \
+            tests/test_event_handlers_behavior_closure.py::test_comment_notification_skips_deleted_comment_before_loading_sources \
+            tests/test_event_handlers_behavior_closure.py::test_created_notification_handler_retries_unscoped_missing_source \
+            tests/test_event_handlers_behavior_closure.py::test_comment_notification_retries_unscoped_missing_protected_parent \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_grade_committed_assignment_delivery_replay_sends_once \
+            tests/integration/test_aud197_198_notification_outbox_postgres.py::test_grade_rollback_then_fresh_retry_sends_only_after_commit \
+            --basetemp="$probe_root/basetemp" > "$test_log" 2>&1 || pytest_status=$?
+          echo "OWNED_TENANT_CONTEXT_TESTS_BEGIN"
+          bytes="$(wc -c < "$test_log")"
+          head -c 131072 "$test_log"
+          if [ "$bytes" -gt 131072 ]; then
+            echo "::error::Owned tenant-context diagnostic output exceeded 131072 bytes"
+            [ "$pytest_status" -ne 0 ] || pytest_status=1
+          fi
+          echo "OWNED_TENANT_CONTEXT_TESTS_END"
+          exit "$pytest_status"
 
       - name: Wait for PostgreSQL
         shell: pwsh
@@ -1078,6 +1957,98 @@ jobs:
             exit 1
           }
 
+      - name: Verify Alembic renderer lifecycle contracts
+        id: renderer-lifecycle-evidence
+        if: >-
+          ${{ !cancelled() &&
+              (steps.migration-squawk.outcome == 'success' ||
+               steps.migration-squawk.outcome == 'failure') }}
+        timeout-minutes: 3
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          RUN_INTEGRATION_TESTS: ""
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d)"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          test_log="$probe_root/pytest.log"
+          pytest_status=0
+          timeout --signal=TERM --kill-after=5s 150s \
+            uv run --frozen --no-sync pytest \
+            -n 0 -vv --tb=short --show-capture=no --no-cov --maxfail=0 \
+            tests/test_alembic_live_sql_render.py::test_live_renderer_records_transaction_events_and_removes_listeners_on_success \
+            tests/test_alembic_live_sql_render.py::test_live_renderer_records_rollback_and_removes_listeners_on_failure \
+            tests/test_alembic_live_sql_render.py::test_scratch_requires_template0_and_empty_catalog_before_upgrade \
+            tests/test_alembic_live_sql_render.py::test_scratch_create_failure_never_drops_or_changes_execution_state \
+            tests/test_alembic_live_sql_render.py::test_scratch_nonempty_or_unverifiable_catalog_blocks_upgrade \
+            tests/test_alembic_live_sql_render.py::test_scratch_cleanup_requires_confirmed_created_database_identity \
+            tests/test_alembic_live_sql_render.py::test_renderer_failure_diagnostics_are_opaque \
+            tests/test_alembic_live_sql_render.py::test_renderer_api_rejects_dbname_query_override_before_scratch_work \
+            tests/test_alembic_live_sql_render.py::test_renderer_cli_rejects_dbname_query_override_before_scratch_work \
+            tests/test_alembic_live_sql_render.py::test_renderer_rejects_invalid_url_and_engine_setup_opaquely \
+            tests/test_alembic_live_sql_render.py::test_renderer_connection_failure_disposes_opaquely \
+            tests/test_alembic_live_sql_render.py::test_renderer_rejects_malformed_server_identity \
+            tests/test_alembic_live_sql_render.py::test_renderer_rejects_malformed_catalog_values \
+            tests/test_alembic_live_sql_render.py::test_renderer_cleanup_preserves_failure_and_disposes \
+            tests/test_alembic_live_sql_render.py::test_renderer_restores_unset_environment_after_owned_scratch \
+            --basetemp="$probe_root/basetemp" \
+            --junitxml="$probe_root/junit.xml" > "$test_log" 2>&1 || pytest_status=$?
+          echo "ALEMBIC_RENDERER_LIFECYCLE_TESTS_BEGIN"
+          bytes="$(wc -c < "$test_log")"
+          head -c 131072 "$test_log"
+          echo "ALEMBIC_RENDERER_LIFECYCLE_TESTS_END"
+          receipt_status=0
+          uv run --frozen --no-sync python - "$probe_root/junit.xml" <<'PY_RENDERER_RECEIPT' || receipt_status=$?
+          import json
+          import sys
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          try:
+              report = Path(sys.argv[1])
+              if (
+                  report.is_symlink()
+                  or not report.is_file()
+                  or not 0 < report.stat().st_size <= 1_048_576
+              ):
+                  raise ValueError
+              root = ElementTree.parse(report).getroot()
+              suites = list(root.iter("testsuite"))
+              if len(suites) != 1:
+                  raise ValueError
+              counts = {
+                  key: int(suites[0].get(key, "-1"))
+                  for key in ("tests", "failures", "errors", "skipped")
+              }
+              if any(value < 0 or value > 41 for value in counts.values()):
+                  raise ValueError
+              print("ALEMBIC_RENDERER_LIFECYCLE_COUNTS " + json.dumps(counts, sort_keys=True))
+              cases = list(root.iter("testcase"))
+              identities = {(case.get("classname"), case.get("name")) for case in cases}
+              expected = {"tests": 41, "failures": 0, "errors": 0, "skipped": 0}
+              if len(cases) != 41 or len(identities) != 41 or counts != expected:
+                  raise ValueError
+              if any(not all(identity) for identity in identities):
+                  raise ValueError
+              if any(list(root.iter(tag)) for tag in ("failure", "error", "skipped")):
+                  raise ValueError
+          except (OSError, ValueError, ElementTree.ParseError):
+              print("ALEMBIC_RENDERER_LIFECYCLE_RECEIPT_REJECTED")
+              raise SystemExit(1) from None
+          print("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 41")
+          PY_RENDERER_RECEIPT
+          if [ "$bytes" -gt 131072 ]; then
+            echo "::error::Alembic renderer lifecycle output exceeded 131072 bytes"
+            receipt_status=1
+          fi
+          if [ "$pytest_status" -ne 0 ]; then
+            exit "$pytest_status"
+          fi
+          exit "$receipt_status"
+
   openapi-verify:
     name: Verify OpenAPI Types
     runs-on: ubuntu-24.04
@@ -1100,7 +2071,11 @@ jobs:
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -1188,7 +2163,11 @@ jobs:
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -1273,7 +2252,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always() && hashFiles('trivy-results.sarif') != ''
         continue-on-error: true
         with:
@@ -1281,6 +2260,133 @@ jobs:
           # Match the pre-category configuration key used by main. The
           # reusable audit has a separate job key for filesystem/config scans.
           category: ".github/workflows/ci.yml:docker-security-scan"
+
+  docker-security-scan-additional:
+    name: "Trivy Image Scan - ${{ matrix.image_name }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: pre-commit-check
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - image_name: frontend
+            file: frontend.Dockerfile
+            context: .
+            category: trivy-image-frontend
+          - image_name: gateway
+            file: services/gateway/Dockerfile
+            context: .
+            category: trivy-image-gateway
+          - image_name: ws-hub
+            file: services/ws-hub/Dockerfile
+            context: .
+            category: trivy-image-ws-hub
+          - image_name: file-processor
+            file: services/file-processor/Dockerfile
+            context: .
+            category: trivy-image-file-processor
+          - image_name: caddy
+            file: services/caddy/Dockerfile
+            context: services/caddy
+            category: trivy-image-caddy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build local runtime image for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: "university-ecosystem/${{ matrix.image_name }}:${{ github.sha }}"
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            ${{ matrix.image_name == 'frontend' && format('VITE_APP_RELEASE={0}', github.sha) || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_ENABLE_WEB_VITALS=false' || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_CWV_TRUSTED_RUM=false' || '' }}
+            ${{ matrix.image_name == 'frontend' && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || '' }}
+          cache-from: type=gha,scope=university-${{ matrix.image_name }}
+          cache-to: type=gha,scope=university-${{ matrix.image_name }},mode=max
+          provenance: false
+          sbom: false
+
+      - name: Verify fixed Caddy Brotli package offline
+        if: matrix.image_name == 'caddy'
+        timeout-minutes: 1
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="caddy-package-proof-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'timeout --kill-after=2s 5s docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
+          timeout --kill-after=5s 30s docker run --rm --interactive --pull=never \
+            --name "$container_name" --network none --read-only \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --entrypoint /bin/sh "university-ecosystem/caddy:${IMAGE_TAG}" -eu <<'CADDY_PACKAGE_PROOF'
+              release="$(cat /etc/alpine-release)"
+              case "$release" in
+                3.23.*) ;;
+                *) echo "Unexpected Caddy Alpine release: $release" >&2; exit 1 ;;
+              esac
+              printf "Caddy Alpine release: %s\n" "$release"
+              cat /etc/apk/repositories
+              apk --no-network --verbose info --exists "brotli-libs=1.2.1-r0"
+          CADDY_PACKAGE_PROOF
+
+      - name: Run Trivy vulnerability scanner
+        id: trivy_scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+        with:
+          version: v0.75.0
+          image-ref: "university-ecosystem/${{ matrix.image_name }}:${{ github.sha }}"
+          format: sarif
+          output: "trivy-${{ matrix.image_name }}.sarif"
+          severity: CRITICAL,HIGH
+          limit-severities-for-sarif: true
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to GitHub Security tab
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: "trivy-${{ matrix.image_name }}.sarif"
+          category: ${{ matrix.category }}
+
+      - name: Summarize Trivy vulnerability metadata
+        if: always() && steps.trivy_scan.outcome == 'failure' && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        env:
+          SARIF_PATH: "trivy-${{ matrix.image_name }}.sarif"
+        shell: bash
+        run: python3 scripts/quality/report_trivy_metadata.py "$SARIF_PATH"
+
+      - name: Upload Trivy SARIF diagnostic artifact
+        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-image-${{ matrix.image_name }}-sarif
+          path: trivy-${{ matrix.image_name }}.sarif
+          retention-days: 14
+          if-no-files-found: error
+
 
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.
@@ -1456,9 +2562,21 @@ jobs:
             tests/test_touched_tier0_migration_contracts.py \
             tests/test_reconcile_schema_drift_migration.py \
             tests/test_legacy_migration_guard_contracts.py \
+            tests/test_aud350_reconcile_migration_coverage.py \
             tests/integration/test_aud038_default_partition_redistribution_postgres.py \
             tests/integration/test_historical_migration_semantics_postgres.py \
             tests/integration/test_aud226_partitioning_generated_ids_postgres.py \
+            --tb=short
+
+      - name: Append AUD-350 PostgreSQL timestamp counterfactual to migration coverage
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          AUD350_POSTGRES_DATABASE_URL: postgresql+psycopg://test@127.0.0.1:5433/test_migration
+          RUN_INTEGRATION_TESTS: "1"
+        run: |
+          uv run coverage run --append --data-file=.coverage.migration \
+            --source=alembic/versions -m pytest \
+            tests/integration/test_aud350_stored_event_timestamp_migration.py \
             --tb=short
 
       - name: Build backend image for password preflight
@@ -1536,6 +2654,91 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
 
+      - name: Verify owned PostgreSQL renderer catalog admission
+        id: renderer-postgres-evidence
+        timeout-minutes: 3
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          ENVIRONMENT: test
+          RUN_INTEGRATION_TESTS: "1"
+          ALEMBIC_RENDERER_POSTGRES_DATABASE_URL: postgresql+psycopg://test@127.0.0.1:5433/test_migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d)"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          test_log="$probe_root/pytest.log"
+          pytest_status=0
+          timeout --signal=TERM --kill-after=5s 150s \
+            uv run --frozen --no-sync pytest \
+            -n 0 -vv --tb=short --show-capture=no --no-cov --maxfail=0 \
+            tests/test_alembic_live_sql_render.py::test_owned_renderer_catalog_rejects_user_objects \
+            tests/test_alembic_live_sql_render.py::test_owned_live_renderer_root_lifecycle_cleans_up \
+            tests/test_alembic_live_sql_render.py::test_owned_live_renderer_create_collision_preserves_existing_database \
+            --basetemp="$probe_root/basetemp" \
+            --junitxml="$probe_root/junit.xml" > "$test_log" 2>&1 || pytest_status=$?
+          echo "OWNED_RENDERER_POSTGRES_TESTS_BEGIN"
+          bytes="$(wc -c < "$test_log")"
+          head -c 131072 "$test_log"
+          echo "OWNED_RENDERER_POSTGRES_TESTS_END"
+          receipt_status=0
+          uv run --frozen --no-sync python - "$probe_root/junit.xml" <<'PY_RENDERER_PG_RECEIPT' || receipt_status=$?
+          import json
+          import sys
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          try:
+              report = Path(sys.argv[1])
+              if (
+                  report.is_symlink()
+                  or not report.is_file()
+                  or not 0 < report.stat().st_size <= 1_048_576
+              ):
+                  raise ValueError
+              root = ElementTree.parse(report).getroot()
+              suites = list(root.iter("testsuite"))
+              if len(suites) != 1:
+                  raise ValueError
+              counts = {
+                  key: int(suites[0].get(key, "-1"))
+                  for key in ("tests", "failures", "errors", "skipped")
+              }
+              if any(value < 0 or value > 7 for value in counts.values()):
+                  raise ValueError
+              print("OWNED_RENDERER_POSTGRES_COUNTS " + json.dumps(counts, sort_keys=True))
+              cases = list(root.iter("testcase"))
+              identities = {(case.get("classname"), case.get("name")) for case in cases}
+              names = {
+                  "test_owned_renderer_catalog_rejects_user_objects[" + kind + "]"
+                  for kind in ("relation", "routine", "type", "schema", "extension")
+              }
+              names.update({
+                  "test_owned_live_renderer_root_lifecycle_cleans_up",
+                  "test_owned_live_renderer_create_collision_preserves_existing_database",
+              })
+              expected_identities = {
+                  ("tests.test_alembic_live_sql_render", name) for name in names
+              }
+              expected = {"tests": 7, "failures": 0, "errors": 0, "skipped": 0}
+              if len(cases) != 7 or identities != expected_identities or counts != expected:
+                  raise ValueError
+              if any(list(root.iter(tag)) for tag in ("failure", "error", "skipped")):
+                  raise ValueError
+          except (OSError, ValueError, ElementTree.ParseError):
+              print("OWNED_RENDERER_POSTGRES_RECEIPT_REJECTED")
+              raise SystemExit(1) from None
+          print("OWNED_RENDERER_POSTGRES_VERIFIED_PASS 7")
+          PY_RENDERER_PG_RECEIPT
+          if [ "$bytes" -gt 131072 ]; then
+            echo "::error::Owned renderer PostgreSQL output exceeded 131072 bytes"
+            receipt_status=1
+          fi
+          if [ "$pytest_status" -ne 0 ]; then
+            exit "$pytest_status"
+          fi
+          exit "$receipt_status"
+
   # MOD-W15-01 / Wave 18.1: Contract tests as a required CI gate.
   # Runs lightweight Python consumer contract tests (no Go/FFI needed).
   # The full Go provider verification continues in contract-tests.yml.
@@ -1566,10 +2769,87 @@ jobs:
         # Contract coverage includes test_file_processor_contract.py (ProcessResult
         # callback schema) alongside the existing ws-hub NATS contract.
         run: |
-          uv run pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
+          set -euo pipefail
+          cohort_root="$RUNNER_TEMP/contract-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          consumer_root="$cohort_root/consumer"
+          policy_root="$cohort_root/security-disposition"
+          mkdir -p "$consumer_root/tmp" "$policy_root/tmp"
+
+          consumer_pid=""
+          policy_pid=""
+          terminate_contract_process_groups() {
+            local process_pid
+            local grace_tick
+            local any_alive
+            local cleanup_status=0
+
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                kill -TERM -- "-$process_pid" 2>/dev/null || true
+              fi
+            done
+
+            # Allow both owned process groups one shared 2s grace period, then
+            # escalate only groups started by this step.
+            for ((grace_tick = 0; grace_tick < 20; grace_tick++)); do
+              any_alive=0
+              for process_pid in "$@"; do
+                if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                  any_alive=1
+                fi
+              done
+              if (( any_alive == 0 )); then
+                break
+              fi
+              sleep 0.1
+            done
+
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                kill -KILL -- "-$process_pid" 2>/dev/null || true
+              fi
+            done
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]]; then
+                wait "$process_pid" 2>/dev/null || true
+              fi
+            done
+            for process_pid in "$@"; do
+              if [[ -n "$process_pid" ]] && kill -0 -- "-$process_pid" 2>/dev/null; then
+                echo "::error::Contract test process group $process_pid survived SIGKILL."
+                cleanup_status=1
+              fi
+            done
+            return "$cleanup_status"
+          }
+          cleanup_contract_processes() {
+            terminate_contract_process_groups "$consumer_pid" "$policy_pid" || true
+          }
+          trap cleanup_contract_processes EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          trap 'exit 129' HUP
+
+          # Keep the full consumer and exact-disposition populations in this
+          # required job, but overlap their independent pytest processes. Each
+          # process gets its own basetemp, temp/database root, log, and JUnit file.
+          # Bound the consumer to three file-grouped xdist workers: conftest owns
+          # each worker database, query log, and temporary Pact directory. Keep
+          # module-scoped Pact fixtures together without changing any selectors.
+          # The positional expansions in each single-quoted -c script belong to
+          # the child Bash, so suppress shellcheck's literal-single-quote warning.
+          # shellcheck disable=SC2016
+          setsid env \
+            TMPDIR="$consumer_root/tmp" TMP="$consumer_root/tmp" TEMP="$consumer_root/tmp" \
+            PACT_DO_NOT_TRACK=true \
+            bash -c '
+              set -euo pipefail
+              uv run --frozen --no-sync pytest tests/contracts/ tests/test_live_stand_cleanup_profile_contract.py tests/test_live_nats_transport.py \
             tests/test_owned_nats_outage_cli.py \
+            tests/test_owned_nats_outage_cli.py::test_main_renders_broker_receipt_checkpoint_without_private_evidence \
             tests/test_owned_nats_outage_coordinator.py::test_public_result_and_logs_contain_only_closed_labels \
             tests/test_owned_nats_outage_coordinator.py::test_runtime_checkpoint_distinguishes_callback_and_inventory_rejection \
+            tests/test_owned_nats_outage_coordinator.py::test_invalid_broker_probe_has_distinct_finite_checkpoint \
             tests/test_owned_nats_outage_coordinator.py::test_broker_receipt_cannot_hide_final_owner_or_inventory_drift \
             tests/test_owned_nats_outage_coordinator.py::test_coordinator_requires_exact_raw_broker_receipt \
             tests/test_owned_nats_outage_coordinator.py::test_valid_path_binds_exact_event_and_restores_before_drain \
@@ -1583,9 +2863,12 @@ jobs:
             tests/test_audit_timetravel.py tests/test_audit_service_closure.py \
             tests/test_audit_service.py tests/test_admin_audit_closure.py \
             tests/test_docker_startup_contracts.py::test_migrations_disable_inherited_backend_runtime_healthcheck \
+            tests/test_docker_startup_contracts.py::test_ci_caddy_smokes_use_the_pinned_project_runtime \
             tests/test_security_hardening_workflow_contract.py::test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_locked \
+            tests/test_security_hardening_workflow_contract.py::test_generated_signing_keys_are_masked_before_environment_export \
             tests/test_quality_configuration.py::test_virtualenv_security_floor_is_dev_only_and_locked \
             tests/test_dependency_audit_contract.py::test_storybook_security_floor_and_aligned_lock \
+            tests/test_dnspython_security.py \
             tests/test_cli_infra_closure.py tests/test_check_mypy_budget.py \
             tests/test_periodic_task_metrics.py \
             tests/test_security_hardening_workflow_contract.py::test_npm_failure_metadata_is_diagnostic_only_and_keeps_audit_blocking \
@@ -1619,9 +2902,25 @@ jobs:
             tests/test_chat_repository_coverage.py::test_find_existing_dm_none_when_no_shared_chat \
             tests/test_chat_repository_coverage.py::test_find_existing_dm_ignores_two_member_group \
             tests/test_news_repository_db.py::test_anonymous_interactions_never_use_email_as_comment_name \
+            tests/test_notifications_news_events_db.py::test_comment_notification_uses_real_profile_name_without_email \
+            tests/test_localization_core_closure.py::test_missing_resource_not_found_keys_return_localized_404_details \
+            tests/test_chat_reaction_emoji_validation.py::test_reaction_input_accepts_qualified_unicode_emoji_sequences \
+            tests/test_chat_reaction_emoji_validation.py::test_reaction_input_rejects_text_multiple_or_invalid_sequences \
+            tests/test_chat_reaction_emoji_validation.py::test_reaction_creation_is_strict_but_legacy_lookup_and_delete_remain \
+            tests/test_health_api_closure.py::test_healthz_tiered_cache_reports_unavailable_shared_layer \
+            tests/test_health_api_closure.py::test_storage_probe_uses_short_outcome_ttls_and_recovers \
             tests/test_schedule_reminders_closure.py::test_build_schedule_reminder_formats_resolved_occurrence_in_campus_timezone \
             tests/test_notifications_news_events_closure.py::test_event_notification_times_use_campus_timezone \
             tests/test_ws_connection_manager_closure.py::test_send_to_user_uses_real_websocket_json_boundary \
+            tests/test_aud350_frozen_migration_fixture.py \
+            tests/test_quality_inventory.py::test_typescript_import_after_jsx_keeps_exact_source_relationship \
+            tests/test_quality_inventory.py::test_typescript_non_code_jsx_and_regex_do_not_claim_source_ownership \
+            tests/test_quality_inventory.py::test_typescript_dotted_module_stem_resolves_exact_config_file \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_links_only_files_it_recursively_reads \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_rejects_unproven_traversal_or_reads \
+            tests/test_quality_inventory.py::test_typescript_glob_scan_does_not_follow_external_file_symlinks \
+            tests/test_quality_inventory.py::test_python_contract_accepts_verified_test_root_alias \
+            tests/test_quality_inventory.py::test_python_contract_rejects_rebound_test_root_alias \
             tests/test_quality_inventory.py::test_go_duplicate_checker_ignores_comments_and_literals \
             tests/test_quality_inventory.py::test_go_duplicate_checker_still_rejects_real_duplicate_declarations \
             tests/test_quality_inventory.py::test_python_duplicate_scopes \
@@ -1638,9 +2937,14 @@ jobs:
             tests/test_management_scripts.py::test_mfa_reset_parser_keeps_email_and_mutual_exclusion \
             tests/test_management_scripts.py::test_load_user_by_id \
             tests/test_security_hardening_workflow_contract.py::test_ci_scanner_bootstraps_are_version_pinned_and_checksum_verified \
+            tests/test_full_backend_reusable_contract.py \
+            tests/test_kyverno_registry_source_binding.py \
+            tests/test_kyverno_registry_owner_review_b.py \
             tests/test_live_acceptance_workflow.py::test_live_stand_nats_outage_dispatches_once_and_redacts_failures \
             tests/test_ci_check_catalog.py tests/test_dependency_resolution_policy.py \
             tests/test_cache_settings_closure.py tests/test_check_no_python2_except.py \
+            tests/test_health_endpoint.py::test_healthcheck_tiered_cache_reports_shared_layer_failure \
+            tests/test_health_endpoint.py::test_healthcheck_storage_probe_recovers_errors_and_caps_success_cache \
             tests/test_geolocation.py::test_geolocation_service_init_success \
             tests/test_aud469_partition_scheduler_resilience.py \
             tests/test_chat_query_projection_regressions.py::test_message_history_projects_page_senders_in_one_public_profile_query \
@@ -1670,18 +2974,528 @@ jobs:
             tests/test_live_stand.py::test_live_caddy_disjoint_second_read_failure_preserves_cleanup \
             tests/test_live_stand.py::test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission \
             tests/test_live_stand.py::test_live_caddy_probe_reads_one_union_window_from_reverified_pinned_container \
-            tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline -v \
-            --tb=short --durations=20 \
+            tests/test_live_stand.py::test_live_caddy_probe_brackets_one_union_read_within_the_shared_deadline \
+            tests/test_health_api_closure.py::test_healthz_brief_cache_hit_filters_full_payload \
+            tests/test_logging_pii_redaction_contract.py \
+            tests/test_cwv_rum_security.py \
+            tests/test_gitleaks_hygiene_contract.py \
+            tests/test_websocket_closure.py \
+            tests/test_migration_148642dd1207_safety.py \
+            tests/test_logging_object_redaction_contract.py \
+            tests/test_logging_contract_closure.py \
+            tests/test_logging_core.py \
+            tests/test_logging_test_isolation.py \
+            tests/test_email_utils.py \
+            tests/test_email_utils_full.py \
+            tests/test_utils_email.py \
+            tests/test_quality_inventory.py::test_aud508_dynamic_skip_syntax_is_detected \
+            tests/test_quality_inventory.py::test_aud508_skip_exemptions_require_real_comment_evidence \
+            tests/test_quality_inventory.py::test_aud509_source_matching_requires_exact_module_relationships \
+            tests/test_quality_inventory.py::test_aud509_go_test_matches_its_same_package_without_a_sibling_name \
+            tests/test_quality_inventory.py::test_aud509_go_external_test_requires_exact_package_ownership \
+            tests/test_quality_inventory.py::test_aud509_imports_match_only_the_exact_inventoried_module \
+            tests/test_quality_inventory.py::test_aud509_typescript_import_must_resolve_to_an_inventoried_module \
+            tests/test_quality_inventory.py::test_aud509_relative_python_import_resolves_inside_its_package \
+            tests/test_quality_inventory.py::test_aud509_python_name_match_prefers_exact_and_rejects_ambiguity \
+            tests/test_quality_inventory.py::test_aud508_non_python_skip_scanner_ignores_comments_and_strings \
+            tests/test_quality_inventory.py::test_aud508_non_python_skip_accepts_tracking_comments \
+            tests/test_quality_inventory.py \
+            tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_with_unavailable_inspector_exposes_later_unconditional_lookup \
+            tests/test_dead_letter_queue.py::test_mark_job_completed \
+            tests/test_owned_client_ip_acceptance.py \
+            tests/test_migration_148642dd1207_orchestrator.py::test_upgrade_postgresql_legacy_group_cutover_without_existing_group_index \
+            tests/test_live_stand.py::test_live_reset_registration_v2_accepts_only_finite_failure_observations \
+            tests/test_live_stand.py::test_live_reset_registration_v2_accepts_classified_error_presence \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_classification_without_form_error \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_private_fields_and_wrong_types \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_inconsistent_observations \
+            tests/test_live_stand.py::test_live_reset_registration_v2_rejects_duplicate_keys_and_untrusted_framing \
+            tests/test_live_stand.py::test_live_reset_registration_v2_deduplicates_and_caps_output \
+            tests/test_live_stand.py::test_live_reset_registration_v2_runner_uses_failure_stdout_only \
+            tests/test_config_base_closure.py \
+            tests/test_frontend_knip_asset_contract.py \
+            tests/test_outbox_tenant_context.py \
+            tests/test_migration_downgrade_policy.py \
+            tests/test_mfa_email_otp_migrations.py::test_contract_downgrade_is_explicitly_irreversible \
+            tests/test_mfa_email_otp_migrations.py::test_expansion_downgrade_is_explicitly_irreversible \
+            tests/test_touched_tier0_migration_contracts.py::test_dnd_wall_clock_downgrade_refuses_to_invent_lost_offsets \
+            tests/test_quarantine_migration.py::test_migration_downgrade_refuses_to_drop_quota_evidence \
+            tests/test_event_handlers_behavior_closure.py \
+            tests/test_csp_report_closure.py::test_receive_csp_report_logs_only_sanitized_document_uri \
+            tests/test_csp_report_closure.py::test_receive_csp_report_sanitizes_uri_edge_cases \
+            tests/test_caddy_routing.py::test_reset_password_uri_filter_covers_encoded_route_characters_and_separators \
+            tests/test_caddy_routing.py::test_query_uri_filter_redacts_each_encoded_credential_key_character \
+            tests/test_caddy_routing.py::test_uri_filter_preserves_ordinary_non_reset_diagnostics \
+            tests/test_caddy_routing.py::test_tls_edge_sets_the_shared_browser_security_headers \
+            tests/test_caddy_routing.py::test_caddy_uri_redaction_rules_keep_path_first_and_sensitive_keys_ordered \
+            tests/test_event_handlers.py \
+            tests/test_event_handlers_closure.py \
+            tests/test_content_consistency_regressions.py \
+            tests/test_search_indexer.py \
+            tests/test_outbox_worker.py::test_outbox_worker_error_handling \
+            tests/test_outbox_worker.py::test_outbox_worker_dlq_transition \
+            tests/test_outbox_worker.py::test_durable_outbox_handler_failure_retries_without_pii \
+            tests/test_grades_api.py \
+            tests/test_trivy_identity_before_diagnostic.py \
+            tests/test_workflow_fail_closed_contracts.py::test_trivy_metadata_failure_is_deferred_but_remains_blocking \
+            tests/test_workflow_fail_closed_contracts.py::test_trivy_reassert_executes_and_rejects_each_non_success_outcome \
+            tests/test_static_canonical_attachment_urls.py \
+            tests/test_chat_uploads.py::test_real_static_chat_upload_persists_and_remains_readable \
+            tests/test_chat_attachment_copy_contracts.py::test_durable_cleanup_accepts_both_exact_static_aliases_and_replays \
+            tests/test_chat_attachment_copy_contracts.py::test_forward_copy_of_canonical_static_identity_owns_independent_bytes \
+            tests/test_security_hardening_workflow_contract.py::test_squawk_integrity_contract_rejects_weakening_controls \
+            tests/test_aud345_444_registration.py \
+            tests/test_owned_client_ip_probe_layer_contract.py \
+            tests/test_notifications_delivery_coverage.py \
+            tests/test_owned_client_ip_probe.py \
+            tests/test_owned_client_ip_probe_transport.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_legacy_delivery_failure_protects_dlq_payload_and_replay \
+            tests/test_notifications_service.py::test_generate_schedule_reminders_handles_duplicate_titles \
+            tests/test_notifications_service.py::test_generate_schedule_reminders_skips_inactive_users \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_plaintext_entrypoints_protect_links_without_changing_delivery \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_legacy_parking_keeps_logical_dedup_and_protects_reopened_rows \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_sealed_round_trip_preserves_bytes_and_native_expiry \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_marked_round_trip_never_falls_back_to_legacy_delivery \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_unsafe_marked_parking_uses_existing_nak_without_plaintext \
+            tests/test_historical148_squawk_policy.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_protected_replay_reopens_original_legacy_job_without_hash_drift \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_real_worker_legacy_failure_keeps_sentry_event_secret_free \
+            tests/test_aud445_chat_remove_cache_failure.py \
+            tests/test_aud445_cache_outbox.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_sentry_events_do_not_capture_plaintext_frames \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_worker_event_processor_copies_only_target_stack_paths \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_worker_event_processor_tolerates_optional_sdk_fields \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_missing_sentry_sdk_keeps_failure_reporting_secret_free \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_worker_scope_keeps_batch_private_and_other_diagnostics \
+            tests/test_aud454_websocket_membership_race.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_invalid_worker_payload_keeps_telemetry_secret_free \
+            tests/test_alembic_graph_metadata.py \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_active_historical_duplicates_protect_payload_without_reset \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_historical_auto_replay_protects_the_retained_row \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_retained_row_compatibility_and_caller_owned_uow \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publish \
+            tests/test_aud447_auth_email_delivery.py::test_aud447_corrupt_retained_job_type_fails_closed_in_auth_dedup -v \
+            --tb=short --durations=20 -n 3 --dist loadfile \
             -p no:cacheprovider \
-            -k "not integration"
-        env:
-          PACT_DO_NOT_TRACK: "true"
+            -k "not integration" \
+            --basetemp="$1" \
+            --junitxml="$2" 2>&1 | tee "$3"
+            ' _ "$consumer_root/basetemp" "$consumer_root/junit.xml" "$consumer_root/pytest.log" &
+          consumer_pid=$!
+
+          # shellcheck disable=SC2016
+          setsid env \
+            TMPDIR="$policy_root/tmp" TMP="$policy_root/tmp" TEMP="$policy_root/tmp" \
+            bash -c '
+              set -euo pipefail
+              exec uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
+                --tb=short --durations=20 -p no:cacheprovider \
+                --basetemp="$1" --junitxml="$2"
+            ' _ "$policy_root/basetemp" "$policy_root/junit.xml" \
+            > "$policy_root/pytest.log" 2>&1 &
+          policy_pid=$!
+
+          consumer_status=0
+          if wait "$consumer_pid"; then
+            consumer_status=0
+          else
+            consumer_status=$?
+          fi
+          lingering_process_groups=()
+          if [[ -n "$consumer_pid" ]] && kill -0 -- "-$consumer_pid" 2>/dev/null; then
+            echo "::error::Consumer pytest left a child process after its leader exited."
+            consumer_status=1
+            lingering_process_groups+=("$consumer_pid")
+          fi
+
+          policy_status=0
+          if wait "$policy_pid"; then
+            policy_status=0
+          else
+            policy_status=$?
+          fi
+          if [[ -n "$policy_pid" ]] && kill -0 -- "-$policy_pid" 2>/dev/null; then
+            echo "::error::Exact-disposition pytest left a child process after its leader exited."
+            policy_status=1
+            lingering_process_groups+=("$policy_pid")
+          fi
+          if (( ${#lingering_process_groups[@]} > 0 )); then
+            terminate_contract_process_groups "${lingering_process_groups[@]}" || true
+          fi
+          consumer_pid=""
+          policy_pid=""
+
+          printf '%s\n' "$policy_status" > "$policy_root/status"
+          printf 'Consumer pytest exit status: %s\n' "$consumer_status"
+          printf 'Exact disposition pytest exit status: %s\n' "$policy_status"
+          if (( consumer_status != 0 || policy_status != 0 )); then
+            exit 1
+          fi
 
       - name: Verify exact security disposition contracts
         if: ${{ !cancelled() }}
         run: |
-          uv run --frozen --no-sync pytest tests/test_verify_secrets_baseline.py -v \
-            --tb=short --durations=20 -p no:cacheprovider
+          policy_root="$RUNNER_TEMP/contract-tests-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/security-disposition"
+          if [[ ! -f "$policy_root/status" || ! -f "$policy_root/pytest.log" ]]; then
+            echo "::error::The parallel exact-disposition pytest result is missing."
+            exit 1
+          fi
+          cat "$policy_root/pytest.log"
+          policy_status="$(cat "$policy_root/status")"
+          if [[ "$policy_status" != "0" ]]; then
+            echo "::error::Exact-disposition pytest exited with status $policy_status."
+            exit 1
+          fi
+
+      - name: Verify scoped audit named regressions
+        if: ${{ !cancelled() }}
+        shell: bash
+        timeout-minutes: 2
+        env:
+          EXPECTED_TESTED_SHA: ${{ github.sha }}
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          probe_root="$(mktemp -d "$RUNNER_TEMP/audit-cohort.XXXXXXXX")"
+          trap 'rm -rf -- "$probe_root"' EXIT
+          mkdir -p "$probe_root/tmp"
+          export TMPDIR="$probe_root/tmp" TMP="$probe_root/tmp" TEMP="$probe_root/tmp"
+          cat > "$probe_root/verify.py" <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+          from xml.etree import ElementTree
+
+          PATHS = (
+              "app/api/news.py",
+              "app/api/events.py",
+              "app/api/users.py",
+              "tests/test_aud339_semantic_search_etag.py",
+              "tests/test_users_me_replica_routing.py",
+              "app/core/ssrf.py",
+              "app/auth/security.py",
+              "app/core/config/mixins/jwt_settings.py",
+              "app/core/config/mixins/csp_settings.py",
+              "app/core/policies/csp.py",
+              "app/core/security_headers.py",
+              "SECURITY.md",
+              "quality/frontend-csp-defaults.json",
+              "tests/test_aud362_ssrf_ipv6_unspecified.py",
+              "tests/test_aud354_jwt_issuer.py",
+              "tests/test_security_headers.py",
+              "tests/test_csp_settings_closure.py",
+              "app/services/session_service.py",
+              "app/models/auth.py",
+              "tests/test_session_service_user_agent_aud356.py",
+              "app/api/ws/dispatcher.py",
+              "app/api/websocket.py",
+              "app/auth/rbac.py",
+              "app/core/di/spicedb.py",
+              "tests/test_ws_dispatcher_full.py",
+              "scripts/seed_admin_data.py",
+              "tests/test_seed_admin_data.py",
+              "app/services/notification_queue.py",
+              "app/models/notifications.py",
+              "tests/conftest.py",
+              "tests/fixtures/services/websocket_fixtures.py",
+              "tests/fixtures/database/database.py",
+              "pyproject.toml",
+              "uv.lock",
+          )
+          EXPECTED = {
+              (
+                  "tests.test_aud339_semantic_search_etag",
+                  "test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[news]",
+              ),
+              (
+                  "tests.test_aud339_semantic_search_etag",
+                  "test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[events]",
+              ),
+              (
+                  "tests.test_users_me_replica_routing",
+                  "test_users_me_audit_write_uses_primary_with_distinct_read_component",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_public_https_validator_rejects_unspecified_ipv6_literal",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_sync_validator_rejects_unspecified_ipv6_literal_without_dns",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_async_validator_rejects_unspecified_ipv6_literal_without_dns",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_resolver_rejects_unspecified_ipv6_literal_without_dns",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_sync_and_resolver_reject_unspecified_ipv6_dns_answers",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_async_validator_rejects_unspecified_ipv6_dns_answer",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_global_ipv6_remains_allowed",
+              ),
+              (
+                  "tests.test_aud362_ssrf_ipv6_unspecified",
+                  "test_async_validator_allows_global_ipv6_literal",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_requires_issuer_claim",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_rejects_foreign_issuer",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_rejects_missing_issuer_for_previous_key",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_decode_token_accepts_expected_issuer_for_active_and_previous_keys",
+              ),
+              (
+                  "tests.test_aud354_jwt_issuer",
+                  "test_minted_token_uses_configured_issuer_and_active_key",
+              ),
+              (
+                  "tests.test_security_headers",
+                  "test_security_headers_production_mode",
+              ),
+              (
+                  "tests.test_security_headers",
+                  "test_security_headers_development_report_only",
+              ),
+              (
+                  "tests.test_security_headers",
+                  "test_security_headers_credentialless_coep",
+              ),
+              (
+                  "tests.test_csp_settings_closure",
+                  "test_production_csp_defaults_match_shared_frontend_contract",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[ordinary-ascii]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[ascii-boundary]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[ascii-overflow]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[multibyte-boundary]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[multibyte-overflow]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[none]",
+              ),
+              (
+                  "tests.test_session_service_user_agent_aud356",
+                  "test_create_access_token_persists_user_agent_within_database_bound[empty]",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_admin_gets_online_list",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_non_admin_denied",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_stale_admin_role_is_denied_by_spicedb",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_spicedb_unavailable_fails_closed_without_online_list",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_missing_app_container_fails_closed",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full.TestDispatchGetOnline",
+                  "test_ping_and_read_do_not_resolve_permission_checker",
+              ),
+              (
+                  "tests.test_ws_dispatcher_full",
+                  "test_websocket_route_uses_app_container_per_get_online_frame",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_is_inert_and_idempotent",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[dead_lettered]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[locale]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[attempts]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[last_error]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[claimed_at]",
+              ),
+              (
+                  "tests.test_seed_admin_data",
+                  "test_owned_notification_queue_fixture_rejects_collisions_before_inserts[scheduled-at]",
+              ),
+          }
+
+
+          def git(*args):
+              return subprocess.check_output(["git", *args], text=True).strip()
+
+
+          def identity():
+              tested = os.environ["EXPECTED_TESTED_SHA"]
+              source = os.environ["SOURCE_HEAD_SHA"]
+              if any(re.fullmatch(r"[0-9a-f]{40}", value) is None for value in (tested, source)):
+                  raise SystemExit("Invalid immutable source identity")
+              if git("rev-parse", "HEAD") != tested:
+                  raise SystemExit("Checkout differs from expected tested commit")
+              if os.environ["WORKFLOW_EVENT"] == "pull_request":
+                  parents = [
+                      line.split()[1]
+                      for line in git("cat-file", "-p", "HEAD").split("\n\n", 1)[0].splitlines()
+                      if line.startswith("parent ")
+                  ]
+                  if len(parents) != 2 or parents[1] != source:
+                      raise SystemExit("Tested merge does not have the expected source parent")
+              elif source != tested:
+                  raise SystemExit("Push source differs from tested commit")
+              if subprocess.call(["git", "diff", "--quiet", "--no-ext-diff", "HEAD", "--"]):
+                  raise SystemExit("Tracked checkout changed during evidence collection")
+              blobs = {}
+              for path in PATHS:
+                  blob = git("rev-parse", f"HEAD:{path}")
+                  if git("hash-object", "--", path) != blob:
+                      raise SystemExit("Evidence source file differs from its Git blob")
+                  blobs[path] = blob
+              return {
+                  "source_head_sha": source,
+                  "tested_commit_sha": tested,
+                  "tested_tree_sha": git("rev-parse", "HEAD^{tree}"),
+                  "workflow_sha": os.environ["WORKFLOW_SHA"],
+                  "run_id": os.environ["GITHUB_RUN_ID"],
+                  "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                  "blobs": blobs,
+              }
+
+
+          root = Path(sys.argv[1])
+          current = identity()
+          if sys.argv[2] == "before":
+              (root / "source.json").write_text(json.dumps(current, sort_keys=True))
+              print("Scoped audit source identity: " + json.dumps(current, sort_keys=True))
+          else:
+              if current != json.loads((root / "source.json").read_text()):
+                  raise SystemExit("Source identity changed during the cohort")
+              report = root / "junit.xml"
+              if not report.is_file() or not 0 < report.stat().st_size <= 1_048_576:
+                  raise SystemExit("Missing or oversized Scoped audit JUnit report")
+              document = ElementTree.parse(report)
+              suites = list(document.getroot().iter("testsuite"))
+              totals = {"tests": "41", "failures": "0", "errors": "0", "skipped": "0"}
+              if len(suites) != 1 or any(suites[0].get(key) != value for key, value in totals.items()):
+                  raise SystemExit("Scoped audit JUnit totals are not exactly forty-one passes")
+              cases = list(document.getroot().iter("testcase"))
+              observed = [(case.get("classname"), case.get("name")) for case in cases]
+              if len(observed) != 41 or set(observed) != EXPECTED:
+                  raise SystemExit("Scoped audit JUnit identities are missing, extra or duplicated")
+              if any(list(document.getroot().iter(tag)) for tag in ("failure", "error", "skipped")):
+                  raise SystemExit("Scoped audit cohort contains failure, error or skip")
+              print("Scoped audit verified named PASS: " + json.dumps(sorted(observed)))
+              print("Scoped audit postflight source identity unchanged")
+          PY
+          uv run --frozen --no-sync python "$probe_root/verify.py" "$probe_root" before
+          pytest_status=0
+          timeout --signal=TERM --kill-after=5s 90s \
+            uv run --frozen --no-sync pytest \
+            'tests/test_aud339_semantic_search_etag.py::test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[news]' \
+            'tests/test_aud339_semantic_search_etag.py::test_semantic_search_cyrillic_etag_is_ascii_and_covers_inputs[events]' \
+            tests/test_users_me_replica_routing.py::test_users_me_audit_write_uses_primary_with_distinct_read_component \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_public_https_validator_rejects_unspecified_ipv6_literal \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_sync_validator_rejects_unspecified_ipv6_literal_without_dns \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_async_validator_rejects_unspecified_ipv6_literal_without_dns \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_resolver_rejects_unspecified_ipv6_literal_without_dns \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_sync_and_resolver_reject_unspecified_ipv6_dns_answers \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_async_validator_rejects_unspecified_ipv6_dns_answer \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_global_ipv6_remains_allowed \
+            tests/test_aud362_ssrf_ipv6_unspecified.py::test_async_validator_allows_global_ipv6_literal \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_requires_issuer_claim \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_rejects_foreign_issuer \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_rejects_missing_issuer_for_previous_key \
+            tests/test_aud354_jwt_issuer.py::test_decode_token_accepts_expected_issuer_for_active_and_previous_keys \
+            tests/test_aud354_jwt_issuer.py::test_minted_token_uses_configured_issuer_and_active_key \
+            tests/test_security_headers.py::test_security_headers_production_mode \
+            tests/test_security_headers.py::test_security_headers_development_report_only \
+            tests/test_security_headers.py::test_security_headers_credentialless_coep \
+            tests/test_csp_settings_closure.py::test_production_csp_defaults_match_shared_frontend_contract \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[ordinary-ascii]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[ascii-boundary]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[ascii-overflow]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[multibyte-boundary]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[multibyte-overflow]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[none]' \
+            'tests/test_session_service_user_agent_aud356.py::test_create_access_token_persists_user_agent_within_database_bound[empty]' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_admin_gets_online_list' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_non_admin_denied' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_stale_admin_role_is_denied_by_spicedb' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_spicedb_unavailable_fails_closed_without_online_list' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_missing_app_container_fails_closed' \
+            'tests/test_ws_dispatcher_full.py::TestDispatchGetOnline::test_ping_and_read_do_not_resolve_permission_checker' \
+            'tests/test_ws_dispatcher_full.py::test_websocket_route_uses_app_container_per_get_online_frame' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_is_inert_and_idempotent' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[dead_lettered]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[locale]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[attempts]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[last_error]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[claimed_at]' \
+            'tests/test_seed_admin_data.py::test_owned_notification_queue_fixture_rejects_collisions_before_inserts[scheduled-at]' \
+            -n 0 -vv --tb=short --show-capture=no --no-cov --maxfail=0 \
+            -p no:cacheprovider --basetemp="$probe_root/basetemp" \
+            --junitxml="$probe_root/junit.xml" \
+            > "$probe_root/pytest.log" 2>&1 || pytest_status=$?
+          tail -n 120 "$probe_root/pytest.log"
+          verification_status=0
+          uv run --frozen --no-sync python "$probe_root/verify.py" "$probe_root" after \
+            || verification_status=$?
+          if (( pytest_status != 0 || verification_status != 0 )); then
+            exit 1
+          fi
 
   # Compare frontend MSW mocks with the authoritative OpenAPI contract.
   # This hermetic drift check remains a required PR/main-push gate.
@@ -1712,7 +3526,11 @@ jobs:
 
       - name: Generate CI secret key if not configured (RZ-14-06)
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -1825,7 +3643,11 @@ jobs:
 
       - name: Generate ephemeral ASan signing key
         shell: bash
-        run: python -c 'import secrets; print("SECRET_KEY=" + secrets.token_urlsafe(48))' >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
       - name: Run FFI tests under ASan / LSan
         env:
           ENVIRONMENT: testing
@@ -1886,7 +3708,11 @@ jobs:
 
       - name: Generate ephemeral TSan signing key
         shell: bash
-        run: python -c 'import secrets; print("SECRET_KEY=" + secrets.token_urlsafe(48))' >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
       - name: Run FFI tests under TSan
         env:
           ENVIRONMENT: testing
@@ -1949,7 +3775,7 @@ jobs:
             ${{ runner.os }}-cargo-rust-tests-v2-
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           # 0.9.1 understands Cargo's build-dir v2 layout used by current
           # nightly Rust, while remaining immutable and reproducible here.
@@ -2102,7 +3928,7 @@ jobs:
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
         # taiki-e/install-action hardcodes the old drager/wasm-pack repo → 404).
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: wasm-pack@0.15.0
 
@@ -3109,7 +4935,11 @@ jobs:
         # mint a runner-local value only for this unprivileged metadata check;
         # no repository or long-lived CI secret is exposed to PR code.
         if: env.SECRET_KEY == ''
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Install harness dependencies
         run: |
@@ -3184,17 +5014,37 @@ jobs:
     name: "Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)"
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    if: ${{ always() }}
     needs: backend-tests
     steps:
-      - run: echo "Satisfying branch protection for Unit Tests"
+      - name: Require successful backend tests
+        shell: bash
+        env:
+          BACKEND_TEST_RESULT: ${{ needs.backend-tests.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$BACKEND_TEST_RESULT" != "success" ]]; then
+            echo "::error::Backend tests did not succeed." >&2
+            exit 1
+          fi
 
   backend-tests-integration-dummy:
     name: "Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)"
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    if: ${{ always() }}
     needs: backend-tests
     steps:
-      - run: echo "Satisfying branch protection for Integration Tests"
+      - name: Require successful backend tests
+        shell: bash
+        env:
+          BACKEND_TEST_RESULT: ${{ needs.backend-tests.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$BACKEND_TEST_RESULT" != "success" ]]; then
+            echo "::error::Backend tests did not succeed." >&2
+            exit 1
+          fi
 
   ci-success:
     name: CI Success
@@ -3221,6 +5071,7 @@ jobs:
       - openapi-verify
       - verify-runtime-reqs
       - docker-security-scan
+      - docker-security-scan-additional
       - helm-validate
       - db-migration-gate
       - go-fuzz
@@ -3279,6 +5130,7 @@ jobs:
             "openapi-verify|${{ needs.openapi-verify.result }}"
             "verify-runtime-reqs|${{ needs.verify-runtime-reqs.result }}"
             "docker-security-scan|${{ needs.docker-security-scan.result }}"
+            "docker-security-scan-additional|${{ needs.docker-security-scan-additional.result }}"
             "helm-validate|${{ needs.helm-validate.result }}"
             "db-migration-gate|${{ needs.db-migration-gate.result }}"
             "go-fuzz|${{ needs.go-fuzz.result }}"

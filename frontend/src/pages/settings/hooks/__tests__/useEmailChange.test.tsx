@@ -61,7 +61,11 @@ const axiosError = (status: number, detail?: unknown) => {
 
 describe("useEmailChange", () => {
   beforeEach(() => {
-    mocks.user = { id: "user-1", email: "current@example.test", pending_email: null }
+    mocks.user = {
+      id: "user-1",
+      email: "current@example.test",
+      pending_email: null,
+    }
     mocks.post.mockReset()
     mocks.fetchQuery.mockReset()
     mocks.cancelQueries.mockReset()
@@ -165,6 +169,146 @@ describe("useEmailChange", () => {
     })
   })
 
+  it("reports a committed email request separately when the profile refresh fails", async () => {
+    mocks.post.mockResolvedValue({ data: {} })
+    mocks.fetchQuery.mockRejectedValueOnce(new Error("profile refresh failed"))
+    const { result, setSnackbar } = renderEmailChange()
+    setCredentials(result)
+
+    await act(async () => {
+      await result.current.handleEmailSubmit()
+    })
+
+    expect(mocks.post).toHaveBeenCalledOnce()
+    expect(mocks.fetchQuery).toHaveBeenCalledOnce()
+    expect(result.current.pendingEmail).toBe("next@example.test")
+    expect(result.current.emailPassword).toBe("")
+    expect(result.current.emailError).toBeNull()
+    expect(setSnackbar).toHaveBeenLastCalledWith({
+      text: "settings:security.email.confirmationSentRefreshFailed:next@example.test",
+      severity: "warning",
+    })
+    expect(setSnackbar).not.toHaveBeenCalledWith({
+      text: "settings:security.email.failed",
+      severity: "error",
+    })
+  })
+
+  it("warns when an accepted email request has no refreshed profile", async () => {
+    mocks.post.mockResolvedValue({ data: {} })
+    mocks.fetchQuery.mockResolvedValueOnce(null)
+    const { result, setSnackbar } = renderEmailChange()
+    setCredentials(result)
+
+    await act(async () => {
+      await result.current.handleEmailSubmit()
+    })
+
+    expect(mocks.post).toHaveBeenCalledOnce()
+    expect(result.current.pendingEmail).toBe("next@example.test")
+    expect(result.current.emailPassword).toBe("")
+    expect(result.current.emailError).toBeNull()
+    expect(setSnackbar).toHaveBeenLastCalledWith({
+      text: "settings:security.email.confirmationSentRefreshFailed:next@example.test",
+      severity: "warning",
+    })
+  })
+
+  it("suppresses an old account's refresh result after the email request commits", async () => {
+    type ProfileSnapshot = {
+      id: string
+      email: string
+      pending_email: string | null
+    }
+    let resolveRefresh!: (profile: ProfileSnapshot) => void
+    const pendingRefresh = new Promise<ProfileSnapshot>((resolve) => {
+      resolveRefresh = resolve
+    })
+    mocks.post.mockResolvedValue({ data: {} })
+    mocks.fetchQuery.mockReturnValueOnce(pendingRefresh)
+    const { result, rerender, setSnackbar } = renderEmailChange()
+    setCredentials(result)
+    let operation!: Promise<void>
+
+    act(() => {
+      operation = result.current.handleEmailSubmit()
+    })
+    await waitFor(() => expect(mocks.fetchQuery).toHaveBeenCalledOnce())
+
+    mocks.user = {
+      id: "user-2",
+      email: "other@example.test",
+      pending_email: null,
+    }
+    rerender()
+    await waitFor(() => expect(result.current.pendingEmail).toBeNull())
+    expect(result.current.emailValue).toBe("other@example.test")
+
+    await act(async () => {
+      resolveRefresh({
+        id: "user-1",
+        email: "current@example.test",
+        pending_email: "next@example.test",
+      })
+      await operation
+    })
+
+    expect(mocks.post).toHaveBeenCalledOnce()
+    expect(mocks.setUser).not.toHaveBeenCalled()
+    expect(setSnackbar).not.toHaveBeenCalled()
+  })
+
+  it("suppresses a rejected old-account email refresh after switching accounts", async () => {
+    let rejectRefresh!: (reason?: unknown) => void
+    mocks.post.mockResolvedValue({ data: {} })
+    mocks.fetchQuery.mockReturnValueOnce(
+      new Promise<never>((_, reject) => {
+        rejectRefresh = reject
+      })
+    )
+    const { result, rerender, setSnackbar } = renderEmailChange()
+    setCredentials(result)
+    let operation!: Promise<void>
+
+    act(() => {
+      operation = result.current.handleEmailSubmit()
+    })
+    await waitFor(() => expect(mocks.fetchQuery).toHaveBeenCalledOnce())
+
+    mocks.user = {
+      id: "user-2",
+      email: "other@example.test",
+      pending_email: null,
+    }
+    rerender()
+    await act(async () => {
+      rejectRefresh(new Error("old account profile refresh failed"))
+      await operation
+    })
+
+    expect(mocks.post).toHaveBeenCalledOnce()
+    expect(mocks.setUser).not.toHaveBeenCalled()
+    expect(setSnackbar).not.toHaveBeenCalled()
+  })
+
+  it("does not refresh the profile after the email mutation itself fails", async () => {
+    mocks.post.mockRejectedValueOnce(new Error("email request failed"))
+    const { result, setSnackbar } = renderEmailChange()
+    setCredentials(result)
+
+    await act(async () => {
+      await result.current.handleEmailSubmit()
+    })
+
+    expect(mocks.post).toHaveBeenCalledOnce()
+    expect(mocks.fetchQuery).not.toHaveBeenCalled()
+    expect(result.current.pendingEmail).toBeNull()
+    expect(result.current.emailError).toBe("settings:security.email.failed")
+    expect(setSnackbar).toHaveBeenLastCalledWith({
+      text: "settings:security.email.failed",
+      severity: "error",
+    })
+  })
   it("does not submit an address that already awaits confirmation", async () => {
     mocks.user = {
       id: "user-1",

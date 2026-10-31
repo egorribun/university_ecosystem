@@ -322,7 +322,7 @@ async def test_notify_new_message_broadcasts_via_ws_excluding_sender() -> None:
         patch(
             "app.services.chat.notification_service.build_presence_map",
             new=AsyncMock(return_value={}),
-        ),
+        ) as get_presence,
         patch(
             "app.services.chat.notification_service.serialize_message",
             return_value={"id": str(message.id), "content": "hi"},
@@ -348,7 +348,9 @@ async def test_notify_new_message_broadcasts_via_ws_excluding_sender() -> None:
     assert call_args.kwargs == {
         "exclude_user_id": sender.id,
         "propagate_nats_failure": False,
+        "db_session": session,
     }
+    get_presence.assert_awaited_once_with([message.sender_id], db=session)
 
 
 @pytest.mark.asyncio
@@ -396,6 +398,7 @@ async def test_strict_message_broadcast_failure_prevents_notification_writes() -
         },
         exclude_user_id=sender.id,
         propagate_nats_failure=True,
+        db_session=session,
     )
     create_notifications.assert_not_awaited()
     session.execute.assert_not_awaited()

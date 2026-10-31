@@ -36,7 +36,8 @@ async def test_register_endpoint(async_client: AsyncClient, db_session):
 
     # Duplicate email
     response = await async_client.post("/auth/register", json=payload)
-    assert response.status_code == 400
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
 async def test_login_json_endpoint(async_client: AsyncClient, user_factory):

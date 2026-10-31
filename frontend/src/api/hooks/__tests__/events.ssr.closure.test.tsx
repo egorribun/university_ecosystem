@@ -114,6 +114,7 @@ describe("events hooks SSR fallbacks", () => {
   it("keeps an authenticated server render free of events data and requests", () => {
     expect(typeof window).toBe("undefined")
     const previousAuth = useAuthStore.getState()
+    const previousStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
     try {
       useAuthStore.setState({
         user: {
@@ -122,6 +123,38 @@ describe("events hooks SSR fallbacks", () => {
           is_active: true,
         } satisfies NonNullable<UserState>,
         loading: false,
+      })
+      // Negative control: without readable browser storage, identity stays fail-closed.
+      Object.defineProperty(globalThis, "localStorage", {
+        configurable: true,
+        writable: true,
+        value: undefined,
+      })
+      expect(getConfirmedUserId(useAuthStore.getState())).toBeNull()
+      const unavailableQueryClient = createClient()
+      expect(
+        renderToString(
+          <QueryClientProvider client={unavailableQueryClient}>
+            <SsrProbe />
+          </QueryClientProvider>
+        )
+      ).toContain("<span>true:true</span>")
+      expect(allEventsApiV1EventsGet).not.toHaveBeenCalled()
+
+      // Adversarial inherited-browser-state boundary, not real server storage:
+      // keep window absent while making the session guard's storage snapshot readable.
+      const readableEmptyStorage = {
+        length: 0,
+        clear: () => undefined,
+        getItem: () => null,
+        key: () => null,
+        removeItem: () => undefined,
+        setItem: () => undefined,
+      } satisfies Storage
+      Object.defineProperty(globalThis, "localStorage", {
+        configurable: true,
+        writable: true,
+        value: readableEmptyStorage,
       })
       expect(getConfirmedUserId(useAuthStore.getState())).toBe("server-render-user")
 
@@ -136,6 +169,11 @@ describe("events hooks SSR fallbacks", () => {
       expect(allEventsApiV1EventsGet).not.toHaveBeenCalled()
     } finally {
       useAuthStore.setState({ user: previousAuth.user, loading: previousAuth.loading })
+      if (previousStorageDescriptor) {
+        Object.defineProperty(globalThis, "localStorage", previousStorageDescriptor)
+      } else {
+        Reflect.deleteProperty(globalThis, "localStorage")
+      }
     }
   })
 

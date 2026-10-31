@@ -118,14 +118,14 @@ function expectRootFallbackMetadata(head: HTMLHeadElement): void {
       'meta[property="og:description"]',
       "Your personal account: profile, schedule, news, and campus events.",
     ],
-    ['meta[property="og:image"]', "/og-image.png"],
+    ['meta[property="og:image"]', "/icon-512.png"],
     ['meta[name="twitter:card"]', "summary_large_image"],
     ['meta[name="twitter:title"]', "GUU Ecosystem"],
     [
       'meta[name="twitter:description"]',
       "Your personal account: profile, schedule, news, and campus events.",
     ],
-    ['meta[name="twitter:image"]', "/og-image.png"],
+    ['meta[name="twitter:image"]', "/icon-512.png"],
   ] as const
 
   expect(Array.from(head.querySelectorAll("title"), (title) => title.textContent)).toEqual([
@@ -136,6 +136,18 @@ function expectRootFallbackMetadata(head: HTMLHeadElement): void {
     const tags = head.querySelectorAll<HTMLMetaElement>(selector)
     expect(tags).toHaveLength(1)
     expect(tags[0]?.content).toBe(content)
+  }
+}
+
+function expectDashboardDescriptionMetadata(head: ParentNode): void {
+  for (const selector of [
+    'meta[name="description"]',
+    'meta[property="og:description"]',
+    'meta[name="twitter:description"]',
+  ]) {
+    const tags = head.querySelectorAll<HTMLMetaElement>(selector)
+    expect(tags).toHaveLength(1)
+    expect(tags[0]?.content).toBe("Your dashboard keeps university work together")
   }
 }
 
@@ -291,6 +303,7 @@ describe("Activity data-only SEO document hydration", () => {
     const serverDocument = new DOMParser().parseFromString(serverMarkup, "text/html")
     expect(serverDocument.title).toBe("Dashboard | University Ecosystem")
     expect(serverDocument.head.querySelectorAll("title")).toHaveLength(1)
+    expectDashboardDescriptionMetadata(serverDocument.head)
 
     document.open()
     document.write(`<!doctype html>${serverMarkup}`)
@@ -311,6 +324,7 @@ describe("Activity data-only SEO document hydration", () => {
     })
     expect(document.title).toBe("Dashboard | University Ecosystem")
     expect(document.head.querySelectorAll("title")).toHaveLength(1)
+    expectDashboardDescriptionMetadata(document.head)
 
     await act(async () => {
       await clientRouter?.navigate({ to: "/activity" as never })
@@ -327,6 +341,7 @@ describe("Activity data-only SEO document hydration", () => {
     expect(document.title).toBe("Dashboard | University Ecosystem")
     expect(document.head.querySelectorAll("title")).toHaveLength(1)
     expect(metaValue('meta[property="og:title"]')).toBe("Dashboard | University Ecosystem")
+    expectDashboardDescriptionMetadata(document.head)
 
     await act(async () => {
       releaseActivityImport()
@@ -335,6 +350,7 @@ describe("Activity data-only SEO document hydration", () => {
     expect(document.querySelector('[data-testid="activity-feature"]')).toBeNull()
     expect(document.title).toBe("Dashboard | University Ecosystem")
     expect(document.head.querySelectorAll("title")).toHaveLength(1)
+    expectDashboardDescriptionMetadata(document.head)
 
     await act(async () => {
       await clientRouter?.navigate({ to: "/activity" as never })
@@ -353,6 +369,7 @@ describe("Activity data-only SEO document hydration", () => {
     expect(document.title).toBe("Dashboard | University Ecosystem")
     expect(document.head.querySelectorAll("title")).toHaveLength(1)
     expect(metaValue('meta[property="og:title"]')).toBe("Dashboard | University Ecosystem")
+    expectDashboardDescriptionMetadata(document.head)
   })
 
   it("keeps the localized root metadata when the Activity route fails", async () => {

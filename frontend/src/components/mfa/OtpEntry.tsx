@@ -232,15 +232,15 @@ export const OtpEntry = ({
               onBlur={() => setFocusedIndex(null)}
               className={cn(
                 "w-11 h-14 sm:w-14 sm:h-18 text-center text-2xl font-black rounded-2xl",
-                "bg-(--bg-surface-raised)/(--opacity-medium) text-text-primary border-2 transition-all duration-base",
+                "bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)] text-text-primary border-2 transition-all duration-base",
                 "focus:outline-none backdrop-blur-md shadow-sm",
                 derivedError
-                  ? "border-(--error-border)/(--opacity-medium) focus:border-(--error-border) focus:ring-4 focus:ring-(--error-border)/(--opacity-subtle)"
+                  ? "border-(--error-border)/[calc(var(--opacity-medium)*100%)] focus:border-(--error-border) focus:ring-4 focus:ring-(--error-border)/[calc(var(--opacity-subtle)*100%)]"
                   : focusedIndex === index
-                    ? "border-(--brand-main) ring-4 ring-(--brand-main)/(--opacity-subtle) scale-105 shadow-(--brand-main)/(--opacity-subtle) shadow-lg"
+                    ? "border-(--brand-main) ring-4 ring-(--brand-main)/[calc(var(--opacity-subtle)*100%)] scale-105 shadow-(--brand-main)/[calc(var(--opacity-subtle)*100%)] shadow-lg"
                     : digit
-                      ? "border-brand-main/(--opacity-medium) bg-brand-main/(--opacity-faint)"
-                      : "border-(--glass-border)/(--opacity-dim) hover:border-(--glass-border)/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-faint)",
+                      ? "border-brand-main/[calc(var(--opacity-medium)*100%)] bg-brand-main/[calc(var(--opacity-faint)*100%)]"
+                      : "border-(--glass-border)/[calc(var(--opacity-dim)*100%)] hover:border-(--glass-border)/[calc(var(--opacity-medium)*100%)] hover:bg-(--bg-surface-hover)/[calc(var(--opacity-faint)*100%)]",
                 "disabled:opacity-dim disabled:cursor-not-allowed disabled:grayscale"
               )}
               aria-invalid={derivedError ? "true" : "false"}
@@ -266,7 +266,7 @@ export const OtpEntry = ({
 
         {loading && (
           <div className="flex justify-center items-center py-4">
-            <div className="h-8 w-8 rounded-full border-4 border-(--brand-main)/(--opacity-subtle) border-t-(--brand-main) animate-spin" />
+            <div className="h-8 w-8 rounded-full border-4 border-(--brand-main)/[calc(var(--opacity-subtle)*100%)] border-t-(--brand-main) animate-spin" />
           </div>
         )}
 
@@ -275,7 +275,7 @@ export const OtpEntry = ({
             variant="solid"
             onClick={() => void submitCode()}
             disabled={loading || code.length !== OTP_LENGTH}
-            className="w-full max-w-xs h-14 rounded-2xl font-black shadow-lg shadow-(--brand-main)/(--opacity-dim)"
+            className="w-full max-w-xs h-14 rounded-2xl font-black shadow-lg shadow-(--brand-main)/[calc(var(--opacity-dim)*100%)]"
             loading={loading}
           >
             {t("mfa.otp.submit")}

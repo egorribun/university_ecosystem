@@ -51,7 +51,11 @@ concurrency:
   group: deploy-${{ github.event.inputs.environment }}
   cancel-in-progress: false
 
-permissions: read-all
+# AUD-244: least privilege. Jobs inherit read-only repository contents; only
+# the validation job reads run metadata and artifacts, and deploy declares its
+# own write scopes below.
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io
@@ -65,6 +69,9 @@ jobs:
     # controlled while later jobs hold registry/OIDC/deployment privileges.
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 30
     services:
       postgres:
@@ -181,7 +188,11 @@ jobs:
       - name: Generate migration secret key
         # AUD-168: migrations refuse to run on development fallbacks, so this
         # ephemeral PostgreSQL job supplies its own per-run signing key.
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Verify migrations can downgrade
         # RZ-W8-07: Use PostgreSQL (not SQLite) — pgvector, JSONB, partial indexes
@@ -1877,7 +1888,11 @@ jobs:
       - name: Generate migration secret key
         # AUD-168: migrations refuse to run on development fallbacks, so this
         # ephemeral PostgreSQL job supplies its own per-run signing key.
-        run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+        run: |
+          set -euo pipefail
+          secret="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$secret"
+          printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
       - name: Test database rollback
         # RZ-W8-07: Use PostgreSQL for rollback test — same dialect as production.

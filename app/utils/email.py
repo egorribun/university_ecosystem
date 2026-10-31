@@ -31,7 +31,7 @@ def _log_event(
     # the same redaction processor first so fields remain structured and no
     # email address or credential can leak through ``record.__dict__``.
     event: dict[str, Any] = {"event": message, **(extra or {})}
-    _redact_pii(logger, "log", event)
+    event = _redact_pii(logger, "log", event)
     redacted_extra = {key: value for key, value in event.items() if key != "event"}
 
     try:

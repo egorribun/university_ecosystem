@@ -33,6 +33,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           set -euo pipefail
@@ -40,7 +41,7 @@ jobs:
             echo "::error::pull-request base SHA is not an immutable 40-hex commit" >&2
             exit 1
           fi
-          if [[ "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+          if [[ -z "$GITHUB_REPOSITORY" || "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" || "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
             echo "::error::security policy check refuses a cross-repository pull request" >&2
             exit 1
           fi
@@ -295,7 +296,7 @@ jobs:
       - name: Run full-framework Checkov scan
         id: checkov_all
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
+        uses: bridgecrewio/checkov-action@6f26dc90000b74feb589a906cdfae540f5119895 # v12.3134.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -309,7 +310,7 @@ jobs:
       - name: Run scoped Checkov Helm scan for university chart
         id: checkov_helm_university
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
+        uses: bridgecrewio/checkov-action@6f26dc90000b74feb589a906cdfae540f5119895 # v12.3134.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -323,7 +324,7 @@ jobs:
       - name: Run scoped Checkov Helm scan for revocation chart
         id: checkov_helm_revocation
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
+        uses: bridgecrewio/checkov-action@6f26dc90000b74feb589a906cdfae540f5119895 # v12.3134.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -337,7 +338,7 @@ jobs:
       - name: Run scoped Checkov Helm scan for Redis compatibility chart
         id: checkov_helm_redis_compat
         continue-on-error: true
-        uses: bridgecrewio/checkov-action@29be5868bfa968f099ae80169f61f42887494b8f # v12.3133.0
+        uses: bridgecrewio/checkov-action@6f26dc90000b74feb589a906cdfae540f5119895 # v12.3134.0
         env:
           HELM_NAMESPACE: ${{ vars.K8S_NAMESPACE || 'university-ecosystem' }}
         with:
@@ -474,28 +475,28 @@ jobs:
           --output-path filtered-helm-redis-compat.sarif
 
       - name: Upload all-framework Checkov results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         with:
           sarif_file: filtered-results.sarif
           category: checkov-all
 
       - name: Upload university Helm results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         with:
           sarif_file: filtered-helm-university-ecosystem.sarif
           category: checkov-helm-university-ecosystem
 
       - name: Upload revocation Helm results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         with:
           sarif_file: filtered-helm-revocation-store.sarif
           category: checkov-helm-revocation-store
 
       - name: Upload Redis compatibility Helm results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         with:
           sarif_file: filtered-helm-redis-compat.sarif

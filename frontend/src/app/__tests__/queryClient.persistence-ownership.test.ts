@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { dehydrate, hydrate, type QueryKey } from "@tanstack/react-query"
-import type { PersistedClient } from "@tanstack/react-query-persist-client"
+import { CancelledError, dehydrate, hydrate, type QueryKey } from "@tanstack/react-query"
+import {
+  persistQueryClientRestore,
+  persistQueryClientSave,
+  type PersistedClient,
+} from "@tanstack/react-query-persist-client"
 import { clear, del, get, keys, set } from "idb-keyval"
 import {
   acceptBrowserSessionGeneration,
@@ -11,6 +15,7 @@ import { useAuthStore } from "@/stores/useAuthStore"
 import { ENCRYPTED_CACHE_PLACEHOLDER_USER_ID, SSR_STUB_USER_ID } from "@/stores/authIdentity"
 import { testUser } from "@/tests/mocks/handlers"
 import type { UserState } from "@/types/Auth"
+import { anonymousNewsListQueryKey, newsListQueryKey } from "@/api/hooks/news"
 
 // Keep real IndexedDB transactions and structured cloning. Only the delivery of
 // an operation's result is held, so account transitions can occur while the
@@ -52,9 +57,12 @@ vi.mock("idb-keyval", async (importOriginal) => {
 
 import {
   createQueryClient,
+  getQueryCacheIdentity,
   idbPersister,
+  isQueryCacheIdentity,
   persistOptions,
   setQueryCacheIdentity,
+  subscribeQueryCacheIdentity,
 } from "../queryClient"
 
 const sessionKey = "ecosystem.session.generation.v1"
@@ -80,6 +88,27 @@ function snapshot(owner: string, profileKey: QueryKey = ["users", "me"]): Persis
   return saved
 }
 
+function appendQueryData(
+  saved: PersistedClient,
+  queryKey: QueryKey,
+  data: unknown,
+  meta?: Record<string, unknown>
+): PersistedClient {
+  const source = createQueryClient()
+  if (meta) source.setQueryDefaults(queryKey, { meta })
+  source.setQueryData(queryKey, data)
+  const query = dehydrate(source).queries[0]
+  if (!query) throw new Error("Expected a dehydrated query")
+  source.clear()
+
+  return {
+    ...saved,
+    clientState: {
+      ...saved.clientState,
+      queries: [...saved.clientState.queries, query],
+    },
+  }
+}
 function withDuplicateProfileWitnesses(
   saved: PersistedClient,
   witnessIds: readonly (string | null)[]
@@ -186,6 +215,35 @@ afterEach(async () => {
 })
 
 describe("profile persistence boundaries", () => {
+  it("notifies identity subscribers only after the previous owner's memory is retired", () => {
+    const source = createQueryClient()
+    source.setQueryData(["private"], "previous account state")
+    const notified = vi.fn(() => ({
+      owner: getQueryCacheIdentity(),
+      isCurrent: isQueryCacheIdentity("A"),
+      previousData: source.getQueryData(["private"]),
+    }))
+    const unsubscribe = subscribeQueryCacheIdentity(notified)
+
+    publishAccount("A")
+    expect(notified).toHaveReturnedWith({ owner: "A", isCurrent: true, previousData: undefined })
+    unsubscribe()
+    publishAccount("B")
+    expect(notified).toHaveBeenCalledOnce()
+    source.clear()
+  })
+
+  it("cancels a pending query-cancellation continuation when the account changes", async () => {
+    publishAccount("A")
+    const source = createQueryClient()
+    const pending = source.cancelQueries({ queryKey: ["private"] })
+    publishAccount("B")
+
+    await expect(pending).rejects.toBeInstanceOf(CancelledError)
+    await expect(source.cancelQueries({ queryKey: ["private"] })).resolves.toBeUndefined()
+    source.clear()
+  })
+
   it("rejects a profile whose owner conflicts with the confirmed cache identity", async () => {
     publishAccount("A")
     const otherOwnersProfile = snapshot("B")
@@ -275,12 +333,18 @@ describe("profile persistence boundaries", () => {
       { ...valid, clientState: { ...valid.clientState, queries: null } },
       {
         ...valid,
-        clientState: { ...valid.clientState, queries: [null, ...valid.clientState.queries] },
+        clientState: {
+          ...valid.clientState,
+          queries: [null, ...valid.clientState.queries],
+        },
       },
       { ...valid, clientState: { ...valid.clientState, mutations: null } },
       {
         ...valid,
-        clientState: { ...valid.clientState, mutations: [null, ...valid.clientState.mutations] },
+        clientState: {
+          ...valid.clientState,
+          mutations: [null, ...valid.clientState.mutations],
+        },
       },
       {
         ...valid,
@@ -291,7 +355,10 @@ describe("profile persistence boundaries", () => {
       },
       {
         ...valid,
-        clientState: { ...valid.clientState, mutations: [{ state: {}, meta: [] }] },
+        clientState: {
+          ...valid.clientState,
+          mutations: [{ state: {}, meta: [] }],
+        },
       },
     ]
 
@@ -358,6 +425,130 @@ describe("profile persistence boundaries", () => {
     expect(restored?.clientState.mutations).toEqual([optionalFieldsOmitted, optionalFieldsPresent])
   })
 
+  it("omits nonpersistent pending and paused mutations from real account snapshots", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    const source = createQueryClient()
+    const cases = [
+      ["private-paused", true, false],
+      ["private-pending", false, false],
+      ["ordinary-paused", true, undefined],
+      ["ordinary-pending", false, undefined],
+      ["explicit-paused", true, true],
+    ] as const
+    for (const [name, isPaused, persist] of cases) {
+      source.getMutationCache().build(
+        source,
+        { mutationKey: ["audit-375", name], meta: persist === undefined ? undefined : { persist } },
+        {
+          context: persist === false ? { owns: () => true } : undefined,
+          data: undefined,
+          error: null,
+          failureCount: 0,
+          failureReason: null,
+          isPaused,
+          status: "pending",
+          variables: { value: name },
+          submittedAt: 1,
+        }
+      )
+    }
+    const interactions = ["news", "article-id", "interactions", "A"] as const
+    const list = newsListQueryKey({ language: "en", limit: 12 })
+    const detail = ["news", "detail", "article-id"] as const
+    source.setQueryDefaults(interactions, { meta: { persist: false } })
+    source.setQueryData(interactions, { optimisticDraft: "interaction-private-sentinel" })
+    source.setQueryData(list, { pages: [{ items: [] }], pageParams: [null] })
+    source.setQueryData(detail, { title: "public article" })
+
+    const dehydrated = dehydrate(source, persistOptions.dehydrateOptions)
+    expect(dehydrated.mutations.map((mutation) => mutation.mutationKey)).toStrictEqual([
+      ["audit-375", "ordinary-paused"],
+      ["audit-375", "ordinary-pending"],
+      ["audit-375", "explicit-paused"],
+    ])
+    expect(source.getMutationCache().getAll()).toHaveLength(5)
+
+    await persistQueryClientSave({ ...persistOptions, queryClient: source })
+    const saved = await get<PersistedClient>(accountKey("A"))
+    expect(saved?.clientState.mutations.map((mutation) => mutation.mutationKey)).toStrictEqual([
+      ["audit-375", "ordinary-paused"],
+      ["audit-375", "ordinary-pending"],
+      ["audit-375", "explicit-paused"],
+    ])
+    expect(JSON.stringify(saved)).not.toContain("private-paused")
+    expect(JSON.stringify(saved)).not.toContain("private-pending")
+    expect(JSON.stringify(saved)).not.toContain("interaction-private-sentinel")
+    expect(saved?.clientState.queries.map((query) => query.queryKey)).toContainEqual(list)
+    expect(saved?.clientState.queries.map((query) => query.queryKey)).toContainEqual(detail)
+
+    publishAccount("B")
+    setQueryCacheIdentity("B")
+    await expect(idbPersister.restoreClient()).resolves.toBeUndefined()
+    expect(await get(accountKey("B"))).toBeUndefined()
+    source.clear()
+  })
+
+  it("filters nonpersistent mutations on direct save and restore without deleting the older record", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    const source = createQueryClient()
+    const state = {
+      context: undefined,
+      data: undefined,
+      error: null,
+      failureCount: 0,
+      failureReason: null,
+      isPaused: true,
+      status: "pending" as const,
+      variables: { value: "draft" },
+      submittedAt: 1,
+    }
+    source
+      .getMutationCache()
+      .build(source, { mutationKey: ["private"], meta: { persist: false } }, state)
+    source.getMutationCache().build(source, { mutationKey: ["ordinary"] }, state)
+    source.setQueryDefaults(["session-only-query"], { meta: { persist: false } })
+    source.setQueryData(["session-only-query"], "session-only")
+    const inclusive: PersistedClient = {
+      timestamp: Date.now(),
+      buster: "1.0.0",
+      clientState: dehydrate(source, {
+        shouldDehydrateQuery: () => true,
+        shouldDehydrateMutation: () => true,
+      }),
+    }
+
+    await idbPersister.persistClient(inclusive)
+    const saved = await get<PersistedClient>(accountKey("A"))
+    expect(saved?.clientState.mutations.map((mutation) => mutation.mutationKey)).toStrictEqual([
+      ["ordinary"],
+    ])
+
+    await set(accountKey("A"), inclusive)
+    const restored = await idbPersister.restoreClient()
+    expect(restored?.clientState.mutations.map((mutation) => mutation.mutationKey)).toStrictEqual([
+      ["ordinary"],
+    ])
+    const migrated = await get<PersistedClient>(accountKey("A"))
+    expect(migrated?.clientState.mutations).toStrictEqual(inclusive.clientState.mutations)
+    expect(migrated?.clientState.queries).toHaveLength(0)
+
+    const existing = { ...inclusive, clientState: { ...inclusive.clientState, queries: [] } }
+    await set(accountKey("A"), existing)
+    const writes = vi.fn()
+    io.afterWrite = async () => writes()
+    const restoredAgain = await idbPersister.restoreClient()
+    expect(
+      restoredAgain?.clientState.mutations.map((mutation) => mutation.mutationKey)
+    ).toStrictEqual([["ordinary"]])
+    expect(writes).not.toHaveBeenCalled()
+    expect(await get<PersistedClient>(accountKey("A"))).toStrictEqual(existing)
+    source.clear()
+  })
+
   it("omits full profiles from durable snapshots while retaining memory and offline state", async () => {
     publishAccount("A")
     setQueryCacheIdentity("A")
@@ -405,7 +596,9 @@ describe("profile persistence boundaries", () => {
     ).toEqual(["offline schedule A"])
 
     // Exercise the defensive boundary even if a caller dehydrates every query.
-    const inclusiveSnapshot = dehydrate(source, { shouldDehydrateQuery: () => true })
+    const inclusiveSnapshot = dehydrate(source, {
+      shouldDehydrateQuery: () => true,
+    })
     expect(inclusiveSnapshot.queries.some((query) => query.queryKey[0] === "auth")).toBe(true)
     await idbPersister.persistClient({
       timestamp: Date.now(),
@@ -432,6 +625,177 @@ describe("profile persistence boundaries", () => {
     source.clear()
   })
 
+  it("rejects malformed news list states before hydrate and preserves valid owner data", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+
+    const validEmptyKey = newsListQueryKey({ language: "en", limit: 12 })
+    const emptyCollectionKey = newsListQueryKey({
+      language: "no-pages",
+      limit: 12,
+    })
+    const validCursorKey = newsListQueryKey({ language: "cursor", limit: 12 })
+    const validEmptyData = {
+      pages: [{ items: [], cursor: null, next_cursor: null, has_more: false }],
+      pageParams: [null],
+    }
+    const validCursorData = {
+      pages: [{ items: [], cursor: "page-1", next_cursor: "page-2" }],
+      pageParams: ["page-1"],
+    }
+    const emptyCollectionData = { pages: [], pageParams: [] }
+    const uncheckedItemsKey = newsListQueryKey({
+      language: "unchecked-items",
+      limit: 12,
+    })
+    const uncheckedItemsData = {
+      pages: [
+        {
+          items: [{ id: "malformed-article" }],
+          total: "invalid-total",
+          limit: "invalid-limit",
+          cursor: null,
+          next_cursor: null,
+          has_more: false,
+        },
+      ],
+      pageParams: [null],
+    }
+    const malformedQueries = [
+      {
+        key: newsListQueryKey({ language: "primitive", limit: 12 }),
+        data: "malformed-data",
+      },
+      { key: newsListQueryKey({ language: "null", limit: 12 }), data: null },
+      {
+        key: newsListQueryKey({ language: "pages", limit: 12 }),
+        data: { pages: "malformed-pages", pageParams: [] },
+      },
+      {
+        key: anonymousNewsListQueryKey({ language: "params", limit: 12 }),
+        data: { pages: [{ items: [] }], pageParams: "malformed-page-params" },
+      },
+      {
+        key: newsListQueryKey({ language: "mismatch", limit: 12 }),
+        data: { pages: [{ items: [] }], pageParams: [] },
+      },
+      {
+        key: newsListQueryKey({ language: "null-page", limit: 12 }),
+        data: { pages: [null], pageParams: [null] },
+      },
+      {
+        key: newsListQueryKey({ language: "items", limit: 12 }),
+        data: { pages: [{ items: "malformed-items" }], pageParams: [null] },
+      },
+      {
+        key: newsListQueryKey({ language: "bad-next-cursor", limit: 12 }),
+        data: {
+          pages: [{ items: [], next_cursor: { cursor: "bad" } }],
+          pageParams: [null],
+        },
+      },
+      {
+        key: newsListQueryKey({ language: "has-more", limit: 12 }),
+        data: { pages: [{ items: [], has_more: "bad" }], pageParams: [null] },
+      },
+      {
+        key: newsListQueryKey({ language: "param-value", limit: 12 }),
+        data: { pages: [{ items: [] }], pageParams: [{}] },
+      },
+      {
+        key: newsListQueryKey({ language: "sparse-pages", limit: 12 }),
+        data: { pages: Array(1), pageParams: [null] },
+      },
+      {
+        key: newsListQueryKey({ language: "sparse-params", limit: 12 }),
+        data: { pages: [{ items: [] }], pageParams: Array(1) },
+      },
+    ] as const
+    const nearMisses = [
+      {
+        key: ["news", "list", "not-normalized"],
+        data: "preserve non-list key",
+      },
+      {
+        key: ["news", "list", { language: 3, limit: 12 }],
+        data: "preserve invalid language type",
+      },
+      {
+        key: ["news", "list", "en", 12],
+        data: "preserve non-exact key length",
+      },
+      {
+        key: ["news", "list", { language: "en", limit: "12" }],
+        data: "preserve invalid limit type",
+      },
+      {
+        key: ["news", "list", { language: "en", limit: 0 }],
+        data: "preserve non-positive limit",
+      },
+      {
+        key: ["news", "list", { language: "en", limit: 1.5 }],
+        data: "preserve non-integer limit",
+      },
+      { key: ["news", "detail", "article-id"], data: "preserve detail query" },
+      {
+        key: ["schedule", "list", "owner-A"],
+        data: "preserve unrelated query",
+      },
+    ] as const
+
+    let saved = snapshot("A")
+    for (const query of malformedQueries) saved = appendQueryData(saved, query.key, query.data)
+    for (const query of nearMisses) saved = appendQueryData(saved, query.key, query.data)
+    saved = appendQueryData(saved, emptyCollectionKey, emptyCollectionData)
+    saved = appendQueryData(saved, validEmptyKey, validEmptyData, {
+      persist: true,
+      source: "news-list",
+    })
+    saved = appendQueryData(saved, validCursorKey, validCursorData)
+    saved = appendQueryData(saved, uncheckedItemsKey, uncheckedItemsData)
+    await set(accountKey("A"), saved)
+
+    const restored = await idbPersister.restoreClient()
+    expect(restored).toBeDefined()
+    const queryIds = restored!.clientState.queries.map((query) => JSON.stringify(query.queryKey))
+    for (const malformed of malformedQueries) {
+      expect(queryIds).not.toContain(JSON.stringify(malformed.key))
+    }
+    for (const retained of nearMisses) {
+      expect(queryIds).toContain(JSON.stringify(retained.key))
+    }
+    expect(queryIds).toContain(JSON.stringify(emptyCollectionKey))
+    expect(queryIds).toContain(JSON.stringify(validCursorKey))
+    expect(queryIds).toContain(JSON.stringify(uncheckedItemsKey))
+    expect(
+      restored!.clientState.queries.find(
+        (query) => JSON.stringify(query.queryKey) === JSON.stringify(validEmptyKey)
+      )?.meta
+    ).toEqual({ persist: true, source: "news-list" })
+    expect(
+      restored!.clientState.queries.find(
+        (query) => JSON.stringify(query.queryKey) === JSON.stringify(validEmptyKey)
+      )?.state.data
+    ).toEqual(validEmptyData)
+    expect(
+      restored!.clientState.queries.find((query) => query.queryKey[0] === "schedule")?.state.data
+    ).toEqual(["schedule for A"])
+
+    const stored = await get<PersistedClient>(accountKey("A"))
+    expect(stored).toBeDefined()
+    expect(stored!.clientState.queries.map((query) => JSON.stringify(query.queryKey))).toEqual(
+      queryIds
+    )
+    const target = createQueryClient()
+    hydrate(target, restored!.clientState)
+    expect(target.getQueryData(emptyCollectionKey)).toEqual(emptyCollectionData)
+    expect(target.getQueryData(uncheckedItemsKey)).toEqual(uncheckedItemsData)
+    for (const malformed of malformedQueries) {
+      expect(target.getQueryData(malformed.key)).toBeUndefined()
+    }
+    target.clear()
+  })
   it("sanitizes a dormant legacy v2 profile before restoring offline state", async () => {
     publishAccount("A")
     setQueryCacheIdentity("A")
@@ -608,6 +972,22 @@ describe("profile persistence boundaries", () => {
     expect(await get<PersistedClient>(key)).toEqual(sanitized)
   })
 
+  it("continues queued persistence after an IndexedDB save rejects", async () => {
+    publishAccount("A")
+    setQueryCacheIdentity("A")
+    acceptBrowserSessionGeneration()
+    const key = accountKey("A")
+    const failure = new Error("IndexedDB write unavailable")
+
+    io.writeError = failure
+    await expect(idbPersister.persistClient(snapshot("A"))).rejects.toBe(failure)
+    expect(await get<PersistedClient>(key)).toBeUndefined()
+
+    io.writeError = undefined
+    const nextSnapshot = snapshot("A")
+    await expect(idbPersister.persistClient(nextSnapshot)).resolves.toBeUndefined()
+    expect(await get<PersistedClient>(key)).toEqual(withoutCurrentUserProfile(nextSnapshot))
+  })
   it("does not write a restore-time sanitized snapshot after its owner changes", async () => {
     publishAccount("A")
     setQueryCacheIdentity("A")
@@ -1060,6 +1440,105 @@ describe("request-hydrated cache during auth bootstrap", () => {
       expect(active.getQueryData(key)).toBeUndefined()
     } finally {
       active.clear()
+    }
+  })
+})
+
+describe("AUD-472 release-scoped persistence", () => {
+  it.each([
+    {
+      label: "discards a prior release even when the legacy version stays unchanged",
+      initialRelease: "release-a",
+      nextRelease: "release-b",
+      initialVersion: "1.0.0",
+      nextVersion: "1.0.0",
+      restored: false,
+    },
+    {
+      label: "retains the same release across a reload",
+      initialRelease: "release-a",
+      nextRelease: "release-a",
+      initialVersion: "1.0.0",
+      nextVersion: "1.0.0",
+      restored: true,
+    },
+    {
+      label: "uses the release rather than an unrelated legacy version change",
+      initialRelease: "release-a",
+      nextRelease: "release-a",
+      initialVersion: "1.0.0",
+      nextVersion: "2.0.0",
+      restored: true,
+    },
+    {
+      label: "preserves legacy version invalidation when no release is supplied",
+      initialRelease: "",
+      nextRelease: "",
+      initialVersion: "1.0.0",
+      nextVersion: "2.0.0",
+      restored: false,
+    },
+    {
+      label: "keeps the development fallback stable without either build identifier",
+      initialRelease: "",
+      nextRelease: "",
+      initialVersion: "",
+      nextVersion: "",
+      restored: true,
+    },
+  ])("$label", async ({ initialRelease, nextRelease, initialVersion, nextVersion, restored }) => {
+    const storageKey = "aud472:release-cache"
+    const queryKey = ["aud472", "persisted-release-data"] as const
+    const data = { title: "Snapshot from the first build" }
+    const clients: ReturnType<typeof createQueryClient>[] = []
+    const loadBuild = async (release: string, version: string) => {
+      vi.stubEnv("VITE_APP_RELEASE", release)
+      vi.stubEnv("VITE_APP_VERSION", version)
+      vi.resetModules()
+      const build = await import("../queryClient")
+      clients.push(build.queryClient)
+      return build
+    }
+
+    try {
+      const first = await loadBuild(initialRelease, initialVersion)
+      const source = first.createQueryClient()
+      clients.push(source)
+      source.setQueryData(queryKey, data)
+      await persistQueryClientSave({
+        ...first.persistOptions,
+        queryClient: source,
+        persister: first.createIDBPersister(storageKey),
+      })
+      const saved = await get<PersistedClient>(storageKey)
+      expect(saved?.clientState.queries).toHaveLength(1)
+      expect(saved?.clientState.queries[0]?.state.data).toEqual(data)
+
+      const second = await loadBuild(nextRelease, nextVersion)
+      const target = second.createQueryClient()
+      clients.push(target)
+      await persistQueryClientRestore({
+        ...second.persistOptions,
+        queryClient: target,
+        persister: second.createIDBPersister(storageKey),
+      })
+
+      if (restored) {
+        expect(target.getQueryData(queryKey)).toEqual(data)
+        expect(await get<PersistedClient>(storageKey)).toEqual(saved)
+      } else {
+        expect(target.getQueryData(queryKey)).toBeUndefined()
+        expect(target.getQueryCache().getAll()).toEqual([])
+        expect(await get<PersistedClient>(storageKey)).toBeUndefined()
+      }
+    } finally {
+      try {
+        for (const client of clients) client.clear()
+        await del(storageKey)
+      } finally {
+        vi.unstubAllEnvs()
+        vi.resetModules()
+      }
     }
   })
 })

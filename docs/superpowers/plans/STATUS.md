@@ -1,12 +1,5012 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-22 (Europe/Istanbul). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-10-31 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+
+
+## Полная сверка после паузы и уточнение приёмки — 2026-10-31 06:49 UTC
+
+Текущий реестр — **441/512 (86,1%)**, **71 ID открыт**.
+Это не только увеличение счётчика: **AUD-350 переоткрыт**, а
+**AUD-244/399/400/477/489 приняты** по исходным ограниченным критериям.
+[Решение и точные квитанции](../../audits/AUDIT-2026-10.md#scoped-five-finding-acceptance-and-aud-350-correction--2026-10-31)
+сохраняют действующее доказательство UTC-конверсии AUD-350, но больше не
+выдают его за устранение переписывания таблицы и эксплуатационных рисков.
+
+[Полный новый обзор](../../audits/AUDIT-2026-10-31-review.md):
+один коммит `112efb38055caa8ce46717e3d6c23333bc07be4d` после `adb5c91f`,
+**98 путей = 87 modified + 11 added**, без удалений и переименований.
+Полные нетранкированные Git trees и compare согласованы; просмотрены все
+новые строки, изменённые участки и связанные producer/consumer-контексты,
+а не только ошибки CI. Это не повторное построчное ревью несвязанного
+неизменённого кода всего репозитория.
+Все **75 ранее открытых ID** классифицированы. После пяти приёмок и
+переоткрытия AUD-350 [точный остаток](../../audits/AUDIT-2026-10-30-reconciliation.md#current-71-finding-reconciliation--2026-10-31):
+**18 source-fixed/proof-pending, 38 partial, 12 unfixed, 3 unverified/original-cause-unproven**.
+AUD-311/490 не приняты: условный вывод по cohort не заменяет skipped-проверку
+единства коллекции и полного непересекающегося объединения shards.
+
+### Проверенный source 112 и завершённые проверки
+
+Фактический PR checkout `a0314c8854715c76400a24c114fdb3ba90b4f540` и source
+112 имеют одно полное дерево `47ff2d083a9e8f57e4dfddd8fae96bb86b969ba5`.
+Это source-equivalent evidence, не буквальный direct-head checkout,
+не production deployment и не перенос GREEN на будущий source.
+
+- [Matrix 41169911427](https://github.com/egorribun/university_ecosystem/actions/runs/41169911427):
+  terminal FAILURE; все **91 job = 60 SUCCESS / 15 FAILURE / 16 SKIPPED**.
+  Активных и отменённых jobs нет. Всего **23 workflow = 17 SUCCESS /
+  4 FAILURE / 2 SKIPPED**.
+- Backend unit: **22 662 PASS / 27 FAIL / 430 SKIP**. Shards 0/1/2/3:
+  4338/6210/5034/7080 PASS, 7/0/6/14 FAIL, 113/85/127/105 SKIP.
+  Последний завершён в 05:54:21 UTC. Coverage/collection-union verification
+  skipped; полного backend GREEN нет.
+- Frontend: **10 647 PASS в 846 файлах**; 14 изменённых test files, 252 cases.
+  Changed-line aggregate — 100%, не все branch/function/component metrics.
+- [Owned Core 41169911345](https://github.com/egorribun/university_ecosystem/actions/runs/41169911345):
+  **46 PASS / 2 FAIL / 2 SKIP**, preflight 338 и adapter 1 PASS.
+  Оба отказа — составной URL-cleanliness poll при повторном открытии used
+  reset link, до replay submission. Причина wrong route против retained
+  token ещё не разделена; это не доказательство обхода backend replay guard.
+- Contract: 3580 PASS / 12 FAIL; отдельные 688 и 41 PASS.
+  PostgreSQL integration: 110 PASS / 1 FAIL на AUD-258 visibility fixture;
+  это не установленная потеря физической строки. Alembic: 127 PASS /
+  2 FAIL / 3 setup ERROR на повторном добавлении DND columns.
+- DB migration gate: 91 focused и два реальных PostgreSQL UTC-case PASS,
+  затем password inventory sentinel FAIL: SELECT-only reader не видит
+  скрытые RLS строки и получает ложный zero. Исправлять fail-closed проверку
+  полномочий, не возвращать bypass через обычный GUC.
+- ws-hub unit/race и четыре integration packages PASS; lint FAIL:
+  cognitive complexity 34 в SubscribeToNATS при пределе 30. Никакого
+  suppressing pragma или изменения порога нет.
+- Checkov не начинает сканирование из-за отсутствующего proxy prerequisite
+  в сгенерированной fixture. Npm audit и Trivy FS/FE подтверждают
+  follow-redirects 1.16.1 HIGH; отдельный Dependency Review удерживает
+  go-jose/v3 и несовпавшую license-manifest identity.
+  Caddy Trivy с ignore-unfixed не доказывает отсутствие v3-риска.
+- Zizmor upload SUCCESS содержит **115 findings (92 note / 1 warning /
+  22 error)**. Приёмка AUD-244 означает удаление прежних подавлений,
+  не чистый SARIF. Полный CI, coverage policy и release остаются красными.
+
+### Собственный завершённый 1d5 и следующий исправленный source
+
+Опубликованный source `1d5a968dda9d19ea86a6d3369d9d7ba8884e25fd`
+прошёл свой запуск. PR checkout `ddb033fbe9a7bc7a258b795db19ad88356967916`
+имеет то же дерево `6baf148c4dede974d06637234c728e05545e445c`.
+Первый update_ref был отклонён и не выполнен; после конкретного разрешения
+одна non-force CAS retry прошла, branch/full-tree readback совпал.
+
+- [Matrix 41176285302](https://github.com/egorribun/university_ecosystem/actions/runs/41176285302)
+  terminal FAILURE в 06:37:16 UTC: **60 jobs = 20 SUCCESS / 10 FAILURE /
+  30 SKIPPED**, активных и отменённых нет. Это не прежняя 91-job matrix:
+  backend fan-out не запустился после fast-lint отказа.
+- Fast precommit: все hooks кроме Ruff format PASS; один новый Nuclei assert
+  требует только другого переноса скобок. Security/types PASS.
+  Backend matrix SKIPPED, оба aggregate FAIL на этом skip; **новые восемь
+  Nuclei cases не исполнялись**. Это formatting defect и отсутствие proof,
+  а не доказанный parser RED.
+- Catalog теперь PASS: **59 workflows / 184 jobs**. Следующий inventory шаг
+  выявил ровно два orphan contracts — Compose proxy и Temporal JWKS;
+  причина в неподдержанном статическим finder формате root/path, не в
+  исполнении production security guards.
+- Frontend: **10 648 PASS / 2 semantic FAIL в 847 файлах**. Новые SW3 cases
+  дают 2 FAIL /1 PASS: stale proof при same-session rotation приводит к
+  отправке второго запроса и удалению строки; при account transition второй
+  запрос старого владельца отправлен. Последующие retention/retrigger
+  assertions второго случая не достигнуты. Stable-proof genuine403/no-retry
+  positive PASS. Это контролируемые unit-boundary receipts, не browser/backend
+  интеграция. Build/WASM/typecheck/ESLint/Prettier PASS; aggregate FAIL,
+  merged/differential coverage и production-only client contracts SKIPPED.
+- Contract: **3588 PASS / 4 FAIL**, отдельно 688 и 41 PASS. Все четыре отказа —
+  прежний full-backend frozen-source binding, не Nuclei execution.
+- [Core 41176282622](https://github.com/egorribun/university_ecosystem/actions/runs/41176282622)
+  terminal FAILURE в 06:40:20: **46 PASS / 2 FAIL / 2 SKIP**, preflight 338 и adapter 1
+  PASS. Обе ошибки по-прежнему composite URL-cleanliness до replay submission.
+  NATS outage SKIPPED, owned-container cleanup SUCCESS.
+- Node audit успешно получил авторитетные name/version/tarball/SHA-512
+  metadata follow-redirects 1.16.2; затем audit исходного lock 1.16.1 ожидаемо
+  FAIL на известном HIGH. Это не install proof новой версии.
+
+Кодовая основа этого документа —
+[f92080ee5127c336b31c3c46414e20a6730d2735](https://github.com/egorribun/university_ecosystem/commit/f92080ee5127c336b31c3c46414e20a6730d2735).
+Его восемь путей разделены на logical contract-recovery и security commits:
+точный hosted Ruff postimage; два canonical test path исправления без
+изменения checker; OSV contract ровно двух известных producer pairs с
+положительным serialized control и восемью отрицательными мутациями;
+один follow-redirects lock record (ровно version/resolved/integrity);
+удаление выполненного временного capture и его temporary test;
+[ADR-050](../../adr/ADR-050-security-release-cooldown-exceptions.md).
+
+В этом successor нет SW production fix, Go metadata scaffold, go-jose update,
+новых scanner dispositions или изменений gate. Прежний 1d5 полностью завершён
+до перехода; его jobs не отменялись ради successor. Собственные результаты
+исправленного source на момент записи этого checkpoint **ещё не получены**.
+
+### Порядок оставшейся ограниченной работы
+
+1. Проверить собственные fast lint/inventory, реальный npm-ci/audit/Trivy
+   нового lock и фактическое исполнение Nuclei 8; предполагаемый RED не
+   подменяет receipt. Известные SW 2 semantic FAIL пока остаются открытыми.
+2. Отдельно исправить подтверждённый inter-row proof cache SW после causal
+   review: fresh proof перед следующей отправкой, неизменный владелец прохода
+   и record.sessionNonce, остановка без перезаписи ownership/retry/idempotency
+   при смене владельца/отсутствии proof. Genuine terminal 401/403 deletion/no-retry
+   сохраняется. Это не обещание атомарности между proof и самой отправкой.
+3. Получить go-jose/v4.1.7 суммы через изолированный authenticated Go sumdb
+   capture, не из checkout sums/старого module cache. Подготовленный wrapper
+   ещё не опубликован и не проверен. Затем ровно согласованные 13 файлов:
+   пять graphs/sums, существующий probe override, два pin contracts;
+   compatibility 32/33 и malformed-key controls, собственный CI.
+   [ADR-050](../../adr/ADR-050-security-release-cooldown-exceptions.md) фиксирует
+   разовое owner cooldown решение для follow-redirects 1.16.2 и go-jose/v4.1.7.
+   Общие 7 days/.npmrc не менялись; v3 этим не исправляется.
+4. Отдельно после applicable RED/review восстановить password authority
+   fail-closed check и доказанные migration fixtures. Full-backend source pins,
+   DND historical binding и Core reset причина требуют самостоятельной сверки,
+   а не замены требований или возврата обычного GUC bypass.
+5. AUD-478 открыт. Дополнительная regression preparation остановлена системной
+   проверкой инструмента; обход не выполнялся. Это ограничение выполнения,
+   не новый runtime result и не closure.
+Current baseline **315** уже опубликован пользователем: удалены только
+четыре ранее разрешённые устаревшие Secret Keyword identities, добавлений нет.
+Policy **494**, cap **512**, expiry **2027-01-10**, Gitleaks **26**,
+required **78**, blocking CodeQL, hooks, coverage floors и prepared-inactive
+Squawk сохранены. Исторические числа ниже относятся к своим checkpoint.
+Синхронизация оставшихся старых policy summaries в ADR-047/docs README
+не означает новое разрешение scanner findings.
+
+Этот блок фиксирует проверенный source и последующие ограничения. Проверки
+нового docs/source commit ещё нужны; результаты 112 на него не наследуются.
+Следующие старые разделы сохранены как история, не текущий оперативный статус.
+
+## Текущая приёмка и полный CI исходного кода — 2026-10-30 19:20 UTC
+
+Подтверждённая нижняя граница — **437/512 (85,4%)**, **75 ID не приняты**.
+Сохранены все прежние принятые ID; добавлены только **AUD-151/308**.
+[Решение по исходным критериям](../../audits/AUDIT-2026-10.md#scoped-aud-151-and-aud-308-acceptance-on-source-c6a3d39b--2026-10-30)
+связывает фактический Native-прогон c6 с 15 неизменившимися исходниками,
+тестами и workflow. [Текущий остаток](../../audits/AUDIT-2026-10-30-reconciliation.md#scoped-progress-after-the-112-finding-reconciliation):
+**9 исправлены в коде без необходимого доказательства исполнения, 29 частично,
+34 не исправлены, 2 не проверены, 1 исходная причина не подтверждена**.
+Исторические матрица 112 ID и обзор 136 путей сохранены; они не объявляются
+новым обзором всего репозитория.
+
+AUD-151: реальные helpers ожидания готовности и сбора ошибок прошли 2+5
+проверок; listeners действуют от начала навигации до hydration и готовности
+маршрута, снимаются и при ошибке. AUD-308: блокирующая Node-команда выполнила
+architecture 18, UI-barrel 1, micromatch 13, token-validator 3, положительный
+контроль выбора suites и все 19 отрицательных мутаций; отдельный tokens:check
+действительно исполнен (1017 определений, 646 ссылок). Это приёмка исходной
+ошибки helpers/CI-gate, а не неисполненного browser-injection spec,
+фактической Docker-сборки или всей CSS-семантики.
+
+### Проверенный source и собственный завершённый CI
+
+Проверенный исходный код:
+[fc70d81ed4cb9e32a3bf18840964b2a22c734b0d](https://github.com/egorribun/university_ecosystem/commit/fc70d81ed4cb9e32a3bf18840964b2a22c734b0d).
+Фактический PR checkout `17301b1cc2d1c195ad03a3b9dcdb4c5d0fb65310` имеет
+то же полное дерево `7cb37a1a41c10dc4393356e10dc868c92f8612c7`, base
+`4963face79be2da224d28779433df7ef219deeb4`. Это проверка эквивалентности
+исходников, не утверждение буквального checkout ветки или наследования GREEN.
+Trusted-base policy job имеет отдельную границу происхождения доказательств.
+
+Собственный [Matrix 41104111514](https://github.com/egorribun/university_ecosystem/actions/runs/41104111514)
+завершён **FAILURE** в 19:20:07 UTC. Проверены все страницы:
+**91 job = 73 SUCCESS/3 FAILURE/15 SKIPPED**;
+**23 workflow = 20 SUCCESS/1 FAILURE/2 SKIPPED**;
+**141 check = 113 SUCCESS/3 FAILURE/24 SKIPPED/1 NEUTRAL**.
+Активных и отменённых результатов нет. Этот прогон не заменялся rerun или
+отменой.
+
+- Backend: **22 531 PASS/428 SKIP/0 FAIL**, все четыре shard завершены:
+  4826/111, 5503/88, 4857/146, 7345/83 PASS/SKIP соответственно.
+  Jobs 124231607432, 124231607610, 124246918668, 124249023191.
+  Опциональные skips не считаются успехом; агрегаты не заменяют отдельно
+  напечатанные named receipts каждого обычного Python node.
+- Frontend: **10 518 PASS/0 FAIL/0 SKIP**, 838 файлов.
+  [Aggregate 124237016644](https://github.com/egorribun/university_ecosystem/actions/runs/41104111514/job/124237016644)
+  объединил четыре отчёта: **2457 changed lines/0 missing/100% line coverage**.
+  Это не 100% всех branch/component metrics. Lint/format, TypeScript, ESLint,
+  i18n и production build прошли.
+- AUD-334: hook 31 PASS; реальная parser/provider/controller-композиция
+  частичной доставки 3 PASS; Go loopback midstream storage-error/drained-timeout
+  2 PASS под race detection. В ws-hub cohort 830 named PASS, без FAIL/SKIP.
+  Это связанные компонентные доказательства, не cross-process NATS-outage
+  или приёмка развёрнутого WebSocket.
+- Native Node: 844 PASS/0 FAIL/6 посторонних SKIP; отдельный tokens:check
+  исполнен. Worker/export 56, quick-risk 665, final-HTML 36 также PASS.
+  Bundle 145 contracts и verifier реального артефакта PASS: единственный
+  соответствующий контракту noninitial vendor-map MapLibre 6.15 имеет
+  **285,83 KiB** при согласованном пределе 286 KiB; остальные lazy chunks
+  сохраняют 280 KiB. Это увеличение бюджета, не оптимизация/deployed WebGL proof.
+- Собственный PostgreSQL: 391 PASS/17 SKIP, отдельно 13 PASS и 5 PASS.
+  Renderer: 89+2+7 PASS, последние семь на реальном PostgreSQL.
+  Contract: 3590+688+41 PASS.
+- Все семь Go unit/race и lint jobs и три Go integration/race jobs прошли,
+  как Go fuzz и Nilaway. Округлённое покрытие, напечатанное unit job,
+  не отменяет итог строгого normalizer ниже.
+- [Owned Core 41104111177](https://github.com/egorribun/university_ecosystem/actions/runs/41104111177)
+  SUCCESS 18:28:56: 338 preflight, 1 browser-runtime, 48 live PASS/2 SKIP;
+  NATS outage/cleanup SUCCESS. Артефакт 13001148808.
+  Реально исполнены семь live specs: auth-roles, admin-notifications-rbac,
+  password-reset, pwa-offline-shell, search-dialog-keyboard,
+  settings-radio-focus, zzz-aud174-prehydration-caddy-log.
+  Безопасный агрегированный reporter не раскрывает имена двух skips или
+  числа для каждого spec. Другие story/full-stack suites не считаются исполненными.
+- Security/types, pre-commit, inventory, baseline verifier, dependency scans,
+  CodeQL, Trivy image jobs и Pact прошли. Baseline 319 identities,
+  418 exact reviewed matches, 20 stale identities; policy 494.
+
+### Три оставшихся failed checks
+
+1. [Alembic 124231606287](https://github.com/egorribun/university_ecosystem/actions/runs/41104111514/job/124231606287):
+   прежние **37 raw Squawk warnings (13+24)**, exit1.
+   Diagnostic 132, tenant 46, lifecycle 41 PASS. Finite 148 matcher остаётся
+   диагностическим и неактивным; исходный отказ не подавлен.
+2. [Coverage & Quality Policy 124263998732](https://github.com/egorribun/university_ecosystem/actions/runs/41104111514/job/124263998732):
+   Python changed-line coverage 100% PASS, затем strict normalizer exit1
+   с **13 diagnostics**. Frontend branches/functions/lines/statements ниже 100%;
+   ws-hub derived lines/statements ниже 100%; Rust-native lines/branches
+   и соответствующий Tier0 file ниже 100%.
+   Python branch misses 1521 при допустимом legacy-migration residual 1519;
+   Tier0 branch misses 1526 вместо 1519, line misses 2023 вместо 2022.
+   Это нарушения aggregate coverage, не failed unit assertions, timeout или
+   отказ разрешений. Причины требуют сверки исходников и артефактов;
+   thresholds/residual baseline не изменены.
+3. [CI Success 124264570476](https://github.com/egorribun/university_ecosystem/actions/runs/41104111514/job/124264570476):
+   производный отказ блокирующих jobs. Trusted Codecov SKIPPED.
+
+**Полный CI, нормализованное merged coverage и готовность выпуска не GREEN.**
+
+### Следующий ограниченный пакет и открытые риски
+
+Сопутствующий [tests-only commit 2900ebe4](https://github.com/egorribun/university_ecosystem/commit/2900ebe40d00ec76e3b786c8fe7cb58709ee965a)
+изменяет ровно два тестовых файла поверх fc70; документационный checkpoint —
+только четыре документа. Production behavior, зависимости, workflows,
+retry limits и policy inventories неизменны. Новому SHA нужен собственный CI;
+он не наследует GREEN fc70. Новые тесты на момент checkpoint ещё не исполнены.
+
+- **AUD-334 открыт.** Source trace: cleanup connection-dependent room-effect
+  контроллера вызывает sendLeave при transient disconnect и стирает
+  observed replay-rejection debt hook. Новые реальные provider/controller
+  тесты различают repeated same-cursor rejection и намеренную смену
+  комнаты/аккаунта, требуют фактического REST recovery. Ожидаемый cap FAIL
+  ещё не воспроизведён в Actions; hook 31 и partial-delivery composition 3
+  не доказывают combined cap. Исправление обязано сохранить room/account
+  isolation, bounded automatic recovery, manual recovery и REST fallback.
+  Generic wire errors не дают точной корреляции отдельных запросов.
+- **AUD-447 открыт.** Шесть persisted SQLite regressions проверяют malformed,
+  duplicate-key/hash-mismatched retained auth payloads через реальные
+  broker-dedup/replay transactions с положительным delivery control сначала.
+  Они ещё не исполнены и не доказывают PostgreSQL concurrency,
+  dormant/history/error-field cleanup или deployment. Текущий код может
+  сохранять plaintext; исключение после repair внутри нынешней broker
+  transaction откатит этот repair. Lossless authenticated storage envelope
+  и ограниченное dry-run maintenance пока только проектируются.
+  Этот документ не выполняет и не разрешает операции с production-БД.
+- **AUD-449 открыт.** Реальный Core Caddy marker проверяет password redaction
+  на desktop/mobile для full Compose Caddy config. OAuth callback-code,
+  обе Caddy configurations и Gunicorn logs этим не проверены.
+- Дальше: исполнить regressions, отдельно подтвердить здоровье fixtures
+  и semantic RED; внести только reviewed causal repairs; исследовать
+  точные coverage gaps и добавить настоящие контроли без снижения гейтов;
+  сохранять неактивную migration-risk границу до полного набора проверок
+  и необходимого решения владельца.
+
+Policy 494, cap 512, expiry 2027-01-10, baseline 319, Gitleaks 26, required 78 context/app
+pairs, blocking CodeQL, hooks и coverage floors неизменны. Нет новых
+hash dispositions, удаления stale baseline, Squawk admission, force-push,
+merge, deploy или новых credentials. Ниже сохранены исторические разделы
+с их собственными датами, доказательствами и ограничениями.
+
+## Complete remaining-finding reconciliation and own-source checkpoint — 2026-10-30
+
+The accepted lower bound is **435/512 (85.0%)**, with **77 IDs unaccepted**.
+All 112 previously unaccepted findings were reconciled against their original
+criteria, current source and actual test selection:35 scoped acceptances,
+10 source-fixed/proof-pending,30 partial,34 unfixed,2 unverified and 1 whose
+original asserted cause remains unproven. No missing execution was converted
+to success and no acceptance criterion was broadened to require deployment
+where the original finding concerns a local parser/configuration contract.
+
+The [35-finding decision](../../audits/AUDIT-2026-10.md#scoped-35-finding-reconciliation-on-source-1cf19a9b-2026-10-30)
+contains exact source/test bindings and named-vs-cohort evidence.
+The [complete 112-row matrix](../../audits/AUDIT-2026-10-30-reconciliation.md#complete-112-finding-reconciliation-on-source-1cf19a9b)
+preserves every residual, the original 136-path review manifest, and corrected
+descriptions of earlier partial findings.
+
+### Verified source and terminal results
+
+Verified source is
+[1cf19a9b2e8f8f4e0b4d6bc91a309225c92cda13](https://github.com/egorribun/university_ecosystem/commit/1cf19a9b2e8f8f4e0b4d6bc91a309225c92cda13).
+Actual PR checkout `c92fc01282e3f41dd9e2a60be6547fc087d95c28` has the same
+complete tree `3c42edbf6830f359059411c0310a07feef6613e8`.
+This is source equivalence, not a literal branch checkout or inherited green.
+The trusted-base security-policy job is separate.
+
+[Matrix 41069697810](https://github.com/egorribun/university_ecosystem/actions/runs/41069697810)
+is terminal FAILURE:91 jobs=70 SUCCESS/5 FAILURE/16 SKIPPED.
+All 23 workflows are terminal (20 success/1 failure/2 skipped), and all 141
+checks are 110 success/5 failure/25 skipped/1 neutral. No active or cancelled
+results remain on that source.
+
+- Backend: 22,531 PASS /428 SKIP /0 FAIL, all four shards terminal.
+  The 849+240 preflights are separate. Ordinary Python acceptance is explicitly
+  cohort-inferred from complete raw logs and deterministic selection, not
+  separately printed named nodes or a downloaded union manifest.
+- Owned PostgreSQL: 391 PASS/17 SKIP plus separate 13 and 5 PASS groups.
+  AUD-262 durable 5/lifecycle 27/schema 12, AUD-271 sequence 3 and AUD-389
+  recovery 4 have direct named own-source proof. AUD-045's13 pruner cases,
+  AUD-363/454's4 borrowed-session cases and AUD-260's category-regex case
+  remain SKIP; no such optional proof is claimed by their narrower decisions.
+- Contract: 3590 consumer +688 security +41 scoped PASS.
+  Renderer lifecycle 41 + 7 real-PostgreSQL PASS. Baseline verifier 319 identities,
+  418 exact reviewed matches,20 stale and 0 unmatched; policy remains 494.
+- Frontend: 10,492 PASS/3 FAIL/0 SKIP across 838 files. The only three failures
+  are existing AUD-334 delayed generic-rate-limit/bounded-recovery cases.
+  Their later cap/manual assertions are not reached.
+- Owned Core 41069697071/job 124110237575:338 preflight,1 browser-runtime,
+ 48 live PASS/2 SKIP across 7 actual specs; NATS outage/cleanup PASS.
+  Broader full-stack/SSR/story suites are not inferred to have executed.
+- Map 51 real-query/UI composition, production build and static bundle
+  verifier PASS. MapLibre 6.15 noninitial vendor-map 292,688 gzip bytes is within
+  the approved 286 KiB ceiling; every other lazy chunk retains 280 KiB.
+  This is the accepted budget tradeoff, not optimization or deployed WebGL proof.
+- CodeQL, pre-commit and the relevant scoped Go/Rust named tests PASS.
+  Coverage Policy 124146790592 and Trusted Codecov 124146791816 are SKIPPED.
+
+The five failed jobs are security/types 124110243436 (mypy PASS, four baseline
+metadata line changes), Alembic124112216254 (raw 13+24 Squawk warnings),
+frontend shard2 124113373285, frontend aggregate 124117030294 and derived
+CI Success 124146788916. Full CI, merged coverage and release are **not green**.
+
+### Published successor 160 and its own execution
+
+The published runtime/test source is
+[160e7f122b235f52210f23b354bb59dfb80e5bbc](https://github.com/egorribun/university_ecosystem/commit/160e7f122b235f52210f23b354bb59dfb80e5bbc).
+Actual PR checkout `50449681f1c2f48602bc7ee1df3fedc39445fc16` has the same
+complete tree `df9a960eace6ab7c9b7128eae00ce9c1efe15f1f`.
+Its two reviewed commits changed exactly five files: baseline metadata,
+gateway test-hook cleanup, the added heartbeat/recovery test, the Node script
+selection and the exact formatter quote. No production behavior, dependency
+graph, lockfile, workflow or policy inventory changed.
+The 35 acceptances and the frozen 112-row classifications above remain based
+on terminal **1cf**, not this successor. Later execution results below update
+the operational evidence without silently adding accepted IDs; the seven new
+AUD-151 helper receipts still need a separate original-criterion decision.
+
+Own [Matrix 41086029385](https://github.com/egorribun/university_ecosystem/actions/runs/41086029385)
+at **2026-10-30 16:24:50 UTC** has **82 jobs: 64 SUCCESS / 4 FAILURE /
+12 SKIPPED / 2 RUNNING**. Only backend shards 0/1 are running, their counts are
+not terminal, and shards 2/3 are not yet materialized. No cancellation is
+observed at that capture. **160 is not full-CI or merged-coverage GREEN.**
+
+Completed own-source receipts:
+- Security/types 124168643762: mypy and detect-secrets PASS; the four baseline
+  line moves now match with no metadata diff. All 319 identities are unchanged.
+- Gateway integration 124169467280: actual `go test -tags integration -race`
+  package PASS, with no reported race/failure/skip. Verbose Unit 124169468595
+  separately names InvalidHTTP3AddressDoesNotBlockShutdown and
+  LogsHTTP3ListenError PASS. This verifies the test-cleanup repair, not a new
+  production shutdown/deployment guarantee.
+- Contract 124168643130:3590 consumer +688 security +41 scoped PASS.
+  Owned PostgreSQL 124169468550:391 PASS/17 SKIP plus separate13 and5 PASS.
+  Renderer PostgreSQL 7 named PASS. Alembic lifecycle 41, diagnostic 132 and
+  tenant 46 PASS; unchanged raw 13+24 Squawk warnings still fail Alembic.
+- [Owned Core 41086028960](https://github.com/egorribun/university_ecosystem/actions/runs/41086028960)
+  completed SUCCESS 16:22:32:338 preflight +1 browser +48 live PASS/2 SKIP,
+  NATS outage and owned cleanup SUCCESS. Receipt artifact 12992763538.
+- All four frontend shards are terminal: **10,492 PASS /4 FAIL /0 SKIP**,
+  838 files. All four failures are AUD-334. The new healthy-heartbeat case
+  reaches all 11 current-checkpoint/pong/replay-unavailable cycles and then
+  observes **12 transports instead of at most11** at test line 332.
+  Later isConnected/timer assertions are not reached. The previous three
+  delayed-rejection/bounded-tail failures remain separate.
+- Lint/pinned Prettier, TypeScript/ESLint/i18n, Production and Bundle PASS.
+  Actual Map artifact limits remain 286/280 KiB; no optimization is claimed.
+  The frontend aggregate fails before merged/client/branch/diff coverage,
+  so none of those coverage reports is a new success.
+- [Native124169621163](https://github.com/egorribun/university_ecosystem/actions/runs/41086029385/job/124169621163):
+  canonical selection and the healthy control/all 19 mutation cases PASS.
+  The previously omitted AUD-151 helper suites now have2+5 named PASS;
+  UI-barrel 1 and token-validator 3 (including full-source assertion) PASS.
+  Micromatch has 12 PASS/1 FAIL: its obsolete Docker-stage fixture splits on
+  `FROM base AS builder`, while the actual builder inherits `deps`.
+  It fails before adapter-transfer assertions, not on engine semantics.
+  Total Node 850 =843 PASS/1 FAIL/6 SKIP. The final standalone
+  `&& npm run tokens:check` is correctly **NOT EXECUTED** after that failure.
+  The separate worker/export group is skipped after the Node failure.
+  AUD-151/308 are not added to the frozen 435 decision.
+
+This successor's bounded recovery changes only
+`frontend/scripts/boundary-micromatch-compat.test.mjs` plus these four
+documents. It models the actual dependency-stage inheritance and filtered
+source overlay, keeps every existing engine assertion, and adds finite
+source/absent-engine negatives. It does not restore a redundant production
+COPY or weaken the blocking Node command. The fresh-process negative uses
+the supported Node no-global-search-paths option so a HOME/NODE_PATH module
+cannot hide a missing local engine. This is a source/filesystem fixture
+repair, not an actual Docker-build receipt. Its own execution, final
+standalone token command and all required checks are still pending.
+
+### Actual previous-run cancellation, not an inferred failure
+
+The tests-only [923 run 41080879440](https://github.com/egorribun/university_ecosystem/actions/runs/41080879440)
+is terminal **CANCELLED** after publication of 160. Its final 91 jobs are
+64 SUCCESS /9 FAILURE /14 SKIPPED /4 CANCELLED; all 23 workflows are
+20 SUCCESS /2 SKIPPED /1 CANCELLED. All 141 checks are104 SUCCESS /
+9 FAILURE /23 SKIPPED /4 CANCELLED /1 NEUTRAL, with none active.
+
+Backend 0/1 actually completed **10,329 PASS /199 SKIP /0 FAIL**.
+Backend 2/3 jobs 124165103478/124167014301 were cancelled, as were
+Coverage 124167930595 and Trusted Codecov 124167932626. Backend compatibility
+wrappers and derived CI then failed; those are not new measured pytest
+failures. No full923 backend or coverage success is claimed.
+The completed 923 semantic RED (one instead of two Node stages), healthy
+control/all 19 negatives and pinned quote diagnostic are retained as the
+tests-first evidence for 160; production/backend Python bytes were identical
+to fully terminal 1cf. The next source likewise must not inherit GREEN.
+
+### Ordered remaining work and boundaries
+
+1. Finish the one-file Docker-inheritance fixture repair, then require every
+   newly selected Node suite and the final standalone token command to pass.
+   Preserve the measured selection/negative/formatter results as source-bound
+   receipts, not inherited GREEN for the successor.
+2. Keep AUD-334 open. Four failures are observed: the original delayed/capped
+   cases and the new healthy-heartbeat case reaching 12 rather than 11 transports.
+   Its later state/timer assertions and the original manual-restart tail remain
+   unreached. Review the bounded causal repair and all lifecycle/send paths;
+   do not create replay debt merely from a quiet healthy pending resume.
+3. Keep AUD-447 open: malformed/hash-mismatch/duplicate-key legacy rows retain
+   plaintext bad_bytes, and dormant/history cleanup is unproved. No automatic
+   production database cleanup is authorized by the current source review.
+4. Squawk finite 148 remains prepared-inactive and expires 2026-11-13T00:00:00Z.
+   All 11 current pins match, but graph-aware 10 merge nodes, strict receipts
+   for 141 other migrations, fresh owned admission/post-state and actual
+   fail-closed consumer controls are missing. The proposal's36f capture label
+   is stale relative to compiled 3d83; raw 37 warnings remain blocking.
+5. Continue the 77-row residual plan using exact evidence gaps, not blanket
+   infrastructure requirements or historical alert totals. Private rescue
+   bundle and remote alert state remain unverified, not assumed clean.
+
+Policy 494, cap 512, expiry 2027-01-10, baseline 319, Gitleaks 26, required 78 contexts,
+blocking CodeQL, hooks and all floors remain unchanged. No new dispositions,
+removal of the 20 stale identities, Squawk activation, force-push, merge or
+deployment is part of this checkpoint.
+
+## Retained historical checkpoints
+
+
+## Source-bound bb2 checkpoint and scoped registry update — 2026-10-30 14:04 UTC
+
+The current accepted lower bound is **400/512 (78.1%)**;
+**112 IDs remain unaccepted**. This publication records only
+AUD-030, AUD-310, AUD-409, AUD-462, AUD-463 and AUD-476, preserving all prior 394 accepted IDs. The detailed
+[acceptance decision](../../audits/AUDIT-2026-10.md#scoped-six-finding-acceptance-on-source-bb2dea6c-2026-10-30)
+and [reconciliation](../../audits/AUDIT-2026-10-30-reconciliation.md)
+retain the exact criteria, source/test bindings and proof limits.
+
+Verified code source:
+[bb2dea6c0afc135f39cc7cc4c92f24582fe754e5](https://github.com/egorribun/university_ecosystem/commit/bb2dea6c0afc135f39cc7cc4c92f24582fe754e5).
+Actual PR checkout was merge `aabcbbca7166a0b676c4bc31eef041fb7b21f097`;
+its complete tree equals the branch source's
+`b805d96a727efcb406b105fa7cc86123e0e4390f`.
+These are source-equivalent own-run receipts, not a literal branch checkout
+or inherited success from 4979. This documentation successor changes no
+production source or gate and requires its own required checks.
+
+### Completed own-source validation
+
+The [Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759)
+is terminal **FAILURE** (all-page capture **2026-10-30 14:02 UTC**):
+**91 jobs = 70 SUCCESS / 5 FAILURE / 16 SKIPPED**.
+All 23 workflows are terminal (20 success, one failure, two skipped);
+the complete two-page check inventory contains **141 checks: 110 SUCCESS,
+5 FAILURE, 25 SKIPPED and 1 NEUTRAL**. No active or cancelled result remains.
+
+| Python shard | Own job | PASS | SKIP | FAIL |
+| --- | --- | ---: | ---: | ---: |
+| 0 | [124071613937](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124071613937) | 4826 | 111 | 0 |
+| 1 | [124071614246](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124071614246) | 5503 | 88 | 0 |
+| 2 | [124084392208](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124084392208) | 4857 | 146 | 0 |
+| 3 | [124086057739](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124086057739) | 7345 | 83 | 0 |
+
+The complete four-shard total is **22,531 PASS / 428 SKIP / 0 FAIL**.
+The repaired MFA policy-count assertion and eight added email controls are
+**source-bound cohort-inferred PASS**, not separately printed node receipts.
+The previous sole Python failure is gone. Shard2 explicitly reports
+`app/tasks/email.py` **172 statements / 0 missed / 54 branches / 0 partial,
+100%**. This is file/shard evidence, not a merged-coverage result.
+The 849+240 shard0 preflight passes are separate and not added to that total.
+
+- Frontend: **10,492 PASS / 3 FAIL / 0 SKIP**, 838 files; lint/type/format/i18n
+  pass. The new Map51 composition case passes by name; the raw
+  invalid-resume-token/controller file passes both cases. The three existing
+  AUD-334 failures remain; frontend merged/changed-line coverage is skipped.
+- [Contract](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124069275935):
+  3,590 consumer, 688 security and 41 scoped cases pass. The 55 hook cases
+  and all six Oct30 policy definitions are explicitly named PASS.
+  The separate baseline verifier reports 319 baseline identities,
+  418 reviewed exact matches, 20 stale identities and zero new unmatched
+  findings. The finite policy stays 494; no stale identity is removed.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/41057693920/job/124069271091):
+  338 preflight, one browser-runtime and 48 live PASS / 2 SKIP; NATS outage
+  and cleanup pass. [Owned PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124071614068)
+  has 391 PASS / 17 SKIP, plus separate 13 and five-case groups;
+  renderer controls have 41 ordinary and seven PostgreSQL passes.
+  These are owned test topologies, not deployed-infrastructure acceptance.
+- [Bundle](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124075566637):
+  145/145 PASS with all 34 negative variations reached; same-run production
+  artifacts satisfy the exact source/ID/digest contract and actual verifier.
+  The specific static-noninitial MapLibre6.15 vendor chunk is
+  **292,688 gzip bytes ≤ 292,864 bytes (286 KiB)**; other lazy chunks remain
+  280 KiB. Production/native pass; native has 818 PASS / 6 SKIP and finalHTML
+  36/36 PASS. Computed-import inventory remains incomplete, so no dynamic
+  or network completeness is claimed.
+- [Cargo Deny](https://github.com/egorribun/university_ecosystem/actions/runs/41057693580)
+  initially failed one job during action resolution, before checkout/scan.
+  The same existing pin resolved for the other crates and exists upstream.
+  Exactly one failed-job retry, on the same source with no code/pin change,
+  completed attempt2 SUCCESS. This was not a vulnerability or invalid-pin
+  finding; successful sibling executions were carried forward, not rerun.
+- Current gateway race-enabled jobs pass, but that does **not** repair or
+  invalidate the independently observed 4979 global-hook test-fixture race.
+  Its reviewed unpublished fix is separate from the ws-hub accepted criteria.
+
+The five failures are precisely:
+
+1. [Security/types](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124069275823):
+   mypy passes; detect-secrets fails on the existing four baseline line-number
+   changes and generation metadata, not a newly authorized hash inventory.
+2. [Alembic](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124071612628):
+   unchanged raw Squawk **13+24 = 37** findings.
+3. [Frontend shard2](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124072660022):
+   the three AUD-334 failures.
+4. [Frontend aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124078544925):
+   derived failed-shard guard.
+5. [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124103429485):
+   derived aggregate failure.
+
+[Coverage Policy](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124103429692)
+and [Trusted Codecov](https://github.com/egorribun/university_ecosystem/actions/runs/41057693759/job/124103431253)
+are **SKIPPED**, not passed; CodeQL succeeds.
+No complete current coverage, full-CI, deployment or release GREEN is claimed.
+
+
+### Remaining work and permission boundary
+
+- AUD-334 remains open. Current delayed generic-rate-limit failures are real;
+  the later cap/manual assertions have not been reached. The independent raw
+  invalid-resume-token/controller-composition proof passes, but is not a
+  closure of delayed rejection recovery or retry-budget safety. A bounded
+  frontend design has been reviewed; no new wire ACK/ordinal or production
+  recovery change is published with this checkpoint.
+- AUD-447 remains open. Encrypted new submissions and fail-closed handling
+  of reached valid legacy rows do not remove retained plaintext in malformed
+  or dormant legacy storage. No deployment-data cleanup is claimed.
+- The separate reviewed three-file metadata/test package remains unpublished
+  while its specific public-publication permission is pending. It is not
+  included indirectly in this docs update. The already observed baseline
+  metadata drift remains a real gate failure, not a newly authorized
+  security disposition.
+- Raw Squawk's 37 findings remain blocking. The exact-capture validators are
+  not an active migration admission or permission to migrate populated data.
+- Policy494, baseline319, Gitleaks26, required contexts and all quality floors
+  remain unchanged. Static Map286 admission is the approved six-KiB budget
+  tradeoff, not optimization or proof of dynamic/network completeness.
+
+Next: finish the pending permission-dependent package only after the explicit
+grant and a fresh branch/source reconciliation; obtain its own CI. Continue
+AUD-334's demonstrated RED-to-GREEN work with ownership, bounded retries and
+real-parser controls, then address the separately open storage/infrastructure
+criteria. Do not infer deployment or release acceptance from this checkpoint.
+
+## Completed 56ed5df evidence and reviewed causal successor — 2026-10-30 10:50 UTC
+
+The [56ed5df recovery](https://github.com/egorribun/university_ecosystem/commit/56ed5df3a31742730d9b3e8e7e2d9acc46182dd9)
+has completed its own hosted checks. The PR jobs checked out merge
+`3ea36c26c2941f44260569d5870790582bbc1e89`, not the literal branch SHA.
+Both commits have the identical complete Git tree
+`97dbc7ffe58e6c24f3dcd20afdcc9260ae76fe16`. The trusted-base policy-integrity
+job is a separate API review, not execution of PR code.
+
+- All four backend shards pass: **22,517 PASS / 428 SKIP / 0 FAIL**.
+  The aggregate job independently verifies the complete disjoint population
+  of **22,945 selected node IDs** and combines five coverage files. The old
+  historical-capture helper failures are resolved; historical security
+  controls and both no-transfer cases pass.
+- The [aggregate coverage gate](https://github.com/egorribun/university_ecosystem/actions/runs/41028695091/job/124003315196)
+  now executes rather than skipping, and **fails** its unchanged 100% patch-line
+  requirement: **1,495 changed executable lines / six missing**,
+  all at `app/tasks/email.py:51,57,60,87,91,98`. These are fail-closed
+  envelope/task-validation paths. This is not full branch-coverage proof.
+  Trusted Codecov remains skipped.
+- Frontend units pass **10,488 tests in 837 files**, including chat-list
+  integration 13/13 and helper 9/9. Its own differential report passes
+  **2,416/2,416 changed lines**. The branch diagnostic still has 35 zero-hit
+  arms and 11 unlocated entries; do not claim 100% branch coverage.
+- The real [Bundle job](https://github.com/egorribun/university_ecosystem/actions/runs/41028695091/job/123977106128)
+  passes all 145 focused cases, all 34 negative evidence variations and the
+  privacy control. Same-run production artifacts pass exact ID/digest binding
+  and the actual verifier: the single proven static-noninitial MapLibre 6.15.0
+  vendor chunk is **292,688 gzip bytes**, below **292,864 bytes (286 KiB)**.
+  The causal fix accepts the literal `?url` suffix only for its exact Vite
+  worker module; queries on CSS/main and all other worker query variants
+  remain rejected. Every other
+  general lazy chunk retains 280 KiB. This is the explicitly approved
+  **6 KiB budget increase**, not an optimization or dynamic/network closure.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/41028694947/job/123972929391)
+  passes 338 preflight checks, one browser-runtime check and 48 live cases
+  with two skips; NATS outage and cleanup pass. Frozen-RC full-stack smoke
+  remains skipped. Real PG integration passes 391 cases with 17 skips,
+  plus separate 13 chat/notification and five durable-replay cases; seven
+  renderer PG controls pass. These scopes are not deployment acceptance.
+
+The [Matrix run](https://github.com/egorribun/university_ecosystem/actions/runs/41028695091)
+is terminal **FAILURE**: **91 jobs = 71 SUCCESS / 5 FAILURE / 15 SKIPPED**.
+All 23 workflows are terminal (20 success, one failure, two skipped);
+141 checks are 111 success, five failure, 24 skipped and one neutral.
+There were no cancellations. The failures are security/types and baseline
+integrity for the same 89 unmatched technical hashes, raw Squawk's 37 warnings,
+the six missing email lines, and derived CI Success. CodeQL is successful.
+There is no full-CI, aggregate-coverage or release GREEN.
+
+The owner approved the exact
+[89-identity triage manifest](https://github.com/egorribun/university_ecosystem/blob/15349c991d5ef99098b452008f0f6813ba0b9561/docs/audits/evidence/security-digest-triage-2026-10-30.json)
+on 2026-10-30 at 10:21 UTC. The
+[reviewed causal source chain](https://github.com/egorribun/university_ecosystem/commit/42969212548b495d47d3e39742c8825223973ffa)
+appends those 89 exact identities to the byte-preserved 405-record prefix:
+**494 records**, within the unchanged 512 cap and 2027-01-10 expiry.
+The runtime loader binds exact identity and approval metadata. Whole-source
+byte pins and the complete population are independently enforced by CI source
+contracts, not runtime filesystem authentication. Six new collected tests
+exercise source/population, scope/old-grant, metadata/expiry and candidate/
+trusted-base boundaries; finite loops are not counted as separate tests.
+AGENTS and ADR-047 record this precise decision. No other hash inherits it.
+
+The baseline remains 319 identities and Gitleaks remains 26 fingerprints.
+The 20 stale baseline identities are separately informational, are not part
+of this grant and are not removed. Scanner rules and inactive Squawk admission
+are unchanged; all 37 raw warnings remain blocking. The review manifest itself
+is an immutable evidence artifact, not an independently active policy.
+Own-source scanner and negative-test results are still required.
+
+Only after 56ed's terminal checks,
+[34ebe406](https://github.com/egorribun/university_ecosystem/commit/34ebe406f6c7e07458763b8b21fd34de6567dc3c)
+published two test-only files. Its
+[frontend run](https://github.com/egorribun/university_ecosystem/actions/runs/41038438736)
+is terminal **10,489 PASS / four FAIL**, in 837 files; TypeScript, ESLint and
+Prettier pass. The aggregate stops at the failed-shard guard, so merged
+frontend/differential coverage does not run on this source.
+
+- DLQ: 14 old page tests pass; the new terminal-second-page-error test fails
+  at the active-query observer assertion (zero instead of one). Healthy
+  first-page, pending-placeholder and terminal-error state controls pass.
+  Its later DOM assertions are not reached. The
+  [minimal causal fix](https://github.com/egorribun/university_ecosystem/commit/ff6eee76d8048bcd30d671bd81c3de6610082a8d)
+  permits offset clamping only from successful non-placeholder current-page
+  data. Existing genuine shrink behavior and its request sequence
+  `[0,20,20,0]` are preserved; no retry UI, query-key, mutation or selection
+  change is introduced. Own-source regression GREEN remains required.
+- AUD-334: all five old cases and the 1,050 ms control pass; the 1,051 ms
+  and 5,000 ms cases lack a retry. The bounded-recovery case fails in its
+  first cycle, before the cap/manual/checkpoint tail. These are three actual
+  failures, not proof that the unreached assertions work. No WebSocket
+  production or ordinal-protocol change is included in this source chain.
+- The separate [email validation tests](https://github.com/egorribun/university_ecosystem/commit/1e9c9e95a4b8f51955bc34e8db4d19bbef8ce589)
+  add eight cases using real Fernet/signature/preparation behavior, healthy
+  controls, opaque rejection and input nonmutation for the six uncovered
+  guards. Email production code is unchanged. Static review is not proof of
+  aggregate coverage or of every possible mutant being killed.
+
+Current 34ebe backend/PG/Core observations do not inherit 56ed's complete
+results. This new reviewed source requires its own complete CI, scanner,
+coverage and scoped regression receipts. The AUD-334 causal design must also
+separate replay progress from transport health: a heartbeat can reset the
+network retry counter without advancing the saved sequence. Its additional
+boundedness counterexample is source-backed, not yet a hosted regression.
+
+**394/512 accepted; 118 unaccepted** is unchanged. The AUD-043/AUD-427
+acceptance below remains bound to its original 3d83 evidence.
+AUD-030, AUD-334 and AUD-428 remain open. Historical checkpoints below retain
+their original source/time scopes and are superseded as current status by
+this entry, not rewritten as results of a later commit.
+
+## Reviewed successor source — f8971624
+
+The next [reviewed source chain](https://github.com/egorribun/university_ecosystem/commit/f8971624264525b3dbd772fcc5b0b46820c9176a)
+contains five logical code/evidence commits across seventeen paths. Its results
+are not inherited from 3d83 or bd8; own CI and final coverage remain required.
+
+- Map: the hosted one-hunk formatting correction is applied. The same strict
+  verifier now reports one of 60 fixed local rejection stages without original
+  error text, paths, payloads or stacks. All predicates, call order, caps,
+  budgets and exit decisions are unchanged. Tests keep the existing positive
+  controls and all 29 negative variations, require exact expected stages and
+  test malformed-JSON privacy with a runtime-generated marker.
+- Chat: the loaded extent is refreshed authoritatively, with canonical query/
+  session ownership, cancellation and explicit page retry. The ten-file patch
+  includes nine helper and eight additional controller/lifecycle cases.
+  bd8's actual RED proves missing pagination UI and a missing second-page
+  refetch request; its account-transition assertions stopped at missing UI.
+  Do not claim that race was reproduced or that the successor tests pass yet.
+- Squawk: the inactive policy is rebound to the exact fully verified 3d83
+  capture. All 37 raw warnings, SQL, scanner, historical captures, expiry and
+  inactive status are preserved. Only provenance/fingerprints and two
+  path/identity consistency assertions change; this is not admission or
+  permission to run a migration.
+- Bundle workflow contract: bd8's backend shard 2 exposed a stale assertion
+  for a name-only download. The test now requires the exact artifact ID, path,
+  merge-multiple and digest-mismatch settings already used by the reviewed
+  workflow. Existing action pins, execution order and fail-closed assertions
+  are unchanged; this is a test consistency repair, not a workflow relaxation.
+
+On bd8, the focused Map contract suite passes **145/145**, including all 29
+negative variations and both ceiling controls. The fixture isolation regression
+also passes. Real same-run artifact downloads and digest checks succeed, but
+the final artifact verifier still rejects the evidence. **The operational
+286 KiB allowance is not yet proven**; the new fixed stage is diagnostic, not
+a speculative guard relaxation or causal fix. Frontend units are
+**10,467 PASS / four AUD-030 failures**, all in the cursor/lifetime test file.
+
+Next: obtain the successor's concrete Map rejection stage; fix only its proven
+cause, verify Chat ownership/lifecycle behavior and required coverage, then
+complete full exact-source CI. Obtain a fresh complete scanner inventory after
+this recapture before proposing any finite owner grant. Policy405 and
+baseline319 are unchanged. The accompanying **394-ID decision remains bound
+only to the completed 3d83 evidence below**, not these pending successor checks.
+AUD-030, AUD-334 and AUD-428 remain open.
+
+## Current source-bound checkpoint — 2026-10-30 06:10 UTC
+
+The [AUD-043/AUD-427 decision](../../audits/AUDIT-2026-10.md#scoped-aud-043-and-aud-427-acceptance-on-source-3d83fb27-2026-10-30)
+preserves all 392 prior IDs and adds only those two original criteria:
+**394/512 accepted; 118 unaccepted**. The evidence is bound to
+[source 3d83fb27](https://github.com/egorribun/university_ecosystem/commit/3d83fb27a2f7a91ddffc555afa8e12f369bbec09),
+tested merge `1eb4a25de262c255c97efdfdd327153c01b3c72a`, equal tree
+`9176b948347e840810b4091535848ff0fbd97eeb`.
+
+- AUD-043: the canonical/versioned news consumer path, cold-generation
+  preparation and fresh startup read snapshot are covered by 18 consumer,
+  six current-cache and two no-op cases. Their PASS is source-bound
+  **cohort-inferred**, not named-node output or a manifest-union receipt.
+  Authenticated event payloads are deliberately not globally warmed.
+- AUD-427: two actual ticket/revocation producer-to-consumer selectors have
+  named PASS in [Contract 123900734443](https://github.com/egorribun/university_ecosystem/actions/runs/41005719399/job/123900734443).
+  [Pact 123900050464](https://github.com/egorribun/university_ecosystem/actions/runs/41005719445/job/123900050464)
+  passes 29 cases and the real frontend parser accepts seven emitted frames,
+  rejecting four malformed controls. Transport replacements are explicit;
+  live Redis/NATS/deployment and AUD-428's wider census are not accepted.
+
+### Completed 3d83 evidence, not successor results
+
+All four backend shards completed: **22,505 PASS / 428 SKIP / 1 FAIL**.
+The sole failure is the old historical148 renderer source pin.
+Source-bound cohort inference also covers SQL fail-closed 21, the owned Redis
+launcher 32 plus exactly 12 approved-annotation controls, and three renderer
+Pool privacy controls. It is not printed named-PASS or merged coverage.
+The real [DB Performance job](https://github.com/egorribun/university_ecosystem/actions/runs/41005719450/job/123900050828)
+separately passes 212 cases with required capture enabled, 232 SQL statements
+and 80 EXPLAIN checks.
+
+Main [PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/41005719399/job/123901200220)
+passes **391 / 17 SKIP**, including 17 owned Redis contract cases and four
+AUD-340 PG controls; separate 13 chat/notification and five durable-replay
+cases pass. External opt-in skips are not full-stack proof.
+The [migration PG gate](https://github.com/egorribun/university_ecosystem/actions/runs/41005719399/job/123901200015)
+passes all seven real renderer isolation/catalog controls.
+Alembic separately passes renderer 41, diagnostic 132 and tenant 46 tests,
+but still fails with 37 raw Squawk warnings; admission remains inactive.
+
+Frontend unit results are **10,467 PASS / 2 AUD-030 FAIL**, 836 files.
+The WebSocket transport suite passes 120 cases; AUD-334 remains partial:
+a late generic rate-limit response may not trigger current-cursor recovery.
+[Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/41005719446/job/123904145258)
+is SUCCESS: 338 preflight, one browser-runtime and **48 live PASS / 2 SKIP**;
+NATS outage and cleanup succeed. Frozen-RC full smoke remains skipped.
+
+[Matrix 41005719399](https://github.com/egorribun/university_ecosystem/actions/runs/41005719399)
+is terminal FAILURE: **91 jobs = 63 SUCCESS / 12 FAILURE / 16 SKIPPED**.
+All 23 workflows are terminal (20 success, one failure, two skipped);
+141 checks are 103 success, 12 failure, 25 skipped and one neutral.
+There were no cancellations. Coverage Policy and Trusted Codecov are skipped.
+Root blockers are the old renderer pin, 62 unmatched technical-hash scanner
+identities, raw Squawk warnings, Map budget/fixture failures and the two chat
+pagination regressions. Derived aggregate failures are not new test failures.
+**There is no full-CI, merged-coverage or release acceptance.**
+
+### Published successor and ordered continuation
+
+[bd8cfe9860936f5c44ddc882d0ed38702d9dc506](https://github.com/egorribun/university_ecosystem/commit/bd8cfe9860936f5c44ddc882d0ed38702d9dc506)
+contains exactly nine reviewed paths in three logical commits: isolate the
+Map test fixture under existing ignored dependencies; implement the approved
+strict MapLibre 6.15.0 single noninitial vendor allowance; add two chat-list
+lifetime regression tests. No chat production fix is included.
+The [successor Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41012528353)
+must supply its own results; the completed 3d83 results do not transfer.
+
+1. Verify the Map positive control, all 29 negative evidence variations,
+   ceiling controls and actual same-run production artifact. The narrow
+   286 KiB allowance is an approved **6 KiB budget increase**, not an
+   optimization; every other general lazy chunk stays at 280 KiB.
+2. Obtain the new chat lifecycle semantic RED, then publish the separately
+   reviewed producer/consumer ownership fix and its tests; validate the
+   corrected source. AUD-030 remains open across its original four surfaces.
+3. Exercise delayed/repeated generic-rate-limit recovery before any AUD-334
+   source fix; prove finite automatic recovery and explicit manual recovery.
+4. Use actual renderer/SQL/Pool evidence for a bounded inactive Squawk
+   recapture. Preserve historical captures. Re-triage the final scanner
+   inventory and request only its exact finite owner-approved delta; the old
+   58-identity grant does not transfer to new paths/digests.
+
+The exact two S603 and one S104 annotations were separately owner-approved
+and are bounded by ADR-047 and the 12 source-scope tests; no broader exception
+is authorized. Policy405, baseline319, Gitleaks26, inactive Squawk admission,
+required checks, quality floors and GitHub-only/egorribun restrictions remain.
+No deployment, merge, force-push or new access is authorized here.
+
+## Latest verified causal checkpoint — 2026-10-30
+
+Historical source778 checkpoint retained below; the current dated decision is above.
+
+The [source-bound AUD-512 decision](../../audits/AUDIT-2026-10.md#scoped-aud-512-callback-panic-acceptance-2026-10-30)
+preserves all 391 prior IDs and adds only the recovered NATS callback
+termination defect: **392/512 accepted; 120 unaccepted**. All 11 named callback,
+panic, disposition and retry controls pass on source
+[778696a](https://github.com/egorribun/university_ecosystem/commit/778696a428c1e2da3f27e012afac3b9284836e49),
+not a live-broker acknowledgement or complete Go/CI acceptance.
+
+The six-commit, nineteen-file source batch contains causal changes for News
+cursor, frontend replay, cache-warmup and bundle-parser behavior, aligns
+generated/linted artifacts, and separately adds the deterministic Go queued-writer regression
+and isolated SQL-capture fixtures. Its own evidence is source-bound:
+
+- Frontend: **10,466 PASS**, 835 files, including News comment/retry **19/19**
+  and replay **5/5**. Differential coverage is **2,297/2,297 lines (100%)**
+  across 186 eligible changed files, not backend or repository-wide coverage.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40989558368/job/123848395611)
+  is terminal **SUCCESS**: 338 preflight checks, one browser-runtime check,
+  live **48 PASS / 2 SKIP**, NATS outage and cleanup steps pass.
+  Frozen-RC full-stack smoke remains skipped.
+- Bundle focused contracts **140/140 PASS**, but the real production HTML is
+  rejected on its duplicate module root. Source tracing identifies the pinned
+  TanStack modulepreload `fetchpriority=low`; raw serialized attributes are not
+  in the retained bounded report. This is a parser compatibility investigation,
+  not a demonstrated size-budget overrun or permission to weaken budgets.
+- Go reproduces the new AUD-334 signed-frame delivery race in four execution
+  lanes. The separate AUD-512 controls and ws-hub lint pass; whole-Go does not.
+- Main PostgreSQL integration stops at the unchanged disposable Redis ownership
+  guard: **299 PASS / 12 SKIP / 1 FAIL**. CI did not provision its required
+  markers; product Redis assertions were not reached. All four AUD-340 PG
+  controls pass, with separate migration/replay cohorts not added to that total.
+- Contract Tests finish with **3,589 PASS / 1 renderer-source-pin FAIL**,
+  plus separate 681 security and 41 scoped controls. No whole-job GREEN.
+- All four backend shards are terminal: **22,433 PASS / 428 SKIP / 22 FAIL**.
+  Shards0/1/2/3 respectively report 4552/126/9, 5218/54/0, 5975/136/13 and
+  6688/112/0 (PASS/SKIP/FAIL). The 22 failures are SQL capture17
+  (eight worker and nine corrected-fixture negatives), Squawk3, renderer pin1
+  and one stale async warmup-session double. Corrected capture healthy/optional
+  controls and the six AUD-043 plus two no-op controls are cohort-inferred,
+  not printed named-PASS receipts; the startup consumer fixture still fails.
+- [Matrix40989558553](https://github.com/egorribun/university_ecosystem/actions/runs/40989558553)
+  is terminal **FAILURE**: 91 jobs, **60 SUCCESS / 15 FAILURE / 16 SKIP**.
+  All 23 workflows finish with 19 success, two failures (Matrix and Go Fuzzing)
+  and two skips. The 141 checks report 99 success, 16 failure, 25 skip and one
+  neutral, with no active checks or cancellations. Coverage Policy and Codecov
+  are skipped, not passed. These results do not transfer to the successor.
+
+The earlier docs-only d9f806f Matrix was **cancelled** when 778 was published:
+backend0/1 and two coverage jobs were cancelled; shards2/3 never started.
+Its docs checks passed, but no complete backend receipt exists. The earlier
+be88 production run below remains a separate fully terminal failed checkpoint.
+
+The successor
+[source-repair chain](https://github.com/egorribun/university_ecosystem/commit/00ae0cede7ee2f53dbb94965c225e7cd9307a546)
+contains fifteen reviewed code/test/workflow paths: Go cancellation, exact
+formatter output, Squawk exit/privacy propagation, the bounded producer HTML
+pair, owned Redis marker lifecycle, the async warmup fixture and required SQL
+capture. It preserves all existing negative assertions and gates. Its own
+runtime/formatter/required-CI results are still needed; no GREEN is inherited
+from source778. The accompanying registry decision adds only the independently
+proven source-bound AUD-512, not acceptance of these unverified successor fixes.
+
+Next: complete the corrected source's own full CI and address any demonstrated
+remaining cause without lowering a gate. AUD-030 remains partial because the
+chat list still consumes only the first twenty entries;
+successful comment pagination does not close that original four-surface finding.
+Only after stable renderer evidence and actual scanner triage may a new finite
+hash disposition be proposed to the owner. Policy405, baseline319, Gitleaks26,
+inactive Map286/Squawk admission, all floors and branch/access restrictions
+remain unchanged.
+
+## Post-pause reconciliation snapshot — 2026-10-30
+
+All **136 changed paths** between ec9a4d58 and 8787b00e were reviewed against
+complete untruncated Git trees, and all **126 previously open IDs** classified.
+The [complete matrix and manifest](../../audits/AUDIT-2026-10-30-reconciliation.md)
+separate actual regressions, source-only repairs and unverified infrastructure.
+The [independently reviewed scoped decision](../../audits/AUDIT-2026-10.md#scoped-aud-155-aud-320-aud-406-aud-486-and-aud-500-acceptance-2026-10-30)
+preserves 386 IDs and adds only AUD-155/320/406/486/500:
+**391/512 accepted; 121 unaccepted**.
+
+Reviewed source8787 has terminal Matrix **16 success / 14 failure / 30 skipped**;
+its backend was skipped after pre-commit. Its 23 workflows are18 success,
+3 failure and2 skipped. These are not full-CI or release acceptance.
+
+[Recovery be88aed](https://github.com/egorribun/university_ecosystem/commit/be88aed8053c3230342e7c7cf517f62fa3abc0e4)
+contains thirteen independently reviewed consistency changes, not behavioral
+cursor/replay fixes. Its own [Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/40980172611)
+reports all 91 jobs terminal: **58 success / 17 failure / 16 skipped**.
+Pre-commit, inventory, WASM contracts, OpenAPI/types and MSW drift pass.
+Four backend shards total **22,425 PASS / 428 SKIP / 28 FAIL**, excluding
+separate preflight cohorts. Failures: SQL capture 19, Squawk shell/privacy 3,
+cold-cache/generation 4, renderer pin 1 and OpenAPI snapshot 1.
+The refreshed Matrix summary is terminal FAILURE; all 23 workflows are
+20 success / one failure / two skipped, with no cancellations.
+Coverage Policy is skipped, not passed. Tested merge f175a7326 has the same
+tree2a88693f as be88; no full-CI or merged-coverage acceptance is claimed.
+[Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40980172506) is terminal SUCCESS.
+Existing cursor/replay/bundle failures, migration/source-pin and60 unmatched
+technical-hash scan findings remain separate blockers. New frontend formatting
+and ws-hub lint failures are being repaired; no gate is weakened.
+
+Next: finish this source's necessary runtime receipts, repair the demonstrated
+cursor/replay and raw-bundle/parser causes in bounded reviewed batches, then
+reconcile fresh stable renderer capture and exact scanner inventory.
+Any new finite hash disposition needs its own owner decision; prior58 approval
+does not transfer. Preserve policy405/baseline319/Gitleaks26, inactive Map286
+and Squawk admission, exact-SHA checks, branch egorribun and non-force updates.
+No merge, deployment, production-data migration or new access is implied.
+
+## Initial resumption checkpoint — 2026-10-30
+
+The owner explicitly resumed autonomous audit work on 2026-10-30. The safe-pause
+checkpoint below is historical and no longer restricts that continuation. At
+resumption, branch `egorribun` was at `d1c8e96d5957ec9e0b4bb64c1fabb2e23ccc5a97`;
+its required checks remain source-bound. The [scoped root-reviewed decision](../../audits/AUDIT-2026-10.md#scoped-aud-258-aud-365-and-aud-418-acceptance-2026-10-30)
+adds only AUD-258, AUD-365 and AUD-418 to the prior 383: **386/512 accepted,
+126 unaccepted**. It does not authorize a gate exception, merge or deployment.
+This documentation publication and every later source need their own scans and
+required checks; earlier evidence is not full CI, coverage or release acceptance.
+
+## Safe pause checkpoint — 2026-10-29
+
+The owner requested a safe pause at 22:16 UTC. That publication was limited to
+the nine prepared recapture/acceptance files; it does not change application
+code or activate either exception. At that checkpoint, repository writes and
+autonomous remediation stopped after publication; only read-only observation
+of its CI continued without another commit. The owner resumed work as stated above.
+
+At that checkpoint, the last completely tested production source was
+`36f70a0f27065231d7c0ad66ded01d22385a0a81`, with the exact failed-CI accounting
+below. That checkpoint's own CI was pending at publication and did not inherit
+those results. At the time, resumption required an explicit owner instruction
+and reconciliation of the fresh branch head and owner changes. The ordered
+continuation below remains a handoff to reconcile against the current source.
+
+That publication contained all nine reviewed artifacts; no additional
+unpublished implementation patch was represented as ready at the pause. Preserve the
+fail-closed scanner/source-binding checks, inactive Map/Squawk boundaries and
+unchanged 405/319/26 inventories.
+
+## Source 36f70a0f: AUD-340 race fix and stable renderer capture
+
+**At that checkpoint 383/512 were accepted; 129 remained unaccepted. Only AUD-340 was newly accepted.**
+The [scoped decision](../../audits/AUDIT-2026-10.md#scoped-aud-340-acceptance-2026-10-29)
+preserves all 382 previous IDs. AUD-447, AUD-208, AUD-432 and AUD-454 remain
+unaccepted. Historical Squawk admission and the 286 KiB Map allowance remain
+inactive. The 405 finite dispositions, the 319-entry baseline, 26 Gitleaks fingerprints, expiry caps,
+all 78 required context/app pairs, blocking CodeQL and all existing coverage floors are unchanged.
+
+All receipts in this section belong to source
+[36f70a0f27065231d7c0ad66ded01d22385a0a81](https://github.com/egorribun/university_ecosystem/commit/36f70a0f27065231d7c0ad66ded01d22385a0a81),
+tested merge `587a180333d962d5c25e984f54567835a3071e93`, identical tree
+`e38f2243726cd11b25e44958655e7fa61c41314e`.
+They are not inherited by the documentation/recapture publication that follows.
+
+### Behavioral fixes and exact boundaries
+
+- AUD-340: [all four owned PostgreSQL cases](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702569227) and
+  [all four isolation/vector/SQL-order unit cases](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123701547547) PASS.
+  Genesis and nonempty races now form one contiguous HMAC chain; distinct keys
+  progress, caller rollback releases the lock, READ UNCOMMITTED works and
+  unsupported snapshot isolation is rejected without changing caller ownership.
+  Main PostgreSQL reports 389 PASS / 16 SKIP, plus separate 13 migration and five
+  replay PASS. This closes the bounded source race, not historical fork repair,
+  AUTOCOMMIT, mixed-version writers or production rollout.
+- Renderer: [41 named controls](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702568135) and
+  [seven real PostgreSQL controls](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702568368) PASS.
+  [Shard 2](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123717284268) establishes the three Pool regressions as
+  full-file/cohort-inferred PASS: the selected file's 13 historical PG skips
+  appear, the new cases have no skip/xfail/quarantine, and the cohort has no
+  failure/error. These are not three printed named PASS lines and do not prove
+  arbitrary SQL echo or application-log privacy.
+- Map: [35/35 final-HTML contracts](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702667834) and
+  [actual production capture/uploads](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702667723) PASS.
+  Lossless normalization reduces this build's inventory from 40,008 to 20,678
+  bytes without raising the 32,767-byte limit. Its 45 script records retain all
+  46 root occurrences per document. Both documents still report
+  `complete=false` and 79 computed-import occurrences; this is diagnostic
+  evidence, not closed transitive reachability or 286 KiB admission.
+  [Artifact 12928004752](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/artifacts/12928004752)
+  retains the diagnostic report. Bundle admission remains blocked at 285.83 KiB
+  versus the unchanged 280 KiB limit.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40945703148) SUCCESS:
+  329 preflight PASS, 48 live PASS / two SKIP, NATS and owned cleanup SUCCESS.
+  Frontend has 10398 PASS in 823 files; its
+  [aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123708859995) covers 2186 changed lines with zero missing.
+  Fast pre-commit, frontend lint and backend type checking pass.
+  [Blocking CodeQL](https://github.com/egorribun/university_ecosystem/runs/123701429068) succeeds; its check has zero annotations.
+
+### Full terminal accounting, not all-green acceptance
+
+| Backend shard | Exact job | PASS | SKIP | FAIL |
+| --- | --- | ---: | ---: | ---: |
+| 0 | [123702569258](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702569258) | 6957 | 71 | 1 |
+| 1 | [123702569509](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123702569509) | 5329 | 167 | 5 |
+| 2 | [123717284268](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123717284268) | 4650 | 138 | 0 |
+| 3 | [123719915407](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123719915407) | 4943 | 36 | 0 |
+| Total | | **21879** | **412** | **6** |
+
+All four shards completed without cancellation. Separate 848 and 240
+preflights are excluded. The six failures are one historical renderer pin and
+five existing whole-source/fingerprint consumer guards. Contract has 3575
+consumer PASS / one renderer-pin FAIL, security 633 PASS / five binding FAIL,
+85 Auth cases and 41 scoped renderer cases PASS; do not call that whole job successful.
+
+The new AUD-340 executable lines are absent from shard3's missing set, and the
+new decision paths execute. The raw four-shard missing-line intersections for
+audit_service and DLQ are empty, including DLQ lines 59/62. These are not a merged
+coverage report. Shard3 alone reports audit_service at 91%, not 100% whole-file branch coverage.
+[Coverage & Quality Policy 123733923028](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255/job/123733923028) and Trusted Codecov
+123733923445 are SKIPPED. Native merged line/statement/branch/function compliance
+is not established; the 100% floors and release gates are not waived.
+
+Final [Matrix 40945703255](https://github.com/egorribun/university_ecosystem/actions/runs/40945703255) has
+65 SUCCESS / eight FAILURE / 18 SKIPPED jobs. All 23 workflows are terminal:
+20 SUCCESS / one FAILURE / two SKIPPED. All 141 checks are terminal:
+105 SUCCESS / eight FAILURE / 27 SKIPPED / one NEUTRAL.
+There are no active or cancelled results on this final source.
+The eight failed checks are security/types, baseline freshness, Contract,
+raw Alembic/Squawk, backend shards 0/1, Bundle Size and derived CI Success
+123733921270. **Full CI is not GREEN.**
+
+### Prepared inactive recapture and ordered continuation
+
+The [new source-bound fixture](../../../tests/fixtures/historical148-squawk-capture-36f70a0f.json)
+uses the actual 36f70a0f Alembic receipt after Pool privacy validation.
+The 17,031-byte ordinary and 18,373-byte expanded SQL remain byte-identical;
+13+24 warnings, raw exits 1/1 and empty reporter stderr are preserved.
+The old 15eaaa/35aeedeb fixtures remain historical. The
+[proposal](2026-10-27-historical-148-squawk-proposal.md#pool-safe-renderer-recapture-on-source-36f70a0f-2026-10-29)
+and ADR-047 record the same inactive boundary. No migration-gate consumer,
+admission activation or new secret disposition is included.
+
+1. Run the recapture publication's own contracts and actual secret scanners.
+   The 33 previously observed public-hash findings are not a final delta:
+   the retained old fixture and new source-bound capture require fresh inventory.
+2. Review each actual path/type/digest and ask the owner for that exact finite
+   delta before changing the 405-entry policy. Preserve the historical approved prefix and repair
+   historical/current-source consumer oracles with negative tests; do not simply
+   erase the five guard failures or transfer the earlier 58-identity approval.
+3. Reconcile final HTML computed imports with bound compiler-graph/artifact
+   evidence before the approved narrow Map rule. Do not turn
+   `complete=false` into true or activate the 286 KiB allowance from direct-root absence alone.
+4. Complete the separately reviewed greenfield admission/all-migration/shell
+   failure-propagation prerequisites before any Squawk risk disposition can
+   affect CI. The historical operations still carry real risks.
+
+The intermediate da1 and 209 backend runs were intentionally superseded after
+their required scoped receipts; their partial results are not full-suite GREEN.
+The complete 36f70a0f run above was not cancelled. No deployed database repair, role or
+grant change, template modification, merge, deployment or access expansion occurred.
+Own checks for the next publication remain required.
+
+## Source 2cbdfae: actual writer and pool regressions
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment.**
+AUD-340, AUD-447, AUD-208 and AUD-432 remain OPEN. Historical Squawk admission
+and the 286 KiB Map allowance remain inactive. The 405 finite dispositions,
+baseline319 and Gitleaks26 are unchanged; no new hash disposition is authorized
+by this checkpoint.
+
+The receipts below belong to source
+[2cbdfae42300247a40e7132658de554d38e2674e](https://github.com/egorribun/university_ecosystem/commit/2cbdfae42300247a40e7132658de554d38e2674e),
+tested merge `4525de9ca6ff38b6cd6282f3cf4eeb02b7a9333c`, identical tree
+`a8267be974432778bba09941a3f4e1d26090aab2`. They are not inherited by the next
+publication.
+
+### Measured boundaries
+
+- [PostgreSQL AUD-340 123609608542](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609608542):
+  distinct-key progress and rollback controls PASS; concurrent genesis FAILS
+  at the actual committed sequence `[1, 1]` rather than `[1, 2]`.
+  Later hash-link and HMAC assertions are not reached. Main integration reports
+  154 PASS / four SKIP / one FAIL; existing fail-fast selection leaves subsequent
+  integration cases unexecuted. Separate 13 migration and five durable replay
+  controls pass.
+- [Pool regression 123609608855](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609608855):
+  the real SQLAlchemy QueuePool reset, legitimate SELECT, observable ERROR and
+  bounded exception-text controls pass, then
+  `test_renderer_admin_pool_reset_diagnostics_are_opaque` fails at
+  `assert not private_sinks`. Runtime-generated synthetic context reaches
+  captured internal diagnostics. This is SQLite Pool evidence, not a PostgreSQL
+  network failure or deployed-credential exposure claim.
+- [Final-HTML contracts 123609159938](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609159938):
+  32 PASS. [Production capture 123609160362](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609160362)
+  passes the heap, environment, Git, source and toolchain boundaries, then emits
+  the closed stage `inventory`: the real inspector returns null.
+  The exact inner rejection is not yet known. No production inventory artifact,
+  bundle-budget proof or cap increase is claimed. Frontend lint now passes.
+- [Contract 123607323164](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123607323164):
+  3572 consumer tests PASS; the security cohort has 633 PASS / five FAIL at
+  historical whole-source/fingerprint bindings. Auth 85 and scoped renderer 41
+  pass. Later mutation assertions in the four early-binding failures are not
+  reached.
+- [Security/types 123607322845](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123607322845)
+  and [fresh scan 123608553361](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123608553361)
+  both report 33 new Hex High Entropy String findings across the same three
+  source paths: the inactive policy, validator and new capture fixture. They are public
+  technical hashes, not credentials, but remain blocking and unapproved.
+  A final inventory must be recaptured after the renderer stabilizes; neither
+  the old 58-identity decision nor this triage grants a new exception.
+- [Owned Core 40919142957](https://github.com/egorribun/university_ecosystem/actions/runs/40919142957)
+  succeeds: 329 preflight PASS, 48 live PASS / two SKIP, NATS and cleanup SUCCESS.
+  Frontend reports 10398 PASS in 823 files;
+  [aggregate 123615080552](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123615080552)
+  covers 2186 changed lines with zero missing. This is patch-line evidence,
+  not a global all-metric coverage result. Fast pre-commit passes.
+
+Backend unit cohorts completed without cancellation:
+
+| Shard | Exact job | PASS | SKIP | FAIL |
+| --- | --- | ---: | ---: | ---: |
+| 0 | [123609608624](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609608624) | 7455 | 75 | 0 |
+| 1 | [123609608855](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123609608855) | 4622 | 217 | 1 |
+| 2 | [123624856484](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123624856484) | 4273 | 77 | 0 |
+| 3 | [123630088339](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123630088339) | 5523 | 42 | 5 |
+| Total | | **21873** | **411** | **6** |
+
+The failures are one Pool privacy regression and five existing historical
+source-binding guards. Separate 848 and 240 preflights are excluded from these
+totals. The DLQ missing-line intersection across all four shards is empty,
+including lines 59/62; this does not replace
+[Coverage & Quality Policy 123646348840](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123646348840)
+or Trusted Codecov 123646348979, both SKIPPED. No authoritative merged-coverage
+GREEN is claimed.
+
+Final [Matrix 40919143121](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121)
+has 63 SUCCESS / nine FAILURE / 19 SKIPPED jobs, no active or cancelled job.
+The failures are security/types, baseline freshness, Contract, Main PostgreSQL,
+raw Alembic/Squawk, production capture, backend shards 1/3 and
+[derived CI Success 123646347471](https://github.com/egorribun/university_ecosystem/actions/runs/40919143121/job/123646347471).
+All 23 workflows are terminal: 20 SUCCESS / one FAILURE / two SKIPPED.
+Across 141 checks: 103 SUCCESS / nine FAILURE / 28 SKIPPED / one NEUTRAL.
+[Blocking CodeQL 123607997071](https://github.com/egorribun/university_ecosystem/runs/123607997071)
+passes with zero new alerts. **Full CI is not GREEN.**
+
+### Bounded continuation, not acceptance
+
+[02717ad3](https://github.com/egorribun/university_ecosystem/commit/02717ad3a60f0b318dbd038a1c4a0eb0830277f5)
+adds only a closed, private-error-safe inner rejection reason and its controls;
+all parser, filesystem, output and heap limits remain unchanged.
+[35606de4](https://github.com/egorribun/university_ecosystem/commit/35606de4872bef7b63f6ef34c746adba50bf6b8f)
+adds nonempty-chain and PostgreSQL isolation observations before one aggregate
+assertion, plus unit SQL-boundary checks. Existing three PostgreSQL cases remain
+unchanged. The AUD-340 producer is deliberately unchanged until this additional
+semantic RED is established.
+
+[1f0b84bb](https://github.com/egorribun/university_ecosystem/commit/1f0b84bbe16fa40d64c2a2bd1185a81cc64ed282)
+restricts only this renderer's two owned pool loggers to a
+fixed message while preserving severity, logger hierarchy and event observability,
+including pool recreation. No global logger/filter is changed. The original
+ERROR regression remains, using a configuration-faithful transport; added INFO,
+recreation and unrelated-pool controls still require hosted execution.
+Migration exceptions, SQL echo and arbitrary application pools are separate
+boundaries, not covered by a blanket privacy claim.
+
+The new renderer bytes deliberately invalidate the inactive historical
+capture's source pin. Fresh ordinary/expanded SQL, raw Squawk JSON and
+source/provenance evidence are required before another capture update and any
+exact hash-disposition decision. Raw scanner failures remain failures.
+No deployment, populated-database maintenance, role/grant change, template
+modification, historical-chain repair or access expansion is included.
+Own-source CI for this continuation is pending at publication.
+
+## Source 35aeedeb: renderer proof and remaining fail-closed boundaries
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment.**
+AUD-447, AUD-208 and AUD-432 remain OPEN. Historical Squawk admission and the
+286 KiB Map allowance remain inactive. No deployment, populated-database
+execution, role/grant change, template modification or access expansion occurred.
+
+The receipts below belong to source
+[35aeedeb62d5036b2280d60067477d2c74c58ff7](https://github.com/egorribun/university_ecosystem/commit/35aeedeb62d5036b2280d60067477d2c74c58ff7),
+tested merge `e3fc69103be30ea390634ed4744110ede05c890d`, with the identical tree
+`529e2042d15551dd42f3e9728654012e6dd63e33`. They are not inherited by the next
+publication.
+
+### Exact-source checks
+
+- [Renderer lifecycle 123562429013](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562429013):
+  **41 PASS**, zero errors/skips, 8.23 seconds. All prior 24 regressions and two
+  dbname transport controls now pass, together with 15 additional boundary
+  cases. Diagnostic 132 PASS and tenant-context 46 PASS. Raw Squawk still emits
+  13 ordinary plus 24 expanded warnings, both exit 1 with empty reporter stderr;
+  the Alembic job is FAILURE, not scanner GREEN.
+- [Owned PostgreSQL renderer 123562429129](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562429129):
+  **seven PASS**, zero errors/skips, 2.75 seconds on PostgreSQL 17.11. Five
+  catalog contaminations, root cleanup and CREATE-collision preservation pass.
+  This proves the bounded owned-service scenarios, not arbitrary-server
+  pristineness, hostile-administrator race safety, complete catalog admission,
+  all-migration lint coverage or Stage B activation.
+- [Final-HTML contracts 123562401526](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562401526):
+  **32 PASS**, zero failures/skips. All three accepting and 14 rejecting inner
+  capture controls execute. [Production 123562401448](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562401448)
+  builds through Vite and the Map logger, observes a same-process V8 heap of
+  587202560 bytes (560 MiB) below the unchanged 640 MiB cap, then rejects at a
+  later capture boundary. No final report/upload or bundle-budget proof exists.
+  The remaining production failure is not attributed to heap admission.
+- [Frontend lint 123562401538](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562401538)
+  reports one exact Prettier call-fold difference. Other frontend static gates
+  pass. The next correction applies that measured fold without changing the
+  assertion.
+- [Contract 123561077384](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123561077384):
+  **3571 PASS / one FAIL**, solely the old renderer source pin in the inactive
+  historical-capture contract. Auth 85, security 638 and scoped 41 pass.
+  All 110 CI-catalog tests now pass; the catalog gate also passes. The source-pin
+  failure remains enforced and motivates the independently reviewed recapture.
+- [Owned Core 40905756536](https://github.com/egorribun/university_ecosystem/actions/runs/40905756536):
+  329 preflight PASS, 48 live PASS / two SKIP, NATS and cleanup SUCCESS.
+  [Main PostgreSQL 123562430526](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562430526):
+  385 PASS / 16 SKIP, plus 13 migration controls and five durable replay controls.
+- Frontend shards report **10398 PASS in 823 files**.
+  [Aggregate 123568845071](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123568845071)
+  covers all 2186 changed lines, zero missing. This is patch-line evidence,
+  not a global all-metric coverage claim. Fast pre-commit, security/types,
+  fresh baseline and blocking CodeQL pass.
+
+Backend unit tests completed all four cohorts; no job was cancelled:
+
+| Shard | Exact job | PASS | SKIP | FAIL |
+| --- | --- | ---: | ---: | ---: |
+| 0 | [123562430765](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562430765) | 7392 | 46 | 1 |
+| 1 | [123562430458](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123562430458) | 4441 | 192 | 0 |
+| 2 | [123576408960](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123576408960) | 4833 | 95 | 0 |
+| 3 | [123584207963](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123584207963) | 5210 | 75 | 0 |
+| Total | | **21876** | **408** | **1** |
+
+The sole unit failure is the same historical renderer source-pin assertion.
+The separate 848 and 240 preflights pass and are excluded from that total.
+Quiet logs do not name the 405-count test or its entire file as PASS.
+The DLQ missing-line intersection across all four shards is empty, including
+lines 59/62, but [merged coverage 123602647692](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873/job/123602647692)
+and Codecov 123602651970 are SKIPPED. No authoritative merged-coverage GREEN
+is claimed.
+
+Final [Matrix 40905756873](https://github.com/egorribun/university_ecosystem/actions/runs/40905756873)
+has 66 SUCCESS / six FAILURE / 19 SKIPPED jobs, with no active or cancelled
+job. All 23 workflows are terminal: 20 SUCCESS / one FAILURE / two SKIPPED.
+Across 141 checks: 106 SUCCESS / six FAILURE / 28 SKIPPED / one NEUTRAL.
+The six failures are Contract, production capture, frontend formatting,
+raw Alembic/Squawk, backend shard 0 and derived CI Success 123602649640.
+**Full CI is not GREEN.**
+
+
+### Next bounded publication and expected results
+
+The reviewed continuation is [d513a0e7](https://github.com/egorribun/university_ecosystem/commit/d513a0e78a293ec6e1347748a5967ddd2b15aae9)
+and [d0bcca0f](https://github.com/egorribun/university_ecosystem/commit/d0bcca0f6a682437b020d524cd70bb4d809c1f61).
+Its own hosted checks are pending at publication; the results above belong only
+to 35aeedeb.
+
+The reviewed Map change adds only a fixed, allowlisted stage name when the
+production capture rejects, retaining private-error suppression, all byte/heap
+caps, parser behavior, artifacts and thresholds. Its accepting controls are not
+production evidence. The measured Prettier fold is included; no 286 KiB allowance
+is activated.
+
+The inactive historical recapture preserves actual 35aeedeb SQL and all 37
+warning objects, with reviewed source/provenance and physical file identities.
+The old 15eaaa fixture remains unchanged. The matcher has no gate consumer or
+execution permission. All **405 dispositions, baseline319 and Gitleaks26 remain
+unchanged**; prior approval of 58 exact identities does not cover new paths,
+digests or whole-source bindings. A fresh scanner inventory and any necessary
+exact owner decision must precede a separate disposition update. The resulting
+source-binding/scanner RED is expected and is not waived.
+
+Two independent tests-first additions have source review but no hosted result
+at publication: one real SQLAlchemy QueuePool ERROR-reset privacy regression,
+and three actual PostgreSQL AUD-340 concurrent-writer cases. The latter use
+caller-owned transactions, server-observed blocking/completion and runtime
+ASCII signing keys compatible with the installed native verifier. Expected
+semantic RED is a hypothesis until executed. No producer fix, historical-chain
+repair, logging suppression or finding closure is included. The QueuePool case
+does not establish privacy for every log level or PostgreSQL network path.
+Before eventual AUD-340 acceptance, also execute the nonempty-chain concurrent
+append regression: locking an unchanged predecessor does not refresh the
+command's READ COMMITTED snapshot to include a newly inserted successor.
+This source-backed counterexample is not yet a runtime result.
+
+### Clarification of the superseded e4c14704 record
+
+The four e4c pytest cohorts ultimately completed before or immediately around
+supersession: 21827 PASS, 401 SKIP and 31 FAIL (24 renderer plus seven catalog).
+Shard 2's pytest summary preceded its job cancellation. The workflow/job
+cancellations and skipped authoritative merged coverage remain cancellations
+and skips, not GREEN or test failures. The earlier timestamped snapshot below
+is retained as history, not the final e4c rollup.
+
+## Source e4c14704: measured regressions and reviewed renderer correction
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment.**
+AUD-447, AUD-208 and AUD-432 remain OPEN. The 286 KiB Map allowance and
+historical Squawk admission remain inactive. No deployed database maintenance,
+template modification, role/grant change, deployment or access expansion occurred.
+
+The reviewed correction is [0232ac6a0f7877bc0b83fda8b201242bd5bfac86](https://github.com/egorribun/university_ecosystem/commit/0232ac6a0f7877bc0b83fda8b201242bd5bfac86).
+Its own hosted execution is **pending** at publication; the receipts below
+belong only to source
+[e4c14704131594490f15c6a931be2d6ccc4b5543](https://github.com/egorribun/university_ecosystem/commit/e4c14704131594490f15c6a931be2d6ccc4b5543),
+tested merge `b4674229a0740316e4008aca623f38dd8898a6b0`, with matching tree
+`f9ecef870ad9edea40066cb56242f88cf888a034`.
+
+### Exact e4c receipts, before the corrective publication
+
+- [Alembic 123523515687](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123523515687):
+  renderer **24 FAIL / two PASS**, zero errors/skips, 6.52 seconds.
+  All prior 24 node identities/outcomes are preserved; the two new dbname
+  cases fail at the expected early-side-effect assertion. The real SQLAlchemy
+  dialect mapping assertion passed first in the API test. This is a
+  constructed-connect-argument
+  and transport regression, not evidence of an original PostgreSQL database
+  actually being mutated. Diagnostic 128 PASS and tenant-context 46 PASS;
+  raw Squawk remains 13 ordinary plus 24 expanded warnings, both exit 1.
+- [Contract 123522377394](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123522377394):
+  3565 PASS / seven FAIL, all seven due to the same missing final-HTML artifact
+  inventory entry. Auth 85, security 638 and the separate scoped 41 pass.
+  The catalog gate also rejects that omission; it is not waived.
+- [Final-HTML contracts 123523200610](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123523200610):
+  31 PASS / one FAIL. Wiring passes, but the first accepting capture control
+  is rejected; the remaining two positive and 14 negative inner controls
+  have not yet executed. [Production 123523200614](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123523200614)
+  builds successfully through Vite and the Map logger, then the capture rejects
+  before upload. Its observed Map gzip size is 292688 bytes (285.83 KiB), still
+  above the unchanged 280 KiB budget.
+- [Owned Core 40894876128](https://github.com/egorribun/university_ecosystem/actions/runs/40894876128):
+  329 preflight PASS, 48 live PASS / two SKIP, NATS and cleanup SUCCESS.
+  [PostgreSQL 123523516914](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123523516914):
+  385 PASS / 16 SKIP, plus 13 migration controls and five durable replay controls.
+- Frontend shards pass 10398 tests in 823 files.
+  [Aggregate 123529480257](https://github.com/egorribun/university_ecosystem/actions/runs/40894876266/job/123529480257)
+  covers all 2186 changed lines, zero missing; this is not a global all-metric
+  coverage verdict. Fast pre-commit, frontend lint and blocking CodeQL pass.
+- Backend shard 0 reports 6983 PASS / 82 SKIP / 24 FAIL, exactly the expected
+  renderer lifecycle/dbname regressions. Shard 1 reports 4961 PASS / 144 SKIP.
+  Shards 2/3 were still running at the 15:36 UTC snapshot. No full backend,
+  count-fix full-file or authoritative merged-coverage GREEN is claimed.
+  The earlier 973 shards 0/1 were subsequently cancelled by deliberate
+  supersession, not reported as test failures or a complete backend result.
+
+### Corrective scope and remaining proof
+
+The Map recovery explicitly sets semi-space to 16 MiB with old-space 512 MiB,
+prints one bounded numeric same-process heap receipt and retains the existing
+640 MiB V8 heap and total 65536-byte stdout caps. The previous actual heap limit
+was not measured; a 704 MiB historical value must not be asserted. This remains
+a controlled hypothesis test until the accepting controls and production capture
+pass. It is not an RSS/native-buffer sandbox or a bundle-budget increase.
+The exact catalog artifact metadata is synchronized; required contexts and
+artifact failure behavior are unchanged.
+
+The renderer now rejects dbname overrides and non-PostgreSQL URLs before engine
+creation, creates one TEMPLATE0 scratch database, confirms server OID/name/owner,
+checks the bounded five-surface catalog baseline, and rechecks identity before
+DROP. Failed or uncertain CREATE does not authorize cleanup. The recorder and
+migration exception semantics are preserved. The supplied service must be owned
+and quiescent; built-in system-namespace contents remain trusted, and this is
+not arbitrary-server pristine admission or a hostile concurrent-admin proof.
+
+The corrected lane selects 41 lifecycle cases, including 15 additional edges.
+A separate final step in the existing DB Migration Gate selects seven real-PG
+controls: five catalog surfaces, root lifecycle and collision preservation.
+Four added receipt mutation cases reject failures, errors, skips and wrong
+identities after valid controls. All existing gates, job budgets and tests stay
+in place. These new results and complete corrected-source CI still need execution.
+
+Independent review also identified an **unproven remaining diagnostic surface**:
+SQLAlchemy's internal pool logger can report swallowed close/reset exceptions
+outside these outer exception handlers. See
+[SQLAlchemy 2.0.54 pool implementation](https://github.com/sqlalchemy/sqlalchemy/blob/rel_2_0_54/lib/sqlalchemy/pool/base.py).
+No runtime leak is claimed, and no blanket guarantee that every transport log
+is opaque is made. A separate real-pool, runtime-canary regression is required.
+
+Changing the renderer deliberately invalidates the old historical capture's
+source pin. Preserve that expected RED: obtain fresh ordinary/expanded SQL,
+scanner JSON and provenance from one corrected-source run, independently compare
+the full warning inventory and source bindings, then update the inactive capture,
+policy and compiled fingerprints together. Do not exempt the renderer from its
+pin check or turn raw Squawk failure into success. Any new finite scanner
+identities require their own exact review/authorization; the previous 58-record
+grant is not a blanket allowance.
+
+Next: finish this corrected source's full CI to terminal, verify actual Map
+capture and the 41/7 renderer controls, reconcile the fresh historical capture,
+then implement the already-approved narrow 286 KiB decision only with complete
+final-HTML/static-graph proof. No result is inherited across SHAs.
+
+## Source 973e817b: formatter recovery, measured RED and next bounded work
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment.**
+Map budget 286 KiB and Squawk admission remain inactive. AUD-447, AUD-208
+and AUD-432 remain OPEN; no deployed data maintenance or deployment occurred.
+
+Source [973e817b3189032a754456c3e0757e896bb5c2c5](https://github.com/egorribun/university_ecosystem/commit/973e817b3189032a754456c3e0757e896bb5c2c5)
+contains only the two hosted Ruff folds and one hosted Prettier wrap following
+[eb8e8970](https://github.com/egorribun/university_ecosystem/commit/eb8e89706fd494d7b3aef3b9677a42ca5eeed8b4).
+Assertions, selectors and behavior are unchanged. Its tested merge
+`e721fdca937f471f4a8b0711406dd0e36dd3c429` shares tree
+`031aebd9f112e283c355cf82ceb3fee3d69bf05e`.
+
+### Exact-source receipts at the 2026-10-29 14:32 UTC checkpoint
+
+- Fast pre-commit and frontend lint are SUCCESS.
+- [Contract 123499131531](https://github.com/egorribun/university_ecosystem/actions/runs/40888656070/job/123499131531):
+  consumer 3572 PASS, including Auth 85; security 638 PASS; scoped 41 PASS.
+  The consumer's 3572 unique node identities match source 084 exactly.
+  Job wall time is 559 seconds against the unchanged 600-second limit:
+  41 seconds observed margin, not a guarantee against runner/setup variance.
+- [Owned Core 40888655471](https://github.com/egorribun/university_ecosystem/actions/runs/40888655471):
+  329 preflight PASS, 48 live PASS / two SKIP, NATS and cleanup SUCCESS.
+  Its seven-spec execution scope remains the limitation documented below.
+- [PostgreSQL 123501606582](https://github.com/egorribun/university_ecosystem/actions/runs/40888656070/job/123501606582):
+  385 PASS / 16 SKIP, plus 13 migration controls and five durable replay controls.
+  The retained Auth lock/refresh/caller-commit case passed.
+- All frontend shards pass 10,398 tests in 823 files.
+  [Aggregate 123509431040](https://github.com/egorribun/university_ecosystem/actions/runs/40888656070/job/123509431040)
+  reports 2186 changed lines covered and zero missing, not a global all-metric
+  verdict. Backend shards 0/1 are still running at this checkpoint; 2/3 have
+  not started. The count-fix selector/full-file receipt and authoritative
+  merged backend coverage are not yet available. No full backend GREEN is
+  claimed or inherited by a subsequent source.
+- [Alembic 123501605378](https://github.com/egorribun/university_ecosystem/actions/runs/40888656070/job/123501605378)
+  is FAILURE, with actual renderer semantic RED: **22 FAIL / two PASS /
+  zero errors or skips**, 5.77 seconds. The two previous SQLite transaction
+  and rollback controls pass. Failures establish missing TEMPLATE0,
+  unconditional DROP after failed/unconfirmed CREATE, ignored catalog admission,
+  unverified cleanup identity and non-opaque transport-error handling.
+  The lifecycle receipt rejects the result and propagates failure.
+  The existing diagnostic cohort passes all 128 cases, including the 15 added
+  workflow contracts through an unfiltered file selector; the quiet reporter
+  does not list those 15 individually. Raw Squawk still reports 13 ordinary
+  and 24 expanded warnings, both exit 1. No exception was activated.
+- [WASM/native 123501896008](https://github.com/egorribun/university_ecosystem/actions/runs/40888656070/job/123501896008):
+  final-HTML cohort 30 PASS / two semantic FAIL, 31.800 seconds.
+  Both new outer contracts stop at the absent capture step; their inner
+  accepting/rejecting runtime assertions have not yet executed.
+
+### Bounded continuation and remaining proof
+
+The next Map change captures only diagnostic final-build HTML evidence, outside
+the production artifact. Exact checkout/source checks, readback, separate upload,
+fixed failure messages, input/output caps and a one-minute step are required.
+The new child uses a 512 MiB old-generation setting and rejects a reported V8
+heap ceiling above 640 MiB before parsing. These are **V8 heap controls, not
+native-allocation, external-buffer or total-RSS isolation**; production-input
+fit and the complete wrapper controls still require their own hosted run.
+The existing 30 cases and two outer contracts remain, with three accepting
+controls and 14 inner negative mutations. No 286 KiB admission follows from
+a diagnostic report, and installed-version/lock equality is not a separate
+dependency-implementation attestation.
+
+Independent renderer review also found the direct-input `dbname` query override:
+the pinned SQLAlchemy 2.0.54 dialect applies query options after path-derived
+connection arguments. Two added API/CLI tests require rejection before engine,
+CREATE, environment, listener or upgrade side effects; the tests include a real
+network-free dialect characterization of that mapping. Their RED is **not yet
+executed**. Exact diagnostic selection expands from seven/24 to nine/26
+selectors/cases while preserving zero-error/skip guards and all time limits.
+Renderer production code is unchanged in this tests-first extension.
+
+The eventual lifecycle repair must preserve the original migration exception,
+rollback recorder and historical migration atomicity. Owned, quiescent CI is
+not arbitrary-server authorization or hostile concurrent-admin safety. Actual
+PostgreSQL catalog controls, merge-frontier execution and all 141 ordinary
+migration receipts remain separate work. Changing renderer source invalidates
+its historical capture pin and requires new hosted evidence/review; the existing
+58-identity approval is not authority for additional future fingerprints.
+
+### Prior eb8 terminal boundary
+
+All 23 eb8 workflows and 110 checks reached terminal before the formatter recovery.
+Core passed 329 preflight and 48 live / two SKIP, NATS and cleanup; frontend
+passed 10,398 with 2186 changed lines covered. Backend, PostgreSQL and Alembic
+were SKIPPED behind formatting, not semantic failures. Matrix ended
+22 SUCCESS / five FAILURE / 32 SKIP / one CANCELLED.
+Contract stopped at 606 seconds with 3567 explicit PASS, including Auth 85,
+but no completed consumer/security/scoped verdict. The 600-second limit and
+elapsed time support a timeout inference; the explicit annotation was not
+available. No branch update caused that cancellation. All workers continued
+making progress; no single-test deadlock was established. The completed 973
+Contract receipts above are distinct evidence, not a retrospective eb8 GREEN.
+
+## Source 0849785a: full terminal checkpoint and bounded next regressions
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment. AUD-447,
+AUD-208 and AUD-432 remain OPEN.** This records the completed source below,
+not a passing verdict for subsequent commits or production deployments.
+
+Source [0849785a94d81f0d6d70ff377787b5c3274936c9](https://github.com/egorribun/university_ecosystem/commit/0849785a94d81f0d6d70ff377787b5c3274936c9)
+and tested merge `6b2e9c467bd6ed3591d94a3b5ec9afe5f2c4fb11` share tree
+`7b93de909f3463d5b88a9b5cf819270cbaf59401`. All 23 workflows and 141 checks
+reached terminal without cancellation. Checks: 109 SUCCESS / four FAILURE /
+27 SKIP / one NEUTRAL. [Matrix 40870607540](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540)
+ended with 69 SUCCESS / four FAILURE / 18 SKIP; the full CI is not green.
+
+### Exact-source receipts
+
+- The four backend shards completed **21,818 PASS / 401 SKIP / one FAIL**:
+  shard 0 [6954/41](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123440053776),
+  shard 1 [4518/108](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123440053750),
+  shard 2 [5052/117/1](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123451908407),
+  shard 3 [5294/135](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123457159892).
+  The sole failure is the old exact count 347 in
+  `test_public_git_blob_orchestrator_rebind_appends_one_exact_identity`;
+  the owner-approved inventory now contains 405. The original ordered 347
+  records and the indexed historical identity are unchanged. Its narrow
+  follow-up changes only that exact count, not identity, expiry or source guards.
+- The retained Auth source's two identified line gaps, DLQ lines 59 and 62,
+  are covered in shard 3. The intersection of missing-line sets across all
+  four shards is empty. Merged coverage and Codecov were SKIPPED after the
+  test failure: this is not an authoritative all-metric 100% coverage verdict.
+- [Contract 123438716902](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123438716902):
+  3572 consumer PASS, including Auth 85, cleanup-profile 213 and Gitleaks 94;
+  security 638 PASS; scoped 41 PASS. The 551-second job used the unchanged
+  600-second limit; its observed 49-second margin is not a future guarantee.
+- [PostgreSQL 123440053724](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123440053724):
+  385 PASS / 16 SKIP, plus separate 13 migration controls and five durable
+  replay controls. The lock/refresh/caller-commit Auth case passed.
+- All frontend shards passed **10,398 tests in 823 files**, zero failures
+  and skips. [Aggregate 123446951817](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123446951817)
+  reports 2186 changed lines covered, zero missing. This is changed-line
+  coverage, not a global all-metric claim. The Map reader's 30 cases and both
+  Register regressions pass; frontend lint, pre-commit, security/types and
+  finite baseline/disposition checks pass.
+- [Owned Core 40870607394](https://github.com/egorribun/university_ecosystem/actions/runs/40870607394):
+  329 preflight PASS; 48 live PASS / two SKIP; both reset replays returned 400;
+  NATS and cleanup completed. This lane selects seven existing live specs,
+  not `register-double-submit.live.spec.ts`,
+  `ssr-hydration-i18n.live.spec.ts` or `auth-login-lockout.live.spec.ts`.
+  Passing their source contracts is not execution evidence for those specs.
+- The separate blocking [CodeQL check 123437381919](https://github.com/egorribun/university_ecosystem/runs/123437381919)
+  is SUCCESS with zero new alerts and zero annotations.
+
+### Remaining failures and next bounded proof
+
+The other direct failures are [raw Squawk](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123440052954)
+and [MapLibre bundle size](https://github.com/egorribun/university_ecosystem/actions/runs/40870607540/job/123443592932);
+the fourth is derived CI Success. The active Map limit remains 280 KiB against
+285.83 KiB observed; the approved narrow 286 KiB rule is not active yet.
+Squawk still reports 13 ordinary and 24 expanded warnings with failure status.
+Its 288-second failed path skipped later upgrade/downgrade/schema checks and
+does not establish the healthy-path 15-minute runtime budget.
+
+The next tests-first work is deliberately bounded: capture final-build HTML
+diagnostics with independent checkout/run/artifact provenance, and require
+owned scratch-database creation, catalog admission, cleanup identity and opaque
+diagnostics before extending migration rendering. The Map capture tests keep
+the original 30 cases and add two outer contracts; the renderer tests keep
+16 original bodies and add 22 cases. Their negative behavior still requires
+hosted semantic RED before an implementation change. Neither unit transport
+fakes nor graph metadata prove actual PostgreSQL catalog safety or execution
+of all 141 ordinary migrations. Raw failures, existing job limits and gates
+remain intact.
+
+AUD-432 live expansion also needs causal fixture repair before activation:
+registration no longer returns a user id, the login shell is a section, the
+SSR SEO oracle must follow localized route metadata, and cleanup must survive
+lost receipts and CDP-detach failure. Do not restore obsolete public identifiers
+or DOM structure merely to satisfy stale tests. These are source-reviewed
+gaps, not new runtime results or automatic acceptance candidates.
+
+## Source de0f297b: reviewed policy, HTML diagnostics and registration guards
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment. AUD-447 is OPEN.**
+The source [de0f297bf88eee95402d6d35a734ff40a7762b97](https://github.com/egorribun/university_ecosystem/commit/de0f297bf88eee95402d6d35a734ff40a7762b97)
+contains eight changed files in three independently reviewed commits. Its tested
+merge `75af21e462d1d34ccdafae238494d8a23a2d0d2a` has the same tree,
+`404008a74e74e8e4baecec6dc5ce87e3415bc650`. Final-source checks were
+read from [Matrix 40867272426](https://github.com/egorribun/university_ecosystem/actions/runs/40867272426)
+and [Owned Core 40867272382](https://github.com/egorribun/university_ecosystem/actions/runs/40867272382),
+not inherited from an older source.
+
+### Bounded implementation and policy scope
+
+- [59b6fa5a](https://github.com/egorribun/university_ecosystem/commit/59b6fa5a302ea6c897b3c15f0298bc5150014da7)
+  adds exactly the 58 owner-approved public technical-integrity identities.
+  The original ordered 347 records are preserved, making 405 dispositions;
+  baseline 319 and Gitleaks 26 remain unchanged. Matching binds exact path,
+  detector type and digest, fixed owner/review date/evidence and existing expiry
+  2027-01-10. Four new locations sharing two older digests are admitted only as
+  exact reviewed tuples; the two original collision records keep their guards.
+  This is not a digest-wide exception, Squawk admission or migration-risk waiver.
+- [c5233804](https://github.com/egorribun/university_ecosystem/commit/c523380413d280fb33fcac6528c1c0f259e6ff08)
+  implements bounded, non-executing final-HTML root diagnostics. It reads only
+  the owned `_shell.html`, `index.html` and direct local script roots; reports
+  hashes, sizes, safe paths and closed issue counters; and never evaluates
+  scripts or recursively follows imports. Unknown forms are incomplete and
+  invalid/excessive inputs return null. The caller still owns a quiescent build
+  directory, checkout/run provenance and external time/memory limits; this is
+  not a hostile-filesystem sandbox or full transitive execution proof.
+- [de0f297b](https://github.com/egorribun/university_ecosystem/commit/de0f297bf88eee95402d6d35a734ff40a7762b97)
+  gives Register one hydration/submitting guard across ten controls. Server and
+  initial client renders are inert until handlers attach; the pending request
+  also disables email correction and password reveals. Validation, payload,
+  role selection and submission handling remain unchanged. This does not
+  identify the earlier exact DOM writer or prove a physical mobile tap was lost.
+
+### Tests-first evidence and prior-source limitations
+
+Source `dbb2874509cd603fe98450c4ea83575e72e795af` and tested merge
+`0f7efc7b83e43ce657bf3e92b7cf0e7bf0ac1e54` share tree
+`c52017ad7409fefe7ecaf67d83eed6b9f8005cbe`. Its
+[Matrix 40863028788](https://github.com/egorribun/university_ecosystem/actions/runs/40863028788)
+reached terminal without cancellation: 18 SUCCESS / 10 FAILURE / 32 SKIP.
+All 23 workflows and 110 checks were terminal.
+
+- [Contract 123413461797](https://github.com/egorribun/university_ecosystem/actions/runs/40863028788/job/123413461797):
+  3572 consumer cases PASS, including Auth 85, cleanup-profile 213 and Gitleaks 94;
+  security 635 PASS / three expected FAIL; scoped 41 PASS. The old 633 security
+  cases and two new controls passed. New failures were the absent 58 inventory,
+  missing changed-scope rejection and a legitimate collision tuple rejected by
+  the old guard. The last failure occurred in its valid control before later
+  negative mutations; those branches still need final-source GREEN.
+- [WASM/native 123414361031](https://github.com/egorribun/university_ecosystem/actions/runs/40863028788/job/123414361031):
+  the new Map cohort failed all 30 cases on its accepting positive-control
+  assertion against the rejecting scaffold. The negative assertions were not
+  reached. The prior 789 PASS / six SKIP cohort remained intact.
+- [Frontend shard 2 123414361267](https://github.com/egorribun/university_ecosystem/actions/runs/40863028788/job/123414361267):
+  2528 PASS / two expected Register FAIL. SSR full-name input and pending reveal
+  button were enabled. Across all shards 10,396 PASS / two FAIL; no merged
+  coverage verdict. The pending case reached one valid POST and busy state;
+  assertions after the reveal failure were not reached.
+- [Owned Core 40863028686](https://github.com/egorribun/university_ecosystem/actions/runs/40863028686)
+  passed 329 preflight and 48 live / two SKIP, both reset replays returned 400,
+  NATS completed and cleanup finished. Backend, PostgreSQL and Alembic were
+  SKIPPED behind a Ruff-format failure, not semantic failures.
+- Recovery applies the exact four hosted Ruff hunks, two hosted Prettier hunks
+  and two equivalent string escapes, with assertions unchanged. The Map
+  implementation's control-character predicate was reviewed as equivalent
+  without disabling ESLint.
+
+The earlier `2628a0cfec2ed45b4ce817d65b62722594ff89bd` test-only continuation
+passed Auth 85, Contract 3572+633+41, pre-commit, PostgreSQL 385/16+13+5, Core 329+48/2
+and frontend aggregate with 2182 changed lines covered. It was intentionally
+superseded after those targeted receipts: Matrix 64 SUCCESS / five FAILURE /
+12 SKIP / six CANCELLED; backend 0/1 were cancelled and 2/3 had not started.
+No full backend or authoritative merged coverage GREEN is claimed for 2628.
+
+### de0 terminal outcome and deliberate transition
+
+At de0, security 638, consumer 3572, scoped 41, Map 30, Register two,
+frontend aggregate and PostgreSQL 385/16+13+5 passed. Owned Core stopped at
+328 preflight PASS / one stale source-contract FAIL; no live stand ran.
+The later one-file 084 correction checks each of the ten actual control opening
+tags against the hydration/submission guard without changing production code.
+de0 was intentionally superseded after the targeted receipts: Matrix 66 SUCCESS /
+three FAILURE / 12 SKIP / six CANCELLED. Backend 0/1 were cancelled and 2/3
+had not started; no full backend GREEN is claimed for de0. The subsequent full
+084 terminal result above is separate evidence, not an inherited status.
+
+### Remaining boundaries
+
+The 286 KiB MapLibre allowance is still inactive; the current limit remains
+280 KiB. Real final-build inventory capture, artifact/run identity and graph
+closure still need evidence before a narrow budget decision can be enforced.
+Raw Squawk remains blocking; the historical-148 policy/migration/capture source
+is unchanged. Stage B still needs owned-empty-PostgreSQL frontier/rendering
+evidence and strict validation of the remaining migrations.
+The retained Auth production blob remains `6ac6ebda0b11b9bd321cc87c7aad9da58b0f99d1`;
+historical-data, old-error, queue and backup residuals described below remain
+open, with no deployed maintenance or key rotation performed.
+
+## Source fee91fe5: retained Auth rows, verified boundaries and remaining work
+
+**382/512 accepted; 130 remain unaccepted. AUD-447 is still OPEN.**
+The finding concerns plaintext reset/email-confirmation links in DLQ storage;
+repairing the reached lifecycle paths does not establish removal from every
+historical row, error message, queue or backup. No maintenance operation against deployed/user databases, queues or backups,
+deployment, or key rotation was performed.
+
+Source [fee91fe5fb422797e3f84d0800a36c25fdd849b8](https://github.com/egorribun/university_ecosystem/commit/fee91fe5fb422797e3f84d0800a36c25fdd849b8)
+and tested merge `9ea9bb609892d9f284daf20f281926b762505a86` share tree
+`1e56ffeefa50e42dd4b4dd4c382a9c31d8a23c7a`. The implementation changes only
+`app/workers/dead_letter_queue.py`, blob
+`6ac6ebda0b11b9bd321cc87c7aad9da58b0f99d1`; tests, selectors and policy
+are unchanged in that commit.
+
+### Lifecycle repair and exact semantic evidence
+
+Active PENDING/RETRYING auth dedup now locks and refreshes the existing row,
+validates the logical job hash and protects retained legacy links before
+returning. Auto replay also protects the reached retained row, not only the
+new NATS publication. Valid protected payload bytes and native expiry are
+preserved; malformed JSON, duplicate fields, invalid ciphertext and logical
+hash mismatches fail opaquely without a plaintext fallback. The caller retains
+commit ownership. This does not perform a bulk traversal or erase old errors.
+
+- [Contract 123362943976](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123362943976)
+  is SUCCESS: **3569 consumer cases PASS**, plus **633 security-disposition**
+  and **41 scoped** cases PASS. The **82 Auth cases all PASS**, including all
+  35 retained-row cases: 16 active dedup, three auto-replay outcomes, eight
+  representation/UoW controls and eight invalid representations. The prior
+  **19 semantic failures now PASS** without removing selectors or assertions.
+  Cleanup-profile **213/213** and Gitleaks **94/94** also PASS. The job takes
+  about 582 seconds against its unchanged 600-second budget: this is a
+  successful run with only about 18 seconds of observed headroom, not a
+  sustainable performance margin.
+- [PostgreSQL 123364823892](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364823892)
+  is SUCCESS: **385 PASS / 16 SKIP**, plus **13 migration controls** and
+  **five AUD-262 durable-replay cases PASS**. The five AUD-445 cases are inside
+  the 385 integration passes, not the separate five AUD-262 cases.
+  `test_aud447_dedup_waits_for_worker_refreshes_and_leaves_commit_to_caller`
+  reaches and passes the real lock, refresh, rollback and caller-owned commit
+  assertions; its prior worker/admin positive control also passes.
+  This is owned-CI PostgreSQL evidence, not deployed-data cleanup. That new
+  concurrency case does not separately assert the privacy of its worker bytes;
+  the retained-storage privacy checks belong to the ordinary Auth cohort.
+- [Owned Core 40848658632](https://github.com/egorribun/university_ecosystem/actions/runs/40848658632)
+  is SUCCESS: **329 preflight PASS**, **48 live PASS / 2 SKIP**, exit 0,
+  desktop/mobile reset-replay HTTP 400 and NATS outage SUCCESS. A single passing
+  registration run does not resolve the intermittent registration failure on
+  the earlier source: Register and the live action were not changed.
+- [Pre-commit 123362943459](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123362943459)
+  and [Backend Type Check 123364822838](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364822838)
+  are SUCCESS.
+
+### Complete own-source verification, not full CI GREEN
+
+All **23 workflows** and **141 checks** for this source are terminal, without
+cancellation. The 22 PR workflows conclude 19 SUCCESS / one FAILURE (Matrix) /
+two SKIP; the separate
+[Security Policy Integrity 40848654877](https://github.com/egorribun/university_ecosystem/actions/runs/40848654877)
+is SUCCESS with event `pull_request_target`. Check conclusions are
+110 SUCCESS / five FAILURE / 25 SKIP / one NEUTRAL.
+[Matrix 40848658856](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856)
+is FAILURE: **70 SUCCESS / five FAILURE / 16 SKIP** jobs.
+
+- All four backend shards succeed:
+  [0](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364823820)
+  7520 PASS / 78 SKIP;
+  [1](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364823676)
+  5003 PASS / 105 SKIP;
+  [2](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123377401604)
+  4441 PASS / 103 SKIP;
+  [3](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123380214996)
+  4847 PASS / 115 SKIP. Total: **21,811 PASS / 401 SKIP / zero FAIL**.
+  Separate preflight/Contract/PG counts are not added to that total.
+- All four frontend shards and
+  [aggregate 123374026209](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123374026209)
+  succeed: **10,396 tests / 822 files PASS**, with **2182/2182 changed lines**
+  covered. This does not claim 100% global branch coverage.
+  [Blocking CodeQL 123362842155](https://github.com/egorribun/university_ecosystem/runs/123362842155)
+  succeeds with no new alerts and zero annotations.
+- The five failing Matrix jobs are
+  [security/types 123362944161](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123362944161),
+  [baseline integrity 123364470337](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364470337),
+  [Alembic 123364823220](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123364823220),
+  [bundle budget 123369732470](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123369732470)
+  and derived
+  [CI Success 123393490742](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123393490742).
+  The security/type job fails detect-secrets, not mypy; the separate Backend
+  Type Check passes. Scanners reject exactly the known 58 technical-integrity
+  locations, not a new DLQ-source secret. Raw Squawk retains its 13 ordinary
+  and 24 expanded warnings, while 113 expanded-capture and 46 migration tests
+  pass. MapLibre remains 285.83 KiB against the unchanged 280 KiB limit.
+- [Coverage Policy 123393491584](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123393491584)
+  and [Codecov 123393492783](https://github.com/egorribun/university_ecosystem/actions/runs/40848658856/job/123393492783)
+  are **SKIPPED** behind failed producer dependencies; there is no authoritative
+  merged coverage verdict. Nevertheless, the intersection of the four exact
+  shard `term-missing` reports leaves **new DLQ lines 59 and 62 unhit**:
+  defensive rejection of a wrong stored job type and a decoded non-object JSON
+  payload. This is a concrete unit-shard coverage gap, not a full merged-policy
+  result and not permission to lower its floor.
+
+### Immediate bounded coverage-test continuation
+
+The next three-file test/dispatch change adds two non-object retained-JSON cases
+through the existing real dedup/replay callers and one corrupted-discriminator
+dedup case with a valid positive control and unchanged auth lookup hash.
+It preserves the prior 82 named Auth instances and forecasts **85**, not a
+runtime receipt. The 237-selector prefix is preserved with one appended exact
+selector and its independent mirror; production protection, timeout, workers,
+gates and assertions are not weakened. The malformed bytes remain unchanged
+after rejection: these are fail-closed controls, not historical-data cleanup.
+This new source still needs its own tests and coverage evidence.
+
+### Earlier sources are not silently promoted to GREEN
+
+- [66eef1c3](https://github.com/egorribun/university_ecosystem/commit/66eef1c35a1d9e9b6667362b76b31801da49afdf)
+  established the original **11 retained-payload failures / eight protected
+  controls PASS**, plus 55 expected cleanup-profile failures. An unrelated
+  Gitleaks test rejected a terminal zombie whose process-group field changed;
+  PID birth identity, initial ownership and the disabled-cleanup mutation
+  remained the controls. Its Matrix was intentionally superseded after these
+  receipts: **64 SUCCESS / 6 FAILURE / 13 SKIP / 6 CANCELLED**. Only backend
+  shard0 finished (6398 PASS / 118 SKIP); no full backend GREEN is claimed.
+- [feda6c74](https://github.com/egorribun/university_ecosystem/commit/feda6c74c7dbea47d72e4d96a1c06f4fe96e1d50)
+  added compatibility/invalid-representation and real-PG regressions, corrected
+  the exact cleanup-profile entries and the test-only zombie terminal predicate.
+  Contract recorded **3550 PASS / 19 FAIL**, with profile213 and Gitleaks94 PASS.
+  Two Ruff-only folds failed pre-commit, so PostgreSQL, backend and Alembic were
+  SKIPPED, not semantic RED. All its workflows reached terminal before the next
+  publication; Matrix was **22 SUCCESS / 6 FAILURE / 32 SKIP**, not cancelled.
+- [7ff2812a](https://github.com/egorribun/university_ecosystem/commit/7ff2812ad390096b17b0e9465c7f005c044fd241)
+  made only those two formatting folds. Its own pre-commit passed, Contract
+  reproduced **3550 PASS / 19 FAIL**, and actual PostgreSQL reached the expected
+  missing-lock assertion after 191 passes; later refresh/commit assertions were
+  not reached there. Core was **47 PASS / one FAIL / two SKIP**, with the
+  mobile-registration action observing values filled before hydration and then
+  cleared, no registration request, and no CSRF request. This does not identify
+  the exact DOM writer or prove a physical mobile tap was lost.
+  After the required RED receipts and frontend aggregate SUCCESS, the source
+  was intentionally superseded for the one-file Auth fix. Its Matrix concludes
+  **62 SUCCESS / 7 FAILURE / 12 SKIP / 6 CANCELLED**; backend0/1 were cancelled
+  and backend2/3 had not started. No complete backend GREEN is inherited.
+
+### Residual remediation and next bounded tests-first work
+
+A separate manual maintenance utility is the recommended next Auth design:
+read-only aggregate dry-run by default, exact auth job type, bounded keyset
+batches and statement limits, with no row mutation or FOR UPDATE in dry-run.
+The proposed utility is not implemented. Any separately authorized apply mode
+must use lock limits and reread under lock,
+preserve valid ciphertext bytes, job identity, retry state, schedule and native
+expiry, and report malformed/tampered/unknown-key/hash-mismatched rows as opaque
+unresolved counts. It must not mint tokens, replay jobs, print payloads/links/
+addresses, or create a plaintext undo export. Batch commit and final idempotent
+reconciliation need PostgreSQL tests. Skipping locked rows cannot prove coverage.
+
+This is a source/runbook plan, **not authorization to modify user data**.
+Erasing historical error messages loses diagnostics; deleting pending/failed
+jobs may lose undelivered mail. Those operations, queue retention/removal and
+backup/snapshot handling require specific environment, data and retention
+decisions. Seven-day queue configuration is not proof that legacy data is
+absent. `TOKEN_HMAC_SECRET` rotation is not a plaintext-remediation shortcut:
+it also affects existing Auth ciphertext and reset/email-change token hashes.
+No deployed inventory or backup contents have been inspected.
+
+A separate, still-unpublished reviewed packet contains a rejecting, non-executing
+final-HTML inventory scaffold with 30 tests and two Register SSR/hydration
+tests. These are tests-first forecasts, not executed receipts. The inventory
+must describe only bounded final `_shell.html`/`index.html` roots and static/
+dynamic import edges; it does not establish transitive execution closure,
+artifact provenance or a budget exception. Register tests use real form,
+validation and hydration code with only navigation/HTTP boundaries replaced;
+they target enabled SSR controls and password-reveal controls left enabled
+during a pending submission. Do not weaken or add waits/refills/retries to the
+existing live scenario to manufacture a passing registration receipt.
+
+The MapLibre 286 KiB decision remains inactive; all current chunk limits stay
+unchanged. Raw Squawk still reports 13 ordinary plus 24 expanded warnings.
+The owner approved exactly the 58 public-integrity dispositions on 2026-10-29;
+their source-bound policy/ADR/test delta is being prepared separately and is
+not active in this source. No additional identity is covered by that approval. Baseline319, policy347, Gitleaks26, all 78 required context/app pairs,
+blocking CodeQL, coverage floors and dependency freezes are preserved. The
+121-case owned-PostgreSQL policy scaffold remains unpublished while Contract
+headroom is this small. AUD-454 and infrastructure/data claims require their
+own actual topology and runtime evidence.
+
+
+## Source 24c7c398 terminal verification and retained-row continuation
+
+**382/512 accepted; 130 remain unaccepted. No acceptance increment.**
+In particular, AUD-447 remains open: protection of new/reopened auth jobs
+does not establish removal of plaintext from historical retained rows.
+
+Source [24c7c398ed81802543443cd15d8dda91f0dd8a1e](https://github.com/egorribun/university_ecosystem/commit/24c7c398ed81802543443cd15d8dda91f0dd8a1e)
+and tested merge `e7ced1e2dc37d8ae8d66cec68e7312e79013dbca` share tree
+`bfb3ffde9eb4cf21fb63c07d0cd7f1d873d8d10e`.
+All 22 PR-source workflows are terminal: 19 SUCCESS / 1 FAILURE / 2 SKIP.
+The separate [Security Policy Integrity](https://github.com/egorribun/university_ecosystem/actions/runs/40828576580)
+run is SUCCESS and has event **pull_request_target**, not push.
+[Matrix 40828579836](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836)
+is FAILURE: **91 jobs, 68 SUCCESS / 6 FAILURE / 16 SKIP / 1 CANCELLED**.
+The six failures are two exact-identity scanning jobs, raw Squawk, frontend
+formatting, the real bundle budget and derived CI Success. The cancelled
+Contract job is an additional blocker, not a successful check.
+
+### Complete source-bound receipts
+
+- All four complete backend unit shards succeed:
+  [0](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298456574)
+  4724 PASS / 147 SKIP;
+  [1](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298456458)
+  4994 PASS / 80 SKIP;
+  [2](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123306613911)
+  4816 PASS / 86 SKIP;
+  [3](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123307880548)
+  7166 PASS / 87 SKIP. Total: **21,700 PASS / 400 SKIP / 0 FAIL**.
+  [Coverage Policy](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123319831129)
+  and [Codecov](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123319832533)
+  are SKIPPED; no merged Python coverage GREEN is claimed.
+- [Contract 123298041594](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298041594)
+  logs 3458 consumer, 633 exact-disposition and 41 scoped cases PASS.
+  All 43 graph cases and 47 named Auth cases pass. Nevertheless, the job
+  concludes CANCELLED exactly at its configured 600-second boundary; no direct
+  timeout diagnostic was recovered. Successful test commands do not turn that
+  check GREEN. Setup takes about 47 seconds, including a 36-second native build;
+  the consumer step takes about 534 seconds. The existing 10-minute timeout,
+  three file-grouped workers and full selector population are not relaxed.
+- [Owned Core 40828579565](https://github.com/egorribun/university_ecosystem/actions/runs/40828579565)
+  succeeds: 329 preflight PASS, live 48 PASS / 2 SKIP, exit 0, desktop/mobile
+  reset-replay 400 and NATS outage SUCCESS. This is owned-topology evidence.
+  [PostgreSQL 123298456591](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298456591)
+  succeeds: 384 PASS / 16 SKIP (including all five named AUD-445 cases),
+  plus 13 required and five AUD-262 durable-replay cases PASS. The three dedicated
+  borrowed-session PostgreSQL cases are still outside this topology.
+- [Frontend aggregate 123302507453](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123302507453)
+  succeeds: 10,396 tests / 822 files PASS; all four provenance-checked shards
+  merge, with 2182/2182 changed lines covered. There remain 29 unhit global
+  branch arms out of 17,221, including six unlocated arms; this is not 100%
+  global branch coverage.
+- Map schema3 contracts pass **94/94**; the WASM suite reports 789 PASS /
+  6 SKIP. Production Build succeeds and the bounded diagnostic rehashes all
+  171 emitted graph chunks. [Bundle Analysis](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123299961712)
+  then rejects 285.83 KiB against the unchanged 280 KiB limit.
+  This is producer-time/diagnostic evidence, not final-HTML/artifact admission.
+  The approved narrow 286 KiB budget is still inactive. Actual final HTML comes
+  from TanStack's shell and post-build processing, not simply the source
+  `frontend/index.html`; its exact generated script-root forms still need capture.
+- [Frontend Lint](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298574308)
+  fails one Prettier array-layout fold. The next packet applies exactly the
+  hosted formatter hunk without changing its assertion or fixture behavior.
+- [Alembic 123298456057](https://github.com/egorribun/university_ecosystem/actions/runs/40828579836/job/123298456057)
+  fails the unchanged raw gate: 13 ordinary and 24 expanded Squawk warnings,
+  both scanner exits 1. Its 113 expanded-capture and 46 migration cases PASS.
+  Graph metadata and the diagnostic matcher are not SQL execution admission
+  or strict scanning of all 141 nonhistorical revisions.
+- Both secret-scanning checks still reject exactly 58 public-integrity
+  identities. Their finite disposition decision remains pending. Baseline 319,
+  policy 347, Gitleaks 26, all 78 required contexts, blocking CodeQL and
+  coverage floors remain unchanged. Blocking CodeQL succeeds with no new alerts.
+
+### Honest RED-to-GREEN boundary
+
+The prior [20d Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/40825713315)
+was superseded only after the needed graph/Map semantic RED and Auth/Core/PG
+controls were obtained. It concludes CANCELLED: 62 SUCCESS / 8 FAILURE /
+13 SKIP / 6 CANCELLED. Only backend shard1 completed (4994 PASS / 80 SKIP);
+shards0/2 were cancelled and shard3 had no separate run. No complete backend
+GREEN is attributed to 20d. The corrected 24c run above was allowed to finish
+all four backend shards before the next publication; its Contract cancellation
+is the separate job-level 600-second event.
+
+### AUD-447 remains open: historical retained payloads
+
+Current source prepares the incoming auth payload, but active PENDING/RETRYING
+dedup returns before rewriting an existing plaintext row. Auto replay protects
+the new NATS publication while leaving the old row's payload unchanged on
+completed, rescheduled and exhausted outcomes. Earlier dedup tests created
+their seed via new parking, so they began with an already-protected row.
+
+These are source-backed lifecycle gaps, not evidence that any deployment
+contains such rows. Historical error messages, dormant rows, queues and backups
+are not claimed inspected or cleaned. No automatic database cleanup is run.
+A dedup-only repair would not cover the auto-replay path or those residuals.
+
+### Next bounded tests-first packet
+
+[baeb9fd043494d95dfd2e8b4bf4492b5060917d3](https://github.com/egorribun/university_ecosystem/commit/baeb9fd043494d95dfd2e8b4bf4492b5060917d3)
+contains five reviewed paths, with no Auth or cleanup-profile production fix:
+
+1. Nineteen Auth instances directly seed historical rows: sixteen active-dedup
+   combinations and three real auto-replay outcomes. The forecast is eleven
+   retained-payload RED cases and eight already-protected controls PASS, after
+   identity, retry-budget, schedule, protected-wire and delivery controls.
+   They use actual serializers/models/handlers with DB/NATS/SMTP transport
+   doubles, not PostgreSQL durability or bulk-remediation proof.
+2. The cleanup-profile contract adds 27 exact positive path/function pairs
+   (43 graph and 269 historical-recognizer instances) and six near misses.
+   This adds 66 contract instances; 55 failures are forecast while the
+   production registry remains unchanged. Existing row-cleanup/GC assertions
+   and async cancellation after body errors stay active. No measured runtime
+   or peak-memory improvement is claimed before implementation and hosted CI.
+3. Workflow dispatch and its independent mirror preserve the entire
+   233-selector prefix and append only the two Auth nodes, for 235 selectors.
+   With the profile contracts, the static consumer forecast is 3543 cases,
+   not a test receipt. Workers, scheduling, filters, timeout, security cohort,
+   cleanup, failure propagation and quality gates remain unchanged.
+4. The remaining path is the exact Prettier-only correction described above.
+
+Next: obtain semantic receipts, implement only the observed bounded gaps with
+independent review, then validate the corrected source. The prepared 121-case
+owned-PostgreSQL policy scaffold stays unpublished until Contract headroom is
+restored. Final-HTML/artifact Map proof, owned empty-database migration rendering
+and strict nonhistorical scanning remain separate work. None of the receipts
+above is inherited as full CI GREEN for this new source.
+
+## Source 8573ec57 verification and bounded tests-first continuation
+
+**382/512 accepted; 130 remain unaccepted.** This preserves all 381 prior IDs
+and adds only [AUD-445](../../audits/AUDIT-2026-10.md#scoped-aud-445-acceptance-2026-10-29).
+The count is finding-scoped, not release acceptance or full CI success.
+
+Source [8573ec5797d092ec578518137846934a9d90842b](https://github.com/egorribun/university_ecosystem/commit/8573ec5797d092ec578518137846934a9d90842b)
+and tested merge `a3c0197c2c14cfafd88f2d48e649df9e408f24e1` share tree
+`8bb4c4fd76986958e84819a614aee8588d41c1cf`.
+All 22 PR-source workflows are terminal: 19 SUCCESS / 1 FAILURE / 2 SKIP,
+with no cancellations; the separate pull_request_target Security Policy Integrity run succeeds.
+[Matrix 40819093116](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116)
+is FAILURE: 91 jobs, 70 SUCCESS / 5 FAILURE / 16 SKIP. The five failures are
+two exact-identity secret-scanning checks, raw Squawk, the real bundle budget
+and derived CI Success. None of these receipts is inherited as GREEN for
+the next source.
+
+### Confirmed outcomes on this source
+
+- [Contract 123267067640](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123267067640)
+  succeeds: 3412 consumer, 633 security-disposition and 41 scoped cases PASS.
+  Its 44 named Auth cases include both previously witnessed real-worker
+  build/delivery privacy RED cases now GREEN, 14 new scope/mixed-batch controls,
+  four existing ciphertext probes and 24 storage/replay/dedup cases. Raw message
+  bytes and NAK behavior remain intact; unrelated handler diagnostics and
+  post-worker scope restoration are checked. This does not establish malformed
+  payload telemetry privacy, deployed historical-row cleanup or live SMTP delivery.
+- AUD-445's 37 named removal/cache/outbox cases and all five named
+  [PostgreSQL cases](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123267472054)
+  pass on this same source. The PostgreSQL job reports 384 PASS / 16 SKIP plus
+  13 required and five durable-replay cases PASS. Its scoped closure is recorded
+  separately; injected cache/hub faults are not deployed Redis/NATS recovery.
+- AUD-454's three corrected-fixture cases PASS, but all three borrowed-session
+  PostgreSQL cases are SKIPPED. Their dedicated disposable database/restricted-role
+  launcher is not present in the reviewed committed workflow/script entrypoints.
+  Reusing the ordinary superuser database or weakening fixture admission is not
+  a substitute. AUD-454 and AUD-363 remain unaccepted.
+- [Owned Core 40819093148](https://github.com/egorribun/university_ecosystem/actions/runs/40819093148)
+  succeeds: 329 preflight PASS, live 48 PASS / 2 SKIP, exit 0, desktop/mobile
+  reset-replay 400 and owned NATS outage SUCCESS. This is owned-topology evidence,
+  not external deployment proof.
+- [Frontend unit/coverage aggregate 123270958057](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123270958057)
+  succeeds: 10,396 tests / 822 files PASS. Both unchanged ForgotPassword
+  SSR/hydration regressions pass after the local readiness fix. Differential
+  line coverage is 2182/2182, 100%; 29 global branch arms remain unhit, so this
+  is not 100% branch coverage. Lint, WASM and production build succeed.
+- The pure historical148 recognizer passes all 269 cases. It remains diagnostic
+  only: it is not consumed by migration admission. The
+  [Alembic job 123267471579](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123267471579)
+  fails the unchanged Squawk gate: 13 ordinary and 24 expanded warnings, both
+  scanner exits 1. Its 113 expanded-capture and 46 migration tests pass; that is
+  not strict scanning of all 141 nonhistorical revisions.
+- [Bundle analysis 123269139571](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123269139571)
+  passes 77 contract cases, then correctly rejects 285.83 KiB against 280 KiB.
+  The current production diagnostic identifies one non-static-reachable
+  MapLibre 6.15.0 chunk, 292688 gzip bytes, three package modules and 171 graph
+  chunks; it remains inventory, not final-HTML/artifact admission proof.
+  The approved narrow 286 KiB decision is not active.
+- Both secret-scanning checks reject exactly 58 public-integrity identities:
+  29 historical-policy, 27 capture-fixture and two compiled recognizer hashes.
+  Their exact finite disposition decision remains pending. Policy 347,
+  baseline 319, Gitleaks 26, all 78 required contexts, blocking CodeQL and
+  coverage floors are unchanged. Blocking CodeQL succeeds with no new alerts.
+- All four complete backend unit jobs succeed:
+  [shard 0](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123267472121)
+  4554 PASS / 163 SKIP;
+  [shard 1](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123267472419)
+  5292 PASS / 79 SKIP;
+  [shard 2](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123275687225)
+  5124 PASS / 105 SKIP;
+  [shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123276487900)
+  6684 PASS / 53 SKIP. Total: 21,654 PASS / 400 SKIP / 0 FAIL.
+  [Coverage Policy 123285631870](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123285631870)
+  and [Codecov 123285631983](https://github.com/egorribun/university_ecosystem/actions/runs/40819093116/job/123285631983)
+  are SKIPPED; no merged Python coverage GREEN is claimed.
+
+### Next bounded test packet; no inherited GREEN
+
+[feb9a60581ff2b7bf65827110b3f742897647164](https://github.com/egorribun/university_ecosystem/commit/feb9a60581ff2b7bf65827110b3f742897647164), followed by the assertion-only formatting fold
+[81441735aff3fac47ead667a3165532624a154fb](https://github.com/egorribun/university_ecosystem/commit/81441735aff3fac47ead667a3165532624a154fb), contains six source/test/dispatch paths:
+
+1. Three invalid-message Auth probes exercise real parser, logger, Sentry and
+   Msg ACK behavior for malformed JSON, schema and UTF-8 inputs. They require
+   nonempty captures and normal side effects before checking privacy. Existing
+   opaque-argument redaction may already protect this boundary; no new leak or
+   production fix is presumed before execution.
+2. MapLibre producer tests require raw-byte/SHA identities for every emitted
+   chunk, including a detached chunk, and reject changed/missing non-Map bytes
+   before writing evidence. They intentionally require the next schema version;
+   the future producer and diagnostic consumer must transition together.
+   Final postbuild HTML/closure, rehashing and current-run artifact admission
+   remain separate prerequisites to the approved narrow budget.
+3. A separate pure graph-metadata scaffold and 43 contracts preserve the
+   source-pinned single-parent reader/CLI and renderer unchanged. The scaffold
+   deliberately rejects every graph: the expected 39 positive-control RED
+   cases are not 39 validated rejection outcomes. Four legacy/no-execution
+   controls are expected to pass. Literal metadata, all 142 current files,
+   2/3-parent merges, dynamic declarations, duplicates, missing parents and
+   cycles are covered without executing migrations. This API is neither a
+   file loader, executable upgrade order, database admission result nor waiver.
+4. Mirrored dispatch preserves the previous 231-selector prefix and appends
+   only the Auth and graph selectors, for 233 selectors and a static forecast
+   of 3458 consumer cases. Workers, filters, timeout, cleanup and failure
+   propagation are unchanged. These forecasts require the next source's own CI.
+
+Next: obtain assertion-level receipts, implement only the observed missing
+producer/graph behavior with independent review, and then run the corrected
+source's full CI. The restricted-role PostgreSQL launcher and owned client-IP
+outer admission remain separate bounded work; no deployment, populated-migration
+execution, broad scanner suppression or historical-migration rewrite is authorized.
+
+## Source 68a68a terminal receipts and scoped continuation — 2026-10-29
+
+**381/512 accepted; 131 remain unaccepted. No acceptance increment is made here.**
+
+Source [68a68a78eebc0ca7058554713df0a3534ac68048](https://github.com/egorribun/university_ecosystem/commit/68a68a78eebc0ca7058554713df0a3534ac68048)
+and tested merge `cf33895e209ca2607b7a695137b771edac5246a4` share tree
+`7af086a06ad0856f9af2af2efd62043e61bacea1`. All 22 PR-source workflow runs
+are terminal: 19 SUCCESS / 1 FAILURE / 2 SKIP, with no cancellations. The
+separate pull_request_target Security Policy Integrity run also succeeds. None of these
+receipts is inherited as GREEN for the next source.
+
+### Executed results
+
+- [Matrix 40813622544](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544)
+  is FAILURE: 60 jobs, 19 SUCCESS / 9 FAILURE / 32 SKIP.
+- [Owned Core 40813622457](https://github.com/egorribun/university_ecosystem/actions/runs/40813622457)
+  is SUCCESS: 329 preflight PASS; live 48 PASS / 2 SKIP; exit 0; desktop/mobile
+  reset-replay requests return 400; owned NATS outage acceptance succeeds.
+  This is the owned topology, not external deployment evidence.
+- [Contract 123249476686](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123249476686)
+  has an accessible log: consumer 3122 PASS / 260 FAIL in 484.23 seconds, plus
+  633 security-policy and 41 scoped cases PASS. Of the 260 failures, 258 are
+  the intentional historical matcher positive-control RED and two are actual
+  worker telemetry privacy RED; they are not 260 independent new defects.
+- All 24 selected auth storage/replay/dedup/expiry cases pass. Both real-worker
+  build/delivery cases then fail specifically at `safe_event`: the Sentry
+  event contains the synthetic authentication marker. Every preceding control
+  passes: real handler failure reached, normal NAK, bounded fetch, one generic
+  exception, worker/handler frames present, handler frames and text log clean.
+  This establishes the worker-frame boundary, not a setup failure or a deployed
+  telemetry incident.
+- Both complete AUD-445 files have named receipts: 23 removal/cache and 14 outbox
+  cases PASS, including the six previously missing outage/retry/durable-repair/
+  crash-before-ack cases. The five PostgreSQL receipts remain on
+  [ef5 integration 123227936223](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227936223).
+  Independent reconciliation found 20 supporting blobs unchanged between those
+  sources and unchanged chat `publish`/`publish_core` paths. This is a scoped
+  ready candidate, not current-SHA PostgreSQL success: the
+  [68 PostgreSQL job](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123250723484)
+  is SKIPPED. Prefer the next corrected full-CI receipt before recording acceptance.
+  Controlled cache/hub faults are not deployed Redis/NATS delivery proof.
+- [Source/test inventory 123249477004](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123249477004)
+  is SUCCESS: catalog 59 workflows / 184 jobs, full quality inventory passed.
+  The retry-selector false positive is resolved without changing the detector.
+  [Blocking CodeQL 123249822538](https://github.com/egorribun/university_ecosystem/runs/123249822538)
+  is SUCCESS with zero annotations and no new alerts.
+- Frontend shards total 10,395 PASS / 1 FAIL; 821 files PASS / 1 FAIL.
+  The only failed case is the new
+  [ForgotPassword SSR regression, shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123250668297):
+  the server-rendered email input lacks `disabled`. Its companion real
+  hydration/first-edit/single-submit case passes. The
+  [aggregate 123253912333](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123253912333)
+  fails before merged coverage thresholds are reached; no merged coverage GREEN
+  is claimed.
+- [WASM contracts 123250668191](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123250668191)
+  succeed: 772 PASS / 0 FAIL / 6 SKIP in the native contract set, including the
+  original Rolldown regression and malformed-length controls; the additional
+  worker and selected cohorts pass 56 and 665 cases.
+  [Production build 123250668185](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123250668185)
+  succeeds and emits the first bounded inventory: one MapLibre 6.15.0 chunk,
+  three package modules, unavailable original code-unit lengths represented as
+  null, no static entry reachability, 171 graph chunks and zero unresolved imports.
+  The report explicitly remains diagnostic, not final budget-admission proof.
+  [Bundle job 123251432256](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123251432256)
+  passes 77 tests and then fails the unchanged budget: 285.83 KiB exceeds 280 KiB.
+  The approved narrow 286 KiB decision is not active.
+- [Pre-commit 123249476983](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123249476983)
+  fails only one Ruff formatting fold in the new worker test.
+  [Frontend lint 123250668230](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123250668230)
+  fails only one Prettier fold in the metadata producer; its type/lint/i18n/
+  compiler-compatibility checks pass. The exact whitespace-only corrections
+  reproduce the hosted hunks. Backend, Alembic, PostgreSQL and related dependent
+  checks are SKIPPED after pre-commit, not verified on this source.
+- [Baseline integrity 123249896482](https://github.com/egorribun/university_ecosystem/actions/runs/40813622544/job/123249896482)
+  and security/type hooks still reject the 56 public-integrity hash identities
+  from the historical policy/capture. Their exact disposition decision remains
+  pending. This batch does not extend the 347 dispositions or the 319-entry baseline.
+
+### Next reviewed implementation; own Actions still required
+
+The eleven-path implementation is [2fb3c509b51e3f4400c655be885c807dffc082ee](https://github.com/egorribun/university_ecosystem/commit/2fb3c509b51e3f4400c655be885c807dffc082ee).
+Its independent static reviews are not a substitute for the next exact-SHA runs.
+
+- Worker reporting uses a fresh Sentry scope and removes only exact broker-module
+  frame locals across exception, thread and top-level stacks. With the pinned SDK, exception identity,
+  stack positions, non-auth handler diagnostics, raw message bytes and NAK/DLQ
+  behavior remain intact. Targeted copies do not mutate the original event.
+  Missing/broken SDK import takes an explicitly sanitized, traceback-free fallback;
+  it does not silently fall back to raw frame capture. Fourteen new controls
+  cover both mixed-batch orders, unrelated diagnostics, scope reset, opaque values
+  and SDK absence; the two observed RED cases remain unchanged.
+  New controls have no historical hosted RED claim. Invalid-payload raw logging
+  is a separate source-visible limitation; future dependency-bearing auth handlers
+  and deployed/historical-row cleanup are not established by this patch.
+- ForgotPassword uses the existing local hydration-readiness idiom to keep email
+  and submit controls inert until handlers attach, retaining submitting and
+  validation locks. This addresses the witnessed SSR invariant, not a proven
+  cause of the earlier live-submit flake.
+- The pure historical Squawk recognizer replaces only the rejecting scaffold.
+  It binds the exact prepared policy/capture, bounds and strictly parses bytes,
+  retains all fields and warning multiplicity, and checks the real UTC window.
+  Its only positive result is `matched-diagnostic-inventory`; it has no file/
+  process/DB/CLI or migration-gate consumer. Nine additional numeric/surrogate
+  guards bring its static forecast to 269 cases. Two new public compiled
+  fingerprints may create further scanner identities; no disposition is inferred.
+- The AUD-454 fixture now binds the actual canonical cache provider, proves the
+  poisoned cache is present and unchanged, and asserts an authoritative DB lookup.
+  The production manager is unchanged. Its historical cached implementation is
+  a source counterfactual, not an executed RED receipt; no closure is made.
+- Mirrored consumer dispatch preserves the current 225-selector prefix and adds
+  six selectors. The resulting 231 selectors forecast 3412 cases, including four
+  existing ciphertext probes and the three corrected AUD-454 cases. Workers,
+  timeout, filters, cleanup, failure propagation and required gates are unchanged.
+
+Stage B remains a separate blocker: source review of all 142 migrations found
+one root/head, 152 parent edges and ten tuple-parent merges, but that is not
+Alembic execution. The raw gate selects six PR-changed migrations, not all 142;
+136 unchanged nonhistorical files are outside that selection. On ef5 it reached
+only historical148; on68 Alembic did not run. The reader currently rejects tuple
+parents, and the renderer lacks template0/empty-catalog/owned-server admission
+and exact multi-parent frontier proof. No active rule may substitute the
+historical recognizer for those prerequisites or for strict receipts on all
+141 nonhistorical revisions. Renderer changes also require a fresh148 capture.
+
+Next: verify this exact continuation, obtain fresh full-backend/PG receipts,
+reconcile the AUD-445 candidate, and continue bounded MapLibre admission and
+migration-proof work without unapproved gate or scanner allowances.
+
+## Source ef5f8f verification and bounded causal corrections — 2026-10-29
+
+**381/512 accepted; 131 remain unaccepted. No new finding is closed by this batch.**
+
+Source [ef5f8f041f510dc42e9ab7a1aad8d22089018511](https://github.com/egorribun/university_ecosystem/commit/ef5f8f041f510dc42e9ab7a1aad8d22089018511)
+and tested merge `2655bf9764cb6be4d79762b39cf463617769f9e1` share tree
+`02db8d56e7fb6a34839c2f7e165440b5b0c8dacd`. Results below belong only to
+that source; they are not inherited GREEN evidence for the next commit.
+All 22 PR-source workflow runs are terminal: 19 SUCCESS / 1 FAILURE / 2 SKIP,
+with no cancellations.
+
+Reviewed implementation [7f2394b6e0d2a5190d0344624114f71e7099328b](https://github.com/egorribun/university_ecosystem/commit/7f2394b6e0d2a5190d0344624114f71e7099328b)
+contains twelve source/test/workflow paths. Its own Actions must establish the
+correction outcomes; the new worker and hydration tests are deliberately tests-first.
+
+Follow-on [2b1cc79cbd2f1ca3783b4642501a5e09ea9af54b](https://github.com/egorribun/university_ecosystem/commit/2b1cc79cbd2f1ca3783b4642501a5e09ea9af54b)
+adds the one exact build-environment contract correction below, for thirteen
+combined source/test/workflow paths. No other implementation is bundled here.
+
+- [Matrix 40806667819](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819)
+  is terminal FAILURE: 91 jobs, 60 SUCCESS / 12 FAILURE / 19 SKIP, no running
+  jobs or cancellations. All four backend shards executed: 21,343 PASS /
+  286 FAIL / 400 SKIP. Failures are 258 scaffold-positive-control assertions,
+  20 auth-privacy assertions, one stale build-environment contract and seven
+  catalog tests hitting the same retry-policy false positive.
+- [Owned Core 40806667225](https://github.com/egorribun/university_ecosystem/actions/runs/40806667225)
+  is SUCCESS: 329 preflight PASS; 48 live PASS / 2 SKIP; exit 0 and successful
+  owned NATS outage outcome. Both reset-token replay requests returned 400.
+  The earlier desktop submit flake did not recur, but its cause is not established.
+  This proves the owned topology and selected cases, not an external deployment.
+- Frontend shards pass 10,394 tests / 821 files.
+  [Aggregate 123232004234](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123232004234)
+  is SUCCESS: 2177 changed lines, 0 missing, 100% differential coverage.
+  This is not global coverage or all Tier 0 metrics.
+- [Read-only pre-commit 123227168935](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227168935)
+  is SUCCESS after the exact inner-probe Ruff correction. Blocking CodeQL
+  [123227518266](https://github.com/egorribun/university_ecosystem/runs/123227518266)
+  is SUCCESS, with zero annotations and no new alerts.
+- [Backend shard 0 / 123227936259](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227936259)
+  finishes with 4932 PASS / 278 FAIL / 74 SKIP in 1668.40 seconds.
+  Of the failures, 258 stop at the Squawk matcher's positive control: the deliberate
+  rejecting scaffold returns `None` instead of `matched-diagnostic-inventory`.
+  They do not establish 258 separate mutation outcomes or production defects.
+  The other 20 are causal AUD-447 privacy assertions: the prior 16 and four new
+  legacy-to-protected replay/hash cases. All four new cases reach the synthetic-marker
+  assertion rather than failing import/setup. Shard 1 separately passes 4474 cases,
+  with 135 SKIP, in 1429.46 seconds.
+- [Backend shard 2 / 123235883215](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123235883215)
+  finishes with 5324 PASS / 1 FAIL / 115 SKIP in 1722.55 seconds. Its only failure
+  is the old exact build-environment contract, which omits the already-configured
+  MapLibre metadata output path. The follow-on test correction keeps exact mapping
+  equality and `SKIP_WASM_BUILD=1`, adding only the run/attempt/source-bound
+  temporary receipt path; it does not remove the WASM reuse guard.
+- [Backend shard 3 / 123238646864](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123238646864)
+  finishes with 6613 PASS / 7 FAIL / 76 SKIP in 1610.31 seconds. All seven failures
+  are catalog tests reporting the same literal-test-name retry-policy mismatch,
+  not seven independent retry behaviors.
+- [Integration 123227936223](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227936223)
+  passes 384 cases / 16 SKIP, plus 13 required PostgreSQL cases and five durable
+  PostgreSQL cases. All five AUD-445 concurrency/rollback/lost-ack/deadlock cases
+  have named PASS receipts on this source. The six separate cache-outage/replay
+  consumer receipts remain unextracted; no closure is inferred from the PG cohort.
+- [Contract job 123227169250](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227169250)
+  is FAILURE. Its log transport is unavailable through the allowed plugin; no
+  exact case total, AUD-445 named PASS or successful mutation check is inferred.
+  A boolean-only positive-control assertion preserves the same predicate and
+  avoids pytest expanding the full historical policy/capture in failure output.
+  It is a bounded diagnostic improvement, not a proven transport root-cause fix.
+- [WASM contracts 123228042556](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123228042556)
+  show the intended Rolldown regression: 731 PASS / 1 FAIL / 6 SKIP, with an
+  absent original-length field producing `undefined` rather than explicit `null`.
+  [Production build 123228042393](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123228042393)
+  still rejects the diagnostic inventory after client/server builds complete.
+  The next schema-2 correction names module lengths as UTF-16 code units,
+  distinguishes an absent original length from zero, and rejects present malformed
+  values before JSON serialization. The producer and bounded reporter change
+  together; final chunk raw/gzip bytes, hashes, caps and bundle budgets do not.
+- [Inventory 123227169228](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227169228)
+  fails because the literal names of newly selected AUD-445 tests match the retry
+  heuristic. No operational CI retry was introduced. Selecting their two complete
+  files adds 31 existing bounded cases, preserves the six requested cases and avoids
+  altering or exempting the detector. Mirrored dispatch is kept exact.
+- [Rust format 123227935674](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227935674)
+  reports exactly two `assert_eq!` folds. The next correction is whitespace-only.
+- [Alembic 123227935797](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227935797)
+  is FAILURE: Squawk 2.67.0 reports 13 ordinary and 24 expanded historical warnings,
+  both raw exits 1. The subsequent 46 migration tests pass in 66.32 seconds.
+  Passing those tests does not erase the warnings or admit a populated database.
+- [Security/type hooks 123227169135](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123227169135)
+  and [baseline integrity 123228025909](https://github.com/egorribun/university_ecosystem/actions/runs/40806667819/job/123228025909)
+  reject 56 newly introduced public-integrity hash identities in the historical
+  Squawk policy/capture. Source review corroborates all 29 unique values; these are
+  not new credential discoveries. Exact disposition approval is pending.
+  The 319-entry baseline and 347 existing dispositions remain unchanged.
+
+The reviewed Auth correction protects legacy authentication links at enqueue and
+DLQ storage boundaries, preserves the logical pre-encryption deduplication hash,
+and retains native ciphertext and expiry semantics. Malformed marked payloads
+fail closed through existing NAK behavior rather than plaintext parking.
+It does not rewrite historical stored rows or establish deployed cleanup.
+
+A fresh security review also identified a possible separate legacy-message path
+through real worker exception-frame locals. Two isolated, real-`run_worker`
+Sentry regressions cover build and delivery failures using the pinned real NATS message type, in-memory transports
+and boolean-only results. They precede any production correction to that boundary;
+no runtime leak, fix or AUD-447 closure is claimed before their own evidence.
+The additional ForgotPassword SSR/hydration regressions similarly precede a
+production change and do not prove the earlier live-submit flake's cause.
+
+The next consumer selection has 225 selectors and projects 3382 cases, including
+both complete AUD-445 files and the two real-worker scenarios. This is a collection
+forecast, not a receipt. Three workers, file grouping, timeout, filters, cleanup,
+failure propagation, scanner gates and required contexts remain unchanged.
+The inactive Squawk scaffold has no migration-gate consumer; empty-database
+admission, all-other-migration evidence and any active risk rule remain separate.
+
+Next: verify the next exact source; repair only demonstrated root causes, obtain
+named AUD-445 receipts, test the adjacent worker boundary, and implement the pure
+historical matcher only against the witnessed rejecting-scaffold control. Keep
+AUD-445/447/454, historical cleanup, final MapLibre budget admission and
+owned-network acceptance open until their respective criteria are met.
+
+## Source 672d15 terminal verification and tests-first continuation — 2026-10-29 02:22 UTC
+
+**381/512 accepted; 131 remain unaccepted. No new finding is closed here.**
+
+Source [672d15b45d4ff843fba6e3a824e0ff4d96247db0](https://github.com/egorribun/university_ecosystem/commit/672d15b45d4ff843fba6e3a824e0ff4d96247db0)
+and tested merge `e72af6e32b33da91613ba672b99f760d97d40de9` share tree
+`472c974b1feb0463bc152bc15ff6e3b3989fbe41`. All 22 PR-source workflow runs
+are terminal: 18 SUCCESS / 2 FAILURE / 2 SKIP, with no cancellations.
+
+- [Matrix 40803493929](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929)
+  is FAILURE: 60 jobs, 23 SUCCESS / 4 FAILURE / 33 SKIP. Failures are Contracts,
+  read-only pre-commit, Production Build and derived CI Success.
+- [Blocking CodeQL](https://github.com/egorribun/university_ecosystem/runs/123217211385)
+  is SUCCESS with no new alerts and zero annotations; all five language-analysis
+  jobs also succeeded. The runtime Rust fixture correction did not add a
+  suppression, disposition or policy exception.
+- [Contract job 123216850792](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929/job/123216850792)
+  executed 3079 consumer cases: 3063 PASS / 16 FAIL in 468.01 seconds, plus
+  633 security and 41 scoped cases PASS. All 47 named inner-probe cases pass:
+  19 protocol, 27 transport and one real ASGI-layer case. This does not establish
+  ownership admission, an external topology, deployment or AUD-164/167 acceptance.
+- All 16 consumer failures are actual AUD-447 privacy assertions: the existing
+  legacy DLQ case and 15 new cases covering four plaintext entrypoint/call-style cases, six
+  stored/reopened payloads, one marked-plaintext transport and four unsafe parking
+  paths. Four controls pass: byte-preserved native ciphertext/expiry round-trip,
+  and marked expired/tampered/missing-expiry rejection. These are semantic RED
+  receipts, not import/setup failures; production Auth/DLQ remains unchanged.
+- Frontend unit shards pass 10,394 tests / 821 files.
+  [Aggregate 123221867625](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929/job/123221867625)
+  confirms 2177 changed lines, missing 0, 100% differential coverage. This does
+  not measure global coverage, all Tier 0 metrics or the inner Python probe.
+- [Pre-commit 123216850800](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929/job/123216850800)
+  fails only two Ruff formatting hunks in `scripts/owned_client_ip_probe.py`.
+  The reviewed correction reproduces hosted blob `64b5e8b5846fe9aee9e1740a88e2ce26cfbf7101`
+  without behavioral changes. Backend and Alembic jobs were skipped, not verified.
+- [WASM contracts 123217987612](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929/job/123217987612)
+  pass. The [production client/server build 123217987726](https://github.com/egorribun/university_ecosystem/actions/runs/40803493929/job/123217987726)
+  completes, but its bounded MapLibre inventory reporter rejects the receipt.
+  The first failing check is not exposed by the fixed rejection label. Source
+  review found a concrete schema incompatibility: locked
+  [Rolldown 1.2.12](https://github.com/rolldown/rolldown/blob/45e407b177f5885d04a9795f37f8be71d91f6f17/packages/rolldown/src/utils/transform-rendered-module.ts)
+  supplies rendered UTF-16 code-unit length, not byte length, and no original
+  length. The current diagnostic assumes the missing field and labels module
+  lengths as bytes. A new causal regression precedes the schema correction;
+  final chunk byte/hash evidence and all bundle budgets remain unchanged.
+- [Core 40803493580 / job 123216847334](https://github.com/egorribun/university_ecosystem/actions/runs/40803493580/job/123216847334)
+  is FAILURE: 329 preflight PASS; live 47 PASS / 2 SKIP / 1 FLAKY. The desktop
+  failure frame is `password-reset.live.spec.ts:239`, clicking the forgot-password
+  submit button. Redacted diagnostics do not establish why it failed. Logout
+  429 responses are present but are not proven causal. Both reset-replay requests
+  returned 400; NATS outage acceptance was skipped. No flaky-test allowance,
+  timeout expansion or inferred full Core success is introduced.
+
+The next reviewed [tests-first commit 3dc62bedd7f185dd3c2f73c205699dc44bc3d1ef](https://github.com/egorribun/university_ecosystem/commit/3dc62bedd7f185dd3c2f73c205699dc44bc3d1ef)
+contains eleven paths, with no production Auth/MapLibre correction yet:
+the exact Ruff delta; six inactive historical Squawk preparation files;
+four legacy-to-protected replay/hash cases; one real Rolldown-shape metric case;
+and the two mirrored consumer-dispatch files.
+
+The Squawk matcher is an importable rejecting scaffold, not an active exception.
+Its 260-case projection includes neutral source-pin test IDs so the unchanged
+`-k "not integration"` filter cannot silently omit the fixture pin. Its historical
+SQL/JSON receipts, migration bytes, scanner arguments and raw failure gate remain
+separate from empty-database admission and all-other-migration evidence.
+The matcher verdict is not wired to the migration CI gate. This
+prepared-inactive package grants no execution authorization or audit closure.
+
+Consumer selection preserves the existing 220 selectors as an exact prefix and
+adds eight: the Squawk file, four-case auth replay selector and six named AUD-445
+cache/outage/replay nodes. The resulting 228 selectors project 3349 cases, not
+execution receipts. Three workers, file grouping, ten-minute timeout, filters,
+cleanup, failure propagation and all required gates are unchanged.
+
+Next: verify this new source independently; use the witnessed auth RED to correct
+queue/DLQ boundaries without ciphertext/expiry/hash drift; obtain the new Rolldown
+semantic RED before synchronizing truthful schema2 metric fields; diagnose the
+Core submit failure without guessing or weakening assertions. AUD-445/447/454,
+historical plaintext cleanup, final MapLibre budget admission and owned-network
+proof remain open.
+
+## Source 114df35 verification and bounded continuation — 2026-10-29 01:54 UTC
+
+**Accepted registry unchanged: 381/512 (74.4%); 131 findings remain unaccepted.**
+No AUD-445/447/454 or owned-network acceptance is added by this checkpoint.
+
+The verified source is
+[114df35b08cb557a63468f69c251fa4314c5236f](https://github.com/egorribun/university_ecosystem/commit/114df35b08cb557a63468f69c251fa4314c5236f).
+Its tested merge `23b2b520e108f1803a8cfd006f90d0e2fcc719e6` has the same tree
+`51499cef3c2ee09e42e8edd4ac001ecd2d3db5f8`. Later source changes require their
+own hosted evidence; the results below are not inherited by the continuation.
+
+Confirmed on 114df35:
+- [Core](https://github.com/egorribun/university_ecosystem/actions/runs/40795451599/job/123190717296): SUCCESS; 329 preflight PASS, 48 live PASS / 2 SKIP, desktop/mobile reset-replay 400, NATS outage success.
+- [Security & Types](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123190719360) and [baseline integrity](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123191399089): SUCCESS. Baseline identities/dispositions were not expanded.
+- [PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123191731515): 384 PASS / 16 SKIP; the required 13-case PostgreSQL and 5-case durable membership cohorts pass.
+- All frontend unit shards: 10,394 PASS / 821 files. [Aggregate patch coverage](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123196355428): 2177 changed lines, missing 0, 100%. This is not global or all-Tier-0 coverage.
+- [Contract consumer cohort](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123190719488): 3048 actual cases, 3013 PASS / 35 FAIL in 434.67 seconds; the separate security and scoped cohorts passed 633 and 41 cases. All four noon/cross-midnight reminder cases now pass.
+- The 35 consumer failures are 34 expected missing-producer/probe-boundary cases and one actual AUD-447 legacy failure-path regression. The latter passed through the real handler, broker and DLQ serializer before the generated-marker containment assertion failed. It proves a stored model payload with the DB transport replaced, not a deployed PostgreSQL leak.
+- [Frontend lint](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123191654463): TypeScript and ESLint pass; two exact Prettier folds in the new MapLibre contract remained.
+- [MapLibre contracts](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123193723787): the two intended inventory-scaffold assertions fail. This run stopped before the actual bundle measurement; it does not establish a new bundle size.
+- [Alembic](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123191731137): raw Squawk exits remain 1 with 13 ordinary and 24 expanded warnings; subsequent migration tests pass 46 cases. The warning gate remains failing, not waived.
+
+[Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774)
+is terminal FAILURE: **91 jobs, 65 SUCCESS / 8 FAILURE / 18 SKIP**, with no
+running or cancelled jobs. All 22 PR-source workflow runs are terminal:
+19 SUCCESS / 1 FAILURE (Matrix) / 2 SKIP. These counts do not include the
+separate blocking code-scanning check below.
+
+| Backend unit shard / job | PASS | FAIL | SKIP | Failure scope |
+| --- | ---: | ---: | ---: | --- |
+| [0 / 123191731542](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123191731542) | 4871 | 18 | 70 | 17 transport scaffold cases and AUD-447 legacy payload |
+| [1 / 123191731568](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123191731568) | 6791 | 0 | 138 | None |
+| [2 / 123202210216](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123202210216) | 5109 | 0 | 113 | None |
+| [3 / 123202371091](https://github.com/egorribun/university_ecosystem/actions/runs/40795451774/job/123202371091) | 4527 | 18 | 79 | 17 protocol scaffold cases and a stale exact workflow assertion |
+
+The four unit shards total **21,298 PASS / 36 FAIL / 400 SKIP**. The additional
+recoverable stale assertion is
+`test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report`:
+it still expected the old one-file Node test command. A separate reviewed
+[contract consistency commit](https://github.com/egorribun/university_ecosystem/commit/94de2072854af9ff4c3ff14a83021a995b532ec7)
+requires the exact two-file command, retaining both analyzer and metadata
+tests and all other fail-closed assertions. The 8 failed Matrix jobs are
+Contracts, WASM Contracts, Frontend Lint/Format, Bundle Analysis, Alembic,
+backend shards 0 and 3, and derived CI Success. Backend coverage aggregation,
+Coverage Policy and Codecov remain skipped, not accepted.
+
+The separate blocking [CodeQL check](https://github.com/egorribun/university_ecosystem/runs/123190995179)
+remains FAILURE with one critical-severity alert on a hard-coded Rust test
+fixture, despite successful CodeQL language-analysis jobs. This is not evidence
+of a production credential. No suppression or scanner-policy edit is used.
+
+The reviewed continuation is
+[a55b382630b6fd6e8306ddb96e178d0431988589](https://github.com/egorribun/university_ecosystem/commit/a55b382630b6fd6e8306ddb96e178d0431988589),
+with ten code/test/workflow paths:
+- Replace only the affected Rust parity fixture's constant key with runtime
+  material; retain distinct lower/upper/mixed hash checks and wrong-key control.
+  Rust compilation, formatting and the blocking CodeQL verdict still need
+  this continuation's own hosted results.
+- Implement the bounded inner owned-client-IP producer and real source-bound
+  HTTP transport. Review caught and corrected hidden-cookie serialization,
+  oversized-timeout conversion and status-specific RFC 7807 media types before
+  publication. The 47-case targeted projection includes the real ASGI layer,
+  not a hosted execution receipt. There is no CLI, ownership admission,
+  deployment integration, remote-completion proof or exhaustive parser coverage.
+  The repository's Python coverage scope does not measure this script.
+- Enable metadata capture only for the production frontend build and report a
+  bounded, source-checked MapLibre inventory. Raw data stays in RUNNER_TEMP;
+  public output is allowlisted and failures use a fixed label. This is explicitly
+  diagnostic, not a signed attestation, final-HTML/all-graph proof or budget
+  exception. All bundle limits remain unchanged; the 286 KiB decision is inactive.
+- Add 19 auth-email enqueue/replay/deduplication/expiry/rejection cases. Valid
+  expired ciphertext must remain byte-preserved in storage, with expiry enforced
+  at delivery. Invalid marked inputs must not be dropped/TERM-ed or crash the
+  retry batch: the tests require the existing delayed NAK behavior and safe
+  observability. Production auth-email/DLQ code is unchanged; these new tests
+  intentionally precede its causal correction.
+- Preserve the existing 215 consumer selectors and append five exact auth-email
+  nodes, mirrored in the dispatch contract (220 selectors). The 10-minute job,
+  all existing options, required contexts, scanner rules and coverage floors stay
+  unchanged. The projected consumer population is 3079 cases, not a receipt.
+
+Next ordered work:
+1. Verify this continuation's exact source, repair recoverable formatter/runtime
+   failures and obtain the new auth-email RED before its reviewed production fix.
+2. Finish source-bound MapLibre final-artifact proof before any narrow budget
+   activation; keep owned admission/network proof separate from the inner probe.
+3. Publish the separately reviewed, prepared-inactive historical Squawk policy,
+   capture and rejecting matcher scaffold as a tests-first package. Its 260-case
+   projection is not execution. The raw warning gate, historical migration and
+   atomicity remain unchanged. Activation still needs verified empty-database,
+   graph-aware all-other-migration and fail-closed CI evidence. Ten merge-named
+   migrations with tuple parents are confirmed, not a complete graph proof.
+4. Obtain the six named cache-outage/retry receipts for AUD-445 rather than infer
+   them from quiet backend output; correct the disconnected stale-cache fixture
+   for AUD-454 before acceptance. AUD-447 historical rows/queue bytes/backups and
+   legacy worker/Sentry frame copies remain separate, unproven lifecycle scope.
+
+## Named evidence checkpoint — 2026-10-29 00:34 UTC
+
+**Current accepted lower bound: 381/512 (74.4%); 131 findings remain unaccepted.**
+The [four scoped acceptances](../../audits/AUDIT-2026-10.md#scoped-aud-247-aud-345-aud-361-and-aud-444-acceptance-2026-10-28)
+add only AUD-247/345/361/444 to the previous 377 IDs. The exact original criteria,
+source/test blobs, named results and limitations are recorded there.
+
+Verified code source is
+[15eaaa5194642a4f3e52b5207f57235df968cb8e](https://github.com/egorribun/university_ecosystem/commit/15eaaa5194642a4f3e52b5207f57235df968cb8e);
+tested merge `37b82de67516752bb8c11462759b381c533db7fd` shares tree
+`6390ea2d437bf568553b78d64e7f90f1340c77c5`. Later documentation or source
+commits do not inherit its complete CI outcome.
+
+Confirmed on that source:
+- [Core](https://github.com/egorribun/university_ecosystem/actions/runs/40787466109/job/123164133882): terminal SUCCESS; 329 preflight, 48 live PASS / 2 SKIP, NATS outage success.
+- [Contracts](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123164137350): 3009 + 633 + 41 PASS, including canonical StaticFS persistence/cleanup/forwarding, Trivy fail-closed replay, registration and MFA layer boundaries.
+- [PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123165736302): 384 PASS / 16 unrelated SKIP; real invitation contention and driver unique-constraint cases pass.
+- All frontend shards: 10,394 PASS / 821 files. [Merged patch coverage](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123170707819): 100%, missing 0, not global/Tier-0 coverage.
+- Trivy FS metadata is now clean with finding_count 0; scanner and container-image jobs pass. No scanner exceptions were introduced.
+
+[Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183)
+is terminal FAILURE: **91 jobs, 66 SUCCESS / 7 FAILURE / 18 SKIP**, with no
+running or cancelled jobs. All 22 pull_request workflow runs on source 15eaaa
+are terminal: 19 SUCCESS / 1 FAILURE (Matrix) / 2 SKIP. The separate trusted
+[pull_request_target Security Policy Integrity run](https://github.com/egorribun/university_ecosystem/actions/runs/40787464413)
+is SUCCESS; its trust model is distinct from the PR-source runs. These workflow
+counts are not the separate CodeQL code-scanning verdict below.
+
+| Failed Matrix job | Exact remaining cause on source 15eaaa |
+| --- | --- |
+| [Security & Types](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123164137041) | detect-secrets changed only the existing storage fixture line number and generated timestamp; mypy passed. |
+| [Frontend lint/format](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123165800686) | reset-spec nullable deadline argument and prefer-const binding; no frontend unit-test failure. |
+| [Backend shard 1](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123165736317) | 6486 PASS / 2 FAIL / 115 SKIP; duplicate-title and inactive-user reminder fixtures. The reviewed correction binds each weekly weekday to its actual lesson start and tests noon/midnight; production is unchanged. |
+| [Backend shard 3](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123177863593) | 4870 PASS / 2 FAIL / 104 SKIP; the owned client-IP producer and real bound transport remain unimplemented. |
+| [Alembic](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123165735779) | historical migration/Squawk warnings and the bounded diagnostic remain failing; no active waiver. |
+| [Bundle analysis](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123167177090) | MapLibre exceeds the unchanged general lazy budget; the narrow 286 KiB policy is not active. |
+| [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40787466183/job/123187818865) | derived failure, not an independent source defect. |
+
+Backend shard 0 passed 4696 cases / 87 SKIP; shard 2 passed 5256 / 94 SKIP.
+Backend coverage aggregation, Coverage Policy and Codecov were skipped, not
+accepted. The two probe failures are
+`test_fixed_protocol_yields_a_decodable_bounded_frame_without_secrets` and
+`test_http_transport_uses_and_closes_its_real_bound_local_socket`.
+The separate blocking [CodeQL check](https://github.com/egorribun/university_ecosystem/runs/123164697617)
+also reports one critical-severity alert. Its [current PR annotation](https://github.com/egorribun/university_ecosystem/pull/1343#discussion_r4402201538)
+points to the hard-coded key in the Rust test-only
+`event_chain_hash_case_matches_python_fallback`, introduced in b09532bd.
+This is a synthetic test fixture, not a confirmed production secret; the gate
+remains blocking. Runtime-generated fixture hygiene needs review and fresh
+scanner/test evidence, not a suppression or a relabelled green scan.
+
+The reviewed continuation included with this checkpoint is
+[1f1178aa](https://github.com/egorribun/university_ecosystem/commit/1f1178aa3016f109401c1c0d5810b0fba2431d18)
+(reset-spec fail-closed deadline/cleanup contracts and the hosted baseline
+metadata) followed by
+[7669bc97](https://github.com/egorribun/university_ecosystem/commit/7669bc97f67d7f08349ccc03049e64d64805a535)
+(tests-first bounded probe and MapLibre inventory boundaries, the AUD-447 legacy
+DLQ/replay regression, deterministic reminder fixtures and exact CI selection).
+The existing 210 consumer selectors remain in order; five focused selectors
+are appended, with the same 10-minute job limit and all previous gates intact.
+The static population estimate is 3048 cases, not an executed receipt.
+
+Expected missing-implementation RED for the probe/MapLibre scaffold and expected
+AUD-447 legacy-payload RED must be distinguished from accidental regressions.
+These tests do not activate the 286 KiB exception, Squawk dispositions, a probe
+transport or a deployment. The new branch head requires its own hosted CI;
+none of source 15eaaa's green jobs are inherited.
+
+Remaining ordered work:
+1. Verify this publication's exact SHA, confirm expected semantic RED rather
+   than harness failures, then implement the smallest reviewed fixes. Keep all
+   required final-source checks and continue them to terminal.
+2. Reproduce AUD-447 legacy failure-to-DLQ using a generated marker and retain
+   replayability; correct AUD-454's cache accessor fixture. Do not close either
+   from source-only review. Obtain the finite AUD-445 cache/outbox cohort.
+3. Continue owned probe and MapLibre inventory after their actual RED receipts,
+   preserving network ownership, output bounds, existing limits and budgets.
+4. Prepare the exact finite greenfield Squawk validator and negative tests.
+   Known warning risks remain real; no populated migration execution, gate
+   activation, atomicity rewrite or deploy is authorized by preparation.
+5. Continue the master audit plan against all remaining 131 findings, including
+   infrastructure proof requirements; do not infer deployment acceptance from
+   unit tests or owned fixtures.
+
+The [exhaustive post-pause review](../../audits/AUDIT-2026-10-post-pause-review.md)
+is published; earlier sections describing it as pending are historical.
+Work remains strictly on `egorribun` through GitHub plugin, with one writer,
+independent read-only reviews, fresh leases and no force push/merge/deploy.
+
+## Historical post-pause source-bound acceptance — 2026-10-28 UTC
+
+**Current accepted lower bound: 377/512 (73.6%); 135 findings remain unaccepted.**
+The [26 scoped acceptances](../../audits/AUDIT-2026-10.md#post-pause-named-evidence-acceptance-2026-10-28)
+preserve all 351 previous IDs. Two independent evidence/criterion reviews checked
+the exact original findings and named or complete-file runtime receipts.
+This is not all-green CI, comprehensive coverage, production acceptance or release
+readiness. The earlier dated sections retain their historical counts.
+
+The published verification source for this reconciliation is
+[2b9e820248936f61d0a6798b2b0479d37048702a](https://github.com/egorribun/university_ecosystem/commit/2b9e820248936f61d0a6798b2b0479d37048702a);
+tested merge `cee407aedc79cb8dfd69f68d53fc986e0b53bf79` has the same tree
+`d0003151a84717631919a8a804b55c0c42255ee7`. Most accepted receipts are historical
+b095/1c9 case-level evidence, AUD-323 is actual 9fe/3714 PostgreSQL execution,
+and AUD-333 has a fresh complete-file reconnect receipt on 2b9. The appendix
+records all limitations; it does not transfer a full green status between SHAs.
+
+Verified results already available on 2b9:
+- [OpenAPI regeneration/diff](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/122999652173),
+  [Security & Types](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/122997537534)
+  and [read-only pre-commit](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/122997537298): SUCCESS.
+- [Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/122997537336):
+  SUCCESS, populations 2810 + 633 + 41 PASS. The earlier PowerShell timeout did
+  not recur; this is not evidence that a causal PowerShell fix was made.
+- [Frontend shard 1](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/123000064895):
+  2915/2915 PASS, including the formerly failing repeated-collision refresh case.
+  [Shard 2](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/123000064898):
+  2500/2500 PASS, including all seven new quiet-period/ownership/cleanup cases
+  and the 109-case controller file. This does not close all of AUD-155.
+- [Frontend shard 4](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/123000064880):
+  2491/2491 PASS. The formerly failing article-lifetime case is now PASS, and the
+  complete comments-pagination file has six passing cases including the A/B
+  cache assertions. All four frontend unit shards total 10,360 PASS;
+  [merged differential coverage](https://github.com/egorribun/university_ecosystem/actions/runs/40739668483/job/123007333876)
+  is FAILURE at 97% against the unchanged 100% requirement. Missing patch lines
+  are in EventsFeature, useChatWebSocket and messengerProjection; NewsDetail's
+  patch coverage is 100%. This is the full PR diff versus main, not just the
+  latest twelve-file batch.
+- [Pact](https://github.com/egorribun/university_ecosystem/actions/runs/40739668195):
+  all three jobs SUCCESS; actual consumer/provider replay, not a live broker proof.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40739668573/job/122997532560):
+  terminal FAILURE, 46 PASS / 2 FAIL / 2 SKIP. Both failures are desktop/mobile
+  password-reset tests expecting an ID from the intentionally generic
+  registration response. NATS outage is skipped; no Core-wide GREEN claim.
+
+At the 18:22 UTC preparation checkpoint, the reviewed follow-up
+[1310be3c084a08c1e6731d76d9f46f0f73873f9e](https://github.com/egorribun/university_ecosystem/commit/1310be3c084a08c1e6731d76d9f46f0f73873f9e)
+was prepared but not yet published to `egorribun` (candidate tree
+`27fc552db0de4731c8b16ed0910e2bd6d35ce2fa`). It contains four
+fixture-consistency repairs, canonical AST route-ledger
+synchronization, removal of its temporary capture step, a constant unsubscribe
+binding and 39 tests-first registered-AUD tracking cases. The checker change and
+PG tracking comments are not activated by those tests. This follow-up and the
+new documentation commit require their own exact-SHA CI; no GREEN is inherited.
+
+Remaining priorities are real upload-path verification, the strict
+tracking contract, Core's privacy-safe owned-account identity receipt, the
+remaining frontend source-contract/format/dependency-consistency failures,
+filesystem security identity drift, MapLibre and migration/Squawk work.
+MapLibre's approved narrow policy and the temporary greenfield Squawk proposal
+are not active merely because they were discussed. Fresh Squawk JSON now exists
+in the 2b9 Alembic logs; it still reports real warnings and does not prove later
+migrations passed a loop that stopped on the earlier failure.
+
+The exhaustive 256-file post-pause review report remains a distinct unpublished
+deliverable. This section does not reuse its pending upload or missing-link
+STATUS candidate. No gates, scanner inventories or production access boundaries
+are weakened. Continue only on `egorribun`, preserving intervening owner commits.
+
+## Autonomous audit resumption — 2026-10-28 UTC
+
+По новому поручению владельца автономная работа возобновлена; полный октябрьский
+аудит остаётся первым приоритетом [мастер-плана](MVP_MASTER_PLAN.md). Пауза и
+подготовленные кандидаты в следующем разделе описывают историческое состояние
+до этого поручения. **Принятая нижняя граница по-прежнему 351/512 (68,6%);
+161 ID остаётся непринятым.** Новая работа сама по себе не добавляет приёмок.
+
+Опубликованная база при возобновлении — документационный
+[3fa77d7f31668e9fd8d740e91e775f74c5352adf](https://github.com/egorribun/university_ecosystem/commit/3fa77d7f31668e9fd8d740e91e775f74c5352adf),
+[PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343),
+`egorribun` → `main`. Сохраняется один checkout; root отвечает за интеграцию,
+агенты — только GPT-6.1 Terra Max, до 64 одновременно. Незавершённые изменения
+рабочего дерева не являются доказательствами опубликованного SHA.
+
+После возобновления опубликован диагностический
+[0b4bab061774a67c3cba2e053c6083331aa46282](https://github.com/egorribun/university_ecosystem/commit/0b4bab061774a67c3cba2e053c6083331aa46282):
+два workflow и два теста добавляют ограниченный Trivy classifier и захват
+Squawk JSON, сохраняя существующие blocking gates. Исключение Squawk и новый
+лимит MapLibre не активированы. Применимые локальные commit hooks прошли на
+`fd128b9c43ab9b859b8b2e89eb092fc8c9d032da`; его tree идентичен опубликованному
+`0b4bab06`, остальные hooks без подходящих файлов были SKIPPED.
+
+Hosted проверки нового SHA ещё выполнялись на 09:53 UTC. Уже завершившийся
+[Source/Test Inventory](https://github.com/egorribun/university_ecosystem/actions/runs/40666989844/job/122743861588)
+имеет **FAILURE**: inventory отклонил тестовый `time.sleep` без явной границы
+или retry pragma в `tests/test_trivy_identity_before_diagnostic.py:229`.
+Это новая открытая ошибка, а не полный итог CI; доказательства для 3fa77d7f
+ниже не переносятся на 0b4bab06.
+
+Срез GitHub на 09:10 UTC для 3fa77d7f: **141 уникальная проверка, 110 SUCCESS,
+25 SKIPPED, одна NEUTRAL, пять FAILURE, активных нет**. Неуспешны
+[Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40651347414/job/122691893858),
+[filesystem security](https://github.com/egorribun/university_ecosystem/actions/runs/40651347556/job/122692354574),
+[Bundle Analysis](https://github.com/egorribun/university_ecosystem/actions/runs/40651347556/job/122694229784),
+[Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40651347556/job/122694630028)
+и зависимый [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40651347556/job/122714475410).
+Coverage & Quality и Trusted Codecov пропущены. Owned Core завершил 47 browser
+PASS, один mobile password-reset FAIL и два SKIP; NATS outage был пропущен,
+остановка owned stand прошла. Это не all-green и не release acceptance.
+
+Текущие направления используют рамки ниже: hosted evidence Trivy classifier,
+регистрационный тест и metadata-only MapLibre producer, hosted захват Squawk JSON,
+работа по AUD-155/AUD-307 и доказательства AUD-162/AUD-164/AUD-167.
+Ни исключение Squawk, ни новый лимит MapLibre этим не активируются. Любой новый
+source SHA требует собственных проверок и подтверждений.
+
+## Historical controlled handoff and pause — 2026-10-28 UTC
+
+**At this handoff, work was paused at the owner's request. Accepted lower bound: 351/512 (68.6%);
+161 IDs remain unaccepted. This is not a release-ready or all-green checkpoint.**
+Older dated sections below retain their historical counts and evidence scope.
+
+### Start here: source identity and accepted scope
+
+- Verified implementation checkpoint for this audit continuation:
+  [9fe5e34c4cf546e790fb2be1e511e96394a41819](https://github.com/egorribun/university_ecosystem/commit/9fe5e34c4cf546e790fb2be1e511e96394a41819).
+  Its tested PR merge is `3714b2da53687b95df9dd61af95c3f6a3521951c`;
+  both have tree `362fceebc64c6efe101dfcbe84b30a1ea819b969`.
+- The commit introducing this handoff is **documentation-only**, after that
+  implementation source, while preserving any subsequent owner commits. Read
+  its actual SHA from the branch/commit history;
+  evidence for 9fe5e34c is not automatically evidence for the newer docs SHA.
+  Before any further write, read the current `egorribun` head and preserve any
+  subsequent owner changes; do not publish a stale prepared tree.
+- [Four scoped acceptances](../../audits/AUDIT-2026-10.md#scoped-aud-356-aud-364-aud-376-and-aud-394-acceptance-2026-10-28)
+  preserve all 347 prior IDs and add **AUD-356/364/376/394 only**. AUD-356/364
+  have named fec45dcf backend receipts; AUD-376/394 have c2ac4938 semantic
+  RED-to-GREEN and complete frontend-file receipts. Mocked database, permission
+  service, browser push/storage boundaries and global-coverage limits are
+  recorded there. Do not substitute these finding-level decisions for release
+  acceptance.
+
+### Exact implementation-source verification
+
+[Matrix run 40643936500](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500)
+is terminal **FAILURE** at 07:29:13 UTC: **91 jobs — 71 SUCCESS, 16 SKIPPED,
+four FAILURE, zero active**. The all-pages source-head snapshot contains
+**141 unique checks — 111 SUCCESS, 25 SKIPPED, one NEUTRAL, four FAILURE,
+zero active**; all 23 workflows are terminal (20 successful, two skipped,
+one failed). The fourth failed Matrix job is the fail-closed
+[CI Success aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122688724512),
+not another independent defect.
+
+All four backend shards and both backend aggregates passed. Main pytest
+populations were 4,966 PASS / 108 SKIP, 4,377 / 68, 6,759 / 85 and 4,351 / 89;
+the separate focused populations are not added as unique-test totals.
+**Coverage & Quality and Trusted Codecov were SKIPPED**, not accepted as GREEN.
+No global all-four-metric compliance is inferred from unit/aggregate success.
+
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40643936368/job/122668252375)
+  **SUCCESS**, completed 06:48:25 UTC: 290 Node contracts, one runtime adapter
+  test, 48 real desktop/mobile browser passes and two existing auth-project
+  skips; no flakes. Both password-reset cases reached replay rejection,
+  Caddy redaction was verified for both projects, NATS outage and owned stop
+  succeeded. Receipt artifact `12798125542`, 465 bytes, SHA-256
+  `84866fb55aecb2df8f312313cde6c5d35ef5d9d0e81a9b6221c7b1813d1d8ce6`
+  matches the producing log; artifact ZIP contents were not independently
+  decoded. This proves this exact run, not that hydration explains every prior
+  intermittent failure.
+- [Contract job](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122668996585)
+  **SUCCESS**: consumer 2,783 PASS, security dispositions 633 PASS, named audit
+  cohort 41 PASS. All nine prior NATS selector-population failures individually
+  passed. Catalog, pre-commit and baseline checks passed; baseline remains
+  exactly 319 identities.
+- [Go vulnerability scan](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669120636)
+  **SUCCESS**, eight module analyses without code-affecting vulnerabilities.
+  Five analyses also reported two or three vulnerabilities in required modules,
+  zero in imported packages and no apparent calls; this is not proof that the
+  affected modules are absent.
+  [SPIFFE race/lint job](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122672388816)
+  passes both 4096-bit acceptance and 4097-bit rejection, with 100% statement
+  coverage for that suite. The unchanged 4097-bit test failed on c2ac4938.
+  [Security and Types](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122668996876)
+  passes detect-secrets and mypy.
+- All six rebuilt image scans passed: [backend](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479538),
+  [frontend](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479537),
+  [gateway](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479603),
+  [ws-hub](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479507),
+  [file-processor](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479514)
+  and [Caddy](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479521).
+  Their existing `ignore-unfixed: true` setting is unchanged. A clean scan is
+  not proof that an unfixed module is absent or unreachable.
+
+### Remaining blocking boundaries: continue in this order
+
+1. **Filesystem security evidence.**
+   [Container Security Scan](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669120675)
+   remains failed. Its bounded metadata diagnostic now proves the failing
+   guard is `stage=identity-before; identity-check=tracked-clean`; checkout
+   and source-parent guards passed. It has not read/projected SARIF, so the
+   three HIGH alerts still lack verified classes/advisory identities. Both
+   vulnerability and secret scanning are enabled; do not label all three as
+   package vulnerabilities or conflate them with go-jose.
+   Helm dependency generation precedes this scan; a regenerated tracked Redis
+   archive is a hypothesis, not a proven file-level cause.
+   The prepared next diagnostic is only a bounded NUL-delimited diff classifier:
+   fixed `knownRedisTgzModified`, `unknownPathCount`, `changedCount` fields,
+   no paths/content, original rejection and exit 1 retained. It is **not
+   published or executed**. Establish the actual delta before designing
+   generated-artifact provenance; do not restore files, move scans, weaken the
+   clean guard silently or publish raw secret findings.
+2. **MapLibre bundle budget.**
+   [Bundle Analysis](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122672034745)
+   remains failed at the existing 280-KiB lazy-chunk budget; MapLibre 6.15 was
+   measured at about 285.83 KiB. Two finite minifier alternatives still exceeded
+   280; no optimization claim is made.
+   The owner approved an explicit **286-KiB limit only for one proven
+   noninitial MapLibre vendor chunk**, all other lazy chunks remaining 280,
+   with strict version/chunk identity, ADR and negative tests. **Not implemented.**
+   First publish/review the tests-first real-config registration probe, then
+   a metadata-only client build producer; inspect actual module composition,
+   entry reachability, exact emitted bytes, package/lock identity and effective
+   build profile. Only then implement the narrow consumer/ADR. No dependency
+   update, worker/SSR behavior change or generic budget increase is approved.
+3. **Historical148 Squawk.**
+   [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40643936500/job/122669479430)
+   remains failed. The verified inventory is 37 occurrences across ordinary
+   13 and expanded 24 reports, 24 rule/statement groups and 20 SQL statements
+   in revision `148642dd1207`. These are real lock/rewrite/drop risks.
+   On this exact 9fe run, 113 focused migration tests and 46 tenant-context
+   tests passed; those passing subsets do not convert raw lint failures into
+   acceptance or prove later changed revisions were linted after the first failure.
+   The owner approved preparation for **new empty greenfield MVP databases
+   only**, ending `2026-11-13T00:00:00Z`; no populated execution, deployment,
+   migration rewrite or atomicity change. No matching exception is active.
+   Next capture actual checksum-verified Squawk 2.67.0 JSON from the same two
+   physical SQL files **after both unchanged raw gates**, preserving raw
+   stdout/stderr/exits and all other migration checks. The two-file collector
+   and tests are unexecuted textual drafts, not accepted source.
+   Reconcile actual messages/help/UTF-8 byte spans before implementing a finite
+   matcher; reject new, changed, missing or reordered observations, errors and
+   expiry. Activation needs its exact reviewed diff and genuine producer/run
+   provenance, not a supplied “equivalent” boolean or a test-controlled clock.
+
+The [original historical148 proposal](2026-10-27-historical-148-squawk-proposal.md)
+is retained as dated evidence; its original broader maintenance/populated
+discussion is **not** authorized by the later greenfield-only approval.
+Fresh hosted JSON is still missing. The ordinary SQL capture is 17,031 bytes,
+SHA-256 `7e27d9cfec48afbe26d8efeb03cf27ff9140982507af0652960e512a34f39305`;
+expanded SQL is 18,373 bytes,
+`7b3143428c7811d6f919a2d7b340b572e6e17ce340e68bdf4d682cea7086d82c`.
+Both can be recovered from
+[the retained raw capture job](https://github.com/egorribun/university_ecosystem/actions/runs/40635073461/job/122641602887).
+The Alembic producer and global workflow configuration are byte-identical from
+fec45dcf through c2ac4938/9fe5e34c; that preserves historical source equivalence,
+not a new hosted receipt or permission to update whole-workflow pins blindly.
+
+### Security change and residual question
+
+The owner-approved freeze exception updated **only go-jose/v4 4.1.5 to 4.1.6**
+in four module graphs/sums and the existing Caddy/probe overrides, with matching
+contracts. [The upstream fix](https://github.com/go-jose/go-jose/commit/a0111f82742fa92bceec9ede40845e73319e6230)
+addresses CVE-2026-116587 / GHSA-mgcc-cww5-fp2q; the October 14 release met the
+seven-day maturity requirement. Exact checksums came from the sumdb-verified
+[hosted capture](https://github.com/egorribun/university_ecosystem/actions/runs/40641292995/job/122660222891),
+not guessed hashes. No unrelated dependency or scanner exclusion changed.
+
+Caddy's build also downloaded affected go-jose/v3 3.0.5; download is not proof
+of final linked-binary presence or remote reachability. Existing reports do not
+provide a final binary module inventory. Before claiming whole-Caddy remediation,
+inspect fixed final Caddy/probe binaries without starting services, following
+replacement versions rather than only original module versions. No v3 upgrade,
+new waiver or new dependency freeze exception has been approved.
+
+### Prepared but unpublished work: do not mistake drafts for fixes
+
+After the blocking evidence paths above, resume the master plan's remaining P1
+operational proofs before broadening lower-priority UI work. The items below
+are handoff constraints, not an instruction to activate every draft at once.
+
+- **MapLibre:** metadata-only helper, Vite registration and focused unit-test
+  designs were reviewed for bounded output/privacy. No producer source,
+  implementation commit, ADR or 286-KiB consumer is in this branch.
+  The registration-test-only blob
+  `266d561f93ea89e30f4907453e9157058947098d` was uploaded as a candidate but is
+  not in any branch commit; it has not run. If recovered as a candidate,
+  rebase/review it against the current
+  `frontend/scripts/frontend-quality-contract.test.mjs`, whose implementation
+  checkpoint blob is `8e7c6dde3f5de3412298286a407549d254bb80dd`.
+  Ordinary and LHCI builds must not share a falsely labelled production proof.
+- **AUD-155 remains OPEN:** source review, not newly executed regression proof,
+  identifies the following risks. Clear/delete-chat/delete-message/reaction still
+  restore whole snapshots. Accepted WS deletion can leave an optimistic
+  tombstone byte-identical; removed rows cannot receive WS updates; mixed
+  failed edit/delete can resurrect failed text; reaction rollback must preserve
+  peer deltas. A controller-only equality patch is insufficient.
+  Preferred design under review retains canonical transport records and uses
+  messenger-owned projections shared by controller, MessengerProvider and
+  MessengerShellProvider. Success retirement, query/session incarnation,
+  MutationCache GC, clear cutoffs and reaction reconciliation are unresolved.
+  Ten drafted failure cases are unexecuted and need public-UI preconditions
+  rather than forced internal optimistic-cache shapes. Add real UUID-valid WS
+  acceptance and both providers' unread consistency. No production patch or
+  AUD-155 closure is ready.
+  Checkpoint source paths are `frontend/src/hooks/features/useMessengerController.ts`,
+  `frontend/src/hooks/useChatWebSocket.ts`, `frontend/src/app/sessionMutationCache.ts`,
+  `frontend/src/contexts/MessengerContext.tsx` and
+  `frontend/src/contexts/MessengerShellProvider.tsx`. Controller blob is `645c196823350b11334648f6ae06763f1f53cedb`,
+  WS hook `d3397e5b5c7bbab8d37c4b8c0c4705cb427c9ee4`, session fence
+  `8cbb67846c676ac3d13d540a988814db00c49e6a`, providers
+  `340b8009e089a8a37259273f878c2f7aa68e2a9f` /
+  `1bbaa2d850a16251d05cb6be5bb2d5ba7ff63f69`, existing 109-case test
+  `466bf073e4280109716ddf5258cb94c85516c10c`.
+- **AUD-307 remains OPEN:** `/og-image.png` is absent. Coordinate four
+  metadata producers in three files: route head and Activity fallback in
+  `__root.tsx`, `SEO.tsx` and `index.html`. A possible existing fallback is
+  `public/icon-512.png` (blob `ee48b370623de8d8de18b1625e7e41b94eae91eb`,
+  33,745 bytes); manifest/generator declare 512-square, but binary dimensions
+  were not independently decoded. Preserve explicit custom-image semantics.
+  This is incomplete read-only design, not a prepared or tested patch.
+- **Other acceptance work stays open:** AUD-162 still needs its own named
+  engine-contract receipt. AUD-164/AUD-167 need actual owned-peer,
+  two-client/spoof proof; source designs are not runtime evidence.
+  AUD-169 needs real enforcing-CNI reachability; no privileged cluster,
+  production credentials or deployment is authorized by this checkpoint.
+  A separate clean greenfield bootstrap is only feasibility analysis:
+  `create_all + stamp` omits retained/migration-owned schema objects.
+  Keep upgrade history; an ADR, exact catalog/behavior equivalence and a future
+  upgrade bridge are prerequisites, not completed work.
+
+### Cleanup and safe resumption
+
+Completed temporary minifier/formatter diagnostics and the go-jose checksum
+capture have been removed. The bounded Trivy SARIF diagnostic remains in
+`.github/workflows/reusable-security-audit.yml`; remove or consolidate it only
+after the real failure is understood and a reviewed durable evidence path
+exists. Retain ordinary/expanded migration proof until the reviewed consumer
+replaces that purpose; do not remove raw failures as “cleanup”.
+
+For autonomous continuation use GitHub plugin access only, the existing
+`egorribun` branch, fresh-head comparison and non-force CAS updates. Do not
+merge, deploy, force-push, overwrite owner changes or weaken gates. Preserve
+policy 347 finite dispositions, baseline 319 identities, Gitleaks 26,
+78 required context/app pairs, blocking CodeQL, hooks and coverage floors.
+Version freeze remains in force except the exact approved scopes above.
+
+At this handoff the owner requested a pause after documentation readback and
+relevant documentation checks, with no autonomous writes, new tasks or background
+monitoring scheduled until a new owner instruction. That instruction has since
+resumed work as recorded above. A later source SHA always requires its own
+validation; this handoff is not authorization to treat historical green jobs as
+current. The documentation push could start normal GitHub Actions workflows;
+those could continue under their existing cleanup lifecycle after the handoff,
+without an inherited success claim.
+
+## Scoped token, Vite and release-cache acceptance — source-bound checkpoint, 2026-10-28 UTC
+
+Accepted lower bound is **347/512 (67.8%)**; **165 IDs remain unaccepted**.
+The [dated audit decision](../../audits/AUDIT-2026-10.md#scoped-aud-072-aud-377-and-aud-472-acceptance-2026-10-28)
+preserves all 344 prior IDs and adds only AUD-072, AUD-377 and AUD-472. Historical
+checkpoints below retain their original counts and evidence scope.
+
+- **AUD-072:** all 45 relevant numeric-alpha token names are mapped to the
+  expanded real CSSOM probes, including applicable light/dark variants and
+  actual dashboard scope. Source 456e16d7 and tested merge 1ba01343 share tree
+  bf05c29e. Its [owned Core result](https://github.com/egorribun/university_ecosystem/actions/runs/40614488933/job/122573671018)
+  is 46 browser PASS / two reset failures / two existing auth project skips.
+  Complete selected-population and failure-location reconciliation establishes
+  both semantic-token executions passed; individual computed values and ZIP
+  contents are not claimed inspected. The remaining 27 direct numeric-alpha
+  sites were inspected exhaustively as already-valid percentage forms, not
+  individually browser-tested. This closes the original numeric/percentage
+  defect, not every visual/accessibility property or the failed full Core run.
+- **AUD-377:** actual config plus owned loopback HTTP tests showed three
+  semantic failures on 4a3e895b, then all four target cases passed on dd175947.
+  [GREEN job 122607600583](https://github.com/egorribun/university_ecosystem/actions/runs/40624560986/job/122607600583)
+  reports 678 Node PASS / zero failures / one existing skip. Only three blanket
+  Vite overrides were removed; explicit trusted-LAN CLI use, proxy/SW headers
+  and production/container bindings remain unchanged. The fixture never
+  invokes Vite's wildcard port allocator or opens a LAN listener.
+- **AUD-472:** dd175947 established two real persistence failures and three
+  passing controls. [Source 910bc33c](https://github.com/egorribun/university_ecosystem/commit/910bc33c8967dade32c6d0ae5cd6cff1c62739c4)
+  prefers the canonical producer's existing VITE_APP_RELEASE over the legacy
+  fallback; ownership/session guards and seven-day retention are unchanged.
+  [Exact-source shard 1](https://github.com/egorribun/university_ecosystem/actions/runs/40628946791/job/122621734418)
+  passes the entire 54-test persistence file, including the unchanged five-case
+  cohort. Same-tree tested merge is 5e950d0f, tree 502dd0d5. This is application
+  IndexedDB persister/TanStack save-restore proof under fake-indexeddb in jsdom,
+  not native-browser IndexedDB, a deployed-browser upgrade or a guarantee of
+  unique identifiers in every ad-hoc build. Existing no-identifier
+  development fallback remains available.
+
+The 910bc33c Matrix is terminal FAILURE at 04:04:30 UTC (60 jobs: 17 successful,
+11 failed, 32 skipped, zero active). Its Core stops before Docker on the strict registration-diagnostic
+schema RED. The separately reviewed source correction adds six fixed booleans only,
+without message/input/credential capture. Actual 4a3e evidence is 289 Node contracts
+(273 PASS / 16 schema assertion failures) plus the separate consumer cohort
+(2768 PASS / three old-parser failures); the 12 new parameterized Python cases
+were not selected by that consumer command and are not claimed executed.
+
+The owner approved publication of these three audit documents at 04:36 UTC
+and both previously blocked source packets at 04:37 UTC: the 11-file frontend/CI
+fix packet and two registration-observer/parser files. The earlier refusals were
+not bypassed; the explicit grants permit the reviewed continuation, not a claim
+that its new source has passed CI. The remaining named blockers include
+AUD-155/AUD-376 regressions, unchanged Ruff/baseline metadata drift, the MapLibre
+285.83/280 KiB bundle boundary, and a Trivy filesystem security scan failure.
+The latter reports three HIGH alerts but their classes/advisory identities are not yet
+available from the permitted read surfaces; no version update or waiver is
+inferred. The configuration/Helm scans passed.
+
+Ordinary migration proof capture and the finite minifier diagnostic remain
+subject to their own publication/validation. Historical148 Squawk dispositions
+are not approved or active. P1 client-IP/two-client/spoof and enforcing-CNI
+acceptance remain open; offline producer design is not runtime acceptance.
+Policy 347, baseline 319 identities, Gitleaks 26, all 78 required contexts,
+blocking CodeQL, hooks, budgets and coverage floors are unchanged. No merge,
+deployment or release-readiness claim is made.
+
+## Scoped RED/GREEN checkpoint — source 29711392, 2026-10-28 UTC
+
+Accepted lower bound is **344/512 (67.2%)**; **168 IDs remain unaccepted**.
+The [scoped audit decision](../../audits/AUDIT-2026-10.md#scoped-aud-352-and-aud-372-hosted-acceptance-on-source-29711392-2026-10-28)
+preserves all 342 prior IDs and adds only AUD-352 (online authentication after an
+owned generation-storage write failure) and AUD-372 (fail-closed SPIFFE client
+allowlists). These are hook/unit and generated-SVID verifier receipts, not
+browser storage-failure injection or a live SPIRE deployment. Earlier dated receipts
+below remain historical rather than validation of newer source or lock files.
+
+[Source 29711392](https://github.com/egorribun/university_ecosystem/commit/29711392a2b2e65afa984be6b749ba477bced56d)
+and tested PR merge `9618c8b1dfdf8df533ebf35c1c8684fa57cb66b3` share tree
+`e374338e3d0d53bdcabc6df61466d9539fd8786d`.
+[Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/40606958920/job/122548737132)
+completed successfully: 280 source contracts, one runtime adapter test and
+**48 browser passes / two existing skips**, followed by successful Caddy
+redaction, NATS outage and owned cleanup. Receipt metadata and generating logs
+were inspected; the artifact ZIP was not independently decoded.
+
+- **Observed browser RED to scoped GREEN:** the preceding
+  [c5 Core run](https://github.com/egorribun/university_ecosystem/actions/runs/40603644629/job/122539098033)
+  had 44 passes and four failures: CSS computed values and the missing owned DLQ
+  pagination precondition, each in desktop/mobile Chromium. Source 297 fixes six
+  malformed color-mix declarations and seeds 21 inert notification-queue rows.
+  The same browser cases then passed, including actual DLQ Next/Previous
+  interaction. This does not establish all AUD-072 tokens, production-worker
+  delivery, or all visual/accessibility properties.
+- **Frontend and dependency validation:** all four unit shards and
+  [their aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/40606958872/job/122553706095)
+  passed. The merged diagnostic reported 16,503 branch arms, zero uncovered or
+  unlocated arms, and 1,190 eligible differential lines with zero missing.
+  Canonical all-metrics artifact contents were not separately decoded.
+  Frontend lint/format, compiler preflight, inventory, detect-secrets, Python,
+  Node, Go and container security jobs passed. The externally updated ESLint
+  archive pins were synchronized without changing dependency files or gates.
+- **Database and current blockers:** real PostgreSQL integration passed.
+  [Alembic](https://github.com/egorribun/university_ecosystem/actions/runs/40606958872/job/122550726478)
+  reported 13 ordinary Squawk warnings and the new capture contracts produced
+  **21 failures / 90 passes** because the ordinary capture body did not yet exist.
+  Expanded scanning did not execute in this run; the earlier 37-warning
+  inventory must not be presented as a newly executed 297 result.
+  [Bundle Analysis](https://github.com/egorribun/university_ecosystem/actions/runs/40606958872/job/122550987041)
+  remains blocking at **285.83 KiB versus 280 KiB** after the preserved external
+  MapLibre 6.15 update. Backend shard 0 failed 18 existing redaction-contract
+  parameter cases because a positional fixture now selected the admin source
+  instead of password-reset source; the assertions themselves remain valid.
+  Shard 2 reported the same 18 cases plus one stale finite smoke-selection tuple:
+  **19 failures / 6,540 passes / 104 skips**. Shard 1 passed 4,616 tests with
+  47 skips. Shard 3 finished with the same 21 ordinary-capture failures,
+  4,482 passes and 60 skips. The Matrix run completed FAILURE at 01:10 UTC:
+  91 jobs, 67 successful, 18 skipped and six failed (including derived CI Success).
+  No job remained active in the terminal snapshot.
+
+The reviewed continuation repairs that fixture by explicit filename and updates
+only the two missing entries in the exact smoke-selection expectation. It implements
+bounded source-bound ordinary SQL capture, and adds two parent-symlink rejection
+controls. Raw Squawk commands, warning dispositions, historical migration bytes
+and transaction boundaries are unchanged. Generated one-time CI signing keys
+are masked before export in the existing CI and manual-deploy workflows;
+entropy, guards and permissions are preserved. Editing the workflow does not
+dispatch a deployment.
+
+The same packet adds tests first for **AUD-155 edit-only optimistic rollback**
+(overlap, serialization, authoritative writes, query incarnation and missing
+targets) and **AUD-376 cold/orphan conditional-cache behavior**. Their semantic
+RED is expected, not yet observed; no corresponding production fix is included.
+AUD-155 clear/delete/reaction behavior remains outside that narrow packet.
+Additional existing browser cases now contain finite references for all
+45 alpha-dependent custom-property names, including dark-only and real
+Dashboard scopes; source review is not browser acceptance. A temporary bounded
+MapLibre retained-export size probe measures the installed pinned bundle without
+changing canonical output or its budget. No downgrade or budget bypass is used.
+
+Every changed source needs its own exact-SHA Actions result; none of the 297
+passes is inherited by this continuation. AUD-164/AUD-167 trusted-peer,
+two-client and spoof checks and AUD-169 actual CNI reachability remain external
+operational gaps. The historical148 Squawk proposal remains unapproved.
+Policy 347, baseline 319, Gitleaks 26, all 78 required contexts/apps, blocking
+CodeQL, hooks, deadlines and coverage floors are unchanged. No full-CI,
+all-metrics, merge, deployment or release-readiness claim is made.
+
+## Five scoped hosted closures — source 40bc1fbc, 2026-10-27 UTC
+
+Accepted lower bound: **342/512 (66.8%)**; **170 IDs remain unaccepted**.
+This preserves all 337 prior IDs and adds only **AUD-051, AUD-156, AUD-184,
+AUD-230 and AUD-464**. The [dated audit decision](../../audits/AUDIT-2026-10.md#scoped-hosted-acceptance-on-source-40bc1fbc-2026-10-27)
+records original finding scopes, exact Git blobs, job links and evidence limits.
+
+- **051:** both named chat/message complete-key pagination regressions passed
+  on real PostgreSQL. These are not comment-persistence tests.
+- **156:** send refusal retains its composer draft; failed edits restore the
+  exact draft only while their edit generation and chat/account remain current.
+  Hook/unit tests passed; overlapping cache rollback (AUD-155) is still open.
+- **184:** exact-source owned desktop/mobile Chromium proved two-tab update
+  consent and preserved the unconsented peer's dirty draft. Core passed
+  42 browser cases / two existing skips, Caddy redaction, NATS and owned cleanup.
+- **230:** removal of the destructive tenant-column loop plus real PostgreSQL
+  proof that all nine columns and populated users assignment survive the tested
+  revision edge. No all-nine populated-data/RLS or production rollback claim.
+- **464:** three stale explicit CVE exclusions were removed rather than renewed;
+  the applicable exact-source container security scan passed.
+
+Source `40bc1fbc59b43fbc3dd2101292a9eadf02fcdb1c` and tested PR merge
+`bc2fcfcbed46e4123b284e9bd7814adf173dc157` share tree
+`d96397a3251b1391c20a997b2d6af63e5563b348`.
+[Core 40597853829](https://github.com/egorribun/university_ecosystem/actions/runs/40597853829)
+finished successfully; [Matrix 40597853823](https://github.com/egorribun/university_ecosystem/actions/runs/40597853823)
+was cancelled by external branch updates. Its completed frontend shards and
+aggregate passed; the merged diagnostic counted 16,503 branch arms with zero
+uncovered/unlocated. Canonical all-metrics artifact contents were not separately
+decoded. Real PostgreSQL and applicable dependency scans passed. Inventory
+rejected the unbound dnspython test file; Alembic kept 37 blocking Squawk
+warnings. Backend unit/coverage aggregates did not finish; CI Success failed.
+
+Five external Dependabot merges (#1349–1353) advanced the branch to
+`04f258ce619ab75c94f27b1c4a1cd733a1aa3a10`, changing Actions/npm/Go dependencies.
+They were preserved during conflict-free reconciliation. No 40bc result is
+inherited as current-head validation under the changed locks.
+
+The next test-first packet uses existing jobs and cases: real `uv.lock` binding
+for the dnspython runtime guards (no orphan waiver), fast consumer-contract
+selection of those guards, bounded ordinary Squawk capture contracts, the
+remaining malformed color-mix probes and actual admin DLQ Next/Previous
+acceptance. Its expected RED is not yet an observed result. The DLQ precondition
+specifically exposes missing owned notification-queue fixtures, not a proved
+pagination implementation defect. Capture implementation and CSS/fixture fixes
+follow semantic RED and review; raw Squawk dispositions remain unapproved.
+
+AUD-155 edit-only reconciliation is being reviewed separately, including
+serializable mutation ownership and query-incarnation boundaries. No speculative
+receipt framework is integrated. AUD-164/AUD-167 trusted-peer/two-client/spoof
+proof and AUD-169 actual CNI reachability remain external operational gaps.
+
+Policy 347, baseline 319, Gitleaks 26, all 78 required contexts/apps, blocking
+CodeQL, hooks, deadlines and coverage floors are unchanged. No full-CI,
+all-metrics, merge, deployment or release-readiness claim is made.
+
+## GitHub-only continuation — 2026-10-27 UTC
+
+Accepted lower bound remains **337/512 (65.8%)**; **175 IDs remain unaccepted**.
+The checkpoints below distinguish behavioral/scanner receipts from registry
+acceptance and full release verification.
+
+- [88509ed](https://github.com/egorribun/university_ecosystem/commit/88509ed)
+  established semantic RED for two verified-profile bootstrap/storage orderings
+  and failed-edit draft recovery. The actual Node dependency audit passed after
+  aligning its runtime with the existing approved compiler archive bootstrap.
+- [b6e8f6c](https://github.com/egorribun/university_ecosystem/commit/b6e8f6c)
+  fixed the ordering race and generation-owned draft recovery, plus strict catalog
+  and test lint/format drift. All four frontend unit shards, their aggregate,
+  frontend lint/format/build, Contract Tests and Inventory passed in
+  [matrix run 40589554046](https://github.com/egorribun/university_ecosystem/actions/runs/40589554046).
+  **This is not all-metrics coverage acceptance:** the aggregate enforces merged
+  provenance and differential line coverage; its diagnostic still identified one
+  uncovered auth branch arm at `useProfileSync.ts:1169`. The next regression
+  exercises an unchanged verified peer snapshot through the public storage path
+  without changing production logic or lowering coverage floors.
+- [b6 Core](https://github.com/egorribun/university_ecosystem/actions/runs/40589553721/job/122490638240)
+  passed 280 source contracts, one deadline-adapter test and 38 browser cases with
+  two existing skips; Caddy redaction, NATS outage and owned cleanup passed.
+  That smoke selection did **not** execute PWA4 or DLQ page-two browser acceptance.
+  Artifact metadata and generating log inputs were inspected; the receipt ZIP
+  contents were not independently decoded through the GitHub-only route.
+- Scoped b6 review found passing send/edit refusal behavior for AUD-156, the named
+  populated-users tenant migration case for AUD-230, and retirement of the three
+  explicit stale CVE suppressions for AUD-464. These are acceptance candidates,
+  not new accepted IDs here. They do not establish AUD-155 rollback safety,
+  populated-data proof for every tenant table, or an all-vulnerability clean scan.
+- The owner approved only dnspython 2.8.0 to 2.9.0 with lock synchronization/tests.
+  [GHSA-45c3-73f7-pv4m](https://github.com/rthalley/dnspython/security/advisories/GHSA-45c3-73f7-pv4m)
+  explains the new Python/SBOM RED. Pinned uv generated a canonical one-package
+  candidate under the unchanged seven-day cooldown in
+  [job 122491247608](https://github.com/egorribun/university_ecosystem/actions/runs/40589554046/job/122491247608),
+  restored the original source lock and kept the audit blocking.
+- [84b6c281](https://github.com/egorribun/university_ecosystem/commit/84b6c281)
+  integrates that exact lock stanza, removes the temporary generator and adds DNS
+  pointer-boundary plus real email-validator/DNS-wire tests without network I/O.
+  The dedicated parser RED on 2.8.0 was source-predicted, not executed; the actual
+  vulnerability scanner RED was observed. Unrelated dependencies, cooldown and
+  advisory policy are unchanged.
+- The same source adds two existing AUD-051 keyset regressions to real PostgreSQL
+  integration and the four existing PWA offline/update browser cases to owned Core
+  smoke, preserving existing selectors and budgets. New exact-source
+  [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/40596755158)
+  and [Core acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/40596754947)
+  remain pending at this checkpoint. No b6 result is inherited as a new-SHA PASS.
+- The [historical148 Squawk proposal](2026-10-27-historical-148-squawk-proposal.md)
+  records 37 occurrences, 24 rule/statement groups and 20 SQL statements. It is
+  **not approved or active**. Complete ordinary capture and the exact future
+  validator/tests/consumer diff remain prerequisites. Historical migration bytes,
+  raw gates and transaction boundaries are unchanged.
+- AUD-164/AUD-167 require actual trusted-peer/two-client/spoof evidence; AUD-169
+  requires actual CNI reachability. Static renders and generic Core smoke do not
+  close those operational gaps. No deployment is authorized by this continuation.
+
+No all-green, full-coverage, merge, deployment or release claim is made.
+Policy 347, baseline 319, Gitleaks 26, all 78 required context/app pairs, blocking
+CodeQL, hooks and coverage floors remain unchanged.
+
+## Scoped AUD-301 local acceptance — published source d8f897f, 2026-10-27
+
+Source-bound accepted lower bound: **337/512 (65.8%)**, with 175 IDs unaccepted. This preserves the prior 336 IDs and adds only AUD-301. The page, event hook and two test blobs are unchanged in current `61458cdd`; the [dated audit entry](../../audits/AUDIT-2026-10.md#scoped-aud-301-local-acceptance-on-published-source-d8f897f-2026-10-27) records exact hashes, nine named JUnit cases and receipt scope.
+
+The evidence is local and finding-scoped. The R11 run included 18 frontend working-tree pins; the four AUD-301 targets were clean and matched published d8f897f. The d8 PR snapshot remains non-green, so this makes no hosted-validation, full-CI, merge or release claim.
+## Scoped AUD-511 and AUD-329 source-bound acceptance — d8f897f, 2026-10-27
+
+Source-bound lower bound: **336/512 (65.6%)**, with 176 IDs unaccepted. This adds only AUD-511 and AUD-329 to the prior 334 accepted IDs. See the [dated audit entry](../../audits/AUDIT-2026-10.md#scoped-aud-511-and-aud-329-acceptance-on-source-d8f897f-2026-10-27) for exact source hashes and scope.
+
+PR #1343 head `d8f897f214d963ad635338ddad48ddf2f388836f` and tested merge `01fe578aaa62def64be3571bc76d92d4f2f27f1b` share tree `89be08502ef7c42370a6810c5595685923f074bd`. The ws-hub Go unit/race job passed 783 tests; its named AUD-511 expiry regression, lint and integration jobs succeeded. The exact AUD-329 quiesce test module passed 19/19 Windows cases with a real ACL fixture and 19/19 exact hosted Linux testcase nodes.
+
+The terminal snapshot `ci-refresh.final-20261027T1026Z.json` (SHA-256 `a1804edf0d51e1bf83576694ab7ccc9fed8f34949d4fe36e7438c3df3401b437`) records 141 checks (110 success, 27 skipped, 3 failed, 1 neutral, 0 active), 22 workflow runs (19 success, 2 skipped, 1 failed), and 137 all-attempt jobs (106 success, 27 skipped, 4 failed). Unauthenticated Routes Smoke attempt 2 succeeded (job 122115979256); the earlier attempt-1 artifact-upload failure (`ETIMEDOUT`) is historical. The three failed checks are Alembic Migrations (37 Squawk issues), Python shard 2 (`ProcessLookupError` reading `/proc/21612/stat` in the Gitleaks helper test), and aggregate CI Success. Full PR CI remains non-green.
+
+No final frontend proof is claimed. The current frontend working snapshot remains unaccepted and is outside published `d8f897f` source evidence. Policy 347, baseline 319, Gitleaks 26, required 78, blocking CodeQL, hooks and coverage floors are unchanged.
+
+
+## Frontend pagination and sent metadata: local verification, 2026-10-27
+
+На рабочем frontend-снимке из 18 изменённых файлов поверх d8f897f прошли 202 целевых теста и полный прогон: **10 038 PASS, 0 failures/errors/skips**, 577 authored files; строки 20 004/20 004, statements 22 407/22 407, branches 16 499/16 499, functions 5 124/5 124. Полные TypeScript, ESLint и Prettier, а также пять Node hydration contracts прошли на тех же исходниках. Frozen manifest SHA-256: e2e36d4b1babcb6caea278f5d67044ec8f744da7da3f620271cfb339e8a83981; merge-result.json: 9754e51c602931116040504615b94cbc6d269c0ccb4eacd5b637cd3593832410. Четыре исходных shard-отчёта сохранены; глобальный floor 100% не менялся.
+
+Регрессия карты проверена возвратом прежнего вызова: без cancelRefetch: false получились два запроса одного cursor и ровно один упавший тест из 202; после восстановления исправления все 202 прошли. Штатные отрицательные offline/storage-сценарии проверены по точным логам и assertions. Единственный неатрибутированный jsdom navigation diagnostic совпадает с прежним R8; подавлений не добавлено и отсутствие любых diagnostics не заявляется. Это локальное frontend-доказательство, без приёмки новых audit ID, hosted validation, живого браузерного контраста или release readiness. Подробности — в [технической записи аудита](../../audits/AUDIT-2026-10.md#frontend-pagination-and-sent-metadata-local-verification-2026-10-27).
+
+
+## Chat receipt coverage: local diagnostic on b8c — 2026-10-27
+
+Принятая граница остаётся **334/512 (65,2%)**; 178 ID не приняты. Полный обычный pytest-модуль [`tests/test_chat_command_receipt_recovery.py`](../../../tests/test_chat_command_receipt_recovery.py) на локальной базе `b8c37c039e0c59ba3c2da25d6dfae2dfe2444478` прошёл **4 PASS, 0 FAIL/ERROR/SKIP**, stderr пустой. Тестовые bytes: raw SHA-256 `b562d8925f165d3ffce52eeedd260d56e3deca71ac3b1b610dc4790a891d26fa`; production source [`app/services/chat/command_service.py`](../../../app/services/chat/command_service.py) не менялся и остаётся на Git blob `003d35aa8849c6a7ab8e0a8ab64fe2b6240b34fe`. Подробная граница — в [технической записи](../../audits/AUDIT-2026-10.md#chat-receipt-coverage-diagnostic-on-base-b8c-not-accepted-2026-10-27).
+
+Диагностическая сверка пяти ранее снятых hosted raw coverage DB с локальным прогоном уменьшила missing count с 1 537 до ожидаемого legacy residual 1 536. Все 131 per-file report dictionaries остались идентичны; в `command_service.py` покрыты 559/559 строк и statements и 206/206 branches, пропусков вне legacy residual нет. При этом глобальный coverage JSON завершился с кодом 2 из-за сохранённого legacy residual при неизменном 100% floor. Это смешанная диагностика, не hosted validation или global quality-gate PASS для `b8c`. Проверка нового test postimage на published source ещё ожидается; три owner decisions остаются pending, ни одно не применено.
+
+## Техническая контрольная точка source 6760 — 2026-10-27
+
+Принятая нижняя граница остаётся **334/512 (65,2%)**; 178 ID не приняты. AUD-511 не добавляет новый ID. Тест в [Go-файле ws-hub](../../../services/ws-hub/pkg/hub/aud511_512_revocation_marker_test.go) прошёл в обычном и race-режиме: TestAUD511NoSocketRevocationMarkerExpiresWithoutUserReturn. Точные raw SHA-256 и Git blob приведены в [технической записи AUD-511](../../audits/AUDIT-2026-10.md#aud-511-local-go-verification-on-source-6760-not-accepted-2026-10-27).
+
+Полный ws-hub race run сообщил **783 PASS, 0 FAIL/SKIP в 4 packages**. Фильтр CI-generated/mockfilter охватил 3 093 statements и 2 011 blocks, 0 uncovered, 100%; это ограниченный профиль, а не all-repository coverage. golangci-lint 2.14.0 сообщил 0 issues. Прежняя локальная frontend-проверка остаётся 10 023 PASS на 577 authored files со 100% по четырём coverage metrics; full TypeScript, ESLint, Prettier и 79 quality-markdown checks прошли. Финальный scan дал 576 findings в 222 files, 0 unmatched.
+
+Для AUD-329 полный обычный Windows-модуль [`tests/test_live_stand_quiesce.py`](../../../tests/test_live_stand_quiesce.py) завершился **19 PASS, 0 FAIL/ERROR/SKIP** с реальной ACL fixture; Ruff check/format и `git diff --check` прошли. Проверенные bytes тестового файла: raw SHA-256 `138e16f3386d6cd036878c3f92dbc093f828503592bf674b93dbfa3ce06034c0`, Git blob `601bda9791e1037b09fdbf90bf74978d2eb539ec`. Linux validation и hosted required-check для этих bytes остаются pending, поэтому AUD-329 не принят ([техническая запись](../../audits/AUDIT-2026-10.md#aud-329-local-windows-module-verification-on-source-6760-not-accepted-2026-10-27)).
+
+Go proof остаётся локальным: для новых Go bytes нет опубликованного required-check результата, поэтому AUD-511 не принят. Последний terminal all-pages snapshot для базы source 6760 охватывает 2026-10-27 08:23:39–08:24:14 UTC: 141 checks (113 success, 24 skipped, 3 failed, 1 neutral, 0 active), 22 runs (19 success, 2 skipped, 1 failed) и 135 jobs (108 success, 24 skipped, 3 failed, 0 active); CodeQL завершился success. Три failed checks — Alembic Migrations/Squawk, Coverage Normalize и производный aggregate CI Success; причина Coverage Normalize ещё диагностируется. Оба Python shard завершились success до 45-минутного timeout. Этот snapshot привязан к базе 6760 и не включает локальные postimage bytes тестов AUD-511/AUD-329. Более ранний terminal snapshot source 218 с тремя failures остаётся историческим. Browser PWA4 не проверен после eab3; полный CI green, merge и release не заявляются.
+
+Запрошенные owner decisions по pre-MVP Squawk tooling, 37 warning records и отдельному proposal из 64 public hashes остаются pending; ничего из этого не применено. Policy347, baseline319, Gitleaks26, 78 required pairs, blocking CodeQL, hooks и quality floors не менялись.
+
+## Предыдущая локальная контрольная точка — source eab3 и следующая backend workspace, 2026-10-27
+
+Принятая нижняя граница остаётся **332/512 (64,8%)**; 180 ID не приняты. Новых audit ID нет. На момент этого датированного снимка опубликованный remote PR #1343 всё ещё указывал на 218eedba99d122682a085144fd4f5a6ccdf55624. Локальный committed HEAD eab3f19b348772ba4de02d18df386bcd0828c60c (tree 161e9cba58fdae0780facc51689696729a2f107f, parent d43c3ed7bb152a443a1725e96063ccc94e4dd040) — второй unpublished commit. Следующая backend workspace содержит три изменённых backend файла поверх eab3 и ещё не закоммичена. Hosted CI ниже относится только к опубликованному 218; для eab3 и backend workspace новых hosted checks нет. [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343) показывает опубликованный источник.
+
+Committed source eab3 прошёл обычный четырёхфайловый commit и hooks без bypass. PWA window-marker fixture прошёл 8 Node-контрактов, full TypeScript, ESLint и Prettier; 79 quality-markdown checks прошли. Финальный scan под policy347 охватил 27 plugins и дал 576 findings в 222 файлах, 0 unmatched. Эти локальные проверки не добавляют audit ID и не доказывают результат PWA browser E2E.
+
+Предыдущий локальный пакет на d43 дал Auth11/R2: 31 suite, 597 PASS, 0 failure/error/skip; четыре production target имели 100% строк, statements, ветвей и функций, а full TypeScript, ESLint и Prettier прошли. PWA selector-fixture прошёл 7 Node-контрактов. Предшествующий metadata-only refresh detect-secrets сохранил все 319 нормализованных identities; эти результаты остаются source-bound к d43.
+
+Core R1 на eab3 остановился по resource guard при 85,8% использования; Core R2 завершил фазу UP успешно. Четыре PWA browser-теста R2 не запускались: требования resource guard по свободной памяти не менее 8 GiB и использованию не более 75% не были выполнены. Подписанная очистка и независимая инвентаризация завершились успешно; owned project containers, networks и volumes — 0. Поэтому PWA4 на eab3 остаётся открытым: ни browser PASS, ни browser FAIL для этого source не заявляется.
+
+В следующей backend workspace на базе eab3 три изменённых файла включают три явных pass в двух миграциях и регрессии полного DDL и сохранения данных при no-op downgrade. Обычный pytest дал 205 PASS, 0 failure/error/skip. Для двух целевых миграций получены 114/114 lines и statements, 50/50 ветвей (первая миграция не содержит ветвей) и 10/10 функций по действующему normalizer. Общий coverage contract и 100% floor не менялись; это не полный backend или Tier 0 coverage result.
+
+Первая версия нового regression падала из-за неприкреплённых SQLAlchemy constraints; привязка к sa.Table сохранила все 63 assertions, после исправления полный 205-case прогон прошёл. Семь underlying validation commands завершились exit 0, однако внешний report adapter завершился exit 1 после записи отчётов из-за импорта sibling module. Метрики повторно извлечены read-only из сохранённых отчётов; source/test не менялись и повторного прогона не было. Это локальное workspace evidence, а не hosted PASS или общий CI-green результат.
+
+Миграционная граница остаётся по [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md): историческая ревизия 148642dd1207 неизменна. В двух других ревизиях после трёх docstring добавлен явный pass: SQL, revision IDs, docstrings и возврат None сохраняются. Исключений или waiver не добавлено; workspace-тесты не очищают опубликованные Alembic/Coverage failures.
+
+Исторический PWA4 run на d43 дал 2 offline PASS и 2 update FAIL на отсутствующем финальном DOM marker. Диагностика связала marker с React.createRoot(document), очищающим body; SSR и shell использовали один bundle index-DsRgWf7H. Дальнейшая window-marker fixture прошла 8 Node-контрактов на eab3, но четыре browser-сценария на eab3 не запускались. Подписанный teardown d43 прошёл в 01:51:13 UTC, независимая проверка в 01:53:12 UTC подтвердила ноль owned containers, networks и volumes.
+
+## Терминальный hosted CI snapshot — опубликованный source 218, 2026-10-27 01:28:12–01:31:27 UTC
+
+All-pages snapshot точного опубликованного source 218/tree 8ba863b383ea0751af2922fcd2dc6bc11d16e994 завершён: 143 checks, 25 runs и 138 jobs; checks — 114 success, 24 skipped, 1 neutral, 3 failure и 1 cancelled, активных checks нет. Все **78/78 required context/app pairs** присутствуют; CodeQL завершился success. Этот terminal snapshot подтверждает только опубликованный source 218; результаты eab3 и следующей backend workspace им не подтверждаются.
+
+- [Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121942058239) завершился failure на Normalize coverage evidence: две Alembic function-цели ниже 100%, frontend branches/functions/statements ниже 100%, Python branch residual — 1 537 вместо 1 536, Tier 0 function residual — 151 вместо 148.
+
+- [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661523) завершился failure: шаг 9 Squawk выдал 13 warnings, шаг 10 bounded DDL evidence — 24 предупреждения; шаг 11 tenant-context acceptance прошёл, шаги 12–17 пропущены.
+
+- [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121942407251) — производный failure, а не отдельное доказательство причины. All-green и release readiness не подтверждены.
+
+В этом же all-pages snapshot на опубликованном source 218 [Owned Live Core/NATS](https://github.com/egorribun/university_ecosystem/actions/runs/40422529602/job/121920173759) завершился success: Core E2E, NATS step 16, cleanup и metadata receipt прошли. Этот source-bound job не меняет три описанных выше failure и не подтверждает eab3.
+
+## Исторические локальные проверки опубликованного source 218
+
+На опубликованном source 218 прошли обычные hooks, commit/push и post-commit проверки. Докоммитная Python-проверка исходников, вошедших в 218, дала **1 238 уникальных PASS**: 1 233 в основном прогоне и ещё пять Git-тестов после повторного запуска с коротким basetemp из-за `Filename too long`. Все 125 PWA unit-тестов прошли; для `pwaEvents.ts`, `register-sw.ts` и `InstallPrompt.tsx` подтверждены 100% строк, statements, ветвей и функций. Core build прошёл; установлены `curl` и `libcurl` версии `8.23.0-r0`. Финальный 27-plugin scan под policy347 зарегистрировал 576 findings в 222 файлах, 0 unmatched. Hosted [Trivy Image Scan — caddy](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661489) успешно завершил все рабочие шаги.
+
+На опубликованном source 218 два offline PWA-сценария прошли; два update-сценария завершились RED на шаге 528 при bundleUpdateResponses=0. Этот source-bound результат предшествует d43 и не заменяет текущую браузерную проверку выше.
+
+## Предыдущий nonterminal hosted CI capture того же source 218 — 2026-10-27 00:29:47–00:32:31 UTC
+
+Предыдущий all-pages capture был нетерминальным: 138 checks, 25 runs, 133 jobs, два backend shard ещё выполнялись и было видно 76/78 required pairs. Этот промежуточный снимок сохранён как история; его неполный статус заменён терминальным capture выше.
+
+## Промежуточный nonterminal capture того же source 218 — 2026-10-27 00:03:03–00:09:10 UTC
+
+All-pages снимок PR #1343 для точного source 218 собран 2026-10-27 00:03:03–00:09:10 UTC и не терминален: 121 check, 25 runs и 117 jobs. В checks на момент capture: 89 success, 16 skipped, 1 cancelled, 13 in progress и 2 queued. Required CodeQL pair завершился успешно; [Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121920176765) и [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40422529721/job/121921661523) оставались активны. В Alembic шаг 9 (Squawk: 13 warnings) и шаг 10 (сбор ограниченного DDL evidence: 24 warnings) завершились failure; дальнейшие DB-шаги ещё не выполнены. Поэтому all-green и aggregate coverage пока не подтверждены.
+
+## Исторические проверки до source 218
+
+На 61ef proxy-проверка прошла 6/6 Node contracts и полные TypeScript/lint/format checks. Предыдущий Windows PWA-прогон 7b прошёл offline shell на desktop/mobile, но оба update-сценария не нашли Reload; это история отдельного source и не описывает результат 218.
+
+Терминальный all-pages snapshot опубликованного 61ef за 2026-10-26 21:54:50–21:56:41 UTC: 143 checks (114 success, 24 skipped, 1 neutral, 4 failure), 25 runs и 138 jobs, без активных checks. [Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40395217941/job/121826348907) прошёл за 7:46 при лимите 10 минут. Отказали [Caddy scan](https://github.com/egorribun/university_ecosystem/actions/runs/40395217941/job/121828763951) с CVE-2026-92392, [Alembic](https://github.com/egorribun/university_ecosystem/actions/runs/40395217941/job/121828763834) с 37 Squawk warnings, [Coverage Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40395217941/job/121858521125) с 99% вместо 100% и пропусками csrf.py:141, logging.py:160, event_handlers.py:178,190, а также производный [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40395217941/job/121859078042). Четыре прежних пропуска WebSocket на 61ef покрыты. Это датированное свидетельство только для 61ef, без переноса на новый source.
+
+Отдельный Linux diagnostic на неизменных backend-файлах 61ef выполнил три целевых набора: 3, 4 и 4 теста, всего восемь разных случаев. Все прошли; нужные строки WebSocket, CSRF и logging попали в отчёты. Общий floor 100% сохранён и для таких узких наборов не достигнут. Вспомогательный классификатор ошибочно различил текст 100% и 100.0%; исходный exit 1 и отчёты сохранены. Это диагностические данные, не общий coverage PASS.
+
+Родительский ffb7 остаётся отдельным historical контекстом: его [Contract job](https://github.com/egorribun/university_ecosystem/actions/runs/40379302516/job/121770883494) занял 8:01 при лимите 10 минут; 2 763 consumer-теста, 621 policy-тест и 10 POSIX orchestration cases прошли. Терминальный снимок содержал 145 checks, 27 runs и 140 jobs без активных checks, с четырьмя отказами Caddy/Alembic/Coverage/CI Success. Эти результаты не заменяют проверки нового источника.
+
+## Историческая source-bound приёмка — 90eef, 2026-10-26
+
+Для source commit 90eef40bf1efb00cd59d95bc6605e5dcd7777c65 принятая нижняя граница составляет **332/512 (64,8%)**: сохранены все прежние 331 ID и добавлен только AUD-161 для docstring-only function denominator. Остаются непринятыми 180 ID. Подробности scope и проверки приведены в [датированном дополнении аудита](../../audits/AUDIT-2026-10.md#scoped-aud-161-docstring-only-function-denominator-closure-2026-10-26).
+
+AUD-161 ограничен одним случаем: docstring-only Python function остаётся в function denominator, но объявление def, исполненное при импорте, не делает её покрытой; без исполняемого тела метрика для функции равна covered=0, total=1, percent=0.0. Точный regression test test_python_function_derivation_keeps_docstring_only_denominator прошёл один раз (0,448 с); два файла AUD-161 — normalizer и regression test — совпадают с committed source 90eef. Это не распространяется на все derived metrics, Tier 0 файлы или aggregate coverage.
+
+Обычный principal pytest batch выполнен на незакоммиченном рабочем snapshot на базе 90eef вместе с reviewed двухфайловым live-stand guard: 2 070 PASS, 0 FAIL/ERROR/SKIP, stderr пустой; 93,11 с, guard завершился с кодом 0. Точный AUD-161 test входит в эти 2 070 один раз. Остальные 2 069 live-stand cases проверяют операционную работу guard; они не являются тестами или дополнительной приёмкой AUD-161. Весь batch не приписывается точному committed SHA 90eef; source/test файлы самого AUD-161 совпадают с ним.
+
+Известное состояние hosted CI для source 90eef остаётся незелёным: Contract Tests отменён по 10-минутному timeout, Caddy scan сообщает о двух HIGH findings, а Alembic Migrations — о 37 Squawk warnings. Эта узкая приёмка не закрывает эти проверки и не подтверждает full CI, merge/release или Tier 0 all-metrics. Policy346, baseline319 и Gitleaks26 не менялись. Незакоммиченные изменения Auth/PWA/tests и работы по непрерывности аутентификации, согласию каждой вкладки на PWA-обновление, news sessions и chat receipts остаются за границами приёмки; новых ID и coverage acceptance для них нет.
+
+## Историческая source-bound приёмка — a701, 2026-10-26
+
+Для source checkpoint a701d24af33e2740792ef5b08c26667118ae67a6 принятая нижняя граница составляет **331/512 (64,6%)**: сохранены все прежние 329 ID и добавлены только AUD-430 и AUD-505. Остаются непринятыми 181 ID. Подробности, доказательства и границы приёмки приведены в [датированном дополнении аудита](../../audits/AUDIT-2026-10.md#scoped-aud-430-and-aud-505-acceptance-on-a701-2026-10-26).
+
+AUD-430 ограничен проверкой настроенных KEK lengths 16/24/32 и негативным случаем с 25-байтовым ключом; это не исчерпывающий перебор конечных значений ключей. В scope AUD-505 до metadata export инвалидируется только текущий stats file; при ошибке экспорта он остаётся отсутствующим, а история сохраняется. Проверены текущие manual/reusable evidence gates, но полный запуск 128 mutation shards не заявляется. Недопустимая хронология для AUD-505 не утверждается. Две независимые пары проверки готовы; целевые source, test и workflow blobs совпадают с a701, а hosted JUnit получен из того же source.
+
+Обычный principal pytest batch выполнен на незакоммиченном локальном workspace snapshot на базе a701: 935 PASS, 0 FAIL/ERROR/SKIP и пустой stderr (138,16 с pytest; 140,86 с процессом). В эти 935 входят 48 email OTP и 27 export cases; это подмножества того же batch, не отдельные прогоны. Результат 935 тестов не приписывается точному committed SHA a701. Целевые source, test и workflow blobs для принятых findings совпадают с a701, поэтому 75 целевых тестов и hosted JUnit source-bound к a701. Это локальное тестовое свидетельство не заменяет hosted required checks. Датированный снимок CI a701 ниже содержит 4 отказа; полного зелёного CI, merge или готовности к release эта scoped-приёмка не подтверждает. Изменения Auth/PWA/tests остаются за границами этой scoped-приёмки. Также не приняты непрерывность аутентификации в текущей вкладке, согласие каждой вкладки на PWA-обновление, поведение news sessions и дополнительные проверки восстановления chat receipts; для этих пунктов не добавлены audit IDs или приёмка покрытия.
+
+## Исторический hosted CI checkpoint — a701, 2026-10-26 15:16 UTC
+
+На момент полного снимка CI PR #1343 оставался открытым и не объединённым. Зафиксированный HEAD — a701d24af33e2740792ef5b08c26667118ae67a6 (tree 5465e78939fb1c3c5b723de2fd918d883fb83431, родитель 979eb060f43b9423f819e70cca00610591cf3b26); refs оставались стабильными с 15:16:32 до 15:16:49 UTC. На момент capture нижняя граница была **329/512 (64,3%)**, 183 ID оставались непринятыми; этот snapshot не добавлял audit ID. Более поздняя scoped-приёмка того же source описана выше и не меняет результаты CI.
+
+Терминальный снимок включает 143 checks: 114 success, 24 skipped, 1 neutral,
+4 failure, 0 active; 25 runs и 138 jobs. Четыре отказа: [Caddy image scan](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121625146554) — CVE-2026-92392 в curl/libcurl, решение владельца по cooldown ожидается; [Alembic Migrations](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121625146816) — 37 Squawk warnings, ожидается решение владельца архитектуры; [Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121656687207) — 8 изменённых строк не покрыты, покрытие 98%, реальный отказ гейта; производный aggregate [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/40337315887/job/121657400703). Снимок не подтверждает прохождение всех проверок, объединение PR или готовность к выпуску.
+
+Policy346, baseline319, Gitleaks26, все 78 required context/app pairs,
+blocking CodeQL, hooks и пороги качества не менялись. Работы по сохранению
+непрерывности аутентификации в текущей вкладке, получению согласия каждой
+открытой вкладки на применение PWA-обновления и дополнительным проверкам
+восстановления квитанций chat-команд остаются pending. Этот снимок их не
+закрывает, не добавляет audit IDs и не подтверждает приёмку покрытия.
+
+## Scoped AUD-461 acceptance — source-bound evidence (2026-10-26)
+
+На source checkpoint 979eb060f43b9423f819e70cca00610591cf3b26 узкая
+приёмка повышает нижнюю границу до **329/512 (64,3%)**: сохранены прежние 328
+ID и добавлен только AUD-461; остаются непринятыми 183. Приёмка ограничена
+NULL-folding/SeqScan false-negative. Подробности и границы приведены в
+[аудите](../../audits/AUDIT-2026-10.md#scoped-aud-461-null-folding-and-seqscan-closure-2026-10-26).
+
+Hosted explain-check на source f22c52819cbea63851ec563f45ffed023c85ceb3
+завершился SUCCESS: [job 121566219335, run 40321185604](https://github.com/egorribun/university_ecosystem/actions/runs/40321185604/job/121566219335),
+80 queries checked. Root сверил три целевых source blobs между f22 и 979 и
+независимо подтвердил локальные PostgreSQL 17.11/asyncpg 0.32.0 проверки:
+3 PASS, без FAIL/ERROR/SKIP. Policy346, baseline319, Gitleaks26, all 78 required context/app pairs, blocking CodeQL, hooks и quality floors не менялись. Это не подтверждает all-required-checks для 979,
+полный CI или release readiness. Для source 979 required hosted checks
+остаются pending.
+
+## Датированный source-bound evidence snapshot — 9c, 2026-10-26 11:54 UTC
+
+Этот блок фиксирует evidence для опубликованного source
+`9c74a4ad34d0e8f3ac26372e12ef1a7d177480da` (tree
+`914ee3c311d809eb7a62072432e717812a53754d`), включая all-pages hosted capture
+11:54:20–11:54:39 UTC. Это датированный checkpoint, а не утверждение о текущем
+branch HEAD. На момент capture PR #1343 был открыт и не объединён; текущие refs
+доступны по [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343)
+и [ветке egorribun](https://github.com/egorribun/university_ecosystem/tree/egorribun).
+Принятая нижняя граница — **328/512 (64,1%)**, осталось 184 ID: последняя
+source-bound приёмка на предыдущем checkpoint
+`0f86541180e8ef003145265df793d49536a78939` добавила только AUD-183/368/379 к
+325 прежним ID. На 9c новых ID не принято; AUD-231 и AUD-461 остаются открытыми.
+
+В опубликованном source 9c действует policy346: прежний упорядоченный префикс
+337 и девять ранее одобренных владельцем точных integrity dispositions
+([ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#nine-exact-owner-approved-integrity-dispositions-2026-10-26)).
+Source-bound локальный scan на 9c использовал 27 plugins и дал 575 findings
+в 222 finding files, 0 unmatched; verifier завершился с exit 0, baseline не
+менялся. Baseline319, Gitleaks26, required78, blocking CodeQL, hooks и floors
+сохранены. Обычные commit/push hooks и pre-push TypeScript прошли; root сверил
+remote HEAD и 31 post-commit hash.
+
+Датированный all-pages snapshot PR #1343 для опубликованного source 9c
+(2026-10-26 11:54 UTC; capture 11:54:20–11:54:39 UTC) завершился:
+146 checks — 108 SUCCESS, 27 SKIPPED, 1 NEUTRAL, 10 FAILURE, 0 active;
+28 workflow runs / 141 jobs. В 10 failed checks входит derived aggregate CI
+Success; остальные девять отказов — unit shards 2 и 3, Trivy Image Scan - caddy
+(CVE-2026-92392 в curl/libcurl), Alembic Migrations, Security Audit / Node.js
+Dependency Audit, Frontend Tests / Lint & Format, Contract Tests, Nilaway Scan и
+explain-check. Shard 3 повторил unscoped package KeyError. Shard 2 упал на двух
+контрактах: WASM Dockerfile assertion требует отсутствующий `FROM base AS
+builder`, а markdown-link assertion сообщил о неверном STATUS anchor. В этом
+предложении ссылка ведёт на существующий heading `Historical first-party
+archive foundation (2026-10-25)`; `tests/test_markdown_links.py` требуется в
+следующем unit batch. Полный Alembic job log содержит 37 Squawk warnings;
+оставшиеся migration DB steps были skipped. Снимок terminal, но required checks
+не green и merge/release не подтверждены.
+
+Прежние 0f865 snapshots, policy337 и candidate-local результаты ниже —
+исторические source-bound evidence; они не заменяют датированный 9c snapshot
+или более поздние проверки f22.
+
+AUD-183: `chat.ts` передаёт Idempotency-Key и сохраняет caller retry key.
+Выбран ровно один frontend JUnit PASS; coverage 64/64 lines, 67/67 statements,
+20/20 branches, 20/20 functions. Scope — mocked request construction; caller
+сохраняет один key для logical retry.
+AUD-368: выбранные девять Go PASS ограничены unsupported methods, OPTIONS и
+oversized body; coverage 35/35 segments / 60/60 statements. Это middleware
+evidence, не deployed service.
+AUD-379: выбраны ровно четыре Python JUnit guards PASS, включая удаление GHSA
+suppression из policy delta. Live Dependency Review action не заявлен.
+
+Исторические all-pages snapshots опубликованного source 0f86541180e8ef003145265df793d49536a78939 / tree f25ae8ab62479de590b4c0bec95aebd11bee4750: в 02:30 UTC было 145 checks и 5 failures; более поздний peer snapshot того же source — 149 checks (115 SUCCESS, 27 SKIPPED, 1 NEUTRAL, 6 FAILURE, 0 active) и 31 runs / 144 jobs (111 PASS, 27 SKIP, 6 FAIL). Эти результаты относятся только к 0f865 и не заменяют приведённый выше terminal snapshot 9c.
+
+Результаты R1/R2, PG36, Alembic V4, Node R7/R8 и Go — scoped local evidence; они не заменяют датированный 9c snapshot выше. В hotfix set, введённом после 9c и опубликованном в successor `f22c52819cbea63851ec563f45ffed023c85ceb3` (tree `f8cc3e955f2cb3b0a3f294684d87e711b2fbcc63`), Linux Node 24.21.0 прошёл 56/56, native Node — 85/85; 56 тестов пересекаются. Две отдельные pytest cohorts дали 102/102 SQL/Knip и 74/74 Dockerfile (6), Markdown links (9) и workflow (59). Полный lint:knip и Ruff прошли. Пересекающиеся Node cases нельзя суммировать; эти scoped результаты не принимают audit IDs. Первый SQL-прогон с 12 FAIL сохранён: test helper не учитывал overrides возвращаемого плана; исправленный helper сохраняет все отрицательные проверки. Final-source gates всё ещё применяются к каждому следующему SHA.
+
+В том же hotfix set, позднее опубликованном в f22, pinned Go 1.26.10 прошёл: 10 focused и 782 full race named cases, 0 FAIL/SKIP; filtered statement coverage 3 093/3 093. SQL SHOW-mode R5 прошёл три точных PostgreSQL-теста на 17.11/170011 с asyncpg 0.32.0, без FAIL/ERROR/SKIP и с пустым stderr. Единственное стартовое DLQ warning побайтно совпало с прежним PG-прогоном; оно не подавлялось. Root независимо подтвердил source bindings и отсутствие обоих owned containers, сохранил принадлежащие PG-прогону 793 байта query-log tail и восстановил прежний файл. Receipts: root-go-9c-nilguard-race-verification-20261026.json и root-sql-show-mode-r5-pg3-verification-20261026.json. Это локальные результаты; AUD-461 и остальные ID не закрыты ими.
+
+В наблюдаемой CI-валидации f22 Node-проверка остановилась на подготовке generator fixture, до фактического `npm audit`; результат npm audit отсутствует. Пять CodeQL analyses завершились SUCCESS. Полный набор required checks для f22 остаётся pending; это не all-green или audit-ID приёмка.
+
+Локальный R1 cohort остался RED: 1 082 PASS, 3 FAIL, 32 ERROR из 1 117; конкретные имена отказов и
+причины 32 setup errors указаны в AUDIT checkpoint. Receipts:
+policy346-canonical-quality13-run-20261026-a1/junit.xml, failure-summary.json, result.json,
+run-command.json. R2 на том же 13-module integration snapshot завершился 1 125 PASS, 0 FAIL/ERROR/SKIP за
+172,48 секунды. Команда: python -m pytest -c pyproject.toml -n 0 на 13 модулях; полный target list и
+изолированные пути есть в run-command.json. Receipts:
+policy346-canonical-quality13-run-20261026-r2/junit.xml, pytest.stdout.log, run-result.json,
+run-command.json и root-canonical-r2-1125-verification-20261026.json. В run-result отсутствует
+числовой exit code.
+
+Нормальный pytest с canonical pyproject.toml и plugins выполнил полный файл tests/test_workflow_fail_closed_contracts.py на опубликованном HEAD: 59 PASS, 0 FAIL/ERROR/SKIP за 11,08 секунды, stderr пустой. Это закрывает только local AST-only gap; hosted all-context evidence не получено, audit ID не добавлен. Receipt: root-workflow-contracts59-normal-pytest-20261026.json.
+
+Migration 148642dd1207 PG36 V2.2: run edfdd4141e7446fabf05ee4092842f14, 36/36 PASS, 0
+FAIL/ERROR/SKIP, 34,54 секунды, process exit 0; details in evidence.json. V2.1 harness RED остаётся в
+run-summary.json; V2.2 исправил numeric-version mismatch. Отдельный source-bound full Alembic V4
+run d95ab4523c02496ba5322178ef68cb99 прошёл 9/9 workflow steps, 0 skipped, с exit 0 на свежей
+PostgreSQL 17.11/170011 базе: downgrade/boundary 202610250001, один head, финальный alembic check
+PASS. Root подтвердил отсутствие owned container и отсутствие warning lines в stderr; receipt
+root-alembic-full-closure-v4-verification-20261026.json. Ранее V2 closure driver дал RED из-за
+str-to-bytes ошибки на bootstrap stdin; V4 исправил кодирование. Это local runtime closure, не
+Tier 0 all-metrics и не hosted check.
+
+Исторически published source 0f865 имел policy337; integration candidate с policy346 (337 плюс девять owner-approved dispositions) впоследствии опубликован как 9c. Текущий scan и hosted статус 9c приведены выше.
+
+Ранее локальные Node R7/R8 checks на guarded integration-candidate source set: R7 passed 84/85 contract tests, then failed on one stale explicit-COPY assertion that ignored FROM deps inheritance; its npm and policy audits were not reached. R8 VerifyInstalled passed all six stages, including 85/85 Node contract tests and exit-0 npm/policy audits. npm audit recorded one low and two moderate advisories (zero high/critical); policy audit found no unapproved advisories or missing overrides. R8 did not invoke npm ci and preserved the installed tree. Проверка после запуска R8 подтвердила совпадение с манифестом 23 хешей исходных файлов и 14 контрольных хешей; временные ресурсы были очищены. This bounded result does not establish a fresh install, normal npm CI, frontend acceptance or hosted checks.
+
+Локальная Go CI close-order проверка привязана к 103 скомпилированным исходным файлам и совпавшим кандидатным postimages. Шесть обязательных именованных race-тестов и четыре focused subcases дали 10 PASS; default full race run завершился 782 PASS именованных тестов и subcases в четырёх пакетах, без FAIL/SKIP; те же шесть обязательных тестов присутствовали в полном прогоне. Filtered weighted Go statement coverage — 3 093/3 093 (100%). Root подтвердил отсутствие принадлежащего прогону контейнера после проверки. Это локальное техническое доказательство не добавляет audit ID: метка AUD-337 в отдельном Go CI regression не означает новую приёмку исходного frontend AUD-337. Required hosted checks для resulting SHA остаются pending. Receipt: root-go-v341-race-782-verification-20261026.json.
+AUD-461: прежние 90 unit + 2 PostgreSQL PASS и baseline-identical DLQ warning сами по себе не закрывали finding. Узкая source-bound приёмка NULL-folding/SeqScan приведена в [датированном дополнении к аудиту](../../audits/AUDIT-2026-10.md#scoped-aud-461-null-folding-and-seqscan-closure-2026-10-26).
+Auth supplement v237 native TSC exited 0 with empty stderr, but the separate private Vitest run had 57 tests: 6 PASS and 51 FAIL, plus 4 unhandled-rejection errors and 2 PromiseRejectionHandledWarning warnings. The Auth work remains privately blocked; TSC success does not establish correctness. Independent read-only triage is assigned. No Auth source was added to the canonical checkout and no audit ID was accepted.
+Полные canonical tests, final scanner, hooks и required hosted checks для resulting SHA, normal npm CI/frontend validation, hosted Go integration и release readiness остаются pending.
+Приватные review/runtime кандидаты и pause-разделы ниже остаются историей; они
+не изменяют принятый счётчик без отдельной source-bound приёмки.
+
+AUD-175: pending TOTP удаляется при reset, confirmed factor сохраняется;
+доказательство service/ORM с RecordingBackend, без Redis/HTTP и подтверждения
+production DB dialect. AUD-221: campus-zone SSR/client parity для общего
+заданного instant, без actual browser/deployed route. AUD-232: onopen больше
+не сбрасывает retry budget; stable matching ACK делает это внутри одного
+account/continuous-online интервала, отдельные account/online resets сохранены.
+AUD-312: собственный source 7f144 дал 59 closure + 6 time-travel PASS и
+513/513 statements, 208/208 arcs. Новые v2 HMAC связывают actor_id и metadata;
+unmarked historical actor metadata остаётся unauthenticated, Rust FFI mocked.
+Подробные scope limits и source-specific receipts сохранены в аудите.
+
+Предыдущая приёмка AUD-499 сохраняется: собственный source 01187 дал 9 927
+hosted frontend PASS / 0 fail/skip, изменённые suites — 61 PASS; news.ts и
+queryClient.ts имеют 100% всех четырёх метрик. Общий CI не принят: известные
+Node graph, migration и integration failures остаются отдельными блокировками.
+Каждый следующий SHA требует собственных required-check evidence.
+Терминальный снимок 7f144: 143 checks, 138 jobs в 25 runs, active 0.
+Все четыре Python unit shards завершились SUCCESS. Четыре отказа: Node audit,
+Alembic Migrations, integration shard 0 и CI Success. В integration —
+1 FAIL / 39 PASS, test_grade_committed_assignment_delivery_replay_sends_once;
+Alembic также сообщает два outbox replay и два dependent-index failures,
+плюс 10 Squawk findings. Причина grade replay failure — устаревшее exact
+ожидание metadata без нового v2 marker. В этом пакете exact dictionary
+обновлён до actor_id + _audit_signature_version=2; delivery/replay assertions
+сохранены полностью. Отказ происходил до их выполнения: исправленный
+PostgreSQL-сценарий ещё требует fresh CI, runtime PASS не заявлен.
+Прежние scoped evidence не объявляются текущим общим GREEN.
+
+Приватные кандидаты не засчитываются: session coordination, compositional
+chat rollback, registration parity, safe email retry и SQL EXPLAIN проходят
+отдельные review/runtime этапы. SQL EXPLAIN v4 дал обычный unit-модуль
+86 PASS / 0 error/skip, но actual PostgreSQL ещё не проверен.
+На опубликованном evidence checkpoint 0f865 зафиксированы policy337,
+baseline319, Gitleaks26, required78, blocking CodeQL, hooks и floors; incoming
+integration source set отдельно records policy346. Новые scanner identities
+ожидают отдельного решения, а resulting SHA требует собственных проверок.
+Датированные pause-разделы ниже — история, а не текущее указание остановиться.
+
+Исторический CI источника `c90e6163` не принят: проверены все страницы терминального снимка
+141 checks и 136 jobs. Checks: 108 SUCCESS / 27 SKIPPED / один NEUTRAL /
+пять FAILURE / ноль pending. Четыре причины: JSX ReDoS в CodeQL, Node audit
+(nested Zod 3 и strict compiler graph), Alembic dependent-index cases и
+receipt cleanup (102 вместо 100). CI Success — агрегирующий FAIL.
+
+Для нового `36f2db43` проверены все страницы 134 checks и 127 jobs в 25 runs:
+на промежуточном снимке checks — 105 SUCCESS / 21 SKIPPED / четыре FAILURE /
+один NEUTRAL / три IN_PROGRESS. Actual tested merge —
+`e7b22abb3580c1e222b57b8042479f06886a1c78`, tree совпадает с опубликованным.
+CodeQL и Contract Tests завершились успешно. Отказы: прежний Node compiler
+graph (audit step SKIPPED), ws-hub errcheck на `_ = recover()`, backend
+integration dependent-index case и Alembic Squawk/два dependent-index cases.
+DB Migration Gate прошёл; Alembic job в целом не прошёл. Backend unit shards
+и Owned Live Core на этом снимке ещё работали; общий CI не green. Эти счётчики
+не являются терминальным снимком и не добавляют принятых ID.
+
+Последующее завершение Owned Live Core `40219947473/121249146728` на том же
+tested merge подтвердило E2E, NATS outage и stand stop SUCCESS. Metadata-only
+artifact `12610050379` связывает эти lifecycle outcomes, но не содержит
+actual peer/forwarded-chain или two-client/spoof результатов. AUD-164/167
+остаются открытыми. Required ws-hub lint использует repository-root config;
+отдельная более строгая локальная module-config проверка не заменяет этот
+required gate и её прежние `pkg/config` test findings не объявляются новыми
+hosted failures.
+
+Исходный локальный пакет содержал линейный JSX matcher, уточнение no-pickle gate,
+receipt cleanup с материализацией не более 100 locked IDs, сокрытие вложений
+удалённого сообщения при replay, ограниченные
+revocation markers и TERM после NATS callback panic, включая `panic(nil)`.
+Frontend: campus-timezone regression, валидация persisted news cache,
+реактивная навигация по статьям, отдельное сообщение ошибки reactors RU/EN и
+Axios path-encoding regression. Эти локальные результаты сами по себе не увеличивали ledger; последующие hosted
+приёмки перечислены выше.
+
+Локальные доказательства: ws-hub — 618 named tests/subcases, 0 FAIL/SKIP,
+100% statements, native Windows без race; Linux race ещё обязателен.
+Actual PostgreSQL 17.11 воспроизвёл cleanup 102 → 100 со scope controls.
+Для отдельного DDL кандидата 13 exact PostgreSQL cases PASS; private fixture binding
+проверен, незапланированных запусков в принятом прогоне 0, контейнер удалён.
+Предыдущие неудачные попытки harness не считаются PASS. No-pickle: 75 cases,
+554 statements / 302 branches, 100%; общий диагностический subset двух
+quality-checkers дал 374 PASS, но coverage 92% не достигла floor 100%.
+Это не общий coverage gate; full/final-source validation ещё обязательна.
+Итоговый локальный frontend-набор: 12 файлов / 152 PASS; Python-набор
+no-pickle/CSRF/body-limit/receipt: 97 PASS. После перехода подсчёта DELETE
+RETURNING на однопроходный iterator — 3 cleanup и 24 SQLite lifecycle PASS.
+Прежние локальные проверки сохраняются в своих границах и не суммируются
+с пересекающимися наборами как уникальные cases.
+
+AUD-498 имеет 44/44 с обычным validator и discriminating RED controls;
+browser delivery и полный coverage этим не подтверждены. Опубликованный
+compiler graph ещё не исправлен. Приватный кандидат с переносимым archive
+root-reference прошёл обычный npm ci, typecheck, lint и строгий isolated
+consumer graph; две HIGH-находки исчезли, прежние восемь low/moderate и
+шесть peer-проблем полного дерева сохранены как отдельные ограничения.
+Archive и legacy baseline не менялись; независимое code review кандидата
+пройдено, actual Docker transfer и unchanged CLI на clean Linux checkout
+ещё не подтверждены. В exact Babel artifact найден embedded Zod 4.1.11;
+замена внешнего graph не меняет эти bytes. Достижимость из текущих обычных
+application inputs не установлена; caller-controlled compiler options и
+экспортированный test helper имеют путь к parser. Это отдельный незакрытый
+риск, не исправление или scanner dismissal.
+На published-source checkpoint 0f865 оставались policy337, baseline319,
+Gitleaks26, required78, blocking CodeQL, hooks и floors. Публикация требует итоговых hooks/scans, cleanup,
+проверки diff и ожидаемого HEAD; новый SHA требует собственных hosted checks.
+Независимый пакет из 25 путей прошёл обычные pre-commit и pre-push hooks:
+lint-staged, Ruff, detect-secrets, Gitleaks, Bandit, mypy, Semgrep и typecheck.
+Semgrep потребовал убрать промежуточный список при подсчёте RETURNING;
+повторный обычный hook прошёл, без исключений. Detect-secrets оставляет
+блокирующим новый публичный Git checksum в отдельном migration trace кандидате.
+Точное приватное предложение прошло 604 теста и независимое ревью, направлено
+владельцу. В том pre-decision checkpoint policy337 не была расширена; три reviewed DDL postimages,
+diff и PostgreSQL-доказательства сохранены приватно. В checkout/index эти три
+файла оставлены на неизменных опубликованных версиях. Независимый пакет
+опубликован отдельно: полный captured scan дал 567 findings / 0 unmatched
+по published checkpoint policy337, без новых исключений. Финальный интегрированный scan и новые
+hosted checks обязательны для каждого следующего SHA.
+
+P1 AUD-164/167 остаются открытыми: условное поведение текущего кода проверено
+через реальные limiter/handler boundaries с synthetic peers, но c90 Owned
+Live Core не содержит actual peer/SSR inventory или named two-client/spoof
+результатов. AUD-169 имеет согласованные двусторонние Helm selectors/ports
+и два PASS существующих контрактов; actual NetworkPolicy reachability не
+проверена. Эти пробелы не заменяются общей зелёной меткой Core.
+
+Follow-up опубликован обычными Git hooks в `62780169c713947acdd3a71c60b63cbd207306d5`
+(tree `641b5c741fc26d51e1b7adaa706e4874c275406d`): errcheck исправлен без
+подавления правил; panicnil regression выполняется в процессе с проверкой
+фактического nil recovery и остановкой Hub до восстановления GODEBUG.
+Root-повтор: Hub 100% statements / 27,368s и required root-config Go lint
+0 issues. Для article navigation добавлены session-generation/SSR controls:
+7 PASS, изолированный hook coverage 100% по всем четырём метрикам. CSRF
+comparison-тесты теперь проходят через production middleware, а не только
+stdlib: вместе с Unicode-модулем 15 PASS. В `.env.example` удалены три
+SpiceDB ключа без потребителей; configuration reference — 5 PASS. Реальное
+Settings уже игнорировало неподдерживаемый scanner fail-open flag, поэтому
+новый runtime security fix этим не заявлен; scanner source не менялся.
+MOD-30-01 заменён AST-проверкой literal noload и уникального exemption reason,
+с bounded static aliases: 385 contract PASS, после стандартного форматирования
+15 focused PASS, actionlint PASS. Новые IDs этим follow-up не принимаются.
+Приватный Node-кандидат имеет семь новых блокирующих scanner identities;
+они не добавлены в policy337. Отдельный DDL checksum также остаётся pending.
+Обычный hook обновил только номера строк двух прежних findings в `ci.yml`
+и `generated_at` baseline после расширения gate. Все 319 identities, triage
+и прочие поля сохранены; это metadata maintenance, не новая disposition или
+scanner exemption. Baseline повторно staged по contributor standards.
+
+### Терминальный CI опубликованного follow-up
+
+Для `62780169` на 2026-10-25 20:35:32 UTC проверены обе страницы checks
+(100 + 43) и все 25 Actions job pages: 143 checks — 111 SUCCESS,
+27 SKIPPED, 4 FAILURE, 1 NEUTRAL; 138 jobs — 107 SUCCESS, 27 SKIPPED,
+4 FAILURE; активных нет. Actual tested merge `7a715e24f38c352c27e4a6bd12059833c6778300`
+имеет тот же tree `641b5c741fc26d51e1b7adaa706e4874c275406d`.
+Все четыре Python unit shards завершились SUCCESS; ws-hub lint/tests,
+frontend, Contract Tests и Owned Live Core/NATS также прошли. Остались
+FAIL Node audit, Alembic Migrations, integration shard-0 и агрегатор CI Success.
+Node audit шаг после strict graph failure не выполнялся; migration/integration
+сохраняют known dependent-index failures. Полный CI не принят; частные кандидаты
+и локальные PASS не заменяют эти gates.
+
+### Пакет AUD-499 и незавершённая проверка Node
+
+AUD-499 принят по собственному hosted evidence 01187 (см. scoped приёмку выше).
+В опубликованном пакете restore-фильтр отбрасывает
+только повреждённые news infinite-query snapshots до hydrate; 304 проверяет
+cached page и owner-bound snapshot. Root подтвердил обычный cohort из 15 suites:
+214 PASS, typecheck, целевые ESLint/Prettier и штатный frontend build. Четыре
+principal policy-модуля дали 789 PASS без изменения проверок. Частный
+V8 receipt даёт обоим изменённым source files 100% line/statement/branch/function;
+эти target-file метрики затем подтверждены hosted evidence 01187. Пять WASM-артефактов,
+повторно созданных build, сохранены приватно и восстановлены до исходных
+опубликованных bytes; проверка source provenance после восстановления прошла.
+
+Четвёртый частный Node Docker transfer `r20261025-dc5d6ab77742` использовал
+неизменный Git source `62780169` плюс восемь проверенных candidate overlays.
+Сборки wasm-builder/deps/prod-deps и readback dev/prod graph прошли; runtime
+не завершён: защитный stop сработал при RAM 85,13% / free 4,73 GiB. Итоговый
+execution-report содержит `succeeded: false`, cleanup errors отсутствуют;
+это не Docker transfer PASS. Per-RUN limits не доказывают ограничение памяти
+операций COPY в default BuildKit. Повторный запуск до решения ресурсной причины
+не назначен. Shared cache, default builder и чужие ресурсы не очищались.
+
+## Publication and safe-pause checkpoint, 2026-10-25
+
+По указанию владельца публикуется только проверенный пакет ниже, после чего
+автономная работа приостанавливается. Исходная ветка — `egorribun`,
+code checkpoint — `705a67fb80431d7cfeeba609167f14067120566a`.
+Он публикует formatter repair и расширенный cohort; его hosted CI ещё не принят.
+На `85723684` detect-secrets и mypy прошли; generated model-default inventory
+и downgrade-policy contracts прошли. Receipt-specific PostgreSQL/runtime и
+migration coverage были SKIPPED за SQL-test formatting gate, не PASS.
+Точный formatter postimage применён без изменения assertions или migration.
+Новые 20 named cases ещё требуют hosted результата на опубликованном source.
+Сложный compiler archive transport draft и дальнейшая graph integration
+не включены: это отдельная незавершённая работа, не принятый dependency fix.
+Ни merge, ни deployment, ни force-push не выполняются.
+После публикации новые действия требуют отдельного указания владельца.
+
+## Easy-first audit checkpoint, 2026-10-25
+
+Принятая нижняя граница — **307/512 (60,0%)**, **205 ID не принято**.
+[Новая scoped приёмка](../../audits/AUDIT-2026-10.md#hosted-easy-first-four-finding-closure-checkpoint-2026-10-25)
+сохраняет все прежние 303 ID и добавляет только AUD-315, AUD-339, AUD-341 и AUD-507.
+Это сверка уже исправленных, неизменных исходников с конкретным hosted evidence,
+не новая production implementation. Приоритет продолжения — простые находки
+и готовые исправления с недостающим доказательством.
+
+AUD-315: ADR-010 корректно отделяет historical five-policy record от текущих
+десяти CEL policies; [Kyverno job 121112657364](https://github.com/egorribun/university_ecosystem/actions/runs/40174667081/job/121112657364)
+дал **72 PASS / 0 FAIL**, включая expected hostPath rejection и позитивные controls.
+AUD-507: [Go job 121116142414](https://github.com/egorribun/university_ecosystem/actions/runs/40174667081/job/121116142414)
+дал три named callback/nil-panic PASS под race detector и 100.0% statements;
+[lint 121116142423](https://github.com/egorribun/university_ecosystem/actions/runs/40174667081/job/121116142423)
+не нашёл проблем. Source `3dfefdc5`, tested merge `665b889d`,
+tree `a964c216`; relevant blobs не менялись на `85723684`.
+Нет утверждений о live admission, runtime.Goexit, полном CI или деплое.
+
+AUD-339/341: [Contract job 121135391370](https://github.com/egorribun/university_ecosystem/actions/runs/40181770847/job/121135391370)
+на `85723684` дал exact **3 named PASS**, zero fail/error/skip и неизменную
+pre/postflight identity. Consumer/policy cohorts: **2743 PASS / 590 PASS**.
+Приёмка ограничена ASCII semantic ETags и HTTP primary-audit wiring;
+не заявлены external-provider search, deployed read replica/failover или auth proof.
+
+На source `85723684a50e7acfed2f1493eeaf45833a157312`, actual merge
+`37c34df4f89ffc3627d3fd90f91724890ebd4f4b`, tree
+`64387adeb8ed2f67a2e11a1f51da2e0c586a7afe`,
+[Node job 121135624927](https://github.com/egorribun/university_ecosystem/actions/runs/40181770847/job/121135624927)
+подтвердил **26 archive guards PASS**, committed bytes/hash/payload readback
+и повторную воспроизводимую упаковку. Archive — 2853 bytes,
+Git blob `c67aa6c38e78bc2c96ccf5c3f8e30edebcaa5666`; source immutability
+и cleanup подтверждены. Сам Node job остаётся FAILURE на прежнем relative-file
+strict npm ls; downstream audit SKIPPED. Graph не переключён; сложная
+compiler integration отложена, не принята.
+
+[Fast pre-commit 121135391146](https://github.com/egorribun/university_ecosystem/actions/runs/40181770847/job/121135391146)
+обнаружил только два Ruff-format hunks в новом SQL integration test.
+Применён точный formatter postimage, без изменений девяти cases/assertions
+или migration bytes. Alembic/PG fan-out был SKIPPED, поэтому actual SQL RED
+и durable-receipt runtime GREEN ещё не установлены.
+
+Следующий strict named cohort расширен с трёх до **20** исходных cases:
+AUD-339/341 сохраняются; добавлены восемь AUD-362, пять AUD-354 и четыре
+header/default controls для AUD-314. Все exact identities, source bindings,
+нулевые skips/errors и прежние 90-second/2-minute/10-minute budgets сохранены.
+Это подготовленная расширенная проверка, не новый 20-case PASS и не приёмка
+AUD-314/354/362. Исходные три AUD-339/341 уже имеют отдельный observed PASS.
+AUD-262 остаётся OPEN. Policy337, baseline319, Gitleaks26, required78,
+blocking CodeQL и coverage thresholds не меняются.
+
+## Receipt digest oracle correction, 2026-10-25
+
+[Security/types job 121130482575](https://github.com/egorribun/university_ecosystem/actions/runs/40180339822/job/121130482575)
+на source `10b1c96d` сообщил mypy hook PASS и один detect-secrets finding:
+фиксированный контрольный digest в receipt unit test. Job затем был cancelled;
+это не полный security PASS. Тест теперь независимо задаёт literal framed
+input bytes и вычисляет ожидаемый SHA-256 стандартной библиотекой.
+Проверка domain/UUID byte order/UTF-8, scope и HMAC rotation сохранена;
+opaque expected-digest literal удалён, не разбит или перекодирован.
+Production code, scanner settings и inventories не меняются.
+Hosted повторная проверка ещё требуется; ledger остаётся **303/512**.
+
+## Hosted test repair and bounded evidence cohorts, 2026-10-25
+
+[Fast pre-commit job 121130482512](https://github.com/egorribun/university_ecosystem/actions/runs/40180339822/job/121130482512)
+на source `10b1c96d9fa2bb781a1070aa138397f75ab3a95d`, checkout
+`8813904eca0ab591bc8655f2c800f5c27658ad85`, остановился на 22 Ruff F811
+fixture-import shadowing errors и двух formatter files. Backend/PG fan-out
+не выполнился; runtime GREEN для durable receipts не установлен.
+Исправления ограничены привязкой тех же fixture objects через module aliases
+и точными hosted formatter hunks. Production receipt/model/migration bytes,
+assertions и gates не меняются; suppressions не добавлены.
+
+В существующем Contract Tests job добавлен отдельный bounded cohort:
+два исходных Cyrillic ETag cases AUD-339 и HTTP primary-audit case AUD-341.
+Проверяются ровно три JUnit identities без failure/error/skip и неизменная
+source/checkout/tree/blob identity. Исходные tests, selectors и 10-minute job
+cap сохранены; named PASS ещё требуется, ledger не увеличивается.
+
+Для historical groups-key migration добавлены девять tests-first real-PG
+cases: dependent/absent/nondependent index, integer path и stale reflection
+в обоих legacy направлениях. Проверка требует fresh catalog SQL под уже
+удерживаемой групповой блокировкой перед пропуском redundant DROP.
+Migration bytes, прежние tests и восемь historical dispositions не менялись.
+Ожидаются, но ещё не наблюдались, два новых assertion RED и семь controls PASS.
+Это не снижение lock duration или устранение Squawk warnings; исходные
+14 original / 25 expanded warnings остаются последним наблюдённым результатом.
+
+Ledger **303/512**, AUD-262 OPEN; policy337, baseline319, Gitleaks26, required78
+и coverage thresholds сохранены. First committed archive readback и
+final-source CI ещё требуются; full CI/release/deployment GREEN не заявляются.
+
+## AUD-262: durable-receipt prototype, 2026-10-25
+
+**AUD-262 остаётся OPEN; ledger — 303/512.**
+
+[Observed PostgreSQL run](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121096797464)
+на source `6ba0de220b497126f51d31b84653a2d1b5d35cb8`, tested merge
+`3c11b7bfe95aeaf720b445765c5a39b5894582bb`, дал первоначальные
+**3 semantic RED / 2 controls PASS**, без setup errors/skips:
+каждый RED обнаружил 2 Messages и 2 MessageSent вместо 1/1.
+Это доказательство исходного дефекта, не выполнение нового prototype.
+
+Добавлены [план и prototype durable receipts](2026-10-25-aud262-durable-chat-send-receipts.md):
+атомарная запись с сообщением/outbox, primary lookup после авторизации
+до Redis, фиксированное DB-clock окно 24 часа и scoped RLS.
+Статическая проверка выявила cross-key lock inversion; исправленный порядок —
+exact-key claim перед SKIP LOCKED cleanup.
+
+Lifecycle cohort содержит 24 unit и 27 PostgreSQL cases по ручному подсчёту,
+не результату pytest. Отдельный test-owned ordering control требует реального
+`40P01`; это проверка чувствительности oracle, не observed old-production RED.
+Новый implementation и control ещё не имеют runtime GREEN.
+
+Schema, inventory и rollback contracts согласованы на head `202610250001`:
+42 Python-only classifications, 127 effective defaults и 47 tables.
+Единственная новая точная classification — inherited UUID7
+`chat_send_receipts.id`; это не scanner waiver и не ослабление coverage.
+MOD-03 теперь fail-closed: явно проверяет refusal и неизменность applied revision,
+а не скрывает ошибку downgrade последующей успешной командой.
+
+Перед приёмкой необходимы final-source CI, исходные пять regressions,
+совместимость прежнего cohort, расширенные lifecycle/RLS/schema проверки,
+100% покрытия новой миграции и действующие quality gates.
+Protective downgrade boundary — новое ограничение, не расширение восьми
+исторических dispositions. Scoped cleanup ограничен 100 строками;
+inactive physical retention остаётся OPEN, historical/mixed writers —
+вне durable guarantee. Policy337, baseline319, Gitleaks26, required78,
+coverage thresholds и исходные пять regression tests не меняются.
+
+## Compiler archive foundation, 2026-10-25
+
+[Producer 121113577192](https://github.com/egorribun/university_ecosystem/actions/runs/40174667081/job/121113577192)
+на head `3dfefdc53eb745098e8e02f867389d6e06a796d0`, tested merge
+`665b889ddbf5eacca07141ba883d43d7bd3635aa` и общем tree
+`a964c2160d3587923de4880961ce3a38a9f19a4c` подтвердил **26/26 guards PASS**
+и live pack PASS. Два offline/script-disabled pack дали одинаковые **2853 bytes**;
+четыре payload files составляют 5504 bytes. Source/config/Git immutability и
+cleanup прошли до вывода candidate. Независимая проверка decoded bytes, Git blob hash
+и четырёх immutable source hashes подтвердила тот же результат.
+
+[First-party foundation](../../testing/react-compiler-facade-integration.md#historical-first-party-archive-foundation-2026-10-25)
+добавляет только этот source archive, точные protective inventories и
+блокирующую минутную проверку bytes/hash/Git identity/payload в checkout.
+Первая hosted readback-проверка нового commit ещё требуется. В архиве нет
+compiler bundle или engine code; original compiler и все четыре package
+source files не менялись. Manifest/lock не переключены, moving-branch URL
+не допускается как будущий dependency pin.
+
+Последующий старый final generator всё ещё отказал на strict npm ls из-за
+relative-file edge. Успех упаковки не означает исправление graph, universal
+peer compatibility, Docker/production transfer или embedded Babel risk.
+Ledger **303/512**, policy337, baseline319, Gitleaks26, required78 и все
+coverage thresholds остаются без изменений. Дополнительная приёмка находок
+или full CI/release GREEN здесь не заявляются.
+
+## Hosted validation 6ba0de2, 2026-10-25
+
+Source `6ba0de220b497126f51d31b84653a2d1b5d35cb8` проверялся как merge
+`3c11b7bfe95aeaf720b445765c5a39b5894582bb` с тем же tree
+`c7abb35af06d423994b7a892904a87c8557ccd23`. Ledger остаётся **303/512**;
+новые находки этим checkpoint не принимаются.
+
+Все четыре canonical backend unit shards завершились: **20145 PASS / 300 SKIP**.
+[Shard0](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121096797386)
+дал 5340/41, [shard1](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121096797480)
+— 4055/169, [shard2](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121100304950)
+— 6339/43, [shard3](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121102556172)
+— 4411/47 (PASS/SKIP). Preliminary 847+240 исключены.
+Canonical coverage shard3 подтверждает выполнение `app/core/csrf.py:141`;
+отдельный metadata diagnostic не нужен. Это не новый aggregate PASS:
+[Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121106737702)
+и backend aggregate jobs были SKIPPED из-за failed dependencies.
+
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121095950251)
+дали **2742 consumer PASS / 590 policy PASS**.
+[PostgreSQL job](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121096797464)
+подтвердил прежние **13 PASS** и full integration **322 PASS / 9 SKIP**.
+Отдельный уже опубликованный durable-chat tests-first step дал **3 assertion
+FAIL / 2 controls PASS**, без setup errors/skips: ожидаемый отказ при реальном
+повторном сохранении после потери Redis state. Production path не менялся,
+AUD-262 не принят.
+
+[Node archive guards](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121096775309)
+дали actual **23 AssertionError / 1 inert-entrypoint PASS** из 24 случаев;
+import/setup ошибок не было, прежние final-lock guards дали **48 PASS**.
+Final candidate generation после RED была SKIPPED, а не успешна.
+[Frontend static](https://github.com/egorribun/university_ecosystem/actions/runs/40169040139/job/121097061367)
+нашёл один formatter hunk: node:fs import нового archive-test module.
+Исправлен именно этот layout, без изменения исходных 24 проверок.
+
+Следующая implementation candidate ограничена first-party archive recipe.
+26 guards сохраняют прежние 24 и добавляют empty second gzip member /
+trailing garbage-or-zero-padding controls. Новый трёхминутный live-pack step
+запускается только после guard GREEN; внутренний work deadline — две минуты
+с резервом для source postflight и cleanup. Существующие 25-minute job budget,
+48 final guards, восьмиминутный final generator, peer ranges и обычный audit
+не ослаблены. Два offline/script-disabled pack должны дать одинаковые bytes;
+bounded gzip/tar, все четыре source files, npm metadata/hash, source/config/Git
+immutability и cleanup проверяются до вывода candidate.
+
+Packaged README теперь описывает стабильный API/identity/limits; изменяемая
+integration history вынесена из package payload. `private: true` означает
+npm publication flag, не приватность публичного artifact. Root Zod4.6.7
+production-classified record не объявляется development-only или удалённым.
+Archive ещё не создан/не опубликован; manifest/lock и original compiler bundle
+не меняются. Hosted 26-case GREEN, pack evidence и последующая отдельная
+strict-graph/native/Docker/parity приёмка остаются необходимыми.
+Policy337, baseline319, Gitleaks26, required78 и ledger303 сохранены.
+
+## Текущий checkpoint: AUD-197 и AUD-343, 2026-10-25
+
+Принятый ledger — **303/512 (59,2%)**, **209 ID не принято**.
+[Датированная приёмка и полный список](../../audits/AUDIT-2026-10.md#hosted-aud-197-and-aud-343-scoped-closure-checkpoint-2026-10-25)
+сохраняют все прежние 301 ID и добавляют только **AUD-197** и **AUD-343**.
+Восемь unsupported historical rollback entries остаются owner-approved
+dispositions, не исправлениями downgrade. **AUD-262 остаётся OPEN**.
+
+Проверенный source — `d27dd6a753fa2b02e128343b307c85e2f2cdc469`;
+tested merge `63d9cf6dda3be6fce4d30d75302a44d849105011` имеет тот же tree
+`a41ce87b9107f7a926276c39de705a1a05cd7a31`.
+[Full PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121000819835)
+дал **322 PASS / 9 SKIP**: все 22 notification-outbox cases и пять AUD-343
+cases прошли. Отдельная группа дала **13 PASS / 0 SKIP**, а
+[focused tenant/handler/grade cohort](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121000819690)
+— **46/46 PASS**. Эти пересекающиеся результаты не суммируются как уникальные
+tests. AUD-197 принят для same-task/durable-delivery replay, включая grade
+rollback/fresh retry, не для нового HTTP assignment или provider exactly-once
+в crash window до journal commit. AUD-343 принят для helper-level PostgreSQL
+savepoint fallback с сохранением outer work, не HTTP/auth/tenant/deploy proof.
+
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121000198809)
+дал **2742 consumer PASS / 590 policy PASS**. Все четыре полных backend unit
+shards завершились: **20140 PASS / 295 SKIP**.
+[Shard0](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121000819844)
+дал 4845/45, [shard1](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121000819781)
+— 4298/168, [shard2](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121005654539)
+— 6133/53, [shard3](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121007644600)
+— 4864/29 (PASS/SKIP). Preliminary 847+240 не включены в сумму.
+
+[Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40136751915/job/121013367482)
+завершился FAILURE: aggregate differential coverage **369/370** changed lines,
+не 100%; отсутствует `app/core/csrf.py:141`. Provenance, test-universe и
+coverage combination прошли, но downstream canonical evidence/normalization/
+receipt upload были SKIPPED. Прямой тест non-ASCII branch и его canonical
+collection требуют отдельной проверки; порог не снижается.
+
+[Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/40136751869/job/121001273549)
+прошёл: 275 Node contracts, browser contract и 38 browser PASS / 2 SKIP;
+NATS, cleanup и receipt12577723273 SUCCESS. Frontend unit shards/aggregate,
+format, 17 staged compiler parity и build прошли. Migration81 и DB gate86+2
+сохраняют scoped GREEN, но raw Squawk14/25 и strict compiler npm-ls отказ
+остаются blocking. Полный CI, aggregate coverage/floors и release не приняты.
+
+Следующая tests-first партия не меняет production dispatcher, schema или
+dependency graph:
+- Пять real-PG durable-chat cases используют существующий dispatcher и
+  независимые sessions. Ожидаются **3 assertion RED / 2 controls PASS**, но
+  фактического результата ещё нет. Rollback control учитывает retained
+  300-second pending lease; overlap не зависит от позиции будущего DB guard.
+  Отдельный шаг после full integration требует все пять named PASS и
+  сохраняет nonzero exit. Expected RED не превращается в GREEN.
+- 24 archive guards проверяют четыре first-party facade files, offline/
+  no-script command, safe gzip/tar, source/hash/provenance и cleanup. Пока
+  добавлен только importable fail-closed stub: ожидаются **23 assertion RED /
+  1 inert-entrypoint PASS**, ещё не наблюдавшиеся. Реальный pack CLI не
+  запускается, archive не создан, remote dependency не добавлена. Два exact
+  paths добавлены во все три protective inventories; прежние 48 guards и
+  required gates не ослаблены.
+
+Policy337, baseline319, Gitleaks26, 78 required context/app pairs и blocking
+CodeQL сохранены. Исторические результаты ниже привязаны к своим SHA, а не
+автоматически к новому коммиту.
+
+## Hosted validation cb0f939, 2026-10-25
+
+На `cb0f939e9908f41415e4cfdf04d409348b81d689` проверялся merge
+`5d46b2efe8636de34f58e2a88d29f194c982a1b0` с тем же tree
+`a51ba1538ae780156c614a364931d2eccf5510a5`.
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40135728448/job/120997087597)
+завершился GREEN: **2742 consumer PASS / 590 policy PASS**. Неизменённый
+PowerShell readiness test прошёл за 9,54 s при прежнем 20 s limit; 10-minute
+job cap сохранён. Предыдущий timeout/cancellation не удалён из истории и не
+объявляется исправленным изменением приложения.
+
+[Compiler diagnostic](https://github.com/egorribun/university_ecosystem/actions/runs/40135728448/job/120997231953)
+дал **48/48 guards PASS**. Реальный strict npm ls отказал с ELSPROBLEMS:
+ровно один invalid, без missing/extraneous/unknown или truncation. Это edge
+`file:../../scripts/react-compiler-zod-compat` от compiler к genuine
+`@university-ecosystem/react-compiler-zod-compat@1.0.0`, установленному как
+zod. Strict install, native graph и license equality до этого прошли.
+Относительный local-link вариант не принят; metadata/patch не выданы.
+Проверяется отдельный план детерминированного first-party archive, а не
+ослабление npm ls/peer ranges или подмена версии. Archive ещё не создан.
+
+[Fast lint](https://github.com/egorribun/university_ecosystem/actions/runs/40135728448/job/120997087680)
+остановился на единственном S608 нового AUD-343 fixture: динамическая INSERT
+строка с закрытым набором table names. Правка выбирает между двумя полными
+статическими параметризованными запросами; значения, temporary-schema isolation,
+cleanup и пять test oracles не меняются. Suppression не добавлен.
+Ruff format/imports прошли, но dependent PostgreSQL jobs были SKIPPED:
+новые 13 cases ещё не выполнялись, свежие46/fullPG на этом source не заявлены.
+[Frontend static](https://github.com/egorribun/university_ecosystem/actions/runs/40135728448/job/120997659847)
+нашёл только Prettier layout двух npm diagnostic files; точный formatter
+postimage применён без изменения семантики/48 cases. Staged17 parity,
+production build и bundle прошли. Post-fix lint/format и PG нужны на новом SHA.
+
+Ledger остаётся **301/512**; AUD-197, AUD-262 и AUD-343 здесь не добавляются.
+
+## Hosted validation b14520e, 2026-10-25
+
+На `b14520e31390406506b21946134f5347d4e9683b` проверялся merge
+`c1d3691fb857b5e9256d42da92dc6c70b0fc4fde` с тем же tree
+`671349cc232c875ae97ba7036da17a5f96ecb868`.
+[Focused PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120992268970)
+подтвердил **46/46 PASS**, включая обе grade cases и прежние 44 controls.
+[Full PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120992269253)
+завершился **317 PASS / 9 SKIP**; все 22 notification-outbox cases прошли.
+One-argument grade opt-in теперь имеет hosted post-fix proof: rollback не
+выпускает push, fresh-session retry и replay сохраняют одну committed delivery.
+Это не HTTP assignment idempotency и не гарантия external-provider exactly-once
+при crash между отправкой и journal commit. Ledger остаётся **301/512**;
+AUD-197 до отдельной согласованной по evidence приёмки не добавлен.
+
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120991577148)
+дал consumer **1 FAIL / 2741 PASS**, после чего job был CANCELLED.
+Единственный failure — неизменённый PowerShell readiness subprocess на фазе
+selection-guard по 20-second timeout; тот же test прошёл на `b5e4720`.
+Catalog110/40, scoped343, related121, grades17/delivery22/audit6 прошли.
+Policy verification был SKIPPED, fresh590 не заявлены. Один запрос rerun
+не создал попытку: GitHub отказал, потому что весь workflow ещё выполнялся.
+Причина cancellation явно не названа; совпадение с 10-minute job cap не
+объявляется подтверждённой причиной. Следующий source проверяется заново,
+без удаления теста, timeout increase или ослабления gates.
+
+[Compiler job](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120991677281)
+подтвердил **43/43 guards PASS**. Isolated strict generation, installation,
+native graph и physical-license equality прошли; отказ локализован в самом
+`npm ls --all --json --long`. Accepted patch/metadata нет. Следующие
+**48 guards** добавляют failure-only bounded summary: allowlisted public
+identities/ranges и fixed categories, без raw paths/config/stderr. Nonzero
+npm ls по-прежнему hard rejection; graph/peer ranges не изменены. Source-based
+гипотеза разных base paths у npm build и dependency validation пока не
+подменяет фактический вывод npm ls.
+
+[Markdown/CSpell](https://github.com/egorribun/university_ecosystem/actions/runs/40133823187/job/120992268830)
+прошли: 119 Markdown files, zero issues; исправленный AUD-198 anchor валиден.
+Fast lint, security/types, baseline319, Gitleaks, frontend format/17 staged
+parity cases/build/bundle прошли. Migration81, raw14/25 и DB gate86+2 сохраняют
+прежний scoped результат; это не full CI/release GREEN.
+
+Следующий tests-only cohort добавляет пять реальных PostgreSQL случаев для
+AUD-343: три missing-column fallback, complete schema и unexpected SQL error.
+Connection-owned temporary objects и rollback оставляют public notification
+table неизменной; transaction sentinel проверяет сохранение outer work.
+Семь существующих AUD-262 cases и один concurrent-dispatcher case запускаются
+рядом; hosted step требует ровно **13** named PASS без skips/errors.
+Новые пять cases ещё не выполнялись, AUD-343 не принят. **AUD-262 остаётся OPEN**:
+исправление postcommit false-500 не обеспечивает durable same-key idempotency
+после истечения 300-second Redis lease или потери Redis state.
+
+## Hosted validation b5e4720, 2026-10-25
+
+На `b5e472014191dad0ce30a0f014f5ce0115413b9d` проверялся merge
+`4cd23d20193ff3ab6db89ed3f2891cbba32a249c` с тем же tree
+`1a5421b48f200f903520d33beb652392038d77f5`.
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120987490376)
+дал **2742 consumer PASS / 590 policy PASS**. Исправленный detector различает
+точный literal pytest selector и реальные retry markers; исходные metadata,
+dynamic-command и negative controls сохранены. Fast lint, security/types,
+inventory и baseline319 scan прошли. В consumer cohort входят все 110 catalog
+cases (включая 40 новых guards), 343 logging/email/config/DLQ/Knip cases,
+121 related content/handler/outbox cases, 17 grades API и 22 delivery cases.
+Это не full CI GREEN.
+
+[Compiler candidate](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120987653988)
+дал **41/41 guards PASS**. Реальные exact three-record scope, project full/
+production checks, isolated direct-formatter lock generation и strict npm ci
+пройдены. Следующая совмещённая стадия native graph/license/npm ls/immutability
+отказала: accepted metadata/patch нет. Новый **43-case diagnostic-only** candidate
+разделяет её на девять фиксированных phase labels без вывода paths/raw npm data;
+все прежние acceptance assertions, peer ranges и graph scope сохранены.
+Tracked project manifest/lock по-прежнему staged, advisory closure не заявлена.
+
+[Grade PostgreSQL reproduction](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120988680897)
+подтвердил committed-assignment/replay control и прежние 20 notification cases.
+Rollback case фактически обнаружил один provider send до caller commit;
+проверки отдельного session PID и отсутствия persisted rows после rollback
+прошли. Общий fail-fast результат **1 FAIL / 40 PASS**, не полный PG-suite.
+[Отдельный 46-case cohort](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120988680042)
+дал **1 FAIL / 45 PASS**: тот же rollback assertion RED, прежние 44 cases и
+committed grade control PASS. Следующая точечная правка включает существующий
+`push_via_outbox_only=True` только для assignment notification. Caller commit,
+audit и grade/provider content сохраняются; используется действующий outbox
+envelope, включая `payload_data: null`. Post-fix hosted GREEN ещё требуется.
+AUD-197 остаётся OPEN. Ledger **301/512** и scope прежней AUD-198 acceptance
+не расширены.
+
+В том же Alembic job **81 migration cases PASS**, raw Squawk по-прежнему
+**14 original / 25 expanded** blocking findings.
+[DB Migration Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120988679975)
+подтвердил newest-boundary refusal, 86+2 controls и immutable-image
+migrate-passwords check. Это не исторический rollback/restore proof.
+[Markdown lint](https://github.com/egorribun/university_ecosystem/actions/runs/40132657228/job/120988679777)
+нашёл один MD051: slash в AUD-198 heading не совпал с тремя ссылками.
+Heading нормализован к `news-event`; ссылки, ledger и acceptance scope не меняются.
+
+## Исторический checkpoint: scoped AUD-198 и rollback dispositions, 2026-10-24
+
+Принятый ledger — **301/512 (58,8%)**, **211 ID не принято**. Сохранены все
+прежние 300 ID; добавлен только **AUD-198** для проверенного active news/event
+transactional outbox path. [Датированная приёмка, exact source и полный список](../../audits/AUDIT-2026-10.md#hosted-aud-198-news-event-outbox-scoped-closure-checkpoint-2026-10-24)
+связывают исходную потерю при enqueue, действующие API/service/repository и
+durable notification/push-outbox stages с actual hosted evidence на `6a2629e6`.
+Это не гарантия provider exactly-once, восстановления historical tenant scope
+или совместимости всех manual producers/cross-tenant fanout.
+
+Прежние **AUD-268, AUD-273, AUD-276, AUD-324, AUD-325, AUD-326, AUD-349 и
+AUD-435** сохраняют категорию owner-approved unsupported historical rollback
+dispositions, **не исправления миграций**.
+[Их отдельное датированное основание](../../audits/AUDIT-2026-10.md#owner-approved-unsupported-historical-rollback-dispositions-checkpoint-2026-10-24)
+не расширено. Парный database/S3 restore release gate остаётся **OPEN**;
+универсальная безопасность отката не заявлена. **AUD-197 остаётся OPEN**,
+включая grades: ошибочная третья ссылка исходной строки на news.comment
+не удаляет оценки из явно указанного scope. Разделы ниже сохраняют результаты
+своих SHA и не заменяют проверки нового source.
+
+На опубликованном `2208db1e`, tested merge `cc2626f1` с тем же деревом,
+[Contract120945584300](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120945584300)
+дал **2535 consumer PASS / 590 policy PASS**. Raw detect-secrets, security/types
+и Gitleaks прошли на этом source. Отдельно все четыре backend unit shards этого же source завершились успешно:
+**20095 PASS / 284 SKIP / 0 FAIL**. [Shard0](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946035005)
+дал 4656/44, [shard1](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946034952)
+— 4012/144, [shard2](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120951041875)
+— 6560/45, [shard3](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120953266537)
+— 4867/51 (PASS/SKIP). Отдельные preliminary probes 847 и 240 PASS не входят
+в сумму. [Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120958915392)
+был SKIPPED: полный unit-suite GREEN не означает aggregate coverage/floors,
+полный CI или release GREEN. Новый source требует собственных проверок.
+
+[Owned Live исторического source 2208db1e](https://github.com/egorribun/university_ecosystem/actions/runs/40118573865/job/120947409185)
+дал **275 Node PASS**, **38 browser PASS / 2 SKIP**; NATS и cleanup SUCCESS,
+receipt12571525530. Неизвестная причина исторического сбоя30b этим не устранена.
+
+На source `e6a97bd3` ([CI 40102373009](https://github.com/egorribun/university_ecosystem/actions/runs/40102373009))
+consumer cohort дал **2442 PASS**, включая все **192** чистых client-IP
+contracts и прежние logging/email/DLQ regressions. Policy cohort имел
+**7 FAIL / 469 PASS**: это observed tests-first RED нового точного Alembic
+revision identifier, не отказ client-IP implementation.
+
+Staged React Compiler adapter прошёл **17/17** compatibility tests:
+сохранены 37 legacy diagnostic fixtures, suppression и suggestions;
+два заранее описанных InvalidConfig wording differences проверяются отдельно.
+Обычный npm ci, frontend lint/format, четыре unit shards, app/LHCI build,
+bundle analysis и перенос npm layout в Docker builder прошли.
+[Owned live 40102372905](https://github.com/egorribun/university_ecosystem/actions/runs/40102372905)
+дал **38 PASS / 2 SKIP**, NATS outage и cleanup также PASS.
+Это приёмка staged dev-only boundary, не замены конечного consumer:
+его Zod3 и отдельный embedded Babel risk пока не закрыты.
+На source `ee35e6de` [27-case final-lock generator cohort](https://github.com/egorribun/university_ecosystem/actions/runs/40108844098/job/120916370637)
+дал **26 assertion FAIL / 1 PASS**, без import/setup failures.
+На source `8d5011b0` [тот же generator cohort](https://github.com/egorribun/university_ecosystem/actions/runs/40116445226/job/120938703862)
+дал **27 PASS**. Однако реальный npm install оставил lock неизменным:
+generator корректно отказал на whole-lock scope, candidate не принят,
+full/production/strict candidate validation не достигнута.
+На `f7182c73` генерация переключена на точный named npm update для двух
+заданных пакетов; ожидаемый трёх-record delta не расширен.
+[Новый cohort](https://github.com/egorribun/university_ecosystem/actions/runs/40117430250/job/120942304580)
+дал **29 PASS**, но реальный named npm update снова дал пустой delta и
+fail-closed rejection. На `2208db1e`
+[bounded resolver diagnostic](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120945654619)
+дал **31 PASS** и фактически показал npm prerelease edge mismatch:
+caret/exact satisfies true, но intersects false; exact selector привязывается
+к node, не к объявленному dependency edge. Реальный update снова оставил
+пустой lock delta и корректно отказал. На `941f56af`
+[32 guards и pinned singleton/self-reference controls](https://github.com/egorribun/university_ecosystem/actions/runs/40123590419/job/120961096224)
+прошли. Реальный npm создал лишний четвёртый compiler-relative facade record:
+whole-lock guard его отверг, full/production/strict proof не достигнута.
+Следующий candidate использует точный consumer-relative file target, проверяемый
+реальными pinned Node/Edge/NPA, и **34 guards**, включая исходный misplaced record.
+На `6a2629e6` [34 guards и native target control](https://github.com/egorribun/university_ecosystem/actions/runs/40125756161/job/120967455893)
+прошли. Генератор прошёл exact three-record scope, full и production physical
+проверки и чтение license evidence, затем отказал при isolated strict peer lock
+generation. Accepted metadata/patch не выданы; strict proof не получена.
+Следующий diagnostic-only candidate добавляет `--json` только этому npm шагу
+и 38 guards: вывод ограничен фиксированным error code и allowlisted tuples,
+без raw stderr/summary/detail/paths. Peer ranges/config и graph scope не ослаблены.
+На `2a8042c5` [38 guards](https://github.com/egorribun/university_ecosystem/actions/runs/40130028792/job/120979743409)
+прошли; bounded npm diagnostic зафиксировал ERESOLVE на strict generation:
+honest facade zod1.0.0 у compiler против peer
+formatter4.0.2: исходный range ^3.25.0 || ^4.0.0, scoped override4.6.7. Следующий **41-case** эксперимент
+добавляет direct formatter4.0.2 только в изолированный strict fixture, сохраняя
+project manifest/three-record graph scope и все peer ranges. Metadata явно
+отличает fixture-only placement от whole-project strict resolution; старый
+unanchored ERESOLVE не объявляется повторно исполненным. Fresh strict install,
+real npm ls и artifact/native equivalence ещё нужны. Никакого accepted graph
+или advisory closure пока нет.
+
+На source `36e84f25` ([CI 40103663774](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774))
+точная import-only правка прошла fast lint и допустила PostgreSQL:
+[73-case diagnostic](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774/job/120901869267)
+дал **2 FAIL / 71 PASS**. Только legacy-key controls обнаружили лишний
+`ix_groups_id`; integer, rollback, helper round-trip и successor controls PASS.
+Исправление удалило одну upgrade-side CREATE INDEX операцию; downgrade,
+primary key, locking, checks и foreign keys сохранены. Unit assertion требует
+PK attachment и запрещает только лишний index. На source `b0e25caa`
+[74-case diagnostic](https://github.com/egorribun/university_ecosystem/actions/runs/40110852740/job/120923222979)
+дал **74 PASS**; original Squawk сохранил **14**, expanded — **25** findings.
+На `f7182c73` [расширенный diagnostic](https://github.com/egorribun/university_ecosystem/actions/runs/40117430250/job/120942731865)
+дал **81 PASS**, включая все **27 физических migration cases** через 17
+явных selectors; прежние 74 cases сохранены. Actual Squawk всё ещё даёт
+**14 original / 25 expanded** findings.
+[Повтор на 2208db1e](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946034277)
+подтвердил **81 PASS**, включая все 27 физических migration cases, и те же
+**14/25** blocking findings. Source-bound SQL metadata, rollback, transaction,
+catalog и final-FK controls сохранены. Это scoped post-fix GREEN, не полный
+Squawk/CI GREEN и не гарантия отсутствия downtime. Отдельная приёмка восьми
+исторических rollback dispositions основана на решении владельца, а не на
+предположении, что эти upgrade/helper tests доказывают безопасный downgrade.
+
+[PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/40103663774/job/120901869525)
+подтвердил все **8** notification-outbox cases, включая concurrent sessions и
+partial-recipient retry. Общий результат **1 FAIL / 164 PASS / 4 SKIP**:
+fail-fast остановился на первом том же migration-index defect.
+На том source AUD-197/198 ещё не были приняты. Исторический six-case step на b0e25caa дал
+**2 correct-tenant A PASS / 4 empty-or-B FAIL**, с обрезанным четвёртым traceback.
+На f7182c73 отдельный bounded tenant cohort полностью завершился:
+**26 FAIL / 5 PASS из 31**, без fixture errors и truncation. Оба A controls
+прошли; все четыре empty/B traceback подтверждают ноль вместо двух
+notifications, оба legacy-null-tenant случая — три вместо двух.
+`--show-capture=no` сохранил capture, прежние budgets и все причины.
+Независимо reviewed узкий producer/dispatcher fix на `2208db1e` прошёл
+все **31 cases** в том же отдельном tenant step. DDL artifacts получены до него.
+На том checkpoint AUD-197/198 ещё не были приняты. На `941f56af`
+[bounded tenant cohort44](https://github.com/egorribun/university_ecosystem/actions/runs/40123590419/job/120961216029)
+дал **8 expected FAIL / 36 PASS** без fixture/teardown errors: прежние 31 cases
+и пять known-scope/missing-comment controls прошли; четыре unknown-scope
+handler cases и четыре hidden/deleted PostgreSQL cases воспроизвели silent ack.
+Узкий handler fix на `6a2629e6` сохраняет retry/DLQ evidence при отсутствующем
+защищённом источнике без tenant metadata; его actual GREEN приведён ниже. Это граница
+неизвестного scope, не возраста записи: newly emitted global events тоже могут
+консервативно попасть в retry/DLQ после удаления источника. Known-tenant deletion
+и missing non-RLS comment по-прежнему пропускаются; privileged lookup и изменение
+wire envelope не вводятся. Consumer cohort расширен до **194 selectors**:
+добавлены целые связанные handler/search/content suites и существующие
+retry/DLQ controls, без сокращения прежних 187.
+На `6a2629e6` [все 44 focused cases](https://github.com/egorribun/university_ecosystem/actions/runs/40125756161/job/120967804209)
+прошли, включая реальные PG retry→DLQ→no-duplicate polls. [Полный PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/40125756161/job/120967804706)
+дал **315 PASS / 9 SKIP**, все 20 notification-module cases PASS; все 121
+связанный handler/content/search/retry case также PASS. Этот checkpoint
+принимает только AUD-198, повышая ledger 300→301; AUD-197 остаётся открытым
+по grade producer transaction/retry path. У исходного AUD-197 третья ссылка указывает
+на news.comment, хотя текст называет grades; это не разрешает молча убрать
+оценки из scope. Current GradeService immediate-provider path ещё требует
+собственного rollback/commit/retry PostgreSQL proof.
+Добавлены только два grade tests-first cases с настоящими GradeService/audit/DB
+и fake provider: committed replay control и rollback→fresh request retry.
+Они отдельно проверяют отсутствие push до caller commit и сохранение одного
+успешного delivery pair после commit; нового GREEN пока нет. Dedicated cohort
+расширен **44→46** без изменения 3-minute/capture/output bounds; consumer194
+не изменён. Это не вводит HTTP grade-request dedupe или изменение audit/auth.
+ Исторический полный integration на
+f7182c73 остановился на первом tenant defect (**1 FAIL / 29 PASS**); полные
+27 migration cases доказаны отдельным diagnostic, не тем остановленным run.
+
+На `2208db1e` [полный PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946034962)
+дал **311 PASS / 9 SKIP**, включая все 16 notification-module cases.
+Это не снимает отдельную historical metadata-less backlog проверку.
+
+Для AUD-178 в consumer cohort добавляются семь существующих named Python
+contracts CSP-handler и Caddy configuration. Они проверяют границы sanitization,
+но не wire-level Referer или доставку логов. [Четыре SSR sanitizer Node cases](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120946077762)
+прошли на `2208db1e`; reset-specific browser/HTTP/log-sink evidence ещё требуется,
+поэтому AUD-178 не принимается.
+
+На `941f56af` [Contract](https://github.com/egorribun/university_ecosystem/actions/runs/40123590419/job/120960182391)
+дал **4 expected unknown-scope FAIL / 2587 PASS**, затем **590 policy PASS**.
+Все 28 planner cases, включая нейтрально переименованный тест, и четыре
+barrier-refusal controls прошли; [реальный DB Migration Gate](https://github.com/egorribun/university_ecosystem/actions/runs/40123590419/job/120961216015)
+снова подтвердил точный newest-boundary отказ и 86+2 PASS. Raw scanner,
+security/types и Gitleaks GREEN; это свежая проверка scoped300 dispositions,
+не приёмка restore или полного CI. Full PostgreSQL integration этого source
+остановился на ожидаемом первом новом unknown-scope случае: **1 FAIL / 35 PASS**.
+
+На `6a2629e6` [Contract](https://github.com/egorribun/university_ecosystem/actions/runs/40125756161/job/120967127340)
+дал **7 catalog FAIL / 2656 PASS**, затем **590 policy PASS**. Каталог ошибочно
+считает слово `retries` в literal pytest node признаком CI retry behavior;
+реального повторного запуска job не добавлено. Следующие 38 tests-first cases (ожидаются 4 новых RED и 34 controls,
+не observed результат) проверяют только точный positional pytest literal и сохраняют реальные
+retry/metadata/dynamic negatives; detector и retry:none пока не изменены.
+На `2a8042c5` [actual tests-first Contract](https://github.com/egorribun/university_ecosystem/actions/runs/40130028792/job/120979582764)
+дал **11 catalog FAIL / 2690 PASS**: семь прежних ошибок плюс четыре новых
+safe-literal assertion RED; все 34 дополнительных negative controls PASS.
+Policy cohort снова дал **590 PASS**. Публикуемый classifier candidate маскирует
+только точный reviewed positional literal в статической uv/pytest-команде,
+сохраняет все другие markers/metadata и retry:none; 40 новых guard cases
+включают два compatibility controls. Его GREEN ещё требуется. Четыре
+наблюдённые Ruff-format правки в tests/test_ci_check_catalog.py применены
+без изменения assertions. PG/DB jobs `2a8042c5` были SKIPPED именно из-за
+того formatter failure; grade runtime RED/GREEN ещё не получен.
+Все прежние 194 selectors сохранены; следующие **196** добавляют полные
+существующие grades_api и notifications_delivery_coverage suites без изменения
+budget или dedicated46. Raw scanner, security/types и Gitleaks
+на этом source GREEN; **81 migration PASS**, raw Squawk всё ещё **14/25**.
+[Owned Live](https://github.com/egorribun/university_ecosystem/actions/runs/40125756149/job/120966678260)
+дал **275 Node PASS / 38 browser PASS / 2 SKIP**, NATS и cleanup SUCCESS;
+это не универсальная tenant/notification или full-CI приёмка.
+
+Полный unit shard 1 на 36e84f выявил два дополнительных config-warning FAIL:
+локальные Path аргументы стали opaque markers после строгой redaction.
+Caller-only fix преобразовал ровно эти четыре аргумента в native strings;
+redactor и оба real-caplog assertions не ослаблены.
+[Contract на b0e25caa](https://github.com/egorribun/university_ecosystem/actions/runs/40110852740/job/120922068539)
+дал **22 config-base PASS** и **8 Knip contract PASS**. Исправленный Knip
+assertion допускает ровно новый dev-only compiler workspace с проверкой
+manifest; существующие ignore lists и blocking hints не ослаблены.
+Это scoped GREEN, не aggregate coverage. Общий consumer результат на b0e25caa
+составил **6 V2 FAIL / 2474 PASS**, а не full Contract GREEN.
+
+Текущая политика содержит **337** точных path/type/digest identities:
+все прежние **336** сохранены, добавлен только exact synthetic V2 private-field
+sentinel после observed tests-first **6 FAIL / 584 PASS** в
+[policy job 120938602851](https://github.com/egorribun/university_ecosystem/actions/runs/40116445226/job/120938602851).
+[ADR-047 фиксирует точные границы](../../adr/ADR-047-risk-based-quality-policy.md#exact-v2-invalid-private-field-sentinel-disposition-2026-10-24).
+На том же source8d501 scanner оставил только это unmatched finding; четыре
+compiler-golden findings больше не unmatched. Новая запись использует
+существующий exact path/type/digest механизм и прежнюю sentinel category,
+не разрешает весь путь. На `2208db1e` все **590 policy cases PASS**, а
+[raw detect-secrets120945654632](https://github.com/egorribun/university_ecosystem/actions/runs/40118573869/job/120945654632)
+прошёл с прежними **319** baseline identities и без unmatched finding.
+Все 26 source/scope guards сохранены. Любой новый source требует собственных
+tests/scans; исторические policy counts ниже относятся к своим revisions.
+Ledger не увеличивается от scanner dispositions.
+
+Для отдельного intermittent mobile registration observation
+[Node V2 cohort на ee35e6de](https://github.com/egorribun/university_ecosystem/actions/runs/40108844115/job/120916103708)
+дал **10 FAIL / 264 PASS**, а Python V2 — **6 FAIL / 2474 PASS** с PASS
+существующего runner control. Проверенный runtime добавляет только
+failure-only конечный snapshot enum/boolean наблюдений и строгий ограниченный
+stdout parser. На source `8d5011b0` все **7 V2 Python cases PASS**; общий
+consumer cohort имел **20 tenant-context FAIL / 2483 PASS**, не full Contract GREEN.
+[Owned Live 40116445162](https://github.com/egorribun/university_ecosystem/actions/runs/40116445162/job/120938601800)
+на том же source завершился SUCCESS: **275 Node PASS**, включая все 11 V2
+controls, и **38 live PASS / 2 SKIP**, exit0; NATS-outage и owned cleanup PASS.
+[Receipt12570061365](https://github.com/egorribun/university_ecosystem/actions/runs/40116445162/artifacts/12570061365)
+сохранён. V2 failure frames в этом успешном browser run не возникали.
+Дополнительный deterministic 250ms control не имеет своего исторического RED.
+Исходные UI path, pending-admission ledger, retries и deadlines сохранены.
+Это source-bound instrumentation GREEN, не исправление неизвестной причины
+сбоя 30b и не переименование его failed run в GREEN. Новый source требует
+собственных hosted проверок.
+
+Baseline **319**, Gitleaks **26**, 78 required context/app pairs, blocking
+CodeQL, hooks, 100% patch coverage и действующие quality floors неизменны.
+Client-IP live adapter и deployment не заявлены проверенными. Новые source
+изменения требуют собственных hosted tests/scans; полный CI, aggregate
+coverage, release, merge и deployment не объявляются GREEN.
+
+## Текущая source-bound приёмка logging и inventory, 2026-10-24
+
+Этот раздел задаёт текущий checkpoint; последующие разделы сохраняют результаты
+своих SHA и исторические counts, а не заменяют проверку текущей ветки.
+
+Принятый ledger — **292/512 (57,0%)**, **220 ID не принято**. Добавлены только
+**AUD-452, AUD-508 и AUD-509**; все прежние 289 ID сохранены.
+[Точные evidence, Git blobs, границы и полный список](../../audits/AUDIT-2026-10.md#hosted-logging-and-inventory-scoped-closure-checkpoint-2026-10-24).
+AUD-452 имеет actual RED/GREEN; AUD-508/509 — verified already-fixed dispositions,
+без заявления о первоначальном историческом RED. Это scoped audit acceptance.
+
+Проверенный source — `78c94a26b41896811c6038a8cedf259458a222d4`;
+merge `fdd444d59dabc7121619215017f4d3e0ed0ebe7b` имеет то же дерево
+`8c9265108dfc90db88e6cef2317fb42357687d1c`.
+[Contract 120881543869](https://github.com/egorribun/university_ecosystem/actions/runs/40097104326/job/120881543869):
+**2249 consumer PASS / 452 policy PASS**, включая 312 logging/email/isolation
+и 277 unique inventory cases. Все 64 прежних direct logging/email FAIL и
+derived isolation FAIL теперь PASS на неизменённых regression tests.
+Полный inventory-модуль сохранён в consumer cohort; предыдущие selectors
+не удалены. [Repository inventory 120881544124](https://github.com/egorribun/university_ecosystem/actions/runs/40097104326/job/120881544124)
+прошёл actual checker и 28 harness tests.
+
+[Backend types 120882280666](https://github.com/egorribun/university_ecosystem/actions/runs/40097104326/job/120882280666):
+352 source files, 0 issues; error budget 0; relaxed overrides 9/9; deptry clean.
+Named orchestrator isolation regression также PASS в текущем Contract.
+Это не доказательство 100% patch или aggregate coverage; обязательные coverage
+lanes и проверки конечного SHA не заменяются числом прошедших tests.
+
+Текущая политика сохраняет **329** точных dispositions, baseline **319** и
+**26** исторических Gitleaks fingerprints. 78 context/app pairs, blocking
+CodeQL, hooks, 100% patch coverage и все действующие quality floors не меняются.
+[Точная граница orchestrator-fixture rebind](../../adr/ADR-047-risk-based-quality-policy.md#exact-orchestrator-fixture-isolation-git-pin-rebind-2026-10-24)
+сохранена. Эта приёмка не расширяет одобренный scanner scope;
+новые или изменённые identities блокируются;
+документационная публикация требует собственных final-source checks.
+
+Следующий объём: подтвердить применимые coverage/remaining required checks,
+устранить blocking migration Squawk findings и compiler Zod3 dependency gap,
+затем продолжить остальные 220 ID. Ранее 63 focused PostgreSQL и 17 migration
+integration PASS не являются общей приёмкой migration finding; original 15 и
+expanded 26 Squawk findings не закрыты этим checkpoint. Dependency cleanup,
+полный normal CI, release, merge и deployment не объявляются GREEN.
+
+Владелец явно разрешил публичные audit results, CI links, точные hashes и
+exception IDs, а также сохранение уже записанных archive metadata в этих
+документах. Сам архив, действующие секреты и приватные персональные данные
+не добавляются; постоянное правило разрешений не создаётся.
+
+
+## Поведенческий RED и минимальные исправления AUD-359/AUD-446, 2026-10-24
+
+Ledger остаётся **283/512**. Source75de40e / merge
+`d5b57fe9c2e13b31c6ad31cdccf2ef9906050d3c` имеет одинаковое дерево
+`3aa9b2ac0031c45e3e7c73b13e41a1f0ccf0d80e`. Contract job120806473928
+получил 16 ожидаемых поведенческих FAIL / 1624 PASS, без setup failures;
+отдельный policy325 cohort — 395 PASS. AUD-388 получил named PASS для
+`test_healthz_brief_cache_hit_filters_full_payload`; его ledger-запись ещё
+не обновлена. Общий CI не принят.
+
+Четырнадцать logging regressions доказали сохранение synthetic-value вместо
+redaction на нормализованных ключах и в JSON/console sinks. В production
+добавлены только exact names reset_token и csrf_hmac_secret. Два CWV regressions
+доказали CwvEnvelopeError/401 при недоступности JWKS. Новый sibling error и
+узкий catch PyJWKClientConnectionError дают generic503; шесть controls сохраняют
+invalid-identity401, disabled-policy503 и нормальный подписанный export.
+GREEN обоих исправлений ещё требуется.
+
+Три точных Ruff postimages применены к новым тестам; предыдущий fast отказ
+блокировал Alembic и backend integration, поэтому PostgreSQL GREEN preference
+fix пока не получен. Исходные migration/source pins не изменены этим formatting.
+
+Gitleaks history на75de отказал со scanner code2 после успешной SARIF validation;
+предыдущий2bc на том же base и конфигурации проходил. Это означает findings,
+не доказанную утечку. ZIP report не прочитан в разрешённом plugin-only режиме.
+Добавляются только tests-first требования к ограниченному metadata diagnostic:
+без match/snippet/message/секретных значений, без изменения scanner/ignore/config.
+Полный test module добавлен как selector140; прежние139 сохранены.
+
+Новый staged adapter lock generator также находится в inert tests-first стадии:
+ожидаются assertion RED, сетевых запросов и генерации пока нет. Это не изменение
+npm graph. Применение root4.6.7 lock всё ещё ожидает отдельное подтверждение
+инструмента; текущий lock не меняется, root generator ещё не удалён.
+
+## Транзакционные предпочтения и следующий RED cohort, 2026-10-24
+
+Ledger остаётся **283/512 (55,3%)**. На 2bc65c3 Contract завершился 1555 + 366
+PASS, inventory — PASS с 28 harness tests. Политика323 принята проверками;
+единственная новая unmatched identity — публичный Git pin временного root-Zod
+генератора. Он не подавляется: генератор удаляется только после применения
+проверенного npm-produced lock-кандидата, запись которого пока ожидает
+подтверждения инструмента. Текущий lock здесь не меняется.
+
+Девять guards root-Zod прошли; npm подтвердил зрелую 4.6.7, upstream Git SHA,
+оба archive digests и точную трёхполевую замену одного root record. Это ещё не
+устранение всех Zod3 consumers. React Compiler baseline содержит 37 fixtures
+и пять legacy controls PASS; восемь assertion RED относятся к stub адаптера.
+Два точных Prettier postimages генератора и пять hunks baseline test, а также
+единственный Ruff hunk tombstone применены без изменения поведения.
+
+В этой серии публикуется сохранение surviving legacy user preferences перед
+удалением колонок в 148642dd1207. Существующие destination rows выигрывают;
+optional NULL, false и midnight сохраняются, несовместимый NULL dnd_enabled
+должен откатывать миграцию. Production fix имеет независимое source review,
+но PostgreSQL GREEN нового кода ещё требуется. Два пересмотренных публичных
+source pins оформлены отдельными exact dispositions в политике325; прежние323
+records неизменны. Их fingerprints вычислены независимо, но новый scanner
+результат ещё не получен. Более ранняя 202511240001 остаётся отдельным вопросом.
+
+На 6082 focused migration cohort дал 37 PASS, затем consumer отказал при
+поиске SQL/JSON пары. Физический обход файлов теперь игнорирует pytest current
+symlinks, не ослабляя требование одной пары из одного каталога; девять regression
+cases ещё ждут hosted execution. Это не Squawk exception и не replay SQL.
+
+Consumer cohort сохраняет исходные136 selectors и добавляет три явных
+назначения: существующая проверка AUD-388, tests-first AUD-359 и AUD-446.
+Новые tests должны сначала воспроизвести logging/JWKS defects; соответствующие
+production исправления ещё не применены. Два workers, loadfile, budgets,
+filters, policy cohort и failure propagation сохранены.
+
+## Подтверждённая изоляция калибровки AUD-504, 2026-10-24
+
+Принятый ledger: **283/512 (55,3%)**, 229 ID не принято. Добавлен только
+AUD-504 к прежним 282 ID: неизменённый PostgreSQL regression после реального
+RED на 8db дал шесть named PASS на a1a50e, job 120787537522. Проверены внешняя
+наблюдаемость, rollback после успеха/ошибки и частичный отказ калибровки.
+[Точное основание](../../audits/AUDIT-2026-10.md#hosted-planner-calibration-rollback-closure-checkpoint-2026-10-24)
+не является заявлением о полном CI или исправлении исторических данных.
+
+Broad integration остановился на потере legacy user preferences: 149 PASS,
+4 SKIP, один FAIL (ожидались три строки, получен пустой результат); второй
+preference case не выполнялся из-за fail-fast. Исправление проходит отдельную
+проверку и не включено в эту приёмку. Два backend unit shards и все четыре
+frontend unit shards прошли на a1a50e; остальные backend shards были отменены,
+полный unit universe не считается проверенным.
+
+На 6082f38 опубликованы исправления Caddy name expectation, fail-closed
+unsupported-shell guard и создания pytest temp parent; root Zod generator пока
+содержит tests-first guards, не обновлённый lock. Light/dark Caddy browser smoke
+run 40067042826 PASS на этом exact source. Main CI run 40067042977 начался;
+его новые результаты и дальнейшие изменения требуют отдельной верификации.
+
+## Точные Git-pin dispositions для preference repair, 2026-10-24
+
+По разрешению владельца применять аналогичные узкие обоснованные исключения
+подготовлены ещё ровно две public_integrity_digest identities для проверенных
+Git-pin rebindings migration trace и historical reference guard. Policy325
+сохраняет прежние 323 записи побайтно; baseline319 и Gitleaks25 неизменны,
+expiry новых записей — 2027-01-10. [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#exact-public-git-blob-rebindings-for-preference-preservation-2026-10-24)
+фиксирует конечные path/type/fingerprint tuples и ограничения.
+
+Публичные source blobs независимо пересчитаны, как и ожидаемые detect-secrets
+fingerprints. Это **вычисленные expected findings**, ещё не наблюдавшийся
+hosted scanner result. Старые записи сохранены как history; текущий pin
+проверяется против фактических source bytes и точного approved identity.
+Изменённый/неизвестный pin по-прежнему блокирует, автоматического допуска нет.
+Новые metadata/source/negative tests ещё требуют hosted выполнения. Migration
+repair и его source pins собираются отдельно; это не Squawk waiver и не GREEN.
+Accepted ledger остаётся **283/512**, полный CI и release не приняты.
+
+## Историческое продолжение после CI 1a3954e, 2026-10-24
+
+Принятый ledger остаётся **282/512 (55,1%)**, 230 ID не принято.
+На [1a3954e](https://github.com/egorribun/university_ecosystem/commit/1a3954e99f06bf7b1660ad2df609a84b022daefa)
+inventory PASS, но fast lint отказал на четырёх formatter diffs и Caddy S108.
+Применяются точные nine-hunk Ruff postimages из job 120776948690, без
+семантических изменений. Caddy config теперь использует runner-owned temporary
+path с точным read-only bind, а не suppression небезопасного literal.
+
+Contract job 120776948669 напечатал три FAILED Caddy parameter nodes, затем
+был отменён на десятиминутном бюджете около конца cohort. Отсутствие custom
+build — source-bound объяснение первого assertion, не напечатанный traceback;
+полный pytest итог этого job не получен. Следующий source переводит все три
+smoke workflow на существующий custom Caddy Dockerfile, точный checkout SHA,
+local load/no push, cache read без записи, унаследованный UID100 и порт8080.
+Finite browser/SSR/backend origins согласованы; public config chmod0444
+обеспечивает чтение non-root процессом. Matching JWT_ISSUER явно задан backend
+и production SSR как отдельный исправленный CI prerequisite; проверки
+issuer/signature не отключаются. Budgets 30/30/20 минут и action/base pins
+сохранены. Runtime smoke GREEN ещё требуется; visual/admin остаются manual lanes.
+
+Для устранения observed Contract timeout consumer получает только два
+pytest-xdist workers и loadfile grouping. Все 136 ordered selector arguments,
+последовательный policy cohort, временные корни, process groups, JUnit/log
+outputs, exit handling и десятиминутный budget сохранены. Worker DB/log/Pact
+изоляция проверена по source и существующим characterization tests.
+Десять дополнительных real-shell boundary cases проверяют argv/status/negative
+mutants; их новый hosted GREEN и фактическая скорость пока не установлены.
+Динамическое containment nested process groups при принудительной отмене
+этими новыми tests не доказывается.
+
+Node job 120777206146 выполнил 44 tests и получил 13 assertion failures только
+в восьми новых provenance cases; исходные 36 остались passing. После этого
+stub заменяется точным helper и wiring registry/manifest gitHead.
+Модуль отвергает malformed/conflicting declarations и всегда сообщает
+source_binding=unverified: совпадающие заявления не доказывают build provenance.
+
+Actual detect-secrets scan обнаружил ровно два новых публичных Git-идентификатора
+в trace helper и historical MFA guard. В 05:35 UTC владелец явно разрешил
+именно эти две finite public_integrity_digest dispositions до 2027-01-10.
+[ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#owner-approved-two-exact-public-git-blob-dispositions-2026-10-24)
+фиксирует policy323: прежние 321 записи сохранены, baseline319 identities и
+Gitleaks25 не меняются. Точный inactive identity.path второго record учитывается
+только как scanner bookkeeping; category/evidence и active references остаются
+под guard. Новый или изменённый finding по-прежнему блокирует; это не разрешение
+на автоматическую замену Git pin. Новые tests/scan/hosted GREEN ещё не получены.
+Migration waiver этим решением не применяется; accepted остаётся 282/512.
+
+На 1a3954e Alembic diagnostic и backend units были SKIPPED из-за pre-commit.
+Поэтому PostgreSQL/expanded-Squawk evidence нового harness отсутствует.
+Исправления AUD-493/AUD-504 ещё требуют нового GREEN. Полный CI, release,
+merge и deployment не приняты; работа продолжается только на egorribun.
+
+## Текущий hosted checkpoint и следующий пакет, 2026-10-24
+
+Принятая source-level нижняя граница — **282/512 (55,1%)**, осталось **230 ID**:
+добавлены только AUD-350 и AUD-481 по [точным критериям и evidence](../../audits/AUDIT-2026-10.md#hosted-timestamp-and-image-scan-closure-checkpoint-2026-10-24).
+Все 280 прежних ID сохранены. Это не full-CI или release acceptance.
+
+На [8db323bc](https://github.com/egorribun/university_ecosystem/commit/8db323bcdfe932e9c1d99d587e125c40d10c5e8e)
+[Matrix 40055175068](https://github.com/egorribun/university_ecosystem/actions/runs/40055175068)
+подтвердил оба pre-commit jobs, inventory, contract cohort и все четыре
+frontend unit shards. PostgreSQL migration gate SUCCESS: 86 focused tests
+и два AUD-350 counterfactual cases. Все шесть release-image типов действительно
+собраны и просканированы; backend/gateway/ws-hub/file-processor/Caddy Trivy PASS,
+frontend корректно FAIL на HIGH Zod. У custom Caddy отдельно прошла offline
+проверка установленного `brotli-libs=1.2.1-r0`.
+
+Обычный `npm ci` в job 120756555656 SUCCESS (2153 packages); затем реальный
+npm audit больше не сообщает body-parser/Undici, но блокирует цепочку Zod.
+Read-only compiler probe выполнил 36 tests и четыре artifact inspections.
+Он подтвердил external Zod imports старого ESLint compiler plugin и признаки
+bundled Zod в Babel compiler, но не установил exploitability или remediation.
+Переход на другой compiler без сохранения diagnostics не применяется.
+
+Полный backend unit cohort завершился: **19160 PASS / 22 FAIL / 253 SKIP**.
+Все 22 причины разобраны: 15 CWV prerequisite fixtures, две ожидаемые AUD-493
+template-only 64-hex отказы, development Helm fixture без external secret,
+projection key-set drift, historical MFA identifier false positive, Docker
+capability-option parsing и staging migration fixture без Redis prerequisite.
+Отдельный integration job прошёл 112 tests и воспроизвёл AUD-504: synthetic
+`pg_class` statistics видны независимой транзакции и сохраняются после анализа.
+
+Следующий пакет исправляет AUD-504: обе calibration UPDATE выполняются внутри
+savepoint той же rollback-only транзакции, что EXPLAIN; partial failure
+восстанавливает default statistics. Шесть PostgreSQL regressions неизменны.
+AUD-493 приводит template к действующему lowercase 40-hex schema/release
+контракту; development fixture получает существующий external-secret input.
+Оба production изменения прошли source review после observed RED, но новый
+hosted GREEN ещё требуется.
+
+Tests-only corrections явно задают необходимые Redis prerequisites, сохраняют
+все negative CWV/missing-secret assertions и строгие projection key sets.
+Docker image parser распознаёт только три добавленных value-options и сохраняет
+отказ на unpinned image. MFA guard допускает лишь два historical literals
+по точному пути и неизменному Git blob; любые другие bytes, пути или symlink
+aliases остаются видимыми. Runtime MFA и scanner/disposition policy не меняются.
+
+Добавлены tests-first checkpoints: три Caddy smoke contracts требуют source-built
+custom runtime и согласованный unprivileged CI origin; smoke workflows пока
+не изменены. Восемь новых provenance tests требуют явного сопоставления registry
+и artifact gitHead; одно importable stub не выдаёт доказательств происхождения.
+Их ожидаемый assertion RED не считается passing audit и не заменяется skip.
+
+Test-only migration diagnostic связывает пять nested EXECUTE sites с точным
+source, сравнивает instrumented run с неизменённым control и отдельно проверяет
+late-failure rollback. Новый consumer в существующем Alembic job сохраняет
+исходный lint, permissions, budget и scanner flags; печатает bounded metadata/
+expanded SQL и возвращает реальный Squawk status. Positive preservation
+evidence ещё не получено; expanded Squawk ожидаемо остаётся RED.
+Никакой migration waiver не применён: владелец разрешил только подготовить
+конечное предложение, точные границы требуют отдельного подтверждения.
+
+Baseline319 identities, approved policy321, Gitleaks25, 78 required context/app
+pairs, blocking CodeQL и coverage floors сохранены. Предыдущие датированные
+значения ниже исторические. Новому source нужны собственные проверки.
+
+## Проверенный checkpoint и следующий source, 2026-10-24 01:59 UTC
+
+На source `772a17927a1aa0cc89ff974d46e669d56b3bccd7`
+[Owned Live 40049236166](https://github.com/egorribun/university_ecosystem/actions/runs/40049236166)
+завершил основной acceptance job SUCCESS; отдельные frozen-RC jobs SKIPPED
+не считаются доказательством полного release smoke. В
+[Matrix 40049236347](https://github.com/egorribun/university_ecosystem/actions/runs/40049236347)
+contract consumer, fast pre-commit, baseline integrity, PostgreSQL migration gate,
+Helm lint и Go lint/unit/race jobs SUCCESS. Полный CI не принят:
+остаются inventory, dependency/security, Alembic SQL lint и frontend failures.
+
+Следующий пакет интегрирует точный npm-generated body-parser `1.20.9`:
+сравнение полного lock подтверждает только три одобренных artifact fields.
+Происхождение и срок исключения записаны в
+[dependency runbook](../../DEPENDENCY_COOLDOWN_EMERGENCY.md).
+Отдельное решение владельца разрешает только Alpine
+`brotli-libs=1.2.1-r0` в custom Caddy runtime. Добавлен bounded offline
+installed-version proof; исходный Trivy остаётся блокирующим, image push и
+deployment не выполняются. Это ещё не доказательство успешной сборки/сканирования.
+
+Actual detect-secrets job 120738399103 потребовал обновить восемь номеров строк
+и generated_at. Интегрируются только эти metadata изменения: все 319 identities,
+flags, plugins и filters совпадают; approved policy321 и Gitleaks25 не изменены.
+Это не новая disposition и не утверждение о побайтной неизменности baseline.
+
+Broad PostgreSQL integration job 120738976887 остановился после 97 PASS:
+AUD-350 не получил свой обязательный explicit target. Caller теперь явно
+передаёт собственный DATABASE_URL через AUD350_POSTGRES_DATABASE_URL;
+fixture fallback, destructive reset opt-in и skip обходы не добавлены.
+Новые AUD-504 transaction regressions ещё не исполнялись до этой остановки.
+
+Dashboard regression в job 120739189845 воспроизвёл повторный запрос после
+исчерпания retries; остальные 2387 tests этого shard PASS. NewsCard теперь
+принимает существующий parent query result; standalone wrapper сохраняет
+безусловный hook, а presentation component не создаёт второго observer.
+Retry policy и ручное/фокусное обновление не изменены. Исправлен ровно observed
+Prettier diff в regression; hosted GREEN нового source ещё требуется.
+
+AUD-493 получает tests-first проверки фактического JSON Schema и Helm:
+канонический release identity остаётся lowercase 40-hex; 64-hex поддержка
+не вводится. Template-only isolation ожидает RED для прежнего расширенного
+regex. Production template пока не меняется. Squawk timeout finding устранён,
+но job 120738976747 сохраняет 16 SQL warnings; никакие suppressions не добавлены.
+
+Принятый ledger остаётся **280/512 (54,7%)**, 232 ID ещё не принято.
+Новые source changes требуют собственных проверок; текущие PASS не переносятся
+на новый SHA. Все 78 required context/app pairs и coverage floors сохранены.
+
+### Inventory и hosted follow-up, 02:06 UTC
+
+На `ddd8419f` Security & Types job 120747561988 SUCCESS: mypy и actual
+detect-secrets прошли после metadata-only restage. Fast hook job 120747562035
+отказал на ShellCheck SC2016 во вложенном Caddy shell script; literal body
+перенесён в quoted heredoc с Docker stdin, без suppression и изменения команд.
+Полная сборка Caddy ещё не исполнялась из-за этого upstream gate.
+
+Inventory сохранял три доказанных false negatives на TSX generic helpers.
+После независимого ревью fallback принимает только непрерывный начальный блок
+простых static imports из исходного текста, останавливаясь до произвольного кода.
+Он не использует ранее masked prefix и не разбирает generic body.
+37 дополнительных cases охватывают реальные формы, regex/template ложные
+ссылки, Unicode line terminators и неподдержанные declarations; skip detection
+не изменён. Actual три owned imports расположены до границы fallback.
+
+На прежнем `772a179` backend unit job 120738976938 завершился
+4494 PASS / 5 FAIL / 38 SKIP. Один AUD-350 assertion уже исправлен в
+`ddd8419f`; четыре TOTP Settings fixtures явно задают обязательный
+`rate_limit_storage_backend=redis` вместе с существующим URI. Production
+validator и все TOTP assertions сохранены. Unit shard1 отдельно показал race
+готовности дочернего процесса в Gitleaks cleanup test; разбор продолжается.
+Все изменения этого follow-up ещё требуют hosted проверки. Ledger — 280/512.
+
+### Следующие проверяемые regressions и dependency evidence, 02:18 UTC
+
+На `46eb1c9` inventory job 120749625194 SUCCESS; actionlint в fast hook
+также PASS. Единственный отказ этого hook — два formatter-only hunks в
+inventory tests; применены точные строки из job 120749625051.
+Baseline integrity и frontend lint SUCCESS. Это не полный CI.
+
+Undici получает временный ordinary-module scratch generator с отдельными
+guard tests. Он связывает исходные bytes с точным checkout SHA, проверяет
+официальные npm metadata и оба archive digests, требует семидневную зрелость
+npm tool и Undici, запрещает lifecycle scripts и изменение checkout.
+Допустимый lock diff — только три artifact fields единственного dev-only
+Undici `8.11.0 -> 8.12.2`; body-parser `1.20.9` должен сохраниться.
+Нового cooldown exception нет; actual generation ещё не выполнялась.
+
+Zod remediation требует проверки опубликованных compiler artifacts:
+старый ESLint compiler plugin больше не публикуется, а Babel compiler может
+содержать bundled Zod, невидимый обычному dependency audit. Добавлены 25
+stdlib guard tests и явный fail-closed stub read-only artifact probe.
+Это намеренный tests-first checkpoint: ожидается assertion RED, а не успешная
+инспекция. Stub не скачивает пакеты и не выдаёт artifact evidence.
+Guard выполняется после независимого Undici generator. Обычные audit/install
+команды и их блокирующий статус сохранены; отсутствие их исполнения не PASS.
+Все четыре новых executable inputs добавлены к существующим защищённым paths.
+
+Gitleaks descendant-cleanup regression теперь отдельно ожидает готовности
+реального child/session до проверяемого timeout. Production deadline остаётся
+одна секунда, elapsed budget — менее трёх. Сохранены PID/start/group/pidfd
+проверки; leader-reaped assertion наблюдается до аварийной уборки fixture.
+Отдельный no-op-cleanup counterfactual не позволяет fixture скрыть отказ
+production cleanup. Исправление test-only; actual hosted GREEN ещё требуется.
+
+Для migration `148642dd1207` добавлены два настоящих PostgreSQL tests-first
+сценария сохранения legacy DND/timezone и приоритета существующих preference
+rows. Они явно восстанавливают исторические поля после parent revision:
+обычная ancestry уже удаляет их в `202511240001`. Поэтому эти tests не
+доказывают сохранение данных через ту более раннюю миграцию.
+Production migration не меняется до наблюдённого assertion RED.
+
+Вопрос владельцу о подготовке конечного, source-bound ADR-047 исключения для
+неизбежного transactional DDL остаётся без ответа. Никакое исключение не
+применено. Выявленные потенциально теряющие данные ветви не считаются
+кандидатами на waiver. Ledger и все quality/security thresholds неизменны.
+
+### Hosted Undici candidate и реализация read-only probe, 02:36 UTC
+
+В [job 120752636880/run 40053749654](https://github.com/egorribun/university_ecosystem/actions/runs/40053749654/job/120752636880)
+на `f70570f3` Undici guard tests и scratch generation действительно завершились.
+npm publication `8.12.2` — `2026-10-15T15:05:34.415Z`, maturity —
+`2026-10-22T15:05:34.415Z`; cooldown exception отсутствует.
+Verified candidate меняет только version/resolved/integrity; его SHA-256 —
+`58b289ca7f4af5e3fb19aa2bfded95f1133ffe86227c4e8a55408da173ca02ab`.
+Исходный checkout не изменён. Generated lock пока не интегрирован, поэтому
+обычный audit не считается исправленным; generator временно сохранён.
+
+Следующий этап того же job наблюдал ожидаемый RED artifact probe:
+25 unittest methods, 41 assertion failures с учётом subtests, без import error.
+После этого stub заменён реализацией и 36 guard tests. Probe проверяет exact
+registry origin, публикационную зрелость, deployed control SRI, SHA-512 до
+bounded gzip/tar parsing; не извлекает и не исполняет пакеты. CLI wall-clock
+limit — семь минут под неизменным восьмиминутным job step. Отчёт содержит
+только metadata/hashes/static hints и никогда не утверждает remediation.
+Hosted GREEN и actual artifact report этой реализации ещё требуются.
+
+Fast job 120752566493 выявил только insecure-temp-path literal в новом
+adversarial archive test и его quote formatting. Absolute-path rejection
+теперь использует `/outside`, без записи файла или suppression.
+Frontend lint job 120753011438 выявил ровно три Prettier hunks временного
+Undici module; применён точный whitespace-only diff. Existing type/security
+hooks и inventory на `f70570f3` SUCCESS. Полный CI, PostgreSQL regressions
+и приёмка новых AUD IDs остаются открытыми; ledger не увеличен.
+
+### Интеграция проверенного Undici lock и решение о подготовке ADR, 02:39 UTC
+
+После отдельной проверки integrated lock воспроизводит точный hosted patch
+job 120752636880: только три поля Undici, все остальные package records
+неизменны. Merge checkout `5a64a37f31acf0cd836f80717b5d3d3b33717d11`
+и `f70570f3` имеют одно дерево
+`bdda8ec0b2e4987292145ee65543f924acf69d8e`.
+Завершённый temporary generator, его tests/steps и только его protected paths
+удалены; read-only compiler probe и его защита сохранены. Provenance записан
+в [dependency runbook](../../DEPENDENCY_COOLDOWN_EMERGENCY.md).
+Нормальный audit и final-source CI должны подтвердить интегрированный lock.
+
+На `f70570f3` consumer job 120752566604 подтвердил **1541 PASS / один
+deselected**, отдельный policy cohort — **338 PASS**. Это не включает 37 новых
+leading-import cases и Gitleaks readiness counterfactual из полного backend
+unit shard: этот shard не стартовал из-за fast lint. Их runtime evidence
+по-прежнему требуется.
+
+Все четыре frontend unit shards на `f70570f3` завершились SUCCESS.
+Job 120753011575 подтвердил Dashboard error-recovery regression и полный
+shard: **200 files / 2388 tests PASS**. Это observed GREEN исправления
+повторного observer, не приёмка всего нового source или deployment.
+
+Владелец согласился подготовить конечное, source-bound migration exception
+предложение. Это согласие не применяет waiver: точные rule/statement identities,
+срок и гарантии будут представлены отдельно перед применением.
+Ни data-loss branches, ни произвольные catalog FKs, ни все 16 наблюдённых
+warnings автоматически не разрешены. Работа остаётся только на `egorribun`,
+без merge/deployment/reset. Принятый ledger — **280/512**, без новых закрытий.
+
+## Облачное продолжение 2026-10-24, 00:04 UTC
+
+Работа возобновлена по новому поручению владельца: только через GitHub plugin,
+строго на `egorribun`, без локального checkout, новых веток, force-push,
+обхода защит, merge или deployment. Этот раздел заменяет состояние паузы
+ниже; прежние локальные результаты сохранены как исторические, а не как
+проверки нового source.
+
+Начальная сверка подтверждает опубликованный
+[`8efec0df`](https://github.com/egorribun/university_ecosystem/commit/8efec0dfeec5990be61918815f6b94db297083b2),
+parent `4f7fc958`: 323 изменённых файла, +16941/-1332 строк. Поэтому прежнее
+утверждение «commit не создан» относится только к сохранённой паузе до этой
+публикации. Приватный index и неопубликованные пакеты в облаке не проверены
+и автоматически не импортируются.
+
+Принятый ledger остаётся **280/512 (54,7%)**, не принято 232 ID.
+Исходный реестр и последняя source-bound closure section
+[AUDIT-2026-10.md](../../audits/AUDIT-2026-10.md) остаются источником приёмки.
+Из P1 ещё не приняты AUD-164, AUD-167 и AUD-169; статические проверки не
+заменяют actual trusted-proxy/NetworkPolicy evidence.
+
+На исходном SHA
+[Owned Live 40040679666](https://github.com/egorribun/university_ecosystem/actions/runs/40040679666)
+отказал до Docker на двух устаревших source assertions. Messenger contract
+ожидал неэкранированный `chatId`, хотя API уже использует
+`encodePathIdentifier`. Profile CSRF contract ожидал прямой
+`secrets.compare_digest`, хотя middleware уже использует ASCII-safe helper.
+Точечный test-only follow-up проверяет текущие защитные функции и сохраняет
+все проверки membership/fan-out, отсутствия transport mocks, 403 и HMAC.
+Production source, workflow, coverage и scanner policy не меняются.
+Собственный hosted GREEN этого follow-up ещё требуется.
+
+[Matrix 40040679788](https://github.com/egorribun/university_ecosystem/actions/runs/40040679788)
+на момент сверки не завершён. Обнаружены отдельные отказы inventory,
+detect-secrets policy validation, npm audit, migration checks и других
+jobs; точные причины разбираются по текущему source. Gitleaks и CodeQL
+для исходного SHA SUCCESS. Это не полный CI и не новые закрытия AUD IDs.
+
+Порядок продолжения: получить собственный результат live-contract follow-up;
+устранить доказанные текущие inventory/migration/dependency блокеры без
+ослабления гейтов; сверить все страницы required checks и только затем
+принимать дополнительные AUD IDs. Baseline319, approved policy321,
+Gitleaks25, 78 required context/app pairs и действующие coverage floors
+сохраняются. Новые scanner dispositions и cooldown exceptions требуют
+отдельного решения владельца.
+
+### Восстановление CI и tests-first продолжение, 00:14 UTC
+
+На опубликованном `1cadcd03`
+[Owned Live 40043231846](https://github.com/egorribun/university_ecosystem/actions/runs/40043231846)
+прошёл pre-Docker live-contract stage; полный stand/browser результат и Matrix
+ещё не приняты. После смены UTC-даты trusted policy validation проходит,
+но actual scan job 120719590389 обнаружил пять новых identities: две
+gateway fixtures и три публичных integrity/identity digests. Никакие новые
+dispositions не добавлены.
+
+Следующий source исправляет три доказанных Go lint ошибки без изменения
+порядка проверок и fail-closed recovery; статические gateway test secrets
+заменены независимым runtime crypto/rand material. Frontend fixtures приведены
+к уже действующим UUID/nullable-image/count-default контрактам; типы IndexedDB
+и Playwright callbacks сохранены без подавления diagnostics. Все прежние
+поведенческие assertions сохранены. Собственные lint/typecheck/race/Vitest
+результаты нового SHA ещё требуются.
+
+Tests-first добавляет отдельные regressions для JSX/dotted-import/glob и
+`TEST_ROOT` ownership resolution, а также явного отдельного PostgreSQL target
+AUD-350. Эти cases включены в прежний early consumer job без удаления старых
+selectors или изменения лимитов. Checker и migration probe пока не изменены:
+ожидаемые RED должны быть наблюдены до их исправления. Frozen fixture bytes,
+baseline и scanner policy остаются неизменными; принятый ledger — 280.
+
+### Утверждённые точечные допуски и восстановление release wiring, 00:31 UTC
+
+На `50800c2e` consumer job 120722914909/run 40044230057 подтвердил
+**11 FAIL / 1501 PASS / один deselected**: два новых AUD-350 routing cases
+и девять inventory regressions; отдельные 299 policy cases PASS.
+Один отрицательный TEST_ROOT case слишком широко ожидал пустой набор:
+самостоятельный относительный Path("elsewhere") допустим как отдельная ссылка.
+Уточнён exact expected set и отдельно запрещено владение целевым validator;
+это исправление теста, не ослабление checker. Реализация inventory ещё проходит
+отдельное ревью и в этот пакет не входит. Это наблюдённый RED, не приёмка.
+Frontend lint/typecheck и shard 2/4 SUCCESS;
+остальные стадии и общий CI ещё не приняты.
+
+Владелец отдельно разрешил body-parser `1.20.9` до прохождения семидневного
+cooldown и ровно три path/type/digest dispositions до `2027-01-10`.
+Точные границы записаны в
+[ADR-047](../../adr/ADR-047-risk-based-quality-policy.md) и
+[dependency runbook](../../DEPENDENCY_COOLDOWN_EMERGENCY.md).
+Approved policy теперь 321; первые 318 записей, baseline319 и Gitleaks25
+сохранены. Verifier и 39 новых cases ограничивают категории, пути, identities,
+owner/date/evidence и expiry; новые исключения не распространяются на другие
+совпадения. Hosted tests и новый полный scan ещё требуются.
+
+Временный bounded generator body-parser работает только в scratch mirror:
+checkout не изменяется даже при отмене. Он проверяет npm `11.17.0`, официальный
+tarball, package-specific age exception и точный diff трёх lock-полей;
+обычный npm audit сохранён и остаётся блокирующим. Сгенерированный lock пока
+не интегрирован. После получения и проверки bytes временный generator удалён;
+обычный npm audit восстановлен побайтно без изменения его гейтов.
+Zod и Caddy vulnerability remediation остаются отдельными открытыми задачами.
+
+Исходный PostgreSQL migration regression отказал на новой обязательной Redis
+rate-limit конфигурации staging Settings. Migration Job и outbox теперь
+получают уже существующий dedicated connection key по тому же file-secret
+контракту, что backend. ServiceAccount, RBAC, role/revocation flags и networks
+не меняются; deployment не выполняется. Render contracts и actual Alembic
+regression должны подтвердить новый source. AUD-350 probe получает отдельный
+`AUD350_POSTGRES_DATABASE_URL`, а общий pytest `DATABASE_URL` остаётся SQLite:
+reset protection и byte-frozen timestamp counterfactual сохранены.
+
+Switch DOM hashes обновлены только для interactive/checked состояний:
+точная реконструкция прежней разметки и трёх изменённых opacity tokens
+воспроизводит исходные и observed CI digests. Baseline/disabled и raw DOM hash
+проверка сохранены; добавлены assertions новых tokens и отсутствия прежних.
+Новый runtime PASS ещё требуется. Caddy scan получает ограниченный metadata-only
+SARIF diagnostic без raw Match/source/help/secret output; исходный scan остаётся
+блокирующим. Принятый ledger не увеличен: **280/512**, 232 не принято.
+
+### Последующая проверка и ограниченные исправления, 01:10 UTC
+
+На `3de6d3d` все четыре frontend shard, lint/typecheck, production build,
+WASM contracts и bundle analysis SUCCESS. Consumer — 1497 PASS / 15 FAIL /
+один deselected: восемь ожидаемых inventory RED и семь catalog failures от
+временного npm шага. Оба новых AUD-350 routing cases PASS; отдельный policy
+cohort — **338 PASS**. Actual scan принимает 259 reviewed findings и блокирует
+только bare-reference fixture `cfg.InternalHMACSecret = hmacKey`; следующий
+source присваивает уже используемый crypto/rand generator напрямую, без новых
+исключений, переименований или маскирования.
+
+Generator job 120727506876/run 40045867045 действительно получил npm-generated
+body-parser `1.20.9` candidate: только version/resolved/integrity, tarball verified,
+checkoutModified=false. npm publication — `2026-10-22T11:38:27.889Z`, maturity —
+`2026-10-29T11:38:27.889Z`. Полный patch сохранён в source-bound job log.
+Временный шаг удалён после завершения этой задачи; lock ещё не интегрирован.
+Catalog classifier не ослаблен: динамические конструкции сохраняют retry
+classification и дополнительно закреплены регрессионными тестами.
+Undici `8.12.2` и Zod remediation остаются открытыми; новых cooldown exceptions нет.
+
+После независимого ревью интегрирован ограниченный inventory parser:
+ownership-only JSX fail-closed masking, exact dotted-stem resolution,
+лексическая видимость root aliases и доказанная закрытая форма glob/read.
+Unsupported syntax не превращается в ложную ownership связь. Новые
+adversarial tests, полный inventory и coverage ещё требуют hosted результата.
+Trivy diagnostic вынесен в обычный importable module: динамический subprocess
+из тестов удалён, bounded projection и исходный блокирующий scan сохранены.
+
+В `148642dd1207` добавлены только transaction-local 10s lock/60s statement
+timeouts до reflection/DDL, без изменения атомарности и порядка операций.
+Это не решение остальных 16 Squawk warnings; стратегия исторической миграции
+ещё уточняется. Добавлены tests-first сценарии Dashboard news error remount
+и AUD-504 PostgreSQL calibration isolation; production behavior этих двух
+проблем пока не изменён, RED ещё должен быть наблюдён.
+Принятый ledger остаётся **280/512**; общий CI и release не приняты.
+
+## Историческая пауза перед публикацией 8efec0df
+
+**Работа приостановлена по поручению владельца (2026-10-24).** Ветка `egorribun`, PR #1343; последний проверенный опубликованный HEAD — `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`. Приватная контрольная точка перед финальной правкой документации сохраняет 322 staged paths, index tree `60ce5601b067ced4972c6079d85a6cf7cedde9e4`, без unstaged/untracked files. Интегрированы Gateway issuer, frontend, AUD-343/350/370/486/488/498/499/500/505/507/508/509; интеграция не означает приёмку. Approved policy — ровно 318 identities; итоговые baseline319 и Gitleaks25 совпадают с сохранёнными эталонами. Новые scanner identities остаются блокирующими; неподтверждённые кандидаты не считаются закрытиями.
+
+На соответствующих сохранённых исходниках подтверждены 298 policy-тестов, 135 quality/catalog/Gitleaks-тестов, четыре обычных workflow-контракта, 125 Gateway cmd-тестов и 29 notifications/migration-тестов. Предшествующий frontend cohort — 457/457 PASS и 100% всех четырёх метрик для восьми модулей; его typecheck/ESLint и coverage не покрывают последующую интеграцию AUD-498/499/500. Исходный post-run wrapper failure сохранён и отдельно сверён с raw reports. Canonical AUD-505 — 27 PASS; raw coverage подтверждает 41/41 изменённых executable lines и 6/6 branch arcs, тогда как полный exporter module остаётся 70,59%. Canonical AUD-500 — 11 Node PASS с 100% helper coverage; composed inventory — 161 PASS. Canonical AUD-507 — полный пакет Go PASS и 100% statement coverage client.go, без race. Это пересекающиеся локальные наборы, не полный CI или прохождение aggregate coverage gate.
+
+Последний actual совместный PostgreSQL cohort AUD-197/262/343 (V12, run `ee0a86b6d5ae4475b703a914262a8801`) — **22 PASS / 0 FAIL / 0 SKIP**, 117,45 с. Проверены все 22 ожидаемых узла и неизменность 577 файлов приватного project; owned container и volume удалены, отсутствие подтверждено. Предшествующий V8 21 PASS / 1 FAIL сохранён: тест обращался к неотображённому ORM-полю. После test-only исправления focused V11 и полный V12 прошли. Остановленный по RAM V9 и ошибочный guard также сохранены как исторические неуспешные попытки. AUD-197/262 ещё требуют точной интеграции приватных postimages и final-source checks. AUD-350: два actual PostgreSQL случая PASS; AUD-343: один actual PASS. AUD-370: 24 PASS и 100% statements/branches. Ошибки внешних обёрток сохранены отдельно и не объявлены успешными.
+
+TLS остаётся приватным кандидатом: текущий resume4 подтверждён 26 Gateway API chart tests и 20 pure controls; прежние 314 ordinary chart tests относятся к resume2. Linux Go race acceptance и интеграция не выполнены. Ограниченная Caddy-сборка остановлена при RAM 85,03% после проверки модулей; binary/image/profile/scans не получены, exact owned cleanup PASS. Собственный runaway PowerShell-процесс (около 4,8 ГиБ) и зависшие диагностические процессы остановлены после проверки PID/команд; WSL и пользовательские приложения не завершались. Replacement scan на предшествующих 301 inputs дал 560 findings / три unmatched; текущий source и условный 322-record candidate требуют свежего полного скана. Новые четыре dispositions не утверждены и не применены. Оригинальный private raw scan утрачен после ошибочной перезаписи scanner CLI; replacement — новый actual run, не восстановленный оригинал. Canonical baseline после отдельной ошибочной перезаписи восстановлен побайтно из неизменённого index; ошибка и сверка сохранены приватно. Перед публикацией обязательны final-source scan/hooks, cleanup, итоговый diff/HEAD и required checks нового SHA. Общий CI, визуальная приёмка и deployment не приняты.
+
+## Контрольная точка безопасной паузы 2026-10-24
+
+Обычный commit **не создан**: штатные hooks обнаружили три новые detect-secrets identities (два gateway issuer fixtures и public migration checksum), две Gitleaks identities (`tests/test_aud354_jwt_issuer.py:10`, `tests/test_cache_object_keys_aud495.py:109`) и один Semgrep finding `missing-ssl-minversion` в file processor. Требуются отдельная проверка находок и, для новых исключений, решение владельца. Hooks не обходились. Первоначальный ESLint отказ Lighthouse исправлен с сохранением обеих ошибок через `AggregateError`; regression RED, затем 14 PASS и focused ESLint/Prettier PASS. Ruff formatting восьми файлов проверен по AST и сохранён; изменение точной исторической AUD-350 fixture отменено до её неизменённых index bytes, поэтому конфликт formatting/frozen-byte contract остаётся открытым. Финальные byte-identical baseline319 и Gitleaks25 подтверждены. Все 322 изменённых пути сохраняются в index и приватном checkpoint; это незавершённый source, не готовый release.
+
+Новые реализации и тяжёлые прогоны остановлены. Приватные пакеты и незавершённые drafts сохранены отдельно от репозитория; они не импортируются автоматически. Git определяет итоговый локальный commit и staged state, а PR — опубликованный source. В этой остановке push, merge и deploy не выполняются.
+
+Следующее продолжение начинается со сверки HEAD/index/diff, памяти, процессов, cleanup receipts и всех страниц CI jobs. Сначала проверить exact postimages AUD-197/262 относительно текущего index и интегрировать только проверенные изменения. Затем закончить составные frontend checks, final-source scan/hooks и required checks нового SHA. Не повторять уже завершённый V12 без изменения исходников или нового основания.
+
+Сохранённые открытые границы:
+
+- AUD-508/509: canonical checker имеет 218/256 покрытых изменённых executable lines и 114/146 arcs. Приватный follow-up исправляет недостижимое условие цикла и добавляет тесты: 178 PASS, 256/256 lines и 144/144 arcs. Он ещё не интегрирован. Шесть реальных ownership mismatches остаются открытыми; исключения не добавлялись.
+- AUD-493/501: source review READY, пакеты приватные. AUD-501 подтверждён structural contract; реальное browser pause/resume не запускалось.
+- AUD-503: V3 BLOCK — checker не охраняет per-frame `Scope.REQUEST`; обещание обработки неизвестных call targets шире возможностей resolver. Нужны исправление и отдельное owner/ADR решение о классификации `/ws/chat`.
+- AUD-504: rollback-only transaction draft неполон; целевой regression GREEN, полный post-change cohort и coverage не запускались. AUD-506: Temporal auth/config draft не принят, сервисы не запускались; проверить отдельные worker/admin claims, launcher/full override, UI и TLS trust.
+- AUD-510: loader source review положителен, но duplicate-key test использует независимо невалидные пустые lists и требует различающего fixture. AUD-511/512: приватный V2, 78 focused PASS; нет статического ограничения числа markers при burst, race и root integration не выполнены.
+- TLS race runner: подготовленный combined runner не запускать как доказательство трёх cold suites в одном 420-second work budget. Нужны отдельные ограниченные module runs и строгий aggregator. Staged Caddy runner draft неполон, manifest/README устарели; запуск запрещён до проверки и обновления привязок.
+- Scanner: approved scope остаётся 318. Приватный четырёхзаписный proposal имеет 301 policy PASS на моделируемой дате, но actual conditional full scan не запускался; helper draft не проверен для запуска. Не добавлять записи без отдельного решения владельца и не менять `.secrets.baseline`.
+
+Число принятых AUD IDs остаётся 280. Более широкая документация ниже сохраняет датированную историю; текущие ограничения этого раздела имеют приоритет над прежними checkpoint states.
 
 ## Приоритет и подтверждённый прогресс
 
-Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Принятая нижняя граница — **223/512 (43,6%)**; [ledger](../../audits/AUDIT-2026-10.md#evidence-checkpoint-223-verified-original-aud-ids). Исправление, commit и отдельный успешный тест не заменяют приёмку. К продуктовой приёмке MVP вернуться после аудита.
+Закрыть все 512 исходных AUD IDs [октябрьского аудита](../../audits/AUDIT-2026-10.md). Текущая принятая нижняя граница — **282/512 (55,1%)** по [hosted source-bound сверке AUD-350 и AUD-481](../../audits/AUDIT-2026-10.md#hosted-timestamp-and-image-scan-closure-checkpoint-2026-10-24); осталось 230 ID. Все 280 прежних ID сохранены. Приняты только сохранение naive-UTC timestamp при конвертации и фактическое покрытие PR-сканированием шести release-image типов. Frontend Trivy продолжает блокировать Zod; полный CI, релиз и deployment не приняты. Полный список и ограничения приведены в последней closure section аудита. К продуктовой приёмке MVP вернуться после аудита.
 
-Работа идёт только на `egorribun`, в одном checkout, через [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306). Root управляет Git; максимум три GPT-6 Luna Max с непересекающимися файлами. Удалённые операции — GitHub plugin. Новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
+Текущая работа идёт строго в облаке через GitHub plugin на `egorribun`, через открытый [PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343). [PR #1306](https://github.com/egorribun/university_ecosystem/pull/1306) был owner-merged и является историческим. Публикация использует обычные fast-forward commits с проверкой ожидаемого HEAD. Локальный checkout, новые проектные ветки/worktree, force-push, bypass, merge/deploy не выполняются.
+
+Датированные checkpoint-разделы ниже сохраняют значения и статусы на указанных source. Их прежние acceptance counts, включая 223/512 и 277/512, и тогдашние pending states — исторические; актуальная нижняя граница указана выше и раскрыта в последней closure section аудита.
 
 **Работа возобновлена по поручению владельца 2026-10-20, 20:28 UTC.** Начальная сверка GitHub подтверждает опубликованную контрольную точку [8c202a75](https://github.com/egorribun/university_ecosystem/commit/8c202a7570b8cdbece3fda11b6097493e40966a8), tree 94ff3ce66f90998f02886790e74e763f1a3d79c3: 24 пути уже опубликованы, а не остаются локальным набором. Приватные кандидаты не импортируются и не считаются частью этого source. Продолжение выполняется через GitHub plugin; сведения о локальных прогонах ниже сохранены как исторические доказательства, а не новые проверки. На момент возобновления принятый ledger составлял 156/512; новая приёмка приведена ниже.
 
@@ -82,9 +5082,9 @@ Actual focused AUD-174 на bef8: два browser PASS и `redaction=verified pro
 4. Продолжить [NATS spec](../specs/2026-10-18-owned-nats-outbox-acceptance.md), [outage plan](2026-10-19-owned-nats-outage.md) и [Docker observation](2026-10-20-owned-nats-docker-observation.md). SQL имеет ограниченный actual PG proof; HTTP/broker/composite/pin factory — private contracts. Lease-bootstrap и адаптеры интегрированы после исправления optional-map/JSON projection и замены четырёх credential-shaped test literals на свежие synthetic values. Root native cohort: 610 PASS; actual stopped-container projection PASS. Минимальный CLI интегрирован и проверен: root 143 PASS, независимое ревью без blockers. Workflow wiring интегрирован; root 150 обычных тестов, полный launcher/Caddy cohort 2088 PASS и isolated Linux cohort 619 PASS. Actual outage ещё не выполнялся.
 5. Закрывать оставшиеся AUD IDs, причину отказа Go prefetch и AUD-015 Cyrillic PDF export с именованными source-bound доказательствами. Тематические планы: [UI lifecycle](2026-10-19-ui-lifecycle-reconciliation.md), [cleanup/timing](2026-10-20-runtime-cleanup-timing.md), [quality entrypoints](2026-10-20-quality-entrypoints.md).
 
-## Неизменные границы
+## Исторические границы контрольной точки
 
-Detect-secrets baseline — 319 identities; опубликованная в 8c202a75 политика — 282 owner-approved dispositions. Исторический bef8 содержал прежние 264. Отдельное Gitleaks-разрешение ограничено 25 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
+На указанной исторической контрольной точке detect-secrets baseline содержал 319 identities, а policy — 329 finite owner-approved dispositions. Текущие inventories определены в AGENTS.md и ADR-047. Остальные counts в исторических checkpoint-записях относятся к указанным там source. Отдельное Gitleaks-разрешение ограничено 26 точными историческими fingerprints. Все 78 required context/app pairs, blocking CodeQL, hooks и finite131 migration exception до 2026-11-13 сохраняются. Changed/unmatched identities остаются блокирующими. Q1/Q4 migration действует; Q2/Q3 — v1.1; глобальный mutation score не повышается ради MVP.
 
 Перед тяжёлым прогоном: RAM ≤75% / free ≥8 GiB; остановка при RAM ≥85% / free <4 GiB. Отдельное исключение для одиночных Linux screenshots: ≤80% / ≥6 GiB, container ≤1 GiB / 2 CPU. Удалять только доказанно принадлежащие работе ресурсы; чужие процессы и prune не трогать.
 
@@ -1523,3 +6523,878 @@ required; earlier evidence does not certify this reconciliation. Baseline
 319, dispositions 294, required contexts 78, Gitleaks 25 and finite migration
 exception 131 are unchanged. The owner will merge PR #1306; further audit
 implementation waits for the next PR and a new instruction.
+
+## Audit continuation after PR #1306 (2026-10-22)
+
+The owner merged PR #1306 into main as
+[4a2fe84c](https://github.com/egorribun/university_ecosystem/commit/4a2fe84c2704bd32ed492942b8853484772abaa0).
+Its tree is identical to the reviewed conflict-resolution checkpoint.
+The audit branch joins that squash-merge history without rewriting either
+history, then resumes bounded audit work in a new PR. The previously
+deferred npm reconciliation remains outstanding.
+
+AUD-290 implementation now routes notification feedback through the shared
+live-region announcer: errors use the assertive channel, other feedback the
+polite channel. Service-worker update availability uses the existing
+translated message on the polite channel. Visible toast markup is retained,
+without duplicate live regions. Existing EN/RU regression tests are unchanged.
+
+RED evidence precedes this implementation: source c128cd3e, Matrix run
+39781830088, quick job 119836634659, recorded 416 passing and two failing
+behavior cases (the new EN/RU announcements), alongside 658 Node contracts
+and 55 worker tests. Full frontend shards recorded 9,648 passing and the
+same two failing cases. This source change still needs hosted GREEN and
+current-source gate evidence; it is not yet accepted as closed.
+
+The accepted ledger remains 223/512 (289 remaining). AUD-282/283 await
+terminal contract acceptance; AUD-290 awaits new GREEN. No baseline,
+disposition, required-check, coverage-floor, timeout, shard or exception
+changes are included. No automatic PR merge, release or deployment is
+authorized by this continuation.
+
+## Next audit regression batch (2026-10-22)
+
+Owner-merged Dependabot PR #1344 added 32 npm updates on top of the AUD-290
+fix (58e033c3), followed by PRs #1345/#1346 updating moby/api in ws-hub and
+file-processor. This batch starts from 257a7432 and preserves those changes.
+The earlier deferred npm list is therefore historical, not the current
+manifest: the coordinated Vitest packages are now 5.0.5, React is 19.3.1,
+and Vite is 8.3.4; the local boundaries package and scoped js-yaml overrides
+remain. These source updates do not establish compatibility or GREEN.
+The earlier fdb3 and 58e targeted runs were superseded/cancelled without
+usable frontend results. The owner asked to continue audit work while
+GitHub runs settle; no manual workflow cancellation is performed here.
+
+Tests-first additions:
+- AUD-296 mounts the actual Login and Register pages within MainLayout and
+  requires one main-content landmark plus a named auth region containing
+  its form. Query clients and the full auth-store snapshot are cleaned up.
+  Production page markup is unchanged; two nested-main failures are expected.
+- AUD-305 adds seven safe-URL and thirteen unsafe-URL parser cases.
+  HTTP(S) and relative link spelling must be preserved. Dangerous schemes,
+  credentials, embedded controls and malformed URLs must lose only their
+  link, not the achievement record. The demonstrated sink is a user-activated
+  anchor on the authenticated user's own profile, not established cross-user
+  stored XSS. Production parsing is unchanged; unsafe-URL cases are expected RED.
+
+Both suites join the existing quick regression selector. Expected failures
+must be observed and diagnosed, not waived. AUD-290 remains pending GREEN;
+AUD-282/283 still require terminal contract acceptance. The ledger remains
+223/512 (289 remaining). No security baseline, disposition, required-check,
+coverage-floor, timeout, concurrency or exception changes are included.
+
+## Owner-approved achievement URL test identity (2026-10-22)
+
+The owner approved exactly one synthetic Basic Auth Credentials identity in
+frontend/src/components/profile/__tests__/profileUtils.closure.test.ts,
+for the embedded-auth rejection regression. The exact path/type/digest tuple
+is recorded under the singleton synthetic_achievement_url_test_fixture
+category. Its semantic evidence identifies the reserved example.test host
+and test-only rejection coverage; it is not operational credential material.
+
+This extends the prior 294 records to 295 without modifying any prior record.
+The record is reviewed on 2026-10-22 and expires on 2027-01-10. Validator
+support accepts only the fixed identity and category, requires every evidence
+marker, and refuses expiry extension or reclassification. Tests bind the
+record to the actual TypeScript fixture and reject changed paths, types,
+digests, incomplete evidence, pending/missing approval and expired records.
+
+RED source evidence: ed31fe5a, Matrix 39807552009, security/types job
+119927046781 failed detect-secrets on this fixture; mypy passed. This
+decision permits no inline pragma, scanner exclusion, baseline edit,
+credential use, new identity, category-wide matching or required-gate change.
+Baseline 319, required contexts 78, Gitleaks 25, blocking CodeQL, migration
+exception 131 and all existing test budgets remain unchanged. Source-bound
+scanner and validator GREEN are still required after integration.
+
+This approval does not close AUD-305 or any other audit finding. The accepted
+ledger remains 223/512 (289 remaining); AUD-290 awaits hosted GREEN and
+AUD-296/AUD-305 remain tests-first candidates pending observed regressions.
+
+The same checkpoint fixes a test-only TypeScript narrowing error observed
+on ed31 (frontend static job 119942426710, TS18048 at the unsafe-URL
+assertion). A single object match now checks the expected record and its
+undefined URL together, still failing for an absent record or an unsafe
+string. The production parser and all negative URL inputs are unchanged.
+
+## Auth landmark and achievement URL corrections (2026-10-22)
+
+Source 5cccfb57, Matrix run 39815796693, quick job 119971322119
+completed with 430 passing and exactly 15 failing Vitest cases: both
+AuthPageLandmarks cases found two main landmarks, and all thirteen unsafe
+achievement URL cases retained their link. The PWA behavior suite passed
+20 cases; group-panel branches passed 42 and Escape integration passed one.
+Frontend static checks and production build passed. Contract job
+119968215223 completed with 1,406 passes / one deselected in 440.30 seconds
+and 270 exact security-policy passes in 52.48 seconds.
+
+The auth pages now use named sections inside the layout-owned main landmark.
+Their standalone assertions follow the named region; the real-layout RED
+tests remain unchanged. Achievement parsing now admits only HTTP(S) or
+relative links resolved against an inert base, rejects credentials, control
+characters and URL parse failures, and preserves the spelling of accepted
+links. Unsafe links lose only their URL, not the achievement record. All
+thirteen negative and seven positive URL regression inputs are unchanged.
+
+The same source had two test-maintenance failures. Ruff required a missing
+blank line and a single-line category subtraction in the policy test.
+Detect-secrets flagged the redundant plaintext password assertion in that
+test. It now checks non-null before computing the existing digest against
+the independently fixed approved identity; the original TypeScript fixture,
+exact identity, policy and validator are unchanged. No new disposition or
+scanner suppression is introduced.
+
+These corrections still require fresh hosted GREEN. The accepted ledger
+remains 223/512 (289 remaining); no new finding is accepted by this commit.
+Baseline 319, dispositions 295, required contexts 78, Gitleaks 25, blocking
+CodeQL, finite migration exception 131, budgets and shards are unchanged.
+No PR merge, deployment or release is performed.
+
+## Dependency-compatible test contracts (2026-10-22)
+
+On source 2c0c0b0e / merge 6ec2ed7d, the quick Vitest regression step
+passed all 445 cases in 23 files, including the unchanged AUD-296 and
+AUD-305 RED tests, the 20 PWA behavior cases and the group-panel cases.
+Its job 119982368493 still failed because the Node closed live-inventory
+guard retained Playwright 1.63.0 after the owner's 1.64.1 dependency update.
+The four frontend unit shards completed with 9,652 passing and 20 failing
+cases: nineteen inline-background assertions and one stale version pin.
+These are not a globally passing frontend checkpoint or new audit closures.
+
+Contract job 119981283674 completed with 1,406 passes / one deselected in
+444.37 seconds and 270 policy passes in 52.62 seconds. Current-source
+security/types, pre-commit lint, inventory, frontend static checks and
+production build passed. The Python fixture repair passed detect-secrets
+without a new disposition, baseline entry or scanner suppression.
+
+Both explicit Playwright version guards now pin the installed 1.64.1
+package set. The private deadline adapter is not changed. Reviewed upstream
+[1.64.1 TestInfo](https://github.com/microsoft/playwright/blob/v1.64.1/packages/playwright/src/worker/testInfo.ts#L157-L166)
+and [monotonic clock](https://github.com/microsoft/playwright/blob/v1.64.1/packages/isomorphic/time.ts#L35-L37)
+retain the interfaces used by the adapter, but these remain unsupported
+private APIs. A real-runner regression now calls the adapter with actual
+TestInfo and requires a finite future deadline within the active timeout.
+The existing live-contract command runs it before Docker/browser startup,
+with no page fixture or web server. A Python contract binds that invocation.
+The live-spec inventory, collection count, retries and timeout policy remain
+unchanged; the new smoke itself has no retry. Historical visual-only
+container pins are not refreshed or certified by this change.
+
+Inline background token contracts now compare exact CSSOM-normalized
+declarations through a narrow helper, rather than asking computed style to
+resolve missing theme variables. Missing elements, missing or changed
+declarations and invalid expectations still fail. Five helper regressions
+cover these failure modes, color normalization and SVG support. Mixed style
+assertions retain their non-background checks, and production CSS is
+unchanged. This verifies inline token wiring, not rendered theme colors;
+browser visual acceptance remains separate.
+
+All new test-contract changes require fresh hosted results. The accepted
+audit ledger stays 223/512 (289 remaining). Baseline 319, dispositions 295,
+required contexts 78, Gitleaks 25, blocking CodeQL, finite migration
+exception 131, dependency manifests/lock versions, budgets and shard counts
+remain unchanged. No merge, deployment or release is performed.
+
+## Hosted compatibility results and lint corrections (2026-10-22)
+
+Source 17e61128 / merge 4e685a6f, Matrix 39827163188, completed all four
+frontend unit shards successfully: 2,702 + 2,316 + 2,327 + 2,332 =
+9,677 passes, zero failures. Jobs 119995616736, 119995616549,
+119995616186 and 119995616232 include all previously failing background
+contracts and the five new inline-helper cases. Quick job 119995616115
+passed all 445 Vitest cases. Consumer Contract job 119994607200 passed
+1,406 cases / one deselected in 445.96 seconds and all 270 disposition
+checks in 47.99 seconds.
+
+Two lint corrections remain source changes, not waived gates. Ruff's exact
+diff wraps the final real-runner invocation contract assertion without
+changing its expression. The runtime Playwright test replaces its empty
+fixture destructuring with the unused baseURL option alias permitted by the
+existing lint rules. Playwright 1.64.1 supports aliased option fixtures; this
+does not request a browser or page and preserves the deadline assertions.
+The title is shortened only to retain ordinary line formatting.
+
+Static job 119995616107 also reported Knip exit 1 with no diagnostic text.
+That result is unresolved; neither the empty-pattern correction nor passing
+unit tests establish a Knip fix. Fresh current-source checks must pass
+without exclusions, suppression, budgets or gate changes.
+
+The accepted ledger remains 223/512 (289 remaining). These scoped results
+do not establish aggregate coverage, global CI, live acceptance or release
+readiness. Baseline 319, dispositions 295, required contexts 78, Gitleaks 25,
+blocking CodeQL and finite migration exception 131 remain unchanged.
+
+Before this correction, the owner merged Dependabot PR #1347 into egorribun
+as 93a575c7, updating ten GitHub Actions dependencies across 21 workflows.
+This correction is based on that commit and preserves every updated pin.
+Earlier 17e test evidence is historical, not certification of the new action
+versions. No PR was merged by this audit correction.
+
+The completed 17e Owned Live job 119993375759 separately confirms the new
+pre-Docker command: 254 Node contract passes, followed by one real Playwright
+adapter pass in 697 ms with one worker. The later live UI run had 36 passes,
+two password-reset failures (desktop and mobile), and two existing skips.
+NATS outage acceptance was skipped. Owned cleanup and the metadata-only
+Core receipt upload succeeded. The password-reset live failures remain
+open; this lint correction does not claim to resolve them.
+
+## Knip configuration-hint visibility (2026-10-22)
+
+Current source 1cac4135 / merge 2d862cf5 passed TypeScript, ESLint,
+Prettier, i18n and message contracts in static job 120007931597, but Knip
+again exited 1 without diagnostic output. The installed lock resolves
+Knip 6.41.0 and cross-env 10.1.0.
+
+Inspection of the exact [Knip 6.41.0 release source](https://github.com/webpro-nl/knip/commit/13d7f21e8ec5b30d8fe6d8377c9012b9db96f871)
+confirms that its compact reporter does not print configuration hints.
+With progress disabled, a hint-only failure can therefore be silent.
+The symbols reporter prints those hints; the command now uses it while
+retaining no-progress and treatConfigHintsAsErrors.
+
+The real-runner smoke introduced direct cross-env usage in the package
+script. Knip's script parser recognizes that binary, so its former opaque
+config-string ignore is now redundant by the release's unused-ignore
+mechanism. Only that ignore is removed. The remaining four dependency
+exceptions, file globs, path-scoped export exception and binary exceptions
+are unchanged. The exact contract is updated to require direct cross-env
+usage, the hint-capable reporter and blocking configuration hints.
+
+The observed CI output did not name the redundant entry; this is a
+source-supported diagnosis, not an invented diagnostic message. Fresh
+hosted Knip and contract results remain required. This patch removes an
+exception rather than weakening the gate; no dependency version, lockfile,
+timeout, shard or security policy changes. Accepted audit progress stays
+223/512 (289 remaining), with no merge, deployment or release.
+
+## DOMPurify security patch (2026-10-22)
+
+The e508 Node dependency audit job 120016386056 reported newly published
+DOMPurify advisories GHSA-cg2g-xh64-v4q7 (critical),
+GHSA-mrv2-3pqr-j5jr (high), and GHSA-c6gr-qvv4-5v3f (low).
+The existing lock resolved one optional DOMPurify 3.4.16 entry through
+jsPDF 4.2.1's compatible ^3.3.1 range. This remains a blocking security
+finding; no advisory allowlist or severity threshold is changed.
+
+The patch advances the existing DOMPurify minimum override to >=3.4.17 and
+changes only that lock entry's version, registry tarball and SHA-512
+integrity. Its license, optional flag, trusted-types dependency and every
+other lock entry remain unchanged. Exact
+[registry metadata](https://registry.npmjs.org/dompurify/3.4.17) and
+[NPMScan](https://npmscan.com/package/dompurify) checks confirm the package
+exists and resolves all three reported advisories, with no reported target
+vulnerability or new install-time lifecycle script. Publication on
+2026-10-12 is older than the existing seven-day minimum; npm age and script
+policies remain unchanged. No new override is introduced.
+
+The reviewed app exporters rasterize via html-to-image and use jsPDF
+image/text/save methods; no jsPDF html() call was found in those paths.
+The app's own HTML sanitizer uses WASM. This narrows the observed call
+path but is not an exemption for the installed vulnerable package.
+The package has no npm provenance attestation; the metadata/source review
+does not claim cryptographic attestation verification. Fresh npm ci,
+blocking dependency audit, PDF regressions and current-source gates remain
+required before declaring the dependency repair verified.
+
+## Group, PWA, auth and achievement-link closure checkpoint (2026-10-22)
+
+This checkpoint accepts exactly **AUD-282, AUD-283, AUD-290, AUD-296 and
+AUD-305** on source
+[e508ab1c](https://github.com/egorribun/university_ecosystem/commit/e508ab1c4c91d9e8bfcf6b17f890432ff1b6445c).
+The tested merge 03e651cc5526fdce77ad19fae2f5483961dd60bb has the identical
+tree 19d591b1eae8a466be63e5c5bae45b1f78f9f226. All previous 223 accepted
+IDs are retained: **228/512 (44.5%)**, with **284 original IDs remaining**.
+
+- AUD-282: failed member searches show the translated error alert, not the
+  misleading no-users state. The test waits for the actual query error.
+- AUD-283: rename Escape cancels editing without closing the panel; the
+  outer panel Escape still closes once. The real focus-trap integration
+  retains its explicit JSDOM focus-containment contract.
+- AUD-290: notification feedback and service-worker update availability
+  use the shared live-region provider. EN/RU regressions prove the channels,
+  once-only region ownership and independent message lifetimes.
+- AUD-296: Login and Register render named regions under the layout-owned
+  main landmark. Actual MainLayout integration proves exactly one main,
+  its main-content ID, named auth region and form.
+- AUD-305: parsed achievement URLs reject unsafe schemes, credentials,
+  control characters and malformed URLs while retaining the record and
+  safe HTTP(S)/relative spelling. This is the demonstrated outbound-link
+  sink on the owner's profile, not a cross-user XSS or host-reputation claim.
+
+Earlier RED evidence remains in history: source 5ce585e / quick job
+119827143749 reproduced the two group failures; c128cd3e / quick job
+119836634659 reproduced both PWA EN/RU failures; 5cccfb57 / quick job
+119971322119 reproduced both auth-landmark and thirteen unsafe-URL failures.
+The fixes were tested without removing those regression inputs.
+
+Current-source [Matrix 39833276695](https://github.com/egorribun/university_ecosystem/actions/runs/39833276695)
+quick job 120016469244 passed all **445 cases in 23 files**, alongside
+**55 worker/export cases**. All four frontend unit shards passed
+**9,677 cases**, and aggregate job 120022471134 passed coverage merge,
+provenance and differential checks. Static job 120016469182, lint
+120015856415, security/types 120015857019 and inventory 120015857099 passed.
+Contract job 120015857157 completed **1,406 passes / one deselected in
+446.60 seconds**, then **270 policy passes in 45.34 seconds**.
+
+This is a scoped evidence-backed lower bound, not whole-CI acceptance,
+manual assistive-technology certification or release readiness. The same
+source's Node audit reported separate critical/high DOMPurify advisories;
+their prepared 3.4.17 repair needs its own fresh gate. Historical live-registration instability,
+NATS, Rust performance and any other global holds remain separate.
+The single synthetic credential fixture remains bound to its previously
+owner-approved exact identity. Baseline 319, dispositions 295, required
+contexts 78, Gitleaks 25, blocking CodeQL and finite migration exception
+131 are unchanged. No merge, deployment or release is performed.
+
+Current verified IDs: AUD-002, AUD-003, AUD-004, AUD-005, AUD-006, AUD-007, AUD-008, AUD-009, AUD-010, AUD-011, AUD-012, AUD-013, AUD-014, AUD-016, AUD-017, AUD-018, AUD-019, AUD-020, AUD-021, AUD-022, AUD-023, AUD-024, AUD-025, AUD-026, AUD-027, AUD-028, AUD-029, AUD-031, AUD-032, AUD-033, AUD-034, AUD-035, AUD-036, AUD-037, AUD-038, AUD-039, AUD-041, AUD-042, AUD-044, AUD-046, AUD-047, AUD-048, AUD-049, AUD-050, AUD-052, AUD-053, AUD-054, AUD-055, AUD-056, AUD-057, AUD-058, AUD-059, AUD-060, AUD-061, AUD-062, AUD-063, AUD-064, AUD-065, AUD-066, AUD-067, AUD-068, AUD-069, AUD-070, AUD-071, AUD-074, AUD-075, AUD-076, AUD-077, AUD-078, AUD-079, AUD-080, AUD-081, AUD-082, AUD-083, AUD-084, AUD-085, AUD-086, AUD-087, AUD-088, AUD-089, AUD-090, AUD-091, AUD-092, AUD-093, AUD-094, AUD-095, AUD-096, AUD-097, AUD-098, AUD-099, AUD-100, AUD-101, AUD-102, AUD-103, AUD-104, AUD-105, AUD-106, AUD-107, AUD-108, AUD-109, AUD-110, AUD-111, AUD-112, AUD-113, AUD-114, AUD-115, AUD-116, AUD-117, AUD-118, AUD-119, AUD-120, AUD-121, AUD-122, AUD-123, AUD-124, AUD-125, AUD-126, AUD-127, AUD-128, AUD-129, AUD-130, AUD-131, AUD-132, AUD-133, AUD-134, AUD-135, AUD-136, AUD-138, AUD-139, AUD-140, AUD-141, AUD-142, AUD-143, AUD-144, AUD-145, AUD-146, AUD-148, AUD-149, AUD-150, AUD-152, AUD-153, AUD-157, AUD-158, AUD-159, AUD-160, AUD-163, AUD-165, AUD-166, AUD-168, AUD-170, AUD-171, AUD-172, AUD-173, AUD-174, AUD-179, AUD-181, AUD-182, AUD-185, AUD-186, AUD-194, AUD-195, AUD-196, AUD-199, AUD-201, AUD-206, AUD-209, AUD-210, AUD-211, AUD-212, AUD-213, AUD-214, AUD-215, AUD-216, AUD-217, AUD-218, AUD-219, AUD-220, AUD-222, AUD-233, AUD-234, AUD-235, AUD-237, AUD-238, AUD-239, AUD-240, AUD-241, AUD-242, AUD-243, AUD-252, AUD-256, AUD-257, AUD-282, AUD-283, AUD-286, AUD-289, AUD-290, AUD-296, AUD-298, AUD-305, AUD-318, AUD-328, AUD-335, AUD-338, AUD-342, AUD-353, AUD-355, AUD-367, AUD-395, AUD-396, AUD-398, AUD-410, AUD-421, AUD-424, AUD-437, AUD-448, AUD-458, AUD-465, AUD-466, AUD-467, AUD-468, AUD-469, AUD-470, AUD-471, AUD-473, AUD-475, AUD-491, AUD-496, AUD-502.
+
+The same e508 Owned Live job 120015511856 subsequently passed 254
+pre-Docker Node contracts, the real Playwright adapter smoke (one pass in
+623 ms), and all 38 Core live cases with two existing skips. The earlier
+password-reset registration failure did not recur; no production fix for
+that unexplained failure is claimed. The job failed only at the separate
+NATS outage stage (broker). Owned stand cleanup and metadata-only receipt
+upload completed; receipt artifact 12450323778. The NATS/Rust/global release
+holds remain open.
+
+## Next bounded audit proof and regression batch (2026-10-22)
+
+The accepted 228-ID checkpoint above is based on e508 evidence. This batch
+adds tests, not claims of closure, for the next five candidates:
+- AUD-292 and AUD-295 require translated fallback messages for Pydantic
+  object-array 422 responses in reset-password and registration forms.
+  Existing string and string-array behavior tests remain unchanged.
+- AUD-293 replaces the old false copied-feedback test with actual clipboard
+  payload, delayed success, rejection/unavailable API and session-race
+  assertions. The test restores the original clipboard descriptor.
+- AUD-255 preserves seven real ORM profile states and adds EN/RU coverage
+  through the real notification renderer. It checks the body handed to
+  delivery, not a complete endpoint/outbox commit.
+- AUD-264 selects the existing four-resource/two-locale 404 detail test.
+  Resource names are lowercased at runtime; the Group audit spelling does
+  not require a new uppercase dictionary key.
+
+The three frontend suites join the quick selector; the exact two backend
+nodeids join the existing consumer allowlist. No timeout, concurrency,
+coverage floor, skip or expected-failure marker changes. The six new
+frontend behavioral failures are expected by source inspection and must
+be observed before implementation, not waived. The two backend proof
+candidates must pass on their own source before either ID is accepted.
+The DOMPurify patch included in the preceding commit remains pending fresh
+dependency/PDF checks. Global release holds remain open.
+
+## AUD-292/293/295 regression and implementation follow-up (2026-10-22)
+
+The tests-first RED was observed on source
+[55b573bc](https://github.com/egorribun/university_ecosystem/commit/55b573bcbdc5f8e0e2870f39913a528664a1c2ef):
+[quick job 120028837010](https://github.com/egorribun/university_ecosystem/actions/runs/39836723405/job/120028837010)
+recorded 507 passes and six expected failures. Node quality contracts
+passed all 658 cases; the 55 worker/export cases, including actual
+multilingual jsPDF generation, passed. [Node audit job
+120028130950](https://github.com/egorribun/university_ecosystem/actions/runs/39836723405/job/120028130950)
+succeeded with no unapproved advisories or missing overrides.
+
+This follow-up implements translated fallback handling for unknown detail
+shapes in the Reset Password and Register forms. Clipboard handling writes
+the displayed contact value and shows success feedback only after
+`clipboard.writeText` resolves, preserving the existing session-race guard.
+Original regression assertions remain; only Prettier line wrapping in two
+tests changed. Fresh hosted GREEN for the implementation remains pending.
+
+The consumer phase of [Contract job
+120027735677](https://github.com/egorribun/university_ecosystem/actions/runs/39836723405/job/120027735677)
+completed 1,428 passes / one deselected in 504.94 seconds. The policy phase
+logged 263 of 270 passes before the 10-minute cancellation; seven outcomes
+are unestablished. The overall contract is incomplete, not GREEN. Timeouts,
+fixtures and workflow are unchanged; rerun the complete contract on the
+implementation source. [Owned Live job
+120026869110](https://github.com/egorribun/university_ecosystem/actions/runs/39836723017/job/120026869110)
+passed 38 Core cases with two existing skips, then failed at the separate
+NATS broker stage; cleanup and receipt upload succeeded (artifact
+12452861095).
+
+No new audit IDs are accepted by this follow-up. All 22 named tests for
+AUD-255 (14) and AUD-264 (8) passed, but both findings remain unaccepted
+pending complete source-bound Contract evidence. Fresh implementation-source
+GREEN and remaining gates are pending. Rust job
+[120026868744](https://github.com/egorribun/university_ecosystem/actions/runs/39836723002/job/120026868744)
+and the Go gates in [performance run
+39836723002](https://github.com/egorribun/university_ecosystem/actions/runs/39836723002)
+passed on source 55b573bc; global NATS and release acceptance remain
+separate. No merge, deployment or release is performed.
+
+## Notification, rendering-error, locale and clipboard closure checkpoint (2026-10-22)
+
+This checkpoint accepts exactly AUD-255, AUD-264, AUD-281, AUD-292, AUD-293 and AUD-295 on the
+current source
+[1115604523](https://github.com/egorribun/university_ecosystem/commit/1115604523a42b6ce2f505fe1e57abe49c4f5a0d).
+The source tree is `7e1773f3a0c4dc6c9a868153b5f6bd28ead5760e`; tested merge
+`0606194161bc94a6b23bb95ac14ecfc5fc90501a` has the identical tree. All previously accepted 228
+IDs are retained, bringing the accepted lower bound to 234/512 (45.7%), with 278 remaining.
+Independent scope review approved these six closures.
+
+- **AUD-255:** 14 real ORM-backed notification-renderer body cases cover EN/RU. They verify the
+  body handed to mocked delivery; they do not establish an outbox commit or end-to-end delivery.
+- **AUD-264:** Eight `HTTPException` 404 cases cover four detail keys in EN/RU. This is not full
+  localization coverage.
+- **AUD-281:** HTTP 304 without usable cached data rejects rather than returning success-empty.
+  The 91-case `events.branches` suite covers cold-304 suspense, missing/empty/malformed lists
+  and MyEvents; two `EventsFeature.query-error.audit` cases (shard 2) plus the quick-job cases in
+  `frontend/src/features/events/components/__tests__/EventsList.closure.test.tsx` prove the
+  error-not-empty behavior.
+- **AUD-292 / AUD-295:** Object-shaped Pydantic 422 details take the translated fallback path in
+  Reset Password and Register, preserving existing string/string-array behavior. This does not
+  claim full-form acceptance.
+- **AUD-293:** Clipboard tests assert the actual payload, success only after `writeText`
+  resolves, rejection/unavailable behavior and the session-race fence; they do not certify
+  OS/browser clipboard behavior.
+
+Source-bound results: Contract run
+[39840880648](https://github.com/egorribun/university_ecosystem/actions/runs/39840880648), job
+120042304901, completed SUCCESS with 1,428 passes / one deselected in 481.98s, then 270 policy
+passes in 58.31s. Quick job 120044294935 passed 513 cases, including the six prior RED
+regressions (four clipboard and two object-422 cases); Node passed 658 cases and worker/PDF
+passed 55. Security/types, pre-commit, inventory and static frontend jobs 120042304227,
+120042304599, 120042304755 and 120044294723, plus production build 120044294708, are SUCCESS.
+Frontend shards 1–4 passed 2,703 / 2,320 / 2,327 / 2,332 cases (9,682 total). Aggregate job
+120049506109 is SUCCESS: merge, provenance and differential checks passed at 100% across 36
+changed lines with zero missing.
+
+Owned Live run
+[39840880687](https://github.com/egorribun/university_ecosystem/actions/runs/39840880687), job
+120041247423, concluded FAILURE because the separate NATS outage acceptance step exited 2. The
+Core live-acceptance runner step succeeded: 38 cases passed with two existing skips. Owned
+stand cleanup and metadata-only receipt write/upload then succeeded. NATS and other global
+release holds are separate from these accepted IDs. No merge, deployment or release is claimed.
+
+Current verified IDs: AUD-002, AUD-003, AUD-004, AUD-005, AUD-006, AUD-007, AUD-008, AUD-009, AUD-010, AUD-011, AUD-012, AUD-013, AUD-014, AUD-016, AUD-017, AUD-018, AUD-019, AUD-020, AUD-021, AUD-022, AUD-023, AUD-024, AUD-025, AUD-026, AUD-027, AUD-028, AUD-029, AUD-031, AUD-032, AUD-033, AUD-034, AUD-035, AUD-036, AUD-037, AUD-038, AUD-039, AUD-041, AUD-042, AUD-044, AUD-046, AUD-047, AUD-048, AUD-049, AUD-050, AUD-052, AUD-053, AUD-054, AUD-055, AUD-056, AUD-057, AUD-058, AUD-059, AUD-060, AUD-061, AUD-062, AUD-063, AUD-064, AUD-065, AUD-066, AUD-067, AUD-068, AUD-069, AUD-070, AUD-071, AUD-074, AUD-075, AUD-076, AUD-077, AUD-078, AUD-079, AUD-080, AUD-081, AUD-082, AUD-083, AUD-084, AUD-085, AUD-086, AUD-087, AUD-088, AUD-089, AUD-090, AUD-091, AUD-092, AUD-093, AUD-094, AUD-095, AUD-096, AUD-097, AUD-098, AUD-099, AUD-100, AUD-101, AUD-102, AUD-103, AUD-104, AUD-105, AUD-106, AUD-107, AUD-108, AUD-109, AUD-110, AUD-111, AUD-112, AUD-113, AUD-114, AUD-115, AUD-116, AUD-117, AUD-118, AUD-119, AUD-120, AUD-121, AUD-122, AUD-123, AUD-124, AUD-125, AUD-126, AUD-127, AUD-128, AUD-129, AUD-130, AUD-131, AUD-132, AUD-133, AUD-134, AUD-135, AUD-136, AUD-138, AUD-139, AUD-140, AUD-141, AUD-142, AUD-143, AUD-144, AUD-145, AUD-146, AUD-148, AUD-149, AUD-150, AUD-152, AUD-153, AUD-157, AUD-158, AUD-159, AUD-160, AUD-163, AUD-165, AUD-166, AUD-168, AUD-170, AUD-171, AUD-172, AUD-173, AUD-174, AUD-179, AUD-181, AUD-182, AUD-185, AUD-186, AUD-194, AUD-195, AUD-196, AUD-199, AUD-201, AUD-206, AUD-209, AUD-210, AUD-211, AUD-212, AUD-213, AUD-214, AUD-215, AUD-216, AUD-217, AUD-218, AUD-219, AUD-220, AUD-222, AUD-233, AUD-234, AUD-235, AUD-237, AUD-238, AUD-239, AUD-240, AUD-241, AUD-242, AUD-243, AUD-252, AUD-255, AUD-256, AUD-257, AUD-264, AUD-281, AUD-282, AUD-283, AUD-286, AUD-289, AUD-290, AUD-292, AUD-293, AUD-295, AUD-296, AUD-298, AUD-305, AUD-318, AUD-328, AUD-335, AUD-338, AUD-342, AUD-353, AUD-355, AUD-367, AUD-395, AUD-396, AUD-398, AUD-410, AUD-421, AUD-424, AUD-437, AUD-448, AUD-458, AUD-465, AUD-466, AUD-467, AUD-468, AUD-469, AUD-470, AUD-471, AUD-473, AUD-475, AUD-491, AUD-496, AUD-502
+
+## Next bounded audit batch (separate and pending)
+
+The following work is not part of the six accepted closures above. Current-source gateway job
+120043176305 and earlier source-55b job 120030084135 generated byte-identical +100/-0 diffs from
+`a1c04e00` to candidate `9c4ccb2b0f10c822e25a4193c3d9e3cc23406471`. Only `go.work.sum` changes
+(not `go.sum`); dependency versions, manifests and version constraints are unchanged. The
+evidence reports `GOSUMDB=sum.golang.org` and no private/no-sum entries. The [official Go
+Modules Reference](https://go.dev/ref/mod#go-work-file) explains that `go.work.sum` tracks
+workspace hashes absent from member `go.sum` files. The transitive graph-selection cause is not
+traced; do not attribute it to owner/Dependabot merges. This candidate is not verified until the
+same gate passes fresh.
+
+Dependency consistency repairs are also pending fresh CI: both visual runners now target the
+already-locked Playwright 1.64.1 with the immutable OCI index confirmed by the [official MCR
+catalogue](https://mcr.microsoft.com/en-us/artifact/mar/playwright/tag/v1.64.1-noble).
+Two exact Rust action assertions are aligned with the existing workflow pin introduced by
+[source commit c8696a46](https://github.com/egorribun/university_ecosystem/commit/c8696a46d11c24846b3159fe9525a74b09b15254).
+Frozen contract normalization, scanner policy and baseline are unchanged. These repairs do not
+increase the accepted count or establish Docker/browser visual acceptance; runtime and
+final-source scanner checks remain pending.
+
+- Two new EventEditDialog EN/RU test cases for invalid-date, false-prop and recovery behavior
+  are prepared but not run.
+- Planned targeted test selection covers AUD-259, AUD-263 and AUD-266 using five existing pytest node
+  IDs, plus frontend test files for AUD-281/AUD-284. This is not independent route-level HTTP
+  proof. AUD-281 is already accepted on the full source-111 suite; a quicker test selection is
+  additional regression coverage, not another closure.
+- AUD-299 adds two tests-first EN/RU cooldown-label cases through the real language provider.
+  The English case is expected to pass; the Russian case is expected to expose the hard-coded
+  seconds suffix. Production code and locale resources are unchanged in this test checkpoint;
+  the expected RED must be observed before the separate localized-suffix implementation.
+- Existing gates and timeouts remain unchanged. None of these pending items is represented as
+  passed or accepted here.
+
+## Bounded workflow-integrity checkpoint (2026-10-22)
+
+This repair is limited to the three raw workflow-source fingerprints in the
+v4 full-backend fixture, strict normalization of reviewed immutable Actions pin
+updates, and the owner's three exact public-integrity dispositions. All historical
+`origin_*` values and independent frozen trigger/job/step fingerprints remain
+unchanged. The 295 prior disposition records are preserved; the exact inventory
+assertion becomes 298. The scanner baseline and detection behavior are unchanged.
+This is not a blanket approval for later source or dependency changes.
+
+At source `7e5b4db013bdd858376ce51a6b5f17a828a8a719`, gateway Go test job
+120123568714 and lint job 120123568621 passed, including the fresh unchanged-graph
+gate for the `go.work.sum` repair. Pre-commit 120122124790, security/types
+120122125059, inventory 120122124894 and detect-secrets 120122268099 also passed in
+[Matrix 39864188802](https://github.com/egorribun/university_ecosystem/actions/runs/39864188802).
+Quick job 120123302524 produced the intended tests-first AUD-299 RED: 642 tests
+passed and only the Russian cooldown suffix case failed; the English case passed.
+The localized production fix is not included in this bounded integrity repair.
+
+The accepted ledger remains **234/512**. This checkpoint does not close another
+audit finding or claim globally green CI, visual acceptance, a merge or a release.
+The repaired contracts and exact policy additions require source-bound validation;
+further audit implementation is outside this checkpoint.
+
+## Безопасная локальная контрольная точка (2026-10-23)
+
+По поручению владельца работа приостановлена после проверки пакета; публикация и новый CI
+не запускались. Последний опубликованный source PR #1343 — `0d416849d1e86c62f0484526ceee0bbef95ea10f`.
+Принятая граница остаётся **234/512**; перечисленные ниже изменения не добавляют закрытий.
+
+- AUD-299: суффикс cooldown вынесен в EN/RU locale resources. Root повторил 42 frontend
+  теста (ForgotPassword и translation parity), все PASS на locked Vitest 5.0.5.
+- Полный workflow-модуль подтверждён обычным pytest: 27 PASS, а не изолированным AST.
+  Он добавлен в consumer selection. Все прежние selectors сохранены; добавлены также
+  два HTTP healthz regression cases и NATS checkpoint cases.
+- Contract сохраняет timeout 10 минут и оба blocking набора. Consumer и 270 policy tests
+  запускаются параллельно с раздельными temp/DB/log/JUnit paths, ожиданием обоих статусов
+  и ограниченной очисткой их process groups. Root повторил реальный Linux Bash harness:
+  обе успешные команды, каждый одиночный отказ, два отказа и TERM cancellation PASS;
+  посторонний sentinel сохранился. Реальный hosted wall time ещё не измерен.
+- Полный native population run: 1434 PASS, 26 существующих Windows SKIP, один deselected
+  и четыре setup ERROR в Makefile contracts, явно требующих POSIX. Отдельно 270 policy
+  PASS. Это не зелёный полный consumer run и не замена Linux CI. Source pins стабильны,
+  пик RAM 38,9%, свободно минимум 19,44 GiB; supervision ceiling не достигнут.
+- AUD-263/266: добавлены реальные GET /healthz проверки отказа Redis под работающим L1
+  и короткого error TTL с восстановлением и ограничением success TTL. Контрфактические
+  дефекты дали RED; полный health endpoint module — 22 PASS. AUD-259 и AUD-284 также
+  перепроверены в точном описанном в аудите объёме; приёмка нового source ещё требуется.
+- NATS: добавлены только конечные checkpoint labels broker_probe/broker_receipt и
+  отказ CLI принимать ACCEPTED result с ненулевым checkpoint. Финальные целевые NATS
+  проверки — 217 PASS, независимая выборка — 29 PASS. Содержимое broker envelope
+  не выводится. Причина исходного hosted outage всё ещё не установлена; actual outage
+  acceptance остаётся открытой.
+- AGENTS.md сокращён до общих требований проекта; хронология разрешений и инструкции
+  конкретному агентскому инструменту заменены ссылками на действующие ADR и contracts.
+  Baseline319, approved298, Gitleaks25, required78, CodeQL, hooks и finite131 сохранены.
+- Ошибочно созданный каталог временных тестов .codex вынесен из checkout в приватный
+  карантин без удаления evidence. Стенд не запускался; Docker-контейнеров не оставлено.
+
+При возобновлении: сверить локальный checkpoint и новые изменения владельца; проверить
+обычные hooks, final diff и cleanup, опубликовать через существующий PR только по новой
+команде продолжения. Затем проверить все страницы новых CI jobs, фактический budget
+Contract и broker checkpoint в Owned Live; не засчитывать новые AUD IDs заранее.
+
+
+## Active audit closure checkpoint (2026-10-23)
+
+Work is resumed on egorribun through PR #1343. Published source ad3b3f2b9 has the
+same tree as the former local checkpoint f31942c31. The accepted lower bound is
+240/512; the six newly verified IDs and exact hosted evidence are recorded in
+[the current audit checkpoint](../../audits/AUDIT-2026-10.md#behavioral-closure-checkpoint-2026-10-23).
+
+Contract Tests now finishes inside its unchanged ten-minute limit. The ordinary
+27-test workflow-contract module passed, but the consumer population has one
+PowerShell child timeout (1,464 PASS / one FAIL / one deselected); policy tests
+are 270 PASS. The exact 7.6.6 private Linux reproduction did not reproduce that
+timeout, so only a finite-phase diagnostic is prepared. The terminal Matrix run
+39879242309 has 69 successful, three failed and 14 skipped jobs. All four Python
+unit shards passed. The coverage gate also failed on two untested clipboard
+session guards in Profile.tsx; regression tests cover those guards locally,
+without changing production code or coverage floors. Global CI remains open.
+Owned Live Core passed; NATS outage failed at broker_probe and cleanup succeeded.
+The broker subphase diagnostic preserves the existing acceptance gates.
+
+The owner approved exactly the three chart-default Redis, redis_exporter and
+NATS rendered digest references for Kyverno on 2026-10-23; see
+[ADR-010](../../adr/ADR-010-kyverno-admission-control.md#registry-boundary-decision-2026-10-23).
+Different environment digests remain blocked. No deployment is authorized by
+that decision. Local draft fixes and privately tested candidates remain subject
+to final-source checks, ordinary hooks and their own hosted checks.
+
+The owner approved exactly three auth validation UI-copy dispositions and their
+finite validator/test diff on 2026-10-23. The actual policy now contains 301
+records, preserving the previous 298; see ADR-047. The final local Windows-adapted
+scan passed with zero unmatched findings and all 319 baseline identities intact.
+Hosted final-source checks remain required.
+
+
+## Registry and schedule-lock checkpoint (2026-10-23)
+
+Принято **247/512 (48,2%)**, добавлены только AUD-228, AUD-249, AUD-261,
+AUD-287, AUD-288, AUD-337 и AUD-344. Source — опубликованный ed2337b9,
+merge 10c1bc04 имеет тот же tree. Root сверил source/test blobs и JUnit;
+[границы доказательств и актуальный список ID](../../audits/AUDIT-2026-10.md#registry-denial-audit-ui-feedback-and-schedule-lock-checkpoint-2026-10-23)
+сохранены в аудите. AUD-228 подтверждён отдельным локальным PostgreSQL-прогоном
+7/7 с наблюдаемым advisory-lock ожиданием; это не новый hosted result.
+
+Работа возобновлена по поручению владельца: до 20 GPT-6 Luna Max, один checkout
+и PR #1343. Общий CI не зелёный. Contract на ed2337b9 прошёл 1475 consumer cases
+и 275 policy cases в прежнем лимите. Локальные исправления и отдельно разрешённый
+ctutils 0.4.4 ещё требуют обычных hooks, публикации и собственных final-source checks.
+Решение владельца о regular/init-only границе require-resource-limits записано
+в ADR-010. Ни новая визуальная приёмка, ни merge/deploy не выполнены.
+
+
+## CSRF and gate evidence checkpoint (2026-10-23)
+
+Принято **252/512 (49,2%)**: сохранены прежние 247 ID, добавлены только AUD-001,
+AUD-224, AUD-225, AUD-227 и AUD-229. Root связал 27 файлов с опубликованным
+8342ce93 и проверил 81 локальный PASS без ошибок и skips; [полные границы
+доказательств и актуальный список ID](../../audits/AUDIT-2026-10.md#csrf-and-gate-evidence-checkpoint-2026-10-23)
+сохранены в аудите. Это не приёмка общего CI или production.
+
+Первый пакет опубликован в PR #1343, обычные hooks и полный скан прошли;
+baseline319, dispositions301, Gitleaks25 и 78 required contexts сохранены.
+На этом source прошли Nilaway, Cargo Deny, SBOM vulnerability gate, CodeQL,
+Contract, frontend unit shards, inventory и Kyverno. Linux production build
+успешен; общий CI остаётся незелёным. Trivy config gate упал; локальный скан
+тем же Trivy 0.75.0 воспроизвёл пять HIGH в негативной Kyverno-фикстуре.
+Полный hosted SARIF не получен. Новые исключения не применены и требуют
+отдельного решения владельца. Следующие кандидаты и локальные тесты пока не
+увеличивают принятый счёт; им нужны обычные hooks и final-source checks.
+
+
+## Local second-batch validation checkpoint (2026-10-23)
+
+Принятая нижняя граница остаётся **252/512 (49,2%)**; новых AUD IDs не добавлено.
+На опубликованном 8342ce93 Matrix Contract, frontend, Rust и Go — SUCCESS;
+две ошибки Python unit tests остаются в диагностике. Trivy findings из намеренно
+негативной Kyverno-фикстуры ожидают предложения владельца; новая disposition или
+exception не заявляется. Owned Live завершился ошибкой на `runtime_config`, но
+failure cleanup прошёл.
+
+Локальная вторая партия: frontend 8 files / 298 PASS / 37.73s, typecheck PASS,
+lint `--max-warnings=0` PASS; Node 660 PASS / один существующий SKIP. Bounded
+Windows production build PASS за 21.63s (2 threads, RSS 2048, heap 1536; peak
+host 46.09%); только прежние dynamic-import/timing diagnostics. Workflow/catalog:
+250 PASS за 65,57s в обычном pytest до предложенных Trivy-изменений.
+
+## Existing-source closure checkpoint (2026-10-23)
+
+Принятая нижняя граница — **255/512 (49,8%)**: к историческим 252 добавлены
+только AUD-176, AUD-200 и AUD-285. Все 11 исходных файлов, конфигураций и тестов
+связаны с опубликованными байтами 8342ce93; полный source-binding, точные IDs,
+JUnit-хеши, именованные тесты и границы доказательств приведены в
+[аудите](../../audits/AUDIT-2026-10.md#existing-source-closure-checkpoint-2026-10-23).
+Python-run завершился 17 PASS, включая 10 тестов AUD-176 и один тест AUD-200;
+86 frontend-тестов включают 39 целевых случаев AUD-285. Остальные 6 Python и
+47 frontend cases являются контекстом, не добавляя IDs. Ограничения остаются:
+in-memory single-process, SQLite-fixture без timestamp ties, jsdom без browser
+или assistive-technology certification.
+
+## Unpublished working checkpoint (2026-10-23)
+
+Локальная проверка текущей партии: outbox cohort из 9 файлов — 89 PASS за 13,72s;
+frontend typecheck/lint PASS; backend CI — 117 PASS; NATS diagnostics — 167 PASS;
+frontend-прогоны — 298, 42 и 86 PASS (сумма не означает число уникальных тестов). Production build прошёл за
+20,59s при прежних ограничениях ресурсов; peak host составил 46,07%.
+
+Это unpublished/локальное подтверждение, а не полный зелёный CI. Обычные hooks,
+финальный чистый scan и публикация ещё pending. Последний полный локальный scan:
+550 findings, пять unmatched синтетических значений в
+`tests/test_aud253_private_env_files.py`; проверка завершилась отказом.
+Эти пять входят в ожидающий решения пакет семи identities, другие две относятся
+к ещё не интегрированному Trivy validator. AUD-175, AUD-303, AUD-236 и AUD-265
+не входят в 255. Открыты два решения владельца: точный пакет Trivy с двумя
+fixture-исключениями и ровно семь новых detect-secrets identities с точным
+validator/test diff. Ни одно из этих исключений пока не применено.
+
+
+## Admin feedback, NATS, media ownership and chat aggregation checkpoint (2026-10-23)
+
+Принятая нижняя граница — **260/512 (50,8%)**: к историческим 255 добавлены
+только AUD-180, AUD-203, AUD-205, AUD-254 и AUD-291. Полный список, точные
+привязки к 8342ce93, named tests, хеши локальных доказательств и границы
+приёмки приведены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#admin-feedback-nats-media-ownership-and-chat-aggregation-checkpoint-2026-10-23).
+
+Обычные локальные прогоны на target-файлах, неизменённых относительно 8342ce93,
+составили 82 PASS в media-ownership, 53 PASS в NATS/chat и 9 PASS в admin-feedback
+cohorts; JUnit подтверждает ноль failures, errors и skips. Admin-feedback suite
+использует mocked Snackbar. Это bounded source-bound проверка: она не подтверждает
+live NATS outage, exactly-once между JetStream и БД, production S3, PostgreSQL
+plan/performance, browser lifecycle или assistive-technology acceptance.
+Полный CI и публикация остаются отдельными воротами.
+
+
+## Rate-limit identity, NATS startup recovery and weekly cleanup checkpoint (2026-10-23)
+
+Принятая source-bound нижняя граница — **263/512 (51,4%)**; к историческим 260 добавлены только AUD-177, AUD-202 и AUD-207. Точные критерии, source bindings, шесть именованных PASS и пределы доказательства сохранены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#rate-limit-identity-nats-startup-recovery-and-weekly-cleanup-checkpoint-2026-10-23).
+
+Обычный локальный прогон на неизменённых target-файлах дал 6 PASS за 0,94s; JUnit содержит ровно шесть случаев без failures, errors и skips. Проверка подтверждает только IP-bucket для pre-auth limiter, восстановление NATS worker до подписки под mock и отсутствие REINDEX в исполняемом cleanup пути. Она не подтверждает Redis или production client-IP forwarding, live NATS delivery/ACK, deployed scheduler, полный CI или публикацию. AUD-198 остаётся PostgreSQL-gated; AUD-204 остаётся открытым.
+## Selected publication candidate snapshot (2026-10-23)
+
+Этот раздел фиксирует выбранный 65-путевой снимок до финальной постановки `.secrets.baseline`; следующие строки описывают состояние только на тот момент. При публикации к нему добавлен 66-й путь — metadata-only обновление `.secrets.baseline`: три значения `line_number` и `generated_at`, без изменения 319 finding identities. Итоговые сведения приведены ниже.
+На момент этого снимка два файла AUD-253 (`start-docker.ps1` и новый private-env test) были сохранены вне
+checkout вместе с полным diff; тогда в checkout были восстановлены опубликованные версии.
+На тот момент они не входили в выбранную партию до отдельного решения по пяти scanner identities.
+Ни Trivy-пакет, ни семь новых dispositions не применены: policy301 и baseline319
+сохранены. Приватные кандидаты миграции, inventory, receipt schema, titles и theme
+также не интегрированы и не увеличивают принятый счёт 263.
+
+После исправления reply scope Messenger обычные два полных модуля дали 138 PASS;
+38 lesson-notes cases подтверждают завершение начатого сохранения после unmount и
+сохранение session/owner rollback. Typecheck и lint с нулём новых предупреждений
+прошли. Bounded production build прошёл за 21,72s (2 workers, RSS 2048 MiB,
+heap 1536 MiB, peak host 57,73%); retained artifacts и итоговые exit codes приватны.
+Скан выбранного кода на момент этого снимка: 545 findings, 0 unmatched, baseline319 неизменён. Тогда финальные hooks и проверки source ещё требовались.
+
+На момент этой записи четырёхслучайный PostgreSQL sanity для AUD-265 ещё не был выполнен: первая
+попытка остановилась в launcher до тестов, owned container/volume были удалены и
+их отсутствие подтверждено. Позже AUD-265 прошёл отдельную source-bound проверку на PostgreSQL 17.11,
+описанную в последней контрольной точке. Приватный AUD-348 остановился в preflight до БД; это не результат
+миграционных тестов и не входит в приёмку.
+
+## Published source checkpoint b1d01826 (2026-10-23)
+
+Опубликован [commit `b1d01826a7e04874bfa5f2bcb2b83f10f78696fb`](https://github.com/egorribun/university_ecosystem/commit/b1d01826a7e04874bfa5f2bcb2b83f10f78696fb), parent `8342ce935ce5e5f89b742872217a6694b2aa33fc`, tree `31358df658ce8056c40ca425b57ef3026e5d5a9c`; он имеет тот же tree, что и локально hooked commit `97f1a9900c831fd0d47e1b0a1c7c2c895b12a415`. В опубликованном commit 66 изменённых путей: выбранный выше 65-путевой снимок и повторно поставленный `.secrets.baseline` с metadata-only изменениями. В baseline сохранены 319 finding identities; disposition policy сохранила 301 запись. На момент публикации принятая нижняя граница была 263/512; последующие source-bound приёмки приведены ниже.
+
+Все применимые обычные commit hooks и обычный pre-push прошли. Финальная полная detect-secrets проверка: 545 findings, 0 unmatched; проверка целостности подтвердила 319 baseline identities.
+
+На момент первого GitHub workflow snapshot [Matrix Expansion](https://github.com/egorribun/university_ecosystem/actions/runs/39976047319) стоял в очереди, [Checkov](https://github.com/egorribun/university_ecosystem/actions/runs/39976047084), [Owned Live Acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/39976047368) и [Continuous Performance](https://github.com/egorribun/university_ecosystem/actions/runs/39976047173) выполнялись. [SBOM — Supply Chain Provenance](https://github.com/egorribun/university_ecosystem/actions/runs/39976047095) завершился отказом из-за неразрешённого `brotli:PYSEC-2026-4322`. [Unauthenticated Routes Smoke (Linux PR)](https://github.com/egorribun/university_ecosystem/actions/runs/39976047273) завершился отказом при установке зависимостей dark-theme job (`npm ECONNRESET`); light-theme job прошёл, dark-theme smoke не запускался. Более поздняя проверка frontend static i18n на том же b1 также осталась красной (job `120491778102`): обнаружены динамический `t(messageKey)` в `EventDetail` и ложное срабатывание `TypeError` в строковом regex `formatting.py`. Hosted CI остаётся частично красным; полный CI и релизная приёмка не заявлены.
+
+
+## Bounded task cancellation, gate state and lifecycle checkpoint (2026-10-23)
+
+Принятая source-bound нижняя граница — **267/512 (52,1%)**: сохранены все 263 предыдущих ID, добавлены только AUD-204, AUD-223, AUD-265 и AUD-336; осталось 245 ID. Все четыре критерия привязаны к опубликованному b1d01826, tree `31358df658ce8056c40ca425b57ef3026e5d5a9c`; точные source/test bindings, именованные проверки и границы приёмки приведены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#published-source-closures-task-cancellation-gate-state-and-lifecycle-2026-10-23).
+
+AUD-204 ограничен отменой и закрытием SMTP transport при NATS timeout до redelivery; 24 обычных pytest cases прошли. Он не обобщается на generic synchronous broker handler и не разрешает неоднозначность, принял ли удалённый SMTP peer сообщение. Все 14 текущих task registrations асинхронны.
+
+AUD-223 закрывает только обход stop-gate через удаление уже инициализированного состояния: 31 обычный contract test прошёл. Валидное состояние, намеренный rollback и удобство fresh-checkout остаются вне критерия. AUD-265 и AUD-336 имеют отдельные ограниченные доказательства в аудите: реальный PostgreSQL 17.11 (четыре случая) и 138 PASS controller-state suite соответственно.
+
+Последний unpublished local cohort дал 45 frontend PASS, полный inventory checker PASS, 64 localization PASS и 250 workflow/catalog PASS; frontend typecheck/lint прошли, bounded build — 20,68s при peak host 58,84%. Предыдущие inventory/router RED попытки разрешились локально и не остаются текущими сбоями; эти unpublished проверки не добавляют AUD closures. Hosted CI для b1 остаётся частично красным, поэтому полный CI и release не заявлены.
+
+## Existing-source notification, recovery and per-user rate-limit checkpoint (2026-10-23)
+
+Принятая source-bound нижняя граница — **271/512 (52,9%)**: сохранены все 267 предыдущих ID, добавлены ровно AUD-280, AUD-300, AUD-302 и AUD-374; осталось 241 ID. Все четыре критерия привязаны к опубликованному source `b1d01826a7e04874bfa5f2bcb2b83f10f78696fb`, tree `31358df658ce8056c40ca425b57ef3026e5d5a9c`; bindings, evidence и пределы критериев приведены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#existing-source-notification-and-recovery-checkpoint-2026-10-23).
+
+AUD-280 закрывает только визуально успешное представление ошибок mark-read/mark-all/clear notifications: отказ остаётся видимым, отдельную операцию можно повторить, неуспешная отметка не запускает переход по ссылке. AUD-300 закрывает только показ generic operational error вместо экрана «письмо отправлено» при неуспешном запросе восстановления пароля; успешный retry остаётся доступен. AUD-302 подтверждает error/success severity для известных share, edit и delete outcomes. AUD-374 закрывает только недостижимый per-user rate-limit: после сохранённого front-door IP gate middleware применяет отдельный `user:<id>` bucket, только когда `user_id` совпадает с verified `Claims.UserID`; отсутствующий, malformed, mismatched или unverified identity не выбирает user bucket. Обычные Vitest когорты — 63 PASS для AUD-280/AUD-300 и 20 PASS для AUD-302; последние используют jsdom и mock `Alert`, без browser/accessibility доказательства. Bounded Windows Go 1.26.10 non-race run с `GOMAXPROCS=2` и `-p=2` прошёл оба пакета: 24 PASS JSON events (включая parent/subtest events), 0 failures; это не race или deployment/trusted-proxy proof.
+
+Последние unpublished локальные когорты: NATS 106 PASS, settings 82 PASS, Node 661 PASS / один существующий SKIP, MinIO contract 4 PASS. Исправленный bounded frontend build завершился с exit 0 за 21,705s (два worker, RSS cap 2048 MiB, heap 1536 MiB, peak host 52,41%). После исправления метаданных артефактов combined ordinary CI-catalog/fail-closed/MinIO cohort прошёл 112 тестов за 45,75s; первоначальные семь FAIL — разрешённая локальная попытка, не текущий отказ. Эти когорты не добавляют другие AUD IDs. Предыдущий unpublished scan snapshot кандидата AUD-297 зафиксировал 547 findings, включая две новые SEO identities, ожидающие точного решения владельца. Шесть связанных AUD-297 feature files оставлены в private; AUD-297 не принят, dispositions остаются на 301 записи, и эти SEO findings не одобрены. Для текущего unpublished 41-file tree финальные source checks завершены: bounded frontend build прошёл с exit 0 за 21,7636s (Windows, Node 24.21.0, два worker, RSS cap 2048 MiB, heap cap 1536 MiB, peak host 53,33%); trusted-base scan выявил 545 findings и 0 unmatched. Integrity check подтвердил 319 baseline findings, 154 suppressed paths, 20 stale findings для удалённых файлов/секретов и review 246 exact false-positive findings на trusted b1 base; dispositions остаются на 301 записи. Build report `frontend-build-batch3-final.report.json` SHA-256 `58102901F5EEA51FCAA4E0C4DD005171A2993ECC5E030305AB84CAF1233DC4DE`; scan JSON `batch3-final-v2-current-scan.json` SHA-256 `13CA4A428DF8E280649CFB79CDD4FBB6349E5B6B8A08BBC21A53937507E7F742`; verifier log `batch3-final-v2-scan-verification.log` SHA-256 `3EED199619ED79864092420FE8C15974D77347C7EBAE1237C898ACE74DE19740`; trusted-base manifest `batch3-final-v2-trusted-base-baseline.json` SHA-256 `7EB401D029FE0EA44DB6314C5235F19F0066B836AE38B72795BC702DF9CF6290`. Эти результаты относятся к ограниченному локальному 41-file tree и не подтверждают hosted CI или release readiness.
+
+Hosted CI для b1 остаётся частично красным: решение владельца по Brotli ожидается, проверка Trivy fixture не завершена, frontend image findings пока не установлены точно. Полный CI и release acceptance не заявлены; этот checkpoint не утверждает прохождение hooks или полной финальной scan.
+
+## Published b1 Matrix final triage and 42-file test correction (2026-10-23)
+
+Hosted Matrix на b1 завершил все 91 jobs. Backend shard 2 прошёл; shard 3 завершился с 6122 PASS, 36 существующими SKIP и одним FAIL: password-reset contract ожидал две операции очистки, тогда как production также удаляет незавершённые и неотозванные `MfaTotpEnrollment`. Test-only исправление требует точные SQL, user binding и null predicates всех трёх DELETE; весь обычный модуль прошёл 15 тестов без предупреждений. Production-логика сброса пароля не меняется.
+
+Это 42-й изменённый путь следующей партии. Предыдущие build/scan результаты относятся к своему 41-file снимку; frontend production inputs после них не менялись. Итоговый снимок проходит отдельные обычные hooks, полный scan и новые hosted checks. Принятая нижняя граница остаётся 271/512 (52,9%), осталось 241 ID; полный CI и release acceptance не заявлены.
+
+## Published batch 3 receipt (2026-10-23)
+
+Опубликован [commit `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`](https://github.com/egorribun/university_ecosystem/commit/4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529), parent `b1d01826a7e04874bfa5f2bcb2b83f10f78696fb`, tree `8eca6e7e248690f07d433bc852e7c5a2b083bab1`, с 42 изменёнными путями. Локальный hooked equivalent `8d9f9f41d2311b2454b3bcf508dd8d93037abc52` и merge checkout `d792f8d8a71a304049bcef81279431673beaec57` имеют тот же tree. Принятая нижняя граница на момент публикации — **271/512 (52,9%)**; осталось 241 ID. Инвентари качества сохранены: detect-secrets baseline 319 identities, dispositions 301, Gitleaks 25, 78 required context/app pairs. Publication receipt `publication-batch3/continuation-receipt.json` SHA-256 `926F8BF67755B2570F054FEB359720E2EFB781F610F34F321CFC86661E177E6E` связывает commits/tree, список путей, политику и test/scan evidence; `publication-binding.json` SHA-256 `22E35047E057C78882BE8F876BA58001A9AB8D2D8746A8219ED8D868E7E67A64` подтверждает общий tree и final hooks/pre-push.
+
+Обычный hooked amend завершился с exit 0; результат `ordinary-amend-result.json` SHA-256 `88EB80D51A94A38F3945DAB502727102A7FA5A0590F7EE299A634A87475EA6F9`, hook log `ordinary-amend.stderr.log` SHA-256 `BC68BB990C1AFCAA585B8BA6F1BCF6D92FA78BCA6D0D9B4FC366B025820BA878`. Обычный final pre-push выполнил frontend `tsc --noEmit`; stdout `pre-push-final.stdout.log` SHA-256 `D3D579F3C9B564F9D36181649FB875E0A38D3F4F1E1CB8842DADCA48B014984C`, stderr пуст. Source/test inventory generation and validation passed: `batch3-publish-final-inventory.log` SHA-256 `1865F3D28074B9053A444060D7A33E2705D61EFD16858E64DB78256D870AB17F`; manifest SHA-256 `C95D6A06683264EEDC2E93FADD894FAD0A9477918E73CE8B9841B0BA2762608E`.
+
+Полный trusted-base scan `batch3-final-v5` связан с опубликованным tree `8eca6e7e248690f07d433bc852e7c5a2b083bab1`; обычный amend не менял этот tree. Результат — **545 findings / 0 unmatched**; baseline integrity подтвердил 319 identities, 154 suppressed paths и 246 проверенных exact false-positive findings на trusted b1 base; 20 stale baseline findings относятся к удалённым файлам/секретам. Scan JSON `batch3-final-v5-current-scan.json` SHA-256 `6239EEE80EA7BC77FCFDEAC8379B767942F4F5E1EACBACB38A27767776563D6D`; verification log SHA-256 `3EED199619ED79864092420FE8C15974D77347C7EBAE1237C898ACE74DE19740`; trusted-base manifest SHA-256 `7EB401D029FE0EA44DB6314C5235F19F0066B836AE38B72795BC702DF9CF6290`. Production frontend build evidence остаётся ограниченным предыдущим 41-file input snapshot: exit 0 за 21,7636s на Windows/Node 24.21.0, два worker, RSS cap 2048 MiB, heap cap 1536 MiB, host peak 53,33%. Report `frontend-build-batch3-final.report.json` SHA-256 `58102901F5EEA51FCAA4E0C4DD005171A2993ECC5E030305AB84CAF1233DC4DE`; frontend inputs не менялись при добавлении test-only 42-го пути, но этот report не является сборкой всего 42-path tree. Полный модуль password-reset contract после test-only correction прошёл **15 PASS / 0 failure, error, skip** за 1,81s; `passwordreset-final.log` SHA-256 `AE0A5945CD8C080A7C13228E0B1199921A6BF78E40390D83ADB37492EFF33133`, JUnit SHA-256 `F31032518BCD101162AC140AF45A31B1C2F7BB4B755FB2EAEB21AB2676955437`.
+
+Текущий GitHub API snapshot для опубликованного commit не green. [Matrix run 39988114362](https://github.com/egorribun/university_ecosystem/actions/runs/39988114362) всё ещё `in_progress`: 82 jobs — 65 success, четыре failure, 11 skipped, два in progress. Failed jobs: Contract Tests `120532489237`, Python Dependency Audit `120532859452`, Container Security Scan `120532859528`, Trivy Image Scan - frontend `120535275743`; активны Python 3.14 backend test shards 0 (`120535276614`) и 1 (`120535276583`). Отдельный SBOM run `39988113980` завершился failure в Vulnerability gate `120532485243`. Owned Live Core job `120532486868` завершился success, но frozen-RC full-smoke request и full-stack smoke были skipped; это не full CI или release acceptance.
+
+## Existing-source Russian validation checkpoint (2026-10-23)
+
+Принята source-bound нижняя граница **272/512 (53,1%)**: сохранены все 271 предыдущий ID и добавлен только AUD-294; осталось 240 ID. Проверка привязана к опубликованному commit `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`, tree `8eca6e7e248690f07d433bc852e7c5a2b083bab1`. Две прямые проверки подтверждают русские сообщения при выбранном Russian language provider для валидации минимальной длины имени при регистрации и минимальной длины пароля при сбросе. Полные обычные модули Register/ResetPassword прошли 104 теста (34 + 70), без failures, errors и skips; точные named cases, six-file source bindings и artifact hashes приведены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#existing-source-russian-validation-checkpoint-2026-10-23). Это jsdom evidence для этих двух сценариев, не browser/assistive-technology proof и не проверка каждого schema message. Hosted CI state остаётся таким, как он зафиксирован в [receipt публикации batch 3](#published-batch-3-receipt-2026-10-23); полный CI и release acceptance не заявлены.
+
+## Owner-approved scanner and Brotli boundaries (2026-10-23)
+
+Владелец утвердил ровно девять дополнительных finite path/type/finding-digest dispositions: семь записей AUD-253/Trivy и две SEO identities. Совместно с прежними 301 записями approved union составляет ровно 310; точные identity, категории и сроки остаются в [policy JSON](../../../quality/security-false-positive-dispositions.json). Отдельное разрешение Trivy v4 касается только fixture findings `KSV0008` и `KSV0024` и истекает 2026-11-22; оно не добавляется к числу девяти записей и не является общим исключением сканера. Новые workflow identities не одобрены и не включены. Эти решения не закрывают AUD-253/AUD-297 и не меняют принятую нижнюю границу аудита: **272/512 (53,1%)**, 240 ID остаются.
+
+Для PR #1343 одобрены только package-specific Brotli cutoff `2026-10-22T14:00:13Z`, временное ограничение `brotli==1.2.1` и постоянный floor `brotli>=1.2.1,<2` для PYSEC-2026-4322 / CVE-2026-111497. Точный cutoff и временное ограничение истекают `2026-10-29T14:00:13Z`; общий cooldown policy не меняется. Эта запись не утверждает успешную генерацию или проверку lock, установку пакета, прохождение vulnerability gate, hosted CI либо release readiness. Подробности: [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#owner-approved-finite-scanner-policy-additions-2026-10-23), [audit supplement](../../audits/AUDIT-2026-10.md#owner-approved-finite-scanner-policy-additions-2026-10-23), [Brotli cooldown record](../../DEPENDENCY_COOLDOWN_EMERGENCY.md#owner-approved-brotli-exception-2026-10-23).
+
+## Owner-approved five exact baseline-fixture dispositions (2026-10-23)
+
+The owner approved exactly five additional finite path/type/finding-digest dispositions, preserving the previous 310 records and extending the approved union to 315. One `public_integrity_digest` is bound to `tests/fixtures/full-backend-reusable-baseline.v4.yaml:8`; four `independent_contract_fingerprint` identities are bound to lines 21, 24, 25, and 26. All five are exact-category identities reviewed on 2026-10-23 and expire on 2027-01-10; see the [policy JSON](../../../quality/security-false-positive-dispositions.json) and [audit supplement](../../audits/AUDIT-2026-10.md#owner-approved-five-exact-baseline-fixture-dispositions-2026-10-23).
+
+This policy-only update does not change the accepted audit lower bound of **272/512 (53,1%)** (240 IDs remain) and does not establish final-source scan, test, hosted-check, or release results.
+
+## Pause checkpoint 2026-10-23
+
+Работа безопасно приостановлена по прямому поручению владельца. Ветка `egorribun`, PR #1343; локальный и последний проверенный удалённый HEAD — `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`. Новый commit/push, merge и deploy не выполнялись. Подготовленные изменения сохранены в index и рабочем каталоге; приватная резервная копия diff и receipt связывают полный список файлов и хеши. Принятый audit ledger остаётся **272/512 (53,1%)**, осталось 240 ID: локальные проверки сами по себе новых закрытий не добавляют.
+
+Одобренные владельцем 315 конечных dispositions применены вместе с точным validator/test diff и документацией; прежние 310 записей сохранены. Baseline319, Gitleaks25, исторические `origin_*`, 78 required context/app pairs, blocking CodeQL, hooks и пороги не менялись. Новые или изменённые identities остаются блокирующими.
+
+На подготовленных исходниках подтверждены: 302 обычных policy/Markdown теста после интеграции 315; 313 cache/users/semantic-search тестов, при этом cache имеет 579/579 statements и 190/190 branch arms; 78 migration-тестов с 771/771 statements и 426/426 branch arms; три реальные PostgreSQL-проверки адаптированного AUD-348 integration test; 323 frontend-теста. Production frontend build, typecheck, ESLint для 15 изменённых JS/TS файлов и форматирование 16 файлов прошли. Это отдельные пересекающиеся наборы, не суммарный full-suite результат; новые final-source hooks и hosted checks ещё обязательны.
+
+Оставшиеся блокеры этого пакета:
+
+- Последний полный detect-secrets scan содержит 556 findings. При точной одобренной политике315 остаются две неутверждённые `Secret Keyword` identities в `tests/test_cache_object_keys_aud495.py` (строки 109 и 159). Baseline и suppressions для них не расширялись. Требуется обычное рассмотрение находок; автоматического разрешения нет.
+- Linux AUD-253 harness v2 остановился с кодом15 на `release-manifest-entry` до поведенческого теста: официальный GNU binary checksum имеет один пробел перед `*`, тогда как проверка ожидала два. Исправленный parser и повторный Linux-прогон ещё не выполнены; Windows proof сохранён.
+- Приватный AUD-304 style-harness на production CSS в системном Chrome156 завершился assertion о прозрачном hover-цвете. Причина в fixture или продукте ещё не установлена; четыре browser-сценария и AUD-304 не приняты.
+- Полный consumer diagnostic run сохранил все 126 selectors и 1486 JUnit cases: 1454 PASS, 26 SKIP, два stale Brotli contract failures и четыре POSIX setup errors на Windows; один тест deselected штатным фильтром. Ожидания Brotli исправлены, обычный полный модуль прошёл 8/8. POSIX cases остаются для Linux/CI. Это не зелёный полный CI.
+
+На опубликованном HEAD Matrix39988114362 завершился с известными failures; Owned Live39988114353 Core и NATS outage — SUCCESS. Нового hosted source ещё нет. Последующий запуск должен сначала освежить HEAD/diff и CI, разобрать две scanner identities, проверить Linux parser и browser assertion, затем выполнить final-source hooks, cleanup/diff/HEAD guards и обычную публикацию без обходов. Не повторять уже прошедшие проверки на неизменённых исходниках без новой причины. Приватные AUD-197/AUD-262 PostgreSQL-кандидаты и AUD-321/AUD-439 browser-кандидаты остаются отдельной неподтверждённой работой.
+
+Все субагенты завершили текущие задания. Отсутствие принадлежащих этим прогонам PostgreSQL/Linux контейнеров, PostgreSQL volume и команд проверено отдельно; чужие ресурсы не удалялись. Ошибочная приватная копия `.secrets` удалена владельцем, отсутствие проверено; исходная папка проекта сохранена. Возобновление — только по следующему поручению владельца.
+
+## Existing-source Helm 4 validation checkpoint (2026-10-23)
+
+Принят ровно один новый ID, **AUD-330**; предыдущие 272 ID сохранены. Текущая source-bound нижняя граница — **273/512 (53,3%)**, осталось 239 ID. Пруф привязан к опубликованному source `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`, tree `8eca6e7e248690f07d433bc852e7c5a2b083bab1`; подробные source/test hashes и JUnit приведены в [контрольной точке аудита](../../audits/AUDIT-2026-10.md#existing-source-helm-4-validation-checkpoint-2026-10-23).
+
+Полный обычный модуль `tests/test_gateway_trusted_proxies_wiring.py` прошёл на локальном Helm v4.2.4: **13 PASS / 0 fail / 0 error / 0 skip**. CI также pins Helm v4.2.4. Это узкое подтверждение существующего тестового контракта; hosted CI, полный набор тестов, deployment и release не заявляются.
+
+
+## Pause checkpoint after resume64 (2026-10-23)
+
+Работа приостановлена по прямому поручению владельца. Ветка `egorribun`, PR #1343; HEAD остаётся `4f7fc9583529cd5f61bf1d8ab1496fb1d2b0b529`. Новые commit/push, merge и deploy не выполнялись. Подготовленные 53 пути сохранены; новая source-bound приёмка AUD-330 отражена в аудите, STATUS и INDEX. Принятый ledger — **273/512 (53,3%)**, осталось 239 ID; остальные приватные кандидаты не приняты.
+
+Новые доказательства после предыдущей паузы:
+
+- Linux AUD-253 v4: обычный изолированный pytest на неизменном hash-pinned тесте и PowerShell 7.6.6 — **1 PASS / 0 fail / 0 error / 0 skip**, 3,40s. Evidence run `c90a29e8c4224c72b11dee08be9f3f3a`; cleanup подтвердил отсутствие контейнера по точному имени и run label. Исправления parser и изоляции pytest касались только приватного harness; ранние v2/v3 отказы сохранены. Windows proof и production source остаются прежними. Сам AUD-253 пока не добавлен к принятому ledger.
+- Actual Chrome156 CSS oracle подтвердил причину прозрачного hover: числовой `--opacity-subtle:.1` недопустим как процентный вес `color-mix`. В двух сценариях user theme против OS исходный CSS даёт прозрачность; in-memory замена одного токена на `10%` восстанавливает ожидаемые alpha/luminance. Это диагностический counterfactual, не production-исправление и не приёмка AUD-304. Глобально менять единицы токена без проверки смешанных consumers нельзя.
+- File-processor Go1.26.10: 13 targeted `TestConnectTemporal` PASS; все 4/4 исполняемые добавленные строки `main.go` покрыты. Это patch-line proof, не весь компонент. Для AUD-348 существующий normalizer вывел 18/18 функций из прежнего source-bound coverage DB; lines/statements 771/771, branches 426/426. Полный межкомпонентный manifest и hosted gates ещё обязательны.
+- Полная инвентаризация 23 CI runs текущего опубликованного HEAD сохранена приватно. Matrix39988114362 завершён: 67 success, 7 failure, 17 skipped. Owned Live39988114353 Core и NATS outage — success; два frozen-RC задания штатно skipped. Общий CI не green.
+
+Оставшиеся блокеры сохранённого пакета: production CSS opacity fix с повторным build/browser proof; ровно две неутверждённые AUD-495 detector identities; итоговые source-bound coverage/diff проверки, полный scan и обычные hooks; новая публикация и собственные required checks. Последний полный scan до новых документационных правок имел 556 findings и две unmatched identities при одобренной политике315. Он не выдаётся за final-source scan этой контрольной точки. Пакет finite2 находится только приватно, разрешение владельца не получено; policy315, baseline319, Gitleaks25, 78 contexts и blocking CodeQL сохранены. В приватном v2 есть лог 296 PASS, но сохранённые артефакты не устанавливают, что исполнялись именно v2 source/test copies; прежняя попытка имела восемь отказов. Перед owner-review требуется однозначный source-bound повтор, а не принятие этого лога на доверии.
+
+Приватные RED/GREEN кандидаты новых областей и existing-source evidence сохранены отдельно от checkout. AUD-197 tenant-context correction и AUD-262 stale completed-cache correction остаются незавершёнными приватными пакетами без PostgreSQL приёмки. Исправление normalizer для docstring-only functions выявило отдельную границу finite131: возможное удаление ровно одного файла из исключения и его строгая 100% проверка требуют готового отдельного owner-review пакета; политика не менялась и разрешение не запрашивалось. Старые записи о работающих субагентах не являются доказательством живых процессов: продолжение должно сверить реальные handles и артефакты.
+
+Один субагент ошибочно изменил два frontend API файла и создал тест в canonical checkout. Root сохранил эти три файла и diff приватно, проверил ожидаемые hashes/HEAD и восстановил только затронутые canonical пути; основной пакет не менялся. Его непроверенный изолированным повтором тестовый результат не используется для приёмки. Ошибочно размещённые внутри checkout 13 файлов приватного AUD-192 кандидата перенесены за пределы репозитория с сохранением hash inventory. Чужие процессы, контейнеры и файлы не удалялись.
+
+Новые задания остановлены; повторный запуск — по следующему поручению владельца. Приватный receipt паузы сохраняет полный список путей, index tree, physical hashes и результаты cleanup. Для продолжения сначала сверить HEAD/diff/PR и ресурсы, затем продолжить перечисленные блокеры, не повторяя неизменённые успешные проверки и не импортируя незавершённые пакеты автоматически.
+
+
+## Existing-source DLQ, wrapper and persistence checkpoint (2026-10-23)
+
+На неизменённом опубликованном source `4f7fc958` приняты AUD-040, AUD-331 и AUD-459 после двух этапов ревью и повторной сверки source/evidence hashes: DLQ terminal-row reopening (4 PASS), именованный Bash-wrapper test (1 PASS / 0 SKIP), React Query persistence (47 PASS / 0 SKIP). Границы каждого локального доказательства и SHA-256 приведены в [аудите](../../audits/AUDIT-2026-10.md#existing-source-dlq-wrapper-and-persistence-checkpoint-2026-10-23). Нижняя граница — 276/512 (53,9%); 236 ID остаются. AUD-190, actual NetworkPolicy reachability, текущий пакет изменений и полный CI этой приёмкой не закрываются.
+
+
+## Existing-source required-environment runtime checkpoint (2026-10-23)
+
+Принята только AUD-190: фактический import приложения без ENVIRONMENT завершается отказом, а production route table не содержит docs/redoc/OpenAPI. Обычный приватный pytest — 1 PASS; все 297 импортированных app-модулей привязаны к опубликованному HEAD `4f7fc958`, включая пять приватных HEAD overlays. После двух этапов ревью и root-сверки evidence текущая граница — 277/512 (54,1%), осталось 235. Границы runtime-доказательства и hashes приведены в [аудите](../../audits/AUDIT-2026-10.md#existing-source-required-environment-runtime-checkpoint-2026-10-23); HTTP/lifespan/DB/network/deployment и общий CI этой проверкой не подтверждаются.
+
+
+## Active integration validation checkpoint (2026-10-23)
+
+На локальном пакете после сверки 53-file checkpoint выполнены обычные канонические проверки: normalizer/quality-contract/migration producer — 259 PASS; adopted policy317, Markdown links, Gitleaks contract и CI catalog — 371 PASS. Ruff check и форматирование изменённых normalizer/policy файлов прошли. Полный скан репозитория перед adoption дал 556 findings и только две AUD-495 unmatched identities; после отдельного решения владельца тот же captured scan проходит действующий validator с policy317. Итоговый повторный scan после всех изменений ещё обязателен.
+
+Frontend: production build прошёл; новый source-bound целевой прогон — 350 PASS, 11 suites, без предупреждений. Coverage шести целевых файлов ниже 100% (statements 96.7%, branches 93.0%, functions 95.83%, lines 97.1%); пакет пока не принят. CSS browser oracle отказал из-за несовпадения имён полей сценария в приватном harness; исправление harness и повторная проверка pending, визуальная приёмка не заявлена.
+
+AUD-350: actual PostgreSQL17 baseline/candidate cohort — 2 PASS, pytest exit0; исходный wrapper завершился execution_failure на post-report ISO timestamp comparison. Контейнер и точный owned volume проверенно отсутствуют. Независимая сверка DateKind String подтверждает факты, но исходный failed receipt сохраняется; отдельная reconciliation ещё проверяется. Новые implementation-кандидаты не увеличивают принятую нижнюю границу 277/512 до своей приёмки и требуемых source checks.
+
+
+## Backend issuer and CSS verification checkpoint (2026-10-23)
+
+На canonical backend issuer выполнен полный выбранный 15-module cohort: 208 PASS / один штатный Windows os.fork skip, 240/240 statements/lines, 60/60 branch arcs, 26/26 named functions для app/auth/security.py. Ruff check/format PASS. Это локальный target-bound результат, не общий CI нового SHA. SSR и Chat API интегрированы после двух ревью; их общий восьмифайловый frontend coverage cohort ещё готовится. Gateway issuer и связанная Compose-передача issuer должны быть интегрированы до публикации SSR.
+
+Actual CSS oracle v5 в Chrome156 подтвердил все четыре сочетания explicit light/dark и OS light/dark: alpha 26/255, light black и dark white независимо от OS. Один browser закрыт; это minimal-DOM проверка exact compiled production CSS, не полная визуальная приёмка. Новый typecheck PASS и ESLint182/182 PASS; 23 найденных Prettier отклонения исправлены стандартным formatter без изменения правил.
+
+Повторный полный scan после policy317 дал 557 findings и ровно одну новую Hex High Entropy String identity — публичный 315-prefix checksum в tests/test_verify_secrets_baseline.py. Она остаётся блокирующей; частный finite proposal не принят и новых разрешений не подразумевает. Принятый audit ledger остаётся 277/512; staged implementations и частные проверки не засчитываются как hosted acceptance.
+
+## Rate-limit configuration and frontend regression checkpoint (2026-10-24)
+
+После сохранённого 264-path снимка интегрированы ровно пять проверенных AUD-267 путей; прежние index entries сохранены, локальный набор содержит 269 staged paths. Staging/production требуют Redis backend, URI проверяется до создания runtime strategy; development memory mode сохранён. Canonical cohort: 325 PASS / один штатный Windows FIFO skip, 45,65s, 63/63 statements/lines и 10/10 branch arcs. Pytest завершился успешно, stderr пуст; wrapper отказал позже при PowerShell parsing coverage JSON с пустым именем функции. Независимый Python parse подтвердил JUnit, coverage и неизменность Git status; повтор тестов не выдаётся за выполненный. Redis service не подключался, deployment не проверялся.
+
+Расширенный frontend V8 cohort завершился 446 PASS / 11 FAIL из 457 tests: 14 suites PASS / три FAIL, 23,80s. Семь отказов относятся к SSR issuer harness; три новых теста имеют подтверждённые ошибки вызова/ожиданий. Один тест выявил реальную гонку useLessonNotes: edit нового ключа до завершения load может потерять pending write. Исправления и повтор остаются приватными; coverage100 не заявляется, прежние V6/V8 отчёты сохранены.
+
+Gateway issuer v4 сохраняет все 17 source hashes v3 и добавляет actual setupRouter regression; source review и canonical integration ещё завершаются. AUD-350 v5 PG tests только collected: ревью выявило неверное ожидание UTC offset после SET LOCAL TIME ZONE America/Los_Angeles; actual v5 PG proof отсутствует. Общий PG runner AUD-197/262/343 до исправления resource/cleanup guards запускать нельзя. Новый Caddy entrypoint требует полноценного coverage producer и отдельного owner review изменения quality contract. Нижняя граница остаётся 277/512; policy317, baseline319, Gitleaks25, 78 contexts и blocking CodeQL сохранены.
+
+
+## Terminal CI and four scoped frontend closures, 2026-10-25
+
+На source `36f2db43` завершён снимок всех 143 checks: 109 SUCCESS / 27 SKIPPED /
+шесть FAILURE / один NEUTRAL / ноль IN_PROGRESS. Пять component failures —
+Node compiler graph, Hub errcheck, migration integration, Alembic/Squawk и
+четыре unit-fixture ReplyPreview errors в shard 0; шестой FAIL — CI Success.
+Backend shards 1/2/3 прошли (5378/6456/4316 PASS), их diff-cover был SKIPPED.
+Root применил только явный deleted_at=None в live DTO mock: без изменения
+production validation/assertions, 12 ownership и два deleted-replay tests PASS.
+Локальные follow-up исправления ещё требуют собственной публикации и CI.
+
+Приняты только AUD-440/441/494/498: 319/512, 193 остаются. AUD-499 удержан:
+15 named PASS и patch coverage100 не заменяют full-source branch floor100;
+обнаружены три непокрытые fallback branches в news.ts. AUD-246 имеет 75
+hosted PASS, но полный Python coverage/gate ещё не установлен. AUD-262 имеет
+44 named PostgreSQL PASS на новом repository blob, включая прежний cleanup
+102→100, однако общий integration job упал на отдельном migration case.
+Новых closures этих двух IDs здесь нет. Owned Live Core/NATS/cleanup прошли,
+actual proxy-peer цепочка этим не подтверждена. Policy337 и все gates сохранены.
+
+
+## Current no-pickle source-bound acceptance, 2026-10-25
+
+AUD-246 принят после повторной проверки применимости coverage policy и прямого
+hosted scanner step. Текущая граница — 320/512 (62,5%), осталось 192 ID.
+Общий Python CI и release по этой приёмке не объявляются. Новые приватные
+AUD-499 cache-restore и AUD-352 cookie-transition кандидаты не приняты;
+неутверждённые scanner identities остаются блокирующими. Baseline319 identities,
+policy337, Gitleaks26, required78, CodeQL и hooks сохранены.

@@ -53,7 +53,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: wasm-pack@0.15.0
 
@@ -100,7 +100,6 @@ jobs:
             if wasm-pack build rust-crypto --target web --release && \
                wasm-pack build wasm-sanitizer --target web --release; then
               echo "OK: WASM modules built (attempt $attempt)"
-              node scripts/verify-wasm-artifacts.mjs
               exit 0
             fi
             if (( attempt == 3 )); then
@@ -110,6 +109,17 @@ jobs:
             echo "WASM build failed on attempt $attempt; retrying after 10s..."
             sleep 10
           done
+
+      - name: Bind checked-in package bytes to source inventory
+        working-directory: frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import { writeSourceProvenance } from "./scripts/wasm-source-provenance.mjs"
+          await writeSourceProvenance(process.cwd())
+          JS
+          node scripts/verify-wasm-artifacts.mjs
 
       - name: Write immutable WASM provenance
         id: publish
@@ -193,16 +203,6 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"artifact_name={provenance['artifact_name']}\n")
           PY
-
-      - name: Bind checked-in package bytes to source inventory
-        working-directory: frontend
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --input-type=module <<'JS'
-          import { writeSourceProvenance } from "./scripts/wasm-source-provenance.mjs"
-          await writeSourceProvenance(process.cwd())
-          JS
 
       - name: Upload immutable E2E WASM modules
         id: upload

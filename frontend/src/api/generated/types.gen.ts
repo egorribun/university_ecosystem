@@ -1456,6 +1456,12 @@ export type NewsInteractionsOut = {
    * Likes Count
    */
   likes_count: number
+  /**
+   * Next Cursor
+   *
+   * Present only for cursor paging. A full final page may require one additional empty request before this becomes null.
+   */
+  next_cursor?: string | null
 }
 
 /**
@@ -5299,6 +5305,20 @@ export type MyEventsApiV1EventsMyGetData = {
 
 export type MyEventsApiV1EventsMyGetErrors = {
   /**
+   * The legacy list exceeds its capacity; use the paginated endpoint.
+   */
+  409: {
+    code: "events_my_pagination_required"
+    detail: string
+    instance: string
+    legacy_limit: 100
+    pagination_url: string
+    status: 409
+    title: string
+    trace_id: string | null
+    type: string
+  }
+  /**
    * Validation Error
    */
   422: HttpValidationError
@@ -5353,11 +5373,17 @@ export type MyEventsPageApiV1EventsMyPageGetData = {
     /**
      * Sort
      */
-    sort?: "newest" | "popular" | "upcoming"
+    sort?: "newest" | "newest_desc" | "popular" | "upcoming"
     /**
      * Upcoming After
      */
     upcoming_after?: string | null
+    /**
+     * Lang
+     *
+     * Requested My-events locale; unsupported values use the usual locale fallback.
+     */
+    lang?: string | null
   }
   url: "/api/v1/events/my/page"
 }
@@ -6168,6 +6194,12 @@ export type GetNewsInteractApiV1NewsIdInteractionsGetData = {
      * Offset
      */
     offset?: number
+    /**
+     * Cursor
+     *
+     * Send 'start' to begin cursor paging, then pass next_cursor; omit for legacy offset paging.
+     */
+    cursor?: string | null
   }
   url: "/api/v1/news/{id}/interactions"
 }
@@ -8034,6 +8066,8 @@ export type HealthzHealthzGetData = {
   query?: {
     /**
      * Brief
+     *
+     * Legacy parameter, ignored: public responses omit diagnostic details.
      */
     brief?: boolean
   }

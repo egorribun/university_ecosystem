@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useProjectedMessengerChats } from "@/hooks/messengerProjection"
 
 import { useAuth } from "./AuthContext"
 import {
@@ -20,6 +21,7 @@ const isLhciAudit = () => import.meta.env.VITE_LHCI === "true"
  */
 export function MessengerShellProvider({ children }: { children: ReactNode }) {
   const { isAuth, user } = useAuth()
+  const queryClient = useQueryClient()
   const authIdentity = isAuth ? (user?.id ?? "authenticated") : null
   const [idleReadyFor, setIdleReadyFor] = useState<string | null>(null)
 
@@ -52,12 +54,14 @@ export function MessengerShellProvider({ children }: { children: ReactNode }) {
 
   const idleReady = !isLhciAudit() && authIdentity !== null && idleReadyFor === authIdentity
 
-  const { data } = useQuery({
+  const { data: canonicalChats } = useQuery({
     queryKey: ["chats"],
-    queryFn: async () => (await import("@/api/chat")).chatApi.getChats(),
+    queryFn: async ({ signal }) =>
+      (await import("@/api/hooks/messenger")).fetchLoadedChats(queryClient, signal),
     enabled: idleReady,
     staleTime: 30_000,
   })
+  const data = useProjectedMessengerChats(canonicalChats, user?.id ?? null)
 
   const unreadCount = useMemo(
     () => (idleReady ? getUnreadChatCount(data?.items) : 0),

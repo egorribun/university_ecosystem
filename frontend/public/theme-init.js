@@ -9,7 +9,8 @@
   var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
   var dark = s === "dark" || (s !== "light" && m)
   var html = document.documentElement
-  if (dark) html.classList.add("dark")
+  // The SSR cookie can disagree with the browser's stored preference.
+  html.classList.toggle("dark", Boolean(dark))
 
   // 2. Language Detection — MUST match SSR's extractLangFromRequest (ssrTheme.ts:resolveLang)
   // which reads the "ue:language" cookie and defaults to "ru". Prefer that

@@ -79,9 +79,17 @@ kind: ClusterRole
 metadata:
   name: spire-agent-role
 rules:
+  # The Kubernetes workload attestor watches pods to resolve workloads on this
+  # node. RBAC cannot scope list/watch by spec.nodeName, so this stays cluster
+  # scoped and read-only.
   - apiGroups: [""]
-    resources: ["pods", "nodes", "nodes/proxy"]
+    resources: ["pods"]
     verbs: ["get", "list", "watch"]
+  # Kubelet attestation needs a single GET through the node proxy. Enumerating
+  # nodes or streaming nodes/proxy is not required by the agent (AUD-251).
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

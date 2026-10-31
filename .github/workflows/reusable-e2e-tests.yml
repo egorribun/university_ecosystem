@@ -77,8 +77,8 @@ jobs:
     # remains blocking by default for Chromium and opt-in advisory for the
     # stabilization matrix.
     continue-on-error: ${{ inputs.advisory }}
-    # The Chromium suite contains 114 tests, including expensive accessibility
-    # scans. The caller splits the default suite into four Playwright shards.
+    # The Chromium suite includes expensive accessibility scans. The caller
+    # splits the default suite into four Playwright shards.
     # Keep one worker per shard: four concurrent Chromium navigations are the
     # stable ceiling for the SSR preview; higher aggregate concurrency cascades
     # into page.goto net::ERR_ABORTED timeouts.
@@ -324,7 +324,7 @@ jobs:
       # W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
       - name: Install wasm-pack
         if: ${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' && inputs.wasm-artifact-digest == '' }}
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: wasm-pack@0.15.0
 
@@ -480,7 +480,7 @@ jobs:
           # invocation. Keep auxiliary suites in separate subdirectories so
           # the coverage merger can still see the regular shard output and
           # every auxiliary suite's report.
-          npx playwright test url-state-persistence.spec.ts \
+          npx playwright test url-state-persistence.spec.ts messenger-heartbeat-blackhole.spec.ts \
             --project=chromium \
             --output=test-results/url-state \
             --reporter=html

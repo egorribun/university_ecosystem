@@ -1,7 +1,10 @@
 import { renderHook, waitFor, act } from "@testing-library/react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { QueryClient, QueryClientProvider, dehydrate } from "@tanstack/react-query"
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest"
 import type { ReactNode } from "react"
+import { createIDBPersister, persistOptions } from "@/app/queryClient"
+import { invalidateSessionEpoch } from "@/stores/sessionEpoch"
+import type { ChatsListResponse, MessagesListResponse } from "@/api/chat"
 
 /**
  * Session-14 Lane-C branch top-up for useMessengerController.
@@ -151,6 +154,34 @@ const seedGroup = (chatId = "group-1") => {
   })
 }
 
+const seedRetryReplyTarget = () => {
+  seedChat("chat-1")
+  mocks.chatApi.getMessages.mockResolvedValue({
+    items: [
+      {
+        id: "msg-target",
+        chat_id: "chat-1",
+        sender_id: "peer",
+        content: "quote me",
+        created_at: new Date().toISOString(),
+        read_status: false,
+        sender: { full_name: "Peer Name", avatar_url: "/peer.png" },
+      },
+      {
+        id: "msg-target-2",
+        chat_id: "chat-1",
+        sender_id: "peer",
+        content: "another quote",
+        created_at: new Date(Date.now() - 60_000).toISOString(),
+        read_status: false,
+        sender: { full_name: "Peer Name", avatar_url: "/peer.png" },
+      },
+    ],
+    has_more: false,
+    next_cursor: null,
+  })
+}
+
 // ---------- Setup ----------
 
 beforeEach(async () => {
@@ -282,19 +313,87 @@ describe("useMessengerController — branch top-up", () => {
       expect(mocks.sendLeave).toHaveBeenCalledTimes(2)
     })
 
-    it("waits for a reconnect before joining an open chat", async () => {
+    it("registers an offline room once and leaves transport rejoin to the socket hook", async () => {
       mocks.isConnectedRef.current = false
       seedChat("offline-chat")
       const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
 
       await waitFor(() => expect(result.current.selectedChatId).toBe("offline-chat"))
-      expect(mocks.sendJoin).not.toHaveBeenCalled()
+      expect(mocks.sendJoin).toHaveBeenCalledWith("offline-chat")
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
 
       mocks.isConnectedRef.current = true
       rerender()
 
-      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("offline-chat"))
       expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+    })
+
+    it("registers only the current account and retires same-route membership on logout", async () => {
+      seedChat("account-room")
+      mocks.authUserRef.current = null
+      const { HookWrapper } = createQueryHarness()
+      const { result, rerender, unmount } = renderHook(() => useMessengerController(), {
+        wrapper: HookWrapper,
+      })
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("account-room"))
+      expect(mocks.sendJoin).not.toHaveBeenCalled()
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+
+      mocks.authUserRef.current = { ...mocks.testUser }
+      rerender()
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("account-room"))
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+
+      mocks.authUserRef.current = { ...mocks.testUser, full_name: "Updated profile" }
+      rerender()
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+
+      mocks.authUserRef.current = { ...mocks.testUser, id: "replacement-account" }
+      rerender()
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledTimes(2))
+      expect(mocks.sendJoin).toHaveBeenNthCalledWith(2, "account-room")
+      expect(mocks.sendLeave).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).toHaveBeenCalledWith("account-room")
+
+      mocks.authUserRef.current = null
+      rerender()
+      expect(mocks.sendLeave).toHaveBeenCalledTimes(2)
+      expect(mocks.sendLeave).toHaveBeenNthCalledWith(2, "account-room")
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(2)
+
+      unmount()
+      expect(mocks.sendLeave).toHaveBeenCalledTimes(2)
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(2)
+    })
+
+    it("refetches the open chat messages after a socket disconnect and reconnect", async () => {
+      seedChat("reconnected-chat")
+      const { HookWrapper } = createQueryHarness()
+      const { result, rerender } = renderHook(() => useMessengerController(), {
+        wrapper: HookWrapper,
+      })
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("reconnected-chat"))
+      await waitFor(() => expect(mocks.chatApi.getMessages).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("reconnected-chat"))
+
+      mocks.isConnectedRef.current = false
+      rerender()
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+
+      mocks.isConnectedRef.current = true
+      rerender()
+
+      await waitFor(() => expect(mocks.chatApi.getMessages).toHaveBeenCalledTimes(2))
+      expect(mocks.chatApi.getMessages.mock.calls[1]?.[0]).toBe("reconnected-chat")
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
     })
   })
 
@@ -530,6 +629,14 @@ describe("useMessengerController — branch top-up", () => {
       expect(result.current.replyingTo).toBeNull()
     })
 
+    it("does not start a reply when no chat is selected", () => {
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+      act(() => result.current.handleStartReply("msg-target"))
+
+      expect(result.current.replyingTo).toBeNull()
+    })
+
     it("handleCancelReply clears replyingTo", async () => {
       seedReplyTarget()
       const { result } = renderHook(() => useMessengerController(), { wrapper })
@@ -723,6 +830,348 @@ describe("useMessengerController — branch top-up", () => {
     expect(keys[1]).toEqual(expect.any(String))
     expect(keys[1]).not.toBe("")
     expect(keys[1]).not.toBe(keys[0])
+  })
+
+  describe("send retry idempotency", () => {
+    it("reuses the retry key while the acting account is unavailable", async () => {
+      seedChat("chat-1")
+      mocks.authUserRef.current = null
+      mocks.chatApi.sendMessage.mockRejectedValueOnce(new Error("connection timed out"))
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [])
+      })
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [])
+      })
+
+      const keys = mocks.chatApi.sendMessage.mock.calls.map((call) => call[4])
+      expect(keys).toHaveLength(2)
+      expect(keys[1]).toBe(keys[0])
+    })
+    type DeferredSendResponse = {
+      id: string
+      chat_id: string
+      sender_id: string
+      content: string
+      created_at: string
+      read_status: boolean
+      attachments: never[]
+    }
+    const makeSendResponse = (
+      id: string,
+      chatId: string,
+      content: string
+    ): DeferredSendResponse => ({
+      id,
+      chat_id: chatId,
+      sender_id: "current-user-id",
+      content,
+      created_at: new Date().toISOString(),
+      read_status: false,
+      attachments: [],
+    })
+
+    it("reuses the key for an unchanged failed reply with the same attachment", async () => {
+      seedRetryReplyTarget()
+      const file = new File(["attachment"], "notes.txt", { type: "text/plain" })
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-target")).toBeTruthy()
+      )
+      act(() => result.current.handleStartReply("msg-target"))
+      mocks.chatApi.sendMessage.mockRejectedValueOnce(new Error("connection timed out"))
+
+      let failed: boolean | undefined
+      await act(async () => {
+        failed = await result.current.handleSendMessage("retry draft", [file])
+      })
+      expect(failed).toBe(false)
+      expect(result.current.replyingTo?.id).toBe("msg-target")
+
+      let retried: boolean | undefined
+      await act(async () => {
+        retried = await result.current.handleSendMessage("retry draft", [file])
+      })
+      expect(retried).toBe(true)
+
+      const calls = mocks.chatApi.sendMessage.mock.calls
+      expect(calls[0]).toEqual(["chat-1", "retry draft", [file], "msg-target", expect.any(String)])
+      expect(calls[1]).toEqual(["chat-1", "retry draft", [file], "msg-target", calls[0]?.[4]])
+      expect(calls[1]?.[4]).toBe(calls[0]?.[4])
+      expect(result.current.replyingTo).toBeNull()
+    })
+
+    it("changes the key when attachment order or the reply reference changes", async () => {
+      seedRetryReplyTarget()
+      const firstFile = new File(["first"], "first.txt", { type: "text/plain" })
+      const secondFile = new File(["second"], "second.txt", { type: "text/plain" })
+      mocks.chatApi.sendMessage.mockRejectedValue(new Error("connection timed out"))
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(
+          result.current.messages.find((message) => message.id === "msg-target-2")
+        ).toBeTruthy()
+      )
+
+      act(() => result.current.handleStartReply("msg-target"))
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [firstFile, secondFile])
+      })
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [secondFile, firstFile])
+      })
+      act(() => result.current.handleStartReply("msg-target-2"))
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [secondFile, firstFile])
+      })
+
+      const calls = mocks.chatApi.sendMessage.mock.calls
+      expect(calls[0]?.[3]).toBe("msg-target")
+      expect(calls[1]?.[3]).toBe("msg-target")
+      expect(calls[2]?.[3]).toBe("msg-target-2")
+      const keys = calls.map((call) => call[4])
+      expect(new Set(keys).size).toBe(3)
+    })
+
+    it("replaces a failed payload key so A-to-B-to-A cannot revive A's old key", async () => {
+      seedChat("chat-1")
+      mocks.chatApi.sendMessage.mockRejectedValue(new Error("connection timed out"))
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      await act(async () => {
+        await result.current.handleSendMessage("draft A", [])
+      })
+      await act(async () => {
+        await result.current.handleSendMessage("edited draft B", [])
+      })
+      await act(async () => {
+        await result.current.handleSendMessage("draft A", [])
+      })
+
+      const keys = mocks.chatApi.sendMessage.mock.calls.map((call) => call[4])
+      expect(keys).toHaveLength(3)
+      expect(keys[0]).not.toBe(keys[1])
+      expect(keys[1]).not.toBe(keys[2])
+      expect(keys[0]).not.toBe(keys[2])
+    })
+
+    it("allocates a fresh key after a send is confirmed successful", async () => {
+      seedChat("chat-1")
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      await act(async () => {
+        await result.current.handleSendMessage("confirmed draft", [])
+      })
+      await act(async () => {
+        await result.current.handleSendMessage("confirmed draft", [])
+      })
+
+      const keys = mocks.chatApi.sendMessage.mock.calls.map((call) => call[4])
+      expect(keys).toHaveLength(2)
+      expect(keys[0]).not.toBe(keys[1])
+    })
+
+    it("forgets retry keys when the acting user or chat changes away and back", async () => {
+      seedChat("chat-1")
+      mocks.chatApi.sendMessage.mockRejectedValue(new Error("connection timed out"))
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [])
+      })
+      const firstKey = mocks.chatApi.sendMessage.mock.calls[0]?.[4]
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [])
+      })
+      const afterChatSwitchKey = mocks.chatApi.sendMessage.mock.calls[1]?.[4]
+      expect(afterChatSwitchKey).not.toBe(firstKey)
+
+      mocks.authUserRef.current = { ...mocks.testUser, id: "other-user-id" }
+      rerender()
+      await waitFor(() => expect(mocks.authUserRef.current?.id).toBe("other-user-id"))
+      mocks.authUserRef.current = mocks.testUser
+      rerender()
+      await waitFor(() => expect(mocks.authUserRef.current?.id).toBe("current-user-id"))
+      await act(async () => {
+        await result.current.handleSendMessage("same draft", [])
+      })
+      const afterAccountSwitchKey = mocks.chatApi.sendMessage.mock.calls[2]?.[4]
+      expect(afterAccountSwitchKey).not.toBe(afterChatSwitchKey)
+    })
+
+    it("does not clear a newer reply selection when an earlier reply send succeeds", async () => {
+      seedRetryReplyTarget()
+      const resolveSends: Array<(response: DeferredSendResponse) => void> = []
+      mocks.chatApi.sendMessage.mockImplementation(
+        () => new Promise<DeferredSendResponse>((resolve) => resolveSends.push(resolve))
+      )
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(
+          result.current.messages.find((message) => message.id === "msg-target-2")
+        ).toBeTruthy()
+      )
+
+      act(() => result.current.handleStartReply("msg-target"))
+      let firstSend: Promise<boolean> | undefined
+      act(() => {
+        firstSend = result.current.handleSendMessage("in-flight reply", [])
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+
+      act(() => result.current.handleStartReply("msg-target-2"))
+      await act(async () => {
+        resolveSends[0]?.(makeSendResponse("server-in-flight-reply", "chat-1", "in-flight reply"))
+        await firstSend
+      })
+
+      expect(result.current.replyingTo?.id).toBe("msg-target-2")
+    })
+
+    it("clears the reply target when the selected chat changes", async () => {
+      seedRetryReplyTarget()
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-target")).toBeTruthy()
+      )
+
+      act(() => result.current.handleStartReply("msg-target"))
+      expect(result.current.replyingTo?.id).toBe("msg-target")
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+      expect(result.current.replyingTo).toBeNull()
+      await act(async () => {
+        await result.current.handleSendMessage("chat two draft", [])
+      })
+      expect(mocks.chatApi.sendMessage).toHaveBeenCalledWith(
+        "chat-2",
+        "chat two draft",
+        [],
+        undefined,
+        expect.any(String)
+      )
+    })
+
+    it("clears the reply target when the acting account changes, including after switching back", async () => {
+      seedRetryReplyTarget()
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-target")).toBeTruthy()
+      )
+
+      act(() => result.current.handleStartReply("msg-target"))
+      const cancelFromPreviousAccount = result.current.handleCancelReply
+      mocks.authUserRef.current = { ...mocks.testUser, id: "other-user-id" }
+      rerender()
+
+      await waitFor(() => expect(result.current.replyingTo).toBeNull())
+      act(() => result.current.handleStartReply("msg-target"))
+      expect(result.current.replyingTo).toMatchObject({ id: "msg-target", text: "quote me" })
+      act(() => cancelFromPreviousAccount())
+      expect(result.current.replyingTo).toMatchObject({ id: "msg-target", text: "quote me" })
+
+      mocks.authUserRef.current = mocks.testUser
+      rerender()
+      await waitFor(() => expect(mocks.authUserRef.current?.id).toBe("current-user-id"))
+      expect(result.current.replyingTo).toBeNull()
+    })
+
+    it("does not let an old-account completion clear a same-id reply selected in the new account", async () => {
+      seedRetryReplyTarget()
+      const resolveSends: Array<(response: DeferredSendResponse) => void> = []
+      mocks.chatApi.sendMessage.mockImplementation(
+        () => new Promise<DeferredSendResponse>((resolve) => resolveSends.push(resolve))
+      )
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-target")).toBeTruthy()
+      )
+
+      act(() => result.current.handleStartReply("msg-target"))
+      let firstSend: Promise<boolean> | undefined
+      act(() => {
+        firstSend = result.current.handleSendMessage("account transition reply", [])
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+
+      await act(async () => {
+        mocks.authUserRef.current = { ...mocks.testUser, id: "other-user-id" }
+        rerender()
+      })
+      await waitFor(() => expect(result.current.replyingTo).toBeNull())
+      act(() => result.current.handleStartReply("msg-target"))
+      expect(result.current.replyingTo).toMatchObject({ id: "msg-target", text: "quote me" })
+
+      await act(async () => {
+        resolveSends[0]?.(
+          makeSendResponse("old-account-send", "chat-1", "account transition reply")
+        )
+        await firstSend
+      })
+
+      expect(result.current.replyingTo).toMatchObject({ id: "msg-target", text: "quote me" })
+    })
+
+    it("keeps the new chat retry key when an earlier chat send resolves", async () => {
+      seedChat("chat-1")
+      const resolveSends: Array<(response: DeferredSendResponse) => void> = []
+      mocks.chatApi.sendMessage.mockImplementation(
+        () => new Promise<DeferredSendResponse>((resolve) => resolveSends.push(resolve))
+      )
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      let firstSend: Promise<boolean> | undefined
+      act(() => {
+        firstSend = result.current.handleSendMessage("same draft", [])
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(1))
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+
+      let secondSend: Promise<boolean> | undefined
+      act(() => {
+        secondSend = result.current.handleSendMessage("same draft", [])
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(2))
+      const secondKey = mocks.chatApi.sendMessage.mock.calls[1]?.[4]
+
+      await act(async () => {
+        resolveSends[0]?.(makeSendResponse("server-first-chat-send", "chat-1", "same draft"))
+        await firstSend
+      })
+
+      let retriedSecond: Promise<boolean> | undefined
+      act(() => {
+        retriedSecond = result.current.handleSendMessage("same draft", [])
+      })
+      await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalledTimes(3))
+      expect(mocks.chatApi.sendMessage.mock.calls[2]?.[4]).toBe(secondKey)
+
+      await act(async () => {
+        resolveSends[1]?.(makeSendResponse("server-second-chat-send", "chat-2", "same draft"))
+        resolveSends[2]?.(makeSendResponse("server-second-chat-retry", "chat-2", "same draft"))
+        await Promise.all([secondSend, retriedSecond])
+      })
+    })
   })
 
   describe("forward (842-864, 444-460)", () => {
@@ -1081,30 +1530,40 @@ describe("useMessengerController — branch top-up", () => {
       mocks.chatApi.clearChat.mockResolvedValue({ status: "ok" })
 
       const { queryClient, HookWrapper } = createQueryHarness()
-      const setQueryData = vi.spyOn(queryClient, "setQueryData")
       const { result: hookResult } = renderHook(() => useMessengerController(), {
         wrapper: HookWrapper,
       })
       await waitFor(() => expect(hookResult.current.contacts).toHaveLength(2))
       await waitFor(() => expect(hookResult.current.messages).toHaveLength(1))
+      await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalledWith("chat-1"))
+      await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+      // The successful clear's reconciliation must observe the server's new
+      // history, rather than reintroducing the pre-clear fixture and triggering
+      // an unrelated mark-read refetch of the old chat metadata.
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [],
+        has_more: false,
+        next_cursor: null,
+      })
+      const beforeClear = queryClient.getQueryData<ChatsListResponse>(["chats"])!
+      mocks.chatApi.getChats.mockResolvedValue({
+        ...beforeClear,
+        items: beforeClear.items.map((chat) =>
+          chat.id === "chat-1" ? { ...chat, unread_count: 0, last_message: undefined } : chat
+        ),
+      })
 
       act(() => hookResult.current.handleClearChat())
       act(() => hookResult.current.confirmDialog?.onConfirm())
 
-      // Let the awaited `cancelQueries` in onMutate and the resolved mutation
-      // settle without waiting on a mutant-dependent UI predicate. The cache
-      // update itself is the contract under test and fails fast if removed.
-      await act(async () => {
-        await Promise.resolve()
-        await Promise.resolve()
-        await new Promise((resolve) => setTimeout(resolve, 0))
-      })
-
-      const chatsUpdate = setQueryData.mock.calls.find(
-        ([key]) => JSON.stringify(key) === JSON.stringify(["chats"])
+      await waitFor(() =>
+        expect(
+          queryClient
+            .getQueryData<{ items: Array<{ id: string; unread_count: number }> }>(["chats"])
+            ?.items.find((chat) => chat.id === "chat-1")?.unread_count
+        ).toBe(0)
       )
-      expect(chatsUpdate).toBeDefined()
-      const updatedChats = chatsUpdate?.[1] as {
+      const updatedChats = queryClient.getQueryData(["chats"]) as {
         items: Array<{ id: string; unread_count: number; last_message?: unknown }>
       }
       expect(updatedChats.items.find((chat) => chat.id === "chat-1")).toMatchObject({
@@ -1266,6 +1725,190 @@ describe("useMessengerController — branch top-up", () => {
 
       act(() => result.current.handleCloseProfile())
       expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("keeps the profile modal closed when its request resolves after close", async () => {
+      seedChat()
+      let resolveProfile!: (response: { data: { id: string; full_name: string } }) => void
+      const profileRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveProfile = resolve
+      })
+      mocks.apiClient.get.mockReturnValue(profileRequest)
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      act(() => result.current.handleCloseProfile())
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+
+      await act(async () => {
+        resolveProfile({ data: { id: "peer", full_name: "Peer" } })
+        await profileRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("ignores a pending profile result after the selected chat changes", async () => {
+      seedChat()
+      let resolveProfile!: (response: { data: { id: string; full_name: string } }) => void
+      const profileRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveProfile = resolve
+      })
+      mocks.apiClient.get.mockReturnValue(profileRequest)
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      await act(async () => {
+        resolveProfile({ data: { id: "peer", full_name: "Peer" } })
+        await profileRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("ignores a pending profile result after the selected chat loses its peer", async () => {
+      seedChat()
+      let resolveOldPeer!: (response: { data: { id: string; full_name: string } }) => void
+      const oldPeerRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveOldPeer = resolve
+      })
+      mocks.apiClient.get.mockReturnValueOnce(oldPeerRequest)
+
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(mocks.apiClient.get).toHaveBeenNthCalledWith(1, "/users/peer")
+      expect(result.current.isProfileLoading).toBe(true)
+
+      act(() => {
+        queryClient.setQueryData(["chats"], {
+          items: [
+            {
+              id: "chat-1",
+              participants: [{ id: "current-user-id" }],
+              unread_count: 0,
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+      })
+
+      await waitFor(() =>
+        expect(result.current.getOtherParticipant(result.current.activeChat!)).toBeUndefined()
+      )
+      expect(result.current.activeChat?.id).toBe("chat-1")
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      await act(async () => {
+        resolveOldPeer({ data: { id: "peer", full_name: "Old Peer" } })
+        await oldPeerRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      act(() => result.current.handleViewProfile())
+      expect(mocks.apiClient.get).toHaveBeenCalledTimes(1)
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("ignores a stale profile rejection after the authenticated user changes", async () => {
+      seedChat()
+      let rejectProfile!: (reason: Error) => void
+      const profileRequest = new Promise<{ data: { id: string; full_name: string } }>(
+        (_, reject) => {
+          rejectProfile = reject
+        }
+      )
+      mocks.apiClient.get.mockReturnValue(profileRequest)
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      mocks.authUserRef.current = { ...mocks.testUser, id: "new-account-id" }
+      rerender()
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+
+      await act(async () => {
+        rejectProfile(new Error("old profile request failed"))
+        await profileRequest.catch(() => undefined)
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(false)
+      expect(result.current.profileError).toBeNull()
+    })
+
+    it("does not let an older overlapping request clear the newest request's loading state", async () => {
+      seedChat()
+      let resolveFirst!: (response: { data: { id: string; full_name: string } }) => void
+      let resolveSecond!: (response: { data: { id: string; full_name: string } }) => void
+      const firstRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveFirst = resolve
+      })
+      const secondRequest = new Promise<{ data: { id: string; full_name: string } }>((resolve) => {
+        resolveSecond = resolve
+      })
+      mocks.apiClient.get.mockReturnValueOnce(firstRequest).mockReturnValueOnce(secondRequest)
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleViewProfile())
+      act(() => result.current.handleViewProfile())
+      expect(result.current.isProfileLoading).toBe(true)
+
+      await act(async () => {
+        resolveFirst({ data: { id: "older-peer", full_name: "Older Peer" } })
+        await firstRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toBeNull()
+      expect(result.current.isProfileLoading).toBe(true)
+
+      await act(async () => {
+        resolveSecond({ data: { id: "peer", full_name: "Peer" } })
+        await secondRequest
+        await Promise.resolve()
+      })
+
+      expect(result.current.profileUser).toEqual({ id: "peer", full_name: "Peer" })
       expect(result.current.isProfileLoading).toBe(false)
       expect(result.current.profileError).toBeNull()
     })
@@ -1882,6 +2525,8 @@ describe("useMessengerController — branch top-up", () => {
 
     expect(mocks.chatApi.getChat).not.toHaveBeenCalled()
     expect(mocks.chatApi.getMessages).not.toHaveBeenCalled()
+    expect(mocks.sendJoin).not.toHaveBeenCalled()
+    expect(mocks.sendLeave).not.toHaveBeenCalled()
   })
 
   it("counts a group read receipt at the exact message timestamp", async () => {
@@ -1987,5 +2632,914 @@ describe("useMessengerController — branch top-up", () => {
       ])
       expect(cached?.items.filter((message) => message.id === serverMessage.id)).toHaveLength(1)
     })
+  })
+
+  describe("AUD-156 — failed edit draft recovery", () => {
+    beforeEach(() => {
+      mocks.chatApi.editMessage.mockReset().mockResolvedValue({ status: "ok" })
+    })
+
+    const createControlledEdit = () => {
+      let resolve!: (value: { status: string }) => void
+      let reject!: (reason: Error) => void
+      const promise = new Promise<{ status: string }>((yes, no) => {
+        resolve = yes
+        reject = no
+      })
+      const handled = promise.then(
+        () => undefined,
+        () => undefined
+      )
+      return { promise, resolve, reject, handled }
+    }
+
+    const startPendingEdit = async () => {
+      seedChat("chat-1")
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [
+          {
+            id: "msg-1",
+            chat_id: "chat-1",
+            sender_id: "current-user-id",
+            content: "original",
+            created_at: "2026-10-27T12:00:00Z",
+            read_status: false,
+            attachments: [],
+          },
+          {
+            id: "msg-2",
+            chat_id: "chat-1",
+            sender_id: "current-user-id",
+            content: "newer original",
+            created_at: "2026-10-27T12:01:00Z",
+            read_status: false,
+            attachments: [],
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      const firstRequest = createControlledEdit()
+      const requests = [firstRequest]
+      mocks.chatApi.editMessage.mockReturnValueOnce(firstRequest.promise)
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const cleanup: { unmount?: () => void } = {}
+      onTestFinished(async () => {
+        try {
+          await act(async () => {
+            try {
+              cleanup.unmount?.()
+            } finally {
+              for (const request of requests) {
+                request.reject(new Error("controlled edit cleanup"))
+              }
+              await Promise.all(requests.map((request) => request.handled))
+            }
+          })
+          await waitFor(() => expect(queryClient.isMutating()).toBe(0))
+        } finally {
+          queryClient.clear()
+        }
+      })
+      const { result, rerender, unmount } = renderHook(() => useMessengerController(), {
+        wrapper: HookWrapper,
+      })
+      cleanup.unmount = unmount
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "original"
+        )
+      )
+
+      const draft = "  revised first line\nsecond line  "
+      act(() => result.current.handleEditMessage("msg-1", "original"))
+      act(() => result.current.setEditingMessageContent(draft))
+      await act(async () => {
+        result.current.handleSaveEdit("msg-1")
+      })
+      await waitFor(() => {
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledWith("chat-1", "msg-1", draft.trim())
+        expect(queryClient.isMutating()).toBe(1)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          draft.trim()
+        )
+      })
+      // Keep the existing optimistic-close behavior while the request is pending.
+      expect(result.current.editingMessageId).toBeNull()
+      expect(result.current.editingMessageContent).toBe("")
+
+      const settleRequest = async (
+        request: ReturnType<typeof createControlledEdit>,
+        succeeds: boolean,
+        remainingMutations = 0
+      ) => {
+        await act(async () => {
+          if (succeeds) {
+            request.resolve({ status: "ok" })
+          } else {
+            request.reject(new Error("controlled edit failure"))
+          }
+          await request.handled
+        })
+        await waitFor(() => expect(queryClient.isMutating()).toBe(remainingMutations))
+      }
+
+      const failEdit = (remainingMutations = 0) =>
+        settleRequest(firstRequest, false, remainingMutations)
+
+      const startNextEdit = (content: string, messageId = "msg-1") => {
+        const request = createControlledEdit()
+        requests.push(request)
+        mocks.chatApi.editMessage.mockReturnValueOnce(request.promise)
+        act(() => result.current.handleEditMessage(messageId, "current text"))
+        act(() => result.current.setEditingMessageContent(content))
+        act(() => result.current.handleSaveEdit(messageId))
+        return {
+          fail: (remainingMutations = 0) => settleRequest(request, false, remainingMutations),
+          succeed: (remainingMutations = 0) => settleRequest(request, true, remainingMutations),
+          reject: () => request.reject(new Error("controlled queued edit failure")),
+        }
+      }
+
+      return {
+        result,
+        rerender,
+        unmount,
+        queryClient,
+        draft,
+        failEdit,
+        startNextEdit,
+        rejectFirstEdit: () => firstRequest.reject(new Error("controlled first edit failure")),
+      }
+    }
+
+    const messageQueryKey = ["messages", "chat-1"] as const
+
+    const getMessagePage = (queryClient: QueryClient) => {
+      const page = queryClient.getQueryData<MessagesListResponse>(messageQueryKey)
+      expect(page).toBeDefined()
+      return page!
+    }
+
+    const getEditedContent = (queryClient: QueryClient) =>
+      getMessagePage(queryClient).items.find((message) => message.id === "msg-1")?.content
+
+    it.each(["older first", "newer first"])(
+      "AUD-155: preserves independent updates when overlapping edits fail (%s)",
+      async (failureOrder) => {
+        const { queryClient, result, failEdit, startNextEdit } = await startPendingEdit()
+        const second = startNextEdit("second optimistic edit")
+
+        await waitFor(() => {
+          expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+          expect(queryClient.isMutating()).toBe(2)
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            "second optimistic edit"
+          )
+        })
+
+        const pendingPage = getMessagePage(queryClient)
+        const livePage: MessagesListResponse = {
+          ...pendingPage,
+          has_more: true,
+          next_cursor: "older-after-independent-update",
+          items: [
+            ...pendingPage.items.map((message) =>
+              message.id === "msg-1"
+                ? {
+                    ...message,
+                    read_status: true,
+                    read_at: "2026-10-27T12:05:00Z",
+                    reactions: [{ emoji: "👍", count: 2, reacted_by_me: false }],
+                  }
+                : { ...message, content: "independently updated other message" }
+            ),
+            {
+              ...pendingPage.items[1]!,
+              id: "msg-arrived-while-editing",
+              content: "independent arrival",
+              created_at: "2026-10-27T12:06:00Z",
+            },
+          ],
+        }
+        act(() => queryClient.setQueryData(messageQueryKey, livePage))
+
+        if (failureOrder === "older first") {
+          await failEdit(1)
+          expect(queryClient.getQueryData(messageQueryKey)).toEqual(livePage)
+          await waitFor(() =>
+            expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+              "second optimistic edit"
+            )
+          )
+          await second.fail()
+        } else {
+          // The second HTTP action cannot overtake the first. A pre-rejected
+          // response remains queued while the newer projection stays visible.
+          second.reject()
+          expect(queryClient.isMutating()).toBe(2)
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            "second optimistic edit"
+          )
+          await failEdit()
+          await second.fail()
+        }
+
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(livePage)
+        await waitFor(() =>
+          expect(result.current.messages.find((message) => message.id === "msg-1")).toMatchObject({
+            text: "original",
+            readAt: "2026-10-27T12:05:00Z",
+            reactions: [{ emoji: "👍", count: 2, reactedByMe: false }],
+          })
+        )
+      }
+    )
+
+    it.each(["distinct", "ABA"])(
+      "AUD-155: preserves the latest %s edit through same-tick overlap",
+      async (variant) => {
+        vi.useFakeTimers({ toFake: ["Date"] })
+        vi.setSystemTime(new Date("2026-10-27T12:10:00Z"))
+        try {
+          const { queryClient, result, draft, failEdit, startNextEdit } = await startPendingEdit()
+          const lastDraft = variant === "ABA" ? draft.trim() : "third optimistic edit"
+
+          // No await between saves: both async onMutate callbacks overlap.
+          const second = startNextEdit("intervening edit")
+          const third = startNextEdit(lastDraft)
+
+          await waitFor(() => {
+            expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+            expect(queryClient.isMutating()).toBe(3)
+            expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+              lastDraft
+            )
+          })
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.editedAt).toBe(
+            "2026-10-27T12:10:00.000Z"
+          )
+
+          const pending = queryClient
+            .getMutationCache()
+            .getAll()
+            .filter((mutation) => mutation.state.status === "pending")
+          expect(pending).toHaveLength(3)
+          for (const mutation of pending) {
+            expect(() => JSON.stringify(mutation.state.context)).not.toThrow()
+            expect(() => JSON.stringify(mutation.state.variables)).not.toThrow()
+          }
+          const persisted = {
+            timestamp: Date.now(),
+            buster: "edit-receipt-serialization",
+            clientState: dehydrate(queryClient, persistOptions.dehydrateOptions),
+          }
+          expect(persisted.clientState.mutations).toHaveLength(3)
+          expect(() => JSON.stringify(persisted)).not.toThrow()
+          const persister = createIDBPersister(`aud155-edit-receipts-${variant}`)
+          try {
+            await persister.persistClient(persisted)
+            const restored = await persister.restoreClient()
+            expect(restored).toBeDefined()
+            expect(JSON.stringify(restored)).toBe(JSON.stringify(persisted))
+            for (const mutation of restored!.clientState.mutations) {
+              expect(Object.getOwnPropertySymbols(mutation.state.variables ?? {})).toHaveLength(0)
+              expect(Object.getOwnPropertySymbols(mutation.state.context ?? {})).toHaveLength(0)
+            }
+          } finally {
+            await persister.removeClient()
+          }
+
+          await failEdit(2)
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            lastDraft
+          )
+          await second.fail(1)
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            lastDraft
+          )
+          await third.fail()
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            "original"
+          )
+          expect(getEditedContent(queryClient)).toBe("original")
+        } finally {
+          vi.useRealTimers()
+        }
+      }
+    )
+
+    it("AUD-155: keeps an identical newer edit visible while an older failure is delayed", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] })
+      vi.setSystemTime(new Date("2026-10-27T12:10:00Z"))
+      try {
+        const { queryClient, result, draft, rejectFirstEdit, startNextEdit } =
+          await startPendingEdit()
+        const cache = queryClient.getMutationCache()
+        const originalOnError = cache.config.onError
+        const first = cache.getAll().find((mutation) => mutation.state.status === "pending")!
+
+        let entered!: () => void
+        let release!: () => void
+        const errorEntered = new Promise<void>((resolve) => {
+          entered = resolve
+        })
+        const errorReleased = new Promise<void>((resolve) => {
+          release = resolve
+        })
+        cache.config.onError = () => {
+          entered()
+          return errorReleased
+        }
+
+        try {
+          await act(async () => {
+            rejectFirstEdit()
+            await errorEntered
+          })
+
+          // Identical content and timestamp make field equality insufficient.
+          const second = startNextEdit(draft.trim())
+          await waitFor(() => {
+            expect(queryClient.isMutating()).toBe(2)
+            expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+              draft.trim()
+            )
+          })
+          await act(async () => release())
+          await waitFor(() => {
+            expect(first.state.status).toBe("error")
+            expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+            expect(queryClient.isMutating()).toBe(1)
+          })
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            draft.trim()
+          )
+          expect(getEditedContent(queryClient)).toBe("original")
+          await second.fail()
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            "original"
+          )
+          expect(getEditedContent(queryClient)).toBe("original")
+        } finally {
+          release()
+          cache.config.onError = originalOnError
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it.each(["edit", "tombstone"])(
+      "AUD-155: does not roll back an authoritative target %s",
+      async (kind) => {
+        const { queryClient, failEdit } = await startPendingEdit()
+        const page = getMessagePage(queryClient)
+        const serverTime = new Date(Date.now() + 60_000).toISOString()
+        const authoritative: MessagesListResponse = {
+          ...page,
+          items: page.items.map((message) =>
+            message.id !== "msg-1"
+              ? message
+              : kind === "edit"
+                ? {
+                    ...message,
+                    content: "authoritative server edit",
+                    edited_at: serverTime,
+                  }
+                : {
+                    ...message,
+                    content: "",
+                    attachments: [],
+                    deleted_at: serverTime,
+                  }
+          ),
+        }
+
+        act(() => queryClient.setQueryData(messageQueryKey, authoritative))
+        await failEdit()
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(authoritative)
+      }
+    )
+
+    it.each(["query", "target"])(
+      "AUD-155: does not recreate an absent %s after edit failure",
+      async (removed) => {
+        const { queryClient, unmount, failEdit } = await startPendingEdit()
+        const page = getMessagePage(queryClient)
+        const withoutTarget: MessagesListResponse = {
+          ...page,
+          items: page.items.filter((message) => message.id !== "msg-1"),
+        }
+
+        act(() => {
+          if (removed === "query") {
+            // Keep an illicit recreation observable instead of hiding it with gcTime: 0.
+            queryClient.setQueryDefaults(messageQueryKey, { gcTime: Infinity })
+            unmount()
+            queryClient.removeQueries({ queryKey: messageQueryKey, exact: true })
+          } else {
+            queryClient.setQueryData(messageQueryKey, withoutTarget)
+          }
+        })
+
+        await failEdit()
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(
+          removed === "query" ? undefined : withoutTarget
+        )
+      }
+    )
+
+    it("AUD-155: does not modify a recreated same-key query with identical edit fields", async () => {
+      const { queryClient, result, draft, rerender, failEdit } = await startPendingEdit()
+      const retiredQuery = queryClient
+        .getQueryCache()
+        .find({ queryKey: messageQueryKey, exact: true })
+      const pendingPage = getMessagePage(queryClient)
+      const replacement: MessagesListResponse = {
+        ...pendingPage,
+        has_more: true,
+        next_cursor: "replacement-owner-cursor",
+        items: pendingPage.items.map((message) => ({
+          ...message,
+          ...(message.id === "msg-1"
+            ? {
+                content: draft.trim(),
+                edited_at: result.current.messages.find((item) => item.id === "msg-1")?.editedAt,
+              }
+            : {}),
+          read_status: true,
+          read_at: "2026-10-27T12:07:00Z",
+        })),
+      }
+
+      act(() => {
+        queryClient.setQueryDefaults(messageQueryKey, { gcTime: Infinity })
+        queryClient.removeQueries({ queryKey: messageQueryKey, exact: true })
+        queryClient.setQueryData(messageQueryKey, replacement)
+        rerender()
+      })
+      expect(queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })).not.toBe(
+        retiredQuery
+      )
+
+      // Content and edited_at deliberately match the retired optimistic write.
+      await failEdit()
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual(replacement)
+    })
+
+    it("AUD-155: keeps a newer successful edit after its mutation cache entry is removed", async () => {
+      const { queryClient, result, failEdit, startNextEdit } = await startPendingEdit()
+      const second = startNextEdit("successful later edit")
+
+      await waitFor(() => {
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+        expect(queryClient.isMutating()).toBe(2)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "successful later edit"
+        )
+      })
+      const cache = queryClient.getMutationCache()
+      const first = cache.getAll().find((mutation) => mutation.state.status === "pending")!
+      act(() => cache.remove(first))
+      await failEdit(1)
+      await waitFor(() => expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2))
+      await second.succeed()
+
+      const successfulPage = getMessagePage(queryClient)
+      expect(successfulPage.items.find((message) => message.id === "msg-1")?.content).toBe(
+        "successful later edit"
+      )
+
+      const completed = cache
+        .getAll()
+        .find(
+          (mutation) =>
+            mutation.state.status === "success" &&
+            (mutation.state.variables as { content?: string } | undefined)?.content ===
+              "successful later edit"
+        )
+      expect(completed).toBeDefined()
+      act(() => cache.remove(completed!))
+
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual(successfulPage)
+    })
+
+    it.each(["content", "timestamp"])(
+      "AUD-155: starts a new rollback lineage after an authoritative %s change",
+      async (changedField) => {
+        const { queryClient, result, failEdit, startNextEdit } = await startPendingEdit()
+        const pendingPage = getMessagePage(queryClient)
+        const authoritative: MessagesListResponse = {
+          ...pendingPage,
+          items: pendingPage.items.map((message) =>
+            message.id === "msg-1"
+              ? {
+                  ...message,
+                  content:
+                    changedField === "content"
+                      ? "authoritative baseline before the newer edit"
+                      : message.content,
+                  edited_at: new Date(Date.now() + 60_000).toISOString(),
+                }
+              : message
+          ),
+        }
+        act(() => queryClient.setQueryData(messageQueryKey, authoritative))
+
+        const second = startNextEdit("new edit after the authoritative baseline")
+        await waitFor(() => {
+          expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+          expect(queryClient.isMutating()).toBe(2)
+          expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+            "new edit after the authoritative baseline"
+          )
+        })
+
+        await failEdit(1)
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(authoritative)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "new edit after the authoritative baseline"
+        )
+        await second.fail()
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(authoritative)
+      }
+    )
+
+    it("AUD-155: preserves a completed edit as the baseline for a later failed edit", async () => {
+      const { queryClient, result, failEdit, startNextEdit } = await startPendingEdit()
+      const second = startNextEdit("completed second edit")
+      await waitFor(() => {
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+        expect(queryClient.isMutating()).toBe(2)
+      })
+      await failEdit(1)
+      await waitFor(() => expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2))
+      await second.succeed()
+
+      const completedPage = getMessagePage(queryClient)
+      expect(getEditedContent(queryClient)).toBe("completed second edit")
+      expect(
+        queryClient
+          .getMutationCache()
+          .getAll()
+          .some(
+            (mutation) =>
+              mutation.state.status === "success" &&
+              (mutation.state.variables as { content?: string } | undefined)?.content ===
+                "completed second edit"
+          )
+      ).toBe(true)
+
+      const third = startNextEdit("failed third edit")
+      await waitFor(() => {
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(3)
+        expect(queryClient.isMutating()).toBe(1)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "failed third edit"
+        )
+      })
+
+      await third.fail()
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual(completedPage)
+    })
+
+    it("AUD-155: keeps overlapping edits to different messages independent", async () => {
+      const { queryClient, result, failEdit, startNextEdit } = await startPendingEdit()
+      const second = startNextEdit("optimistic edit of the other message", "msg-2")
+      await waitFor(() => {
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+        expect(queryClient.isMutating()).toBe(2)
+        expect(result.current.messages.find((message) => message.id === "msg-2")?.text).toBe(
+          "optimistic edit of the other message"
+        )
+      })
+      const pendingPage = getMessagePage(queryClient)
+
+      await failEdit(1)
+      expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+        "original"
+      )
+      expect(result.current.messages.find((message) => message.id === "msg-2")?.text).toBe(
+        "optimistic edit of the other message"
+      )
+      await second.fail()
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual(pendingPage)
+      expect(result.current.messages.find((message) => message.id === "msg-2")?.text).toBe(
+        "newer original"
+      )
+    })
+
+    it.each(["missing", "deleted"])(
+      "AUD-155: does not optimistically edit an initially %s target",
+      async (state) => {
+        const { queryClient, failEdit, startNextEdit } = await startPendingEdit()
+        const pendingPage = getMessagePage(queryClient)
+        const current: MessagesListResponse = {
+          ...pendingPage,
+          items:
+            state === "missing"
+              ? pendingPage.items.filter((message) => message.id !== "msg-2")
+              : pendingPage.items.map((message) =>
+                  message.id === "msg-2"
+                    ? { ...message, content: "", deleted_at: "2026-10-27T12:07:00Z" }
+                    : message
+                ),
+        }
+        act(() => queryClient.setQueryData(messageQueryKey, current))
+        const second = startNextEdit("must not replace an absent or deleted target", "msg-2")
+        await waitFor(() => {
+          expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+          expect(queryClient.isMutating()).toBe(2)
+        })
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(current)
+        await second.fail(1)
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(current)
+        await failEdit()
+        expect(queryClient.getQueryData(messageQueryKey)).toEqual(current)
+      }
+    )
+
+    it("AUD-155: does not recreate a query removed while a new edit awaits cancellation", async () => {
+      const { queryClient, unmount, failEdit, startNextEdit } = await startPendingEdit()
+      let release!: () => void
+      const cancellationGate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const originalCancel = queryClient.cancelQueries.bind(queryClient)
+      const cancelSpy = vi
+        .spyOn(queryClient, "cancelQueries")
+        .mockImplementation(async (...args) => {
+          await originalCancel(...args)
+          await cancellationGate
+        })
+      try {
+        const second = startNextEdit("edit waiting for cancellation")
+        await waitFor(() => expect(cancelSpy).toHaveBeenCalledOnce())
+        act(() => {
+          queryClient.setQueryDefaults(messageQueryKey, { gcTime: Infinity })
+          unmount()
+          queryClient.removeQueries({ queryKey: messageQueryKey, exact: true })
+        })
+        await act(async () => release())
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+        expect(queryClient.getQueryData(messageQueryKey)).toBeUndefined()
+        await failEdit()
+        await second.fail()
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+        expect(queryClient.getQueryData(messageQueryKey)).toBeUndefined()
+      } finally {
+        release()
+        cancelSpy.mockRestore()
+      }
+    })
+
+    it("AUD-155: does not refill a reset query owned by the same Query object", async () => {
+      const { queryClient, unmount, failEdit } = await startPendingEdit()
+      const owner = queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })
+      act(() => unmount())
+      await act(async () => {
+        await queryClient.resetQueries({ queryKey: messageQueryKey, exact: true })
+      })
+      expect(queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })).toBe(
+        owner
+      )
+      expect(queryClient.getQueryData(messageQueryKey)).toBeUndefined()
+      await failEdit()
+      expect(queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })).toBe(
+        owner
+      )
+      expect(queryClient.getQueryData(messageQueryKey)).toBeUndefined()
+    })
+
+    it("AUD-155: starts a fresh edit lineage in a replacement Query incarnation", async () => {
+      const { queryClient, result, rerender, failEdit, startNextEdit } = await startPendingEdit()
+      const oldOwner = queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })
+      const pendingPage = getMessagePage(queryClient)
+      const replacement: MessagesListResponse = {
+        ...pendingPage,
+        has_more: true,
+        next_cursor: "new-query-baseline",
+        items: pendingPage.items.map((message) => ({ ...message, read_status: true })),
+      }
+      act(() => {
+        queryClient.setQueryDefaults(messageQueryKey, { gcTime: Infinity })
+        queryClient.removeQueries({ queryKey: messageQueryKey, exact: true })
+        queryClient.setQueryData(messageQueryKey, replacement)
+        rerender()
+      })
+      expect(queryClient.getQueryCache().find({ queryKey: messageQueryKey, exact: true })).not.toBe(
+        oldOwner
+      )
+      const second = startNextEdit("new incarnation's optimistic edit")
+      await waitFor(() => {
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+        expect(queryClient.isMutating()).toBe(2)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "new incarnation's optimistic edit"
+        )
+      })
+      await failEdit(1)
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual(replacement)
+      expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+        "new incarnation's optimistic edit"
+      )
+      await second.fail()
+      expect(queryClient.getQueryData(messageQueryKey)).toEqual(replacement)
+    })
+
+    it("restores the exact failed draft and editor, then permits a successful retry", async () => {
+      const { result, queryClient, draft, failEdit } = await startPendingEdit()
+      await failEdit()
+
+      await waitFor(() => {
+        expect(result.current.editingMessageId).toBe("msg-1")
+        expect(result.current.editingMessageContent).toBe(draft)
+        expect(result.current.messages.find((message) => message.id === "msg-1")?.text).toBe(
+          "original"
+        )
+      })
+      await act(async () => {
+        result.current.handleSaveEdit("msg-1")
+      })
+      await waitFor(() => {
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(2)
+        expect(queryClient.isMutating()).toBe(0)
+      })
+      expect(mocks.chatApi.editMessage).toHaveBeenLastCalledWith("chat-1", "msg-1", draft.trim())
+      expect(result.current.editingMessageId).toBeNull()
+      expect(result.current.editingMessageContent).toBe("")
+    })
+
+    it.each(["msg-1", "msg-2"])(
+      "does not replace a newer unsaved edit of %s when the earlier request fails",
+      async (messageId) => {
+        const { result, failEdit } = await startPendingEdit()
+        act(() => result.current.handleEditMessage(messageId, "newer original"))
+        act(() => result.current.setEditingMessageContent("newer unsaved draft"))
+        await failEdit()
+
+        expect(result.current.editingMessageId).toBe(messageId)
+        expect(result.current.editingMessageContent).toBe("newer unsaved draft")
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+      }
+    )
+
+    it("does not resurrect the failed draft after a newer editor was explicitly cancelled", async () => {
+      const { result, failEdit } = await startPendingEdit()
+      act(() => result.current.handleEditMessage("msg-1", "newer original"))
+      act(() => result.current.setEditingMessageContent("discard this newer draft"))
+      act(() => result.current.handleCancelEdit())
+      await failEdit()
+
+      expect(result.current.editingMessageId).toBeNull()
+      expect(result.current.editingMessageContent).toBe("")
+    })
+
+    it.each([
+      { scope: "chat", returnToSource: false },
+      { scope: "chat", returnToSource: true },
+      { scope: "account", returnToSource: false },
+      { scope: "account", returnToSource: true },
+    ])(
+      "does not revive a failed edit after a $scope transition (return: $returnToSource)",
+      async ({ scope, returnToSource }) => {
+        const { result, rerender, failEdit } = await startPendingEdit()
+        if (scope === "chat") {
+          mocks.paramsRef.current = { chatId: "chat-2" }
+        } else {
+          mocks.authUserRef.current = { ...mocks.testUser, id: "other-account" }
+        }
+        rerender()
+        await waitFor(() => {
+          expect(result.current.selectedChatId).toBe(scope === "chat" ? "chat-2" : "chat-1")
+          expect(result.current.currentUserId).toBe(
+            scope === "account" ? "other-account" : "current-user-id"
+          )
+        })
+        if (returnToSource) {
+          mocks.paramsRef.current = { chatId: "chat-1" }
+          mocks.authUserRef.current = mocks.testUser
+          rerender()
+          await waitFor(() => {
+            expect(result.current.selectedChatId).toBe("chat-1")
+            expect(result.current.currentUserId).toBe("current-user-id")
+          })
+        }
+        await failEdit()
+
+        expect(result.current.editingMessageId).toBeNull()
+        expect(result.current.editingMessageContent).toBe("")
+        expect(mocks.chatApi.editMessage).toHaveBeenCalledTimes(1)
+      }
+    )
+  })
+})
+
+describe("useMessengerController — uncovered arms of the messenger projection", () => {
+  const message = (id: string, overrides: Record<string, unknown> = {}) => ({
+    id,
+    chat_id: "chat-1",
+    sender_id: "peer",
+    content: `content ${id}`,
+    created_at: "2026-10-30T10:00:00.000Z",
+    read_status: false,
+    attachments: [],
+    ...overrides,
+  })
+
+  it("resolves a refetch with no open chat to an empty history without chat or edit fences", async () => {
+    mocks.paramsRef.current = {}
+    const { queryClient, HookWrapper } = createQueryHarness()
+    const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+
+    await act(async () => {
+      await result.current.refetchMessages()
+    })
+
+    expect(mocks.chatApi.getMessages).not.toHaveBeenCalled()
+    expect(queryClient.getQueryData(["messages", ""])).toEqual({
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    expect(result.current.messages).toEqual([])
+  })
+
+  it("keeps the chat menu as it is when a successful clear settles after its session was retired", async () => {
+    mocks.paramsRef.current = { chatId: "chat-1" }
+    mocks.chatApi.getChats.mockResolvedValue({
+      items: [{ id: "chat-1", participants: [{ id: "current-user-id" }], unread_count: 0 }],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.chatApi.getMessages.mockResolvedValue({
+      items: [message("msg-1")],
+      has_more: false,
+      next_cursor: null,
+    })
+    let resolveClear!: (value: { status: string }) => void
+    mocks.chatApi.clearChat.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveClear = resolve
+        })
+    )
+    const { HookWrapper } = createQueryHarness()
+    const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+    await waitFor(() => expect(result.current.messages).toHaveLength(1))
+
+    act(() => result.current.setShowChatMenu(true))
+    act(() => result.current.handleClearChat())
+    await act(async () => {
+      result.current.confirmDialog?.onConfirm()
+    })
+    await waitFor(() => expect(mocks.chatApi.clearChat).toHaveBeenCalledWith("chat-1"))
+
+    act(() => invalidateSessionEpoch())
+    await act(async () => {
+      resolveClear({ status: "ok" })
+    })
+
+    expect(result.current.showChatMenu).toBe(true)
+  })
+
+  it("does not report a load-more failure for a request retired by an account switch", async () => {
+    mocks.paramsRef.current = {}
+    const firstPage = {
+      items: [{ id: "chat-1", participants: [{ id: "current-user-id" }], unread_count: 0 }],
+      has_more: true,
+      next_cursor: "cursor-2",
+    }
+    let rejectNext!: (reason: Error) => void
+    mocks.chatApi.getChats.mockImplementation((cursor?: string) =>
+      cursor === "cursor-2"
+        ? new Promise((_resolve, reject) => {
+            rejectNext = reject
+          })
+        : Promise.resolve(firstPage)
+    )
+    const { HookWrapper } = createQueryHarness()
+    const { result, rerender } = renderHook(() => useMessengerController(), {
+      wrapper: HookWrapper,
+    })
+    await waitFor(() => expect(result.current.hasMoreChats).toBe(true))
+
+    let request!: Promise<void>
+    act(() => {
+      request = result.current.handleLoadMoreChats()
+    })
+    await waitFor(() => expect(result.current.isLoadingMoreChats).toBe(true))
+
+    mocks.authUserRef.current = { ...mocks.testUser, id: "next-account" }
+    rerender()
+    await waitFor(() => expect(result.current.isLoadingMoreChats).toBe(false))
+
+    await act(async () => {
+      rejectNext(new Error("transport failure"))
+      await request
+    })
+
+    expect(result.current.moreChatsError).toBe(false)
   })
 })

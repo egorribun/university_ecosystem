@@ -199,11 +199,11 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
         },
         body: JSON.stringify({ full_name: candidateName }),
       })
-      document.cookie = `csrf_token=; Max-Age=0; Path=/; SameSite=Lax${secureAttribute}`
       const cookieAfterRejectedRequest = document.cookie
         .split(";")
         .map((part) => part.trim())
         .find((part) => part.startsWith("csrf_token="))
+      document.cookie = `csrf_token=; Max-Age=0; Path=/; SameSite=Lax${secureAttribute}`
       return {
         status: response.status,
         cookiePresent: installedToken !== null,

@@ -215,7 +215,7 @@ export function NewChatModal({
           role="presentation"
         >
           <div
-            className="absolute inset-0 bg-black/(--opacity-strong) backdrop-blur-md cursor-default"
+            className="absolute inset-0 bg-black/[calc(var(--opacity-strong)*100%)] backdrop-blur-md cursor-default"
             onClick={onClose}
             aria-hidden="true"
           />
@@ -232,7 +232,7 @@ export function NewChatModal({
             className="messenger-card-matte w-full max-w-[28rem] backdrop-blur-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-medium)">
+            <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)]">
               <h3
                 id={titleId}
                 className="text-xl font-black tracking-tight text-text-primary sf-pro"
@@ -246,7 +246,7 @@ export function NewChatModal({
                 type="button"
                 onClick={onClose}
                 aria-label={t("common:buttons.close")}
-                className="min-h-[44px] min-w-[44px] p-2 rounded-xl flex items-center justify-center hover:bg-(--bg-surface-hover)/(--opacity-medium) text-(--text-secondary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                className="min-h-[44px] min-w-[44px] p-2 rounded-xl flex items-center justify-center hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] text-(--text-secondary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
               >
                 <X className="w-5 h-5" aria-hidden="true" />
               </button>
@@ -257,7 +257,7 @@ export function NewChatModal({
                   wired via onCreateGroup; else the modal stays DM-only). */}
               {canCreateGroup && (
                 <div
-                  className="mb-4 grid grid-cols-2 gap-1 rounded-2xl bg-(--bg-surface-raised)/(--opacity-medium) p-1"
+                  className="mb-4 grid grid-cols-2 gap-1 rounded-2xl bg-(--bg-surface-raised)/[calc(var(--opacity-medium)*100%)] p-1"
                   role="tablist"
                   aria-label={t("messenger:modeToggle")}
                 >
@@ -269,7 +269,7 @@ export function NewChatModal({
                     className={`min-h-[44px] rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) ${
                       !isGroupMode
                         ? "bg-(--color-violet-500) text-(--color-white) shadow-sm"
-                        : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                        : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]"
                     }`}
                   >
                     {t("messenger:modeDirect")}
@@ -282,7 +282,7 @@ export function NewChatModal({
                     className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) ${
                       isGroupMode
                         ? "bg-(--color-violet-500) text-(--color-white) shadow-sm"
-                        : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                        : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)]"
                     }`}
                   >
                     <Users className="size-4" strokeWidth={2.25} aria-hidden="true" />
@@ -486,7 +486,7 @@ export function NewChatModal({
                             srcRaw={user.avatar_url || AVATAR_PLACEHOLDER_URL}
                             fallback={AVATAR_PLACEHOLDER_URL}
                             alt=""
-                            className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/(--opacity-faint)"
+                            className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/[calc(var(--opacity-faint)*100%)]"
                           />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -518,7 +518,7 @@ export function NewChatModal({
               {/* Wave 211 G4 — group-create CTA + the min-members hint. Disabled
                   until a non-empty name + ≥2 selected (backend ≥3 total). */}
               {isGroupMode && (
-                <div className="mt-4 border-t border-(--glass-border)/(--opacity-subtle) pt-4">
+                <div className="mt-4 border-t border-(--glass-border)/[calc(var(--opacity-subtle)*100%)] pt-4">
                   <button
                     type="button"
                     onClick={handleSubmitGroup}

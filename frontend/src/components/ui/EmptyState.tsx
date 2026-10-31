@@ -26,12 +26,12 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex w-full max-w-[28rem] flex-col items-center gap-5 rounded-2xl border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md",
+        "flex w-full max-w-[28rem] flex-col items-center gap-5 rounded-2xl border border-glass-border/[calc(var(--opacity-soft)*100%)] bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] px-8 py-14 text-center shadow-glass backdrop-blur-md",
         className
       )}
     >
       {icon && (
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg text-brand">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/[calc(var(--opacity-subtle)*100%)] border border-brand/[calc(var(--opacity-dim)*100%)] shadow-brand/[calc(var(--opacity-subtle)*100%)] shadow-lg text-brand">
           {icon}
         </div>
       )}

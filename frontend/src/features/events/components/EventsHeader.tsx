@@ -132,7 +132,7 @@ export const EventsHeader = ({
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={t("events:filters.search")}
-              className="w-full rounded-xl matte-input py-2 pl-9 pr-24 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none focus-visible:ring-2 focus-visible:ring-brand transition-shadow"
+              className="w-full rounded-xl matte-input py-2 pl-9 pr-24 text-sm text-text-primary placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand transition-shadow"
               aria-label={t("events:filters.search")}
             />
             <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center">
@@ -219,7 +219,7 @@ export const EventsHeader = ({
         >
           <div
             ref={tabsRef}
-            className="relative inline-flex items-center gap-1 rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 backdrop-blur-md shadow-glass sm:w-auto"
+            className="relative inline-flex items-center gap-1 rounded-xl border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] p-1 backdrop-blur-md shadow-glass sm:w-auto"
           >
             {tabRect && (
               <div

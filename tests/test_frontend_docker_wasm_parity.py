@@ -82,7 +82,38 @@ def test_frontend_image_validates_built_wasm_against_checked_in_source_provenanc
     None
 ):
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
-    builder = dockerfile[dockerfile.index("FROM base AS builder") :]
+    from_pattern = re.compile(
+        r"(?im)^[ \t]*FROM[ \t]+(?:--platform=[^ \t]+[ \t]+)?"
+        r"(?P<image>[^ \t]+)(?:[ \t]+AS[ \t]+(?P<alias>[A-Za-z0-9_.-]+))?[ \t]*$"
+    )
+    from_stages = list(from_pattern.finditer(dockerfile))
+    from_instructions = re.findall(r"(?im)^[ \t]*FROM\b[^\r\n]*$", dockerfile)
+    assert len(from_stages) == len(from_instructions)
+
+    named_stage_indexes = {
+        alias: [
+            index
+            for index, stage in enumerate(from_stages)
+            if stage.group("alias") is not None
+            and stage.group("alias").casefold() == alias
+        ]
+        for alias in ("base", "deps", "builder")
+    }
+    assert all(len(indexes) == 1 for indexes in named_stage_indexes.values())
+    base_index = named_stage_indexes["base"][0]
+    deps_index = named_stage_indexes["deps"][0]
+    builder_index = named_stage_indexes["builder"][0]
+    assert base_index < deps_index < builder_index
+    assert from_stages[deps_index].group("image").casefold() == "base"
+    assert from_stages[builder_index].group("image").casefold() == "deps"
+
+    builder_start = from_stages[builder_index].start()
+    builder_end = (
+        from_stages[builder_index + 1].start()
+        if builder_index + 1 < len(from_stages)
+        else len(dockerfile)
+    )
+    builder = dockerfile[builder_start:builder_end]
     assert "ENV SKIP_WASM_BUILD=1" in builder
     assert "COPY frontend ./" in builder
     assert "COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg" in builder

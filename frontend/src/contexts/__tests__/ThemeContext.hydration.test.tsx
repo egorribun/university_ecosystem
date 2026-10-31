@@ -106,7 +106,12 @@ it.each(["dark", "light", "system"] as const)(
     for (const [cookie] of themeCookies) {
       expect(cookie).toBe(`ue-mode=${storedTheme}; Path=/; Max-Age=31536000; SameSite=Lax`)
     }
-    if (storedTheme !== "system") expect(matchMedia).not.toHaveBeenCalled()
+    if (storedTheme !== "system") {
+      const colorSchemeCalls = matchMedia.mock.calls.filter(([query]) =>
+        query.includes("prefers-color-scheme")
+      )
+      expect(colorSchemeCalls).toEqual([])
+    }
 
     const themeTitle = ui.getByText(i18n.t("settings:appearance.theme.title"))
     fireEvent.click(themeTitle.closest("button")!)

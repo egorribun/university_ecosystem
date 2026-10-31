@@ -91,19 +91,23 @@ global:
   # - `claimMapper: "default"` invokes `defaultJWTClaimMapper`: parses the
   #   JWT, verifies signature against JWKS, extracts claims (admin role by
   #   default if no permissions claim present).
-  # - `authorizer: ""` selects `noopAuthorizer`: allow all authenticated
-  #   requests. Suitable for dev (no permission enforcement); for production
-  #   set to `"default"` for `defaultAuthorizer`.
+  # - `authorizer: "default"` selects `defaultAuthorizer`, which enforces the
+  #   roles carried by the verified claims. The empty value selects
+  #   `noopAuthorizer` (every signature-verified caller is allowed) and is
+  #   intentionally not used (AUD-506).
+  # - `keySourceURIs` is rendered from TEMPORAL_JWKS_URL by entrypoint.sh and
+  #   must use https. Plain-HTTP key discovery lets a network attacker replace
+  #   the signing keys that the claim mapper trusts (AUD-506).
   # - `audience: "temporal"` matches the `aud` claim minted by
   #   start-docker.ps1's New-TemporalServiceToken function (default audience
   #   value is "temporal").
   authorization:
     jwtKeyProvider:
       keySourceURIs:
-        - "http://backend:8000/.well-known/jwks.json"
+        - "${TEMPORAL_JWKS_URL}"
       refreshInterval: 1m
     claimMapper: "default"
-    authorizer: ""
+    authorizer: "default"
     audience: "temporal"
 
 # ─── Services (frontend/matching/history/worker) ────────────────────────────

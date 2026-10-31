@@ -5,10 +5,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+from httpx import ASGITransport, AsyncClient
 
 import app.api.dlq as dlq_module
+from app.api.deps import get_current_admin_user_from_dishka
 from app.api.dlq import DLQReplayRequest, get_dlq_status, trigger_dlq_replay
-from tests.conftest import call_injected
+from app.core.database import get_db
+from tests.conftest import build_dishka_app, call_injected, dishka_overrides
 
 
 @pytest.mark.asyncio
@@ -121,3 +124,72 @@ async def test_trigger_dlq_replay_rejects_unknown_target():
         )
 
     assert exc_info.value.status_code == 400
+
+
+def _build_dlq_http_app(db):
+    test_app = build_dishka_app(dlq_module.router)
+    test_app.dependency_overrides[get_db] = lambda: db
+    test_app.dependency_overrides[get_current_admin_user_from_dishka] = (
+        lambda: SimpleNamespace(id="admin")
+    )
+    return test_app
+
+
+@pytest.mark.asyncio
+async def test_cleanup_dlq_rejects_negative_age_but_accepts_zero():
+    db = AsyncMock()
+    cleanup = AsyncMock(return_value=0)
+    queue = MagicMock()
+    queue.cleanup_completed_jobs = cleanup
+    test_app = _build_dlq_http_app(db)
+
+    with (
+        dishka_overrides(test_app),
+        patch.object(dlq_module, "DeadLetterQueue", return_value=queue),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://testserver"
+        ) as client:
+            negative = await client.delete(
+                "/admin/dlq/cleanup", params={"older_than_days": -1}
+            )
+            zero = await client.delete(
+                "/admin/dlq/cleanup", params={"older_than_days": 0}
+            )
+
+    assert negative.status_code == 422
+    assert zero.status_code == 200
+    assert zero.json()["older_than_days"] == 0
+    cleanup.assert_awaited_once_with(older_than_days=0)
+
+
+@pytest.mark.asyncio
+async def test_replay_dlq_rejects_nonpositive_batch_and_accepts_one():
+    db = AsyncMock()
+    test_app = _build_dlq_http_app(db)
+    replay = AsyncMock(return_value=(0, 0))
+
+    with (
+        dishka_overrides(test_app),
+        patch.object(dlq_module.in_memory_dlq, "auto_replay", new=replay),
+    ):
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://testserver"
+        ) as client:
+            zero = await client.post(
+                "/admin/dlq/replay",
+                json={"batch_size": 0, "target": "in_memory"},
+            )
+            negative = await client.post(
+                "/admin/dlq/replay",
+                json={"batch_size": -1, "target": "in_memory"},
+            )
+            minimum = await client.post(
+                "/admin/dlq/replay",
+                json={"batch_size": 1, "target": "in_memory"},
+            )
+
+    assert zero.status_code == 422
+    assert negative.status_code == 422
+    assert minimum.status_code == 200
+    replay.assert_awaited_once_with(batch_size=1, force=False)

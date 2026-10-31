@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT / "scripts" / "quality" / "migration_downgrade_policy.py"
 MIGRATIONS_DIR = ROOT / "alembic" / "versions"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "ci.yml"
+BACKEND_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
 
 
 def _load_policy_module() -> ModuleType:
@@ -422,15 +423,30 @@ def test_repository_migrations_have_a_valid_fail_closed_downgrade_plan() -> None
 
     plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
     expected_reason = (
+        "Dropping chat send receipts can discard committed idempotency history "
+        "and permit duplicate messages"
+    )
+
+    assert plan.head_revision == "202610310001"
+    assert plan.safe_target == "202610250001"
+    assert plan.boundary_revision == "202610250001"
+    assert plan.boundary_parent == "202610200001"
+    assert plan.boundary_reason == expected_reason
+    # The AUD-447 scrub above the boundary is an explicit reversible no-op.
+    scrub = policy._parse_migration(
+        MIGRATIONS_DIR / "202610310001_scrub_plaintext_auth_tokens_from_dlq.py"
+    )
+    assert scrub.irreversible_reason is None
+    assert scrub.parents == ("202610250001",)
+
+    quarantine = policy._parse_migration(
+        MIGRATIONS_DIR / "202610200001_add_quarantine_storage_ledger.py"
+    )
+    assert quarantine.parents == ("202610120002",)
+    assert quarantine.irreversible_reason == (
         "Quarantine reservation ledger is irreversible: dropping it would release "
         "quota charges for objects that may still exist"
     )
-
-    assert plan.head_revision == "202610200001"
-    assert plan.safe_target == "202610200001"
-    assert plan.boundary_revision == "202610200001"
-    assert plan.boundary_parent == "202610120002"
-    assert plan.boundary_reason == expected_reason
 
 
 def test_all_postgres_gates_exercise_safe_range_and_declared_boundary() -> None:
@@ -448,6 +464,55 @@ def test_all_postgres_gates_exercise_safe_range_and_declared_boundary() -> None:
         assert "migration_downgrade_policy.py assert-boundary" in combined
         assert "alembic downgrade base" not in combined
         assert 'downgrade "$SAFE_DOWNGRADE_TARGET"' in combined
+
+
+def test_reusable_postgres_gate_checks_refusal_without_masking_failures() -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["integration-tests"]["steps"]
+    planners = [
+        step for step in steps if step.get("id") == "integration-migration-policy"
+    ]
+    gates = [
+        step
+        for step in steps
+        if step.get("name") == "Test migration downgrade safety (MOD-03)"
+    ]
+    assert len(planners) == len(gates) == 1
+    planner, gate = planners[0], gates[0]
+    assert steps.index(planner) < steps.index(gate)
+    for step in (planner, gate):
+        assert step["shell"] == "bash"
+        assert step["run"].startswith("set -euo pipefail\n")
+        assert not step.get("continue-on-error", False)
+        assert "|| true" not in step["run"]
+    assert 'migration_downgrade_policy.py plan >> "$GITHUB_OUTPUT"' in planner["run"]
+    assert gate["env"]["SAFE_DOWNGRADE_TARGET"] == (
+        "${{ steps.integration-migration-policy.outputs.safe_target }}"
+    )
+
+    run = gate["run"]
+    commands = [
+        'uv run --frozen --no-sync alembic downgrade "$SAFE_DOWNGRADE_TARGET"',
+        'before_boundary="$(uv run --frozen --no-sync alembic current)"',
+        'test -n "$before_boundary"',
+        "uv run --frozen --no-sync python "
+        "scripts/quality/migration_downgrade_policy.py assert-boundary",
+        'after_boundary="$(uv run --frozen --no-sync alembic current)"',
+        'if [[ "$before_boundary" != "$after_boundary" ]]; then',
+        'echo "Declared boundary probe changed the applied migration revision" >&2',
+        "exit 1",
+    ]
+    positions = [run.index(command) for command in commands]
+    assert positions == sorted(positions)
+    assert run.count("uv run --frozen --no-sync alembic upgrade head") == 2
+    assert run.rindex("alembic upgrade head") > positions[-1]
+    assert "alembic downgrade -1" not in run
+    assert "alembic downgrade base" not in run
+    assert "Migration round-trip succeeded" not in run
+    assert (
+        "Supported migration range and declared refusal verified; "
+        "protected boundary was not crossed"
+    ) in run
 
 
 def test_postgres_migration_gates_pin_python_before_uv() -> None:
@@ -480,3 +545,170 @@ def test_postgres_migration_gates_pin_python_before_uv() -> None:
 
     for job_name in ("db-migration-gate", "db-migration-integrity"):
         assert jobs[job_name]["env"]["UV_PYTHON"] == "3.14", job_name
+
+
+def _mvp_rollback_adr_section() -> str:
+    path = ROOT / "docs" / "adr" / "ADR-036-sqlalchemy-dual-default-migration-policy.md"
+    source = path.read_text(encoding="utf-8")
+    heading = "## MVP Release Rollback Boundary (Owner Decision, 2026-10-12)"
+    assert source.count(heading) == 1
+    section = source.split(heading, 1)[1].split("\n## ", 1)[0]
+    assert section.strip()
+    return section
+
+
+def test_adr_rollback_boundary_matches_source_derived_plan() -> None:
+    """Read source metadata only; never import or execute a migration."""
+    policy = _load_policy_module()
+    plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
+    section = " ".join(_mvp_rollback_adr_section().split())
+
+    assert (
+        f"The newest irreversible revision is {plan.boundary_revision}, "
+        f"whose parent is {plan.boundary_parent}."
+    ) in section
+    assert (
+        "The existing migration_downgrade_policy.py planner selects "
+        f"{plan.safe_target} as the safe target."
+    ) in section
+    # The safe target sits below head only because the single revision above it
+    # is a reviewed reversible no-op; no irreversible barrier lies above it.
+    assert plan.safe_target == plan.boundary_revision
+    head_metadata = policy._parse_migration(
+        MIGRATIONS_DIR / "202610310001_scrub_plaintext_auth_tokens_from_dlq.py"
+    )
+    assert head_metadata.revision == plan.head_revision
+    assert head_metadata.irreversible_reason is None
+    assert head_metadata.parents == (plan.boundary_revision,)
+    assert (
+        f"The only revision above that target is {plan.head_revision}, the AUD-447 "
+        "auth-token scrub, whose downgrade is an explicit no-op; the safe-range "
+        "downgrade is therefore a no-op;"
+    ) in section
+    assert (
+        "the separate boundary probe must reject crossing to "
+        f"{plan.boundary_parent} with the declared chat-receipt reason"
+    ) in section
+    assert plan.boundary_reason is not None
+    assert plan.boundary_reason in section
+    assert (
+        "A verified refusal is not a successful rollback across the boundary."
+    ) in section
+    assert (
+        "The chat-receipt boundary is a new design constraint for AUD-262, "
+        "not an extension of the eight historical owner-approved dispositions below."
+    ) in section
+    assert (
+        "The original owner decision does not make later data-loss barriers reversible."
+    ) in section
+
+
+def test_adr_rollback_scope_maps_eight_unsupported_historical_findings() -> None:
+    """A scope record alone is not a repair, a ledger increment or restore evidence."""
+    section = _mvp_rollback_adr_section()
+    rows = [
+        tuple(cell.strip() for cell in line.strip().strip("|").split("|"))
+        for line in section.splitlines()
+        if line.startswith("| AUD-")
+    ]
+    expected_operations = [
+        ("AUD-268", "202607020001"),
+        ("AUD-273", "202607230001"),
+        ("AUD-276", "202503150001"),
+        ("AUD-324", "202607280001"),
+        ("AUD-325", "202605070001"),
+        ("AUD-326", "Downgrade to base"),
+        ("AUD-349", "148642dd1207"),
+        ("AUD-435", "Relative downgrade at 7ad848733a4b"),
+    ]
+    assert all(len(row) == 3 for row in rows)
+    assert [row[:2] for row in rows] == expected_operations
+    expected_limits = {
+        "AUD-268": "drops monthly and default partitions, including their rows",
+        "AUD-273": "older message RLS migration remains applied",
+        "AUD-276": "invalid token can become NULL",
+        "AUD-324": "still drops grades and vector_chunks",
+        "AUD-325": "deletes failed_login_attempts rows whose user_id is NULL",
+        "AUD-326": "reaching base is not a supported recovery path",
+        "AUD-349": "without retaining their data",
+        "AUD-435": "no repair of historical relative-target resolution is claimed",
+    }
+    for finding, _operation, limitation in rows:
+        assert expected_limits[finding] in limitation, finding
+
+    normalized = " ".join(section.split())
+    for boundary in (
+        "without claiming that their historical downgrade implementations were "
+        "repaired.",
+        "This scope record alone does not add findings to the accepted audit ledger.",
+        "Migration-local barriers protect only paths that execute them.",
+        "A database already below a barrier, an explicit offline revision range "
+        "or a direct historical migration call is not made safe by a later barrier.",
+        "a database still at 202607280001 is not safe to downgrade.",
+        "Choosing an older explicit target or a relative target does not "
+        "authorize an otherwise unsupported operation.",
+        "release acceptance still requires a verified, paired database and S3 restore.",
+        "It is not evidence for production rollback support and does not "
+        "certify retention of grades or vector_chunks.",
+        "Any change to the supported rollback range requires a new owner decision",
+    ):
+        assert boundary in normalized, boundary
+
+
+def test_historical_rollback_scope_is_below_mfa_barriers_in_source_graph() -> None:
+    """Prove graph relationships without migration imports, SQL or DB connections."""
+    policy = _load_policy_module()
+    plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
+    paths = sorted(MIGRATIONS_DIR.glob("*.py"))
+    metadata = [policy._parse_migration(path) for path in paths]
+    revisions = {migration.revision: migration for migration in metadata}
+    assert len(revisions) == len(metadata)
+
+    def ancestors(revision: str) -> set[str]:
+        pending = list(revisions[revision].parents)
+        visited: set[str] = set()
+        while pending:
+            parent = pending.pop()
+            if parent in visited:
+                continue
+            visited.add(parent)
+            pending.extend(revisions[parent].parents)
+        return visited
+
+    historical_revisions = {
+        "202607020001",
+        "202607230001",
+        "202503150001",
+        "202607280001",
+        "202605070001",
+        "148642dd1207",
+        "7ad848733a4b",
+    }
+    expansion = revisions["202608250001"]
+    retirement = revisions["202608250002"]
+    assert expansion.parents == ("202607280001",)
+    assert retirement.parents == (expansion.revision,)
+    for barrier in (expansion, retirement):
+        assert barrier.irreversible_reason is not None
+        assert historical_revisions <= ancestors(barrier.revision)
+
+    head_history = ancestors(plan.head_revision) | {plan.head_revision}
+    for revision in (
+        "202608250001",
+        "202608250002",
+        "202610120001",
+        "202610200001",
+    ):
+        assert revision in head_history
+        assert revisions[revision].irreversible_reason is not None
+    # Every revision above the newest barrier must be reversible: here, only head.
+    above_boundary = head_history - ancestors(plan.boundary_revision)
+    above_boundary.discard(plan.boundary_revision)
+    assert above_boundary == {plan.head_revision}
+    assert revisions[plan.head_revision].irreversible_reason is None
+    assert revisions[plan.boundary_revision].parents == (plan.boundary_parent,)
+    assert revisions[plan.boundary_revision].irreversible_reason == plan.boundary_reason
+
+    merge = revisions["7ad848733a4b"]
+    assert len(merge.parents) == len(set(merge.parents)) == 2
+    # This is metadata evidence, not execution of Alembic's ambiguous -1 walk.

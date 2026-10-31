@@ -1,4 +1,4 @@
-"""Closure tests for fresh news/event cache entries."""
+"""Closure tests for fresh news cache entries."""
 
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -29,17 +29,4 @@ async def test_warm_news_skips_both_locales_when_entries_are_fresh():
         await cache_warmup._warm_news(cache, MagicMock())
 
     news_service.return_value.list_news.assert_not_called()
-    cache.set.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_warm_events_skips_both_locales_when_entries_are_fresh():
-    cache = _fresh_cache()
-
-    with patch(
-        "app.api.events._get_events_list_version",
-        AsyncMock(return_value="v1"),
-    ):
-        await cache_warmup._warm_events(cache, MagicMock())
-
     cache.set.assert_not_called()

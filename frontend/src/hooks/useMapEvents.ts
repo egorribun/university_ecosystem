@@ -4,7 +4,7 @@
  * Wave 108
  */
 
-import { useMemo } from "react"
+import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { useEventsListQuery } from "@/api/hooks/events"
 import { parseBuildingRoom } from "@/utils/buildingIcons"
@@ -26,9 +26,21 @@ export interface MapEvent {
  * Fetch active events and attach campus building geo coordinates.
  * Events with unparseable or unrecognized building locations are silently skipped.
  */
-export function useMapEvents(): { events: MapEvent[]; isLoading: boolean } {
+export function useMapEvents(): {
+  events: MapEvent[]
+  isLoading: boolean
+  hasMoreEvents: boolean
+  isLoadingMoreEvents: boolean
+  loadMoreEvents: () => void
+} {
   const { i18n } = useTranslation()
-  const { events: rawEvents, isLoading } = useEventsListQuery({
+  const {
+    events: rawEvents,
+    isLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useEventsListQuery({
     language: i18n.language,
     is_active: true,
     limit: 50,
@@ -68,5 +80,15 @@ export function useMapEvents(): { events: MapEvent[]; isLoading: boolean } {
     return result
   }, [rawEvents, i18n.language])
 
-  return { events, isLoading }
+  const loadMoreEvents = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage({ cancelRefetch: false })
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage])
+
+  return {
+    events,
+    isLoading,
+    hasMoreEvents: Boolean(hasNextPage),
+    isLoadingMoreEvents: isFetchingNextPage,
+    loadMoreEvents,
+  }
 }

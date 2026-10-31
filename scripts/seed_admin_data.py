@@ -15,7 +15,8 @@ Creates:
 - 1 admin user: admin@university.dev (password supplied via TEST_PASSWORD)
 - 6 additional users (mix of students + teachers across 3 groups) for AdminUsers
 - 12 audit log entries for AdminAudit (signed via SecureAuditService)
-- 4 dead-letter notification jobs for AdminNotifications
+- 4 dead-letter worker jobs
+- 21 inert notification queue rows for full owned-stand AdminNotifications pagination
 - Feature flags: none — the flagd registry is empty until a flag has a call site
 - Stories: created by seed_demo_data.py — no seeding needed here
 """
@@ -25,6 +26,7 @@ import json
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import NAMESPACE_URL, uuid5
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -42,11 +44,12 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.auth.security import get_password_hash_sync, verify_password_sync
+from app.core.config import settings
 from app.core.database import async_session, init_database
 from app.models.dead_letter import DeadLetterJob, JobStatus
 from app.models.enums import UserRole
 from app.models.logs import DataAccessLog
-from app.models.notifications import UserPushTopic
+from app.models.notifications import NotificationQueueJob, UserPushTopic
 from app.models.schedule import Group, Schedule
 from app.models.users import EducationPath, User, UserProfile
 from app.services.audit_service import SecureAuditService
@@ -147,6 +150,11 @@ LIVE_NOTIFICATION_DELIVERY_ROSTER_EMAILS = (
     *(entry[0] for entry in EXTRA_USERS),
 )
 LIVE_NOTIFICATION_DELIVERY_TOPICS = ("chat.message.created",)
+LIVE_NOTIFICATION_QUEUE_RECORD_IDS = tuple(
+    uuid5(NAMESPACE_URL, f"https://university.invalid/live/admin-dlq/{index}")
+    for index in range(21)
+)
+LIVE_NOTIFICATION_QUEUE_ERROR = "Owned live pagination fixture"
 
 # ---------------------------------------------------------------------------
 # Audit log entries — span resource types + actions for filter UI testing
@@ -397,7 +405,7 @@ async def seed_extra_users(db, groups: dict[str, Group]) -> list[User]:
 
 
 def should_seed_live_notification_fixture(*, seed_target: str) -> bool:
-    """Prepare notification topics on every full owned-stand seed."""
+    """Prepare notification fixtures on every full owned-stand seed."""
     return seed_target != ADMIN_SMOKE_PROJECT
 
 
@@ -484,39 +492,108 @@ async def seed_live_notification_delivery_fixture(db) -> Group:
     return group
 
 
+async def seed_live_notification_queue_fixture(db) -> None:
+    """Prepare inert pagination rows only for a verified full owned stand."""
+    existing = {
+        job.record_id: job
+        for job in (
+            await db.scalars(
+                select(NotificationQueueJob).where(
+                    NotificationQueueJob.kind == "news",
+                    NotificationQueueJob.record_id.in_(
+                        LIVE_NOTIFICATION_QUEUE_RECORD_IDS
+                    ),
+                )
+            )
+        ).all()
+    }
+    for job in existing.values():
+        if (
+            job.dead_lettered is not True
+            or job.locale != "en"
+            or job.attempts != 5
+            or job.last_error != LIVE_NOTIFICATION_QUEUE_ERROR
+            or job.claimed_at is not None
+            or job.next_retry_at is not None
+        ):
+            raise RuntimeError("owned notification queue fixture identity collision")
+
+    now = datetime.now(UTC)
+    created = 0
+    for index, record_id in enumerate(LIVE_NOTIFICATION_QUEUE_RECORD_IDS):
+        if record_id in existing:
+            continue
+        db.add(
+            NotificationQueueJob(
+                kind="news",
+                record_id=record_id,
+                locale="en",
+                enqueued_at=now - timedelta(seconds=index),
+                dead_lettered=True,
+                attempts=5,
+                last_error=LIVE_NOTIFICATION_QUEUE_ERROR,
+                claimed_at=None,
+                next_retry_at=None,
+            )
+        )
+        created += 1
+    await db.flush()
+    print(f"  ✓ Owned notification queue fixture: {created} missing row(s) prepared")
+
+
 async def seed_audit_logs(db, admin: User, others: list[User]) -> None:
     """Create signed audit log entries for AdminAudit page."""
-    audit_secret = os.environ.get(
-        "AUDIT_LOG_SECRET", "dev-audit-secret-key-for-local-testing"
-    )
-    if not audit_secret:
+    secret_file = os.environ.get("AUDIT_LOG_SECRET_FILE")
+    if secret_file is not None:
+        audit_secret = settings.audit_log_secret if secret_file.strip() else ""
+    elif "AUDIT_LOG_SECRET" in os.environ:
+        audit_secret = os.environ["AUDIT_LOG_SECRET"]
+    else:
+        audit_secret = (
+            settings.audit_log_secret
+            if "audit_log_secret" in settings.model_fields_set
+            else ""
+        )
+    try:
+        signing_keys = SecureAuditService._parse_signing_keys(audit_secret)
+    except ValueError:
         print("  ⚠ AUDIT_LOG_SECRET not set — skipping audit log seed")
         return
 
-    service = SecureAuditService(signing_key=audit_secret.encode("utf-8"))
+    service = SecureAuditService(signing_keys=signing_keys)
 
     # Audit service stamps created_at server-side; timestamps spread naturally
     actors = [admin, *others]
 
     created = 0
-    for idx, (resource_type, action, ctx_msg) in enumerate(AUDIT_ACTIONS):
-        actor = actors[idx % len(actors)]
-        subject = actors[(idx + 1) % len(actors)] if "user." in action else None
-        resource_id = f"{resource_type}-{idx + 100}"
-        context = {"message": ctx_msg, "demo_seed": True}
-        existing = await db.scalar(
-            select(DataAccessLog.id).where(
-                DataAccessLog.resource_type == resource_type,
-                DataAccessLog.resource_id == resource_id,
-                DataAccessLog.action == action,
-                DataAccessLog.context["demo_seed"].as_boolean().is_(True),
+    # Roll back the complete audit batch if creation or signing fails, even if
+    # a caller catches the error and later commits its surrounding transaction.
+    connection = await db.connection()
+    if (
+        connection.dialect.name == "sqlite"
+        and not connection.sync_connection.connection.driver_connection.in_transaction
+    ):
+        # SQLite's legacy transaction mode does not start a transaction for a
+        # SELECT; an outermost SAVEPOINT would otherwise survive a later rollback.
+        await connection.exec_driver_sql("BEGIN")
+    async with db.begin_nested():
+        for idx, (resource_type, action, ctx_msg) in enumerate(AUDIT_ACTIONS):
+            actor = actors[idx % len(actors)]
+            subject = actors[(idx + 1) % len(actors)] if "user." in action else None
+            resource_id = f"{resource_type}-{idx + 100}"
+            context = {"message": ctx_msg, "demo_seed": True}
+            existing = await db.scalar(
+                select(DataAccessLog.id).where(
+                    DataAccessLog.resource_type == resource_type,
+                    DataAccessLog.resource_id == resource_id,
+                    DataAccessLog.action == action,
+                    DataAccessLog.context["demo_seed"].as_boolean().is_(True),
+                )
             )
-        )
-        if existing is not None:
-            continue
+            if existing is not None:
+                continue
 
-        try:
-            await service.create_log(
+            log = await service.create_log(
                 db,
                 actor_user_id=actor.id,
                 subject_user_id=subject.id if subject else None,
@@ -527,9 +604,15 @@ async def seed_audit_logs(db, admin: User, others: list[User]) -> None:
                 ip_address=f"10.0.0.{50 + idx}",
                 user_agent="Mozilla/5.0 (W150 admin polish seed)",
             )
+            persisted_signature = await db.scalar(
+                select(DataAccessLog.signature).where(
+                    DataAccessLog.id == log.id,
+                    DataAccessLog.created_at == log.created_at,
+                )
+            )
+            if not log.signature or persisted_signature != log.signature:
+                raise RuntimeError("audit seed signature was not persisted")
             created += 1
-        except Exception as exc:
-            print(f"  ⚠ Audit log {idx} failed: {exc}")
     print(f"  ✓ Audit logs: {created} entries created")
 
 
@@ -610,6 +693,7 @@ async def main() -> None:
             if seed_notification_fixture:
                 print("\n[4/6] Owned-stand notification fixture")
                 await seed_live_notification_delivery_fixture(db)
+                await seed_live_notification_queue_fixture(db)
 
             print("\n[5/6] Audit logs")
             await seed_audit_logs(db, admin, others)
@@ -626,7 +710,6 @@ async def main() -> None:
             print(
                 f"  Other users:    {len(EXTRA_USERS)} created (mix of student/teacher)"
             )
-            print(f"  Audit entries:  {len(AUDIT_ACTIONS)} signed logs")
             print(
                 f"  Dead-letter:    {len(DEAD_LETTER_JOBS)} jobs (mix of pending/retrying/failed)"
             )

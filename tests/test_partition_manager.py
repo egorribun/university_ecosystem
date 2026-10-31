@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,7 +23,11 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         # The real code uses conn.dialect.identifier_preparer.quote() for safe DDL
         mock_preparer = MagicMock()
         mock_preparer.quote = MagicMock(side_effect=lambda name: f'"{name}"')
+        mock_preparer.quote_identifier = MagicMock(side_effect=lambda name: f'"{name}"')
         mock_conn.dialect.identifier_preparer = mock_preparer
+        mock_conn.begin_nested = MagicMock()
+        mock_conn.begin_nested.return_value.__aenter__ = AsyncMock()
+        mock_conn.begin_nested.return_value.__aexit__ = AsyncMock(return_value=False)
 
         # Correctly mock the async context manager for engine.connect()
         mock_engine.connect.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
@@ -38,21 +43,35 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         mock_old_partitions.scalars.return_value.all.return_value = [
             "notifications_y1999m01"
         ]
-
-        mock_drop_result = MagicMock()
+        mock_old_partitions.all.return_value = [
+            SimpleNamespace(
+                parent_oid=11,
+                parent_schema="public",
+                child_oid=12,
+                child_schema="public",
+                partition_name="notifications_y1999m01",
+                partition_bound="FOR VALUES FROM ('1999-01-01') TO ('1999-02-01')",
+            )
+        ]
+        mock_old_partitions.scalar_one.return_value = True
 
         # Bound SELECT statements use execute(); validated PostgreSQL DDL uses
         # exec_driver_sql(), which is the SQLAlchemy API for driver-level DDL.
-        from app.services.partition_manager import PARTITIONED_TABLES
-
-        num_tables = len(PARTITIONED_TABLES)
         # The manager now performs additional bound lookups and advisory-lock
         # calls before each idempotent DDL operation.  Every catalog query in
         # this focused mock may return the same harmless legacy partition.
-        mock_conn.execute.return_value = mock_old_partitions
-        mock_conn.exec_driver_sql.side_effect = [mock_create_result] * (
-            2 + num_tables
-        ) + [mock_drop_result] * num_tables
+        def execute_result(statement, *_args):
+            result = MagicMock()
+            if "current_setting('transaction_isolation')" in str(statement):
+                result.scalar_one.return_value = "read committed"
+                return result
+            if "pg_catalog.pg_settings" in str(statement):
+                result.scalar_one.return_value = "0"
+                return result
+            return mock_old_partitions
+
+        mock_conn.execute.side_effect = execute_result
+        mock_conn.exec_driver_sql.return_value = mock_create_result
         mock_conn.commit = AsyncMock()
 
         # Mock rust_ext

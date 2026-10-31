@@ -63,10 +63,10 @@ handoffs are intentionally not part of the canonical index.
   [post-pragma-removal update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
   distinguishes the historical 243-policy unfiltered scan from the private
   conditional 250-overlay result. The policy approvals do not establish passing
-  tests, final-source validation, or hosted-check results. Git and PR #1306 determine published source
-  and hosted status. The current detect-secrets disposition scope is 282;
-  the separate finite Gitleaks approval covers 25 historical fingerprints.
-  See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](audits/AUDIT-2026-10.md#exact-historical-gitleaks-owner-decision-and-quarantine-evidence--2026-10-20).
+  tests, final-source validation, or hosted-check results. Git and PR #1343 determine published source
+  and hosted status. The current detect-secrets disposition scope is 405;
+  the separate finite Gitleaks approval covers 26 historical fingerprints.
+  See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](adr/ADR-047-risk-based-quality-policy.md#exact-migration-catalog-proof-pin-and-coordinated-scanner-scope-2026-10-24).
   See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
   and the [nine-identity update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
 - [Scoped platform review template](superpowers/plans/AUDIT_PROMPT.md).

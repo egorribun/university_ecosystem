@@ -28,7 +28,9 @@ describe("settings Form compatibility wrappers", () => {
     expect(securityStatusChipClassName).toContain("transition-all")
     expect(securityStatusChipClassName).toContain("duration-base")
     expect(securityStatusChipClassName).toContain("dark:bg-glass-tint1")
-    expect(securityStatusChipClassName).toContain("dark:border-white/(--opacity-subtle)")
+    expect(securityStatusChipClassName).toContain(
+      "dark:border-white/[calc(var(--opacity-subtle)*100%)]"
+    )
   })
 
   it("maps all legacy variants and sizes", () => {
@@ -109,7 +111,7 @@ describe("settings Form compatibility wrappers", () => {
       "cursor-pointer",
       "transition-all",
       "duration-base",
-      "hover:bg-(--primary-main)/(--opacity-faint)",
+      "hover:bg-(--primary-main)/[calc(var(--opacity-faint)*100%)]",
       "border",
       "border-transparent"
     )

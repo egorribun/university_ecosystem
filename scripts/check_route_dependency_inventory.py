@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Fail closed on BE-04 FastAPI/Dishka route ownership drift.
+"""Check BE-04 FastAPI/Dishka signature-level route ownership drift.
 
 The ledger is deliberately an AST inventory.  Importing the application would
 run module initializers and make this architecture gate environment-dependent.
 Legacy ownership is derived transitively from ``get_db``/``get_read_db``
-through FastAPI ``Depends`` functions, so wrapper factories cannot hide a
-second request-scoped database session.
+through statically resolved FastAPI ``Depends`` signatures.  Function bodies,
+the return values of dependency factories, and per-frame WebSocket scopes are
+not part of this inventory; a clean ledger is not proof of their ownership.
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ class _Function:
     symbol: str
     dependencies: frozenset[str]
     from_dishka_types: tuple[str, ...]
+    from_component_injections: tuple[tuple[str, str], ...]
     has_inject: bool
     routes: tuple[tuple[str, str], ...]
 
@@ -191,6 +193,40 @@ def _from_dishka_types(
     return tuple(sorted(types))
 
 
+def _from_component_injections(
+    module: _Module, nodes: list[ast.AST], aliases: dict[str, str]
+) -> tuple[tuple[str, str], ...]:
+    injections: set[tuple[str, str]] = set()
+    for root in nodes:
+        for node in ast.walk(root):
+            if not isinstance(node, ast.Subscript) or not isinstance(
+                node.slice, ast.Tuple
+            ):
+                continue
+            annotation = _resolve_reference(module, node.value)
+            if annotation is None or _canonical(annotation, aliases) not in {
+                "typing.Annotated",
+                "typing_extensions.Annotated",
+            }:
+                continue
+            for metadata in node.slice.elts[1:]:
+                if not isinstance(metadata, ast.Call):
+                    continue
+                marker = _resolve_reference(module, metadata.func)
+                if marker is not None and _canonical(marker, aliases) in {
+                    "dishka.FromComponent",
+                    "dishka.entities.key.FromComponent",
+                }:
+                    injected = node.slice.elts[0]
+                    injections.add(
+                        (
+                            _dotted_name(injected) or ast.unparse(injected),
+                            ast.unparse(metadata),
+                        )
+                    )
+    return tuple(sorted(injections))
+
+
 def _has_inject(
     module: _Module,
     function: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -253,6 +289,9 @@ def _functions(modules: dict[str, _Module]) -> dict[str, _Function]:
                 symbol=symbol,
                 dependencies=frozenset(dependencies),
                 from_dishka_types=_from_dishka_types(module, signature_nodes, aliases),
+                from_component_injections=_from_component_injections(
+                    module, signature_nodes, aliases
+                ),
                 has_inject=_has_inject(module, node, aliases),
                 routes=_route_decorators(node),
             )
@@ -268,7 +307,10 @@ def _ownership_closure(
         for symbol, function in functions.items()
         if any(
             injected_type.rsplit(".", 1)[-1] not in DISHKA_NON_SESSION_TYPES
-            for injected_type in function.from_dishka_types
+            for injected_type in (
+                *function.from_dishka_types,
+                *(name for name, _ in function.from_component_injections),
+            )
         )
     }
     changed = True
@@ -310,6 +352,10 @@ def build_inventory(app_root: Path) -> dict[str, Any]:
         has_dishka = symbol in dishka_owners
         signals = [
             *(f"FromDishka[{name}]" for name in function.from_dishka_types),
+            *(
+                f"Annotated[{name}, {marker}]"
+                for name, marker in function.from_component_injections
+            ),
             *(["inject"] if function.has_inject else []),
         ]
         for method, path in function.routes:

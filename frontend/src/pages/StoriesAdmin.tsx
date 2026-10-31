@@ -16,7 +16,13 @@ import SmartImage from "@/components/media/SmartImage"
 import { useAuth } from "@/contexts/AuthContext"
 import { useScheduleClock } from "@/hooks/useScheduleClock"
 import type { StoryItem } from "@/types/Story"
-import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"
+import {
+  createStory,
+  deleteStory,
+  StoryCoverUploadError,
+  updateStory,
+  uploadStoryCover,
+} from "@/api/stories"
 import apiClient from "@/api/client"
 import { useLocaleFormatters } from "@/i18n/formatters"
 import { cn } from "@/utils/cn"
@@ -45,11 +51,12 @@ function toIso(date: string) {
   return d.toISOString()
 }
 
-function formatTimeLeft(expiresAt: string, now: Date) {
-  return formatRelativeTime(expiresAt, "en-US", now) // Simplified for now, but following the requirement
+function formatTimeLeft(expiresAt: string, now: Date, locale: string) {
+  return formatRelativeTime(expiresAt, locale, now)
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof StoryCoverUploadError) return fallback
   if (isAxiosError(error)) {
     const detail = error.response?.data as { detail?: unknown } | undefined
     if (detail) {
@@ -84,11 +91,18 @@ const createInitialFormState = (): StoryFormState => ({
 type StoryAdminItemProps = {
   story: StoryItem
   nowTick: Date
+  localeCode: string
   formatDate: (value: Date | string | number) => string
   onRefresh: () => void
 }
 
-function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminItemProps) {
+function StoryAdminItem({
+  story,
+  nowTick,
+  localeCode,
+  formatDate,
+  onRefresh,
+}: StoryAdminItemProps) {
   const { t } = useTranslation(["stories", "common"])
   const [publishedAt, setPublishedAt] = useState(() => formatInputDate(story.published_at))
   const [expiresAt, setExpiresAt] = useState(() => formatInputDate(story.expires_at))
@@ -114,8 +128,8 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
   }, [coverPreview])
 
   const timeLeft = useMemo(
-    () => formatTimeLeft(story.expires_at, nowTick),
-    [story.expires_at, nowTick]
+    () => formatTimeLeft(story.expires_at, nowTick, localeCode),
+    [story.expires_at, nowTick, localeCode]
   )
 
   const handleTimeSave = async () => {
@@ -217,8 +231,8 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
   const handleDelete = () => setShowDeleteConfirm(true)
 
   return (
-    <Card className="overflow-hidden border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-md">
-      <div className="px-6 py-5 border-b border-glass-border/(--opacity-soft)">
+    <Card className="overflow-hidden border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] shadow-glass backdrop-blur-md">
+      <div className="px-6 py-5 border-b border-glass-border/[calc(var(--opacity-soft)*100%)]">
         <h3 className="text-lg font-extrabold text-text-primary">{story.title}</h3>
         <p className="text-sm text-(--text-secondary) mt-0.5">{story.short_text}</p>
       </div>
@@ -246,7 +260,7 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
                 {timeLeft}
               </Badge>
               {story.cta_url && (
-                <div className="mt-2 p-3 rounded-sm bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim)">
+                <div className="mt-2 p-3 rounded-sm bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)] border border-glass-border/[calc(var(--opacity-dim)*100%)]">
                   <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium mb-1">
                     {t("stories:list.details.cta")}
                   </p>
@@ -257,7 +271,7 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
 
             <div className="w-full md:w-56 flex flex-col items-center gap-4">
               <div
-                className="relative w-full rounded-md overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group"
+                className="relative w-full rounded-md overflow-hidden bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)] border border-glass-border shadow-inner group"
                 style={{ aspectRatio: "9/16" }}
               >
                 {coverPreview ? (
@@ -356,7 +370,7 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
               </Button>
               <Button
                 variant="outline"
-                className="text-(--warning-text) border-(--warning-text)/(--opacity-soft) hover:bg-(--warning-text)/(--opacity-subtle)"
+                className="text-(--warning-text) border-(--warning-text)/[calc(var(--opacity-soft)*100%)] hover:bg-(--warning-text)/[calc(var(--opacity-subtle)*100%)]"
                 onClick={handleUnpublish}
                 disabled={unpublishing}
                 loading={unpublishing}
@@ -365,7 +379,7 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
               </Button>
               <Button
                 variant="outline"
-                className="text-(--error-text) border-(--error-text)/(--opacity-soft) hover:bg-(--error-text)/(--opacity-subtle) ml-auto"
+                className="text-(--error-text) border-(--error-text)/[calc(var(--opacity-soft)*100%)] hover:bg-(--error-text)/[calc(var(--opacity-subtle)*100%)] ml-auto"
                 onClick={handleDelete}
                 disabled={deleting}
                 loading={deleting}
@@ -400,7 +414,7 @@ function StoryAdminItem({ story, nowTick, formatDate, onRefresh }: StoryAdminIte
 export default function StoriesAdmin() {
   const { user } = useAuth()
   const { t } = useTranslation(["stories", "common"])
-  const { formatDate } = useLocaleFormatters()
+  const { formatDate, localeCode } = useLocaleFormatters()
   const isAdmin = user?.role === "admin"
   const nowTick = useScheduleClock(isAdmin)
   const [stories, setStories] = useState<StoryItem[]>([])
@@ -533,7 +547,7 @@ export default function StoriesAdmin() {
       <PageFadeIn>
         <div className="mx-auto max-w-(--layout-max-page) px-fluid-x py-(--space-8) md:py-12">
           <div className="mb-10 flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-md bg-brand/(--opacity-subtle) text-brand">
+            <div className="flex h-12 w-12 items-center justify-center rounded-md bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand">
               <RestartAltIcon className="h-7 w-7" />
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight text-text-primary">
@@ -542,7 +556,7 @@ export default function StoriesAdmin() {
           </div>
 
           <SectionCard className="mb-12">
-            <div className="px-6 py-5 border-b border-glass-border/(--opacity-soft)">
+            <div className="px-6 py-5 border-b border-glass-border/[calc(var(--opacity-soft)*100%)]">
               <h2 className="text-lg font-bold text-text-primary">{t("stories:form.title")}</h2>
               <p className="text-sm text-(--text-secondary) mt-0.5">{t("stories:form.subtitle")}</p>
             </div>
@@ -638,11 +652,11 @@ export default function StoriesAdmin() {
                         alt={t("stories:form.previewAlt")}
                         className="w-full h-full object-cover"
                       />
-                      <div className="absolute inset-x-0 bottom-0 p-6 bg-linear-to-t from-black/(--opacity-hover) to-transparent">
+                      <div className="absolute inset-x-0 bottom-0 p-6 bg-linear-to-t from-black/[calc(var(--opacity-hover)*100%)] to-transparent">
                         <h4 className="text-[var(--text-inverse)] font-bold text-lg">
                           {formState.titleRu || "Title"}
                         </h4>
-                        <p className="text-[var(--text-inverse)]/(--opacity-strong) text-sm line-clamp-2">
+                        <p className="text-[var(--text-inverse)]/[calc(var(--opacity-strong)*100%)] text-sm line-clamp-2">
                           {formState.shortTextRu || "Text"}
                         </p>
                       </div>
@@ -650,7 +664,7 @@ export default function StoriesAdmin() {
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-3 pt-4 border-t border-glass-border/(--opacity-dim)">
+                <div className="flex flex-wrap gap-3 pt-4 border-t border-glass-border/[calc(var(--opacity-dim)*100%)]">
                   <Button
                     onClick={handleSubmit}
                     disabled={submitting}
@@ -678,7 +692,7 @@ export default function StoriesAdmin() {
             <div className="flex items-center justify-between px-2">
               <h2 className="text-2xl font-extrabold text-text-primary flex items-center gap-3">
                 {t("stories:list.title")}
-                <span className="px-2 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
+                <span className="px-2 py-0.5 rounded-full bg-brand/[calc(var(--opacity-subtle)*100%)] border border-brand/[calc(var(--opacity-dim)*100%)] text-xs font-bold tabular-nums text-brand">
                   {stories.length}
                 </span>
               </h2>
@@ -703,7 +717,7 @@ export default function StoriesAdmin() {
                 <CircularProgress size={40} />
               </div>
             ) : stories.length === 0 ? (
-              <div className="text-center py-20 bg-(--bg-surface)/(--opacity-subtle) rounded-lg border border-dashed border-glass-border/(--opacity-soft)">
+              <div className="text-center py-20 bg-(--bg-surface)/[calc(var(--opacity-subtle)*100%)] rounded-lg border border-dashed border-glass-border/[calc(var(--opacity-soft)*100%)]">
                 <p className="text-(--text-secondary) italic">{t("stories:list.empty")}</p>
               </div>
             ) : (
@@ -713,6 +727,7 @@ export default function StoriesAdmin() {
                     key={story.id}
                     story={story}
                     nowTick={nowTick}
+                    localeCode={localeCode}
                     formatDate={(value) => formatDate(value, { preset: "datetime" })}
                     onRefresh={() => void fetchStories()}
                   />

@@ -75,10 +75,38 @@ def test_boundary_adapter_uses_its_own_manifest_without_disabling_checks() -> No
     # package must own its imports, rather than ignoring its picomatch usage.
     assert "entry" not in knip
     assert "project" not in knip
-    assert set(knip["workspaces"]) == {".", adapter}
+    assert set(knip["workspaces"]) == {
+        ".",
+        adapter,
+        "scripts/react-compiler-zod-compat",
+    }
     assert knip["workspaces"][adapter] == {}
     manifest = json.loads(_read_frontend(f"{adapter}/package.json"))
     assert manifest["dependencies"] == {"picomatch": "2.3.2"}
+    assert (FRONTEND / adapter / manifest["main"]).is_file()
+
+
+def test_compiler_adapter_uses_its_own_manifest_without_disabling_checks() -> None:
+    knip = json.loads(_read_frontend("knip.json"))
+    package = json.loads(_read_frontend("package.json"))
+    adapter = "scripts/react-compiler-zod-compat"
+
+    assert knip["workspaces"][adapter] == {}
+    manifest = json.loads(_read_frontend(f"{adapter}/package.json"))
+    package_name = "@university-ecosystem/react-compiler-zod-compat"
+    package_tarball = "vendor/react-compiler-zod-compat-1.0.0.tgz"
+
+    assert manifest["name"] == package_name
+    assert manifest["version"] == "1.0.0"
+    assert manifest["private"] is True
+    assert manifest["dependencies"] == {"patched-zod": "npm:zod@4.6.7"}
+    assert package["devDependencies"][package_name] == f"file:./{package_tarball}"
+    assert (FRONTEND / package_tarball).is_file()
+    for section in ("dependencies", "optionalDependencies", "peerDependencies"):
+        dependencies = package.get(section, {})
+        assert package_name not in dependencies
+        assert "react-compiler-zod-compat" not in dependencies
+    assert "react-compiler-zod-compat" not in package.get("devDependencies", {})
     assert (FRONTEND / adapter / manifest["main"]).is_file()
 
 
@@ -119,7 +147,6 @@ def test_dependency_ignores_are_limited_to_known_required_dependencies() -> None
         "@lhci/cli",
         "^@stryker-mutator/\\*$",
         "axe-core",
-        "cross-env",
         "openapi-types",
     ]
     asset_users = {
@@ -168,9 +195,9 @@ def test_dependency_ignores_are_limited_to_known_required_dependencies() -> None
     }
     assert actual_asset_users == asset_users
 
-    # These uses need explicit package accounting: the LHCI CLI and cross-env
-    # appear in command strings. Tailwind (a CSS @import) and the trusted-types
-    # declarations (DefinitelyTyped's @types package) are found by Knip itself.
+    # The LHCI CLI still needs accounting for its opaque command strings.
+    # cross-env is now directly invoked by a package script, so Knip discovers
+    # it without an ignore. Tailwind and trusted-types also need no exception.
     assert (
         'process.platform === "win32" ? ["exec", "--yes", "lhci", "--"] : ["lhci"]'
         in (_read_frontend("scripts/run-lhci.mjs"))
@@ -178,6 +205,8 @@ def test_dependency_ignores_are_limited_to_known_required_dependencies() -> None
     assert 'from "trusted-types/lib"' in _read_frontend("src/utils/trustedTypes.ts")
     assert 'from "trusted-types/lib"' in _read_frontend("src/utils/sanitize.ts")
     assert "npx cross-env" in _read_frontend("playwright.config.ts")
+    live_contract_command = package["scripts"]["test:e2e:live:contract"]
+    assert "cross-env SKIP_WEBSERVER=true" in live_contract_command
     assert '@import "tailwindcss";' in _read_frontend("src/styles/tailwind.css")
 
 
@@ -189,3 +218,12 @@ def test_ignored_binaries_are_exact_and_have_authored_call_sites() -> None:
     assert 'execFileSync("mkfifo"' in _read_frontend(
         "scripts/stryker-progress-monitor.test.mjs"
     )
+
+
+def test_knip_reports_configuration_hints_and_keeps_them_blocking() -> None:
+    package = json.loads(_read_frontend("package.json"))
+    knip = json.loads(_read_frontend("knip.json"))
+
+    command = package["scripts"]["lint:knip"]
+    assert command == "knip --reporter symbols --no-progress"
+    assert knip["treatConfigHintsAsErrors"] is True

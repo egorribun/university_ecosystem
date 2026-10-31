@@ -1,6 +1,10 @@
 import React, { useId, useRef, useState } from "react"
 import { m } from "framer-motion"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
+
+// Framer snapshots MotionConfig per element on mount. Key motion elements by
+// the preference so they also respond when the OS setting changes later.
 
 // Section Components
 export function SectionCard({
@@ -98,7 +102,7 @@ export function SessionItem({
         "group relative flex items-stretch justify-between gap-4 rounded-xl px-4 py-3",
         "border-glass-border bg-glass-bg text-text-primary",
         "transition-all duration-slow ease-out backdrop-blur-glass",
-        "hover:-translate-y-[0.125rem] hover:border-(--brand-main)/(--opacity-soft) hover:bg-glass-tint1 hover:shadow-glass",
+        "hover:-translate-y-[0.125rem] hover:border-(--brand-main)/[calc(var(--opacity-soft)*100%)] hover:bg-glass-tint1 hover:shadow-glass",
         "max-sm:flex-col max-sm:items-start",
         className
       )}
@@ -126,6 +130,7 @@ export function AccordionSection({
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const contentId = useId()
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   return (
     <div
@@ -133,7 +138,7 @@ export function AccordionSection({
         "overflow-hidden rounded-xl border transition-all duration-slow",
         "border-glass-border bg-glass-bg backdrop-blur-glass",
         expanded
-          ? "shadow-glass border-(--brand-main)/(--opacity-dim) bg-glass-tint1"
+          ? "shadow-glass border-(--brand-main)/[calc(var(--opacity-dim)*100%)] bg-glass-tint1"
           : "shadow-sm border-transparent",
         className
       )}
@@ -151,7 +156,10 @@ export function AccordionSection({
             {subtitle && <p className="text-xs text-(--text-secondary)">{subtitle}</p>}
           </div>
           <m.svg
+            key={String(prefersReducedMotion)}
+            initial={{ rotate: expanded ? 180 : 0 }}
             animate={{ rotate: expanded ? 180 : 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : undefined}
             className="h-5 w-5 shrink-0 text-brand transition-transform duration-base"
             fill="none"
             viewBox="0 0 24 24"
@@ -284,7 +292,7 @@ export function Tabs({
       onKeyDown={handleKeyDown}
       className={cn(
         "relative flex flex-wrap items-center gap-1.5 overflow-x-auto rounded-2xl px-1.5 py-1.5",
-        "border border-(--glass-border) bg-(--bg-surface)/(--opacity-soft) backdrop-blur-md shadow-glass",
+        "border border-(--glass-border) bg-(--bg-surface)/[calc(var(--opacity-soft)*100%)] backdrop-blur-md shadow-glass",
         className
       )}
     >
@@ -330,6 +338,8 @@ export function Tab({
   tabId?: string
   panelId?: string
 }) {
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+
   return (
     <button
       type="button"
@@ -348,14 +358,17 @@ export function Tab({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
         selected
           ? "text-text-primary"
-          : "text-(--text-secondary) opacity-strong hover:opacity-100 hover:bg-(--bg-surface-hover)/(--opacity-dim)"
+          : "text-(--text-secondary) opacity-strong hover:opacity-100 hover:bg-(--bg-surface-hover)/[calc(var(--opacity-dim)*100%)]"
       )}
     >
       {selected && (
         <m.div
+          key={String(prefersReducedMotion)}
           layoutId={layoutId}
-          className="absolute inset-0 z-hide rounded-xl bg-brand/(--opacity-subtle) ring-1 ring-brand/(--opacity-dim)"
-          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+          className="absolute inset-0 z-hide rounded-xl bg-brand/[calc(var(--opacity-subtle)*100%)] ring-1 ring-brand/[calc(var(--opacity-dim)*100%)]"
+          transition={
+            prefersReducedMotion ? { duration: 0 } : { type: "spring", bounce: 0.2, duration: 0.6 }
+          }
         />
       )}
       <span className="relative z-deep">{label}</span>

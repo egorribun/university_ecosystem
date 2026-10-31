@@ -736,7 +736,11 @@ def test_configure_event_handlers_registers_global_subscriptions():
         event_handlers.configure_event_handlers()
 
     subscribe_all.assert_called_once_with(event_handlers.log_all_events)
-    assert subscribe.call_count == 32
+    assert subscribe.call_count == 33
+    subscribe.assert_any_call(
+        "chat.participant_cache_invalidation",
+        event_handlers.handle_chat_participant_cache_invalidation,
+    )
     subscribe.assert_any_call(
         "event.created", event_handlers.handle_event_created_notification
     )
@@ -867,7 +871,10 @@ async def test_created_notification_handler_skips_deleted_source_record(
     monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
     monkeypatch.setattr(event_handlers, notify_name, notify)
 
-    await getattr(event_handlers, handler_name)(event_type(**{field: event_id}))
+    # A known tenant distinguishes deletion from an unscoped RLS miss.
+    event = event_type(**{field: event_id})
+    vars(event.metadata)["tenant_id"] = str(uuid4())
+    await getattr(event_handlers, handler_name)(event)
 
     db.get.assert_awaited_once_with(
         getattr(event_handlers.models, model_name), event_id
@@ -896,9 +903,10 @@ async def test_comment_notification_fails_closed_when_news_or_author_disappears(
     monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
     monkeypatch.setattr(event_handlers, "notify_about_comment", notify)
 
-    await event_handlers.handle_news_comment_created_notification(
-        NewsCommentCreated(comment_id=uuid4(), locale="en")
-    )
+    # The comment exists; protected parents are missing in a known tenant.
+    event = NewsCommentCreated(comment_id=uuid4(), locale="en")
+    vars(event.metadata)["tenant_id"] = str(uuid4())
+    await event_handlers.handle_news_comment_created_notification(event)
 
     assert db.get.await_count == 3
     notify.assert_not_awaited()
@@ -1032,7 +1040,7 @@ async def test_message_sent_nats_failure_keeps_outbox_row_retryable(monkeypatch)
     monkeypatch.setattr(outbox_module, "event_bus", bus)
     event_handlers.configure_event_handlers()
     monkeypatch.setattr(
-        ws_manager, "_get_chat_participants_cached", AsyncMock(return_value=[])
+        ws_manager, "_get_chat_participants", AsyncMock(return_value=[])
     )
 
     async def publish_core(_subject, _payload, *, strict=False):
@@ -1070,3 +1078,64 @@ async def test_message_sent_nats_failure_keeps_outbox_row_retryable(monkeypatch)
     handler_db.commit.assert_not_awaited()
     broker_publish.assert_awaited_once()
     assert broker_publish.await_args.kwargs["strict"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event_type", "field", "handler_name", "model_name"),
+    [
+        (EventCreated, "event_id_entity", "handle_event_created_notification", "Event"),
+        (NewsCreated, "news_id", "handle_news_created_notification", "News"),
+    ],
+)
+async def test_created_notification_handler_retries_unscoped_missing_source(
+    monkeypatch, event_type, field, handler_name, model_name
+):
+    """RLS-hidden legacy content is not distinguishable from deleted public content."""
+    source_id = uuid4()
+    db = AsyncMock()
+    db.get.return_value = None
+    notify = AsyncMock()
+    notify_name = "notify_about_event" if model_name == "Event" else "notify_about_news"
+    monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
+    monkeypatch.setattr(event_handlers, notify_name, notify)
+    event = event_type(**{field: source_id})
+
+    with pytest.raises(RuntimeError) as caught:
+        await getattr(event_handlers, handler_name)(event)
+
+    expected = "Durable content source is unavailable without tenant scope"
+    assert str(caught.value) == expected
+    db.get.assert_awaited_once_with(
+        getattr(event_handlers.models, model_name), source_id
+    )
+    notify.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing", ["news", "author"])
+async def test_comment_notification_retries_unscoped_missing_protected_parent(
+    monkeypatch, missing
+):
+    from app.core.events import NewsCommentCreated
+
+    comment_id, news_id, user_id = uuid4(), uuid4(), uuid4()
+    comment = SimpleNamespace(news_id=news_id, user_id=user_id)
+    news = None if missing == "news" else SimpleNamespace(id=news_id)
+    author = None if missing == "author" else SimpleNamespace(id=user_id)
+    db = AsyncMock()
+    db.get.side_effect = [comment, news, author]
+    notify = AsyncMock()
+    monkeypatch.setattr(event_handlers, "async_session", lambda: _session(db))
+    monkeypatch.setattr(event_handlers, "notify_about_comment", notify)
+    event = NewsCommentCreated(comment_id=comment_id, locale="en")
+
+    with pytest.raises(RuntimeError) as caught:
+        await event_handlers.handle_news_comment_created_notification(event)
+
+    expected = "Durable content source is unavailable without tenant scope"
+    assert str(caught.value) == expected
+    assert db.get.await_count == 3
+    notify.assert_not_awaited()
+    db.commit.assert_not_awaited()

@@ -20,9 +20,10 @@ from enum import StrEnum
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.config import settings
+from app.core.exceptions.domain import PermissionDenied
 from app.core.logging import get_stdlib_logger
 from app.core.observability import get_request_id
 from app.models.domain_events import StoredEvent
@@ -274,40 +275,61 @@ def auditable(
 
             try:
                 result = await func(self, *args, **kwargs)
+            except PermissionDenied:
+                # Rejected privileged actions are security events. Record only
+                # stable metadata; method arguments and exception details may
+                # contain personal or credential data.
+                bound_args = _get_signature(func).bind(self, *args, **kwargs)
+                actor = bound_args.arguments.get("current_user")
+                actor_id = getattr(actor, "id", actor) if actor is not None else None
+                denied_user_id = actor_id if actor_id is not None else user_id
+                denial_context: dict[str, Any] = {"action": str(event)}
+                if actor_id is not None and user_id is not None and actor_id != user_id:
+                    denial_context["subject_user_id"] = user_id
 
-                # Log SUCCESS
-
-                log_kwargs: dict[str, Any] = {}
-                if include_args:
-                    log_kwargs["args"] = kwargs
-                if include_result:
-                    # RZ-05: Redact the result string if it contains sensitive patterns
-                    # before logging to prevent accidental PII leakage from model __str__.
-                    res_str = str(result)
-                    # Simple heuristic: if any sensitive key is in the result string,
-                    # we might have a leak. For "Absolute Perfection", we ensure
-                    # result is logged via the same redaction engine if it was a dict,
-                    # but since it's a string, we at least scan for obvious tokens.
-                    if (
-                        any(
-                            k in res_str.lower()
-                            for k in ["password", "secret", "token", "jwt", "key"]
-                        )
-                        and "REDACTED" not in res_str
-                    ):
-                        log_kwargs["result"] = "***REDACTED_BY_SECURITY_POLICY***"
-                    else:
-                        log_kwargs["result"] = res_str
-
-                # Use self.audit if available, else fallback to global audit_service
                 auditor = getattr(self, "audit", audit_service)
-                auditor.log(event, request=request, user_id=user_id, **log_kwargs)
-
-                return result
+                auditor.log(
+                    SecurityEvent.ACCESS_DENIED,
+                    request=request,
+                    user_id=denied_user_id,
+                    reason="permission_denied",
+                    **denial_context,
+                )
+                raise
             except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — audit decorator must not alter exception propagation (reviewed TD-27-04)
                 # RZ-20-04: KEEP broad — audit decorator must not alter exception
                 # propagation. Re-raises unconditionally.
                 raise
+
+            # Log SUCCESS
+
+            log_kwargs: dict[str, Any] = {}
+            if include_args:
+                log_kwargs["args"] = kwargs
+            if include_result:
+                # RZ-05: Redact the result string if it contains sensitive patterns
+                # before logging to prevent accidental PII leakage from model __str__.
+                res_str = str(result)
+                # Simple heuristic: if any sensitive key is in the result string,
+                # we might have a leak. For "Absolute Perfection", we ensure
+                # result is logged via the same redaction engine if it was a dict,
+                # but since it's a string, we at least scan for obvious tokens.
+                if (
+                    any(
+                        k in res_str.lower()
+                        for k in ["password", "secret", "token", "jwt", "key"]
+                    )
+                    and "REDACTED" not in res_str
+                ):
+                    log_kwargs["result"] = "***REDACTED_BY_SECURITY_POLICY***"
+                else:
+                    log_kwargs["result"] = res_str
+
+            # Use self.audit if available, else fallback to global audit_service
+            auditor = getattr(self, "audit", audit_service)
+            auditor.log(event, request=request, user_id=user_id, **log_kwargs)
+
+            return result
 
         return wrapper  # type: ignore[return-value]
 
@@ -361,6 +383,8 @@ _AUDIT_LOG_JSON_ARRAY_V1_FIELDS = (
     "created_at",
 )
 _ZERO_HASH = "0" * 64
+_DOMAIN_EVENT_SIGNATURE_VERSION_KEY = "_audit_signature_version"
+_DOMAIN_EVENT_SIGNATURE_VERSION = 2
 
 
 def _is_unchained_outbox_row(event: Any) -> bool:
@@ -754,16 +778,55 @@ class SecureAuditService:
         event_type: str,
         payload: dict[str, Any],
         version: int = 1,
+        *,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """Produce canonical JSON representation of event data for HMAC hashing."""
-        ordered_data = {
+        ordered_data: dict[str, Any] = {
             "aggregate_id": str(aggregate_id),
             "aggregate_type": str(aggregate_type),
             "event_type": str(event_type),
             "payload": payload,
             "version": version,
         }
+        if metadata is not None:
+            ordered_data["metadata"] = metadata
         return json.dumps(ordered_data, sort_keys=True, separators=(",", ":"))
+
+    @staticmethod
+    def _event_signature_metadata(metadata: Any) -> dict[str, Any] | None:
+        """Select the metadata covered by an event signature.
+
+        Missing markers identify historical signatures that used the original
+        payload-only format. Their metadata, including actor_id, is not
+        authenticated. A present marker must be a supported v2 integer, and
+        malformed metadata never falls back to the legacy format.
+        """
+        if metadata is None:
+            return None
+        if not isinstance(metadata, dict):
+            raise ValueError("event signature metadata must be an object")
+        if _DOMAIN_EVENT_SIGNATURE_VERSION_KEY not in metadata:
+            return None
+        signature_version = metadata[_DOMAIN_EVENT_SIGNATURE_VERSION_KEY]
+        if (
+            type(signature_version) is not int
+            or signature_version != _DOMAIN_EVENT_SIGNATURE_VERSION
+        ):
+            raise ValueError("unsupported event signature version")
+        return metadata
+
+    def _canonicalize_stored_event(self, event: Any) -> str:
+        """Canonicalize a stored event using its declared signature scheme."""
+        metadata = self._event_signature_metadata(getattr(event, "metadata_", None))
+        return self.canonicalize_event_payload(
+            aggregate_type=event.aggregate_type,
+            aggregate_id=event.aggregate_id,
+            event_type=event.event_type,
+            payload=event.payload,
+            version=event.version,
+            metadata=metadata,
+        )
 
     def compute_event_hash(
         self,
@@ -790,8 +853,32 @@ class SecureAuditService:
         version: int = 1,
         created_at: datetime | None = None,
     ) -> Any:
-        """Record a domain event with cryptographic HMAC hash chaining."""
+        """Record a domain event with cryptographic HMAC hash chaining.
+
+        PostgreSQL requires a caller-owned transaction with READ COMMITTED
+        semantics (including READ UNCOMMITTED). Snapshot isolation is rejected
+        without committing, rolling back or changing the isolation level.
+        """
         agg_id_str = str(aggregate_id)
+
+        if db.get_bind().dialect.name == "postgresql":
+            isolation = await db.scalar(
+                select(func.pg_catalog.current_setting("transaction_isolation"))
+            )
+            if isolation not in ("read committed", "read uncommitted"):
+                raise ValueError("Domain event writes require READ COMMITTED semantics")
+            # PostgreSQL READ UNCOMMITTED has READ COMMITTED semantics.
+            # Reject snapshot isolation rather than changing caller-owned state.
+            # A fresh head snapshot must follow the aggregate lock acquisition.
+            # The caller owns commit/rollback and therefore the lock lifetime.
+            lock_identity = json.dumps(
+                ["audit-domain-event-chain", aggregate_type, agg_id_str],
+                separators=(",", ":"),
+            ).encode("utf-8")
+            lock_id = int.from_bytes(
+                sha256(lock_identity).digest()[:8], byteorder="big", signed=True
+            )
+            await db.execute(select(func.pg_catalog.pg_advisory_xact_lock(lock_id)))
 
         # 1. Fetch latest event hash for sequence continuity and per-aggregate hash chaining with row lock
         stmt = (
@@ -823,12 +910,18 @@ class SecureAuditService:
             now = now.replace(tzinfo=UTC)
         now_iso = now.isoformat()
 
+        event_metadata = {
+            "actor_id": str(actor_id) if actor_id else None,
+            _DOMAIN_EVENT_SIGNATURE_VERSION_KEY: _DOMAIN_EVENT_SIGNATURE_VERSION,
+        }
+        signature_metadata = self._event_signature_metadata(event_metadata)
         canonical = self.canonicalize_event_payload(
             aggregate_type=aggregate_type,
             aggregate_id=agg_id_str,
             event_type=event_type,
             payload=payload,
             version=version,
+            metadata=signature_metadata,
         )
         event_hash = self.compute_event_hash(prev_hash, canonical, now_iso)
 
@@ -847,7 +940,7 @@ class SecureAuditService:
             aggregate_id=agg_id_str,
             aggregate_id_uuid=agg_id_uuid,
             payload=payload,
-            metadata_={"actor_id": str(actor_id) if actor_id else None},
+            metadata_=event_metadata,
             version=version,
             sequence_number=next_seq,
             prev_hash=prev_hash,
@@ -954,14 +1047,15 @@ class SecureAuditService:
                 for (agg_type, agg_id), agg_events in events_by_aggregate.items():
                     initial_prev_hash = agg_events[0].prev_hash
                     chain_tuples = []
-                    for event in agg_events:
-                        canonical = self.canonicalize_event_payload(
-                            aggregate_type=event.aggregate_type,
-                            aggregate_id=event.aggregate_id,
-                            event_type=event.event_type,
-                            payload=event.payload,
-                            version=event.version,
-                        )
+                    for event_index, event in enumerate(agg_events):
+                        try:
+                            canonical = self._canonicalize_stored_event(event)
+                        except (TypeError, ValueError):
+                            return (
+                                False,
+                                str(event.id),
+                                f"Invalid event signature metadata at index {event_index}",
+                            )
                         dt = event.created_at
                         if dt.tzinfo is None:
                             dt = dt.replace(tzinfo=UTC)
@@ -1004,13 +1098,14 @@ class SecureAuditService:
                         f"Chain discontinuity at index {idx} (event {event.id}): expected prev_hash {current_prev_hash}, got {event.prev_hash}",
                     )
 
-                canonical = self.canonicalize_event_payload(
-                    aggregate_type=event.aggregate_type,
-                    aggregate_id=event.aggregate_id,
-                    event_type=event.event_type,
-                    payload=event.payload,
-                    version=event.version,
-                )
+                try:
+                    canonical = self._canonicalize_stored_event(event)
+                except (TypeError, ValueError):
+                    return (
+                        False,
+                        str(event.id),
+                        f"Invalid event signature metadata at index {idx}",
+                    )
                 dt = event.created_at
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=UTC)

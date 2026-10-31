@@ -174,6 +174,25 @@ jobs:
               .github/scripts/verify_mfa_key_rotation.py|\
               scripts/osv_batch_audit.py|scripts/check_dependency_audit_report.py|\
               scripts/audit_dependencies.py|scripts/ci/helm_dependency_build.py|\
+              frontend/scripts/generate-zod-root-lock-candidate.mjs|\
+              frontend/scripts/generate-zod-root-lock-candidate.test.mjs|\
+              frontend/scripts/generate-puppeteer-lock-candidate.mjs|\
+              frontend/scripts/generate-puppeteer-lock-candidate.test.mjs|\
+              frontend/scripts/browser-dependency-smoke.mjs|\
+              frontend/scripts/browser-dependency-smoke.test.mjs|\
+              frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs|\
+              frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs|\
+              frontend/scripts/generate-react-compiler-final-lock-candidate.mjs|\
+              frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs|\
+              frontend/scripts/pack-react-compiler-zod-compat.mjs|\
+              frontend/scripts/pack-react-compiler-zod-compat.test.mjs|\
+              frontend/vendor/react-compiler-zod-compat-1.0.0.tgz|\
+              frontend/scripts/react-compiler-zod-compat/index.cjs|\
+              frontend/scripts/react-compiler-zod-compat/package.json|\
+              frontend/scripts/react-compiler-zod-compat/legacy-baseline.json|\
+              frontend/scripts/react-compiler-zod-compat.test.mjs|\
+              scripts/ci/probe_react_compiler_artifacts.py|\
+              tests/test_probe_react_compiler_artifacts.py|\
               scripts/quality/filter_checkov_sarif.py|\
               scripts/verify_secrets_baseline.py|\
               scripts/quality/coverage_provenance.py|\

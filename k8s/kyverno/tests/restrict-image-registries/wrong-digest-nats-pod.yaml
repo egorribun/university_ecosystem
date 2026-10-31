@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wrong-digest-nats-pod
+  namespace: university-ecosystem
+spec:
+  containers:
+    - name: dependency
+      image: docker.io/nats@sha256:0000000000000000000000000000000000000000000000000000000000000000

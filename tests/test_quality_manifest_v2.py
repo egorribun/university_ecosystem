@@ -242,6 +242,10 @@ def git_evidence_root(tmp_path: Path) -> Path:
     )
     quality_root = tmp_path / "quality"
     quality_root.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(
+        REPOSITORY_ROOT / "quality" / "coverage-source-policy.json",
+        quality_root / "coverage-source-policy.json",
+    )
     (quality_root / "ownership-mapping.json").write_text(
         json.dumps({"tier0_rules": ["**/spicedb/**"]}),
         encoding="utf-8",

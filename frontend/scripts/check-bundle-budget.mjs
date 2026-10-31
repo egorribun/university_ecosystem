@@ -3,9 +3,60 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { brotliCompressSync, gzipSync } from "node:zlib"
 
+import { parse } from "parse5"
+
 const DEFAULT_DIST_DIR = path.resolve(process.cwd(), "dist")
 const DEFAULT_REPORT_PATH = path.resolve(process.cwd(), "bundle-report.json")
-const ASSET_EXTENSIONS = new Set([".js", ".css"])
+const ASSET_EXTENSIONS = new Set([".js", ".mjs", ".css"])
+const HTML_LIMIT = 1024 * 1024
+const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml"
+const MAPLIBRE_LAZY_GZIP_KB = 286
+
+// parse5 preserves browser tree recovery without reporting every mismatched end
+// tag. Require a real closing token where HTML does not permit its omission.
+// Void names follow parse5's HTML serializer, including its legacy void tags.
+const HTML_VOID_ELEMENTS = new Set([
+  "area",
+  "base",
+  "basefont",
+  "bgsound",
+  "br",
+  "col",
+  "embed",
+  "frame",
+  "hr",
+  "img",
+  "input",
+  "keygen",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+])
+const HTML_OPTIONAL_END_TAGS = new Set([
+  "html",
+  "head",
+  "body",
+  "li",
+  "dt",
+  "dd",
+  "p",
+  "rb",
+  "rt",
+  "rtc",
+  "rp",
+  "optgroup",
+  "option",
+  "colgroup",
+  "thead",
+  "tbody",
+  "tfoot",
+  "tr",
+  "td",
+  "th",
+])
 
 // Transfer budgets are baseline ratchets, not substitutes for route-level LHCI.
 // Password dictionaries are isolated, user-intent-loaded chunks and therefore
@@ -42,37 +93,155 @@ async function readFiles(dir) {
   return files.flat()
 }
 
-function getAttribute(tag, attribute) {
-  for (const match of tag.matchAll(/\b([a-z][\w:-]*)=["']([^"']+)["']/gi)) {
-    if (match[1]?.toLowerCase() === attribute.toLowerCase()) return match[2]
+const invalidHtml = () => new Error("Unsupported or malformed bundle HTML")
+const trimHtmlSpace = (value) => value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, "")
+
+function htmlAttribute(node, name) {
+  return node.attrs?.find((attribute) => attribute.name === name && !attribute.namespace)?.value
+}
+
+function normalizeHtmlAssetReference(reference, htmlRelativeDirectory, extension) {
+  const segments = reference.split("/")
+  const hasExtension =
+    extension === ".js"
+      ? reference.endsWith(".js") || reference.endsWith(".mjs")
+      : reference.endsWith(extension)
+  if (
+    !/^\/[A-Za-z0-9_@.-]+(?:\/[A-Za-z0-9_@.-]+)*$/u.test(reference) ||
+    segments.some((segment) => segment === "." || segment === "..") ||
+    !hasExtension
+  ) {
+    throw invalidHtml()
   }
-  return undefined
+  return path.posix.join(htmlRelativeDirectory, reference.slice(1))
 }
 
-function normalizeHtmlAssetReference(reference, htmlRelativeDirectory) {
-  const withoutSuffix = reference.split(/[?#]/, 1)[0]
-  if (!withoutSuffix || /^(?:https?:)?\/\//i.test(withoutSuffix)) return null
-  const relativeReference = withoutSuffix.replace(/^\//, "")
-  return normalizeAssetPath(
-    path.posix.normalize(path.posix.join(htmlRelativeDirectory, relativeReference))
-  )
-}
-
+// These are unique direct HTML asset bytes, not a browser network total.
+// Inline script behavior and transitive imports are outside this report.
 function extractInitialAssetPaths(html, htmlRelativeDirectory) {
-  const initialPaths = new Set()
-  for (const tag of html.match(/<(?:link|script)\b[^>]*>/gi) ?? []) {
-    const relation = tag.startsWith("<link") ? getAttribute(tag, "rel")?.toLowerCase() : undefined
-    const isModulePreload = tag.startsWith("<link") && relation === "modulepreload"
-    const isStylesheet = tag.startsWith("<link") && relation === "stylesheet"
-    const isModuleScript =
-      tag.startsWith("<script") && getAttribute(tag, "type")?.toLowerCase() === "module"
-    if (!isModulePreload && !isModuleScript && !isStylesheet) continue
+  let parseError = false
+  const document = parse(html, {
+    scriptingEnabled: true,
+    sourceCodeLocationInfo: true,
+    onParseError(error) {
+      if (error.code !== "missing-doctype") parseError = true
+    },
+  })
+  if (parseError) throw invalidHtml()
 
-    const reference = getAttribute(tag, isModulePreload || isStylesheet ? "href" : "src")
-    if (!reference) continue
-    const normalized = normalizeHtmlAssetReference(reference, htmlRelativeDirectory)
-    if (normalized && (normalized.endsWith(".js") || normalized.endsWith(".css"))) {
-      initialPaths.add(normalized)
+  const initialPaths = new Set()
+  const moduleRoots = new Map()
+  const addInitial = (node, reference, extension, isModule) => {
+    const assetPath = normalizeHtmlAssetReference(reference, htmlRelativeDirectory, extension)
+    const unqualifiedModule =
+      isModule &&
+      ["crossorigin", "integrity", "referrerpolicy", "fetchpriority"].every(
+        (attribute) => htmlAttribute(node, attribute) === undefined
+      )
+    const plainModuleScript = unqualifiedModule && node.tagName === "script"
+    const lowPriorityPreload =
+      isModule &&
+      node.tagName === "link" &&
+      htmlAttribute(node, "rel") === "modulepreload" &&
+      htmlAttribute(node, "fetchpriority") === "low" &&
+      ["crossorigin", "integrity", "referrerpolicy"].every(
+        (attribute) => htmlAttribute(node, attribute) === undefined
+      )
+    const previous = moduleRoots.get(assetPath)
+    const ordinaryDuplicate = previous?.unqualifiedModule && unqualifiedModule
+    // The pinned producer pairs one low-priority preload with one plain module.
+    // Keep other qualified duplicates closed; this is unique-asset accounting.
+    const producerDuplicate =
+      (previous?.plainModuleScript && lowPriorityPreload) ||
+      (previous?.lowPriorityPreload && plainModuleScript)
+    if (previous && !ordinaryDuplicate && !producerDuplicate) throw invalidHtml()
+    moduleRoots.set(
+      assetPath,
+      previous
+        ? { unqualifiedModule: ordinaryDuplicate }
+        : { unqualifiedModule, plainModuleScript, lowPriorityPreload }
+    )
+    initialPaths.add(assetPath)
+  }
+  const pending = [{ node: document, foreign: false }]
+  while (pending.length > 0) {
+    const { node, foreign } = pending.pop()
+    const inForeign = foreign || (node.namespaceURI && node.namespaceURI !== HTML_NAMESPACE)
+    const name = node.tagName?.toLowerCase()
+    if (inForeign && (name === "script" || name === "link")) throw invalidHtml()
+
+    if (node.namespaceURI === HTML_NAMESPACE) {
+      const location = node.sourceCodeLocation
+      if (
+        location &&
+        !location.endTag &&
+        !HTML_VOID_ELEMENTS.has(name) &&
+        !HTML_OPTIONAL_END_TAGS.has(name)
+      ) {
+        throw invalidHtml()
+      }
+      if (name === "template") continue
+      if (name === "base" && htmlAttribute(node, "href") !== undefined) throw invalidHtml()
+
+      if (name === "script") {
+        const src = htmlAttribute(node, "src")
+        if (src !== undefined) {
+          const type = trimHtmlSpace(htmlAttribute(node, "type") ?? "").toLowerCase()
+          if (!["application/json", "application/ld+json"].includes(type)) {
+            if (
+              !["", "module", "text/javascript", "application/javascript"].includes(type) ||
+              htmlAttribute(node, "nomodule") !== undefined ||
+              htmlAttribute(node, "language") !== undefined
+            ) {
+              throw invalidHtml()
+            }
+            addInitial(node, src, ".js", type === "module")
+          }
+        }
+      }
+
+      if (name === "link") {
+        const rel = (htmlAttribute(node, "rel") ?? "").toLowerCase().split(/[\t\n\f\r ]+/u)
+        const asAttribute = htmlAttribute(node, "as")
+        const as = (asAttribute ?? "").toLowerCase()
+        const href = htmlAttribute(node, "href")
+        const modulePreload = rel.includes("modulepreload")
+        const stylesheet = rel.includes("stylesheet")
+        const scriptPreload = rel.includes("preload") && as === "script"
+        const stylePreload = rel.includes("preload") && as === "style"
+        if (
+          rel.includes("preload") &&
+          !modulePreload &&
+          !stylesheet &&
+          !scriptPreload &&
+          !stylePreload &&
+          href !== undefined &&
+          (/\.(?:m?js|css)(?:[?#]|$)/iu.test(href) || /[%\\]/u.test(href.split(/[?#]/u, 1)[0]))
+        ) {
+          throw invalidHtml()
+        }
+        if (modulePreload || stylesheet || scriptPreload || stylePreload) {
+          if (
+            rel.some(
+              (token) => token && !["modulepreload", "stylesheet", "preload"].includes(token)
+            ) ||
+            htmlAttribute(node, "media") !== undefined ||
+            htmlAttribute(node, "disabled") !== undefined ||
+            htmlAttribute(node, "type") !== undefined ||
+            (modulePreload && asAttribute !== undefined && as !== "script") ||
+            ((modulePreload || scriptPreload) && (stylesheet || stylePreload))
+          ) {
+            throw invalidHtml()
+          }
+          if (href === undefined) throw invalidHtml()
+          const extension = stylesheet || stylePreload ? ".css" : ".js"
+          addInitial(node, href, extension, modulePreload)
+        }
+      }
+    }
+
+    for (let index = (node.childNodes?.length ?? 0) - 1; index >= 0; index -= 1) {
+      pending.push({ node: node.childNodes[index], foreign: inForeign })
     }
   }
   return initialPaths
@@ -104,7 +273,14 @@ function largestBy(items, field) {
 
 export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
   const entryHtmlPath = await findEntryHtml(distDir)
-  const html = await fs.readFile(entryHtmlPath, "utf8")
+  const htmlBytes = await fs.readFile(entryHtmlPath)
+  if (htmlBytes.byteLength > HTML_LIMIT) throw invalidHtml()
+  let html
+  try {
+    html = new TextDecoder("utf-8", { fatal: true }).decode(htmlBytes)
+  } catch {
+    throw invalidHtml()
+  }
   const htmlRelativeDirectory = normalizeAssetPath(
     path.relative(distDir, path.dirname(entryHtmlPath))
   )
@@ -115,19 +291,30 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
   if (assetFiles.length === 0) {
     throw new Error(`No build assets found in ${distDir}. Did you run the build?`)
   }
+  const availablePaths = new Set(
+    assetFiles.map((filePath) => normalizeAssetPath(path.relative(distDir, filePath)))
+  )
+  for (const assetPath of initialPaths) {
+    if (!availablePaths.has(assetPath)) {
+      throw new Error(`HTML asset reference not found: ${assetPath}`)
+    }
+    if (/(?:^|\/)vendor-password-strength-(?:en|ru)-[^/]+\.m?js$/u.test(assetPath)) {
+      throw new Error(`Password dictionary cannot be an initial HTML asset: ${assetPath}`)
+    }
+  }
 
   const assets = await Promise.all(
     assetFiles.map(async (filePath) => {
       const content = await fs.readFile(filePath)
       const assetPath = normalizeAssetPath(path.relative(distDir, filePath))
-      const isJavaScript = assetPath.endsWith(".js")
+      const isJavaScript = assetPath.endsWith(".js") || assetPath.endsWith(".mjs")
       return {
         path: assetPath,
         type: isJavaScript ? "javascript" : "stylesheet",
         rawBytes: content.byteLength,
         gzipBytes: gzipSync(content, { level: 9 }).byteLength,
         brotliBytes: brotliCompressSync(content).byteLength,
-        isMain: isJavaScript && /(?:^|\/)(?:index|main)-[^/]+\.js$/.test(assetPath),
+        isMain: isJavaScript && /(?:^|\/)(?:index|main)-[^/]+\.m?js$/.test(assetPath),
         isInitial: initialPaths.has(assetPath),
         isPasswordDictionary:
           isJavaScript && /(?:^|\/)vendor-password-strength-(?:en|ru)-[^/]+\.js$/.test(assetPath),
@@ -135,6 +322,30 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
     })
   )
   assets.sort((left, right) => left.path.localeCompare(right.path))
+
+  let mapLibreAllowance
+  if (options.mapLibreEvidence !== undefined) {
+    const { verifyMapLibreBudgetAllowance } = await import("./maplibre-graph-binding.mjs")
+    const verified = await verifyMapLibreBudgetAllowance(
+      path.dirname(entryHtmlPath),
+      options.mapLibreEvidence
+    )
+    const candidatePath = path.posix.join(htmlRelativeDirectory, verified.fileName)
+    const candidates = assets.filter(
+      (asset) => asset.type === "javascript" && /(?:^|\/)vendor-map(?:-|\.)/u.test(asset.path)
+    )
+    const candidate = candidates[0]
+    if (
+      candidates.length !== 1 ||
+      candidate.path !== candidatePath ||
+      candidate.isInitial ||
+      candidate.rawBytes !== verified.rawBytes ||
+      candidate.gzipBytes !== verified.gzipBytes
+    ) {
+      throw new Error("MapLibre budget evidence rejected")
+    }
+    mapLibreAllowance = { ...verified, path: candidatePath, gzipLimitKiB: MAPLIBRE_LAZY_GZIP_KB }
+  }
 
   const javascriptAssets = assets.filter((asset) => asset.type === "javascript")
   const stylesheetAssets = assets.filter((asset) => asset.type === "stylesheet")
@@ -153,9 +364,15 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
   const passwordDictionaryAssets = javascriptAssets.filter(
     (asset) => !asset.isInitial && asset.isPasswordDictionary
   )
+  const passwordDictionaryRawAssets = javascriptAssets.filter(
+    (asset) =>
+      !asset.isInitial &&
+      /(?:^|\/)vendor-password-strength-(?:en|ru)-[^/]+\.m?js$/u.test(asset.path)
+  )
   const main = largestBy(mainAssets, "rawBytes")
   const largestGeneralLazy = largestBy(generalLazyAssets, "gzipBytes")
   const largestPasswordDictionary = largestBy(passwordDictionaryAssets, "gzipBytes")
+  const largestPasswordDictionaryRaw = largestBy(passwordDictionaryRawAssets, "rawBytes")
   const sum = (items, field) => items.reduce((total, asset) => total + asset[field], 0)
 
   return {
@@ -164,6 +381,7 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
     commitSha: options.commitSha ?? process.env.GITHUB_SHA ?? null,
     sourceRoot: normalizeAssetPath(path.relative(process.cwd(), distDir)) || ".",
     budgets: BUNDLE_BUDGETS,
+    ...(mapLibreAllowance ? { mapLibreAllowance } : {}),
     summary: {
       assetCount: assets.length,
       javascriptAssetCount: javascriptAssets.length,
@@ -184,7 +402,8 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
       largestGeneralLazyJsPath: largestGeneralLazy?.path ?? null,
       largestGeneralLazyJsGzipBytes: largestGeneralLazy?.gzipBytes ?? 0,
       largestPasswordDictionaryPath: largestPasswordDictionary?.path ?? null,
-      largestPasswordDictionaryRawBytes: largestPasswordDictionary?.rawBytes ?? 0,
+      largestPasswordDictionaryRawPath: largestPasswordDictionaryRaw?.path ?? null,
+      largestPasswordDictionaryRawBytes: largestPasswordDictionaryRaw?.rawBytes ?? 0,
       largestPasswordDictionaryGzipBytes: largestPasswordDictionary?.gzipBytes ?? 0,
     },
     assets,
@@ -210,15 +429,31 @@ export function getBundleBudgetViolations(report) {
       limitKb: BUNDLE_BUDGETS.initialCssGzipKb,
       message: "Initial CSS delivery graph exceeds gzip budget",
     },
-    {
-      actualBytes: summary.largestGeneralLazyJsGzipBytes,
-      limitKb: BUNDLE_BUDGETS.generalLazyJsGzipKb,
-      message: `Lazy JS chunk '${summary.largestGeneralLazyJsPath}' exceeds gzip budget`,
-    },
+    ...(report.mapLibreAllowance
+      ? report.assets
+          .filter(
+            (asset) =>
+              asset.type === "javascript" && !asset.isInitial && !asset.isPasswordDictionary
+          )
+          .map((asset) => ({
+            actualBytes: asset.gzipBytes,
+            limitKb:
+              asset.path === report.mapLibreAllowance.path
+                ? MAPLIBRE_LAZY_GZIP_KB
+                : BUNDLE_BUDGETS.generalLazyJsGzipKb,
+            message: `Lazy JS chunk '${asset.path}' exceeds gzip budget`,
+          }))
+      : [
+          {
+            actualBytes: summary.largestGeneralLazyJsGzipBytes,
+            limitKb: BUNDLE_BUDGETS.generalLazyJsGzipKb,
+            message: `Lazy JS chunk '${summary.largestGeneralLazyJsPath}' exceeds gzip budget`,
+          },
+        ]),
     {
       actualBytes: summary.largestPasswordDictionaryRawBytes ?? 0,
       limitKb: BUNDLE_BUDGETS.passwordDictionaryRawKb,
-      message: `Password dictionary '${summary.largestPasswordDictionaryPath}' exceeds raw budget`,
+      message: `Password dictionary '${summary.largestPasswordDictionaryRawPath ?? summary.largestPasswordDictionaryPath}' exceeds raw budget`,
     },
     {
       actualBytes: summary.largestPasswordDictionaryGzipBytes,
@@ -246,7 +481,25 @@ export function assertBundleBudgets(report) {
 }
 
 async function main() {
-  const report = await analyzeBundle()
+  const input = {
+    metadataPath: process.env.MAPLIBRE_BUDGET_METADATA_PATH,
+    metadataSha256: process.env.MAPLIBRE_BUDGET_METADATA_SHA256,
+    htmlReportPath: process.env.MAPLIBRE_BUDGET_HTML_PATH,
+    htmlReportSha256: process.env.MAPLIBRE_BUDGET_HTML_SHA256,
+    treeSha: process.env.MAPLIBRE_BUDGET_TREE_SHA,
+  }
+  const options = Object.values(input).some((value) => value !== undefined)
+    ? {
+        mapLibreEvidence: {
+          ...input,
+          workspace: process.env.GITHUB_WORKSPACE,
+          checkoutSha: process.env.GITHUB_SHA,
+          runId: process.env.GITHUB_RUN_ID,
+          runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+        },
+      }
+    : {}
+  const report = await analyzeBundle(DEFAULT_DIST_DIR, options)
   const violations = getBundleBudgetViolations(report)
   report.validation = { valid: violations.length === 0, violations }
   await fs.writeFile(DEFAULT_REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`, "utf8")

@@ -192,7 +192,7 @@ jobs:
 
       - name: Install wasm-pack
         if: ${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' && inputs.wasm-artifact-digest == '' }}
-        uses: taiki-e/install-action@f7e5d7c961414b23f5b25b2da9294395d08513ad # v2.87.26
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: wasm-pack@0.15.0
 
@@ -348,6 +348,9 @@ jobs:
           src/components/messenger/__tests__/ChatWindow.ime-edit.audit.test.tsx
           src/routes/__tests__/activity.search-validation.test.ts
           src/features/events/components/__tests__/EventsList.closure.test.tsx
+          src/api/hooks/__tests__/events.branches.test.tsx
+          src/features/events/__tests__/EventsFeature.query-error.audit.test.tsx
+          src/components/events/__tests__/EventEditDialog.test.tsx
           src/pages/__tests__/StoriesAdmin.test.tsx
           src/components/map/__tests__/MapSidebar.branches.test.tsx
           src/hooks/features/__tests__/useMessengerController.test.tsx
@@ -359,9 +362,20 @@ jobs:
           src/components/messenger/GroupInfoPanel.branches.test.tsx
           src/components/messenger/GroupInfoPanel.escape.integration.test.tsx
           src/components/pwa/__tests__/InstallPrompt.behavior.test.tsx
+          src/components/layout/__tests__/AuthPageLandmarks.test.tsx
+          src/components/profile/__tests__/profileUtils.closure.test.ts
+          src/pages/__tests__/ResetPassword.token-error.test.tsx
+          src/pages/__tests__/ForgotPassword.test.tsx
+          src/pages/__tests__/Register.test.tsx
+          src/pages/__tests__/Profile.behavior.test.tsx
           --reporter=verbose
         env:
           CI: "true"
+
+      - name: Run final HTML inventory contracts
+        if: ${{ !cancelled() && steps.install-contract-dependencies.outcome == 'success' }}
+        timeout-minutes: 2
+        run: node --test scripts/final-html-root-inventory.test.mjs
 
   unit-tests-shard:
     name: Unit Tests (shard ${{ matrix.shard }}/4)
@@ -783,6 +797,7 @@ jobs:
         shell: bash
         env:
           STATIC_GATE_LOG_DIR: ${{ runner.temp }}/frontend-static-gates
+          SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           rm -rf -- "$STATIC_GATE_LOG_DIR"
@@ -826,10 +841,11 @@ jobs:
           run_gate i18n npm run i18n:check &
           run_gate message_contract python ../scripts/generate_message_contract.py --check &
           run_gate knip npm run lint:knip &
+          run_gate react_compiler_compat timeout 120s node --test scripts/react-compiler-zod-compat.test.mjs &
           wait
 
           failed=0
-          for gate in typecheck eslint formatting i18n message_contract knip; do
+          for gate in typecheck eslint formatting i18n message_contract knip react_compiler_compat; do
             echo "::group::$gate"
             cat "$STATIC_GATE_LOG_DIR/$gate.log"
             echo "::endgroup::"
@@ -844,6 +860,13 @@ jobs:
   build:
     name: Production Build
     needs: wasm-build
+    outputs:
+      bundle-artifact-id: ${{ steps.upload-production-bundle.outputs.artifact-id }}
+      metadata-artifact-id: ${{ steps.upload-maplibre-metadata.outputs.artifact-id }}
+      html-artifact-id: ${{ steps.upload-final-html-inventory.outputs.artifact-id }}
+      metadata-sha256: ${{ steps.capture-maplibre-metadata.outputs.metadata-sha256 }}
+      html-sha256: ${{ steps.capture-final-html-inventory.outputs.html-sha256 }}
+      tree-sha: ${{ steps.capture-final-html-inventory.outputs.tree-sha }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
@@ -856,6 +879,8 @@ jobs:
       # this same bounded pair is exercised by the Linux E2E/browser builds.
       FRONTEND_BUILD_MAX_RSS_MB: "2048"
       FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
+      # Rolldown keeps native allocations across the client and SSR passes.
+      ROLLDOWN_WORKER_THREADS: "2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -889,8 +914,626 @@ jobs:
         run: npm run build
         env:
           SKIP_WASM_BUILD: "1"
+          MAPLIBRE_BUILD_METADATA_OUTPUT: ${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
+
+      - name: Report bounded MapLibre build inventory
+        id: capture-maplibre-metadata
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'MAPLIBRE_INVENTORY'
+          import { execFileSync } from "node:child_process"
+          import { createHash } from "node:crypto"
+          import { constants } from "node:fs"
+          import { open, realpath } from "node:fs/promises"
+          import path from "node:path"
+          import { gzipSync } from "node:zlib"
+          
+          const MAX_BYTES = 4 * 1024 * 1024
+          const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
+          const reject = () => { throw new Error("invalid inventory") }
+          const check = (valid) => { if (!valid) reject() }
+          const integer = (value, maximum = 1_000_000_000) =>
+            Number.isSafeInteger(value) && value >= 0 && value <= maximum
+          const digest = (value) => typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
+          const safePath = (value) =>
+            typeof value === "string" && value.length > 0 && value.length <= 1024 &&
+            /^[A-Za-z0-9_@./-]+$/u.test(value) && !value.startsWith("/") &&
+            value.split("/").every((part) => part !== "" && part !== "." && part !== "..")
+          const within = (root, value) => value === root || value.startsWith(root + path.sep)
+          const exact = (value, keys) => {
+            check(value !== null && typeof value === "object" && !Array.isArray(value))
+            const actual = Object.keys(value).sort()
+            const expected = [...keys].sort()
+            check(actual.length === expected.length && actual.every((key, index) => key === expected[index]))
+          }
+          const ordered = (values, maximum, predicate, lexical = false) => {
+            check(Array.isArray(values) && values.length <= maximum)
+            check(values.every(predicate))
+            check(values.every((value, index) => index === 0 ||
+              (lexical ? values[index - 1] < value : values[index - 1].localeCompare(value) < 0)))
+          }
+          async function boundedFile(file) {
+            check(
+              Number.isSafeInteger(constants.O_NOFOLLOW) && constants.O_NOFOLLOW > 0 &&
+              Number.isSafeInteger(constants.O_NONBLOCK) && constants.O_NONBLOCK > 0
+            )
+            const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+            try {
+              const before = await handle.stat({ bigint: true })
+              check(before.isFile() && before.size <= BigInt(MAX_BYTES))
+              const bytes = Buffer.alloc(MAX_BYTES + 1)
+              let size = 0
+              while (size <= MAX_BYTES) {
+                const part = await handle.read(bytes, size, bytes.length - size, null)
+                if (part.bytesRead === 0) break
+                size += part.bytesRead
+              }
+              check(size <= MAX_BYTES)
+              const after = await handle.stat({ bigint: true })
+              check(
+                before.dev === after.dev && before.ino === after.ino &&
+                before.size === after.size && before.size === BigInt(size) &&
+                before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs
+              )
+              return bytes.subarray(0, size)
+            } finally {
+              await handle.close()
+            }
+          }
+          async function insideFile(root, relative) {
+            check(safePath(relative))
+            const file = path.resolve(root, relative)
+            check(within(root, file))
+            const parent = await realpath(path.dirname(file))
+            check(within(root, parent) && parent === path.dirname(file))
+            return boundedFile(file)
+          }
+          
+          try {
+            const root = await realpath(process.cwd())
+            const dist = await realpath(path.join(root, "dist"))
+            const output = await realpath(path.join(dist, "client"))
+            check(within(root, dist) && within(dist, output))
+            const { GITHUB_SHA: checkoutSha, GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: runAttempt } = process.env
+            check(typeof checkoutSha === "string" && /^[a-f0-9]{40}$/u.test(checkoutSha))
+            check(typeof runId === "string" && /^[1-9][0-9]{0,19}$/u.test(runId))
+            check(typeof runAttempt === "string" && /^[1-9][0-9]{0,9}$/u.test(runAttempt))
+            check(typeof process.env.RUNNER_TEMP === "string" && path.isAbsolute(process.env.RUNNER_TEMP))
+            const temporary = await realpath(process.env.RUNNER_TEMP)
+            check(!within(dist, temporary))
+            const reportPath = path.join(temporary, "maplibre-inventory-" + runId + "-" + runAttempt + "-" + checkoutSha + ".json")
+            const git = (...args) => execFileSync("git", args, {
+              cwd: root, encoding: "utf8", timeout: 5000, maxBuffer: 4096,
+              stdio: ["ignore", "pipe", "pipe"],
+            }).trim()
+            check(git("rev-parse", "--verify", "HEAD") === checkoutSha)
+            const tracked = ["package.json", "package-lock.json", "vite.config.mts", "scripts/maplibre-build-metadata.mjs"]
+            git("ls-files", "--error-unmatch", "--", ...tracked)
+            git("diff", "--quiet", "HEAD", "--", ...tracked)
+            const raw = await boundedFile(reportPath)
+            const receipt = JSON.parse(raw.toString("utf8"))
+            exact(receipt, ["schemaVersion", "profile", "package", "producerSha256", "viteConfigSha256", "graph", "mapLibreChunks"])
+            check(receipt.schemaVersion === 3)
+          
+            const packageBytes = await insideFile(root, "package.json")
+            const lockBytes = await insideFile(root, "package-lock.json")
+            const installedBytes = await insideFile(root, "node_modules/maplibre-gl/package.json")
+            const manifest = JSON.parse(packageBytes.toString("utf8"))
+            const lock = JSON.parse(lockBytes.toString("utf8"))
+            const installed = JSON.parse(installedBytes.toString("utf8"))
+            const entry = lock.packages?.["node_modules/maplibre-gl"]
+            const packageInfo = receipt.package
+            exact(packageInfo, ["declared", "installedName", "installedVersion", "lockVersion", "lockIntegrity", "packageJsonSha256", "lockSha256", "installedManifestSha256"])
+            check(
+              packageInfo.declared === manifest.dependencies?.["maplibre-gl"] &&
+              typeof packageInfo.declared === "string" && packageInfo.declared.length <= 128 &&
+              packageInfo.installedName === "maplibre-gl" && installed.name === "maplibre-gl" &&
+              packageInfo.installedVersion === "6.15.0" && installed.version === "6.15.0" &&
+              packageInfo.lockVersion === "6.15.0" && entry?.version === "6.15.0" &&
+              packageInfo.lockIntegrity === entry?.integrity &&
+              typeof packageInfo.lockIntegrity === "string" &&
+              /^sha(?:256|384|512)-[A-Za-z0-9+/=]{1,256}$/u.test(packageInfo.lockIntegrity)
+            )
+            check(
+              packageInfo.packageJsonSha256 === hash(packageBytes) &&
+              packageInfo.lockSha256 === hash(lockBytes) &&
+              packageInfo.installedManifestSha256 === hash(installedBytes) &&
+              receipt.producerSha256 === hash(await insideFile(root, "scripts/maplibre-build-metadata.mjs")) &&
+              receipt.viteConfigSha256 === hash(await insideFile(root, "vite.config.mts"))
+            )
+            const profile = receipt.profile
+            exact(profile, ["command", "mode", "isProduction", "lhci", "lhciEnv", "reactDevMode", "unminified", "consumer", "isWorker", "minify", "sourcemap", "target", "format"])
+            check(
+              profile.command === "build" && profile.mode === "production" &&
+              profile.isProduction === true && profile.lhci === false && profile.lhciEnv === false &&
+              profile.reactDevMode === false && profile.unminified === false &&
+              profile.consumer === "client" && profile.isWorker === false && profile.format === "es" &&
+              ["oxc", "esbuild", "terser"].includes(profile.minify) &&
+              [false, true, "inline", "hidden"].includes(profile.sourcemap) &&
+              Array.isArray(profile.target) && profile.target.length > 0 && profile.target.length <= 32 &&
+              profile.target.every((value) => typeof value === "string" && /^[A-Za-z0-9.*+^~<>=| _/-]{1,128}$/u.test(value))
+            )
+            const graph = receipt.graph
+            exact(graph, ["complete", "entryFiles", "unresolvedStaticImportCount", "unresolvedDynamicImportCount", "chunks"])
+            check(Array.isArray(graph.chunks) && graph.chunks.length <= 5000)
+            check(integer(graph.unresolvedStaticImportCount) && integer(graph.unresolvedDynamicImportCount))
+            const graphNames = graph.chunks.map((chunk) => chunk.fileName)
+            ordered(graphNames, 5000, safePath)
+            const byName = new Map(graph.chunks.map((chunk) => [chunk.fileName, chunk]))
+            let edgeCount = 0
+            for (const chunk of graph.chunks) {
+              exact(chunk, ["fileName", "rawBytes", "sha256", "isEntry", "isDynamicEntry", "imports", "dynamicImports"])
+              check(integer(chunk.rawBytes, MAX_BYTES) && digest(chunk.sha256))
+              const bytes = await insideFile(output, chunk.fileName)
+              check(chunk.rawBytes === bytes.length && chunk.sha256 === hash(bytes))
+              check(typeof chunk.isEntry === "boolean" && typeof chunk.isDynamicEntry === "boolean")
+              for (const edges of [chunk.imports, chunk.dynamicImports]) {
+                ordered(edges, 5000, (name) => safePath(name) && byName.has(name), true)
+                edgeCount += edges.length
+                check(edgeCount <= 50000)
+              }
+            }
+            ordered(graph.entryFiles, 5000, (name) => safePath(name) && byName.has(name))
+            check(JSON.stringify(graph.entryFiles) === JSON.stringify(graph.chunks.filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName)))
+            check(graph.complete === (graph.entryFiles.length > 0 && graph.unresolvedStaticImportCount === 0))
+            const reachable = new Set()
+            const pending = [...graph.entryFiles]
+            while (pending.length > 0) {
+              const name = pending.pop()
+              if (reachable.has(name)) continue
+              reachable.add(name)
+              pending.push(...byName.get(name).imports)
+            }
+          
+            const candidates = receipt.mapLibreChunks
+            check(Array.isArray(candidates) && candidates.length > 0 && candidates.length <= 8)
+            ordered(candidates.map((chunk) => chunk.fileName), 8, (name) => safePath(name) && byName.has(name))
+            const mapLibreChunks = []
+            let moduleCount = 0
+            for (const chunk of candidates) {
+              exact(chunk, ["fileName", "staticEntryReachable", "rawBytes", "gzipBytes", "sha256", "gzipSha256", "modules"])
+              check(chunk.staticEntryReachable === (graph.complete ? reachable.has(chunk.fileName) : null))
+              check(integer(chunk.rawBytes, MAX_BYTES) && integer(chunk.gzipBytes, MAX_BYTES))
+              check(digest(chunk.sha256) && digest(chunk.gzipSha256))
+              const bytes = await insideFile(output, chunk.fileName)
+              const compressed = gzipSync(bytes, { level: 9 })
+              check(
+                chunk.rawBytes === bytes.length && chunk.gzipBytes === compressed.length &&
+                chunk.sha256 === hash(bytes) && chunk.gzipSha256 === hash(compressed)
+              )
+              check(Array.isArray(chunk.modules) && chunk.modules.length > 0)
+              moduleCount += chunk.modules.length
+              check(moduleCount <= 256)
+              ordered(chunk.modules.map((module) => module.idSha256), 256, digest)
+              const modules = []
+              for (const module of chunk.modules) {
+                check(["package", "project", "other"].includes(module.kind))
+                const keys = ["kind", "idSha256", "renderedCodeUnits", "originalCodeUnits"]
+                if (module.kind === "package") keys.push("package", "packageRoot", "path")
+                exact(module, keys)
+                check(integer(module.renderedCodeUnits) &&
+                  (module.originalCodeUnits === null || integer(module.originalCodeUnits)))
+                const safe = {
+                  kind: module.kind, idSha256: module.idSha256,
+                  renderedCodeUnits: module.renderedCodeUnits, originalCodeUnits: module.originalCodeUnits,
+                }
+                if (module.kind === "package") {
+                  check(
+                    safePath(module.package) && safePath(module.packageRoot) && safePath(module.path) &&
+                    /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/u.test(module.package) &&
+                    (module.packageRoot === "node_modules/" + module.package ||
+                      module.packageRoot.endsWith("/node_modules/" + module.package))
+                  )
+                  safe.package = module.package
+                  safe.path = module.path
+                }
+                modules.push(safe)
+              }
+              check(
+                modules.some((module) => module.kind === "package" && module.package === "maplibre-gl") ||
+                /(?:^|\/)vendor-map(?:-|\.)/u.test(chunk.fileName)
+              )
+              mapLibreChunks.push({
+                fileName: chunk.fileName, staticEntryReachable: chunk.staticEntryReachable,
+                rawBytes: chunk.rawBytes, gzipBytes: chunk.gzipBytes,
+                sha256: chunk.sha256, gzipSha256: chunk.gzipSha256, modules,
+              })
+            }
+            const diagnostic = {
+              kind: "maplibre-build-inventory-not-budget-proof",
+              checkoutSha, runId, runAttempt, metadataSha256: hash(raw),
+              producerSha256: receipt.producerSha256, viteConfigSha256: receipt.viteConfigSha256,
+              package: packageInfo, profile,
+              graph: {
+                complete: graph.complete, entryFiles: graph.entryFiles, chunkCount: graph.chunks.length,
+                unresolvedStaticImportCount: graph.unresolvedStaticImportCount,
+                unresolvedDynamicImportCount: graph.unresolvedDynamicImportCount,
+              },
+              mapLibreChunks,
+            }
+            const line = "MAPLIBRE_BUILD_INVENTORY " + JSON.stringify(diagnostic) + "\n"
+            check(Buffer.byteLength(line) <= 32768)
+            process.stdout.write(line)
+          } catch {
+            process.stderr.write("MAPLIBRE_BUILD_INVENTORY_REJECTED\n")
+            process.exitCode = 1
+          }
+          MAPLIBRE_INVENTORY
+          metadata="$RUNNER_TEMP/maplibre-inventory-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_SHA.json"
+          metadata_sha="$(sha256sum -- "$metadata" 2>/dev/null)" || {
+            printf '%s\n' 'MAPLIBRE_METADATA_RECEIPT_REJECTED' >&2
+            exit 1
+          }
+          printf 'metadata-sha256=%s\n' "${metadata_sha%% *}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload MapLibre compiler metadata
+        id: upload-maplibre-metadata
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-maplibre-metadata-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Capture bounded final HTML inventory
+        id: capture-final-html-inventory
+        timeout-minutes: 1
+        env:
+          NODE_OPTIONS: "--max-old-space-size=512 --max-semi-space-size=16"
+          FINAL_HTML_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+          FINAL_HTML_PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'FINAL_HTML_INVENTORY'
+          import { execFileSync } from "node:child_process"
+          import { createHash } from "node:crypto"
+          import { constants } from "node:fs"
+          import { lstat, open, realpath, unlink } from "node:fs/promises"
+          import { createRequire } from "node:module"
+          import path from "node:path"
+          import { pathToFileURL } from "node:url"
+          import { getHeapStatistics } from "node:v8"
+
+          const SOURCE_LIMIT = 2 * 1024 * 1024
+          const REPORT_LIMIT = 65_536
+          const MAX_V8_HEAP_BYTES = 640 * 1024 * 1024
+          const REJECTION_REASONS = new Set([
+            "input-read",
+            "input-path",
+            "platform",
+            "path",
+            "file-kind",
+            "file-change",
+            "file-bytes",
+            "utf8",
+            "empty-html",
+            "namespace",
+            "inline-location",
+            "root-count",
+            "ast-nodes",
+            "import-edges",
+            "total-asset-bytes",
+            "output-bytes",
+          ])
+          const sourcePaths = [
+            ".github/workflows/reusable-frontend-tests.yml",
+            "frontend/package.json",
+            "frontend/package-lock.json",
+            "frontend/vite.config.mts",
+            "frontend/scripts/final-html-root-inventory.mjs",
+            "frontend/scripts/build-orchestrated.mjs",
+            "frontend/scripts/post-build-shell.mjs",
+          ]
+          const hash = (bytes) => createHash("sha256").update(bytes).digest("hex")
+          const check = (condition) => {
+            if (!condition) throw new Error("invalid capture")
+          }
+          const commitId = (value) => typeof value === "string" && /^[a-f0-9]{40}$/u.test(value)
+          const within = (root, value) => value === root || value.startsWith(root + path.sep)
+
+          async function directory(value) {
+            check(typeof value === "string" && path.isAbsolute(value))
+            check(path.resolve(value) === value && (await realpath(value)) === value)
+            const info = await lstat(value)
+            check(info.isDirectory() && !info.isSymbolicLink())
+            return value
+          }
+
+          async function boundedFile(file, maximum = SOURCE_LIMIT) {
+            check((await realpath(path.dirname(file))) === path.dirname(file))
+            const handle = await open(
+              file,
+              constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK
+            )
+            try {
+              const before = await handle.stat({ bigint: true })
+              check(before.isFile() && before.size >= 0n && before.size <= BigInt(maximum))
+              const bytes = Buffer.alloc(maximum + 1)
+              let size = 0
+              while (size < bytes.length) {
+                const read = await handle.read(bytes, size, bytes.length - size, null)
+                if (read.bytesRead === 0) break
+                size += read.bytesRead
+              }
+              const after = await handle.stat({ bigint: true })
+              check(
+                size <= maximum &&
+                  before.size === BigInt(size) &&
+                  before.dev === after.dev &&
+                  before.ino === after.ino &&
+                  before.size === after.size &&
+                  before.mtimeNs === after.mtimeNs &&
+                  before.ctimeNs === after.ctimeNs
+              )
+              return bytes.subarray(0, size)
+            } finally {
+              await handle.close()
+            }
+          }
+
+          let ownedOutput
+          let ownedIdentity
+          let captureStage = "heap"
+          try {
+            // This bounds V8 heap, not native allocations, external buffers or total RSS.
+            const heapLimit = getHeapStatistics().heap_size_limit
+            check(Number.isSafeInteger(heapLimit) && heapLimit > 0)
+            const heapReceipt = "FINAL_HTML_INVENTORY_HEAP_BYTES " + heapLimit + "\n"
+            check(Buffer.byteLength(heapReceipt) <= 64)
+            process.stdout.write(heapReceipt)
+            check(heapLimit <= MAX_V8_HEAP_BYTES)
+            check(
+              [constants.O_NOFOLLOW, constants.O_NONBLOCK].every(
+                (flag) => Number.isSafeInteger(flag) && flag > 0
+              )
+            )
+            captureStage = "environment"
+            const workspace = await directory(process.env.GITHUB_WORKSPACE)
+            const frontend = await directory(path.join(workspace, "frontend"))
+            check(path.resolve(process.cwd()) === frontend)
+            const dist = await directory(path.join(frontend, "dist"))
+            const client = await directory(path.join(dist, "client"))
+            const temporary = await directory(process.env.RUNNER_TEMP)
+            check(!within(dist, temporary))
+            check(!process.env.VITE_LHCI)
+            captureStage = "context"
+            const {
+              GITHUB_SHA: githubSha,
+              GITHUB_RUN_ID: runId,
+              GITHUB_RUN_ATTEMPT: runAttempt,
+              GITHUB_EVENT_NAME: eventName,
+            } = process.env
+            check(commitId(githubSha))
+            check(typeof runId === "string" && /^[1-9][0-9]{0,19}$/u.test(runId))
+            check(typeof runAttempt === "string" && /^[1-9][0-9]{0,9}$/u.test(runAttempt))
+            check(eventName === "pull_request" || eventName === "push")
+            const prHeadSha = process.env.FINAL_HTML_PR_HEAD_SHA || null
+            const prBaseSha = process.env.FINAL_HTML_PR_BASE_SHA || null
+            check(
+              eventName === "pull_request"
+                ? commitId(prHeadSha) && commitId(prBaseSha)
+                : prHeadSha === null && prBaseSha === null
+            )
+
+            // These commands read only this checkout. Never inherit Git overrides or credentials.
+            captureStage = "git"
+            const gitEnvironment = {
+              PATH: process.env.PATH || "",
+              HOME: workspace,
+              GIT_CONFIG_NOSYSTEM: "1",
+              GIT_CONFIG_GLOBAL: "/dev/null",
+              GIT_TERMINAL_PROMPT: "0",
+              GIT_OPTIONAL_LOCKS: "0",
+              GIT_NO_LAZY_FETCH: "1",
+              GIT_NO_REPLACE_OBJECTS: "1",
+              LC_ALL: "C",
+            }
+            const git = (args, maximum = 4096) =>
+              execFileSync("git", ["--no-pager", "-c", "core.fsmonitor=false", ...args], {
+                cwd: workspace,
+                env: gitEnvironment,
+                timeout: 5000,
+                maxBuffer: maximum,
+                stdio: ["ignore", "pipe", "pipe"],
+              })
+            const gitText = (args) => git(args).toString("utf8").trim()
+            check(gitText(["rev-parse", "--show-toplevel"]) === workspace)
+            const checkoutSha = gitText(["rev-parse", "--verify", "HEAD"])
+            check(checkoutSha === githubSha)
+            // Raw commit headers preserve parents even when checkout used fetch-depth: 1.
+            const rawCommit = git(["cat-file", "commit", checkoutSha], 65_536)
+            const headerEnd = rawCommit.indexOf("\n\n")
+            check(headerEnd > 0)
+            const headers = rawCommit.subarray(0, headerEnd).toString("utf8").split("\n")
+            const trees = headers.filter((line) => line.startsWith("tree "))
+            const parentShas = headers
+              .filter((line) => line.startsWith("parent "))
+              .map((line) => line.slice(7))
+            check(trees.length === 1 && parentShas.length <= 16 && parentShas.every(commitId))
+            check(new Set(parentShas).size === parentShas.length)
+            const treeSha = trees[0].slice(5)
+            check(commitId(treeSha) && gitText(["rev-parse", "HEAD^{tree}"]) === treeSha)
+            if (eventName === "pull_request") {
+              check(parentShas.length === 2 && parentShas[0] === prBaseSha && parentShas[1] === prHeadSha)
+            }
+
+            captureStage = "source"
+            const checkedSourceFiles = {}
+            const sourceBytes = new Map()
+            for (const relative of sourcePaths) {
+              const bytes = await boundedFile(path.join(workspace, relative))
+              const committed = git(["cat-file", "blob", checkoutSha + ":" + relative], SOURCE_LIMIT)
+              check(bytes.equals(committed))
+              checkedSourceFiles[relative] = hash(bytes)
+              sourceBytes.set(relative, bytes)
+            }
+            captureStage = "toolchain"
+            const lock = JSON.parse(sourceBytes.get("frontend/package-lock.json").toString("utf8"))
+            const require = createRequire(path.join(frontend, "package.json"))
+            const toolchain = {}
+            for (const [name, label, version] of [
+              ["jsdom", "jsdom", "30.1.3"],
+              ["@babel/parser", "babelParser", "8.0.7"],
+            ]) {
+              const packageFile = require.resolve(name + "/package.json")
+              const installed = JSON.parse((await boundedFile(packageFile)).toString("utf8"))
+              check(installed.name === name && installed.version === version)
+              check(lock.packages?.["node_modules/" + name]?.version === version)
+              toolchain[label] = installed.version
+            }
+
+            // Verified source, not a sandbox: dependencies and runner ownership are external prerequisites.
+            captureStage = "import"
+            const { inspectFinalHtml } = await import(
+              pathToFileURL(path.join(frontend, "scripts/final-html-root-inventory.mjs")).href
+            )
+            captureStage = "inventory"
+            let rejectionReason
+            let rejectionCalls = 0
+            const inventory = await inspectFinalHtml(client, (reason) => {
+              rejectionCalls += 1
+              if (REJECTION_REASONS.has(reason)) rejectionReason = reason
+            })
+            if (inventory === null) {
+              check(rejectionCalls === 1 && REJECTION_REASONS.has(rejectionReason))
+              const rejected = "FINAL_HTML_INVENTORY_REJECTION " + rejectionReason + "\n"
+              check(Buffer.byteLength(rejected) < 128)
+              process.stdout.write(rejected)
+            }
+            check(
+              inventory !== null &&
+                rejectionCalls === 0 &&
+                inventory.schemaVersion === 2 &&
+                inventory.kind === "final-html-root-inventory-not-budget-proof" &&
+                Buffer.byteLength(JSON.stringify(inventory)) <= 32_767
+            )
+            check(
+              Array.isArray(inventory.scripts) &&
+                inventory.scripts.length <= 256 &&
+                Array.isArray(inventory.documents) &&
+                inventory.documents.length === 2
+            )
+            check(
+              new Set(inventory.scripts.map((script) => JSON.stringify(script))).size ===
+                inventory.scripts.length
+            )
+            const referencedScripts = new Set()
+            for (const document of inventory.documents) {
+              check(Array.isArray(document.roots) && document.roots.length <= 128)
+              for (const root of document.roots) {
+                check(
+                  Number.isSafeInteger(root.scriptIndex) &&
+                    root.scriptIndex >= 0 &&
+                    root.scriptIndex < inventory.scripts.length
+                )
+                if (!referencedScripts.has(root.scriptIndex)) {
+                  check(root.scriptIndex === referencedScripts.size)
+                  referencedScripts.add(root.scriptIndex)
+                }
+              }
+            }
+            check(referencedScripts.size === inventory.scripts.length)
+            captureStage = "recheck"
+            check(gitText(["rev-parse", "--verify", "HEAD"]) === checkoutSha)
+            for (const relative of sourcePaths) {
+              check(hash(await boundedFile(path.join(workspace, relative))) === checkedSourceFiles[relative])
+            }
+
+            // Event/run values remain claimed context; this is not authenticated artifact admission.
+            captureStage = "output"
+            const report = {
+              schemaVersion: 1,
+              kind: "final-html-capture-diagnostic-not-admission",
+              profile: "production-final-client",
+              checkout: { commitSha: checkoutSha, treeSha, parentShas },
+              eventContext: { eventName, githubSha, prHeadSha, prBaseSha },
+              relationship:
+                eventName === "pull_request" ? "merge-parents-match-event-context" : "checkout-only",
+              runContext: { runId, runAttempt },
+              checkedSourceFiles,
+              toolchain,
+              inventory,
+            }
+            const bytes = Buffer.from(JSON.stringify(report) + "\n")
+            const logged =
+              "FINAL_HTML_INVENTORY_CAPTURE " +
+              JSON.stringify({ report, reportSha256: hash(bytes) }) +
+              "\n"
+            check(
+              bytes.length <= REPORT_LIMIT &&
+                Buffer.byteLength(heapReceipt) + Buffer.byteLength(logged) <= REPORT_LIMIT
+            )
+            const output = path.join(
+              temporary,
+              "final-html-inventory-" + runId + "-" + runAttempt + "-" + checkoutSha + ".json"
+            )
+            const handle = await open(
+              output,
+              constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+              0o600
+            )
+            ownedOutput = output
+            try {
+              ownedIdentity = await handle.stat({ bigint: true })
+              check(ownedIdentity.isFile() && (ownedIdentity.mode & 0o777n) === 0o600n)
+              await handle.writeFile(bytes)
+            } finally {
+              await handle.close()
+            }
+            captureStage = "readback"
+            const verified = await boundedFile(output, REPORT_LIMIT)
+            check(verified.equals(bytes) && hash(verified) === hash(bytes))
+            const published = await lstat(output, { bigint: true })
+            check(
+              published.isFile() &&
+                published.dev === ownedIdentity.dev &&
+                published.ino === ownedIdentity.ino &&
+                published.size === BigInt(bytes.length) &&
+                (published.mode & 0o777n) === 0o600n
+            )
+            process.stdout.write(logged)
+          } catch {
+            // Remove only our own partial file, never a pre-existing output or substituted inode.
+            if (ownedOutput && ownedIdentity) {
+              try {
+                const current = await lstat(ownedOutput, { bigint: true })
+                if (current.dev === ownedIdentity.dev && current.ino === ownedIdentity.ino) {
+                  await unlink(ownedOutput)
+                }
+              } catch {
+                // The owned temporary directory is later removed by the runner.
+              }
+            }
+            process.stdout.write("FINAL_HTML_INVENTORY_CAPTURE_STAGE " + captureStage + "\n")
+            process.stderr.write("FINAL_HTML_INVENTORY_CAPTURE_REJECTED\n")
+            process.exitCode = 1
+          }
+          FINAL_HTML_INVENTORY
+          report="$RUNNER_TEMP/final-html-inventory-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_SHA.json"
+          report_sha="$(sha256sum -- "$report" 2>/dev/null)" || {
+            printf '%s\n' 'FINAL_HTML_RECEIPT_REJECTED' >&2
+            exit 1
+          }
+          tree_sha="$(timeout 5s env GIT_NO_REPLACE_OBJECTS=1 git rev-parse 'HEAD^{tree}' 2>/dev/null)" || {
+            printf '%s\n' 'FINAL_HTML_RECEIPT_REJECTED' >&2
+            exit 1
+          }
+          printf 'html-sha256=%s\n' "${report_sha%% *}" >> "$GITHUB_OUTPUT"
+          printf 'tree-sha=%s\n' "$tree_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Upload final HTML inventory
+        id: upload-final-html-inventory
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: frontend-final-html-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ runner.temp }}/final-html-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Upload production bundle
+        id: upload-production-bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: frontend-dist
@@ -915,6 +1558,7 @@ jobs:
           path: ${{ inputs.working-directory }}/dist
           if-no-files-found: error
 
+
   # Fail-closed bundle budgets and a machine-readable report for trend tracking.
   bundle-analysis:
     name: Bundle Analysis
@@ -929,21 +1573,98 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Download immutable WASM modules
+        if: ${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' && inputs.wasm-artifact-digest == '' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ inputs.working-directory }}
+
+      - name: Download shared immutable WASM modules
+        if: ${{ inputs.wasm-artifact-id != '' && inputs.wasm-artifact-name != '' && inputs.wasm-artifact-digest != '' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ inputs.wasm-artifact-id }}
+          path: ${{ inputs.working-directory }}
+
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ inputs.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate bundle artifact receipts
+        env:
+          BUNDLE_ARTIFACT_ID: ${{ needs.build.outputs.bundle-artifact-id }}
+          METADATA_ARTIFACT_ID: ${{ needs.build.outputs.metadata-artifact-id }}
+          HTML_ARTIFACT_ID: ${{ needs.build.outputs.html-artifact-id }}
+          METADATA_SHA256: ${{ needs.build.outputs.metadata-sha256 }}
+          HTML_SHA256: ${{ needs.build.outputs.html-sha256 }}
+          BUILD_TREE_SHA: ${{ needs.build.outputs.tree-sha }}
+        run: |
+          node --input-type=module <<'BUNDLE_RECEIPTS'
+          const ids = [
+            process.env.BUNDLE_ARTIFACT_ID,
+            process.env.METADATA_ARTIFACT_ID,
+            process.env.HTML_ARTIFACT_ID,
+          ]
+          const hashes = [process.env.METADATA_SHA256, process.env.HTML_SHA256]
+          if (
+            !ids.every(
+              (value) =>
+                typeof value === "string" &&
+                /^[1-9][0-9]{0,19}$/u.test(value) &&
+                Number.isSafeInteger(Number(value))
+            ) ||
+            new Set(ids).size !== 3 ||
+            !hashes.every((value) => typeof value === "string" && /^[0-9a-f]{64}$/u.test(value)) ||
+            typeof process.env.BUILD_TREE_SHA !== "string" ||
+            !/^[0-9a-f]{40}$/u.test(process.env.BUILD_TREE_SHA)
+          ) {
+            process.stderr.write("BUNDLE_ARTIFACT_RECEIPTS_REJECTED\n")
+            process.exitCode = 1
+          }
+          BUNDLE_RECEIPTS
 
       - name: Download production bundle
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: frontend-dist
+          artifact-ids: ${{ needs.build.outputs.bundle-artifact-id }}
           path: ${{ inputs.working-directory }}/dist
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download MapLibre compiler metadata
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.metadata-artifact-id }}
+          path: ${{ runner.temp }}/maplibre-budget-metadata
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Download final HTML budget evidence
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.html-artifact-id }}
+          path: ${{ runner.temp }}/maplibre-budget-html
+          merge-multiple: true
+          digest-mismatch: error
 
       - name: Test bundle analyzer
-        run: node --test scripts/check-bundle-budget.test.mjs
+        run: node --test scripts/check-bundle-budget.test.mjs scripts/maplibre-build-metadata.test.mjs
 
       - name: Analyze bundle size
+        env:
+          NODE_OPTIONS: "--max-old-space-size=512 --max-semi-space-size=16"
+          MAPLIBRE_BUDGET_METADATA_PATH: ${{ runner.temp }}/maplibre-budget-metadata/maplibre-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
+          MAPLIBRE_BUDGET_METADATA_SHA256: ${{ needs.build.outputs.metadata-sha256 }}
+          MAPLIBRE_BUDGET_HTML_PATH: ${{ runner.temp }}/maplibre-budget-html/final-html-inventory-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}.json
+          MAPLIBRE_BUDGET_HTML_SHA256: ${{ needs.build.outputs.html-sha256 }}
+          MAPLIBRE_BUDGET_TREE_SHA: ${{ needs.build.outputs.tree-sha }}
         run: node scripts/check-bundle-budget.mjs
 
       - name: Upload bundle report

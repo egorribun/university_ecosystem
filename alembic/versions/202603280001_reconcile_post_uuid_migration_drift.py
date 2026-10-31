@@ -24,6 +24,11 @@ depends_on: str | Sequence[str] | None = None
 
 # ---------------------------------------------------------------------------
 # Shadow / uuid_id indexes to drop  (leftover from UUID migration)
+#
+# AUD-269: the hot-path indexes created by revisions 202603060001, 202603070001,
+# 202603140002, 202603140003, 202603150001 and 202603170001 are not shadow
+# artifacts and no later step recreates them, so they are deliberately absent
+# from this list and survive the reconciliation.
 # ---------------------------------------------------------------------------
 _SHADOW_INDEXES: list[tuple[str, str]] = [
     # active_sessions
@@ -35,10 +40,8 @@ _SHADOW_INDEXES: list[tuple[str, str]] = [
     ("ix_attachments_shadow_message_id", "attachments"),
     ("ix_attachments_uuid_id", "attachments"),
     # chat_participants
-    ("ix_chat_participants_chat_id_user_id", "chat_participants"),
     ("ix_chat_participants_shadow_chat_id", "chat_participants"),
     ("ix_chat_participants_shadow_user_id", "chat_participants"),
-    ("ix_chat_participants_user_id_chat_id", "chat_participants"),
     ("ix_chat_participants_uuid_id", "chat_participants"),
     # chats
     ("ix_chats_uuid_id", "chats"),
@@ -73,10 +76,8 @@ _SHADOW_INDEXES: list[tuple[str, str]] = [
     ("ix_login_history_uuid_id", "login_history"),
     # messages
     ("idx_messages_chat_created", "messages"),
-    ("idx_messages_chat_pagination_covering", "messages"),
     ("ix_messages_shadow_chat_id", "messages"),
     ("ix_messages_shadow_sender_id", "messages"),
-    ("ix_messages_unread_chat_sender", "messages"),
     ("ix_messages_uuid_id", "messages"),
     # mfa_challenges
     ("ix_mfa_challenges_shadow_user_id", "mfa_challenges"),
@@ -90,7 +91,6 @@ _SHADOW_INDEXES: list[tuple[str, str]] = [
     ("ix_news_uuid_id", "news"),
     ("news_embedding_hnsw_idx", "news"),
     # news_comments
-    ("idx_news_comment_cursor", "news_comments"),
     ("ix_news_comments_shadow_news_id", "news_comments"),
     ("ix_news_comments_shadow_user_id", "news_comments"),
     ("ix_news_comments_uuid_id", "news_comments"),
@@ -123,10 +123,7 @@ _SHADOW_INDEXES: list[tuple[str, str]] = [
     ("ix_spotify_integrations_shadow_user_id", "spotify_integrations"),
     ("ix_spotify_integrations_uuid_id", "spotify_integrations"),
     # stored_events
-    ("ix_stored_events_aggregate_uuid", "stored_events"),
     ("ix_stored_events_pending", "stored_events"),
-    ("ix_stored_events_pending_aggregate_created", "stored_events"),
-    ("ix_stored_events_pending_created", "stored_events"),
     ("ix_stored_events_uuid_id", "stored_events"),
     # stories
     ("ix_stories_shadow_user_id", "stories"),
@@ -270,6 +267,14 @@ _NOT_NULL_CHANGES: list[tuple[str, str]] = [
     ("webauthn_credentials", "backup_state"),
     ("webauthn_credentials", "user_id"),
 ]
+
+
+def _record_id_is_integer(inspector) -> bool:
+    """Return whether notification_queue_jobs.record_id still holds legacy integers."""
+    columns = {
+        c["name"]: c["type"] for c in inspector.get_columns("notification_queue_jobs")
+    }
+    return isinstance(columns.get("record_id"), sa.Integer)
 
 
 def upgrade() -> None:
@@ -484,20 +489,37 @@ def upgrade() -> None:
         type_=sa.String(length=50),
         existing_nullable=False,
     )
-    op.alter_column(
-        "notification_queue_jobs",
-        "record_id",
-        existing_type=sa.Integer(),
-        type_=sa.UUID(),
-        existing_nullable=False,
-        postgresql_using="record_id::text::uuid",
-    )
+    # AUD-351: an integer record_id cannot be cast to UUID text. The integer ids
+    # mapped to event/news UUIDs only through legacy_id columns that revision
+    # 202602010004 dropped, so no target UUID survives. Each such job is kept for
+    # audit instead of being deleted or silently pointed at another record: it is
+    # dead-lettered, and its record_id becomes its own job id, which matches no
+    # event or news row and stays unique per (kind, record_id).
+    if _record_id_is_integer(sa.inspect(bind)):
+        op.execute(
+            sa.text(
+                "UPDATE notification_queue_jobs SET dead_lettered = true, "
+                "last_error = COALESCE(last_error || ' | ', '') || "
+                "'AUD-351: legacy integer record_id has no UUID mapping after the "
+                "UUID cutover' "
+                "WHERE dead_lettered = false"
+            )
+        )
+        op.alter_column(
+            "notification_queue_jobs",
+            "record_id",
+            existing_type=sa.Integer(),
+            type_=sa.UUID(),
+            existing_nullable=False,
+            postgresql_using="id",
+        )
     op.alter_column(
         "stored_events",
         "created_at",
         existing_type=sa.TIMESTAMP(),
         type_=sa.DateTime(timezone=True),
         existing_nullable=False,
+        postgresql_using="created_at AT TIME ZONE 'UTC'",
     )
     op.alter_column(
         "user_preferences",

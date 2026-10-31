@@ -30,7 +30,10 @@
 				regexp (?i)([?&])(?:t|%74)(?:i|%69)(?:c|%63)(?:k|%6b)(?:e|%65)(?:t|%74)=[^&]* ${1}ticket=REDACTED
 				regexp (?i)([?&])(?:c|%63)(?:o|%6f)(?:d|%64)(?:e|%65)=[^&]* ${1}code=REDACTED
 				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
+				regexp (?i)([?&])(?:s|%73)(?:t|%74)(?:a|%61)(?:t|%74)(?:e|%65)=[^&]* ${1}state=REDACTED
 			}
+			request>headers>Referer delete
+			resp_headers>Location delete
 		}
 		exclude http.log.access
 	}
@@ -59,6 +62,26 @@
 	# on any upstream application container.
 	handle /healthz {
 		respond "OK" 200
+	}
+
+	# AUD-178: a legacy reset link carries the bearer token in the query string
+	# or the path. Move it to the fragment form at the edge, before a document
+	# that still contains the token can reach access logs, CSP reports or a
+	# Referer header. Browsers never send URL fragments to the server.
+	@legacy_reset_query {
+		path /reset-password
+		expression {query.token} != ""
+	}
+	handle @legacy_reset_query {
+		header Cache-Control "no-store"
+		redir @legacy_reset_query /reset-password#token={query.token} 302
+	}
+	@legacy_reset_path {
+		path_regexp legacy_reset ^/reset-password/([^/]+)$
+	}
+	handle @legacy_reset_path {
+		header Cache-Control "no-store"
+		redir @legacy_reset_path /reset-password#token={re.legacy_reset.1} 302
 	}
 
 	# --- Multi-service routing (Wave 131 SW4 Phase 4 deploy infrastructure) -
@@ -186,7 +209,8 @@
 	log {
 		output stderr
 		# WebSocket upgrades carry a one-time ticket in the query string. Redact it,
-		# reset tokens, and password query values before persisting URI diagnostics.
+		# reset tokens, OAuth code/state, and password query values before persisting
+		# URI diagnostics.
 		format filter {
 			request>uri multi_regexp {
 				regexp (?i)^[^?]*(?:^|/|%2f|\x5c|%5c)(?:r|%72)(?:e|%65)(?:s|%73)(?:e|%65)(?:t|%74)(?:-|%2d)(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)(?:$|/|%2f|\x5c|%5c|\?|%3f|%).*$ [REDACTED]
@@ -194,8 +218,28 @@
 				regexp (?i)([?&])(?:t|%74)(?:i|%69)(?:c|%63)(?:k|%6b)(?:e|%65)(?:t|%74)=[^&]* ${1}ticket=REDACTED
 				regexp (?i)([?&])(?:c|%63)(?:o|%6f)(?:d|%64)(?:e|%65)=[^&]* ${1}code=REDACTED
 				regexp (?i)([?&])(?:p|%70)(?:a|%61)(?:s|%73)(?:s|%73)(?:w|%77)(?:o|%6f)(?:r|%72)(?:d|%64)=[^&]* ${1}password=REDACTED
+				regexp (?i)([?&])(?:s|%73)(?:t|%74)(?:a|%61)(?:t|%74)(?:e|%65)=[^&]* ${1}state=REDACTED
 			}
+			request>headers>Referer delete
+			resp_headers>Location delete
 		}
 		level INFO
+	}
+}
+
+# AUD-506: Temporal verifies its JWT signing keys only over TLS. This listener is
+# not published to the host, uses a certificate from Caddy's local CA, and serves
+# nothing except the JWKS document.
+caddy:8443 {
+	tls internal
+
+	handle /.well-known/jwks.json {
+		reverse_proxy backend:8000 {
+			header_up Host {upstream_hostport}
+		}
+	}
+
+	handle {
+		respond 404
 	}
 }

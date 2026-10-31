@@ -27,6 +27,10 @@ const Register = () => {
   const { t, i18n } = useTranslation()
   const passwordStrengthLanguage = i18n.resolvedLanguage ?? i18n.language
   const navigate = useNavigate()
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => {
+    setHydrated(true)
+  }, [])
   const [showPass, setShowPass] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [capsPass, setCapsPass] = useState(false)
@@ -54,6 +58,9 @@ const Register = () => {
     },
     mode: "onBlur",
   })
+
+  // SSR and the first client render stay inert until the form handlers attach.
+  const controlsDisabled = !hydrated || isSubmitting
 
   // Watch fields for UI logic
   const role = watch("role")
@@ -112,10 +119,12 @@ const Register = () => {
     } catch (error: unknown) {
       let errorMessage = t("auth:register.error")
       if (typeof error === "object" && error !== null && "response" in error) {
-        const axiosError = error as { response?: { data?: { detail?: string | string[] } } }
+        const axiosError = error as { response?: { data?: { detail?: unknown } } }
         const detail = axiosError.response?.data?.detail
         if (typeof detail === "string") errorMessage = detail
-        else if (Array.isArray(detail)) errorMessage = detail.join("; ")
+        else if (Array.isArray(detail) && detail.every((item) => typeof item === "string")) {
+          errorMessage = detail.join("; ")
+        }
       }
       setError("root", { message: errorMessage })
     }
@@ -148,7 +157,7 @@ const Register = () => {
 
   return (
     <div className="auth-theme min-h-screen bg-page text-text-primary">
-      <main className="auth-shell auth-shell--register" aria-labelledby="register-heading">
+      <section className="auth-shell auth-shell--register" aria-labelledby="register-heading">
         <div className="auth-card-matte w-full border border-border-subtle p-6 sm:p-10">
           <div className="mb-8 space-y-3">
             <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-brand">
@@ -178,14 +187,14 @@ const Register = () => {
                   id="full_name"
                   {...register("full_name")}
                   autoComplete="name"
-                  disabled={isSubmitting}
+                  disabled={controlsDisabled}
                   error={!!errors.full_name}
                   aria-describedby={errors.full_name ? "register-name-error" : undefined}
                   placeholder={t("auth:register.namePlaceholder") ?? undefined}
                 />
                 {errors.full_name && (
                   <p id="register-name-error" role="alert" className="text-xs text-error-text">
-                    {errors.full_name.message}
+                    {t(errors.full_name.message || "auth:validation.nameMinLength")}
                   </p>
                 )}
               </div>
@@ -214,7 +223,7 @@ const Register = () => {
                           { value: "teacher", label: t("auth:register.role.teacher") },
                           { value: "admin", label: t("auth:register.role.admin") },
                         ]}
-                        disabled={isSubmitting}
+                        disabled={controlsDisabled}
                         placeholder={t("auth:fields.role")}
                       />
                     )}
@@ -238,7 +247,7 @@ const Register = () => {
                   register("email").onBlur(e)
                   handleEmailBlur()
                 }}
-                disabled={isSubmitting}
+                disabled={controlsDisabled}
                 error={!!errors.email}
                 aria-describedby={errors.email ? "register-email-error" : undefined}
                 placeholder="name@university.edu"
@@ -253,6 +262,7 @@ const Register = () => {
               {emailSuggestion ? (
                 <button
                   type="button"
+                  disabled={controlsDisabled}
                   className="badge-brand"
                   onClick={() => {
                     setValue("email", emailSuggestion, { shouldValidate: true })
@@ -275,14 +285,14 @@ const Register = () => {
                   id="invite_code"
                   {...register("invite_code")}
                   autoComplete="one-time-code"
-                  disabled={isSubmitting}
+                  disabled={controlsDisabled}
                   error={!!errors.invite_code}
                   aria-describedby={errors.invite_code ? "register-invite-error" : undefined}
                   placeholder="ABCD-1234"
                 />
                 {errors.invite_code && (
                   <p id="register-invite-error" role="alert" className="text-xs text-error-text">
-                    {errors.invite_code.message}
+                    {t(errors.invite_code.message || "auth:validation.inviteCodeRequired")}
                   </p>
                 )}
               </div>
@@ -304,7 +314,7 @@ const Register = () => {
                     setCapsPass(event.getModifierState("CapsLock"))
                   }
                   autoComplete="new-password"
-                  disabled={isSubmitting}
+                  disabled={controlsDisabled}
                   error={!!errors.password}
                   className="pr-14"
                   aria-describedby={`register-password-hint${errors.password ? " register-password-error" : ""}`}
@@ -312,6 +322,7 @@ const Register = () => {
                 <button
                   type="button"
                   onClick={() => setShowPass((v) => !v)}
+                  disabled={controlsDisabled}
                   className="absolute inset-y-0 right-1 flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   aria-label={
                     t(showPass ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
@@ -349,7 +360,7 @@ const Register = () => {
                   className={cn(
                     "badge-brand",
                     minLenOk
-                      ? "border-brand/(--opacity-medium) text-brand"
+                      ? "border-brand/[calc(var(--opacity-medium)*100%)] text-brand"
                       : "text-text-muted-subtle"
                   )}
                 >
@@ -359,7 +370,7 @@ const Register = () => {
                   className={cn(
                     "badge-brand",
                     matchOk
-                      ? "border-brand/(--opacity-medium) text-brand"
+                      ? "border-brand/[calc(var(--opacity-medium)*100%)] text-brand"
                       : "text-text-muted-subtle"
                   )}
                 >
@@ -373,7 +384,7 @@ const Register = () => {
               )}
               {errors.password && (
                 <p id="register-password-error" role="alert" className="text-xs text-error-text">
-                  {errors.password.message}
+                  {t(errors.password.message || "auth:validation.passwordMinLength")}
                 </p>
               )}
             </div>
@@ -394,7 +405,7 @@ const Register = () => {
                     setCapsConfirm(event.getModifierState("CapsLock"))
                   }
                   autoComplete="new-password"
-                  disabled={isSubmitting}
+                  disabled={controlsDisabled}
                   error={!!errors.confirmPassword}
                   className="pr-14"
                   aria-describedby={
@@ -404,6 +415,7 @@ const Register = () => {
                 <button
                   type="button"
                   onClick={() => setShowConfirm((v) => !v)}
+                  disabled={controlsDisabled}
                   className="absolute inset-y-0 right-1 flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                   aria-label={
                     t(showConfirm ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
@@ -429,7 +441,7 @@ const Register = () => {
                   role="alert"
                   className="text-xs text-error-text"
                 >
-                  {errors.confirmPassword.message}
+                  {t(errors.confirmPassword.message || "auth:validation.confirmPasswordRequired")}
                 </p>
               )}
             </div>
@@ -451,7 +463,7 @@ const Register = () => {
               size="lg"
               fullWidth
               loading={isSubmitting}
-              disabled={isSubmitting}
+              disabled={controlsDisabled}
               className="auth-submit text-lg font-extrabold disabled:opacity-strong"
             >
               {t("auth:actions.signUp")}
@@ -468,7 +480,7 @@ const Register = () => {
             </div>
           </form>
         </div>
-      </main>
+      </section>
     </div>
   )
 }

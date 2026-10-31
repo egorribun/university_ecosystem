@@ -213,6 +213,42 @@ describe("activityExport closure", () => {
     expect(timers.pending()).toHaveLength(0)
   })
 
+  it("ignores font response headers delivered after the request deadline", async () => {
+    const timers = installManualTimeouts()
+    stubSynchronousImage(600, 800)
+    let requestSignal: AbortSignal | undefined
+    let markFetchStarted!: () => void
+    let deliverResponse!: (response: Response) => void
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve
+    })
+    const response = new Response(new Uint8Array([0, 1, 2]))
+    const arrayBuffer = vi.spyOn(response, "arrayBuffer")
+    mockFetch.mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal ?? undefined
+      markFetchStarted()
+      return new Promise<Response>((resolve) => {
+        deliverResponse = resolve
+      })
+    })
+
+    const exportPromise = exportActivityAsPdf(document.createElement("section"), "Activity")
+    await fetchStarted
+    const [fontTimer] = timers.pending()
+    if (!fontTimer) throw new Error("Font request timeout was not scheduled")
+    timers.fire(fontTimer.id)
+    deliverResponse(response)
+
+    await expect(exportPromise).resolves.toEqual({
+      success: false,
+      error: "Activity PDF font load timed out",
+    })
+    expect(requestSignal?.aborted).toBe(true)
+    expect(arrayBuffer).not.toHaveBeenCalled()
+    expect(pdf.save).not.toHaveBeenCalled()
+    expect(timers.pending()).toHaveLength(0)
+  })
+
   it("uses the same bound for a font response whose body never finishes", async () => {
     const timers = installManualTimeouts()
     stubSynchronousImage(600, 800)

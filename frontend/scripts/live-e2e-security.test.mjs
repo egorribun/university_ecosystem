@@ -235,7 +235,7 @@ test("live Playwright collection has a closed source inventory", async (t) => {
     const testPackage = JSON.parse(
       await readFile(require.resolve("@playwright/test/package.json"), "utf8")
     )
-    requireCollection(playwrightPackage.version === "1.63.0" && testPackage.version === "1.63.0")
+    requireCollection(playwrightPackage.version === "1.64.1" && testPackage.version === "1.64.1")
     const cli = path.join(path.dirname(packagePath), "cli.js")
 
     phase = "inventory"

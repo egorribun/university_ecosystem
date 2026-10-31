@@ -95,6 +95,7 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
     for key, peers in (
         ("gateway.config.trustedProxies", ["192.0.2.11/32", "2001:db8::11"]),
         ("wsHub.config.trustedProxies", ["198.51.100.12/32", "2001:db8::12"]),
+        ("backend.config.trustedProxies", ["192.0.2.13/32", "2001:db8::13"]),
     ):
         encoded_peers = json.dumps(peers, separators=(",", ":"))
         args.extend(("--set-json", f"{key}={encoded_peers}"))
@@ -957,8 +958,9 @@ def test_values_schema_rejects_unknown_staging_sensitive_keys(
 
 
 def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
-    # The MFA active key ID is checked before the marker scan; supply it so the
-    # render reaches the unresolved-marker rejection this test asserts.
+    # The MFA active key ID and backend proxy peers precede the marker scan.
+    # Supply only these prerequisites; keep every REQUIRED_ marker unresolved.
+    # Reserved TEST-NET peer is fixture-only, never deployment topology.
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         [
             _helm(),
@@ -970,6 +972,8 @@ def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
             str(STAGING_VALUES),
             "--set",
             f"backend.config.mfaTotpActiveEncryptionKeyId={MFA_TOTP_ACTIVE_KEY_ID}",
+            "--set-json",
+            'backend.config.trustedProxies=["192.0.2.13/32"]',
         ],
         check=False,
         capture_output=True,
@@ -999,6 +1003,80 @@ def test_backend_receives_public_frontend_origin_from_ingress() -> None:
     assert env["APP_BASE_URL"] == origin
     assert env["FRONTEND_ORIGIN"] == origin
     assert env["FRONTEND_ORIGINS"] == origin
+
+
+def test_backend_renders_trust_lifetime_and_idempotency_secret_wiring() -> None:
+    resources = _render_staging(release_name="backend-trust-contract")
+    backend = _component_resource(resources, "Deployment", "backend")
+    container = backend["spec"]["template"]["spec"]["containers"][0]
+    env = {item["name"]: item.get("value") for item in container["env"]}
+
+    # Reserved TEST-NET/documentation fixtures from _resolved_staging_args only.
+    assert env["TRUSTED_PROXIES"] == "192.0.2.13/32,2001:db8::13"
+    assert env["ACCESS_TOKEN_EXPIRE_MINUTES"] == "60"
+    assert env["IDEMPOTENCY_HMAC_SECRET_FILE"].endswith("/idempotency-hmac-secret")
+
+
+@pytest.mark.parametrize(
+    ("replay_window_seconds", "access_token_minutes", "expected_message"),
+    [
+        pytest.param(
+            1800,
+            60,
+            "wsHub.config.revocationReplayWindowSeconds (1800) must be at least "
+            "backend.config.accessTokenExpireMinutes * 60 (3600)",
+            id="window-below-default-lifetime",
+        ),
+        pytest.param(
+            3600,
+            120,
+            "wsHub.config.revocationReplayWindowSeconds (3600) must be at least "
+            "backend.config.accessTokenExpireMinutes * 60 (7200)",
+            id="window-below-extended-lifetime",
+        ),
+    ],
+)
+def test_ws_hub_replay_window_must_cover_the_access_token_lifetime(
+    replay_window_seconds: int, access_token_minutes: int, expected_message: str
+) -> None:
+    # A shorter replay window lets a late-starting ws-hub replica miss a room
+    # revocation while the revoked access token is still valid.
+    with pytest.raises(subprocess.CalledProcessError) as failure:
+        _render_staging(
+            "--set",
+            f"wsHub.config.revocationReplayWindowSeconds={replay_window_seconds}",
+            "--set",
+            f"backend.config.accessTokenExpireMinutes={access_token_minutes}",
+            release_name="ws-hub-replay-window-reject",
+        )
+
+    output = (failure.value.stderr or "") + (failure.value.stdout or "")
+    assert expected_message in output
+
+
+def test_ws_hub_replay_window_follows_a_longer_access_token_lifetime() -> None:
+    resources = _render_staging(
+        "--set",
+        "wsHub.config.revocationReplayWindowSeconds=7200",
+        "--set",
+        "backend.config.accessTokenExpireMinutes=120",
+        release_name="ws-hub-replay-window-accept",
+    )
+
+    ws_hub_env = {
+        item["name"]: item.get("value")
+        for item in _component_resource(resources, "Deployment", "ws-hub")["spec"][
+            "template"
+        ]["spec"]["containers"][0]["env"]
+    }
+    backend_env = {
+        item["name"]: item.get("value")
+        for item in _component_resource(resources, "Deployment", "backend")["spec"][
+            "template"
+        ]["spec"]["containers"][0]["env"]
+    }
+    assert ws_hub_env["WS_REVOCATION_REPLAY_WINDOW_SECONDS"] == "7200"
+    assert backend_env["ACCESS_TOKEN_EXPIRE_MINUTES"] == "120"
 
 
 def test_validate_config_pins_frontend_origin_to_the_ingress_host() -> None:
@@ -1225,7 +1303,7 @@ def test_staging_render_rejects_inline_nats_auth_material(override: str) -> None
         (
             "--set-string",
             "global.imageTag=mutable-tag",
-            "global.imageTag must be the exact 40- or 64-character lowercase Git SHA",
+            "global.imageTag must be the exact 40-character lowercase Git SHA",
         ),
         (
             "--set-string",
@@ -1997,11 +2075,16 @@ def test_ws_hub_env_uses_only_explicit_values_and_secret_files() -> None:
         "ENABLE_JETSTREAM",
         "NATS_STREAM_CHAT",
         "NATS_STREAM_NOTIFICATIONS",
-        "NATS_DURABLE_CHAT",
-        "NATS_DURABLE_NOTIFICATIONS",
+        "WS_REVOCATION_REPLAY_WINDOW_SECONDS",
     ):
         assert required in env
         assert "value" in env[required]
+    # ws-hub owns only the ephemeral and stream-wide consumers (AUD-478), so no
+    # durable consumer name is rendered for it.
+    assert "NATS_DURABLE_CHAT" not in env
+    assert "NATS_DURABLE_NOTIFICATIONS" not in env
+    # The replay window covers the 60-minute access-token lifetime the chart pins.
+    assert env["WS_REVOCATION_REPLAY_WINDOW_SECONDS"]["value"] == "3600"
 
 
 def test_ingress_routes_ws_ticket_to_gateway_and_chat_to_ws_hub() -> None:
@@ -2035,7 +2118,18 @@ def test_ws_hub_network_policy_is_least_privilege() -> None:
         for rule in policy["spec"]["ingress"]
         for port in rule.get("ports", [])
     }
-    assert ingress_ports == {8081}
+    assert ingress_ports == {8081, 9108}
+    # Prometheus may reach only the scrape-only metrics port (AUD-438); the
+    # public WebSocket port is never admitted from the monitoring namespace.
+    monitoring_ports = {
+        port["port"]
+        for rule in policy["spec"]["ingress"]
+        for source in rule.get("from", [])
+        if source.get("namespaceSelector", {}).get("matchLabels")
+        == {"kubernetes.io/metadata.name": "monitoring"}
+        for port in rule.get("ports", [])
+    }
+    assert monitoring_ports == {9108}
     backend_policy = _component_resource(resources, "NetworkPolicy", "backend")
     backend_sources = [
         source.get("podSelector", {}).get("matchLabels", {})

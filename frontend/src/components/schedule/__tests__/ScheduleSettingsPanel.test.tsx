@@ -37,6 +37,19 @@ describe("ScheduleSettingsPanel", () => {
     expect(screen.getByText("Monday")).toBeInTheDocument()
   })
 
+  it("keeps both parity buttons unselected and labels the automatic all-weeks state", () => {
+    render(<ScheduleSettingsPanel {...baseProps} currentParity={null} />)
+    expect(screen.getByText("schedule:parity.all")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "schedule:parity.odd" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    )
+    expect(screen.getByRole("button", { name: "schedule:parity.even" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    )
+  })
+
   it("fires onClose from the close button", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()

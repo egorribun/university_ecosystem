@@ -124,6 +124,19 @@ fn scrypt_dk_len_is_honored() {
 }
 
 #[test]
+fn scrypt_public_api_rejects_degenerate_cost() {
+    // AUD-414: N=1 was accepted through the public entry point before the floor.
+    assert!(scrypt_derive(b"pw", b"salt", 1, 1, 1, 32).is_err());
+    assert!(scrypt_derive(b"pw", b"salt", 8, 1, 1, 32).is_err());
+    assert_eq!(
+        scrypt_derive(b"pw", b"salt", 16, 1, 1, 32)
+            .expect("the RFC 7914 minimum cost is valid")
+            .len(),
+        32
+    );
+}
+
+#[test]
 fn scrypt_minimum_legacy_output_len_matches_rfc_vector_prefix() {
     let out = scrypt_derive(b"", b"", 16, 1, 1, 10).expect("minimum legacy length is valid");
     assert_eq!(hex::encode(out), &SCRYPT_V1[..20]);

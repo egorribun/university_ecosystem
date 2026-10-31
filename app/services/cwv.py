@@ -44,6 +44,10 @@ class CwvEnvelopeError(CwvError):
     pass
 
 
+class CwvIdentityUnavailableError(CwvError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class CwvRumBinding:
     enabled: bool
@@ -472,6 +476,10 @@ class GithubActionsOidcVerifier:
                 issuer=_ISSUER,
                 options={"require": ["exp", "iat", "sub", "repository", "ref", "sha"]},
             )
+        except jwt.PyJWKClientConnectionError as exc:
+            raise CwvIdentityUnavailableError(
+                "CWV exporter identity verification unavailable"
+            ) from exc
         except jwt.PyJWTError as exc:
             raise CwvEnvelopeError("CWV exporter identity is invalid") from exc
         expected = {

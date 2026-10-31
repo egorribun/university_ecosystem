@@ -22,6 +22,9 @@
 #   SPICEDB_PRESHARED_KEY_SOURCE_FILE=/etc/university/secrets/spicedb_preshared_key
 #   TOKEN_HMAC_SECRET_SOURCE_FILE=/etc/university/secrets/token_hmac_secret
 #   WS_HUB_INTERNAL_SECRET_SOURCE_FILE=/etc/university/secrets/ws_hub_internal_secret
+#   IDEMPOTENCY_HMAC_SECRET_SOURCE_FILE=/etc/university/secrets/idempotency_hmac_secret
+#   TRUSTED_PROXIES=<comma-separated Caddy and gateway CIDRs, for example the
+#     service_net subnet>
 # Every path above is required. Only VAPID private, Spotify client, and Spotify
 # OAuth-state sources may be empty regular files, and only while their respective
 # integrations are disabled. Spotify requires a client ID, client secret, and
@@ -96,6 +99,10 @@ secrets:
     file: ${TOKEN_HMAC_SECRET_SOURCE_FILE:?Set TOKEN_HMAC_SECRET_SOURCE_FILE for production}
   ws_hub_internal_secret:
     file: ${WS_HUB_INTERNAL_SECRET_SOURCE_FILE:?Set WS_HUB_INTERNAL_SECRET_SOURCE_FILE for production}
+  # AUD-490: every staging/production process refuses to start without the HMAC key
+  # that signs idempotency keys. It is file-backed like the other application keys.
+  idempotency_hmac_secret:
+    file: ${IDEMPOTENCY_HMAC_SECRET_SOURCE_FILE:?Set IDEMPOTENCY_HMAC_SECRET_SOURCE_FILE for production}
 
 services:
   backend:
@@ -124,6 +131,7 @@ services:
       - internal_hmac_secret
       - spicedb_preshared_key
       - token_hmac_secret
+      - idempotency_hmac_secret
       - ws_hub_internal_secret
     environment:
       ENVIRONMENT: production
@@ -150,6 +158,10 @@ services:
       SPOTIFY_CLIENT_SECRET_FILE: /run/secrets/spotify_client_secret
       SPOTIFY_OAUTH_STATE_SECRET_FILE: /run/secrets/spotify_oauth_state_secret
       SPOTIFY_TOKEN_SECRET_FILE: /run/secrets/spotify_token_secret
+      # AUD-164: the API keys rate limits on the forwarded client address only for
+      # peers listed here. Name the Caddy and gateway CIDRs; the API refuses to start
+      # with an empty list in production.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:?Set TRUSTED_PROXIES to the Caddy and gateway CIDRs for production}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN for production}
       FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:?Set FRONTEND_ORIGINS for production}
       MINIO_SECURE: "true"
@@ -173,6 +185,7 @@ services:
       INTERNAL_HMAC_SECRET_FILE: /run/secrets/internal_hmac_secret
       SPICEDB_PRESHARED_KEY_FILE: /run/secrets/spicedb_preshared_key
       TOKEN_HMAC_SECRET_FILE: /run/secrets/token_hmac_secret
+      IDEMPOTENCY_HMAC_SECRET_FILE: /run/secrets/idempotency_hmac_secret
       WS_HUB_INTERNAL_SECRET_FILE: /run/secrets/ws_hub_internal_secret
     # RZ-W13-05: container hardening — defence-in-depth on top of K8s securityContext.
     security_opt:
@@ -220,6 +233,7 @@ services:
       - internal_hmac_secret
       - spicedb_preshared_key
       - token_hmac_secret
+      - idempotency_hmac_secret
       - ws_hub_internal_secret
     environment:
       ENVIRONMENT: production
@@ -265,6 +279,7 @@ services:
       INTERNAL_HMAC_SECRET_FILE: /run/secrets/internal_hmac_secret
       SPICEDB_PRESHARED_KEY_FILE: /run/secrets/spicedb_preshared_key
       TOKEN_HMAC_SECRET_FILE: /run/secrets/token_hmac_secret
+      IDEMPOTENCY_HMAC_SECRET_FILE: /run/secrets/idempotency_hmac_secret
       WS_HUB_INTERNAL_SECRET_FILE: /run/secrets/ws_hub_internal_secret
       REVOCATION_REDIS_URL_FILE: !reset null
       SPOTIFY_CLIENT_SECRET_FILE: !reset null
@@ -305,6 +320,7 @@ services:
       - internal_hmac_secret
       - spicedb_preshared_key
       - token_hmac_secret
+      - idempotency_hmac_secret
       - ws_hub_internal_secret
     environment:
       ENVIRONMENT: production
@@ -346,6 +362,7 @@ services:
       INTERNAL_HMAC_SECRET_FILE: /run/secrets/internal_hmac_secret
       SPICEDB_PRESHARED_KEY_FILE: /run/secrets/spicedb_preshared_key
       TOKEN_HMAC_SECRET_FILE: /run/secrets/token_hmac_secret
+      IDEMPOTENCY_HMAC_SECRET_FILE: /run/secrets/idempotency_hmac_secret
       WS_HUB_INTERNAL_SECRET_FILE: /run/secrets/ws_hub_internal_secret
       RATE_LIMIT_STORAGE_URI_FILE: !reset null
       REVOCATION_REDIS_URL_FILE: !reset null
@@ -391,6 +408,7 @@ services:
       - internal_hmac_secret
       - spicedb_preshared_key
       - token_hmac_secret
+      - idempotency_hmac_secret
       - ws_hub_internal_secret
     environment:
       ENVIRONMENT: production
@@ -433,6 +451,7 @@ services:
       INTERNAL_HMAC_SECRET_FILE: /run/secrets/internal_hmac_secret
       SPICEDB_PRESHARED_KEY_FILE: /run/secrets/spicedb_preshared_key
       TOKEN_HMAC_SECRET_FILE: /run/secrets/token_hmac_secret
+      IDEMPOTENCY_HMAC_SECRET_FILE: /run/secrets/idempotency_hmac_secret
       WS_HUB_INTERNAL_SECRET_FILE: /run/secrets/ws_hub_internal_secret
       RATE_LIMIT_STORAGE_URI_FILE: !reset null
       VAPID_PRIVATE_KEY_FILE: !reset null

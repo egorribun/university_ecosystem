@@ -206,7 +206,7 @@ export const StoryList = memo(function StoryList({
       {!loading && !hasStories && (
         <div
           role="status"
-          className="rounded-xl border border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-dim) px-4 py-3"
+          className="rounded-xl border border-glass-border/[calc(var(--opacity-subtle)*100%)] bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)] px-4 py-3"
         >
           <p className="text-sm font-semibold text-text-primary">{t("stories.empty")}</p>
           <p className="mt-1 text-sm text-(--text-secondary)">{t("stories.emptyDescription")}</p>

@@ -10,6 +10,14 @@ import type { StoryCreate, StoryUpdate } from "@/api/generated"
 export type StoryCreatePayload = StoryCreate
 export type StoryUpdatePayload = StoryUpdate
 
+export class StoryCoverUploadError extends Error {
+  override readonly name = "StoryCoverUploadError"
+
+  constructor() {
+    super("Upload failed")
+  }
+}
+
 export function fetchStories() {
   const options = {
     etagCacheKey: "dashboard:stories",
@@ -40,6 +48,6 @@ export async function uploadStoryCover(file: File) {
   const { data } = await uploadStoryCoverApiV1StoriesUploadCoverPost({
     body: { file },
   })
-  if (!data) throw new Error("Upload failed")
+  if (!data) throw new StoryCoverUploadError()
   return data
 }

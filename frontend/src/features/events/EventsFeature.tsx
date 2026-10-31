@@ -9,7 +9,7 @@ import { useSearch, useNavigate } from "@tanstack/react-router"
 import {
   EVENTS_PAGE_SIZE,
   useEventsListQuery,
-  useMyEventsQuery,
+  useMyEventsPageQuery,
   type EventsListOrder,
 } from "@/api/hooks/events"
 import { resetEtagCache } from "@/api/client"
@@ -24,8 +24,31 @@ import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import type { EventDateRange, EventSortMode, EventTabKey } from "./types"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
-import { getCampusDateKey, getCampusDateRangeKeys } from "@/utils/campusTimezone"
+import {
+  getCampusClockParts,
+  getCampusDateKey,
+  getCampusDateRangeKeys,
+} from "@/utils/campusTimezone"
 import { useMinuteClock } from "@/hooks/useMinuteClock"
+import { getBrowserSessionGeneration, getSessionEpoch } from "@/stores/sessionEpoch"
+
+type MyEventsPaging = {
+  scope: string
+  cursor: string | null
+  previous: Array<string | null>
+  upcomingAfter: string | undefined
+}
+
+const startMyEventsPaging = (
+  scope: string,
+  sort: EventSortMode,
+  clock: number
+): MyEventsPaging => ({
+  scope,
+  cursor: null,
+  previous: [],
+  upcomingAfter: sort === "upcoming" ? new Date(clock).toISOString() : undefined,
+})
 
 export const EventsFeature = () => {
   const { user } = useAuth()
@@ -88,6 +111,27 @@ export const EventsFeature = () => {
 
   const debouncedSearch = useDebounced(searchQuery, "search")
   const debouncedLocation = useDebounced(locationFilter, "search")
+  const clock = useMinuteClock()
+  const selectedDateRange =
+    dateRange === "today" || dateRange === "week" || dateRange === "month" ? dateRange : undefined
+  const hasDateFilter = selectedDateRange !== undefined
+  const dateAnchor = hasDateFilter ? getCampusClockParts(clock, campusTimezone)?.dateKey : undefined
+  const filterUnavailable = tab === "my" && hasDateFilter && !dateAnchor
+  const myScope = JSON.stringify([
+    tab,
+    user?.id ?? null,
+    getSessionEpoch(),
+    getBrowserSessionGeneration(),
+    language,
+    activeCategory,
+    dateRange,
+    dateAnchor ?? null,
+    sortMode,
+  ])
+  const [myPaging, setMyPaging] = useState(() => startMyEventsPaging(myScope, sortMode, clock))
+  const currentMyPaging =
+    myPaging.scope === myScope ? myPaging : startMyEventsPaging(myScope, sortMode, clock)
+  if (myPaging.scope !== myScope) setMyPaging(currentMyPaging)
 
   /* ── Create dialog ── */
   const [createOpen, setCreateOpen] = useState(false)
@@ -116,9 +160,16 @@ export const EventsFeature = () => {
     enabled: tab !== "my",
   })
 
-  const myEventsQuery = useMyEventsQuery(
-    { language, userId: user?.id ?? null },
-    { enabled: tab === "my" }
+  const myEventsQuery = useMyEventsPageQuery(
+    {
+      language,
+      sort: sortMode === "newest" ? "newest_desc" : sortMode,
+      cursor: currentMyPaging.cursor,
+      ...(activeCategory === "all" ? {} : { category: activeCategory }),
+      ...(selectedDateRange && dateAnchor ? { dateRange: selectedDateRange, dateAnchor } : {}),
+      ...(currentMyPaging.upcomingAfter ? { upcomingAfter: currentMyPaging.upcomingAfter } : {}),
+    },
+    { enabled: tab === "my" && !filterUnavailable }
   )
 
   const {
@@ -133,25 +184,34 @@ export const EventsFeature = () => {
 
   const {
     data: myEventsData,
-    isLoading: myEventsLoading,
+    isPending: myEventsPending,
     isFetching: myEventsFetching,
     isError: myEventsError,
+    refetch: refetchMyEvents,
   } = myEventsQuery
 
-  const queryError = tab === "my" ? myEventsError : eventsListError
+  const nextMyCursor = myEventsData?.next_cursor ?? null
+  const repeatedMyCursor = nextMyCursor !== null && currentMyPaging.previous.includes(nextMyCursor)
+  const hasNextMyPage = Boolean(myEventsData?.has_more && nextMyCursor && !repeatedMyCursor)
+  const queryError = tab === "my" ? myEventsError || repeatedMyCursor : eventsListError
 
   const rawEvents = useMemo(() => {
-    return tab === "my" ? (myEventsData ?? []) : rawEventsList
-  }, [tab, rawEventsList, myEventsData])
+    return tab === "my" ? (filterUnavailable ? [] : (myEventsData?.items ?? [])) : rawEventsList
+  }, [tab, rawEventsList, myEventsData, filterUnavailable])
 
-  const isInitialLoading = tab === "my" ? myEventsLoading : listIsLoading
+  const isInitialLoading = tab === "my" ? myEventsPending && !filterUnavailable : listIsLoading
   const isFetching = tab === "my" ? myEventsFetching : listIsFetching
 
   /* ── Client-side filter + sort ── */
   // Date range and "upcoming" depend on the current time; the minute tick keeps them current.
-  const clock = useMinuteClock()
   const filteredEvents = useMemo(() => {
     let list = rawEvents
+
+    if (tab === "my") {
+      return sortMode === "upcoming"
+        ? list.filter((event) => new Date(event.starts_at).getTime() > clock)
+        : list
+    }
 
     // Category filter (client-side within fetched data)
     if (activeCategory !== "all") {
@@ -176,13 +236,7 @@ export const EventsFeature = () => {
     }
 
     // Sort
-    if (sortMode === "newest" && tab === "my") {
-      // The legacy My endpoint returns its complete array in ASC batch order.
-      // Sort a copy here without changing that API or main-feed pagination.
-      list = [...list].sort(
-        (a, b) => Date.parse(b.starts_at) - Date.parse(a.starts_at) || b.id.localeCompare(a.id)
-      )
-    } else if (sortMode === "popular") {
+    if (sortMode === "popular") {
       list = [...list].sort((a, b) => (b.participant_count ?? 0) - (a.participant_count ?? 0))
     } else if (sortMode === "upcoming") {
       list = [...list]
@@ -229,8 +283,38 @@ export const EventsFeature = () => {
 
   const refreshEvents = useCallback(() => {
     resetEtagCache()
-    void queryClient.invalidateQueries({ queryKey: ["events"] })
-  }, [queryClient])
+    if (tab === "my") {
+      setMyPaging(startMyEventsPaging(myScope, sortMode, clock))
+      void queryClient.invalidateQueries({ queryKey: ["events"], refetchType: "none" })
+      if (currentMyPaging.cursor === null) void refetchMyEvents()
+    } else {
+      void queryClient.invalidateQueries({ queryKey: ["events"] })
+    }
+  }, [queryClient, tab, myScope, sortMode, clock, currentMyPaging.cursor, refetchMyEvents])
+
+  const firstMyPage = () => setMyPaging((current) => ({ ...current, cursor: null, previous: [] }))
+  const previousMyPage = () =>
+    setMyPaging((current) => {
+      if (current.scope !== myScope || current.previous.length === 0) return current
+      return {
+        ...current,
+        cursor: current.previous[current.previous.length - 1] ?? null,
+        previous: current.previous.slice(0, -1),
+      }
+    })
+  const nextMyPage = () =>
+    setMyPaging((current) => {
+      if (
+        current.scope !== myScope ||
+        current.cursor !== currentMyPaging.cursor ||
+        !hasNextMyPage ||
+        nextMyCursor === null
+      )
+        return current
+      const previous = [...current.previous, current.cursor]
+      while (previous.filter((cursor) => cursor !== null).length > 19) previous.shift()
+      return { ...current, cursor: nextMyCursor, previous }
+    })
 
   /* ── Derived flags ── */
   const canFetchMore = tab !== "my" && Boolean(hasNextPage)
@@ -244,7 +328,7 @@ export const EventsFeature = () => {
         <EventsHeader
           onAddClick={() => setCreateOpen(true)}
           isAdmin={isAdmin}
-          eventsCount={filteredEvents.length}
+          eventsCount={tab === "my" ? undefined : filteredEvents.length}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           activeCategory={activeCategory}
@@ -265,10 +349,11 @@ export const EventsFeature = () => {
             isInitialLoading={isInitialLoading}
             queryError={queryError}
             isFetching={isFetching}
-            isFetchingNextPage={isFetchingNextPage}
+            isFetchingNextPage={tab === "my" ? false : isFetchingNextPage}
             hasNextPage={canFetchMore}
             fetchNextPage={fetchNextPage}
             refreshEvents={refreshEvents}
+            onRetry={tab === "my" ? () => void refetchMyEvents() : undefined}
             onAddClick={() => setCreateOpen(true)}
             isAdmin={isAdmin}
             isOnline={isOnline}
@@ -276,6 +361,19 @@ export const EventsFeature = () => {
             onTabChange={setTab}
             activeKeyboardIndex={activeIndex}
             registerCardRef={registerRef}
+            filterUnavailable={filterUnavailable}
+            myPagination={
+              tab === "my"
+                ? {
+                    atFirst: currentMyPaging.cursor === null,
+                    hasPrevious: currentMyPaging.previous.length > 0,
+                    hasNext: hasNextMyPage,
+                    onFirst: firstMyPage,
+                    onPrevious: previousMyPage,
+                    onNext: nextMyPage,
+                  }
+                : undefined
+            }
           />
         </div>
 

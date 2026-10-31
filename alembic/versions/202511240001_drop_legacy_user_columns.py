@@ -19,25 +19,16 @@ depends_on = None
 
 
 def upgrade():
-    bind = op.get_bind()
-    inspector = sa.inspect(bind)
+    """Keep users' quiet-hour and timezone columns until their backfill.
 
-    # Check if users table exists
-    if "users" not in inspector.get_table_names():
-        return
-
-    # SQLite doesn't support DROP COLUMN - skip on SQLite
-    if bind.dialect.name == "sqlite":
-        return
-
-    # Get existing columns
-    existing_columns = {col["name"] for col in inspector.get_columns("users")}
-
-    # Drop columns if they exist
-    columns_to_drop = ["dnd_enabled", "dnd_start", "dnd_end", "timezone"]
-    for col in columns_to_drop:
-        if col in existing_columns:
-            op.drop_column("users", col)
+    AUD-274: this revision used to drop ``dnd_enabled``, ``dnd_start``,
+    ``dnd_end`` and ``timezone`` from ``users`` before ``user_preferences``
+    existed, so the user values were lost. ``user_preferences`` is created by
+    revision 148642dd1207, which copies these columns into it and only then
+    drops them from ``users``. Dropping them here would starve that backfill,
+    so this revision leaves them in place and the copy-then-drop happens there.
+    """
+    return None
 
 
 def downgrade():

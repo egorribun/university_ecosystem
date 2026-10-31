@@ -23,7 +23,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Retain both historical tables and all their data during online rollout."""
+    pass
 
 
 def downgrade() -> None:
     """The prior revision already owns these unchanged schemas and rows."""
+    pass

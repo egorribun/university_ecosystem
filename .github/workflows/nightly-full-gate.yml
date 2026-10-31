@@ -236,10 +236,13 @@ jobs:
           path: frontend/reports/mutation/shards
           key: stryker-shard-v1-${{ github.run_id }}-${{ github.sha }}-${{ matrix.shard-index }}
 
-      # Upload directly from the producer; the aggregate consumes only
-      # current-attempt artifacts and independently verifies their lineage.
+      # Upload directly from the producer. AUD-455: a cache hit restores evidence
+      # that an earlier attempt of this same run already published under its own
+      # producer attempt. Re-publishing it under this attempt duplicates that
+      # producer attempt, which the aggregate rejects, so a restored shard is not
+      # uploaded again; the aggregate selects the earlier attempt's artifact.
       - name: Upload current-attempt shard evidence
-        if: ${{ always() }}
+        if: ${{ always() && steps.restore_nightly_stryker_shard.outputs.cache-hit != 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}
@@ -517,6 +520,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -729,7 +734,10 @@ jobs:
           STORAGE_S3_ACCESS_KEY_ID: minioadmin
           STORAGE_S3_SECRET_ACCESS_KEY: minioadminsecret
           UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
-        run: uv run pytest tests/chaos/ -v -m chaos --tb=short
+        run: |
+          export MINIO_ACCESS_KEY="$STORAGE_S3_ACCESS_KEY_ID"
+          export MINIO_SECRET_KEY="$STORAGE_S3_SECRET_ACCESS_KEY"
+          uv run pytest tests/chaos/ -v -m chaos --tb=short
 
   chaos-loadtest-orchestrator:
     name: Chaos Loadtest Orchestrator
@@ -779,6 +787,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -938,6 +948,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Kyverno CLI v1.19.1
         shell: bash
@@ -984,6 +996,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install nightly Rust + Miri
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # pinned action
@@ -1063,8 +1077,23 @@ jobs:
             gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "Run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed. Inspect the nightly artifacts and promote checks only after the documented 30-day green window."
           fi
 
+      # AUD-384: a step-level `if` cannot read a value that only this step's own
+      # env declares (the condition is evaluated before the env is applied), and
+      # the secrets context is not available in `if`. Record the configuration
+      # state as a step output in a separate step, which only it can read.
+      - name: Detect optional Slack notification configuration
+        id: slack_config
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [[ -n "$SLACK_WEBHOOK_URL" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Send optional Slack notification
-        if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+        if: ${{ steps.slack_config.outputs.configured == 'true' }}
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |

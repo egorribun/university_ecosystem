@@ -78,7 +78,7 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
       <div
         data-aspect-mode={aspectMode}
         className={cn(
-          "relative w-full overflow-hidden rounded-2xl glass-layer-elevated glass-noise border border-glass-border/(--opacity-soft)",
+          "relative w-full overflow-hidden rounded-2xl glass-layer-elevated glass-noise border border-glass-border/[calc(var(--opacity-soft)*100%)]",
           containerClass
         )}
         style={{ viewTransitionName: "events-hero" }}
@@ -101,7 +101,7 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
         <button
           type="button"
           onClick={() => setLightboxOpen(true)}
-          className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/(--opacity-strong) text-[var(--text-inverse)] backdrop-blur-sm transition-transform hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/[calc(var(--opacity-strong)*100%)] text-[var(--text-inverse)] backdrop-blur-sm transition-transform hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
           aria-label={t("events:detail.actions.zoom")}
         >
           <ZoomIn size={16} />
@@ -126,7 +126,7 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
               event.stopPropagation()
               setLightboxOpen(false)
             }}
-            className="absolute top-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/(--opacity-dim) text-[var(--text-inverse)] hover:bg-white/(--opacity-soft) transition-colors focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+            className="absolute top-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/[calc(var(--opacity-dim)*100%)] text-[var(--text-inverse)] hover:bg-white/[calc(var(--opacity-soft)*100%)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
             aria-label={t("common:buttons.close")}
           >
             <X size={20} />

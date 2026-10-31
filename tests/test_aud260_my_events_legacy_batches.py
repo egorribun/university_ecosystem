@@ -12,15 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.models as models
 from app.models import Event
 from app.repositories.event_repository import EventRepository
-from app.services.event_service import EventService
+from app.services.event_service import EventService, MyEventsPaginationRequired
 from app.services.vector_service import VectorService
 
 
 @pytest.mark.asyncio
-async def test_legacy_my_events_returns_every_registration_in_bounded_batches(
+@pytest.mark.parametrize("owned_count", [0, 1, 100, 101, 205])
+async def test_legacy_my_events_returns_complete_array_or_explicit_overflow(
     db_session: AsyncSession,
     user_factory,
     monkeypatch: pytest.MonkeyPatch,
+    owned_count: int,
 ) -> None:
     owner = await user_factory()
     other_user = await user_factory()
@@ -31,8 +33,8 @@ async def test_legacy_my_events_returns_every_registration_in_bounded_batches(
     other_qr_hmac = f"fixture-{uuid.uuid4().hex}"
 
     owned_events: list[Event] = []
-    for index in range(205):
-        # The group straddling the first batch boundary exercises the ID tie-break.
+    for index in range(owned_count):
+        # The group near the response limit exercises the ID tie-break.
         minute = 98 if 98 <= index <= 101 else index
         starts_at = base + timedelta(minutes=minute)
         owned_events.append(
@@ -98,37 +100,40 @@ async def test_legacy_my_events_returns_every_registration_in_bounded_batches(
     with patch(
         "app.services.event_service.attendance_tokens.issue_token",
         side_effect=lambda attendance: f"qr-{attendance.user_id}",
-    ):
-        result = await service.get_my_events(owner.id, locale="en")
+    ) as issue_token:
+        if owned_count > 100:
+            with pytest.raises(MyEventsPaginationRequired):
+                await service.get_my_events(owner.id, locale="en")
+            issue_token.assert_not_called()
+            result = None
+        else:
+            result = await service.get_my_events(owner.id, locale="en")
 
-    assert [item.id for item in result] == [event.id for event in ordered_events]
-    assert len(result) == 205
-    assert all(item.is_registered is True for item in result)
-    assert all(item.participant_count == 0 for item in result)
-    assert all(item.files == [] for item in result)
-    assert all(item.my_qr_token == f"qr-{owner.id}" for item in result)
-    assert outsider_event.id not in {item.id for item in result}
+    if result is not None:
+        assert [item.id for item in result] == [event.id for event in ordered_events]
+        assert len(result) == owned_count
+        assert all(item.is_registered is True for item in result)
+        assert all(item.participant_count == 0 for item in result)
+        assert all(item.files == [] for item in result)
+        assert all(item.my_qr_token == f"qr-{owner.id}" for item in result)
+        assert outsider_event.id not in {item.id for item in result}
 
-    assert [size for _, _, size in observed_pages] == [100, 100, 5]
+    assert [size for _, _, size in observed_pages] == [min(owned_count, 101)]
     assert all(user_id == owner.id for user_id, _, _ in observed_pages)
-    assert all(kwargs["limit"] == 100 for _, kwargs, _ in observed_pages)
+    assert all(kwargs["limit"] == 101 for _, kwargs, _ in observed_pages)
     assert all(kwargs["sort"] == "newest" for _, kwargs, _ in observed_pages)
     assert all(
         kwargs["include_participant_count"] is False for _, kwargs, _ in observed_pages
     )
-    assert [kwargs["cursor_key"] for _, kwargs, _ in observed_pages] == [
-        None,
-        (ordered_events[99].starts_at, ordered_events[99].id),
-        (ordered_events[199].starts_at, ordered_events[199].id),
-    ]
+    assert [kwargs["cursor_key"] for _, kwargs, _ in observed_pages] == [None]
 
 
 @pytest.mark.asyncio
-async def test_legacy_my_events_fails_closed_on_nonadvancing_batch() -> None:
+async def test_legacy_my_events_checks_overflow_before_qr_or_serialization() -> None:
     owner_id = uuid.uuid4()
     event = SimpleNamespace(id=uuid.uuid4(), starts_at=datetime.now(UTC))
     attendance = SimpleNamespace(user_id=owner_id)
-    repeated_rows = [(event, attendance, 0)] * 100
+    repeated_rows = [(event, attendance, 0)] * 101
     repository = SimpleNamespace(
         list_user_attended_events=AsyncMock(return_value=repeated_rows)
     )
@@ -141,9 +146,11 @@ async def test_legacy_my_events_fails_closed_on_nonadvancing_batch() -> None:
         patch(
             "app.services.event_service.attendance_tokens.issue_token",
             return_value="unused-test-token",
-        ),
-        pytest.raises(RuntimeError, match="keyset batch did not advance"),
+        ) as issue_token,
+        pytest.raises(MyEventsPaginationRequired),
     ):
         await service.get_my_events(owner_id, locale="en")
 
-    assert repository.list_user_attended_events.await_count == 2
+    repository.list_user_attended_events.assert_awaited_once()
+    issue_token.assert_not_called()
+    service.serialize_event.assert_not_called()

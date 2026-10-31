@@ -13,7 +13,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import i18n from "@/i18n/config"
 import { CANONICAL_NOTIFICATION_TOPICS } from "@/notifications/contract"
-import { adminDeadLetterQueueQueryKey } from "@/api/hooks/adminNotifications"
+import {
+  ADMIN_DEAD_LETTER_MAX_OFFSET,
+  ADMIN_DEAD_LETTER_PAGE_SIZE,
+  adminDeadLetterQueueQueryKey,
+  getAdminDeadLetterPageCount,
+  hasNextAdminDeadLetterPage,
+} from "@/api/hooks/adminNotifications"
 import { currentUserQueryKey, currentUserQueryOptions } from "@/api/hooks/users"
 import { createQueryClient } from "@/app/queryClient"
 import { testUser } from "@/tests/mocks/handlers"
@@ -556,7 +562,7 @@ describe("Admin dead-letter queue actions", () => {
     const first = within(firstRow).getByRole("checkbox", {
       name: `Select job ${queue.items[0]!.id}`,
     })
-    const selectedBackground = "bg-brand/(--opacity-subtle)"
+    const selectedBackground = "bg-brand/[calc(var(--opacity-subtle)*100%)]"
     expect(firstRow).not.toHaveClass(selectedBackground)
     expect(secondRow).not.toHaveClass(selectedBackground)
 
@@ -770,6 +776,149 @@ describe("Admin dead-letter queue inspection", () => {
         labels.deleteLabel
       )
     }
+  })
+
+  it("caps DLQ pages at the API offset ceiling even when the server total is larger", () => {
+    const total = 10_021
+
+    expect(getAdminDeadLetterPageCount(total)).toBe(501)
+    expect(hasNextAdminDeadLetterPage(9_980, 20, total)).toBe(true)
+    expect(hasNextAdminDeadLetterPage(10_000, 20, total)).toBe(false)
+  })
+
+  const maxBrowsableJobs = ADMIN_DEAD_LETTER_MAX_OFFSET + ADMIN_DEAD_LETTER_PAGE_SIZE
+  const totalAboveBrowsingCap = maxBrowsableJobs + 1
+  const englishCapNotice = [
+    `The API offset limit means only the first ${maxBrowsableJobs}`,
+    `of ${totalAboveBrowsingCap} queue jobs can be browsed here.`,
+  ].join(" ")
+  const russianCapNotice = [
+    `Лимит смещения API позволяет просматривать здесь только первые ${maxBrowsableJobs}`,
+    `из ${totalAboveBrowsingCap} записей очереди.`,
+  ].join(" ")
+
+  it.each([
+    { language: "en" as const, total: maxBrowsableJobs, expectedNotice: null },
+    { language: "en" as const, total: totalAboveBrowsingCap, expectedNotice: englishCapNotice },
+    { language: "ru" as const, total: totalAboveBrowsingCap, expectedNotice: russianCapNotice },
+  ])(
+    "explains the DLQ offset cap ($language, total $total)",
+    async ({ language, total, expectedNotice }) => {
+      await i18n.changeLanguage(language)
+      vi.mocked(fetchDeadLetterQueue).mockResolvedValue({
+        items: Array.from({ length: ADMIN_DEAD_LETTER_PAGE_SIZE }, (_, index) => ({
+          ...queue.items[0]!,
+          id: `dlq-cap-job-${index}`,
+          record_id: `dlq-cap-record-${index}`,
+        })),
+        total,
+      })
+
+      const { queryClient } = renderFeature(language)
+      await settleQueue(queryClient)
+
+      expect(
+        screen.getByText(language === "en" ? `Total jobs: ${total}` : `Всего задач: ${total}`)
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText(language === "en" ? "Page 1 of 501" : "Страница 1 из 501")
+      ).toBeInTheDocument()
+      if (expectedNotice) {
+        expect(screen.getByRole("alert")).toHaveTextContent(expectedNotice)
+      } else {
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      }
+    }
+  )
+
+  it("loads later dead-letter pages and keeps navigation tied to the server total", async () => {
+    await i18n.changeLanguage("en")
+    const pageOne: Queue = {
+      items: Array.from({ length: 20 }, (_, index) => ({
+        ...queue.items[0]!,
+        id: "dlq-job-" + index,
+        record_id: "dlq-record-" + index,
+      })),
+      total: 21,
+    }
+    const pageTwo: Queue = {
+      items: [{ ...queue.items[0]!, id: "dlq-job-20", record_id: "dlq-record-20" }],
+      total: 21,
+    }
+    const requests: Array<{ limit?: number; offset?: number }> = []
+    vi.mocked(fetchDeadLetterQueue).mockImplementation(async (params) => {
+      requests.push(params ?? {})
+      return params?.offset === 20 ? pageTwo : pageOne
+    })
+
+    const { queryClient, user } = renderFeature("en")
+    await settleQueue(queryClient)
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument()
+    expect(screen.getByText("dlq-record-0")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Go to next page" }))
+    await waitFor(() => expect(screen.getByText("dlq-record-20")).toBeInTheDocument())
+
+    expect(screen.queryByText("dlq-record-0")).not.toBeInTheDocument()
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Go to previous page" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Go to next page" })).toBeDisabled()
+    await user.click(screen.getByRole("button", { name: "Go to previous page" }))
+    await waitFor(() => expect(screen.getByText("dlq-record-0")).toBeInTheDocument())
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument()
+    expect(requests).toEqual([
+      { limit: 20, offset: 0 },
+      { limit: 20, offset: 20 },
+    ])
+  })
+
+  it("clamps the active page when the server total shrinks below its offset", async () => {
+    await i18n.changeLanguage("en")
+    const firstPage: Queue = {
+      items: Array.from({ length: 20 }, (_, index) => ({
+        ...queue.items[0]!,
+        id: "dlq-job-" + index,
+        record_id: "dlq-record-" + index,
+      })),
+      total: 21,
+    }
+    const secondPage: Queue = {
+      items: [{ ...queue.items[0]!, id: "dlq-job-20", record_id: "dlq-record-20" }],
+      total: 21,
+    }
+    const shrunkenPage: Queue = {
+      items: [{ ...queue.items[0]!, id: "dlq-shrunk-job", record_id: "dlq-shrunk-record" }],
+      total: 5,
+    }
+    const requests: Array<{ limit?: number; offset?: number }> = []
+    let hasShrunk = false
+    vi.mocked(fetchDeadLetterQueue).mockImplementation(async (params) => {
+      requests.push(params ?? {})
+      if (params?.offset === 20) {
+        return hasShrunk ? { items: [], total: 5 } : secondPage
+      }
+      return hasShrunk ? shrunkenPage : firstPage
+    })
+
+    const { queryClient, user } = renderFeature("en")
+    await settleQueue(queryClient)
+    await user.click(screen.getByRole("button", { name: "Go to next page" }))
+    await waitFor(() => expect(screen.getByText("dlq-record-20")).toBeInTheDocument())
+
+    hasShrunk = true
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: adminDeadLetterQueueQueryKey })
+    })
+    await waitFor(() => expect(screen.getByText("dlq-shrunk-record")).toBeInTheDocument())
+    await settleQueue(queryClient)
+
+    expect(screen.queryByText("Page 2 of 2")).not.toBeInTheDocument()
+    expect(requests).toEqual([
+      { limit: 20, offset: 0 },
+      { limit: 20, offset: 20 },
+      { limit: 20, offset: 20 },
+      { limit: 20, offset: 0 },
+    ])
   })
 
   it("does not announce an empty queue before the first request completes", async () => {

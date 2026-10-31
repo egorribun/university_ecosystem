@@ -66,7 +66,7 @@ async def test_connect_creates_required_streams() -> None:
     assert configs[4].subjects == ["outbox.*"]
 
     assert configs[5].name == "CACHE_INVALIDATIONS"
-    assert configs[5].subjects == ["cache.invalidate"]
+    assert configs[5].subjects == ["cache.invalidate", "cache.revoke"]
 
 
 @pytest.mark.asyncio

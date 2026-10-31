@@ -1,4 +1,5 @@
 import { IDBFactory } from "fake-indexeddb"
+import { openDB } from "idb"
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest"
 import {
   addRecord,
@@ -7,6 +8,7 @@ import {
   storePendingNavigation,
   storePendingReport,
   readPendingReports,
+  readPendingNavigations,
   processPendingReports,
   processPendingNavigations,
   STORES,
@@ -109,7 +111,7 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
       vi.useRealTimers()
     })
 
-    it("preserves offline reports during 24+ hour offline periods and flushes them when online", async () => {
+    it("preserves offline reports during a 24+ hour outage and after reconnection", async () => {
       const report = {
         url: "http://localhost/page",
         reportUrl: "http://localhost/api/report",
@@ -145,17 +147,17 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
       // 5. Network comes back online
       onlineSpy.mockReturnValue(true)
 
-      // 6. Flush queue
+      // 6. The legacy report has no session owner, even after reconnection.
       await processPendingReports()
 
-      // Fetch should be called and queue cleared
-      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock).not.toHaveBeenCalled()
       stored = await readPendingReports()
-      expect(stored).toHaveLength(0)
+      expect(stored).toHaveLength(1)
+      expect(stored[0]).toMatchObject(report)
     })
   })
 
-  it("flushes report records without optional method or idempotency key", async () => {
+  it("retains report records without optional method or idempotency key", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
     vi.stubGlobal("fetch", fetchMock)
     await addRecord(STORES.REPORT, {
@@ -167,11 +169,10 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
 
     await processPendingReports()
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost/api/report-get",
-      expect.objectContaining({ method: "POST", headers: { "Content-Type": "application/json" } })
-    )
-    expect(await readPendingReports()).toHaveLength(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await readPendingReports()).toEqual([
+      expect.objectContaining({ reportUrl: "http://localhost/api/report-get", payload: null }),
+    ])
   })
 
   it("does not open any offline queue while the service worker is offline", async () => {
@@ -184,19 +185,23 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it("processes pending navigations with and without an available window client", async () => {
+  it("retains pending navigations with and without an available window client", async () => {
     const openWindow = vi.fn().mockRejectedValue(new Error("window blocked"))
     vi.stubGlobal("clients", { openWindow })
     await storePendingNavigation({ url: "http://localhost/first", timestamp: 1 })
 
     await processPendingNavigations()
 
-    expect(openWindow).toHaveBeenCalledWith("http://localhost/first")
+    expect(openWindow).not.toHaveBeenCalled()
 
     vi.stubGlobal("clients", undefined)
     await storePendingNavigation({ url: "http://localhost/second", timestamp: 2 })
     await processPendingNavigations()
-    expect(openWindow).toHaveBeenCalledTimes(1)
+    expect(openWindow).not.toHaveBeenCalled()
+    expect(await readPendingNavigations()).toEqual([
+      expect.objectContaining({ url: "http://localhost/first", timestamp: 1 }),
+      expect.objectContaining({ url: "http://localhost/second", timestamp: 2 }),
+    ])
   })
 
   it("keeps pending navigations untouched while offline", async () => {
@@ -209,10 +214,13 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
     const openWindow = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal("clients", { openWindow })
     await processPendingNavigations()
-    expect(openWindow).toHaveBeenCalledWith("http://localhost/offline")
+    expect(openWindow).not.toHaveBeenCalled()
+    expect(await readPendingNavigations()).toEqual([
+      expect.objectContaining({ url: "http://localhost/offline", timestamp: 1 }),
+    ])
   })
 
-  it("keeps rejected reports and records the background failure", async () => {
+  it("keeps unbound reports without attempting or logging a network failure", async () => {
     await storePendingReport({
       url: "http://localhost/page",
       reportUrl: "http://localhost/api/rejected-report",
@@ -220,15 +228,17 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
       method: "POST",
     })
     const failure = new Error("network unavailable")
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(failure))
+    const fetchMock = vi.fn().mockRejectedValue(failure)
+    vi.stubGlobal("fetch", fetchMock)
 
     await processPendingReports()
 
-    expect(warn).toHaveBeenCalledWith("Failed to sync report", failure)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
     expect(await readPendingReports()).toHaveLength(1)
   })
 
-  it("processes news interactions and retains failed network records", async () => {
+  it("retains legacy news interactions without network requests", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ ok: true, status: 200 })
@@ -247,22 +257,19 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
 
     await processOfflineQueues()
 
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "http://localhost/api/news/read",
-      expect.objectContaining({ method: "GET" })
-    )
-    expect(fetchMock.mock.calls[0]?.[1]).not.toHaveProperty("body")
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "http://localhost/api/news/bookmark",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ id: "bookmark-1" }) })
-    )
+    expect(fetchMock).not.toHaveBeenCalled()
+    const db = await openDB("notification-interactions", 4)
+    expect(await db.getAll(STORES.NEWS_INTERACTION)).toEqual([
+      expect.objectContaining({ method: "GET", payload: { id: "read-1" } }),
+      expect.objectContaining({ method: "POST", payload: { id: "bookmark-1" } }),
+    ])
+    db.close()
   })
 
-  it("records rejected news-interaction replays without aborting the queue", async () => {
+  it("does not replay or log an unbound news interaction", async () => {
     const failure = new Error("news endpoint unavailable")
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(failure))
+    const fetchMock = vi.fn().mockRejectedValue(failure)
+    vi.stubGlobal("fetch", fetchMock)
     await addRecord(STORES.NEWS_INTERACTION, {
       url: "http://localhost/api/news/rejected",
       method: "POST",
@@ -271,6 +278,12 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
 
     await processOfflineQueues()
 
-    expect(warn).toHaveBeenCalledWith("Failed to sync news interaction", failure)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
+    const db = await openDB("notification-interactions", 4)
+    expect(await db.getAll(STORES.NEWS_INTERACTION)).toEqual([
+      expect.objectContaining({ payload: { id: "rejected" } }),
+    ])
+    db.close()
   })
 })

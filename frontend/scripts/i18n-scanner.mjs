@@ -105,6 +105,7 @@ const DEFAULT_BACKEND_DYNAMIC_REGISTRY = {
     "schedule.lesson.type.lab",
     "schedule.lesson.type.seminar",
     "schedule.lesson.type.consultation",
+    "schedule.lesson.type.project",
   ],
 }
 
@@ -124,7 +125,10 @@ const SKIPPED_DIRECTORIES = new Set([
   "vendor",
   ".storybook",
 ])
-const SKIPPED_FILE_PATTERNS = [/(?:^|[._-])(test|spec|stories?)(?:[._-]|$)/iu, /^setupTests\./iu]
+const SKIPPED_FILE_PATTERNS = [/(?:^|[._-])(test|spec)(?:[._-]|$)/iu, /^setupTests\./iu]
+const STORYBOOK_FILE_PATTERN = /(?:^|[._-])stories?(?:[._-]|$)/iu
+const PRODUCT_STORIES_MODULE_PATTERN = /^stories?\.[cm]?[jt]sx?$/iu
+const PRODUCT_ROUTE_PATTERN = /(?:^|\/)src\/routes\//u
 const SCOPE_EXCLUDED_DIRECTORIES = new Set([
   "test",
   "tests",
@@ -679,9 +683,14 @@ function isScopeExcluded(filePath) {
   const normalized = normalizeScopePath(filePath)
   const basename = normalized.slice(normalized.lastIndexOf("/") + 1)
   const segments = normalized.split("/")
+  // Plain stories modules and filesystem routes are product sources, even
+  // when their names match the Storybook filename pattern.
   return (
     segments.some((segment) => SCOPE_EXCLUDED_DIRECTORIES.has(segment)) ||
-    SKIPPED_FILE_PATTERNS.some((pattern) => pattern.test(basename))
+    SKIPPED_FILE_PATTERNS.some((pattern) => pattern.test(basename)) ||
+    (STORYBOOK_FILE_PATTERN.test(basename) &&
+      !PRODUCT_STORIES_MODULE_PATTERN.test(basename) &&
+      !PRODUCT_ROUTE_PATTERN.test(normalized))
   )
 }
 
@@ -705,7 +714,12 @@ function scanScopeContract(filePaths = []) {
     included,
     excluded,
     excludedDirectories: [...SCOPE_EXCLUDED_DIRECTORIES].sort(),
-    excludedFilePatterns: SKIPPED_FILE_PATTERNS.map((pattern) => pattern.toString()),
+    excludedFilePatterns: [...SKIPPED_FILE_PATTERNS, STORYBOOK_FILE_PATTERN].map((pattern) =>
+      pattern.toString()
+    ),
+    includedStoryFileExceptions: [PRODUCT_STORIES_MODULE_PATTERN, PRODUCT_ROUTE_PATTERN].map(
+      (pattern) => pattern.toString()
+    ),
   }
 }
 

@@ -272,6 +272,7 @@ class TestGetStorageBackend:
         mock_settings.storage_backend = "local"
         mock_settings.static_dir_path = Path("/tmp/test-static")  # noqa: S108
         mock_settings.storage_static_base_url = "/static"
+        mock_settings.storage_static_origin = "http://localhost:8000"
 
         backend = get_storage_backend(mock_settings)
         assert isinstance(backend, StaticFSStorage)

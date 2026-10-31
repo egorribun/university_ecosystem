@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, it, expect, vi } from "vitest"
+import { afterEach, describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
@@ -20,6 +20,10 @@ const calendarUrl =
   "&location=B-202&details=Lecture&ctz=Europe%2FIstanbul"
 
 describe("ExportDropdown", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it("renders the export trigger button", () => {
     render(<ExportDropdown />)
     expect(screen.getByRole("button", { name: /schedule:toolbar.export/ })).toHaveClass("min-h-11")
@@ -39,6 +43,23 @@ describe("ExportDropdown", () => {
     for (const item of screen.getAllByRole("menuitem")) {
       expect(item).toHaveClass("min-h-11")
     }
+    const googleCalendarItem = screen.getByRole("menuitem", {
+      name: "schedule:export.googleCalendar",
+    })
+    const unavailableReason = screen.getByText("schedule:export.googleCalendarUnavailable")
+    expect(googleCalendarItem).toBeDisabled()
+    expect(googleCalendarItem).toHaveAttribute("aria-describedby", unavailableReason.id)
+    expect(unavailableReason).toHaveClass("sr-only")
+  })
+
+  it("opens the provided Google Calendar URL in a new tab", async () => {
+    const user = userEvent.setup()
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null)
+    render(<ExportDropdown googleCalendarUrl={calendarUrl} />)
+    await user.click(screen.getByRole("button", { name: /schedule:toolbar.export/ }))
+    await user.click(screen.getByRole("menuitem", { name: "schedule:export.googleCalendar" }))
+    expect(openSpy).toHaveBeenCalledWith(calendarUrl, "_blank", "noopener")
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
   })
 
   it("disables PDF/PNG export when there is no grid ref", async () => {

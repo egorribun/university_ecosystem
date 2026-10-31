@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import unicodedata
 from functools import cached_property
+from urllib.parse import urlsplit
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 
 from app.core.config.base import _coerce_str_list
 
@@ -13,8 +15,8 @@ class RateLimitSettingsMixin:
     """Rate limiting thresholds and storage backend configuration.
 
     All rate limit strings follow the '<count>/<window>' format (e.g. '5/minute').
-    The storage backend can be 'memory' (in-process, no external dependency) or
-    'redis' (distributed, requires RATE_LIMIT_STORAGE_URI to point at Redis).
+    The storage backend can be 'memory' (process-local, suitable for development/tests) or
+    'redis' (requires a valid Redis URI supplied by deployment configuration).
     """
 
     rate_limit_enabled: bool = True
@@ -49,6 +51,44 @@ class RateLimitSettingsMixin:
         if normalized not in {"memory", "redis"}:
             raise ValueError("RATE_LIMIT_STORAGE_BACKEND must be 'memory' or 'redis'")
         return normalized
+
+    @model_validator(mode="after")
+    def _validate_rate_limit_storage_configuration(self) -> RateLimitSettingsMixin:
+        environment = str(getattr(self, "environment", "development")).strip().lower()
+        if (
+            environment in {"staging", "production"}
+            and self.rate_limit_storage_backend != "redis"
+        ):
+            raise ValueError(
+                "RATE_LIMIT_STORAGE_BACKEND must be 'redis' in staging/production"
+            )
+
+        if self.rate_limit_storage_backend == "redis":
+            raw_uri = self.rate_limit_storage_uri
+            if any(
+                character.isspace() or unicodedata.category(character) == "Cc"
+                for character in raw_uri
+            ):
+                raise ValueError(
+                    "RATE_LIMIT_STORAGE_URI must be a valid Redis URL when "
+                    "RATE_LIMIT_STORAGE_BACKEND is redis"
+                )
+            try:
+                parsed_uri = urlsplit(raw_uri)
+                is_redis_uri = parsed_uri.scheme.lower() in {"redis", "rediss"}
+                has_redis_host = parsed_uri.hostname is not None
+                _ = parsed_uri.port
+            except ValueError:
+                raise ValueError(
+                    "RATE_LIMIT_STORAGE_URI must be a valid Redis URL when "
+                    "RATE_LIMIT_STORAGE_BACKEND is redis"
+                ) from None
+            if not is_redis_uri or not has_redis_host:
+                raise ValueError(
+                    "RATE_LIMIT_STORAGE_URI must be a valid Redis URL when "
+                    "RATE_LIMIT_STORAGE_BACKEND is redis"
+                )
+        return self
 
     @cached_property
     def rate_limit_default_list(self) -> list[str]:

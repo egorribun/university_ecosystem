@@ -487,7 +487,7 @@ Development and direct-mode renders do not require ingress proxy ranges.
 ## Notifications worker
 
 - Start a dedicated worker to send push notifications: `python -m app.workers.notifications`.
-- The worker publishes health and Prometheus metrics at `http://<host>:9101/healthz` and `http://<host>:9101/metrics` (change the port via `NOTIFICATIONS_WORKER_METRICS_PORT`).
+- The standalone worker binds health and Prometheus metrics to `127.0.0.1:9101` by default, at `/healthz` and `/metrics`. Configure the address with `NOTIFICATIONS_WORKER_METRICS_HOST` and the port with `NOTIFICATIONS_WORKER_METRICS_PORT`; port `0` disables the listener. `docker-compose.yml` binds inside the container and publishes host access on `127.0.0.1:9102`; `docker-compose.full.yml` does not publish a worker host port.
 - docker-compose already includes a `notifications-worker` service with the `unless-stopped` restart policy.
 - Jobs in the dead-letter queue are automatically removed after 30 days (`NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`).
 

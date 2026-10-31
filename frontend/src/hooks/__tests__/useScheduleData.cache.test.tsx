@@ -72,6 +72,15 @@ function wrapper(client: QueryClient) {
   }
 }
 
+function campusWrapper(client: QueryClient, timeZone: string) {
+  return function CampusWrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={client}>
+        <CampusTimezoneProvider timeZone={timeZone}>{children}</CampusTimezoneProvider>
+      </QueryClientProvider>
+    )
+  }
+}
 function campusBoundaryClient(groupId: string): QueryClient {
   const client = newClient()
   const lessons: Lesson[] = [
@@ -882,6 +891,137 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     }).not.toThrow()
   })
 
+  it("treats a synchronously removed schedule query as an unresolved update scope", async () => {
+    const groupId = "group-scope-remove"
+    const groups: ScheduleGroup[] = [{ id: groupId, name: "Scope Remove" }]
+    const lessons: Lesson[] = [
+      {
+        id: "lesson-scope-remove",
+        group_id: groupId,
+        weekday: "monday",
+        start_time: "09:00",
+        end_time: "10:00",
+        subject: "Scope remove lesson",
+        parity: "both",
+      },
+    ]
+    const client = newClient()
+    const scheduleKey = pageScheduleQueryOptions(groupId).queryKey
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    client.setQueryDefaults(scheduleKey, { initialData: lessons })
+    setAuthFixture({ id: "u-scope-remove", role: "student", group_id: groupId } as UserState)
+
+    const cache = client.getQueryCache()
+    const queryHash = client.defaultQueryOptions(pageScheduleQueryOptions(groupId)).queryHash
+    let matchingAddedEvents = 0
+    let absentDuringAddedEvent = false
+    const unsubscribe: (() => void) | undefined = cache.subscribe((event) => {
+      if (event.type !== "added" || event.query.queryHash !== queryHash) return
+      matchingAddedEvents += 1
+      cache.remove(event.query)
+      absentDuringAddedEvent = cache.get(queryHash) === undefined
+      unsubscribe?.()
+    })
+
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
+    await waitFor(() => {
+      expect(result.current.selectedGroup).toBe(groupId)
+      expect(result.current.rawSchedule).toEqual(lessons)
+      expect(matchingAddedEvents).toBe(1)
+      expect(absentDuringAddedEvent).toBe(true)
+      expect(cache.find({ queryKey: scheduleKey, exact: true })).toBeDefined()
+    })
+
+    const addedLesson: Lesson = { ...lessons[0]!, id: "lesson-added-after-scope-remove" }
+    type ApplyScheduleUpdateResult = ReturnType<typeof result.current.applyScheduleUpdate>
+    const receiptCapture: { value: ApplyScheduleUpdateResult } = { value: undefined }
+    act(() => {
+      receiptCapture.value = result.current.applyScheduleUpdate((previous) => [
+        ...previous,
+        addedLesson,
+      ])
+    })
+    const receipt = receiptCapture.value
+
+    expect(receipt?.schedule).toEqual([...lessons, addedLesson])
+    expect(receipt?.isCurrent()).toBe(false)
+    expect(client.getQueryData(scheduleKey)).toEqual([...lessons, addedLesson])
+    unsubscribe?.()
+  })
+
+  it("returns no receipt when QueryClient structural sharing yields no data", async () => {
+    const groupId = "group-structural-sharing"
+    const groups: ScheduleGroup[] = [{ id: groupId, name: "Structural Sharing" }]
+    const lessons: Lesson[] = [
+      {
+        id: "lesson-structural-sharing",
+        group_id: groupId,
+        weekday: "tuesday",
+        start_time: "11:00",
+        end_time: "12:00",
+        subject: "Structural sharing lesson",
+        parity: "both",
+      },
+    ]
+    const client = newClient()
+    const scheduleKey = pageScheduleQueryOptions(groupId).queryKey
+    let structuralSharingCalls = 0
+    client.setQueryDefaults(scheduleKey, {
+      structuralSharing: (_oldData, newData) => {
+        structuralSharingCalls += 1
+        return structuralSharingCalls <= 2 ? newData : undefined
+      },
+    })
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    client.setQueryData(scheduleKey, lessons)
+    expect(structuralSharingCalls).toBe(1)
+    expect(client.getQueryData<Lesson[]>(scheduleKey)).toEqual(lessons)
+    setAuthFixture({
+      id: "u-structural-sharing",
+      role: "student",
+      group_id: groupId,
+    } as UserState)
+
+    const { result } = renderHook(() => useScheduleData(), {
+      wrapper: wrapper(client),
+    })
+    await waitFor(() => {
+      expect(result.current.selectedGroup).toBe(groupId)
+      expect(result.current.rawSchedule).toEqual(lessons)
+    })
+    expect(structuralSharingCalls).toBe(1)
+
+    const acceptedLesson: Lesson = { ...lessons[0]!, id: "lesson-positive-control" }
+    type ApplyScheduleUpdateResult = ReturnType<typeof result.current.applyScheduleUpdate>
+    const positiveReceiptCapture: { value: ApplyScheduleUpdateResult } = { value: undefined }
+    act(() => {
+      positiveReceiptCapture.value = result.current.applyScheduleUpdate((previous) => [
+        ...previous,
+        acceptedLesson,
+      ])
+    })
+    const positiveReceipt = positiveReceiptCapture.value
+    expect(structuralSharingCalls).toBe(2)
+    expect(positiveReceipt?.schedule).toEqual([...lessons, acceptedLesson])
+    expect(positiveReceipt?.isCurrent()).toBe(true)
+    expect(client.getQueryData(scheduleKey)).toEqual([...lessons, acceptedLesson])
+
+    const declinedLesson: Lesson = { ...lessons[0]!, id: "lesson-declined-control" }
+    const declinedReceiptCapture: { value: ApplyScheduleUpdateResult } = { value: undefined }
+    act(() => {
+      declinedReceiptCapture.value = result.current.applyScheduleUpdate((previous) => [
+        ...previous,
+        declinedLesson,
+      ])
+    })
+    const declinedReceipt = declinedReceiptCapture.value
+    expect(structuralSharingCalls).toBe(3)
+    expect(declinedReceipt).toBeUndefined()
+    expect(client.getQueryData(scheduleKey)).toBeUndefined()
+  })
+
   it("normalizes falsy persistence fields and skips today calculations on Sunday", async () => {
     vi.useFakeTimers({ toFake: ["Date"] })
     vi.setSystemTime(new Date("2026-08-09T12:00:00.000Z"))
@@ -993,7 +1133,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), {
-      wrapper: wrapper(client),
+      wrapper: campusWrapper(client, Intl.DateTimeFormat().resolvedOptions().timeZone),
     })
 
     await waitFor(() => expect(result.current.selectedGroup).toBe("group-today"))
@@ -1043,7 +1183,7 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     } as UserState)
 
     const { result } = renderHook(() => useScheduleData(), {
-      wrapper: wrapper(client),
+      wrapper: campusWrapper(client, Intl.DateTimeFormat().resolvedOptions().timeZone),
     })
 
     await waitFor(() => expect(result.current.selectedGroup).toBe("group-even"))
@@ -1432,6 +1572,169 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
         Reflect.deleteProperty(document, "visibilityState")
       }
       vi.useRealTimers()
+    }
+  })
+})
+
+describe("useScheduleData unavailable campus timezone", () => {
+  beforeEach(() => {
+    apiGetMock.mockReset()
+    useAuthMock.mockReset()
+    getDatabaseMock.mockReset()
+    getDatabaseMock.mockResolvedValue({
+      schedule: { bulkUpsert: vi.fn().mockResolvedValue(undefined) },
+    } as never)
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-18T21:30:00.000Z"))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    cleanup()
+    useAuthStore.setState({ user: null, loading: true })
+  })
+
+  it("keeps day and live clock state independent of the host zone while preserving schedule data", async () => {
+    async function observeHostZone(
+      hostDate: { year: number; month: number; day: number },
+      localDay: number,
+      localHour: number
+    ) {
+      const year = vi.spyOn(Date.prototype, "getFullYear").mockReturnValue(hostDate.year)
+      const month = vi.spyOn(Date.prototype, "getMonth").mockReturnValue(hostDate.month)
+      const date = vi.spyOn(Date.prototype, "getDate").mockReturnValue(hostDate.day)
+      const day = vi.spyOn(Date.prototype, "getDay").mockReturnValue(localDay)
+      const hours = vi.spyOn(Date.prototype, "getHours").mockReturnValue(localHour)
+      const minutes = vi.spyOn(Date.prototype, "getMinutes").mockReturnValue(30)
+      const groupId = "unknown-zone-" + localDay + "-" + localHour
+      const client = campusBoundaryClient(groupId)
+      const rendered = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+
+      try {
+        await waitFor(() => expect(rendered.result.current.selectedGroup).toBe(groupId))
+        return {
+          nowEpoch: rendered.result.current.nowTick.getTime(),
+          todayIdx: rendered.result.current.todayIdx,
+          hasToday: rendered.result.current.hasToday,
+          today: rendered.result.current.todayLessons.map((lesson) => lesson.id),
+          current: rendered.result.current.currentLesson?.id ?? null,
+          next: rendered.result.current.nextLesson?.id ?? null,
+          timeLeftText: rendered.result.current.timeLeftText,
+          currentParity: rendered.result.current.currentParity,
+          conflictedIds: [...rendered.result.current.conflictedIds],
+          schedule: rendered.result.current.schedule.map((lesson) => lesson.id),
+          rawSchedule: rendered.result.current.rawSchedule.map((lesson) => lesson.id),
+        }
+      } finally {
+        rendered.unmount()
+        year.mockRestore()
+        month.mockRestore()
+        date.mockRestore()
+        day.mockRestore()
+        hours.mockRestore()
+        minutes.mockRestore()
+      }
+    }
+
+    const utcHost = await observeHostZone({ year: 2026, month: 9, day: 18 }, 0, 21)
+    const moscowHost = await observeHostZone({ year: 2026, month: 9, day: 19 }, 1, 0)
+
+    expect(utcHost).toEqual(moscowHost)
+    expect(utcHost).toMatchObject({
+      nowEpoch: new Date("2026-10-18T21:30:00.000Z").getTime(),
+      todayIdx: -1,
+      hasToday: false,
+      today: [],
+      current: null,
+      next: null,
+      timeLeftText: "",
+      currentParity: null,
+      conflictedIds: [],
+      schedule: ["odd-early", "even-only", "odd-late"],
+      rawSchedule: ["odd-early", "even-only", "odd-late"],
+    })
+  })
+
+  it("shows both parities while automatic parity is unknown and honors explicit choices", async () => {
+    const groupId = "unknown-zone-manual-parity"
+    const client = campusBoundaryClient(groupId)
+    const rendered = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(rendered.result.current.selectedGroup).toBe(groupId))
+    expect(rendered.result.current.currentParity).toBeNull()
+    expect(rendered.result.current.schedule.map((lesson) => lesson.id)).toEqual([
+      "odd-early",
+      "even-only",
+      "odd-late",
+    ])
+
+    act(() => rendered.result.current.setCurrentParity("even"))
+    expect(rendered.result.current.currentParity).toBe("even")
+    expect(rendered.result.current.schedule.map((lesson) => lesson.id)).toEqual(["even-only"])
+
+    act(() => rendered.result.current.setCurrentParity("odd"))
+    expect(rendered.result.current.currentParity).toBe("odd")
+    expect(rendered.result.current.schedule.map((lesson) => lesson.id)).toEqual([
+      "odd-early",
+      "odd-late",
+    ])
+  })
+
+  it("restores campus day and live lesson state when the authoritative zone resolves", async () => {
+    let resolveConfig!: (response: Response) => void
+    const pendingConfig = new Promise<Response>((resolve) => {
+      resolveConfig = resolve
+    })
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockReturnValue(pendingConfig)
+    const groupId = "unknown-zone-recovery"
+    const client = campusBoundaryClient(groupId)
+    const timezoneWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <CampusTimezoneProvider timeZone={null}>{children}</CampusTimezoneProvider>
+      </QueryClientProvider>
+    )
+    const rendered = renderHook(() => useScheduleData(), { wrapper: timezoneWrapper })
+
+    try {
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce())
+      expect(rendered.result.current.nowTick.getTime()).toBe(
+        new Date("2026-10-18T21:30:00.000Z").getTime()
+      )
+      expect(rendered.result.current.currentParity).toBeNull()
+      expect(rendered.result.current.todayIdx).toBe(-1)
+      expect(rendered.result.current.hasToday).toBe(false)
+      expect(rendered.result.current.todayLessons).toEqual([])
+      expect(rendered.result.current.currentLesson).toBeNull()
+      expect(rendered.result.current.nextLesson).toBeNull()
+      expect(rendered.result.current.rawSchedule).toHaveLength(3)
+
+      await act(async () => {
+        resolveConfig(
+          new Response(JSON.stringify({ campus_timezone: "Europe/Moscow" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+        )
+        await pendingConfig
+      })
+
+      await waitFor(() => {
+        expect(rendered.result.current.currentParity).toBe("odd")
+        expect(rendered.result.current.todayIdx).toBe(0)
+        expect(rendered.result.current.hasToday).toBe(true)
+        expect(rendered.result.current.todayLessons.map((lesson) => lesson.id)).toEqual([
+          "odd-early",
+          "odd-late",
+        ])
+        expect(rendered.result.current.currentLesson?.id).toBe("odd-early")
+        expect(rendered.result.current.nextLesson?.id).toBe("odd-late")
+      })
+      expect(rendered.result.current.nowTick.getTime()).toBe(
+        new Date("2026-10-18T21:30:00.000Z").getTime()
+      )
+    } finally {
+      rendered.unmount()
+      fetchSpy.mockRestore()
     }
   })
 })

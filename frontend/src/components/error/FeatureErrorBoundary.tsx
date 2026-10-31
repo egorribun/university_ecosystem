@@ -52,16 +52,18 @@ function FeatureErrorFallback({
   return (
     <div
       role="alert"
-      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-(--text-primary)/(--opacity-subtle) bg-(--glass-bg) p-6 text-center"
+      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-(--text-primary)/[calc(var(--opacity-subtle)*100%)] bg-(--glass-bg) p-6 text-center"
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-bg/(--opacity-dim) text-warning-text">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-bg/[calc(var(--opacity-dim)*100%)] text-warning-text">
         <AlertTriangle className="h-5 w-5 text-warning-text" />
       </div>
       <div>
         <h3 className="text-sm font-bold text-text-primary">
           {t("common:errors.featureUnavailable", { feature: featureName ?? "Feature" })}
         </h3>
-        <p className="text-xs text-text-primary/(--opacity-medium)">{t("common:statuses.error")}</p>
+        <p className="text-xs text-text-primary/[calc(var(--opacity-medium)*100%)]">
+          {t("common:statuses.error")}
+        </p>
       </div>
       <button type="button" onClick={onRetry} className="hover:underline">
         <span className="text-xs font-black text-(--accent)">{t("common:statuses.tryAgain")}</span>

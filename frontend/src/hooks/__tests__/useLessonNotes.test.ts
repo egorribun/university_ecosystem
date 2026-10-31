@@ -8,9 +8,11 @@
  * logError is mocked to assert the swallowed-error branches.
  */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
+import { useLayoutEffect } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { useAuthStore } from "@/stores/useAuthStore"
+import { invalidateSessionEpoch } from "@/stores/sessionEpoch"
 import { logError } from "@/app/logger"
 import { useLessonNotes, useLessonNotesMap, type LessonNote } from "../useLessonNotes"
 
@@ -203,6 +205,7 @@ describe("useLessonNotes", () => {
     expect(result.current.note).toBeNull()
     rerender({ lesson: "another" })
     await act(() => vi.advanceTimersByTimeAsync(400))
+    expect(idb.store.get(KEY("same"))).toBeUndefined()
     expect(idb.store.get(KEY("same", "user-b"))).toBeUndefined()
     expect(idb.store.get(KEY("another", "user-b"))).toBeUndefined()
   })
@@ -219,6 +222,41 @@ describe("useLessonNotes", () => {
     const { result } = renderHook(() => useLessonNotes("lessonB"))
     await waitFor(() => expect(result.current.note?.text).toBe("stored note"))
     expect(result.current.hasNote).toBe(true)
+  })
+
+  it("preserves an edit made during a deferred initial load", async () => {
+    vi.useFakeTimers()
+    const loadEntered = deferred<string>()
+    const loaded = deferred<LessonNote | undefined>()
+    dbState.getDatabase.mockRejectedValue(new Error("RxDB unavailable"))
+    idb.get.mockImplementationOnce((key) => {
+      loadEntered.resolve(key)
+      return loaded.promise
+    })
+
+    const { result } = renderHook(() => useLessonNotes("loading-edit"))
+    await act(async () => {
+      expect(await loadEntered.promise).toBe(KEY("loading-edit"))
+    })
+    expect(result.current.isLoading).toBe(true)
+    act(() => result.current.setNote("new local edit"))
+
+    await act(async () => {
+      loaded.resolve({ text: "older stored value", updatedAt: 10 })
+      await loaded.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.note?.text).toBe("new local edit")
+    expect(result.current.isLoading).toBe(false)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+    expect(idb.store.get(KEY("loading-edit"))).toEqual({
+      text: "new local edit",
+      updatedAt: expect.any(Number),
+    })
   })
 
   it("null lessonId -> no load, note null", async () => {
@@ -295,13 +333,37 @@ describe("useLessonNotes", () => {
     expect(idb.store.get(KEY("lessonE"))).toBeUndefined()
   })
 
+  it("does not resurrect a pending debounced edit after clearNote", async () => {
+    const key = KEY("clear-pending")
+    idb.store.set(key, { text: "stored note", updatedAt: 1 })
+    vi.useFakeTimers()
+    const { result } = renderHook(() => useLessonNotes("clear-pending"))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(result.current.note?.text).toBe("stored note")
+
+    act(() => {
+      result.current.setNote("transient edit")
+      result.current.clearNote()
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+    })
+
+    expect(result.current.note).toBeNull()
+    expect(idb.store.get(key)).toBeUndefined()
+    expect(idb.set).not.toHaveBeenCalled()
+    expect(idb.del).toHaveBeenCalledWith(key)
+  })
+
   it("clearNote is a no-op when lessonId is undefined", () => {
     const { result } = renderHook(() => useLessonNotes(undefined))
     act(() => result.current.clearNote())
     expect(result.current.note).toBeNull()
   })
 
-  it("unmount cancels a pending debounced write", async () => {
+  it("flushes the pending debounced write on unmount", async () => {
     vi.useFakeTimers()
     const { result, unmount } = renderHook(() => useLessonNotes("lessonF"))
     await act(async () => {
@@ -310,10 +372,146 @@ describe("useLessonNotes", () => {
     act(() => result.current.setNote("pending"))
     unmount()
     await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(idb.set).toHaveBeenCalledTimes(1)
+    expect(idb.store.get(KEY("lessonF"))).toEqual({
+      text: "pending",
+      updatedAt: expect.any(Number),
+    })
+  })
+
+  it("flushes an edit made during a deferred initial load on early unmount", async () => {
+    vi.useFakeTimers()
+    const loadEntered = deferred<string>()
+    const loaded = deferred<LessonNote | undefined>()
+    dbState.getDatabase.mockRejectedValue(new Error("RxDB unavailable"))
+    idb.get.mockImplementationOnce((key) => {
+      loadEntered.resolve(key)
+      return loaded.promise
+    })
+    const writeEntered = deferred<void>()
+    idb.set.mockImplementationOnce(async (key, value) => {
+      idb.store.set(key, value)
+      writeEntered.resolve()
+    })
+
+    const { result, unmount } = renderHook(() => useLessonNotes("loading-unmount-edit"))
+    await act(async () => {
+      expect(await loadEntered.promise).toBe(KEY("loading-unmount-edit"))
+    })
+    act(() => result.current.setNote("keep edit while leaving"))
+    const editedNote = result.current.note
+    unmount()
+
+    await act(async () => {
+      await writeEntered.promise
+    })
+    expect(idb.store.get(KEY("loading-unmount-edit"))).toEqual({
+      text: "keep edit while leaving",
+      updatedAt: expect.any(Number),
+    })
+
+    await act(async () => {
+      loaded.resolve({ text: "older stored value", updatedAt: 11 })
+      await loaded.promise
+      await Promise.resolve()
+    })
+    expect(result.current.note).toBe(editedNote)
+    expect(idb.store.get(KEY("loading-unmount-edit"))).toEqual({
+      text: "keep edit while leaving",
+      updatedAt: expect.any(Number),
+    })
+  })
+
+  it("flushes a pending edit when switching lessons for the same owner", async () => {
+    vi.useFakeTimers()
+    const writeEntered = deferred<void>()
+    idb.set.mockImplementationOnce(async (key, value) => {
+      idb.store.set(key, value)
+      writeEntered.resolve()
+    })
+    const { result, rerender } = renderHook(({ lesson }) => useLessonNotes(lesson), {
+      initialProps: { lesson: "switch-from" },
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    act(() => result.current.setNote("save the previous lesson"))
+
+    rerender({ lesson: "switch-to" })
+    await act(async () => {
+      await writeEntered.promise
+    })
+
+    expect(idb.store.get(KEY("switch-from"))).toEqual({
+      text: "save the previous lesson",
+      updatedAt: expect.any(Number),
+    })
+    expect(idb.store.get(KEY("switch-to"))).toBeUndefined()
+  })
+
+  it("flushes the previous lesson when the next lesson is edited before effects settle", async () => {
+    vi.useFakeTimers()
+    idb.set.mockImplementation(async (key, value) => {
+      idb.store.set(key, value)
+    })
+    const { result, rerender } = renderHook(
+      ({ lesson }) => {
+        const notes = useLessonNotes(lesson)
+        const { setNote } = notes
+        useLayoutEffect(() => {
+          if (lesson === "same-commit-to") setNote("start the next lesson")
+        }, [lesson, setNote])
+        return notes
+      },
+      {
+        initialProps: { lesson: "same-commit-from" },
+      }
+    )
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    act(() => result.current.setNote("save the previous lesson"))
+    rerender({ lesson: "same-commit-to" })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(idb.store.get(KEY("same-commit-from"))).toEqual({
+      text: "save the previous lesson",
+      updatedAt: expect.any(Number),
+    })
+
+    await act(async () => {
       await vi.advanceTimersByTimeAsync(300)
     })
+    expect(idb.store.get(KEY("same-commit-to"))).toEqual({
+      text: "start the next lesson",
+      updatedAt: expect.any(Number),
+    })
+  })
+
+  it("discards an unmounted pending write after session epoch rotation", async () => {
+    vi.useFakeTimers()
+    const { result, unmount } = renderHook(() => useLessonNotes("lessonF-epoch"))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    act(() => result.current.setNote("stale pending"))
+    act(() => invalidateSessionEpoch())
+    unmount()
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
     expect(idb.set).not.toHaveBeenCalled()
-    expect(idb.store.get(KEY("lessonF"))).toBeUndefined()
+    expect(idb.store.get(KEY("lessonF-epoch"))).toBeUndefined()
   })
 
   it("load error -> note null (catch)", async () => {
@@ -553,6 +751,98 @@ describe("useLessonNotesMap", () => {
 })
 
 describe("deferred note storage ownership", () => {
+  it("keeps an IndexedDB save that finishes after the hook unmounts", async () => {
+    vi.useFakeTimers()
+    const entered = deferred<void>()
+    const release = deferred<void>()
+    idb.set.mockImplementationOnce(async (key, value) => {
+      entered.resolve()
+      await release.promise
+      idb.store.set(key, value)
+    })
+    const { result, unmount } = renderHook(() => useLessonNotes("unmount-save"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    act(() => result.current.setNote("keep after leaving"))
+    await act(() => vi.advanceTimersByTimeAsync(300))
+    await entered.promise
+
+    unmount()
+    await act(async () => {
+      release.resolve()
+      await release.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(idb.store.get(KEY("unmount-save"))).toEqual({
+      text: "keep after leaving",
+      updatedAt: expect.any(Number),
+    })
+    expect(idb.del).not.toHaveBeenCalled()
+  })
+
+  it("keeps an RxDB upsert that finishes after the hook unmounts", async () => {
+    vi.useFakeTimers()
+    const entered = deferred<void>()
+    const release = deferred<{ remove: ReturnType<typeof vi.fn> }>()
+    const remove = vi.fn(async () => undefined)
+    const upsert = vi.fn(async () => {
+      entered.resolve()
+      return release.promise
+    })
+    const findOne = vi.fn(() => ({ exec: vi.fn(async () => null) }))
+    dbState.getDatabase.mockResolvedValue({ notes: { findOne, upsert } } as never)
+    const { result, unmount } = renderHook(() => useLessonNotes("unmount-rxdb"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    act(() => result.current.setNote("keep RxDB after leaving"))
+    await act(() => vi.advanceTimersByTimeAsync(300))
+    await entered.promise
+
+    unmount()
+    await act(async () => {
+      release.resolve({ remove })
+      await release.promise
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(remove).not.toHaveBeenCalled()
+    expect(idb.store.get(KEY("unmount-rxdb"))).toEqual({
+      text: "keep RxDB after leaving",
+      updatedAt: expect.any(Number),
+    })
+  })
+
+  it("rolls back an IndexedDB write after same-owner session epoch rotation", async () => {
+    vi.useFakeTimers()
+    const entered = deferred<void>()
+    const release = deferred<void>()
+    idb.set.mockImplementationOnce(async (key, value) => {
+      entered.resolve()
+      await release.promise
+      idb.store.set(key, value)
+    })
+    const { result } = renderHook(() => useLessonNotes("same-owner-epoch"))
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    act(() => result.current.setNote("session-bound note"))
+    await act(() => vi.advanceTimersByTimeAsync(300))
+    await entered.promise
+    expect(useAuthStore.getState().user?.id).toBe("user-a")
+
+    act(() => invalidateSessionEpoch())
+    expect(useAuthStore.getState().user?.id).toBe("user-a")
+    await act(async () => {
+      release.resolve()
+      await release.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(idb.store.has(KEY("same-owner-epoch"))).toBe(false)
+    expect(idb.del).toHaveBeenCalledWith(KEY("same-owner-epoch"))
+  })
+
   it("rolls back an RxDB save and discards queued work after account expiry", async () => {
     vi.useFakeTimers()
     const saved = deferred<{ remove: ReturnType<typeof vi.fn> }>()

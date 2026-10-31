@@ -10,8 +10,13 @@ import (
 
 // Config holds application configuration.
 type Config struct {
-	Port    string
-	NatsURL string
+	Port string
+	// MetricsAddr is the bind address of the scrape-only Prometheus listener.
+	// It is separate from the public WebSocket port (AUD-438). The loopback
+	// default keeps metrics private unless a deployment opts in explicitly; an
+	// empty value disables the listener.
+	MetricsAddr string
+	NatsURL     string
 	// NatsUser / NatsPassword and NatsAuthToken pass credentials through NATS
 	// client options rather than embedding them in NatsURL. Token auth is
 	// mutually exclusive with user/password auth, and NatsURL must remain
@@ -95,11 +100,15 @@ type Config struct {
 	TLSKeyFile       string
 
 	// JetStream configuration options (R1 JetStream delivery & deduplication)
-	NatsStreamChat           string
-	NatsStreamNotifications  string
-	NatsDurableChat          string
-	NatsDurableNotifications string
-	EnableJetStream          bool
+	NatsStreamChat          string
+	NatsStreamNotifications string
+	EnableJetStream         bool
+	// RevocationReplayWindowSeconds bounds how far back a late-starting replica
+	// replays room membership revocations from CACHE_INVALIDATIONS. It must cover
+	// the longest access-token lifetime the backend issues
+	// (access_token_expire_minutes, default 60). Pure cache invalidations are never
+	// replayed. Default: 3600.
+	RevocationReplayWindowSeconds int
 }
 
 // LoadConfig initializes Config from env vars and fails closed on any configured secret file error.
@@ -156,11 +165,17 @@ func LoadConfig() (*Config, error) {
 				trustedCIDRs = append(trustedCIDRs, cidr)
 			}
 		} else {
+			// RealIP compares net.IP.String(), so exact peers need the same
+			// canonical form, including equivalent IPv6 and IPv4-mapped forms.
+			if ip := net.ParseIP(entry); ip != nil {
+				entry = ip.String()
+			}
 			trustedProxiesSet[entry] = struct{}{}
 		}
 	}
 	return &Config{
 		Port:          getEnv("WS_HUB_PORT", "8081"),
+		MetricsAddr:   getEnv("WS_HUB_METRICS_ADDR", "127.0.0.1:9108"),
 		NatsURL:       natsURL,
 		NatsUser:      natsUser,     // empty means no auth override
 		NatsPassword:  natsPassword, // empty means no auth override
@@ -171,38 +186,39 @@ func LoadConfig() (*Config, error) {
 		// Include the port-80 Caddy edge origin used by local compose.  Explicit
 		// origins configured through ALLOWED_ORIGINS still replace this safe local
 		// default entirely.
-		AllowedOrigins:           getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost", "http://localhost:80", "http://localhost:3000", "http://localhost:5173"}),
-		TrustedProxies:           trustedProxies,
-		TrustedProxiesSet:        trustedProxiesSet,
-		TrustedCIDRs:             trustedCIDRs,
-		BackendURL:               getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
-		JWKSURL:                  getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
-		SendBufferSize:           getEnvInt("WS_SEND_BUFFER_SIZE", 256),
-		BroadcastBufferSize:      getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
-		BroadcastWorkers:         min(getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2), 12),
-		InternalSecret:           internalSecret, // no default — empty secret allows HMAC forgery
-		InternalAuthToken:        internalAuthToken,
-		MaxClients:               getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
-		ClientMsgRateLimit:       getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
-		ClientMsgRateBurst:       getEnvInt("WS_CLIENT_MSG_BURST", 20),
-		TicketTTLSeconds:         getEnvInt("WS_TICKET_TTL_SECONDS", 15),
-		RedisURL:                 redisURL,
-		RedisPassword:            redisPassword,
-		RedisDB:                  getEnvInt("REDIS_DB", 0),
-		RevocationRedisURL:       revocationRedisURL,
-		SpiffeEnabled:            os.Getenv("SPIFFE_ENABLED") == "true",
-		SpiffeEndpointSocket:     getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
-		SpiffeTrustDomain:        getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
-		SpiffeMyID:               getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/ws-hub"),
-		BackendSpiffeID:          getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
-		WebTransportPort:         getEnv("WS_HUB_WT_PORT", getEnv("WT_PORT", "8443")),
-		TLSCertFile:              getEnv("TLS_CERT_FILE", ""),
-		TLSKeyFile:               getEnv("TLS_KEY_FILE", ""),
-		NatsStreamChat:           getEnv("NATS_STREAM_CHAT", "CHAT_EVENTS"),
-		NatsStreamNotifications:  getEnv("NATS_STREAM_NOTIFICATIONS", "NOTIFICATIONS_EVENTS"),
-		NatsDurableChat:          getEnv("NATS_DURABLE_CHAT", "ws-hub-chat"),
-		NatsDurableNotifications: getEnv("NATS_DURABLE_NOTIFICATIONS", "ws-hub-notifications"),
-		EnableJetStream:          getEnvBool("ENABLE_JETSTREAM", true),
+		AllowedOrigins:          getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost", "http://localhost:80", "http://localhost:3000", "http://localhost:5173"}),
+		TrustedProxies:          trustedProxies,
+		TrustedProxiesSet:       trustedProxiesSet,
+		TrustedCIDRs:            trustedCIDRs,
+		BackendURL:              getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
+		JWKSURL:                 getEnv("JWKS_URL", "http://backend:8000/.well-known/jwks.json"),
+		SendBufferSize:          getEnvInt("WS_SEND_BUFFER_SIZE", 256),
+		BroadcastBufferSize:     getEnvInt("WS_BROADCAST_BUFFER_SIZE", 4096),
+		BroadcastWorkers:        min(getEnvInt("WS_BROADCAST_WORKERS", runtime.GOMAXPROCS(0)*2), 12),
+		InternalSecret:          internalSecret, // no default — empty secret allows HMAC forgery
+		InternalAuthToken:       internalAuthToken,
+		MaxClients:              getEnvInt("WS_HUB_MAX_CLIENTS", 10000),
+		ClientMsgRateLimit:      getEnvFloat("WS_CLIENT_MSG_RATE_LIMIT", 10),
+		ClientMsgRateBurst:      getEnvInt("WS_CLIENT_MSG_BURST", 20),
+		TicketTTLSeconds:        getEnvInt("WS_TICKET_TTL_SECONDS", 15),
+		RedisURL:                redisURL,
+		RedisPassword:           redisPassword,
+		RedisDB:                 getEnvInt("REDIS_DB", 0),
+		RevocationRedisURL:      revocationRedisURL,
+		SpiffeEnabled:           os.Getenv("SPIFFE_ENABLED") == "true",
+		SpiffeEndpointSocket:    getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
+		SpiffeTrustDomain:       getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
+		SpiffeMyID:              getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/ws-hub"),
+		BackendSpiffeID:         getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
+		WebTransportPort:        getEnv("WS_HUB_WT_PORT", getEnv("WT_PORT", "8443")),
+		TLSCertFile:             getEnv("TLS_CERT_FILE", ""),
+		TLSKeyFile:              getEnv("TLS_KEY_FILE", ""),
+		NatsStreamChat:          getEnv("NATS_STREAM_CHAT", "CHAT_EVENTS"),
+		NatsStreamNotifications: getEnv("NATS_STREAM_NOTIFICATIONS", "NOTIFICATIONS_EVENTS"),
+		EnableJetStream:         getEnvBool("ENABLE_JETSTREAM", true),
+
+		// Must cover the backend's access_token_expire_minutes (default 60).
+		RevocationReplayWindowSeconds: getEnvInt("WS_REVOCATION_REPLAY_WINDOW_SECONDS", 3600),
 	}, nil
 }
 

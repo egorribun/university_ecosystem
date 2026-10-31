@@ -39,19 +39,99 @@ func TestSafeJetStreamHelpers_RecordSuccessfulOperations(t *testing.T) {
 	assert.Equal(t, beforeNak+1, testutil.ToFloat64(JetStreamNaksTotal))
 }
 
+// AUD-477: a sequenced chat message that cannot be broadcast must not be
+// acknowledged. The ACK would advance JetStream past a message no client
+// receives, leaving a silent gap in the replay sequence.
+func TestEnqueueChatDelivery_UndeliverableSequencedMessageIsNotAcknowledged(t *testing.T) {
+	sequencedMessage := func(payloadBytes int) (*nats.Msg, *Message) {
+		payload := json.RawMessage(`"` + strings.Repeat("x", payloadBytes) + `"`)
+		wsMsg := &Message{
+			Type:                  "chat_message",
+			Room:                  "room-1",
+			Payload:               payload,
+			MessageReplayMetadata: &MessageReplayMetadata{Seq: 42, Stream: "CHAT_EVENTS"},
+		}
+		natsMsg := &nats.Msg{
+			Subject: "chat.room-1",
+			Reply:   "$JS.ACK.CHAT_EVENTS.ws-hub-chat.1.42.42.1700000000000000000.0",
+		}
+		return natsMsg, wsMsg
+	}
+
+	newHub := func(t *testing.T) *Hub {
+		t.Helper()
+		h := NewHub(nil, slog.New(slog.NewTextHandler(os.Stderr, nil)), nil,
+			&config.Config{BroadcastBufferSize: 4, InternalSecret: strings.Repeat("cfg-", 16)}, nil)
+		t.Cleanup(h.Stop)
+		return h
+	}
+
+	t.Run("oversized sequenced message is terminated and never acknowledged", func(t *testing.T) {
+		oldAck, oldTerm := jetStreamAckFunc, jetStreamTermFunc
+		t.Cleanup(func() { jetStreamAckFunc, jetStreamTermFunc = oldAck, oldTerm })
+		var acks, terms int
+		jetStreamAckFunc = func(*nats.Msg) error { acks++; return nil }
+		jetStreamTermFunc = func(*nats.Msg) error { terms++; return nil }
+
+		h := newHub(t)
+		// 60 KB payload plus the Message envelope exceeds the broadcast limit.
+		natsMsg, wsMsg := sequencedMessage(60 * 1024)
+		before := testutil.ToFloat64(BroadcastDropsTotal)
+		h.enqueueChatDelivery(t.Context(), natsMsg, wsMsg, "", true)
+
+		assert.Equal(t, 0, acks, "an undeliverable sequenced message must not be acknowledged")
+		assert.Equal(t, 1, terms, "the poison message must be terminated, not redelivered")
+		assert.Empty(t, h.Broadcast, "an undeliverable message must not reach the broadcast queue")
+		assert.Equal(t, before+1, testutil.ToFloat64(BroadcastDropsTotal))
+	})
+
+	t.Run("deliverable sequenced message is enqueued and acknowledged", func(t *testing.T) {
+		oldAck, oldTerm := jetStreamAckFunc, jetStreamTermFunc
+		t.Cleanup(func() { jetStreamAckFunc, jetStreamTermFunc = oldAck, oldTerm })
+		var acks, terms int
+		jetStreamAckFunc = func(*nats.Msg) error { acks++; return nil }
+		jetStreamTermFunc = func(*nats.Msg) error { terms++; return nil }
+
+		h := newHub(t)
+		natsMsg, wsMsg := sequencedMessage(1024)
+		h.enqueueChatDelivery(t.Context(), natsMsg, wsMsg, "", true)
+
+		assert.Equal(t, 1, acks)
+		assert.Equal(t, 0, terms)
+		assert.Len(t, h.Broadcast, 1)
+	})
+
+	t.Run("sequenced message that cannot be marshaled fails closed", func(t *testing.T) {
+		oldAck, oldTerm, oldMarshal := jetStreamAckFunc, jetStreamTermFunc, hubJSONMarshalFunc
+		t.Cleanup(func() {
+			jetStreamAckFunc, jetStreamTermFunc, hubJSONMarshalFunc = oldAck, oldTerm, oldMarshal
+		})
+		var acks, terms int
+		jetStreamAckFunc = func(*nats.Msg) error { acks++; return nil }
+		jetStreamTermFunc = func(*nats.Msg) error { terms++; return nil }
+		hubJSONMarshalFunc = func(any) ([]byte, error) { return nil, errors.New("synthetic marshal failure") }
+
+		h := newHub(t)
+		natsMsg, wsMsg := sequencedMessage(16)
+		h.enqueueChatDelivery(t.Context(), natsMsg, wsMsg, "", true)
+
+		assert.Equal(t, 0, acks)
+		assert.Equal(t, 1, terms)
+		assert.Empty(t, h.Broadcast)
+	})
+}
+
 func TestNewHub_UsesConfiguredJetStreamAndRateSettings(t *testing.T) {
 	cfg := &config.Config{
-		BroadcastBufferSize:      7,
-		MaxClients:               9,
-		BroadcastWorkers:         3,
-		InternalSecret:           strings.Repeat("cfg-", 16),
-		ClientMsgRateLimit:       2,
-		ClientMsgRateBurst:       4,
-		NatsStreamChat:           "chat-stream",
-		NatsStreamNotifications:  "notification-stream",
-		NatsDurableChat:          "chat-durable",
-		NatsDurableNotifications: "notification-durable",
-		EnableJetStream:          true,
+		BroadcastBufferSize:     7,
+		MaxClients:              9,
+		BroadcastWorkers:        3,
+		InternalSecret:          strings.Repeat("cfg-", 16),
+		ClientMsgRateLimit:      2,
+		ClientMsgRateBurst:      4,
+		NatsStreamChat:          "chat-stream",
+		NatsStreamNotifications: "notification-stream",
+		EnableJetStream:         true,
 	}
 	h := NewHub(nil, slog.New(slog.NewTextHandler(os.Stderr, nil)), nil, cfg, nil)
 	t.Cleanup(h.Stop)
@@ -63,8 +143,6 @@ func TestNewHub_UsesConfiguredJetStreamAndRateSettings(t *testing.T) {
 	assert.Equal(t, 4, h.clientMsgRateBurst)
 	assert.Equal(t, "chat-stream", h.streamChat)
 	assert.Equal(t, "notification-stream", h.streamNotif)
-	assert.Equal(t, "chat-durable", h.durableChat)
-	assert.Equal(t, "notification-durable", h.durableNotif)
 	assert.True(t, h.enableJetStream)
 }
 

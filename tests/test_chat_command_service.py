@@ -8,12 +8,13 @@ clear_history, delete_chat), and _make_idempotency_key.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from fastapi import HTTPException
 
+from app.repositories.chat_repository import LockedChatMembership
 from app.services.chat.command_service import (
     ChatMaintenanceService,
     ChatMessageDispatcher,
@@ -28,6 +29,24 @@ from app.services.chat.command_service import (
 def _mock_uow():
     uow = MagicMock()
     uow.chats = MagicMock()
+    uow.chats.get_send_receipt = AsyncMock(return_value=None)
+    uow.chats.create_send_receipt = AsyncMock(
+        return_value=datetime.now(UTC) + timedelta(hours=24)
+    )
+    uow.chats.prune_expired_send_receipts = AsyncMock(return_value=0)
+    uow.chats.send_receipt_remaining_seconds = AsyncMock(return_value=86400)
+
+    async def lock_snapshot(chat_id):
+        chat = await uow.chats.get_by_id(chat_id)
+        if chat is None:
+            return None
+        return LockedChatMembership(
+            chat_type=chat.chat_type,
+            created_by=chat.created_by,
+            participant_ids=tuple(participant.id for participant in chat.participants),
+        )
+
+    uow.chats.lock_membership_snapshot = AsyncMock(side_effect=lock_snapshot)
     uow.session = AsyncMock()
     uow.commit = AsyncMock()
     uow.rollback = AsyncMock()
@@ -962,6 +981,9 @@ def _patch_member_caches():
             "app.services.ws_hub_client.invalidate_ws_hub_cache",
             new_callable=AsyncMock,
         ),
+        patch(
+            f"{_CACHE_MOD}.invalidate_participant_caches_strict", new_callable=AsyncMock
+        ),
     )
 
 
@@ -978,8 +1000,8 @@ class TestGroupMemberManagement:
         uow.chats.add_participant = AsyncMock(return_value=True)
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        p1, p2, p3 = _patch_member_caches()
-        with p1, p2, p3:
+        p1, p2, p3, p4 = _patch_member_caches()
+        with p1, p2, p3, p4:
             await svc.add_participant(chat.id, owner, uuid.uuid4(), "en")
 
         uow.chats.add_participant.assert_awaited_once()
@@ -995,8 +1017,9 @@ class TestGroupMemberManagement:
         uow.chats.add_participant = AsyncMock()
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        with pytest.raises(Exception):  # noqa: B017
+        with pytest.raises(HTTPException) as denied:
             await svc.add_participant(chat.id, outsider, uuid.uuid4(), "en")
+        assert denied.value.status_code == 403
         uow.chats.add_participant.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1008,8 +1031,9 @@ class TestGroupMemberManagement:
         uow.chats.add_participant = AsyncMock()
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        with pytest.raises(Exception):  # noqa: B017
+        with pytest.raises(HTTPException) as denied:
             await svc.add_participant(chat.id, owner, uuid.uuid4(), "en")
+        assert denied.value.status_code == 400
         uow.chats.add_participant.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1022,8 +1046,8 @@ class TestGroupMemberManagement:
         uow.chats.remove_participant = AsyncMock(return_value=1)
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        p1, p2, p3 = _patch_member_caches()
-        with p1, p2, p3:
+        p1, p2, p3, p4 = _patch_member_caches()
+        with p1, p2, p3, p4:
             await svc.remove_participant(chat.id, member, member.id, "en")
 
         uow.chats.remove_participant.assert_awaited_once()
@@ -1044,13 +1068,8 @@ class TestGroupMemberManagement:
         operations = []
         uow.chats.add.side_effect = lambda item: operations.append(("add", item))
         uow.commit.side_effect = lambda: operations.append(("commit", None))
-        invalidate_chat = AsyncMock(
-            side_effect=lambda chat_id: operations.append(("chat-cache", chat_id))
-        )
-        invalidate_presence = AsyncMock(
-            side_effect=lambda *user_ids: operations.append(
-                ("presence-cache", user_ids)
-            )
+        invalidate_caches = AsyncMock(
+            side_effect=lambda *args: operations.append(("cache", args))
         )
 
         def record_immediate_eviction(*args, **kwargs):
@@ -1062,12 +1081,8 @@ class TestGroupMemberManagement:
 
         with (
             patch(
-                "app.services.chat.command_service.invalidate_chat_participants_cache",
-                new=invalidate_chat,
-            ),
-            patch(
-                "app.services.chat.command_service.invalidate_presence_audience_cache",
-                new=invalidate_presence,
+                "app.services.chat.command_service.invalidate_participant_caches_strict",
+                new=invalidate_caches,
             ),
             patch(
                 "app.services.ws_hub_client.invalidate_ws_hub_cache",
@@ -1078,9 +1093,9 @@ class TestGroupMemberManagement:
 
         assert [operation[0] for operation in operations] == [
             "add",
+            "add",
             "commit",
-            "chat-cache",
-            "presence-cache",
+            "cache",
             "ws-hub",
         ]
         stored_event = operations[0][1]
@@ -1091,6 +1106,12 @@ class TestGroupMemberManagement:
         assert stored_event.payload == {
             "chat_id": str(chat.id),
             "user_id": str(member.id),
+        }
+        cache_event = operations[1][1]
+        assert cache_event.event_type == "chat.participant_cache_invalidation"
+        assert set(cache_event.payload["participant_ids"]) == {
+            str(owner.id),
+            str(member.id),
         }
         assert operations[-1][1:] == (
             (str(member.id), str(chat.id)),
@@ -1140,34 +1161,28 @@ class TestGroupMemberManagement:
         uow = _mock_uow()
         uow.chats.get_by_id = AsyncMock(return_value=chat)
         uow.chats.remove_participant = AsyncMock(return_value=1)
-        invalidate_chat = AsyncMock(side_effect=ConnectionError("cache unavailable"))
-        invalidate_presence = AsyncMock()
+        invalidate_caches = AsyncMock(side_effect=ConnectionError("cache unavailable"))
         invalidate_ws = AsyncMock()
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
         with (
             patch(
-                "app.services.chat.command_service.invalidate_chat_participants_cache",
-                new=invalidate_chat,
-            ),
-            patch(
-                "app.services.chat.command_service.invalidate_presence_audience_cache",
-                new=invalidate_presence,
+                "app.services.chat.command_service.invalidate_participant_caches_strict",
+                new=invalidate_caches,
             ),
             patch(
                 "app.services.ws_hub_client.invalidate_ws_hub_cache",
                 new=invalidate_ws,
             ),
-            pytest.raises(ConnectionError, match="cache unavailable"),
         ):
             await svc.remove_participant(chat.id, owner, member.id, "en")
 
-        invalidate_presence.assert_awaited_once()
+        invalidate_caches.assert_awaited_once()
         invalidate_ws.assert_awaited_once_with(
             str(member.id),
             str(chat.id),
             evict_room=True,
-            event_id=str(uow.chats.add.call_args.args[0].id),
+            event_id=str(uow.chats.add.call_args_list[0].args[0].id),
         )
 
     @pytest.mark.asyncio
@@ -1183,8 +1198,9 @@ class TestGroupMemberManagement:
         uow.chats.remove_participant = AsyncMock()
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        with pytest.raises(Exception):  # noqa: B017
+        with pytest.raises(HTTPException) as denied:
             await svc.remove_participant(chat.id, member1, member2_id, "en")
+        assert denied.value.status_code == 403
         uow.chats.remove_participant.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1197,8 +1213,8 @@ class TestGroupMemberManagement:
         uow.chats.remove_participant = AsyncMock(return_value=1)
         svc = ChatMaintenanceService(uow, _mock_attachment_service())
 
-        p1, p2, p3 = _patch_member_caches()
-        with p1, p2, p3:
+        p1, p2, p3, p4 = _patch_member_caches()
+        with p1, p2, p3, p4:
             await svc.remove_participant(chat.id, owner, member_id, "en")
 
         uow.chats.remove_participant.assert_awaited_once()
@@ -1222,10 +1238,9 @@ class TestGroupMemberManagement:
 
 
 @pytest.mark.asyncio
-async def test_remove_participant_refreshes_other_members_cached_presence_audience(
+async def test_remove_participant_reads_other_members_current_presence_audience(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from collections import OrderedDict
     from collections.abc import AsyncIterator
     from contextlib import asynccontextmanager
 
@@ -1240,9 +1255,6 @@ async def test_remove_participant_refreshes_other_members_cached_presence_audien
     )
     cache = MemoryCache(default_ttl=120)
     monkeypatch.setattr(presence, "get_cache", lambda: cache)
-    # A second API worker shares the cache backend but has an independent local L1.
-    monkeypatch.setattr(presence, "_PRESENCE_DB_CACHE", OrderedDict())
-
     current_audiences = {
         owner.id: {removed.id, observer.id},
         removed.id: {owner.id, observer.id},
@@ -1274,6 +1286,13 @@ async def test_remove_participant_refreshes_other_members_cached_presence_audien
     uow.__aenter__ = AsyncMock(return_value=uow)
     uow.__aexit__ = AsyncMock(return_value=False)
     uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.lock_membership_snapshot = AsyncMock(
+        return_value=LockedChatMembership(
+            chat_type="group",
+            created_by=owner.id,
+            participant_ids=(owner.id, removed.id, observer.id),
+        )
+    )
     uow.chats.remove_participant = AsyncMock(return_value=1)
     service = ChatMaintenanceService(uow, MagicMock())
     monkeypatch.setattr(
@@ -1282,15 +1301,12 @@ async def test_remove_participant_refreshes_other_members_cached_presence_audien
 
     await service.remove_participant(chat.id, owner, removed.id, "en")
 
-    # Removing a member changes the audience cached for every pre-change member.
-    # Drop only this worker's L1 entries to observe the shared-cache contract as
-    # another worker would after the database commit.
+    # Each post-commit lookup reads the updated audience without local eviction.
     current_audiences = {
         owner.id: {observer.id},
         removed.id: {owner.id, observer.id},
         observer.id: {owner.id},
     }
-    presence._PRESENCE_DB_CACHE.clear()
     owner_audience = await presence._get_presence_audience(owner.id)
     if owner_audience != {observer.id}:
         raise AssertionError("remaining_member_audience_refresh_contract")

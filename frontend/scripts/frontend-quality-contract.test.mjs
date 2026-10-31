@@ -8,6 +8,8 @@ import test from "node:test"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { join, resolve } from "node:path"
 
+import "./aud162-engine-contract.test.mjs"
+import "./maplibre-build-metadata.test.mjs"
 import strykerConfig, { mutationRunnerReuse, mutationThresholds } from "../stryker.config.mjs"
 
 const frontendRoot = new URL("../", import.meta.url)
@@ -863,4 +865,334 @@ test("the PR Node suite executes release-version regressions exactly once", asyn
   )
 
   assert.deepEqual(matching, ["../scripts/tests/prepare-release-version.test.mjs"])
+})
+
+for (const lhci of ["false", "true"]) {
+  test(`MapLibre metadata producer is registered only for client builds (LHCI ${lhci})`, async () => {
+    const root = fileURLToPath(frontendRoot)
+    const configFile = fileURLToPath(new URL("../vite.config.mts", import.meta.url))
+    const directory = await mkdtemp(join(tmpdir(), "maplibre-registration-"))
+    const outputPath = join(directory, "metadata.json")
+    const probe = `
+      import assert from "node:assert/strict"
+      import { readFile } from "node:fs/promises"
+      import { resolve } from "node:path"
+      import { resolveConfig } from "vite"
+      process.argv[1] = ${JSON.stringify(configFile)}
+      const config = await resolveConfig({
+        root: ${JSON.stringify(root)},
+        configFile: ${JSON.stringify(configFile)},
+        configLoader: "runner",
+        logLevel: "silent",
+      }, "build", "production")
+      assert.equal(resolve(config.configFile), resolve(${JSON.stringify(configFile)}))
+      const producers = config.plugins.filter((plugin) => plugin.name === "maplibre-build-metadata")
+      assert.equal(producers.length, 1, "the real Vite build must register one metadata producer")
+      const producer = producers[0]
+      assert.equal(producer.apply, "build")
+      assert.equal(typeof producer.applyToEnvironment, "function")
+      const environment = (name, options) => ({ name, config: { ...config, ...options } })
+      assert.equal(await producer.applyToEnvironment(environment("client", {
+        ...config.environments.client, consumer: "client", isWorker: false,
+      })), true)
+      assert.equal(await producer.applyToEnvironment(environment("ssr", {
+        ...config.environments.ssr, consumer: "server", isWorker: false,
+      })), false)
+      assert.equal(await producer.applyToEnvironment(environment("client", {
+        ...config.environments.client, consumer: "client", isWorker: true,
+      })), false)
+      assert.equal(config.env.VITE_LHCI, ${JSON.stringify(lhci)})
+      const client = environment("client", {
+        ...config.environments.client, consumer: "client", isWorker: false,
+      })
+      await producer.writeBundle.call({ environment: client }, {
+        dir: ${JSON.stringify(directory)}, format: "es",
+      }, {})
+      const report = JSON.parse(await readFile(${JSON.stringify(outputPath)}, "utf8"))
+      assert.equal(report.profile.lhci, ${lhci === "true"})
+      assert.equal(report.profile.lhciEnv, ${lhci === "true"})
+      assert.equal(report.profile.mode, "production")
+      assert.equal(report.profile.consumer, "client")
+    `
+    try {
+      const result = spawnSync(process.execPath, ["--input-type=module", "--eval", probe], {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NODE_ENV: "production",
+          VITE_LHCI: lhci,
+          MAPLIBRE_BUILD_METADATA_OUTPUT: outputPath,
+        },
+        timeout: 60_000,
+      })
+      assert.equal(result.status, 0, result.stderr)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+}
+
+let viteDevelopmentPolicyPromise
+
+async function resolveViteDevelopmentPolicy(overrides = {}) {
+  const { resolveConfig } = await import("vite")
+  const previousDirectory = process.cwd()
+  const environmentKeys = [
+    "NODE_ENV",
+    "VITE_APP_RELEASE",
+    "VITE_USER_NODE_ENV",
+    "BROWSER",
+    "BROWSER_ARGS",
+  ]
+  const environment = new Map(environmentKeys.map((name) => [name, process.env[name]]))
+  try {
+    process.chdir(fileURLToPath(frontendRoot))
+    const configFile = fileURLToPath(new URL("../vite.config.mts", import.meta.url))
+    const config = await resolveConfig(
+      {
+        root: fileURLToPath(frontendRoot),
+        configFile,
+        configLoader: "runner",
+        logLevel: "silent",
+        ...overrides,
+      },
+      "serve",
+      "development"
+    )
+    assert.equal(typeof config.configFile, "string")
+    assert.equal(
+      resolve(config.configFile),
+      resolve(configFile),
+      "AUD-377 must resolve the real project config"
+    )
+    return config
+  } finally {
+    process.chdir(previousDirectory)
+    for (const [name, value] of environment) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+}
+
+function defaultViteDevelopmentPolicy() {
+  viteDevelopmentPolicyPromise ??= resolveViteDevelopmentPolicy()
+  return viteDevelopmentPolicyPromise
+}
+
+test(
+  "AUD-377 dev and preview use loopback defaults without an explicit host override",
+  { timeout: 60_000 },
+  async () => {
+    const config = await defaultViteDevelopmentPolicy()
+    const loopbackHosts = [undefined, false, "localhost", "127.0.0.1", "::1"]
+    for (const target of ["server", "preview"]) {
+      assert.ok(
+        loopbackHosts.includes(config[target].host),
+        `AUD-377 ${target} must not listen on all network interfaces by default`
+      )
+      assert.notEqual(config[target].allowedHosts, true, "Host checks must not be disabled")
+    }
+  }
+)
+
+test(
+  "AUD-377 an explicit LAN host override remains available without opening a listener",
+  { timeout: 60_000 },
+  async () => {
+    const config = await resolveViteDevelopmentPolicy({
+      server: { host: "0.0.0.0" },
+      preview: { host: "0.0.0.0" },
+    })
+    assert.equal(config.server.host, "0.0.0.0")
+    assert.equal(config.preview.host, "0.0.0.0")
+    assert.equal(config.server.headers["Service-Worker-Allowed"], "/")
+  }
+)
+
+for (const target of ["server", "preview"]) {
+  test(
+    `AUD-377 ${target} CORS rejects remote origins and retains loopback tooling`,
+    { timeout: 60_000 },
+    async () => {
+      const config = await defaultViteDevelopmentPolicy()
+      const { createServer } = await import("vite")
+      const { createServer: createHttpServer } = await import("node:http")
+      const directory = await mkdtemp(join(tmpdir(), "aud377-vite-cors-"))
+      const previousNodeEnvironment = process.env.NODE_ENV
+      let server
+      let httpServer
+      try {
+        const fixture = "AUD-377 owned static CORS fixture"
+        await writeFile(join(directory, "cors-probe.txt"), fixture, "utf8")
+        // Use the real resolved CORS policy, but never expose the RED fixture
+        // to the LAN or load the application's plugins, proxy, or environment.
+        server = await createServer({
+          root: directory,
+          configFile: false,
+          envFile: false,
+          logLevel: "silent",
+          appType: "custom",
+          publicDir: false,
+          plugins: [],
+          optimizeDeps: { noDiscovery: true, include: [] },
+          server: {
+            middlewareMode: true,
+            host: "127.0.0.1",
+            cors: config[target].cors,
+            headers: config[target].headers,
+            allowedHosts: ["127.0.0.1"],
+            hmr: false,
+            ws: false,
+            watch: null,
+          },
+        })
+        // Vite's port allocator probes wildcard interfaces even for port 0.
+        // Own the HTTP socket directly so every bind stays on loopback.
+        httpServer = createHttpServer(server.middlewares)
+        await new Promise((resolve, reject) => {
+          httpServer.once("error", reject)
+          httpServer.listen(0, "127.0.0.1", () => {
+            httpServer.off("error", reject)
+            resolve()
+          })
+        })
+        const address = httpServer.address()
+        assert.ok(
+          address && typeof address === "object",
+          "The owned fixture must have a TCP address"
+        )
+        assert.equal(address.address, "127.0.0.1")
+        assert.ok(address.port > 0 && address.port <= 65535)
+        const cases = [
+          ["https://attacker.invalid", null],
+          ["http://localhost.attacker.invalid", null],
+          ["null", null],
+          ["http://localhost:5173", "http://localhost:5173"],
+          ["http://127.0.0.1:5173", "http://127.0.0.1:5173"],
+          ["http://[::1]:5173", "http://[::1]:5173"],
+        ]
+        for (const [origin, allowedOrigin] of cases) {
+          const response = await fetch(`http://127.0.0.1:${address.port}/cors-probe.txt`, {
+            headers: { Origin: origin },
+            redirect: "error",
+            signal: AbortSignal.timeout(2_000),
+          })
+          assert.equal(response.status, 200)
+          assert.equal(await response.text(), fixture)
+          assert.equal(
+            response.headers.get("access-control-allow-origin"),
+            allowedOrigin,
+            `AUD-377 ${target} must enforce the bounded origin policy for ${origin}`
+          )
+        }
+      } finally {
+        try {
+          if (httpServer) {
+            await new Promise((resolve, reject) => {
+              httpServer.close((error) => {
+                if (error && error.code !== "ERR_SERVER_NOT_RUNNING") reject(error)
+                else resolve()
+              })
+              httpServer.closeAllConnections()
+            })
+          }
+        } finally {
+          try {
+            await server?.close()
+          } finally {
+            try {
+              await rm(directory, { recursive: true, force: true })
+            } finally {
+              if (previousNodeEnvironment === undefined) delete process.env.NODE_ENV
+              else process.env.NODE_ENV = previousNodeEnvironment
+            }
+          }
+        }
+      }
+    }
+  )
+}
+
+const auditNodeSuites = [
+  "tests/e2e/aud151-readiness.test.mjs",
+  "scripts/aud151-news-errors.test.mjs",
+  "scripts/ui-barrel-boundary.test.mjs",
+  "scripts/boundary-micromatch-compat.test.mjs",
+  "scripts/validate-css-token-closure.test.mjs",
+]
+
+function assertAuditNodeSelection(scripts) {
+  const command = scripts["test:wasm"]
+  assert.equal(typeof command, "string")
+  assert.doesNotMatch(command, /[\r\n\t]/u)
+  const stages = command.split(" && ")
+  assert.equal(stages.length, 2, "audit checks need exactly two blocking stages")
+  assert.equal(stages[1], "npm run tokens:check")
+  const args = stages[0].split(" ")
+  assert.deepEqual(args.slice(0, 2), ["node", "--test"])
+  const suites = args.slice(2)
+  for (const suite of suites) {
+    assert.match(
+      suite,
+      /^(?:\.\.\/)?(?:[A-Za-z0-9_][A-Za-z0-9_-]*\/)+[A-Za-z0-9_][A-Za-z0-9_.-]*\.test\.mjs$/u,
+      "the Node stage accepts only explicit test paths, not filters or shell syntax"
+    )
+  }
+  for (const suite of auditNodeSuites) {
+    assert.equal(
+      suites.filter((candidate) => candidate === suite).length,
+      1,
+      "the Node stage must execute " + suite + " exactly once"
+    )
+  }
+  assert.equal(scripts["tokens:check"], "node ./scripts/validate-css-token-closure.mjs")
+}
+
+test("canonical Node gate executes the AUD-151 and AUD-308 checks", async () => {
+  const packageJson = await readJson(new URL("package.json", frontendRoot))
+  assertAuditNodeSelection(packageJson.scripts)
+})
+
+test("audit selection rejects omissions, filters and nonblocking substitutes", () => {
+  const command = ["node", "--test", ...auditNodeSuites].join(" ") + " && npm run tokens:check"
+  const scripts = {
+    "test:wasm": command,
+    "tokens:check": "node ./scripts/validate-css-token-closure.mjs",
+  }
+  assert.doesNotThrow(() => assertAuditNodeSelection(scripts))
+
+  const commands = [
+    ...auditNodeSuites.map((suite) => ["missing " + suite, command.replace(" " + suite, "")]),
+    ["duplicate", command.replace("node --test ", "node --test " + auditNodeSuites[0] + " ")],
+    ["name filter", command.replace("node --test ", "node --test --test-name-pattern=none ")],
+    ["skip filter", command.replace("node --test ", "node --test --test-skip-pattern=. ")],
+    ["test-only", command.replace("node --test ", "node --test --test-only ")],
+    ["echo", command.replace("node --test ", "echo node --test ")],
+    ["semicolon", command.replace(" && ", "; ")],
+    ["or", command.replace(" && ", " || ")],
+    ["background", command.replace(" && ", " & ")],
+    ["masked Node failure", command.replace(" && ", " || true && ")],
+    ["masked final failure", command + " || true"],
+    ["tokens sync", command.replace("npm run tokens:check", "npm run tokens:sync")],
+  ]
+  for (const [name, candidate] of commands) {
+    assert.throws(
+      () => assertAuditNodeSelection({ ...scripts, "test:wasm": candidate }),
+      { code: "ERR_ASSERTION" },
+      name
+    )
+  }
+  for (const candidate of [
+    'node -e "process.exit(0)"',
+    "node ./scripts/sync-tokens.mjs",
+    "node ./scripts/validate-css-token-closure.mjs --root tests/fixtures",
+  ]) {
+    assert.throws(
+      () => assertAuditNodeSelection({ ...scripts, "tokens:check": candidate }),
+      { code: "ERR_ASSERTION" },
+      candidate
+    )
+  }
 })

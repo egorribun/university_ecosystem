@@ -35,6 +35,11 @@ interface MessengerSidebarProps {
    * when the user clicks the Retry button inside the error empty state.
    */
   onRetry?: () => void
+  hasMoreChats?: boolean
+  isLoadingMoreChats?: boolean
+  isRefreshingChats?: boolean
+  moreChatsError?: boolean
+  onLoadMoreChats?: () => Promise<void>
 }
 
 const MOBILE_MENU_WIDTH = 300
@@ -47,6 +52,11 @@ export function MessengerSidebar({
   isLoading = false,
   isError = false,
   onRetry,
+  hasMoreChats = false,
+  isLoadingMoreChats = false,
+  isRefreshingChats = false,
+  moreChatsError = false,
+  onLoadMoreChats,
 }: MessengerSidebarProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
@@ -104,7 +114,7 @@ export function MessengerSidebar({
           matching W181 violet/pink palette. Increased header padding
           (px-5 pt-5 pb-4) for breathing room around the title — user
           reported "верхняя часть левого блока" needed visual upgrade. */}
-      <div className="sticky top-0 z-deep flex items-center justify-between bg-surface/(--opacity-medium) px-5 pt-5 pb-4 backdrop-blur-xl">
+      <div className="sticky top-0 z-deep flex items-center justify-between bg-surface/[calc(var(--opacity-medium)*100%)] px-5 pt-5 pb-4 backdrop-blur-xl">
         <h1 className="sf-pro text-2xl font-bold tracking-tight">{t("messenger:title")}</h1>
         <m.button
           id="messenger-new-chat-btn"
@@ -112,7 +122,7 @@ export function MessengerSidebar({
           whileHover={newChatHoverAnim}
           whileTap={newChatTapAnim}
           onClick={handleStartNewChat}
-          className="rounded-full bg-(--primary-main)/(--opacity-low) p-2 text-msg-active min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+          className="rounded-full bg-(--primary-main)/[calc(var(--opacity-low)*100%)] p-2 text-msg-active min-h-[44px] min-w-[44px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
           aria-label={t("messenger:newChat")}
         >
           <SquarePen className="h-5 w-5" strokeWidth={2.5} />
@@ -154,6 +164,30 @@ export function MessengerSidebar({
         isError={isError}
         onRetry={onRetry}
       />
+
+      {hasMoreChats && !isLoading && !isError && onLoadMoreChats && (
+        <div className="shrink-0 px-4 pb-4 pt-2">
+          {moreChatsError && (
+            <p role="alert" className="mb-2 text-sm text-(--text-secondary)">
+              {t("messenger:pagination.loadMoreError")}
+            </p>
+          )}
+          <m.button
+            type="button"
+            disabled={isLoadingMoreChats || isRefreshingChats}
+            onClick={() => {
+              void onLoadMoreChats()
+            }}
+            className="w-full min-h-[44px] rounded-full px-4 py-2 text-sm font-semibold text-msg-active transition-colors hover:bg-(--bg-surface-hover) disabled:opacity-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+          >
+            {isLoadingMoreChats
+              ? t("messenger:pagination.loadingMoreChats")
+              : moreChatsError
+                ? t("messenger:error.retry")
+                : t("messenger:pagination.loadMoreChats")}
+          </m.button>
+        </div>
+      )}
     </m.div>
   )
 }

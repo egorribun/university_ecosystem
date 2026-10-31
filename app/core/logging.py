@@ -17,7 +17,11 @@ from __future__ import annotations
 import logging
 import re
 import sys
+from collections.abc import Mapping
+from datetime import datetime
+from types import TracebackType
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import structlog
 
@@ -82,6 +86,7 @@ _PII_FIELD_NAMES = frozenset(
         "password",
         "password_hash",
         "secret",
+        "secret_key",
         "credential",
         "credentials",
         "client_secret",
@@ -93,21 +98,43 @@ _PII_FIELD_NAMES = frozenset(
         "proxy_authorization",
         "access_token",
         "refresh_token",
+        "reset_token",
         "id_token",
         "session_token",
         "session",
         "session_id",
         "session_cookie",
         "csrf_token",
+        "csrf_hmac_secret",
         "x_csrf_token",
         "cookie",
         "set_cookie",
         "api_key",
         "x_api_key",
         "private_key",
+        "signing_key",
+        "jwt_signing_keys",
+        "jwt_signing_key_registry",
+        "vapid_private_key",
+        "spicedb_preshared_key",
+        "storage_s3_secret_access_key",
+        "mfa_totp_encryption_keys",
+        "mfa_email_otp_hmac_keys",
+        "mfa_email_delivery_keks",
+        "mfa_trusted_device_hmac_keys",
+        "imgproxy_key",
+        "imgproxy_salt",
+        "database_url",
+        "database_read_replica_url",
+        "cache_redis_url",
+        "revocation_redis_url",
+        "rate_limit_storage_uri",
+        "nats_url",
+        "cwv_manual_tester_user_ids",
         "internal_signature",
         "x_internal_signature",
         "otp",
+        "otpauth_url",
         "one_time_code",
         "recovery_code",
         "ticket",
@@ -129,7 +156,13 @@ def _normalize_field_name(value: str) -> str:
 def _is_pii_field_name(value: object) -> bool:
     """Return whether a structured field name is credential/PII-bearing."""
 
-    return isinstance(value, str) and _normalize_field_name(value) in _PII_FIELD_NAMES
+    if not isinstance(value, str):
+        return False
+    normalized = _normalize_field_name(value)
+    # Match terminal words, not metadata such as token_type or secret_name.
+    return normalized in _PII_FIELD_NAMES or normalized.endswith(
+        ("_token", "_secret", "_password")
+    )
 
 
 def _redact_free_text(value: str) -> str:
@@ -152,56 +185,69 @@ def _redact_free_text(value: str) -> str:
 
 
 def _redact_nested(value: Any, *, seen: set[int]) -> Any:
-    """Recursively redact strings and sensitive fields in structured values.
+    """Copy supported structured values, redacting fields without caller mutation.
 
-    Structlog event values frequently contain decoded request payloads (nested
-    mappings and lists).  Walking those values before rendering closes the
-    bypass where a sensitive value hidden one level below ``event_dict`` would
-    otherwise be emitted verbatim.  ``seen`` prevents a malformed/cyclic value
-    supplied by an integration from recursing forever; cyclic references are
-    replaced with the same redaction marker rather than serialized.
+    Only mappings, lists and tuples are traversed. Other payload objects stay
+    opaque: do not discover their properties or call representation, model or
+    copy hooks. The scalar exceptions are the concrete UUID/datetime metadata
+    used by application loggers and ordinary JSON scalar values. Mapping entries
+    with non-native-string keys are omitted without converting field names.
+    Classification uses actual types, not instance __class__ properties.
+
+    The seen set tracks only active ancestors, so cycles are cut without treating
+    repeated references to the same non-cyclic payload as secret or cyclic.
     """
-    if isinstance(value, str):
+    value_type = type(value)
+    if issubclass(value_type, str):
         return _redact_free_text(value)
-
-    if isinstance(value, dict):
-        marker = id(value)
-        if marker in seen:
-            return _PII_REPLACEMENT
-        seen.add(marker)
-        try:
-            for key in list(value):
-                if _is_pii_field_name(key):
-                    value[key] = _PII_REPLACEMENT
-                else:
-                    value[key] = _redact_nested(value[key], seen=seen)
-        finally:
-            seen.discard(marker)
+    if value is None or value_type in (bool, int, float, UUID, datetime):
         return value
+    if not issubclass(value_type, Mapping | list | tuple):
+        return _PII_REPLACEMENT
 
-    if isinstance(value, list):
-        marker = id(value)
-        if marker in seen:
-            return _PII_REPLACEMENT
-        seen.add(marker)
-        try:
-            for index, item in enumerate(value):
-                value[index] = _redact_nested(item, seen=seen)
-        finally:
-            seen.discard(marker)
-        return value
+    marker = id(value)
+    if marker in seen:
+        return _PII_REPLACEMENT
+    seen.add(marker)
+    try:
+        if issubclass(value_type, Mapping):
+            return {
+                key: (
+                    _PII_REPLACEMENT
+                    if _is_pii_field_name(key)
+                    else _redact_nested(item, seen=seen)
+                )
+                for key, item in value.items()
+                if type(key) is str
+            }
+        items = [_redact_nested(item, seen=seen) for item in value]
+        return tuple(items) if issubclass(value_type, tuple) else items
+    finally:
+        seen.discard(marker)
 
-    if isinstance(value, tuple):
-        marker = id(value)
-        if marker in seen:
-            return _PII_REPLACEMENT
-        seen.add(marker)
-        try:
-            return tuple(_redact_nested(item, seen=seen) for item in value)
-        finally:
-            seen.discard(marker)
 
-    return value
+def _is_valid_logging_control(key: str, value: Any) -> bool:
+    """Recognize actual framework types without reading instance properties."""
+    value_type = type(value)
+    if key == "exc_info":
+        if value_type is bool or issubclass(value_type, BaseException):
+            return True
+        if not issubclass(value_type, tuple) or len(value) != 3:
+            return False
+        exception_type, exception, traceback = value
+        return (
+            issubclass(type(exception_type), type)
+            and issubclass(exception_type, BaseException)
+            and issubclass(type(exception), BaseException)
+            and (traceback is None or issubclass(type(traceback), TracebackType))
+        )
+    if key == "_record":
+        return issubclass(value_type, logging.LogRecord)
+    if key == "_from_structlog":
+        return value_type is bool
+    # ProcessorFormatter passes a preformatted stdlib stack string; native
+    # structlog calls pass a bool. Do not truth-test other object values.
+    return value_type in (bool, str)
 
 
 def _redact_pii(
@@ -209,17 +255,29 @@ def _redact_pii(
     method_name: str,
     event_dict: dict[str, Any],
 ) -> dict[str, Any]:
-    """Redact PII from log event dicts.
+    """Return a redacted event without changing caller-owned data.
 
-    - Field-level: keys matching _PII_FIELD_NAMES are replaced entirely.
-    - Value-level: email/phone patterns in string values are masked.
+    Sensitive fields are replaced entirely; string values retain email/phone
+    masking. Genuine top-level logging controls remain available to subsequent
+    processors. Invalid controls are dropped, not rendered or truth-tested.
+    Nested values never gain a control exemption from their field names. Only
+    native string keys are retained, matching the configured renderers' contract.
     """
-    for key in list(event_dict):
-        if _is_pii_field_name(key):
-            event_dict[key] = _PII_REPLACEMENT
+    redacted: dict[str, Any] = {}
+    seen = {id(event_dict)}
+    for key, value in event_dict.items():
+        if type(key) is not str:
             continue
-        event_dict[key] = _redact_nested(event_dict[key], seen={id(event_dict)})
-    return event_dict
+        if key in ("exc_info", "_record", "_from_structlog", "stack_info"):
+            if _is_valid_logging_control(key, value):
+                redacted[key] = value
+            continue
+        redacted[key] = (
+            _PII_REPLACEMENT
+            if _is_pii_field_name(key)
+            else _redact_nested(value, seen=seen)
+        )
+    return redacted
 
 
 def add_otel_context(
@@ -354,9 +412,16 @@ def configure_logging(
     # a hidden second BatchLogRecordProcessor from leaking exporter threads.
 
 
+def _log_json_default(value: Any) -> str:
+    """Keep known scalar metadata usable in the stdlib JSON fallback."""
+    if type(value) in (UUID, datetime):
+        return str(value)
+    return _PII_REPLACEMENT
+
+
 def _orjson_serializer(obj: dict[str, Any], **kwargs: Any) -> str:
-    """Serialize log event to JSON string using orjson."""
-    return orjson.dumps(obj, default=str).decode("utf-8")
+    """Serialize redacted events without invoking unknown representations."""
+    return orjson.dumps(obj, default=_log_json_default).decode("utf-8")
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:

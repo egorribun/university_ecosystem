@@ -1,4 +1,5 @@
 import { IDBFactory } from "fake-indexeddb"
+import { openDB } from "idb"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   initOfflineQueue,
@@ -6,6 +7,8 @@ import {
   readPendingNavigations,
   storePendingReport,
   readPendingReports,
+  storePendingMutation,
+  readPendingMutations,
   sanitizeReportPayload,
   processPendingReports,
   addRecord,
@@ -18,6 +21,15 @@ vi.mock("../logger", () => ({
   warn: vi.fn(),
   error: vi.fn(),
 }))
+
+async function readPendingNews() {
+  const db = await openDB("notification-interactions", 4)
+  try {
+    return await db.getAll(STORES.NEWS_INTERACTION)
+  } finally {
+    db.close()
+  }
+}
 
 describe("Service Worker - Offline Storage & Sync", () => {
   let onlineSpy: any
@@ -217,7 +229,7 @@ describe("Service Worker - Offline Storage & Sync", () => {
   })
 
   describe("Background Sync - Processing queues", () => {
-    it("fetches and deletes pending reports when online and successful", async () => {
+    it("retains an unbound report even when a successful response is available", async () => {
       const report = {
         url: "http://localhost/page",
         reportUrl: "http://localhost/api/report",
@@ -228,17 +240,16 @@ describe("Service Worker - Offline Storage & Sync", () => {
 
       await storePendingReport(report)
 
-      // Mock successful fetch
       const fetchMock = vi.fn().mockResolvedValue({ ok: true })
       vi.stubGlobal("fetch", fetchMock)
 
       await processPendingReports()
 
-      expect(fetchMock).toHaveBeenCalledTimes(1)
-      expect(fetchMock.mock.calls[0]?.[0]).toBe("http://localhost/api/report")
+      expect(fetchMock).not.toHaveBeenCalled()
 
       const remaining = await readPendingReports()
-      expect(remaining).toHaveLength(0) // Successful reports are deleted
+      expect(remaining).toHaveLength(1)
+      expect(remaining[0]).toMatchObject(report)
     })
 
     it("does not delete pending reports if fetch fails", async () => {
@@ -258,11 +269,13 @@ describe("Service Worker - Offline Storage & Sync", () => {
 
       await processPendingReports()
 
+      expect(fetchMock).not.toHaveBeenCalled()
       const remaining = await readPendingReports()
-      expect(remaining).toHaveLength(1) // Kept for retry
+      expect(remaining).toHaveLength(1)
+      expect(remaining[0]).toMatchObject(report)
     })
 
-    it.each(["GET", "HEAD"])("omits the request body when replaying %s reports", async (method) => {
+    it.each(["GET", "HEAD"])("retains unbound %s reports without sending", async (method) => {
       await storePendingReport({
         url: "http://localhost/page",
         reportUrl: "http://localhost/api/report",
@@ -275,12 +288,13 @@ describe("Service Worker - Offline Storage & Sync", () => {
 
       await processPendingReports()
 
-      const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit
-      expect(requestInit.method).toBe(method)
-      expect(requestInit).not.toHaveProperty("body")
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(await readPendingReports()).toEqual([
+        expect.objectContaining({ method, payload: { stale: true } }),
+      ])
     })
 
-    it("forwards idempotency keys, keepalive, and JSON payloads", async () => {
+    it("preserves idempotency keys and JSON payloads without sending", async () => {
       await storePendingReport({
         url: "http://localhost/page",
         reportUrl: "http://localhost/api/report-with-headers",
@@ -294,21 +308,100 @@ describe("Service Worker - Offline Storage & Sync", () => {
 
       await processPendingReports()
 
-      const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit
-      expect(requestInit).toMatchObject({
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(await readPendingReports()).toEqual([stored])
+      expect(stored).toMatchObject({
         method: "POST",
-        keepalive: true,
-        body: JSON.stringify({ event: "click" }),
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": stored?.idempotencyKey,
-        },
+        payload: { event: "click" },
+        idempotencyKey: expect.any(String),
       })
     })
   })
 
+  describe("Session binding (AUD-375)", () => {
+    it("records the supplied session nonce on navigations, reports and mutations", async () => {
+      await storePendingNavigation({
+        url: "http://localhost/a",
+        timestamp: 1,
+        sessionNonce: "session-A",
+      })
+      await storePendingReport({
+        url: "http://localhost/a",
+        reportUrl: "http://localhost/api/a",
+        timestamp: 2,
+        method: "PUT",
+        payload: { a: 1 },
+        sessionNonce: "session-A",
+      })
+      await storePendingMutation({
+        url: "http://localhost/api/m",
+        method: "PATCH",
+        payload: {},
+        mutationId: "m-session",
+        idempotencyKey: "k-session",
+        timestamp: 3,
+        sessionNonce: "session-A",
+      })
+
+      expect(await readPendingNavigations()).toEqual([
+        expect.objectContaining({ sessionNonce: "session-A" }),
+      ])
+      expect(await readPendingReports()).toEqual([
+        expect.objectContaining({ sessionNonce: "session-A" }),
+      ])
+      expect(await readPendingMutations()).toEqual([
+        expect.objectContaining({ sessionNonce: "session-A" }),
+      ])
+    })
+
+    it("leaves a record unbound when the caller supplies no nonce or an explicit null", async () => {
+      await storePendingNavigation({ url: "http://localhost/b", timestamp: 1 })
+      await storePendingReport({
+        url: "http://localhost/b",
+        reportUrl: "http://localhost/api/b",
+        timestamp: 2,
+        sessionNonce: null,
+      })
+      await storePendingMutation({
+        url: "http://localhost/api/b",
+        method: "POST",
+        payload: {},
+        mutationId: "m-unbound",
+        idempotencyKey: "k-unbound",
+        timestamp: 3,
+      })
+
+      expect(await readPendingNavigations()).toEqual([
+        expect.objectContaining({ sessionNonce: null }),
+      ])
+      expect(await readPendingReports()).toEqual([expect.objectContaining({ sessionNonce: null })])
+      expect(await readPendingMutations()).toEqual([
+        expect.objectContaining({ sessionNonce: null }),
+      ])
+    })
+
+    it("keeps identical idempotent reports from different sessions distinct", async () => {
+      const report = {
+        url: "http://localhost/news",
+        reportUrl: "http://localhost/api/news/1",
+        timestamp: 1000,
+        payload: { read: true },
+        method: "PUT",
+      }
+
+      await storePendingReport({ ...report, sessionNonce: "session-A" })
+      await storePendingReport({ ...report, sessionNonce: "session-B" })
+      await storePendingReport({ ...report, sessionNonce: "session-A" })
+
+      expect((await readPendingReports()).map((record) => record.sessionNonce)).toEqual([
+        "session-A",
+        "session-B",
+      ])
+    })
+  })
+
   describe("Background Sync - News interactions", () => {
-    it("defaults missing interaction methods to POST and sends a JSON body", async () => {
+    it("retains a legacy interaction with a missing method without sending", async () => {
       await addRecord(STORES.NEWS_INTERACTION, {
         url: "http://localhost/api/news/default-method",
         payload: { id: "default-method" },
@@ -318,41 +411,33 @@ describe("Service Worker - Offline Storage & Sync", () => {
 
       await processOfflineQueues()
 
-      expect(fetchMock).toHaveBeenCalledWith(
-        "http://localhost/api/news/default-method",
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(await readPendingNews()).toEqual([
         expect.objectContaining({
+          url: "http://localhost/api/news/default-method",
+          payload: { id: "default-method" },
+        }),
+      ])
+    })
+
+    it.each([400, 404])(
+      "retains a legacy interaction regardless of a possible %s",
+      async (status) => {
+        await addRecord(STORES.NEWS_INTERACTION, {
+          url: `http://localhost/api/news/drop-${status}`,
           method: "POST",
-          body: JSON.stringify({ id: "default-method" }),
-          headers: { "Content-Type": "application/json" },
+          payload: { status },
         })
-      )
-    })
+        const fetchMock = vi.fn().mockResolvedValue({ ok: false, status })
+        vi.stubGlobal("fetch", fetchMock)
 
-    it.each([400, 404])("deletes a news interaction that returns %s", async (status) => {
-      await addRecord(STORES.NEWS_INTERACTION, {
-        url: `http://localhost/api/news/drop-${status}`,
-        method: "POST",
-        payload: { status },
-      })
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status }))
+        await processOfflineQueues()
 
-      await processOfflineQueues()
-
-      const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open("notification-interactions", 4)
-        request.onsuccess = () => resolve(request.result)
-        request.onerror = () => reject(request.error)
-      })
-      const remaining = await new Promise<unknown[]>((resolve, reject) => {
-        const request = db
-          .transaction(STORES.NEWS_INTERACTION, "readonly")
-          .objectStore(STORES.NEWS_INTERACTION)
-          .getAll()
-        request.onsuccess = () => resolve(request.result)
-        request.onerror = () => reject(request.error)
-      })
-      db.close()
-      expect(remaining).toHaveLength(0)
-    })
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(await readPendingNews()).toEqual([
+          expect.objectContaining({ method: "POST", payload: { status } }),
+        ])
+      }
+    )
   })
 })

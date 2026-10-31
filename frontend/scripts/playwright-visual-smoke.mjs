@@ -59,7 +59,7 @@
  *
  * - 0: all routes captured successfully (any console errors logged but
  *      script doesn't fail unless explicit `--strict` flag set)
- * - 1: Playwright launch failure OR navigation error on any route
+ * - 1: Playwright launch failure OR navigation / HTTP status failure on any route
  * - 2: `--strict` mode + at least one route had React hydration errors
  *
  * ## Notes
@@ -81,6 +81,7 @@ import process from "node:process"
 import { fileURLToPath } from "node:url"
 
 import { chromium } from "playwright"
+import { classifySmokeRouteOutcome } from "./visual-smoke-contract.mjs"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -271,13 +272,19 @@ async function smokeRoute({ browser, target, outDir, timeoutMs, strict }) {
       m.text.includes("did not match") ||
       /Minified React error #(418|419|420|421|422|423|424|425|426|427)/.test(m.text)
   )
+  const routeOutcome = classifySmokeRouteOutcome({
+    navigationError,
+    httpStatus,
+    strict,
+    hydrationErrorCount: hydrationErrors.length,
+  })
 
   const summary = {
     path: target.path,
     fullUrl: target.fullUrl,
     finalUrl,
     httpStatus,
-    success: !navigationError,
+    success: routeOutcome.success,
     navigationError: navigationError?.message ?? null,
     screenshotError: screenshotError?.message ?? null,
     sidecarError: sidecarError?.message ?? null,
@@ -289,7 +296,7 @@ async function smokeRoute({ browser, target, outDir, timeoutMs, strict }) {
 
   return {
     ...summary,
-    failed: !!navigationError || (strict && hydrationErrors.length > 0),
+    failed: routeOutcome.failed,
   }
 }
 
@@ -379,10 +386,10 @@ async function main() {
   printSummaryTable(summaries)
 
   const anyFailed = summaries.some((s) => s.failed)
-  const anyNavError = summaries.some((s) => !s.success)
+  const anyRouteFailure = summaries.some((s) => !s.success)
 
-  if (anyNavError) {
-    console.error("\nOne or more routes failed to navigate.")
+  if (anyRouteFailure) {
+    console.error("\nOne or more routes had a navigation or HTTP status failure.")
     process.exit(1)
   }
   if (cliArgs.strict && anyFailed) {

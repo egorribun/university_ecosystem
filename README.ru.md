@@ -22,7 +22,7 @@
 
 ---
 
-> Бейджи покрытия показывают целевые значения политики из [`quality/quality-contract.json`](quality/quality-contract.json), а не текущую сертификацию. Актуальные подтверждения публикуются в [панели качества](docs/testing/dashboard.md); сборку подтверждает только свежий CI/release-артефакт с точным SHA.
+> Бейджи покрытия показывают целевые значения политики из [`quality/quality-contract.json`](quality/quality-contract.json), а не текущую сертификацию. Подтверждения контрольных точек приведены в [текущем статусе](docs/superpowers/plans/STATUS.md), а состояние публикации — в [панели качества](docs/testing/dashboard.md); сборку подтверждает только свежий CI/release-артефакт с точным SHA.
 
 **University Ecosystem** — это высокопроизводительная полиглотная микросервисная платформа, созданная для объединения и автоматизации всех сфер университетской жизни. От расписания в реальном времени и навигации по кемпусу до корпоративной безопасности и автоматических воркфлоу.
 
@@ -60,7 +60,7 @@
 
 ```text
 university_ecosystem/
-├── app/               # 🐍 Core API (Python 3.14 / FastAPI) - Бизнес-логика и GraphQL
+├── app/               # 🐍 Core API (Python 3.14 / FastAPI) - Бизнес-логика и REST API
 ├── frontend/          # ⚛️ Современный Web UI (React 19 + Vite 8/Rolldown + Valibot)
 ├── services/
 │   ├── gateway/       # 🚀 API Gateway (Go) - Авторизация, L1 XFetch кэш и лимиты
@@ -198,7 +198,7 @@ sequenceDiagram
 | Слой | Технологии | Роль | Целевой порог / текущие доказательства |
 | :--- | :--- | :--- | :---: |
 | **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, доступность (WCAG 2.2 AA), PWA | Цель политики: 100%; нужны свежие SHA-доказательства |
-| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Основная бизнес-логика, REST и GraphQL API | Цель политики: 100%; нужны свежие SHA-доказательства |
+| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0 | Основная бизнес-логика, REST API | Цель политики: 100%; нужны свежие SHA-доказательства |
 | **Микросервисы** | Go 1.26, NATS, gRPC, Temporal Go SDK | Высоконагруженный чат и обработка медиа | Цель политики: 100%; нужны свежие SHA-доказательства |
 | **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | Цель политики: 100%; нужны свежие SHA-доказательства |
 | **Авторизация и безопасность** | Argon2id, SpiceDB, TOTP/email OTP, recovery-коды, Kyverno, CSRF nonces | Zero-Trust ReBAC, step-up MFA и политики | Реализовано; нужны свежие SHA-доказательства |
@@ -222,7 +222,7 @@ Copy-Item .env.example .env
 
 ### 🌐 Точки доступа
 - **Единый цифровой хаб (Caddy edge, включая Frontend SSR)**: [http://localhost](http://localhost)
-- **Документация API**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Документация API (только для разработки)**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
 - **Вход Go Gateway**: [http://localhost:8080](http://localhost:8080)
 - **Real-Time сигнал**: `ws://localhost:8083/ws`
 - **Центр наблюдаемости**: [Grafana](http://localhost:3000) · [Prometheus](http://localhost:9090) · [Pyroscope](http://localhost:4040)

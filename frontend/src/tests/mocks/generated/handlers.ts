@@ -1199,6 +1199,7 @@ export const handlers = [
 
     const resultArray = [
       [await getMyEventsApiV1EventsMyGet200Response(), { status: 200 }],
+      [await getMyEventsApiV1EventsMyGet409Response(), { status: 409 }],
       [await getMyEventsApiV1EventsMyGet422Response(), { status: 422 }],
     ] as [any, { status: number }][];
 
@@ -8057,6 +8058,10 @@ export function getMyEventsApiV1EventsMyGet200Response() {
   })();
 }
 
+export function getMyEventsApiV1EventsMyGet409Response() {
+  return null;
+}
+
 export function getMyEventsApiV1EventsMyGet422Response() {
   return {
     detail: (() => {
@@ -9307,6 +9312,7 @@ export function getGetNewsInteractApiV1NewsIdInteractionsGet200Response() {
     comments_count: faker.number.int(),
     is_liked: faker.datatype.boolean(),
     likes_count: faker.number.int(),
+    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
   };
 }
 

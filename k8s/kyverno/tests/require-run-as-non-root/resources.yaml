@@ -25,6 +25,31 @@ spec:
 apiVersion: v1
 kind: Pod
 metadata:
+  name: container-root-pod
+  namespace: university-ecosystem
+spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: app
+      image: ghcr.io/example/university-ecosystem:v1.0.0
+      imagePullPolicy: Always
+      securityContext:
+        runAsNonRoot: false
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        limits:
+          cpu: "100m"
+          memory: "128Mi"
+---
+apiVersion: v1
+kind: Pod
+metadata:
   name: root-pod
   namespace: university-ecosystem
 spec:

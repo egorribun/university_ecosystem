@@ -12,10 +12,18 @@ import { withExpectedConsole } from "@/tests/strictConsole"
 import type { ReactNode } from "react"
 
 let Route: (typeof import("../__root"))["Route"]
+let ActivityRootSeoFallback: (typeof import("../__root"))["ActivityRootSeoFallback"]
 const mockedScripts = vi.hoisted(() => vi.fn((): any => null))
 const mockedFetchCampusTimezone = vi.hoisted(() =>
   vi.fn(() => Promise.resolve<string | null>(null))
 )
+const mockedActivityRouterState = vi.hoisted(() => {
+  const state: { matches: Array<{ routeId: string; status: string }> } = { matches: [] }
+  const hook = vi.fn((options: any) => options.select({ matches: state.matches }))
+  return { state, hook }
+})
+const mockedUseHydrated = vi.hoisted(() => vi.fn(() => false))
+const mockedUsePageSeoReady = vi.hoisted(() => vi.fn(() => false))
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<any>()
@@ -24,13 +32,19 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
     HeadContent: () => null,
     Scripts: mockedScripts,
     Outlet: () => <div data-testid="outlet">Outlet Content</div>,
-    useRouterState: vi.fn().mockReturnValue(false),
+    useHydrated: mockedUseHydrated,
+    useRouterState: mockedActivityRouterState.hook,
     useRouteContext: vi.fn().mockImplementation(() => {
       return {
         queryClient: new QueryClient(),
       }
     }),
   }
+})
+
+vi.mock("@/components/ui/SEO", async (importOriginal) => {
+  const actual = await importOriginal<any>()
+  return { ...actual, usePageSeoReady: mockedUsePageSeoReady }
 })
 
 vi.mock("@/AppProviders", () => ({
@@ -102,7 +116,7 @@ describe("__root.tsx components", () => {
 
   beforeEach(async () => {
     vi.resetModules()
-    ;({ Route } = await import("../__root"))
+    ;({ Route, ActivityRootSeoFallback } = await import("../__root"))
     originalSSR = import.meta.env.SSR
     originalDocumentClass = document.documentElement.className
     originalDocumentLang = document.documentElement.getAttribute("lang")
@@ -111,6 +125,9 @@ describe("__root.tsx components", () => {
       "__UE_SELECTED_LANG__"
     )
     vi.clearAllMocks()
+    mockedActivityRouterState.state.matches = []
+    mockedUseHydrated.mockReturnValue(false)
+    mockedUsePageSeoReady.mockReturnValue(false)
     document.documentElement.className = ""
     document.documentElement.removeAttribute("lang")
     Reflect.deleteProperty(window, "__UE_SELECTED_LANG__")
@@ -870,7 +887,7 @@ describe("__root.tsx components", () => {
               content: "Личный кабинет: профиль, расписание, новости и события кампуса.",
             },
             { property: "og:url", content: "/" },
-            { property: "og:image", content: "/og-image.png" },
+            { property: "og:image", content: "/icon-512.png" },
             { property: "og:locale", content: "ru_RU" },
             { name: "twitter:card", content: "summary_large_image" },
             { name: "twitter:title", content: "Экосистема ГУУ" },
@@ -878,7 +895,7 @@ describe("__root.tsx components", () => {
               name: "twitter:description",
               content: "Личный кабинет: профиль, расписание, новости и события кампуса.",
             },
-            { name: "twitter:image", content: "/og-image.png" },
+            { name: "twitter:image", content: "/icon-512.png" },
             { name: "google-site-verification", content: "not-applicable" },
             { name: "mobile-web-app-capable", content: "yes" },
             { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
@@ -928,6 +945,15 @@ describe("__root.tsx components", () => {
         "/_auth/news/$id",
         "/_auth/profile",
         "/_auth/schedule",
+        "/_public/login",
+        "/_public/forgot-password",
+        "/_public/register",
+        "/_public/reset-password",
+        "/_public/reset-password/$token",
+        "/_auth/settings",
+        "/_auth/map",
+        "/_auth/messenger",
+        "/_auth/messenger/$chatId",
       ]
       const originalSsr = import.meta.env.SSR
       import.meta.env.SSR = false
@@ -959,7 +985,7 @@ describe("__root.tsx components", () => {
         false
       )
       expect(publicHead.meta.some((meta: { name?: string }) => meta.name === "description")).toBe(
-        true
+        false
       )
       expect(failedDashboardHead.meta.some((meta: { title?: string }) => meta.title)).toBe(true)
       expect(
@@ -1006,4 +1032,63 @@ describe("__root.tsx components", () => {
       expect(activityServerHead.meta.some((meta: { title?: string }) => meta.title)).toBe(false)
     })
   })
+
+  it.each([
+    ["outside the activity route", [], false, false, false],
+    [
+      "while the activity route is not successful",
+      [{ routeId: "/_auth/activity", status: "pending" }],
+      false,
+      false,
+      false,
+    ],
+    [
+      "on another successful route",
+      [{ routeId: "/_auth/other", status: "success" }],
+      false,
+      false,
+      false,
+    ],
+    [
+      "on the successful activity route before hydration",
+      [{ routeId: "/_auth/activity", status: "success" }],
+      false,
+      false,
+      true,
+    ],
+    [
+      "after hydration while page SEO is still pending",
+      [{ routeId: "/_auth/activity", status: "success" }],
+      true,
+      false,
+      true,
+    ],
+    [
+      "after hydration when page SEO is ready",
+      [{ routeId: "/_auth/activity", status: "success" }],
+      true,
+      true,
+      false,
+    ],
+  ] as const)(
+    "renders the activity metadata fallback %s",
+    (_label, matches, hydrated, pageSeoReady, rendersFallback) => {
+      mockedActivityRouterState.state.matches = [...matches]
+      mockedUseHydrated.mockReturnValue(hydrated)
+      mockedUsePageSeoReady.mockReturnValue(pageSeoReady)
+
+      render(<ActivityRootSeoFallback />)
+
+      const activityMeta = document.head.querySelector('meta[property="og:type"]')
+      if (rendersFallback) {
+        expect(activityMeta).toHaveAttribute("content", "website")
+        expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
+          "content",
+          expect.any(String)
+        )
+      } else {
+        expect(activityMeta).toBeNull()
+      }
+    }
+  )
 })

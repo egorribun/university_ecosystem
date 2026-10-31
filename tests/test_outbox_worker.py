@@ -174,7 +174,7 @@ async def test_chat_participant_removed_retries_past_dlq_limit_without_blocking_
         id=revoke_id,
         event_type=ChatParticipantRemoved.EVENT_TYPE,
         aggregate_type="Chat",
-        aggregate_id=str(uuid.uuid4()),
+        aggregate_id="00000000-0000-4000-8000-00000000000a",
         aggregate_id_uuid=None,
         sequence_number=None,
         payload={"chat_id": str(uuid.uuid4()), "user_id": str(revoke_user_id)},
@@ -184,7 +184,7 @@ async def test_chat_participant_removed_retries_past_dlq_limit_without_blocking_
         id=healthy_id,
         event_type=ChatParticipantRemoved.EVENT_TYPE,
         aggregate_type="Chat",
-        aggregate_id=str(uuid.uuid4()),
+        aggregate_id="00000000-0000-4000-8000-00000000000b",
         aggregate_id_uuid=None,
         sequence_number=None,
         payload={"chat_id": str(uuid.uuid4()), "user_id": str(healthy_user_id)},
@@ -315,11 +315,14 @@ async def test_chat_participant_removed_retry_progresses_during_sustained_first_
 async def test_membership_retry_progresses_during_continuous_membership_first_attempts(
     db_session, monkeypatch
 ):
+    from datetime import UTC, datetime
+
     from app.core.events import ChatParticipantRemoved, EventBus
     from app.models.failed_outbox_events import FailedOutboxEvent
 
     bus = EventBus()
     retry_id = uuid.uuid4()
+    retry_created_at = datetime(2026, 1, 1, tzinfo=UTC)
     seen_event_ids = {str(retry_id)}
     first_attempt_ids: list[str] = []
     retry_attempt_ids: list[str] = []
@@ -359,6 +362,7 @@ async def test_membership_retry_progresses_during_continuous_membership_first_at
             sequence_number=None,
             payload={"chat_id": str(uuid.uuid4()), "user_id": str(uuid.uuid4())},
             error_count=1,
+            created_at=retry_created_at,
         )
     )
     db_session.add(make_membership_event())

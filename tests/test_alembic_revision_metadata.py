@@ -183,8 +183,13 @@ def _staging_environment_without_secret_key() -> dict[str, str]:
     values.update(
         ALGORITHM="RS256",
         APP_PROCESS_ROLE="api",
+        # AUD-164: the staging API role must name its gateway peers. Migrations run
+        # as that role (charts/.../migration-job.yaml), so the fixture supplies it.
+        TRUSTED_PROXIES="10.0.0.0/8",
         AUTO_CREATE_SCHEMA="false",
         CACHE_REDIS_URL="redis://cache.staging.internal:6379/0",
+        RATE_LIMIT_STORAGE_BACKEND="redis",
+        RATE_LIMIT_STORAGE_URI="redis://localhost",
         ELASTICSEARCH_URL="https://elasticsearch.staging.internal",
         EVENT_FILE_SCANNER_ENABLED="true",
         MINIO_SECURE="true",
@@ -491,4 +496,4 @@ def test_squawk_lints_live_rendered_sql_without_index_fk_or_timeout_exclusions()
     assert "_emit_news_media_asset_ddl" not in step
     for rule in _SQUAWK_RULES_THAT_MUST_LINT:
         assert f"--exclude {rule}" not in step
-    assert 'squawk "${squawk_args[@]}" "$sql_file"' in step
+    assert '"$squawk_binary_path" "${squawk_args[@]}" "$sql_file"' in step

@@ -292,6 +292,60 @@ describe("useMapWeather — provider wall-clock forecast hours", () => {
       { hour: 12, temperature: 4, condition: "cloudy" },
     ])
   })
+
+  it("skips non-string and structurally malformed provider timestamps", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ...FIXTURE_API_RESPONSE,
+        hourly: {
+          time: [
+            null,
+            "2026-05-15T12",
+            "2026-05T12:00",
+            "2026-05-15T12:00:00:00",
+            "2026-05-15T14:00",
+          ],
+          temperature_2m: [1, 2, 3, 4, 14],
+          weather_code: [0, 0, 0, 0, 0],
+        },
+      }),
+    } as Response)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.hourlyForecast).toEqual([
+      { hour: 14, temperature: 14, condition: "clear" },
+    ])
+  })
+
+  it("validates leap days using Gregorian century rules", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ...FIXTURE_API_RESPONSE,
+        hourly: {
+          time: ["2024-02-29T23:00", "2000-02-29T01:00", "1900-02-29T12:00", "2026-02-28T10:00"],
+          temperature_2m: [23, 1, 12, 10],
+          weather_code: [0, 0, 0, 0],
+        },
+      }),
+    } as Response)
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.hourlyForecast).toEqual([
+      { hour: 23, temperature: 23, condition: "clear" },
+      { hour: 1, temperature: 1, condition: "clear" },
+      { hour: 10, temperature: 10, condition: "clear" },
+    ])
+  })
 })
 
 describe("useMapWeather — cache miss → fetch", () => {

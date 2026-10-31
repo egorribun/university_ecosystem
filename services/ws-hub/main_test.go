@@ -3,14 +3,20 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/nats-io/nats.go"
+	"github.com/quic-go/webtransport-go"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -184,13 +190,155 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 		})
 	}
 
-	t.Run("metrics endpoint", func(t *testing.T) {
+	// AUD-438: /metrics is unauthenticated, so it must not share the public
+	// WebSocket listener. It is served only by the separate metrics listener.
+	t.Run("metrics are not served on the public listener", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
 		require.NoError(t, err)
 		mux.ServeHTTP(rec, req)
-		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, http.StatusNotFound, rec.Code)
 	})
+}
+
+func TestNewMetricsServer_ServesOnlyScrapeEndpoint(t *testing.T) {
+	srv := newMetricsServer("127.0.0.1:0")
+
+	rec := httptest.NewRecorder()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
+	require.NoError(t, err)
+	srv.Handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	for _, path := range []string{"/ws", "/ws/chat", "/health/live", "/"} {
+		t.Run("not exposed at "+path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+			require.NoError(t, err)
+			srv.Handler.ServeHTTP(rec, req)
+			assert.Equal(t, http.StatusNotFound, rec.Code)
+		})
+	}
+}
+
+func TestNewMetricsServer_ServesScrapeEndpointOnItsListener(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	srv := newMetricsServer(listener.Addr().String())
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.Serve(listener) }()
+	t.Cleanup(func() {
+		require.NoError(t, srv.Close())
+		require.ErrorIs(t, <-serveErr, http.ErrServerClosed)
+	})
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+listener.Addr().String()+"/metrics", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// freeLoopbackAddr returns a loopback address that was free when probed.
+func freeLoopbackAddr(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := listener.Addr().String()
+	require.NoError(t, listener.Close())
+	return addr
+}
+
+// metricsScrapeStatus returns the scrape status, or zero while nothing accepts on addr.
+func metricsScrapeStatus(ctx context.Context, addr string) int {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+"/metrics", nil)
+	if err != nil {
+		return 0
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp == nil {
+		return 0
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
+// AUD-438: the scrape-only listener is part of the hub lifecycle. It must serve
+// while the hub runs and stop with it.
+func TestRunServer_MetricsListenerServesScrapeUntilShutdown(t *testing.T) {
+	resetBootstrapSeams(t)
+	webTransportServeFunc = func(*webtransport.Server, net.PacketConn) error { return nil }
+	metricsAddr := freeLoopbackAddr(t)
+	cfg := &config.Config{Port: "0", WebTransportPort: "0", MetricsAddr: metricsAddr}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := hub.NewHub(nil, logger, nil, cfg, nil)
+	quit := make(chan os.Signal, 1)
+	done := make(chan error, 1)
+	go func() { done <- runServer(cfg, logger, h, http.NewServeMux(), quit) }()
+
+	require.Eventually(t, func() bool {
+		return metricsScrapeStatus(t.Context(), metricsAddr) == http.StatusOK
+	}, 2*time.Second, 10*time.Millisecond, "the metrics listener must serve scrapes while the hub runs")
+	quit <- os.Interrupt
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("runServer did not shut down after the metrics listener started")
+	}
+}
+
+// A metrics listener that cannot bind is a startup/runtime error, not a silent
+// degradation: the process must not run without its configured scrape boundary.
+func TestRunServer_MetricsListenerBindFailureStopsServer(t *testing.T) {
+	resetBootstrapSeams(t)
+	webTransportServeFunc = func(*webtransport.Server, net.PacketConn) error { return nil }
+	cfg := &config.Config{Port: "0", WebTransportPort: "0", MetricsAddr: "-1"}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := hub.NewHub(nil, logger, nil, cfg, nil)
+	done := make(chan error, 1)
+	go func() { done <- runServer(cfg, logger, h, http.NewServeMux(), make(chan os.Signal, 1)) }()
+
+	select {
+	case err := <-done:
+		require.Error(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("runServer must return when the metrics listener cannot bind")
+	}
+}
+
+// A failed metrics shutdown is logged; it does not replace the hub's own result.
+func TestRunServer_MetricsShutdownFailureIsLoggedNotReturned(t *testing.T) {
+	resetBootstrapSeams(t)
+	webTransportServeFunc = func(*webtransport.Server, net.PacketConn) error { return nil }
+	metricsAddr := freeLoopbackAddr(t)
+	wantShutdown := errors.New("metrics shutdown failed")
+	shutdownHTTPServerFunc = func(srv *http.Server, ctx context.Context) error {
+		if err := srv.Shutdown(ctx); err != nil {
+			return err
+		}
+		if srv.Addr == metricsAddr {
+			return wantShutdown
+		}
+		return nil
+	}
+	cfg := &config.Config{Port: "0", WebTransportPort: "0", MetricsAddr: metricsAddr}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	h := hub.NewHub(nil, logger, nil, cfg, nil)
+	quit := make(chan os.Signal, 1)
+	quit <- os.Interrupt
+	done := make(chan error, 1)
+	go func() { done <- runServer(cfg, logger, h, http.NewServeMux(), quit) }()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("runServer did not shut down when the metrics shutdown failed")
+	}
 }
 
 func TestSetupHub_JWKS(t *testing.T) {

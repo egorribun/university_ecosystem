@@ -18,6 +18,8 @@ import pytest
 from scripts import live_stand
 from scripts.live_nats_transport import LifecycleLockLease
 from scripts.owned_nats_coordinator import (
+    BrokerErrorEvidence,
+    BrokerProbePhase,
     CommandEvidence,
     OwnerEvidence,
     RuntimeEvidence,
@@ -443,6 +445,96 @@ def test_probe_decoder_rejects_local_timeout_without_remote_completion_marker() 
     assert evidence.error_code is None
 
 
+def test_probe_decoder_classifies_execution_and_decode_failures_separately() -> None:
+    from scripts.owned_nats_coordinator import BrokerProbePhase
+
+    timed_out = PrivateProcessResult(
+        ProcessOutcome.TIMED_OUT,
+        None,
+        b'{"kind":"message"}\n',
+        b"",
+        LocalCleanup.UNPROVEN,
+    )
+    malformed = PrivateProcessResult(
+        ProcessOutcome.EXITED,
+        0,
+        b"not-json\n",
+        b"",
+        LocalCleanup.CONFIRMED,
+    )
+    remote_failure = PrivateProcessResult(
+        ProcessOutcome.EXITED,
+        0,
+        b'{"kind":"invalid","closed":true}\n',
+        b"",
+        LocalCleanup.CONFIRMED,
+    )
+    unclosed = PrivateProcessResult(
+        ProcessOutcome.EXITED,
+        0,
+        (
+            b'{"kind":"message","closed":false,"subject":"'
+            + SUBJECT.encode()
+            + b'","sequence":1,"envelope":{}}\n'
+        ),
+        b"",
+        LocalCleanup.CONFIRMED,
+    )
+
+    execution_error = broker.decode_broker_probe_result(
+        timed_out, expected_subject=SUBJECT, deadline=deadline()
+    )
+    decode_error = broker.decode_broker_probe_result(
+        malformed, expected_subject=SUBJECT, deadline=deadline()
+    )
+    remote_error = broker.decode_broker_probe_result(
+        remote_failure, expected_subject=SUBJECT, deadline=deadline()
+    )
+    unclosed_error = broker.decode_broker_probe_result(
+        unclosed, expected_subject=SUBJECT, deadline=deadline()
+    )
+
+    assert type(execution_error) is broker.BrokerErrorEvidence
+    assert execution_error.failure_phase is BrokerProbePhase.PRIVATE_EXEC
+    assert type(decode_error) is broker.BrokerErrorEvidence
+    assert decode_error.failure_phase is BrokerProbePhase.DECODE
+    assert remote_error.failure_phase is BrokerProbePhase.PRIVATE_EXEC
+    assert unclosed_error.failure_phase is BrokerProbePhase.PRIVATE_EXEC
+    assert repr(execution_error) == "BrokerErrorEvidence(status=None, error_code=None)"
+
+
+@pytest.mark.parametrize(
+    ("stdout", "expected_phase"),
+    [
+        (b'{"kind":"invalid"}\n', BrokerProbePhase.DECODE),
+        (b'{"kind":"invalid","closed":true,"extra":0}\n', BrokerProbePhase.DECODE),
+        (b'{"kind":"invalid","closed":"true"}\n', BrokerProbePhase.DECODE),
+        (b'{"kind":"invalid","closed":true}\n', BrokerProbePhase.PRIVATE_EXEC),
+    ],
+    ids=[
+        "missing-close-marker",
+        "unexpected-key",
+        "non-boolean-close-marker",
+        "exact-remote-marker",
+    ],
+)
+def test_probe_decoder_requires_exact_invalid_marker(
+    stdout: bytes, expected_phase: BrokerProbePhase
+) -> None:
+    result = PrivateProcessResult(
+        ProcessOutcome.EXITED, 0, stdout, b"", LocalCleanup.CONFIRMED
+    )
+
+    evidence = broker.decode_broker_probe_result(
+        result, expected_subject=SUBJECT, deadline=deadline()
+    )
+
+    assert type(evidence) is BrokerErrorEvidence
+    assert evidence.failure_phase is expected_phase
+    assert evidence.status is None
+    assert evidence.error_code is None
+
+
 def _fake_nats_modules(monkeypatch, client_type, api_error_type) -> None:
     nats_package = types.ModuleType("nats")
     nats_package.__path__ = []
@@ -698,6 +790,8 @@ def test_runtime_inspection_uses_only_exact_captured_ids_and_filters_nats_servic
     assert "com.docker.compose.service" in format_string
     assert "outbox-worker" in format_string
     assert 'split . "_"' in format_string
+    assert "{{ $first := true }}[{{range .Config.Env}}" in format_string
+    assert "{{end}}{{end}}]{{else}}[]{{end}}" in format_string
     assert "json .Config.Env" not in format_string
     assert "else}}[]{{end}}" in format_string
 
@@ -741,6 +835,171 @@ def test_runtime_inspection_binds_restored_nats_id_and_health() -> None:
     assert not broker.runtime_nats_configuration_matches(
         changed, expected_containers=ids, project_name=PROJECT, expected=settings
     )
+
+
+def test_broker_probe_reports_runtime_snapshot_failure_phase(monkeypatch) -> None:
+    port, owner, _pins_value, _compose, rows = _port(monkeypatch)
+    nats = next(row for row in rows if row.service == "nats")
+    rows[rows.index(nats)] = replace(nats, health="starting")
+
+    result = port.broker_last_message(
+        owner, port._by_service["backend"], SUBJECT, deadline=deadline()
+    )
+
+    assert type(result) is BrokerErrorEvidence
+    assert result.failure_phase is BrokerProbePhase.RUNTIME_SNAPSHOT
+    assert result.status is None
+    assert result.error_code is None
+
+
+def test_runtime_config_inspection_reports_request_failure_phase(monkeypatch) -> None:
+    port, _owner, _pins_value, _compose, _rows = _port(monkeypatch)
+    settings = broker.extract_effective_nats_settings(_configured_project())
+    assert settings is not None
+    containers = {
+        port._by_service[service].container_id: service
+        for service in ("backend", "outbox-worker", "nats")
+    }
+    monkeypatch.setattr(
+        broker, "prepare_runtime_nats_inspect_request", lambda *_a, **_k: None
+    )
+
+    inspections, failure_phase = port._runtime_config_inspection(
+        containers, settings, deadline()
+    )
+
+    assert inspections is None
+    assert failure_phase is BrokerProbePhase.RUNTIME_CONFIG_REQUEST
+
+
+def test_runtime_config_inspection_reports_process_failure_phase(monkeypatch) -> None:
+    port, _owner, _pins_value, _compose, _rows = _port(monkeypatch)
+    settings = broker.extract_effective_nats_settings(_configured_project())
+    assert settings is not None
+    containers = {
+        port._by_service[service].container_id: service
+        for service in ("backend", "outbox-worker", "nats")
+    }
+    monkeypatch.setattr(
+        broker, "prepare_runtime_nats_inspect_request", lambda *_a, **_k: object()
+    )
+    monkeypatch.setattr(
+        broker.process,
+        "run_private_process",
+        lambda *_a, **_k: PrivateProcessResult(
+            ProcessOutcome.EXITED, 1, b"", b"", LocalCleanup.CONFIRMED
+        ),
+    )
+
+    inspections, failure_phase = port._runtime_config_inspection(
+        containers, settings, deadline()
+    )
+
+    assert inspections is None
+    assert failure_phase is BrokerProbePhase.RUNTIME_CONFIG_PROCESS
+
+
+def test_runtime_config_inspection_reports_decode_failure_phase(monkeypatch) -> None:
+    port, _owner, _pins_value, _compose, _rows = _port(monkeypatch)
+    settings = broker.extract_effective_nats_settings(_configured_project())
+    assert settings is not None
+    containers = {
+        port._by_service[service].container_id: service
+        for service in ("backend", "outbox-worker", "nats")
+    }
+    monkeypatch.setattr(
+        broker, "prepare_runtime_nats_inspect_request", lambda *_a, **_k: object()
+    )
+    monkeypatch.setattr(
+        broker.process,
+        "run_private_process",
+        lambda *_a, **_k: PrivateProcessResult(
+            ProcessOutcome.EXITED, 0, b"not-json\n", b"", LocalCleanup.CONFIRMED
+        ),
+    )
+
+    inspections, failure_phase = port._runtime_config_inspection(
+        containers, settings, deadline()
+    )
+
+    assert inspections is None
+    assert failure_phase is BrokerProbePhase.RUNTIME_CONFIG_DECODE
+
+
+def test_runtime_config_inspection_reports_revalidation_failure_phase(
+    monkeypatch,
+) -> None:
+    port, owner, _pins_value, _compose, _rows = _port(monkeypatch)
+    settings = broker.extract_effective_nats_settings(_configured_project())
+    assert settings is not None
+    containers = {
+        port._by_service[service].container_id: service
+        for service in ("backend", "outbox-worker", "nats")
+    }
+    monkeypatch.setattr(
+        broker, "prepare_runtime_nats_inspect_request", lambda *_a, **_k: object()
+    )
+    monkeypatch.setattr(
+        broker.process,
+        "run_private_process",
+        lambda *_a, **_k: PrivateProcessResult(
+            ProcessOutcome.EXITED, 0, b"{}\n", b"", LocalCleanup.CONFIRMED
+        ),
+    )
+    monkeypatch.setattr(broker, "_decode_runtime_inspections", lambda *_a, **_k: {})
+    monkeypatch.setattr(
+        OwnedCoreRuntimePort,
+        "read_signed_owner",
+        lambda _self, *, deadline: replace(owner, project_name="foreign"),
+    )
+
+    inspections, failure_phase = port._runtime_config_inspection(
+        containers, settings, deadline()
+    )
+
+    assert inspections is None
+    assert failure_phase is BrokerProbePhase.RUNTIME_CONFIG_REVALIDATION
+
+
+def test_broker_probe_reports_restored_state_failure_phase(monkeypatch) -> None:
+    port, owner, _pins_value, _compose, _rows = _port(monkeypatch)
+    settings = broker.extract_effective_nats_settings(_configured_project())
+    assert settings is not None
+    monkeypatch.setattr(
+        broker.OwnedNatsBrokerControlPort,
+        "_compose_nats_settings",
+        lambda _self, _owner, _deadline: settings,
+    )
+    backend = port._by_service["backend"]
+    worker = port._by_service["outbox-worker"]
+    nats = port._by_service["nats"]
+    inspections = {
+        backend.container_id: broker._RuntimeServiceInspection(
+            backend.container_id, "backend", running=True, status="running"
+        ),
+        worker.container_id: broker._RuntimeServiceInspection(
+            worker.container_id, "outbox-worker", running=True, status="running"
+        ),
+        nats.container_id: broker._RuntimeServiceInspection(
+            nats.container_id,
+            "nats",
+            running=True,
+            status="running",
+            health="starting",
+        ),
+    }
+    monkeypatch.setattr(
+        broker.OwnedNatsBrokerControlPort,
+        "_runtime_config_inspection",
+        lambda _self, *_args, **_kwargs: (inspections, None),
+    )
+
+    result = port.broker_last_message(owner, backend, SUBJECT, deadline=deadline())
+
+    assert type(result) is BrokerErrorEvidence
+    assert result.failure_phase is BrokerProbePhase.RUNTIME_RESTORED_STATE
+    assert result.status is None
+    assert result.error_code is None
 
 
 def test_stop_requires_observed_remote_stopped_state_after_local_success(

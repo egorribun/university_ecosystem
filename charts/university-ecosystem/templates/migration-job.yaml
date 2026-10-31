@@ -1,10 +1,12 @@
 {{- if .Values.migrations.enabled }}
 {{- $connectionSecret := required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret -}}
+{{- $rateLimitURIKey := required "connections.rateLimitStorageURIKey must be set" .Values.connections.rateLimitStorageURIKey -}}
 {{- $applicationSecret := include "university-ecosystem.applicationSecretName" . -}}
 {{- $connectionSecretKeys := list
   (required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey)
   (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey)
   (required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey)
+  $rateLimitURIKey
   (required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey)
 -}}
 {{- $applicationSecretKeys := list
@@ -63,6 +65,10 @@ spec:
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           command: ["alembic", "upgrade", "head"]
           env:
+            - name: RATE_LIMIT_STORAGE_BACKEND
+              value: "redis"
+            - name: RATE_LIMIT_STORAGE_URI_FILE
+              value: {{ printf "/run/secrets/%s/%s" $connectionSecret $rateLimitURIKey | quote }}
             - name: DATABASE_URL_FILE
               value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey) | quote }}
             # Contract retirement may revoke already-issued bearer JTIs before

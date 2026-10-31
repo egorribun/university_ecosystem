@@ -12,6 +12,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/rsa"
+	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -24,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	graphql "github.com/graph-gophers/graphql-go"
 	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/assert"
@@ -68,14 +71,29 @@ func TestInitLogger_ReturnsJSONLogger(t *testing.T) {
 }
 
 func TestInitSentry_NoDSNIsNoOp(t *testing.T) {
-	// Empty DSN takes the early return — no global Sentry hub is mutated.
-	initSentry(context.Background(), &config.Config{SentryDSN: "", Environment: "test"}, discardLogger())
+	// Empty DSN takes the early return without logging or replacing the hub client.
+	hub := sentry.CurrentHub()
+	client := hub.Client()
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	initSentry(context.Background(), &config.Config{SentryDSN: "", Environment: "test"}, logger)
+	require.Empty(t, output.String())
+	require.Same(t, hub, sentry.CurrentHub())
+	require.True(t, client == sentry.CurrentHub().Client(), "empty DSN changed the Sentry hub client")
 }
 
 func TestInitSentry_MalformedDSNLogsError(t *testing.T) {
 	// A malformed DSN makes sentry.Init return an error → the error branch runs.
 	// sentry.Init parses the DSN synchronously and does no network on a bad parse.
-	initSentry(context.Background(), &config.Config{SentryDSN: "not-a-valid-dsn", Environment: "test"}, discardLogger())
+	const malformedDSN = "not-a-valid-dsn"
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	initSentry(context.Background(), &config.Config{SentryDSN: malformedDSN, Environment: "test"}, logger)
+	var record map[string]any
+	require.NoError(t, json.Unmarshal(output.Bytes(), &record))
+	require.Equal(t, "ERROR", record["level"])
+	require.Equal(t, "Sentry initialization failed", record["msg"])
+	require.NotContains(t, output.String(), malformedDSN)
 }
 
 func TestInitSpiffeClient_DisabledReturnsNil(t *testing.T) {
@@ -590,6 +608,50 @@ func TestConnectTemporal_UsesConfiguredTransportSecurity(t *testing.T) {
 			}, discardLogger())
 			require.Error(t, err)
 			assert.Equal(t, testCase.tlsDisabled, captured.ConnectionOptions.TLSDisabled)
+			assert.NotNil(t, captured.Credentials, "configured API-key credentials must be preserved")
+		})
+	}
+}
+
+func TestConnectTemporal_ConfiguresTLSWithoutAPIKey(t *testing.T) {
+	cases := []struct {
+		name        string
+		environment string
+		tlsDisabled bool
+		wantTLS     bool
+	}{
+		{name: "production without API key", environment: "production", wantTLS: true},
+		{name: "staging without API key", environment: "staging", wantTLS: true},
+		{name: "development plaintext without API key", environment: "development", tlsDisabled: true},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			oldDial := dialTemporalFunc
+			t.Cleanup(func() { dialTemporalFunc = oldDial })
+			var captured client.Options
+			dialTemporalFunc = func(options client.Options) (client.Client, error) {
+				captured = options
+				return nil, errors.New("synthetic dial failure")
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			_, err := connectTemporal(ctx, &config.Config{
+				Environment:         testCase.environment,
+				TemporalHost:        "temporal:7233",
+				TemporalTLSDisabled: testCase.tlsDisabled,
+			}, discardLogger())
+			require.Error(t, err)
+			assert.Nil(t, captured.Credentials, "TLS without an API key must remain supported")
+			assert.Equal(t, testCase.tlsDisabled, captured.ConnectionOptions.TLSDisabled)
+			if testCase.wantTLS {
+				require.NotNil(t, captured.ConnectionOptions.TLS)
+				assert.Equal(t, uint16(tls.VersionTLS13), captured.ConnectionOptions.TLS.MinVersion)
+				assert.False(t, captured.ConnectionOptions.TLS.InsecureSkipVerify)
+			} else {
+				assert.Nil(t, captured.ConnectionOptions.TLS)
+			}
 		})
 	}
 }

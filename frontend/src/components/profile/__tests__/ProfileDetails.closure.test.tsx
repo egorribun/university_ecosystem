@@ -36,7 +36,7 @@ describe("ProfileDetails role and disclosure branches", () => {
     expect(container.querySelector("section")).toHaveClass(
       "p-0",
       "border-none",
-      "bg-(--bg-surface)/(--opacity-subtle)",
+      "bg-(--bg-surface)/[calc(var(--opacity-subtle)*100%)]",
       "rounded-3xl",
       "overflow-hidden"
     )

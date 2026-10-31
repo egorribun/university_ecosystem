@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -118,5 +118,52 @@ describe("MapCategoryFilter", () => {
     await user.keyboard(" ")
     expectSelected(1)
     expect(onChange).toHaveBeenLastCalledWith(MAP_CATEGORIES[0])
+  })
+})
+
+describe("MapCategoryFilter keyboard guards under DOM interference", () => {
+  it("ignores category keys after external code removes the radio-group role", () => {
+    useTranslationMock.mockReturnValue({ t: (key: string) => key })
+    const onChange = vi.fn()
+    render(<MapCategoryFilter active={MAP_CATEGORIES[0]!} onChange={onChange} />)
+
+    const group = screen.getByRole("radiogroup")
+    const radios = screen.getAllByRole("radio")
+    const focusedRadio = radios[1]!
+    focusedRadio.focus()
+    group.removeAttribute("role")
+
+    const keydown = new KeyboardEvent("keydown", {
+      key: "ArrowRight",
+      bubbles: true,
+      cancelable: true,
+    })
+    expect(() => fireEvent(focusedRadio, keydown)).not.toThrow()
+    expect(keydown.defaultPrevented).toBe(false)
+    expect(focusedRadio).toHaveFocus()
+    expect(radios[2]).not.toHaveFocus()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("ignores category keys when external code removes the focused radio role", () => {
+    useTranslationMock.mockReturnValue({ t: (key: string) => key })
+    const onChange = vi.fn()
+    render(<MapCategoryFilter active={MAP_CATEGORIES[0]!} onChange={onChange} />)
+
+    const radios = screen.getAllByRole("radio")
+    const focusedRadio = radios[1]!
+    focusedRadio.focus()
+    focusedRadio.removeAttribute("role")
+
+    const keydown = new KeyboardEvent("keydown", {
+      key: "ArrowRight",
+      bubbles: true,
+      cancelable: true,
+    })
+    expect(() => fireEvent(focusedRadio, keydown)).not.toThrow()
+    expect(keydown.defaultPrevented).toBe(false)
+    expect(focusedRadio).toHaveFocus()
+    expect(radios[2]).not.toHaveFocus()
+    expect(onChange).not.toHaveBeenCalled()
   })
 })

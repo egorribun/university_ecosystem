@@ -5,7 +5,9 @@ import { usePushPreferences, type NotificationToast } from "@/hooks/usePushPrefe
 import {
   PWA_REFRESH_EVENT,
   PUSH_EDUCATION_REQUEST_EVENT,
+  clearPendingServiceWorkerUpdate,
   consumePendingPushEducation,
+  getPendingServiceWorkerUpdate,
   type ServiceWorkerUpdateEventDetail,
 } from "@/app/pwaEvents"
 import { useTranslation } from "react-i18next"
@@ -13,6 +15,7 @@ import { cn } from "@/utils/cn"
 import { Button } from "@/components/settings/SettingsUI"
 import { GlassCard } from "@/components/ui/GlassCard"
 import { useAuthUser } from "@/stores/useAuthStore"
+import { useAnnouncer } from "@/components/ui/LiveRegionProvider"
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms?: string[]
@@ -97,6 +100,7 @@ const clearDismissed = (key: string) => {
 
 export default function InstallPrompt() {
   const { t } = useTranslation(["system", "navigation", "notifications", "common"])
+  const { announce } = useAnnouncer()
   const user = useAuthUser()
   const userId = user?.id
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
@@ -111,10 +115,18 @@ export default function InstallPrompt() {
   } | null>(null)
   const installSuppressUntilRef = useRef<number>(0)
   const pushSuppressUntilRef = useRef<{ userId: string; until: number } | null>(null)
-  const pendingUpdateRef = useRef<ServiceWorkerUpdateEventDetail["update"] | null>(null)
+  const pendingUpdateRef = useRef<ServiceWorkerUpdateEventDetail | null>(null)
 
   const isEligible = useMemo(() => !isInstallPromptStandalone(), [])
   const appName = t("navigation:brandName")
+
+  const handleFeedback = useCallback(
+    (toast: NotificationToast) => {
+      setFeedback(toast)
+      announce(toast.text, toast.severity === "error" ? "assertive" : "polite")
+    },
+    [announce]
+  )
 
   const {
     pushSupported,
@@ -123,21 +135,27 @@ export default function InstallPrompt() {
     pushInitializing,
     permissionText,
     enableNotifications,
-  } = usePushPreferences({ onNotify: setFeedback })
+  } = usePushPreferences({ onNotify: handleFeedback })
 
   useEffect(() => {
+    const showServiceWorkerUpdate = (detail: ServiceWorkerUpdateEventDetail) => {
+      pendingUpdateRef.current = detail
+      setUpdateToastOpen(true)
+      announce(t("system:installPrompt.updateAvailable"))
+    }
     const handleServiceWorkerUpdate = (event: Event) => {
       const customEvent = event as CustomEvent<ServiceWorkerUpdateEventDetail>
-      pendingUpdateRef.current = customEvent.detail.update
-      setUpdateToastOpen(true)
+      showServiceWorkerUpdate(customEvent.detail)
     }
 
     window.addEventListener(PWA_REFRESH_EVENT, handleServiceWorkerUpdate)
+    const pendingUpdate = getPendingServiceWorkerUpdate()
+    if (pendingUpdate) showServiceWorkerUpdate(pendingUpdate)
 
     return () => {
       window.removeEventListener(PWA_REFRESH_EVENT, handleServiceWorkerUpdate)
     }
-  }, [])
+  }, [announce, t])
 
   useEffect(() => {
     if (!isEligible) return
@@ -257,13 +275,18 @@ export default function InstallPrompt() {
   }, [])
 
   const handleUpdateReload = useCallback(() => {
-    const update = pendingUpdateRef.current
-    if (!update) return
+    const detail = pendingUpdateRef.current
+    if (!detail?.update) return
+    clearPendingServiceWorkerUpdate(detail)
+    pendingUpdateRef.current = null
     setUpdateToastOpen(false)
-    void update()
+    void detail.update()
   }, [])
 
   const handleCloseUpdateToast = useCallback(() => {
+    const detail = pendingUpdateRef.current
+    clearPendingServiceWorkerUpdate(detail)
+    pendingUpdateRef.current = null
     setUpdateToastOpen(false)
   }, [])
 
@@ -353,7 +376,7 @@ export default function InstallPrompt() {
             <GlassCard
               intensity="high"
               radius="lg"
-              className="z-toast w-auto max-w-[24rem] max-h-[calc(100dvh-env(safe-area-inset-bottom)-6rem)] overflow-y-auto overscroll-contain border-glass-border shadow-2xl ring-1 ring-black/(--opacity-faint) p-6 pointer-events-auto"
+              className="z-toast w-auto max-w-[24rem] max-h-[calc(100dvh-env(safe-area-inset-bottom)-6rem)] overflow-y-auto overscroll-contain border-glass-border shadow-2xl ring-1 ring-black/[calc(var(--opacity-faint)*100%)] p-6 pointer-events-auto"
             >
               <div
                 className={cn(
@@ -374,7 +397,7 @@ export default function InstallPrompt() {
                   <div className="space-y-4 min-h-[220px]">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-2xl bg-brand/(--opacity-subtle) text-brand">
+                        <div className="p-2.5 rounded-2xl bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand">
                           <Download className="h-5 w-5" />
                         </div>
                         <h2 className="text-lg font-black tracking-tight text-text-primary sf-pro">
@@ -384,7 +407,7 @@ export default function InstallPrompt() {
                       <button
                         onClick={handleInstallDismiss}
                         aria-label={t("system:installPrompt.closeOffer")}
-                        className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl hover:bg-(--bg-surface-hover)/(--opacity-soft) text-(--text-secondary) transition-colors"
+                        className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl hover:bg-(--bg-surface-hover)/[calc(var(--opacity-soft)*100%)] text-(--text-secondary) transition-colors"
                       >
                         <X className="h-5 w-5" />
                       </button>
@@ -397,7 +420,7 @@ export default function InstallPrompt() {
                         variant="solid"
                         onClick={handleInstall}
                         disabled={!deferredPrompt || installing}
-                        className="flex-1 h-12 rounded-2xl font-black shadow-lg shadow-brand/(--opacity-dim)"
+                        className="flex-1 h-12 rounded-2xl font-black shadow-lg shadow-brand/[calc(var(--opacity-dim)*100%)]"
                         loading={installing}
                       >
                         {t("system:installPrompt.install")}
@@ -414,7 +437,7 @@ export default function InstallPrompt() {
                 )}
 
                 {showInstallPanel && showPushPanel && (
-                  <div className="h-px bg-glass-border/(--opacity-subtle)" />
+                  <div className="h-px bg-glass-border/[calc(var(--opacity-subtle)*100%)]" />
                 )}
 
                 {showPushPanel && (
@@ -423,7 +446,7 @@ export default function InstallPrompt() {
                   <div className="space-y-4 min-h-[260px]">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-2xl bg-brand/(--opacity-subtle) text-brand">
+                        <div className="p-2.5 rounded-2xl bg-brand/[calc(var(--opacity-subtle)*100%)] text-brand">
                           <Bell className="h-5 w-5" />
                         </div>
                         <h2 className="text-lg font-black tracking-tight text-text-primary sf-pro">
@@ -433,7 +456,7 @@ export default function InstallPrompt() {
                       <button
                         onClick={handlePushDismiss}
                         aria-label={t("system:installPrompt.notificationsClose")}
-                        className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl hover:bg-(--bg-surface-hover)/(--opacity-soft) text-(--text-secondary) transition-colors"
+                        className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl hover:bg-(--bg-surface-hover)/[calc(var(--opacity-soft)*100%)] text-(--text-secondary) transition-colors"
                       >
                         <X className="h-5 w-5" />
                       </button>
@@ -453,7 +476,7 @@ export default function InstallPrompt() {
                           size="sm"
                           onClick={() => void enableNotifications()}
                           disabled={pushBusy || pushInitializing}
-                          className="rounded-xl font-black h-10 px-6 shadow-lg shadow-brand/(--opacity-dim)"
+                          className="rounded-xl font-black h-10 px-6 shadow-lg shadow-brand/[calc(var(--opacity-dim)*100%)]"
                         >
                           {t("system:installPrompt.allow")}
                         </Button>
@@ -482,10 +505,10 @@ export default function InstallPrompt() {
               className={cn(
                 "flex items-center gap-3 p-4 rounded-2xl border backdrop-blur-2xl shadow-2xl",
                 feedback.severity === "error"
-                  ? "bg-error-bg/(--opacity-dim) border-error-border/(--opacity-soft) text-error-text"
+                  ? "bg-error-bg/[calc(var(--opacity-dim)*100%)] border-error-border/[calc(var(--opacity-soft)*100%)] text-error-text"
                   : feedback.severity === "success"
-                    ? "bg-success-bg/(--opacity-dim) border-success-border/(--opacity-soft) text-success-text"
-                    : "bg-brand/(--opacity-subtle) border-brand/(--opacity-dim) text-brand"
+                    ? "bg-success-bg/[calc(var(--opacity-dim)*100%)] border-success-border/[calc(var(--opacity-soft)*100%)] text-success-text"
+                    : "bg-brand/[calc(var(--opacity-subtle)*100%)] border-brand/[calc(var(--opacity-dim)*100%)] text-brand"
               )}
             >
               {feedback.severity === "error" ? (
@@ -514,7 +537,7 @@ export default function InstallPrompt() {
             exit={UPDATE_TOAST_VARIANTS.exit}
             className="fixed bottom-24 left-1/2 -translate-x-1/2 z-toast w-full max-w-[28rem] px-6"
           >
-            <div className="flex items-center gap-4 p-4 rounded-2xl border border-brand/(--opacity-dim) bg-brand/(--opacity-faint) backdrop-blur-2xl shadow-2xl text-brand">
+            <div className="flex items-center gap-4 p-4 rounded-2xl border border-brand/[calc(var(--opacity-dim)*100%)] bg-brand/[calc(var(--opacity-faint)*100%)] backdrop-blur-2xl shadow-2xl text-brand">
               <RefreshCw className="h-6 w-6 animate-spin-slow" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-black tracking-tight">
@@ -525,14 +548,14 @@ export default function InstallPrompt() {
                 variant="solid"
                 size="sm"
                 onClick={handleUpdateReload}
-                className="rounded-xl px-4 h-9 font-black shadow-lg shadow-brand/(--opacity-dim)"
+                className="rounded-xl px-4 h-9 font-black shadow-lg shadow-brand/[calc(var(--opacity-dim)*100%)]"
               >
                 {t("system:installPrompt.reload")}
               </Button>
               <button
                 onClick={handleCloseUpdateToast}
                 aria-label={t("common:buttons.close")}
-                className="min-h-11 min-w-11 inline-flex items-center justify-center hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors"
+                className="min-h-11 min-w-11 inline-flex items-center justify-center hover:bg-brand/[calc(var(--opacity-subtle)*100%)] rounded-lg transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>

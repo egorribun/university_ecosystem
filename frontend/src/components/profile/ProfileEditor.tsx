@@ -88,7 +88,7 @@ export const ProfileEditor = ({
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             maxLength={120}
-            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-(--glass-border) bg-(--bg-surface) text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
+            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-(--glass-border) bg-(--bg-surface) text-text-primary placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)] focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
           />
         </div>
 
@@ -314,7 +314,7 @@ export const ProfileEditor = ({
             type="button"
             onClick={onSave}
             disabled={saving}
-            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-(--primary-main) text-[var(--text-inverse)] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-base hover:-translate-y-0.5 hover:scale-(--scale-hover-subtle) active:scale-95 disabled:opacity-medium disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none border border-(--primary-main)/(--opacity-dim)"
+            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-(--primary-main) text-[var(--text-inverse)] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-base hover:-translate-y-0.5 hover:scale-(--scale-hover-subtle) active:scale-95 disabled:opacity-medium disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none border border-(--primary-main)/[calc(var(--opacity-dim)*100%)]"
           >
             {saving ? t("profile:form.saving") : t("profile:form.save")}
           </button>

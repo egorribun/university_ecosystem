@@ -75,7 +75,7 @@ function RelatedEventCard({ event, language }: { event: Event; language: "en" | 
     <Link
       to="/events/$id"
       params={{ id: event.id }}
-      className="group relative rounded-xl card-matte glass-noise border border-glass-border/(--opacity-soft) overflow-hidden transition-all duration-slower hover:shadow-premium-lift hover:-translate-y-1"
+      className="group relative rounded-xl card-matte glass-noise border border-glass-border/[calc(var(--opacity-soft)*100%)] overflow-hidden transition-all duration-slower hover:shadow-premium-lift hover:-translate-y-1"
     >
       {/* Image */}
       <div className="relative h-32 overflow-hidden">
@@ -87,8 +87,8 @@ function RelatedEventCard({ event, language }: { event: Event; language: "en" | 
             className="h-full w-full object-cover transition-transform duration-slower group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-linear-to-br from-brand/(--opacity-subtle) to-transparent">
-            <CalendarDays className="h-8 w-8 text-brand/(--opacity-medium)" />
+          <div className="flex h-full w-full items-center justify-center bg-linear-to-br from-brand/[calc(var(--opacity-subtle)*100%)] to-transparent">
+            <CalendarDays className="h-8 w-8 text-brand/[calc(var(--opacity-medium)*100%)]" />
           </div>
         )}
 

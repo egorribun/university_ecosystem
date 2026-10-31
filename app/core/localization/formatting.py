@@ -69,7 +69,8 @@ def _normalize_weekday_token(value: str | None) -> str | None:
 
 
 def translate(
-    key: str,
+    translation_key: str | None = None,
+    /,
     *,
     locale: str | None = None,
     request: Any = None,
@@ -77,10 +78,17 @@ def translate(
     default: str | None = None,
     **kwargs: Any,
 ) -> str:
+    # Keep ``translate(key=...)`` as a legacy translation-key form while allowing
+    # ``key`` to remain an interpolation variable when the key is positional.
+    if translation_key is None:
+        translation_key = kwargs.pop("key", None)
+        if translation_key is None:
+            raise TypeError("A translation key is required")
+
     from .core import DEFAULT_LOCALE, resolve_locale
 
     resolved = resolve_locale(locale=locale, request=request, user=user)
-    entry = TRANSLATIONS.get(key)
+    entry = TRANSLATIONS.get(translation_key)
 
     text: str | None = None
     if entry:
@@ -93,7 +101,7 @@ def translate(
             text = next((value for value in entry.values() if value), None)
 
     if text is None:
-        text = default if default is not None else key
+        text = default if default is not None else translation_key
 
     if kwargs and isinstance(text, str):
         try:

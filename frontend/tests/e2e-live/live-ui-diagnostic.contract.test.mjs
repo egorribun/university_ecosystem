@@ -384,10 +384,7 @@ for (const failedStep of ["arm-response", "click", "await-response"]) {
       assert.deepEqual(events, failedStep === "arm-response"
         ? ["arm", "report"] : ["arm", "click", "report"]);
     `)
-    assert.equal(
-      output,
-      `UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=${failedStep}\n`
-    )
+    assert.equal(output, `UE_LIVE_RESET_REGISTRATION_V1 project=desktop step=${failedStep}\n`)
   })
 }
 
@@ -478,6 +475,857 @@ test("reset registration reporter failure cannot replace the original error", ()
       ),
       (error) => error === original
     );
+  `)
+  assert.equal(output, "")
+})
+
+const resetV2Prefix = "UE_LIVE_RESET_REGISTRATION_V2 "
+const resetV2Expected = {
+  project: "mobile",
+  step: "await-response",
+  errorCategory: "timeout",
+  snapshot: "available",
+  hydrated: true,
+  formPresent: true,
+  formInvalid: false,
+  formError: false,
+  nameError: false,
+  emailError: false,
+  inviteError: false,
+  passwordError: false,
+  confirmError: false,
+  rootError: false,
+  submitPresent: true,
+  submitDisabled: false,
+  submitBusy: false,
+  csrfRequested: true,
+  csrfResponse: "success",
+  csrfFailed: false,
+}
+function resetV2Records(output) {
+  return output
+    .trimEnd()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      assert.ok(line.startsWith(resetV2Prefix), "only closed V2 frames may be emitted")
+      return JSON.parse(line.slice(resetV2Prefix.length))
+    })
+}
+function resetV2InChild(calls) {
+  return registrationActionInChild(`
+    const create = actionModule.createPasswordResetRegistrationDiagnostics;
+    assert.equal(typeof create, "function", "bounded registration V2 factory is missing");
+    const { EventEmitter } = await import("node:events");
+    const { JSDOM } = await import("jsdom");
+    class ObservationPage extends EventEmitter {
+      constructor() {
+        super();
+        this.dom = new JSDOM(
+          '<form><input required value="present"><button id="register-submit" type="submit">Submit</button></form>',
+          { url: "https://owned.invalid/register", runScripts: "outside-only" }
+        );
+        this.dom.window.__APP_HYDRATED = true;
+        this.evaluations = 0;
+      }
+      async evaluate(callback) {
+        this.evaluations += 1;
+        return this.dom.window.eval("(" + callback.toString() + ")()");
+      }
+    }
+    function request(url = "https://owned.invalid/api/v1/auth/csrf-cookie", method = "GET") {
+      return {
+        url: () => url, method: () => method,
+        postData() { throw new Error("private-body-must-not-be-read"); },
+        headers() { throw new Error("private-cookie-must-not-be-read"); },
+      };
+    }
+    function response(req, status = 204) {
+      return {
+        request: () => req, status: () => status,
+        url() { throw new Error("private-response-url-must-not-be-read"); },
+        body() { throw new Error("private-body-must-not-be-read"); },
+        headers() { throw new Error("private-cookie-must-not-be-read"); },
+      };
+    }
+    function privateError(name = "TimeoutError") {
+      return {
+        name,
+        get message() { throw new Error("private-message-must-not-be-read"); },
+        get stack() { throw new Error("private-stack-must-not-be-read"); },
+        get constructor() { throw new Error("private-constructor-must-not-be-read"); },
+        toString() { throw new Error("private-error-must-not-be-coerced"); },
+      };
+    }
+    ${calls}
+  `)
+}
+test("reset V2 optional observer preserves failure identity and closes on every path", () => {
+  const output = registrationActionInChild(`
+    for (const outcome of ["success", "arm-response", "click", "await-response"]) {
+      const original = new Error("private-original");
+      const value = { status: 200 };
+      const events = [];
+      const diagnostic = {
+        async reportFailure(step, error) {
+          assert.equal(step, outcome);
+          assert.equal(error, original);
+          events.push("v2");
+          throw new Error("private-diagnostic-error");
+        },
+        dispose() { events.push("dispose"); throw new Error("private-dispose-error"); },
+      };
+      const result = run(
+        () => {
+          if (outcome === "arm-response") throw original;
+          return outcome === "await-response" ? Promise.reject(original) : Promise.resolve(value);
+        },
+        async () => { if (outcome === "click") throw original; },
+        (...args) => {
+          assert.deepEqual(args, [outcome]);
+          events.push("v1");
+          throw new Error("private-v1-error");
+        },
+        diagnostic
+      );
+      if (outcome === "success") assert.equal(await result, value);
+      else await assert.rejects(result, error => error === original);
+      assert.deepEqual(events, outcome === "success" ? ["dispose"] : ["v1", "v2", "dispose"]);
+    }
+  `)
+  assert.equal(output, "")
+})
+test("reset V2 reports fixed failure state and owned CSRF observation without private data", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+    const req = request();
+    page.emit("request", req);
+    page.emit("response", response(req));
+    const original = privateError();
+    await assert.rejects(
+      run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+      error => error === original
+    );
+    assert.equal(page.evaluations, 1);
+    for (const event of ["request", "response", "requestfailed"]) assert.equal(page.listenerCount(event), 0);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [resetV2Expected])
+  assert.doesNotMatch(output, /private|https?:|cookie|present|Submit/u)
+})
+test("reset V2 distinguishes form state and aggregates only matching CSRF response classes", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    page.dom.window.__APP_HYDRATED = false;
+    page.dom.window.document.querySelector("input").value = "";
+    page.dom.window.document.querySelector("form").insertAdjacentHTML("beforeend", '<div role="alert">private-form-error</div>');
+    const button = page.dom.window.document.getElementById("register-submit");
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    const diagnostic = create(page, "desktop", "https://owned.invalid", performance.now() + 1000);
+    const first = request();
+    const second = request();
+    page.emit("request", first);
+    page.emit("response", response(first, 200));
+    page.emit("request", second);
+    page.emit("response", response(second, 503));
+    page.emit("requestfailed", second);
+    await assert.rejects(run(() => Promise.reject(privateError("TypeError")), async () => {}, () => {}, diagnostic));
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      project: "desktop",
+      errorCategory: "type-error",
+      hydrated: false,
+      formInvalid: true,
+      formError: true,
+      submitDisabled: true,
+      submitBusy: true,
+      csrfResponse: "mixed",
+      csrfFailed: true,
+    },
+  ])
+  assert.doesNotMatch(output, /private-form-error|503/u)
+})
+
+const resetV2ErrorCases = [
+  ["nameError", "register-name-error"],
+  ["emailError", "register-email-error"],
+  ["inviteError", "register-invite-error"],
+  ["passwordError", "register-password-error"],
+  ["confirmError", "register-confirm-password-error"],
+  ["rootError", null],
+]
+for (const [key, errorId] of resetV2ErrorCases) {
+  test(`reset V2 classifies ${key} without reading alert text`, () => {
+    const output = resetV2InChild(`
+      const page = new ObservationPage();
+      const document = page.dom.window.document;
+      const alert = document.createElement("div");
+      const errorId = ${JSON.stringify(errorId)};
+      alert.setAttribute("role", "alert");
+      if (errorId === null) alert.setAttribute("aria-live", "assertive");
+      else alert.id = errorId;
+      alert.textContent = "PRIVATE_ALERT_COPY";
+      document.querySelector("form").append(alert);
+      Object.defineProperty(alert, "textContent", {
+        get() { throw new Error("private-alert-read"); },
+      });
+      const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+      const original = privateError();
+      await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+        error => error === original);
+      assert.equal(page.evaluations, 1);
+      for (const event of ["request", "response", "requestfailed"]) assert.equal(page.listenerCount(event), 0);
+      page.dom.window.close();
+    `)
+    assert.deepEqual(resetV2Records(output), [
+      {
+        ...resetV2Expected,
+        formError: true,
+        [key]: true,
+        csrfRequested: false,
+        csrfResponse: "not-observed",
+      },
+    ])
+    assert.doesNotMatch(output, /PRIVATE_ALERT_COPY|private-alert-read/u)
+  })
+}
+test("reset V2 ignores foreign forms, inactive field errors and nested root lookalikes", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    const document = page.dom.window.document;
+    const form = document.querySelector("form");
+    for (const id of ["register-name-error", "register-email-error", "register-invite-error",
+      "register-password-error", "register-confirm-password-error"]) {
+      const foreign = document.createElement("div");
+      foreign.id = id;
+      foreign.setAttribute("role", "alert");
+      document.body.append(foreign);
+      const inactive = document.createElement("div");
+      inactive.id = id;
+      form.append(inactive);
+    }
+    const foreignRoot = document.createElement("div");
+    foreignRoot.setAttribute("role", "alert");
+    foreignRoot.setAttribute("aria-live", "assertive");
+    document.body.append(foreignRoot);
+    const wrapper = document.createElement("div");
+    wrapper.append(foreignRoot.cloneNode());
+    form.append(wrapper);
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+    const original = privateError();
+    await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+      error => error === original);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      formError: true,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+})
+test("reset V2 reports absent forms without classifying any field or root error", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    page.dom.window.document.body.replaceChildren();
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+    const original = privateError();
+    await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+      error => error === original);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      formPresent: false,
+      submitPresent: false,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+})
+test("reset V2 rejects malformed classified errors without invoking snapshot getters", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    const errorKeys = ["nameError", "emailError", "inviteError", "passwordError", "confirmError", "rootError"];
+    let getterReads = 0;
+    for (const key of errorKeys) {
+      for (const mode of ["wrong-type", "missing", "getter", "contradictory"]) {
+        page.evaluate = async () => {
+          const snapshot = {
+            hydrated: true, formPresent: true, formInvalid: false, formError: false,
+            nameError: false, emailError: false, inviteError: false,
+            passwordError: false, confirmError: false, rootError: false,
+            submitPresent: true, submitDisabled: false, submitBusy: false,
+          };
+          if (mode === "wrong-type") snapshot[key] = "private-classification";
+          else if (mode === "missing") delete snapshot[key];
+          else if (mode === "contradictory") snapshot[key] = true;
+          else Object.defineProperty(snapshot, key, {
+            enumerable: true,
+            get() { getterReads += 1; throw new Error("private-classification-getter"); },
+          });
+          return snapshot;
+        };
+        const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+        const original = privateError();
+        await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+          error => error === original);
+      }
+    }
+    assert.equal(getterReads, 0);
+    for (const event of ["request", "response", "requestfailed"]) assert.equal(page.listenerCount(event), 0);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      snapshot: "unavailable",
+      hydrated: false,
+      formPresent: false,
+      submitPresent: false,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+  assert.doesNotMatch(output, /private-classification/u)
+})
+
+test("reset V2 ignores foreign, malformed and untracked CSRF events", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+    const candidates = [
+      request("https://foreign.invalid/api/v1/auth/csrf-cookie"),
+      request("https://owned.invalid/api/v1/auth/csrf-cookie?private"),
+      request("https://owned.invalid/api/v1/auth/csrf-cookie#private"),
+      request("https://owned.invalid/api/v1/auth/csrf-cookie", "POST"),
+      request("https://owned.invalid/api/v1/auth/csrf-cookie-extra"),
+      request("https://owned.invalid/api/v1/auth/register"),
+      request({ toString() { throw new Error("private-url-coercion"); } }),
+      { url() { throw new Error("private-url"); }, method: () => "GET" },
+    ];
+    for (const req of candidates) {
+      assert.doesNotThrow(() => page.emit("request", req));
+      assert.doesNotThrow(() => page.emit("response", response(req)));
+      assert.doesNotThrow(() => page.emit("requestfailed", req));
+    }
+    page.emit("response", response(request()));
+    page.emit("requestfailed", request());
+    const original = privateError("private-name");
+    Object.defineProperty(original, "name", { get() { throw new Error("private-name"); } });
+    await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+      error => error === original);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      errorCategory: "other",
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+})
+test("reset V2 has no success snapshot and removes listeners after success", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    const diagnostic = create(page, "desktop", "https://owned.invalid", performance.now() + 1000);
+    const value = { status: 201 };
+    assert.equal(await run(() => Promise.resolve(value), async () => {}, () => {}, diagnostic), value);
+    assert.equal(page.evaluations, 0);
+    for (const event of ["request", "response", "requestfailed"]) assert.equal(page.listenerCount(event), 0);
+    page.dom.window.close();
+  `)
+  assert.equal(output, "")
+})
+test("reset V2 expired snapshot budget never evaluates the page or replaces the error", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() - 1);
+    const original = privateError("AbortError");
+    await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+      error => error === original);
+    assert.equal(page.evaluations, 0);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      errorCategory: "abort",
+      snapshot: "unavailable",
+      hydrated: false,
+      formPresent: false,
+      submitPresent: false,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+})
+test("reset V2 pending snapshot stays bounded and owns late rejection", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    let rejectSnapshot;
+    page.evaluate = () => new Promise((_resolve, reject) => { rejectSnapshot = reject; });
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 10);
+    const original = privateError();
+    const unhandled = [];
+    const onUnhandled = error => unhandled.push(error);
+    process.on("unhandledRejection", onUnhandled);
+    let guard;
+    try {
+      await Promise.race([
+        assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+          error => error === original),
+        new Promise((_resolve, reject) => { guard = setTimeout(() => reject(new Error("diagnostic exceeded original budget")), 1000); }),
+      ]);
+      if (rejectSnapshot) rejectSnapshot(new Error("private-late-snapshot"));
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(unhandled, []);
+      for (const event of ["request", "response", "requestfailed"]) assert.equal(page.listenerCount(event), 0);
+    } finally {
+      clearTimeout(guard);
+      process.off("unhandledRejection", onUnhandled);
+      page.dom.window.close();
+    }
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      snapshot: "unavailable",
+      hydrated: false,
+      formPresent: false,
+      submitPresent: false,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+})
+test("reset V2 rejects untrusted project and step values without coercion", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    const poison = { toString() { throw new Error("private-coercion"); } };
+    for (const project of ["private-project", "mobile\\nprivate", poison, null, 1]) {
+      const diagnostic = create(page, project, "https://owned.invalid", performance.now() + 1000);
+      await diagnostic.reportFailure("await-response", privateError());
+      diagnostic.dispose();
+    }
+    const diagnostic = create(page, "desktop", "https://owned.invalid", performance.now() + 1000);
+    for (const step of ["private-step", "click\\nprivate", poison, null, 1]) {
+      await diagnostic.reportFailure(step, privateError());
+    }
+    diagnostic.dispose();
+    assert.equal(page.evaluations, 0);
+    page.dom.window.close();
+  `)
+  assert.equal(output, "")
+})
+
+test("reset V2 rejects private DOM snapshots and contains sink failure", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    page.evaluate = async () => ({
+      hydrated: true, formPresent: true, formInvalid: false, formError: false,
+      nameError: false, emailError: false, inviteError: false,
+      passwordError: false, confirmError: false, rootError: false,
+      submitPresent: true, submitDisabled: false, submitBusy: false,
+      privateField: "private-input",
+    });
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+    const original = privateError();
+    await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+      error => error === original);
+    const next = create(page, "desktop", "https://owned.invalid", performance.now() + 1000);
+    const originalWrite = process.stdout.write;
+    process.stdout.write = () => { throw new Error("private-sink"); };
+    try {
+      await assert.rejects(run(() => Promise.reject(original), async () => {}, () => {}, next),
+        error => error === original);
+    } finally {
+      process.stdout.write = originalWrite;
+    }
+    for (const event of ["request", "response", "requestfailed"]) assert.equal(page.listenerCount(event), 0);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      snapshot: "unavailable",
+      hydrated: false,
+      formPresent: false,
+      submitPresent: false,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+})
+test("reset V2 diagnostic frames are deduplicated and capped", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 1000);
+    for (const name of ["TimeoutError", "AbortError", "TypeError", "TargetClosedError", "Error", "Other"]) {
+      await diagnostic.reportFailure("await-response", privateError(name));
+      await diagnostic.reportFailure("await-response", privateError(name));
+    }
+    await diagnostic.reportFailure("click", privateError());
+    diagnostic.dispose();
+    page.dom.window.close();
+  `)
+  assert.deepEqual(
+    resetV2Records(output).map((record) => record.errorCategory),
+    ["timeout", "abort", "type-error", "target-closed", "error", "other"]
+  )
+})
+
+test("reset V2 caps snapshot scheduling at 250ms with a long remaining deadline", () => {
+  const output = resetV2InChild(`
+    const page = new ObservationPage();
+    page.evaluate = () => new Promise(() => {});
+    const diagnostic = create(page, "mobile", "https://owned.invalid", performance.now() + 60_000);
+    const original = privateError();
+    const requested = [];
+    const cleared = [];
+    const handle = {};
+    let expire;
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    globalThis.setTimeout = (callback, delay) => {
+      requested.push(delay);
+      expire = callback;
+      return handle;
+    };
+    globalThis.clearTimeout = timer => { cleared.push(timer); };
+    try {
+      const rejected = assert.rejects(
+        run(() => Promise.reject(original), async () => {}, () => {}, diagnostic),
+        error => error === original
+      );
+      // Drain pending microtasks without advancing a real timeout clock.
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(requested, [250]);
+      assert.equal(typeof expire, "function");
+      expire();
+      await rejected;
+      assert.deepEqual(cleared, [handle]);
+      for (const event of ["request", "response", "requestfailed"]) {
+        assert.equal(page.listenerCount(event), 0);
+      }
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+      page.dom.window.close();
+    }
+  `)
+  assert.deepEqual(resetV2Records(output), [
+    {
+      ...resetV2Expected,
+      snapshot: "unavailable",
+      hydrated: false,
+      formPresent: false,
+      submitPresent: false,
+      csrfRequested: false,
+      csrfResponse: "not-observed",
+    },
+  ])
+})
+
+function resetV3InChild(calls) {
+  return registrationActionInChild(`
+    const createTimeline = actionModule.createPasswordResetRegistrationTimeline;
+    assert.equal(typeof createTimeline, "function", "bounded registration V3 timeline is missing");
+    const { JSDOM } = await import("jsdom");
+    class TimelinePage {
+      constructor() {
+        this.dom = new JSDOM(
+          '<form novalidate><input id="full_name"><button id="register-submit" type="button"></button></form>',
+          { url: "https://owned.invalid/register", runScripts: "outside-only" }
+        );
+        this.installations = 0;
+        this.handles = [];
+        this.failNextEvaluation = false;
+      }
+      async evaluateHandle(callback) {
+        this.installations += 1;
+        const observer = this.dom.window.eval("(" + callback.toString() + ")()");
+        const page = this;
+        const handle = {
+          observer,
+          released: false,
+          async evaluate(callback) {
+            if (page.failNextEvaluation) {
+              page.failNextEvaluation = false;
+              throw new Error("private-evaluate");
+            }
+            return callback(observer);
+          },
+          async dispose() { this.released = true; },
+        };
+        this.handles.push(handle);
+        return handle;
+      }
+    }
+    ${calls}
+  `)
+}
+
+function resetV3Records(output) {
+  return output
+    .trimEnd()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      assert.ok(line.startsWith("UE_LIVE_RESET_REGISTRATION_V3 "))
+      return JSON.parse(line.slice("UE_LIVE_RESET_REGISTRATION_V3 ".length))
+    })
+}
+
+test("reset V3 captures classified setup, input, and click events without raw data", () => {
+  const output = resetV3InChild(`
+    const page = new TimelinePage();
+    const timeline = createTimeline(page, "mobile", performance.now() + 1000);
+    await timeline.setup();
+    const name = page.dom.window.document.querySelector("#full_name");
+    name.value = "private-name";
+    page.dom.window.__APP_HYDRATED = true;
+    name.dispatchEvent(new page.dom.window.Event("input", { bubbles: true }));
+    name.value = "x";
+    page.dom.window.document.querySelector("form").insertAdjacentHTML(
+      "beforeend", '<p id="register-name-error" role="alert">private-error</p>'
+    );
+    page.dom.window.document.querySelector("#register-submit").click();
+    await timeline.reportFailure("await-response");
+    await timeline.dispose();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(page.installations, 1);
+    assert.equal(page.handles[0].released, true);
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV3Records(output), [
+    {
+      project: "mobile",
+      step: "await-response",
+      beforeName: { hydrated: false, nameState: "empty", nameError: false },
+      afterName: { hydrated: true, nameState: "at-least-two", nameError: false },
+      beforeSubmit: { hydrated: true, nameState: "short", nameError: true, trigger: "click" },
+    },
+  ])
+  assert.doesNotMatch(output, /private|https?:|value|input/u)
+})
+
+test("reset V3 observes invalid and submit fallback events and ignores disabled or missing buttons", () => {
+  const output = resetV3InChild(`
+    for (const trigger of ["invalid", "submit", "disabled", "missing"]) {
+      const page = new TimelinePage();
+      const timeline = createTimeline(page, "mobile", performance.now() + 1000);
+      await timeline.setup();
+      const document = page.dom.window.document;
+      const name = document.querySelector("#full_name");
+      const button = document.querySelector("#register-submit");
+      if (trigger === "invalid") name.dispatchEvent(new page.dom.window.Event("invalid"));
+      if (trigger === "submit") document.querySelector("form").dispatchEvent(
+        new page.dom.window.Event("submit", { bubbles: true, cancelable: true })
+      );
+      if (trigger === "disabled") { button.disabled = true; button.click(); }
+      if (trigger === "missing") { button.remove(); document.body.click(); }
+      await timeline.reportFailure("click");
+      await timeline.dispose();
+      page.dom.window.close();
+    }
+  `)
+  const records = resetV3Records(output)
+  assert.equal(records.length, 3, "identical missing-event records are deduplicated")
+  assert.deepEqual(
+    records.map((record) => record.beforeSubmit?.trigger ?? null),
+    ["invalid", "submit", null]
+  )
+  assert.ok(records.every((record) => record.afterName === null))
+})
+
+test("reset V3 is silent on success, removes listeners, and preserves the action result", () => {
+  const output = resetV3InChild(`
+    const page = new TimelinePage();
+    const timeline = createTimeline(page, "mobile", performance.now() + 1000);
+    await timeline.setup();
+    const handle = page.handles[0];
+    const response = { status: 200 };
+    const diagnostic = {
+      reportFailure: step => timeline.reportFailure(step),
+      dispose: () => timeline.dispose(),
+    };
+    assert.equal(await run(() => Promise.resolve(response), async () => {}, () => {}, diagnostic), response);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(handle.released, true);
+    const name = page.dom.window.document.querySelector("#full_name");
+    name.value = "private-name";
+    name.dispatchEvent(new page.dom.window.Event("input", { bubbles: true }));
+    page.dom.window.document.querySelector("#register-submit").click();
+    assert.equal(handle.observer.read().afterName, null);
+    assert.equal(handle.observer.read().beforeSubmit, null);
+    page.dom.window.close();
+  `)
+  assert.equal(output, "")
+})
+
+test("reset V3 rejects malformed reads and preserves the registration failure", () => {
+  const output = resetV3InChild(`
+    const page = new TimelinePage();
+    const timeline = createTimeline(page, "desktop", performance.now() + 1000);
+    await timeline.setup();
+    const original = new Error("private-original");
+    page.handles[0].evaluate = async () => ({
+      beforeName: { hydrated: true, nameState: "empty", nameError: false, value: "private" },
+      afterName: null, beforeSubmit: null,
+    });
+    await assert.rejects(
+      run(() => Promise.reject(original), async () => {}, () => {}, {
+        reportFailure: step => timeline.reportFailure(step),
+        dispose: () => timeline.dispose(),
+      }),
+      error => error === original
+    );
+    page.dom.window.close();
+  `)
+  assert.deepEqual(resetV3Records(output), [
+    {
+      project: "desktop",
+      step: "await-response",
+      beforeName: null,
+      afterName: null,
+      beforeSubmit: null,
+    },
+  ])
+  assert.doesNotMatch(output, /private|value/u)
+})
+
+test("reset V3 bounds late setup and releases its late observer", () => {
+  const output = resetV3InChild(`
+    const page = new TimelinePage();
+    let resolveHandle;
+    page.evaluateHandle = () => new Promise(resolve => { resolveHandle = resolve; });
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    const requested = [];
+    const cleared = [];
+    const handleId = {};
+    let expire;
+    globalThis.setTimeout = (callback, delay) => { requested.push(delay); expire = callback; return handleId; };
+    globalThis.clearTimeout = timer => { cleared.push(timer); };
+    let detached = false;
+    let released = false;
+    const late = {
+      evaluate: async callback => callback({ dispose: () => { detached = true; } }),
+      dispose: async () => { released = true; },
+    };
+    const timeline = createTimeline(page, "mobile", performance.now() + 1000);
+    try {
+      const pending = timeline.setup();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(requested, [250]);
+      expire();
+      await pending;
+      assert.deepEqual(cleared, [handleId]);
+      await timeline.dispose();
+      resolveHandle(late);
+      await new Promise(resolve => setImmediate(resolve));
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(detached, true);
+      assert.equal(released, true);
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+      page.dom.window.close();
+    }
+  `)
+  assert.equal(output, "")
+})
+
+test("reset V3 stalled teardown does not delay a successful response or replace a failure", () => {
+  const output = resetV3InChild(`
+    for (const outcome of ["success", "failure"]) {
+      const page = new TimelinePage();
+      const timeline = createTimeline(page, "mobile", performance.now() + 1000);
+      await timeline.setup();
+      const handle = page.handles[0];
+      handle.evaluate = () => new Promise(() => {});
+      const originalSetTimeout = globalThis.setTimeout;
+      const originalClearTimeout = globalThis.clearTimeout;
+      let expire;
+      globalThis.setTimeout = callback => { expire = callback; return {}; };
+      globalThis.clearTimeout = () => {};
+      const response = { status: 200 };
+      const original = new Error("private-original");
+      try {
+        const pending = run(
+          () => outcome === "success" ? Promise.resolve(response) : Promise.reject(original),
+          async () => {}, () => {},
+          { reportFailure: async () => {}, dispose: () => timeline.dispose() }
+        ).then(value => ({ value }), error => ({ error }));
+        const observed = await Promise.race([
+          pending,
+          new Promise(resolve => setImmediate(() => resolve({ blocked: true }))),
+        ]);
+        if (outcome === "success") assert.equal(observed.value, response);
+        else assert.equal(observed.error, original);
+        assert.equal(typeof expire, "function");
+        expire();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(handle.released, true);
+      } finally {
+        globalThis.setTimeout = originalSetTimeout;
+        globalThis.clearTimeout = originalClearTimeout;
+        page.dom.window.close();
+      }
+    }
+  `)
+  assert.equal(output, "")
+})
+
+test("reset V3 invokes both failure reporters if the V2 sink throws synchronously", () => {
+  const output = registrationActionInChild(`
+    const combine = actionModule.withPasswordResetRegistrationTimeline;
+    const events = [];
+    const diagnostic = {
+      reportFailure() { events.push("v2"); throw new Error("private-sink"); },
+      dispose() { events.push("v2-dispose"); },
+    };
+    const timeline = {
+      async reportFailure() { events.push("v3"); },
+      dispose() { events.push("v3-dispose"); },
+    };
+    const combined = combine(diagnostic, timeline);
+    await combined.reportFailure("click", new Error("private-original"));
+    combined.dispose();
+    assert.deepEqual(events, ["v2", "v3", "v2-dispose", "v3-dispose"]);
+  `)
+  assert.equal(output, "")
+})
+
+test("reset V3 cleans up when setup, field filling, or admission exits before the action", () => {
+  const output = registrationActionInChild(`
+    const wrap = actionModule.withRegistrationTimeline;
+    assert.equal(typeof wrap, "function");
+    for (const outcome of ["setup", "fill", "admission", "success"]) {
+      const original = new Error("private-original");
+      const response = { status: 200 };
+      let disposals = 0;
+      const timeline = { dispose() { disposals += 1; throw new Error("private-cleanup"); } };
+      const pending = wrap(timeline, async () => {
+        for (const phase of ["setup", "fill", "admission"]) {
+          if (outcome === phase) throw original;
+        }
+        return response;
+      });
+      if (outcome === "success") assert.equal(await pending, response);
+      else await assert.rejects(pending, error => error === original);
+      assert.equal(disposals, 1);
+    }
   `)
   assert.equal(output, "")
 })

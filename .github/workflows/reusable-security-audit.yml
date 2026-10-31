@@ -16,7 +16,7 @@ on:
         description: "Node.js version for npm audit"
         required: false
         type: string
-        default: "24"
+        default: "24.21.0"
       run-pip-audit:
         description: "Run pip-audit for Python dependencies"
         required: false
@@ -53,6 +53,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           set -euo pipefail
@@ -60,7 +61,7 @@ jobs:
             echo "::error::pull-request base SHA is not an immutable 40-hex commit" >&2
             exit 1
           fi
-          if [[ "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+          if [[ -z "$GITHUB_REPOSITORY" || "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" || "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
             echo "::error::security policy check refuses a cross-repository pull request" >&2
             exit 1
           fi
@@ -104,6 +105,25 @@ jobs:
             "scripts/check_dependency_audit_report.py"
             "scripts/audit_dependencies.py"
             "scripts/ci/helm_dependency_build.py"
+            "frontend/scripts/generate-zod-root-lock-candidate.mjs"
+            "frontend/scripts/generate-zod-root-lock-candidate.test.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.test.mjs"
+            "frontend/scripts/browser-dependency-smoke.mjs"
+            "frontend/scripts/browser-dependency-smoke.test.mjs"
+            "frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs"
+            "frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs"
+            "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs"
+            "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs"
+            "frontend/scripts/pack-react-compiler-zod-compat.mjs"
+            "frontend/scripts/pack-react-compiler-zod-compat.test.mjs"
+            "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz"
+            "frontend/scripts/react-compiler-zod-compat/index.cjs"
+            "frontend/scripts/react-compiler-zod-compat/package.json"
+            "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json"
+            "frontend/scripts/react-compiler-zod-compat.test.mjs"
+            "scripts/ci/probe_react_compiler_artifacts.py"
+            "tests/test_probe_react_compiler_artifacts.py"
             "scripts/quality/prepare_trivy_backend_values.py"
             "scripts/quality/create_checkov_oci_image_evidence.py"
             "scripts/quality/resolve_oci_platform_digest.py"
@@ -156,11 +176,17 @@ jobs:
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           set -euo pipefail
           if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::pull-request base SHA is not an immutable 40-hex commit" >&2
+            exit 1
+          fi
+          if [[ -z "$GITHUB_REPOSITORY" || "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" || "$HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+            echo "::error::security policy check refuses a cross-repository pull request" >&2
             exit 1
           fi
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
@@ -198,6 +224,25 @@ jobs:
             "scripts/check_dependency_audit_report.py"
             "scripts/audit_dependencies.py"
             "scripts/ci/helm_dependency_build.py"
+            "frontend/scripts/generate-zod-root-lock-candidate.mjs"
+            "frontend/scripts/generate-zod-root-lock-candidate.test.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.mjs"
+            "frontend/scripts/generate-puppeteer-lock-candidate.test.mjs"
+            "frontend/scripts/browser-dependency-smoke.mjs"
+            "frontend/scripts/browser-dependency-smoke.test.mjs"
+            "frontend/scripts/generate-react-compiler-adapter-lock-candidate.mjs"
+            "frontend/scripts/generate-react-compiler-adapter-lock-candidate.test.mjs"
+            "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs"
+            "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs"
+            "frontend/scripts/pack-react-compiler-zod-compat.mjs"
+            "frontend/scripts/pack-react-compiler-zod-compat.test.mjs"
+            "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz"
+            "frontend/scripts/react-compiler-zod-compat/index.cjs"
+            "frontend/scripts/react-compiler-zod-compat/package.json"
+            "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json"
+            "frontend/scripts/react-compiler-zod-compat.test.mjs"
+            "scripts/ci/probe_react_compiler_artifacts.py"
+            "tests/test_probe_react_compiler_artifacts.py"
             "scripts/quality/prepare_trivy_backend_values.py"
             "scripts/quality/create_checkov_oci_image_evidence.py"
             "scripts/quality/resolve_oci_platform_digest.py"
@@ -286,6 +331,141 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ inputs.python-version }}
+
+      # Keep applied dependency generators retired; retain their fixture guards.
+      - name: Verify root Zod lock candidate guards
+        timeout-minutes: 1
+        run: node --test scripts/generate-zod-root-lock-candidate.test.mjs
+
+      - name: Verify staged compiler adapter lock guards
+        timeout-minutes: 1
+        run: node --test scripts/generate-react-compiler-adapter-lock-candidate.test.mjs
+
+      - name: Verify React compiler artifact probe guards
+        timeout-minutes: 1
+        working-directory: .
+        run: python -B tests/test_probe_react_compiler_artifacts.py
+
+      - name: Inspect mature React compiler artifacts without executing them
+        timeout-minutes: 8
+        working-directory: .
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: python -B scripts/ci/probe_react_compiler_artifacts.py
+
+      - name: Verify Puppeteer lock candidate guards
+        timeout-minutes: 1
+        run: node --test scripts/generate-puppeteer-lock-candidate.test.mjs
+
+      - name: Verify browser dependency smoke guards
+        timeout-minutes: 1
+        run: node --test scripts/browser-dependency-smoke.test.mjs
+
+      - name: Verify final compiler consumer lock guards
+        timeout-minutes: 1
+        run: node --test scripts/generate-react-compiler-final-lock-candidate.test.mjs
+
+      - name: Verify compiler facade archive guards
+        timeout-minutes: 1
+        run: node --test scripts/pack-react-compiler-zod-compat.test.mjs
+
+      - name: Verify committed compiler facade archive
+        timeout-minutes: 1
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict"
+          import { execFileSync } from "node:child_process"
+          import { createHash } from "node:crypto"
+          import { lstatSync, readFileSync, realpathSync } from "node:fs"
+          import { join, resolve } from "node:path"
+          import {
+            inspectFacadeArchive,
+            readFacadeSources,
+          } from "./scripts/pack-react-compiler-zod-compat.mjs"
+
+          let stage = "source identity"
+          try {
+            const workspace = realpathSync(process.env.GITHUB_WORKSPACE)
+            assert.equal(realpathSync(process.cwd()), join(workspace, "frontend"))
+            const git = (revision) =>
+              execFileSync("/usr/bin/git", ["rev-parse", "--verify", revision], {
+                cwd: workspace,
+                encoding: "utf8",
+                stdio: ["ignore", "pipe", "pipe"],
+                timeout: 5000,
+                maxBuffer: 1024,
+                env: {
+                  PATH: "/usr/bin:/bin",
+                  GIT_CONFIG_NOSYSTEM: "1",
+                  GIT_CONFIG_GLOBAL: "/dev/null",
+                },
+              }).trim()
+            const sourceSha = git("HEAD")
+            const sourceTree = git("HEAD^{tree}")
+            assert.match(sourceSha, /^[0-9a-f]{40}$/)
+            assert.match(sourceTree, /^[0-9a-f]{40}$/)
+            assert.equal(sourceSha, process.env.SOURCE_SHA)
+
+            stage = "artifact metadata"
+            const artifactPath = "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz"
+            const path = join(workspace, artifactPath)
+            assert.equal(realpathSync(path), path)
+            const stat = lstatSync(path)
+            assert(stat.isFile() && !stat.isSymbolicLink())
+            assert.equal(stat.size, 2853)
+            const bytes = readFileSync(path)
+            assert.equal(bytes.length, 2853)
+
+            stage = "artifact hashes"
+            const expectedArchiveSha256 =
+              "3887a71e809e5c427392ee521eec91296bffae536aa11f8bd04863922a193ff5"
+            const expectedGitBlobSha1 = "c67aa6c38e78bc2c96ccf5c3f8e30edebcaa5666"
+            const archiveSha256 = createHash("sha256").update(bytes).digest("hex")
+            const gitBlobSha1 = createHash("sha1")
+              .update("blob " + bytes.length + "\0")
+              .update(bytes)
+              .digest("hex")
+            assert.equal(archiveSha256, expectedArchiveSha256)
+            assert.equal(gitBlobSha1, expectedGitBlobSha1)
+            assert.equal(git("HEAD:" + artifactPath), expectedGitBlobSha1)
+
+            stage = "source payload verification"
+            const sources = readFacadeSources(resolve("scripts/react-compiler-zod-compat"))
+            const inspected = inspectFacadeArchive(bytes, sources)
+            assert.equal(inspected.sha256, expectedArchiveSha256)
+            const report = {
+              kind: "react-compiler-facade-foundation-readback",
+              sourceSha,
+              sourceTree,
+              producerHeadSha: "3dfefdc53eb745098e8e02f867389d6e06a796d0",
+              artifactPath,
+              bytes: inspected.bytes,
+              sha256: inspected.sha256,
+              gitBlobSha1,
+              sourceFiles: inspected.files,
+            }
+            const output = JSON.stringify(report)
+            assert(Buffer.byteLength(output) <= 4096)
+            console.log("REACT_COMPILER_FACADE_FOUNDATION_READBACK " + output)
+          } catch {
+            console.error("Committed facade archive rejected at stage: " + stage)
+            process.exitCode = 1
+          }
+          NODE
+
+      - name: Generate compiler facade archive candidate
+        timeout-minutes: 3
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/pack-react-compiler-zod-compat.mjs
+
+      - name: Generate final compiler consumer lock candidate
+        timeout-minutes: 8
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: node scripts/generate-react-compiler-final-lock-candidate.mjs
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -445,14 +625,6 @@ jobs:
           test -s "$profiles/trivy-university-config.json"
           test -s "$profiles/trivy-redis-compat-config.json"
 
-      - name: Build Helm dependencies for Trivy
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/ci/helm_dependency_build.py \
-            charts/university-ecosystem \
-            redis-0.1.0.tgz nats-2.15.0.tgz
-
       - name: Run Trivy vulnerability scanner (filesystem)
         id: trivy_fs
         continue-on-error: true
@@ -467,6 +639,371 @@ jobs:
           limit-severities-for-sarif: true
           skip-setup-trivy: true
           exit-code: "1"
+
+      - name: Report bounded Trivy filesystem vulnerability metadata
+        id: trivy_fs_metadata
+        continue-on-error: true
+        if: ${{ always() && !cancelled() && (steps.trivy_fs.outcome == 'success' || steps.trivy_fs.outcome == 'failure') }}
+        timeout-minutes: 1
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          TRIVY_FS_OUTCOME: ${{ steps.trivy_fs.outcome }}
+        run: |
+          python3 -I -B - <<'TRIVY_METADATA'
+          import copy
+          import hashlib
+          import json
+          import math
+          import os
+          from pathlib import Path
+          import re
+          import stat
+          import subprocess
+          import sys
+          import threading
+
+          MAX_BYTES = 4 * 1024 * 1024
+          MAX_TRACKED_DIFF_BYTES = 262144
+          MAX_TRACKED_DIFF_PATHS = 4096
+          PREFIX = "TRIVY_FS_METADATA "
+          ID = re.compile(r"(?:CVE-[0-9]{4}-[0-9]{4,12}|GHSA-[a-z0-9]{4}(?:-[a-z0-9]{4}){2}|RUSTSEC-[0-9]{4}-[0-9]{4,8}|GO-[0-9]{4}-[0-9]{4,8})")
+          PACKAGE = re.compile(r"[A-Za-z0-9@][A-Za-z0-9@._/+~:-]{0,255}")
+          VERSION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/+~:,<>=^|*() -]{0,511}")
+
+
+          def require(condition):
+              if not condition:
+                  raise ValueError("invalid diagnostic input")
+
+
+          def unique_object(pairs):
+              result = {}
+              for key, value in pairs:
+                  require(key not in result)
+                  result[key] = value
+              return result
+
+
+          def finite_float(value):
+              result = float(value)
+              require(math.isfinite(result))
+              return result
+
+
+          def reject_constant(_value):
+              raise ValueError("invalid JSON constant")
+
+
+          def project(raw):
+              require(type(raw) is bytes and 0 < len(raw) <= MAX_BYTES)
+              text = raw.decode("utf-8")
+              depth, quoted, escaped = 0, False, False
+              for character in text:
+                  if quoted:
+                      if escaped:
+                          escaped = False
+                      elif character == "\\":
+                          escaped = True
+                      elif character == '"':
+                          quoted = False
+                  elif character == '"':
+                      quoted = True
+                  elif character in "[{":
+                      depth += 1
+                      require(depth <= 24)
+                  elif character in "]}":
+                      depth -= 1
+                      require(depth >= 0)
+              require(depth == 0 and not quoted and not escaped)
+              document = json.loads(text, object_pairs_hook=unique_object,
+                                    parse_float=finite_float, parse_constant=reject_constant)
+              require(type(document) is dict and document.get("version") == "2.1.0")
+              runs = document.get("runs")
+              require(type(runs) is list and len(runs) == 1 and type(runs[0]) is dict)
+              run = runs[0]
+              driver = run["tool"]["driver"]
+              require(type(driver) is dict and driver.get("name") == "Trivy")
+              require(driver.get("version") == "0.75.0")
+              rules, results = driver.get("rules", []), run.get("results", [])
+              require(type(rules) is list and len(rules) <= 128)
+              require(type(results) is list and len(results) <= 128)
+              for rule in rules:
+                  require(type(rule) is dict and type(rule.get("id")) is str)
+                  require(ID.fullmatch(rule["id"]) is not None)
+                  require(rule.get("name") in ("OsPackageVulnerability", "LanguageSpecificPackageVulnerability"))
+              require(len({rule["id"] for rule in rules}) == len(rules))
+              records = []
+              for result in results:
+                  require(type(result) is dict and type(result.get("ruleId")) is str)
+                  identifier, index = result["ruleId"], result.get("ruleIndex")
+                  require(ID.fullmatch(identifier) is not None)
+                  require(type(index) is int and 0 <= index < len(rules))
+                  require(rules[index]["id"] == identifier)
+                  message = result["message"]["text"]
+                  require(type(message) is str and len(message) <= 2048 and "\r" not in message)
+                  lines = message.split("\n")
+                  prefixes = ("Package: ", "Installed Version: ", "Vulnerability ", "Severity: ", "Fixed Version: ")
+                  require(len(lines) == 6 and all(line.startswith(prefix) for line, prefix in zip(lines, prefixes)))
+                  package, installed, described_id, severity, fixed = [line[len(prefix):] for line, prefix in zip(lines, prefixes)]
+                  require(described_id == identifier and severity in ("HIGH", "CRITICAL"))
+                  require(PACKAGE.fullmatch(package) is not None)
+                  require(VERSION.fullmatch(installed) is not None)
+                  require(fixed == "" or VERSION.fullmatch(fixed) is not None)
+                  require(lines[5].startswith("Link: [" + identifier + "](") and lines[5].endswith(")"))
+                  records.append({"id": identifier, "package": package, "installed": installed,
+                                  "fixed": fixed, "severity": severity})
+              return sorted(records, key=lambda record: tuple(record[key] for key in ("id", "package", "installed", "fixed", "severity")))
+
+
+          def git(*arguments, limit=1024, raw=False):
+              result = subprocess.run(["/usr/bin/git", "--no-optional-locks", "--no-replace-objects", "-c", "core.fsmonitor=false", *arguments],
+                                      check=False, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10)
+              require(result.returncode == 0 and len(result.stdout) <= limit)
+              return result.stdout if raw else result.stdout.decode("ascii").strip()
+
+
+          def classify_tracked_changes(raw):
+              require(type(raw) is bytes and 0 < len(raw) <= MAX_TRACKED_DIFF_BYTES and raw.endswith(b"\0"))
+              fields = raw[:-1].split(b"\0")
+              require(len(fields) % 2 == 0 and 0 < len(fields) // 2 <= MAX_TRACKED_DIFF_PATHS)
+              seen = set()
+              known = False
+              for status, path in zip(fields[::2], fields[1::2]):
+                  require(status in (b"A", b"D", b"M", b"T", b"U", b"X", b"B"))
+                  require(path and path not in seen)
+                  seen.add(path)
+                  if status == b"M" and path == b"charts/university-ecosystem/charts/redis-0.1.0.tgz":
+                      known = True
+              count = len(seen)
+              return {"knownRedisTgzModified": known, "unknownPathCount": count - int(known), "changedCount": count}
+
+
+          def bounded_process_output(command, timeout=10):
+              process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+              require(process.stdout is not None)
+              data, errors = bytearray(), []
+
+              def collect():
+                  try:
+                      while len(data) <= MAX_TRACKED_DIFF_BYTES:
+                          chunk = os.read(process.stdout.fileno(), min(8192, MAX_TRACKED_DIFF_BYTES + 1 - len(data)))
+                          if not chunk:
+                              return
+                          data.extend(chunk)
+                          if len(data) > MAX_TRACKED_DIFF_BYTES:
+                              try:
+                                  process.kill()
+                              except OSError:
+                                  pass
+                              return
+                  except OSError:
+                      errors.append(True)
+
+              reader = threading.Thread(target=collect, daemon=True)
+              try:
+                  reader.start()
+              except Exception:
+                  process.kill()
+                  process.wait(timeout=1)
+                  process.stdout.close()
+                  raise
+              try:
+                  try:
+                      status = process.wait(timeout=timeout)
+                  except subprocess.TimeoutExpired:
+                      process.kill()
+                      process.wait(timeout=1)
+                      reader.join(timeout=1)
+                      raise
+                  reader.join(timeout=1)
+                  require(not reader.is_alive() and status == 0 and not errors and len(data) <= MAX_TRACKED_DIFF_BYTES)
+                  return bytes(data)
+              finally:
+                  if not reader.is_alive():
+                      process.stdout.close()
+
+
+          def bounded_tracked_diff():
+              raw = bounded_process_output(
+                  ["/usr/bin/git", "--no-optional-locks", "--no-replace-objects", "-c", "core.fsmonitor=false",
+                   "diff", "--name-status", "-z", "--no-renames", "--no-ext-diff", "--no-textconv", "HEAD", "--"])
+              return classify_tracked_changes(raw)
+
+
+          def identity():
+              global identity_check
+              identity_check = "source-format"
+              tested, source = os.environ["GITHUB_SHA"], os.environ["EXPECTED_SOURCE_SHA"]
+              require(all(re.fullmatch(r"[0-9a-f]{40}", value) for value in (tested, source)))
+              identity_check = "checkout-head"
+              require(git("rev-parse", "--verify", "HEAD") == tested)
+              identity_check = "source-parent"
+              if source != tested:
+                  size = git("cat-file", "-s", "HEAD")
+                  require(re.fullmatch(r"[1-9][0-9]{0,5}", size) is not None and int(size) <= 65536)
+                  commit = git("cat-file", "commit", "HEAD", limit=65536, raw=True)
+                  require(len(commit) == int(size) and b"\n\n" in commit)
+                  headers = commit.split(b"\n\n", 1)[0].split(b"\n")
+                  parents = [line[7:].decode("ascii") for line in headers if line.startswith(b"parent ")]
+                  require(len(parents) == 2 and all(re.fullmatch(r"[0-9a-f]{40}", value) for value in parents))
+                  require(parents[1] == source)
+              identity_check = "tracked-clean"
+              git("diff", "--quiet", "--no-ext-diff", "--no-textconv", "HEAD", "--")
+              identity_check = "workflow-blob"
+              workflow = git("rev-parse", "HEAD:.github/workflows/reusable-security-audit.yml")
+              require(re.fullmatch(r"[0-9a-f]{40}", workflow) is not None)
+              identity_check = "run-identity"
+              run, attempt = os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"]
+              require(all(re.fullmatch(r"[1-9][0-9]{0,19}", value) for value in (run, attempt)))
+              identity_check = "scan-outcome"
+              outcome = os.environ["TRIVY_FS_OUTCOME"]
+              require(outcome in ("success", "failure"))
+              identity_check = "complete"
+              return {"tested_sha": tested, "source_sha": source, "workflow_blob": workflow,
+                      "run_id": run, "run_attempt": attempt, "scan_outcome": outcome}
+
+
+          def read_report():
+              root = Path.cwd().resolve()
+              require(root == Path(os.environ["GITHUB_WORKSPACE"]).resolve())
+              path = root / "trivy-fs.sarif"
+              flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+              with os.fdopen(os.open(path, flags), "rb") as source:
+                  before = os.fstat(source.fileno())
+                  require(stat.S_ISREG(before.st_mode) and 0 < before.st_size <= MAX_BYTES)
+                  raw = source.read(MAX_BYTES + 1)
+                  after = os.fstat(source.fileno())
+                  current = path.lstat()
+                  stable = ("st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns")
+                  require(stat.S_ISREG(current.st_mode) and len(raw) == before.st_size)
+                  require(all(getattr(before, key) == getattr(after, key) == getattr(current, key) for key in stable))
+                  return raw
+
+
+          def self_checks():
+              identifier = "CVE-2099-999999"
+              message = ("Package: fixture-package\nInstalled Version: 1.0.0\nVulnerability " + identifier
+                         + "\nSeverity: HIGH\nFixed Version: 1.0.1\nLink: [" + identifier
+                         + "](https://example.invalid/advisory)")
+              fixture = {"version": "2.1.0", "runs": [{
+                  "tool": {"driver": {"name": "Trivy", "version": "0.75.0", "rules": [{
+                      "id": identifier, "name": "LanguageSpecificPackageVulnerability",
+                      "fullDescription": {"text": "PRIVATE_METADATA_CANARY"},
+                  }]}},
+                  "results": [{"ruleId": identifier, "ruleIndex": 0, "message": {"text": message}}],
+              }]}
+              encode = lambda value: json.dumps(value).encode("utf-8")
+              valid = encode(fixture)
+              require(project(valid) == [{"id": identifier, "package": "fixture-package",
+                                         "installed": "1.0.0", "fixed": "1.0.1", "severity": "HIGH"}])
+              require("PRIVATE_METADATA_CANARY" not in json.dumps(project(valid)))
+              empty = copy.deepcopy(fixture)
+              empty["runs"][0]["results"] = []
+              empty["runs"][0]["tool"]["driver"]["rules"] = []
+              require(project(encode(empty)) == [])
+              duplicate = valid.replace(b'"version": "2.1.0"', b'"version": "2.1.0", "version": "2.1.0"', 1)
+              rejected = [b"[]", duplicate, b" " * (MAX_BYTES + 1)]
+              bad = copy.deepcopy(fixture)
+              bad["runs"][0]["tool"]["driver"]["name"] = "OtherScanner"
+              rejected.append(encode(bad))
+              bad = copy.deepcopy(fixture)
+              nested = None
+              for _ in range(25):
+                  nested = [nested]
+              bad["runs"][0]["properties"] = {"nested": nested}
+              rejected.append(encode(bad))
+              for package in ("fixture##[error]PRIVATE", "fixture\nPRIVATE"):
+                  bad = copy.deepcopy(fixture)
+                  bad["runs"][0]["results"][0]["message"]["text"] = message.replace("fixture-package", package)
+                  rejected.append(encode(bad))
+              bad = copy.deepcopy(fixture)
+              bad["runs"][0]["results"] *= 129
+              rejected.append(encode(bad))
+              bad = copy.deepcopy(fixture)
+              bad["runs"][0]["results"][0]["ruleIndex"] = True
+              rejected.append(encode(bad))
+              bad = copy.deepcopy(fixture)
+              bad["runs"][0]["results"][0]["message"]["text"] = message.replace("Vulnerability " + identifier, "Vulnerability CVE-2099-999998")
+              rejected.append(encode(bad))
+              bad = copy.deepcopy(fixture)
+              bad["runs"][0]["results"][0]["message"]["text"] = "Secret fixture\nMatch: PRIVATE_METADATA_CANARY"
+              rejected.append(encode(bad))
+              for raw in rejected:
+                  try:
+                      project(raw)
+                  except (ValueError, TypeError, KeyError, IndexError, RecursionError):
+                      continue
+                  raise ValueError("parser self-check failed")
+              return len(rejected) + 2
+
+
+          stage = "self-checks"
+          identity_check = "not-started"
+          try:
+              checked = self_checks()
+              stage = "identity-before"
+              before = identity()
+              stage = "read-before"
+              raw = read_report()
+              stage = "projection"
+              records = project(raw)
+              stage = "identity-after"
+              require(identity() == before)
+              stage = "read-after"
+              require(read_report() == raw)
+              stage = "serialization"
+              report = {"kind": "temporary-trivy-fs-metadata-not-a-waiver", **before,
+                        "scanner_version": "0.75.0", "sarif_sha256": hashlib.sha256(raw).hexdigest(),
+                        "finding_count": len(records), "parser_self_checks": checked, "records": records}
+              output = PREFIX + json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":")) + "\n"
+              require(len(output.encode("utf-8")) <= 32768)
+          except (OSError, UnicodeError, ValueError, TypeError, KeyError, IndexError,
+                  OverflowError, RecursionError, subprocess.SubprocessError):
+              check = identity_check if stage in ("identity-before", "identity-after") else "not-applicable"
+              if stage == "identity-before" and check == "tracked-clean":
+                  try:
+                      diff = bounded_tracked_diff()
+                      print("TRIVY_FS_TRACKED_DIFF " + json.dumps(diff, sort_keys=True, separators=(",", ":")), file=sys.stderr)
+                  except Exception:
+                      pass
+              print("Trivy metadata diagnostic rejected its input (stage=" + stage + "; identity-check=" + check + "); original security gates remain authoritative.", file=sys.stderr)
+              raise SystemExit(1) from None
+          sys.stdout.write(output)
+          TRIVY_METADATA
+
+      - name: Build Helm dependencies for Trivy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/helm_dependency_build.py \
+            charts/university-ecosystem \
+            redis-0.1.0.tgz nats-2.15.0.tgz
+
+      - name: Verify the pinned Kyverno fixture before the Trivy configuration scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_output="$(trivy --version)"
+          if ! grep -Fxq 'Version: 0.75.0' <<<"$version_output"; then
+            echo "::error::The fixture preflight requires Trivy 0.75.0" >&2
+            exit 1
+          fi
+          fixture="k8s/kyverno/tests/disallow-host-access/host-access.yaml"
+          report="$RUNNER_TEMP/trivy-host-access-noignore.json"
+          [[ ! -e "$report" && ! -L "$report" ]]
+          trivy config \
+            --config security/trivy-university-config.yaml \
+            --ignorefile= \
+            --skip-dirs "charts/revocation-store,charts/university-ecosystem,charts/redis-compat" \
+            --severity "CRITICAL,HIGH" \
+            --format json \
+            --output "$report" \
+            "$fixture"
+          python3 scripts/quality/validate_trivy_kyverno_fixture.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --target "$fixture" \
+            --report "$report"
 
       - name: Run Trivy configuration scanner (IaC)
         id: trivy_config
@@ -607,7 +1144,7 @@ jobs:
           exit-code: "1"
 
       - name: Upload Trivy filesystem scan results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true
         with:
@@ -615,7 +1152,7 @@ jobs:
           category: ".github/workflows/ci.yml:docker-security"
 
       - name: Upload Trivy config scan results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true
         with:
@@ -623,7 +1160,7 @@ jobs:
           category: "trivy-config"
 
       - name: Upload Trivy revocation-store results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true
         with:
@@ -631,7 +1168,7 @@ jobs:
           category: "trivy-revocation-config"
 
       - name: Upload Trivy university-ecosystem results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true
         with:
@@ -639,7 +1176,7 @@ jobs:
           category: "trivy-university-config"
 
       - name: Upload Trivy redis-compat results
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         continue-on-error: true
         with:
@@ -655,6 +1192,7 @@ jobs:
           REVOCATION_OUTCOME: ${{ steps.trivy_revocation.outcome }}
           UNIVERSITY_OUTCOME: ${{ steps.trivy_university.outcome }}
           REDIS_COMPAT_OUTCOME: ${{ steps.trivy_redis_compat.outcome }}
+          METADATA_OUTCOME: ${{ steps.trivy_fs_metadata.outcome }}
         run: |
           set -euo pipefail
           failed=0
@@ -669,6 +1207,10 @@ jobs:
               failed=1
             fi
           done
+          if [[ "$METADATA_OUTCOME" != "success" ]]; then
+            echo "::error::Required Trivy provenance metadata concluded '$METADATA_OUTCOME'."
+            failed=1
+          fi
           exit "$failed"
 
   # ── Go vulnerability scanning ──────────────────────────────────────────────
@@ -696,16 +1238,37 @@ jobs:
 
       - name: Run govulncheck on all Go modules
         # Audit all workspace modules. govulncheck fails if a directory has no packages,
-        # so we iterate over all modules and run it only where packages exist.
+        # so scan populated modules only after each discovery command succeeds.
         run: |
+          if ! modules="$(go list -m -f '{{.Dir}}')" || [[ -z "$modules" ]]; then
+            echo "::error::Go module discovery failed or returned no modules" >&2
+            exit 1
+          fi
           exit_code=0
-          for dir in $(go list -m -f '{{.Dir}}'); do
-            if [ -n "$(go list -C "$dir" ./... 2>/dev/null)" ]; then
-              echo "Scanning module: $dir"
-              govulncheck -C "$dir" ./... || exit_code=$?
+          scanned_modules=0
+          while IFS= read -r dir; do
+            if [[ -z "$dir" ]]; then
+              echo "::error::Go module discovery returned an empty path" >&2
+              exit_code=1
+              continue
             fi
-          done
+            if ! packages="$(go list -C "$dir" ./... 2>/dev/null)"; then
+              echo "::error::Go package discovery failed for module: $dir" >&2
+              exit_code=1
+              continue
+            fi
+            if [[ -n "$packages" ]]; then
+              scanned_modules=$((scanned_modules + 1))
+              echo "Scanning module: $dir"
+              govulncheck -C "$dir" ./... || exit_code=1
+            fi
+          done <<< "$modules"
+          if (( scanned_modules == 0 )); then
+            echo "::error::Go discovery returned no packages to scan" >&2
+            exit_code=1
+          fi
           exit $exit_code
+
 
   # ── SBOM generation ────────────────────────────────────────────────────────
   sbom:

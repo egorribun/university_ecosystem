@@ -19,6 +19,7 @@
 527478a3d58905270a94e06e39ef4f2c07270f35:.secrets.baseline:generic-api-key:1098
 527478a3d58905270a94e06e39ef4f2c07270f35:.secrets.baseline:generic-api-key:986
 527478a3d58905270a94e06e39ef4f2c07270f35:.secrets.baseline:generic-api-key:993
+75de40e472f1ef8fccedea286b0b5b456c29f1c5:tests/test_cwv_rum_security.py:generic-api-key:939
 ab4063f9064b34ae2c234d60da4a2c74463f330d:services/gateway/internal/config/config_test.go:generic-api-key:458
 c7402955b6071a80a4ff3b0367c63b78de0144fd:docs/superpowers/plans/2026-10-19-reset-link-fragment-redaction.md:generic-api-key:15
 d9948f315e05d3c28cdb3e5439a9b04b72515fe7:docs/superpowers/plans/2026-09-22-mvp-safe-pause-handoff.md:generic-api-key:39

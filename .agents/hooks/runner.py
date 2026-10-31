@@ -50,7 +50,7 @@ def main() -> int:
         reason = f"Malformed hook input: {payload['__hook_parse_error__']}"
         if "post" in event:
             write_json_stdout({"decision": "deny", "reason": reason})
-        elif "stop" in event:
+        elif "stop" in event or event == "quality-gate":
             write_json_stdout({"decision": "continue", "reason": reason})
         else:
             write_json_stdout({"decision": "deny", "reason": reason})
@@ -93,7 +93,7 @@ def main() -> int:
             write_json_stdout(
                 {"decision": "deny", "reason": f"Post-tool quality hook failed: {exc}"}
             )
-        elif "stop" in event:
+        elif "stop" in event or event == "quality-gate":
             write_json_stdout(
                 {"decision": "continue", "reason": f"Stop gate failed closed: {exc}"}
             )

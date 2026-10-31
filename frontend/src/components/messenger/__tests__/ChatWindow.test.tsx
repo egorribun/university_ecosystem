@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react"
 
@@ -985,6 +986,75 @@ describe("ChatWindow — W206 reactions (pills + +react picker)", () => {
     fireEvent.click(thumbsUp)
     expect(onToggleReaction).toHaveBeenCalledWith("msg-9", "👍")
     expect(screen.queryByRole("button", { name: pickerName })).toBeFalsy()
+  })
+
+  it("returns focus to the reaction opener after selecting an emoji", async () => {
+    const user = userEvent.setup()
+    const onToggleReaction = vi.fn()
+    render(
+      <ChatWindow
+        messages={[withReactions([], { id: "msg-focus" })]}
+        onToggleReaction={onToggleReaction}
+      />,
+      { wrapper }
+    )
+
+    const opener = screen.getByRole("button", { name: "messenger:reactions.add" })
+    await user.click(opener)
+    const thumbsUp = await screen.findByRole("button", {
+      name: 'messenger:reactions.react|{"emoji":"👍"}',
+    })
+    await user.click(thumbsUp)
+
+    expect(onToggleReaction).toHaveBeenCalledWith("msg-focus", "👍")
+    expect(screen.queryByRole("button", { name: thumbsUp.getAttribute("aria-label")! })).toBeNull()
+    expect(opener).toHaveFocus()
+  })
+
+  it("returns focus to the reaction opener when Escape closes the picker", async () => {
+    const user = userEvent.setup()
+    render(
+      <ChatWindow
+        messages={[withReactions([], { id: "msg-escape-focus" })]}
+        onToggleReaction={() => {}}
+      />,
+      { wrapper }
+    )
+
+    const opener = screen.getByRole("button", { name: "messenger:reactions.add" })
+    await user.click(opener)
+    const thumbsUp = await screen.findByRole("button", {
+      name: 'messenger:reactions.react|{"emoji":"👍"}',
+    })
+    thumbsUp.focus()
+    expect(thumbsUp).toHaveFocus()
+
+    await user.keyboard("{Escape}")
+
+    expect(screen.queryByRole("button", { name: thumbsUp.getAttribute("aria-label")! })).toBeNull()
+    expect(opener).toHaveFocus()
+  })
+
+  it("keeps focus on the outside target when a click closes the picker", async () => {
+    const user = userEvent.setup()
+    render(
+      <>
+        <button type="button">outside action</button>
+        <ChatWindow
+          messages={[withReactions([], { id: "msg-outside-focus" })]}
+          onToggleReaction={() => {}}
+        />
+      </>,
+      { wrapper }
+    )
+
+    const opener = screen.getByRole("button", { name: "messenger:reactions.add" })
+    const outsideTarget = screen.getByRole("button", { name: "outside action" })
+    await user.click(opener)
+    await user.click(outsideTarget)
+
+    expect(screen.queryByRole("group", { name: "messenger:reactions.add" })).toBeNull()
+    expect(outsideTarget).toHaveFocus()
   })
 
   it("does NOT render reactions footer or picker on a deleted message", () => {

@@ -221,7 +221,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         whileTap={prefersReduce || reduced ? {} : { scale: 0.997 }}
         transition={getNowPlayingTransition(isTest)}
       >
-        <div className="absolute inset-0 z-base bg-linear-to-t from-black/(--opacity-hover) via-black/(--opacity-dim) to-transparent pointer-events-none" />
+        <div className="absolute inset-0 z-base bg-linear-to-t from-black/[calc(var(--opacity-hover)*100%)] via-black/[calc(var(--opacity-dim)*100%)] to-transparent pointer-events-none" />
         <div className="relative w-14 h-14 rounded-lg overflow-hidden shadow-premium">
           {shouldUseNowPlayingImage(data.album_image_url, imageError) ? (
             <img
@@ -259,7 +259,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               }}
             />
           ) : (
-            <div className="w-full h-full rounded-lg bg-(--bg-surface-hover)/(--opacity-medium) flex items-center justify-center">
+            <div className="w-full h-full rounded-lg bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] flex items-center justify-center">
               <span className="text-text-tertiary text-xs">♪</span>
             </div>
           )}
@@ -279,14 +279,14 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           </p>
           {!data.is_playing && (
             <span
-              className="inline-flex self-start px-2 py-0.5 text-label-xs font-bold uppercase bg-(--bg-surface-hover)/(--opacity-hover) text-(--text-secondary) rounded-full border border-glass-border"
+              className="inline-flex self-start px-2 py-0.5 text-label-xs font-bold uppercase bg-(--bg-surface-hover)/[calc(var(--opacity-hover)*100%)] text-(--text-secondary) rounded-full border border-glass-border"
               aria-hidden
             >
               {t("profile:nowPlaying.paused")}
             </span>
           )}
           <div className="flex items-center gap-2 w-full mt-0.5">
-            <div className="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/(--opacity-hover) rounded-full overflow-hidden relative">
+            <div className="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/[calc(var(--opacity-hover)*100%)] rounded-full overflow-hidden relative">
               <div
                 role="progressbar"
                 aria-valuenow={progress}

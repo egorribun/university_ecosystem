@@ -1,7 +1,7 @@
 package middleware
 
 // Coverage tests (testing session 9) for the GraphQL depth middleware
-// residual branches: unsupported methods rejected, OPTIONS pass-through,
+// residual branches: unsupported methods rejected, including OPTIONS,
 // invalid-JSON 400, bounded body reads, body restoration for downstream
 // handlers, and the estimateQueryDepth heuristic table.
 
@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	gql "github.com/graph-gophers/graphql-go"
+	"github.com/graph-gophers/graphql-go/relay"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,11 +31,16 @@ func TestMaxQueryDepth_RejectsUnsupportedMethods(t *testing.T) {
 		{"PUT", http.MethodPut, "/graphql"},
 		{"DELETE", http.MethodDelete, "/graphql"},
 		{"PATCH", http.MethodPatch, "/graphql"},
+		{"OPTIONS with deep GraphQL body", http.MethodOptions, "/graphql"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			body := newTrackedRequestBody("must not be read")
+			bodyContent := "must not be read"
+			if tc.method == http.MethodOptions {
+				bodyContent = `{"query":"{ a { b { c { d } } } }"}`
+			}
+			body := newTrackedRequestBody(bodyContent)
 			called := false
 			handler := MaxQueryDepthMiddleware(2, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 				called = true
@@ -46,7 +53,7 @@ func TestMaxQueryDepth_RejectsUnsupportedMethods(t *testing.T) {
 
 			assert.False(t, called, "unsupported methods must not reach the relay handler")
 			assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
-			assert.Equal(t, "POST, OPTIONS", rec.Header().Get("Allow"))
+			assert.Equal(t, "POST", rec.Header().Get("Allow"))
 			assert.Equal(t, "text/plain; charset=utf-8", rec.Header().Get("Content-Type"))
 			assert.Zero(t, body.bytesRead, "unsupported request bodies must not be consumed")
 			assert.True(t, body.closed, "request body must be closed on rejection")
@@ -54,22 +61,51 @@ func TestMaxQueryDepth_RejectsUnsupportedMethods(t *testing.T) {
 	}
 }
 
-func TestMaxQueryDepth_OPTIONSPassesThrough(t *testing.T) {
-	body := newTrackedRequestBody("")
-	called := false
-	handler := MaxQueryDepthMiddleware(2, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/graphql", nil)
-	req.Body = body
-	rec := httptest.NewRecorder()
+type optionsRelayRootResolver struct{ called *bool }
 
-	handler.ServeHTTP(rec, req)
+func (r *optionsRelayRootResolver) A() *optionsRelayAResolver {
+	*r.called = true
+	return &optionsRelayAResolver{}
+}
 
-	assert.True(t, called, "OPTIONS must remain available to outer preflight handling")
-	assert.Equal(t, http.StatusNoContent, rec.Code)
-	assert.True(t, body.closed, "passed-through request body must be closed")
+type optionsRelayAResolver struct{}
+
+func (*optionsRelayAResolver) B() *optionsRelayBResolver { return &optionsRelayBResolver{} }
+
+type optionsRelayBResolver struct{}
+
+func (*optionsRelayBResolver) C() *optionsRelayCResolver { return &optionsRelayCResolver{} }
+
+type optionsRelayCResolver struct{}
+
+func (*optionsRelayCResolver) Value() string { return "ok" }
+
+func TestMaxQueryDepth_OPTIONSCannotReadOrExecuteRelayBody(t *testing.T) {
+	var resolverCalled bool
+	schema, err := gql.ParseSchema(`
+		type Query { a: OptionsRelayA! }
+		type OptionsRelayA { b: OptionsRelayB! }
+		type OptionsRelayB { c: OptionsRelayC! }
+		type OptionsRelayC { value: String! }
+	`, &optionsRelayRootResolver{called: &resolverCalled})
+	require.NoError(t, err)
+
+	bodyContent := `{"query":"{ a { b { c { value } } } }","padding":"` + strings.Repeat("x", maxGraphQLBodyBytes) + `"}`
+	body := newTrackedRequestBody(bodyContent)
+	handler := MaxQueryDepthMiddleware(2,
+		RequestTimeoutMiddleware(time.Second, &relay.Handler{Schema: schema}),
+	)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/graphql", nil)
+	request.Body = body
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+	assert.Equal(t, "POST", recorder.Header().Get("Allow"))
+	assert.Zero(t, body.bytesRead, "OPTIONS body must not be read by the relay")
+	assert.True(t, body.closed, "rejected OPTIONS body must be closed")
+	assert.False(t, resolverCalled, "OPTIONS must never execute the GraphQL schema")
 }
 
 type trackedRequestBody struct {

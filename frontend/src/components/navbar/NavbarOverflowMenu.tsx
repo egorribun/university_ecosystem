@@ -93,7 +93,7 @@ export function NavbarOverflowMenu({
           prefersReducedMotion ? "duration-0" : "duration-200",
           hasActive
             ? "nav-active text-(--nav-active-color) bg-(--bg-surface-hover)"
-            : "text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-surface-hover)/(--opacity-soft)"
+            : "text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-surface-hover)/[calc(var(--opacity-soft)*100%)]"
         )}
       >
         <MoreHorizontal size={18} />

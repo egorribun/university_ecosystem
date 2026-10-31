@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises"
 import { URL } from "node:url"
 import test from "node:test"
 import { createInstance } from "i18next"
+import sharp from "sharp"
 import { extractSeoMetadata, matchesRequestedCatalogTitle } from "./seo-metadata.mjs"
 
 const specUrl = new URL("./ssr-hydration-i18n.live.spec.ts", import.meta.url)
@@ -71,6 +72,15 @@ test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys
   assert.match(spec, /window\.localStorage\.setItem\(["']ue:language["']/u)
   assert.match(spec, /window\.__APP_HYDRATED\s*===\s*true/u)
   assert.match(spec, /data-ssr-auth/u)
+  assert.match(spec, /function readNewsSearchPlaceholder\(markup: string \| null\)/u)
+  assert.match(
+    spec,
+    /NEWS_SEARCH_PLACEHOLDER_CATALOGS[\s\S]*?enNews\.search\.placeholder[\s\S]*?ruNews\.search\.placeholder/u
+  )
+  assert.match(
+    spec,
+    /expect\(readNewsSearchPlaceholder\(newsServerMarkup \?\? null\)\)\.toBe\(\s*NEWS_SEARCH_PLACEHOLDER_CATALOGS\[language\]/u
+  )
   assert.match(spec, /serverLanguage/u)
   assert.match(spec, /hydrationDiagnostics/u)
   assert.match(spec, /rawTranslationKeys\.server/u)
@@ -106,6 +116,74 @@ test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys
   assert.doesNotMatch(spec, /console\.(?:log|info|warn|error)/u)
 })
 
+test("AUD-137 live News checks the requested locale in SPA, SSR and hydrated markup", async () => {
+  const spec = await readFile(specUrl, "utf8")
+  assert.match(spec, /import \{ matchesNewsSearchLocale \} from "\.\/ssr-news-locale\.mjs"/u)
+  assert.match(
+    spec,
+    /const spaNewsMarkup = await page\.locator\("#root"\)\.evaluate\(\(root\) => root\.outerHTML\)/u
+  )
+  assert.match(
+    spec,
+    /const hydratedNewsMarkup = await page\.locator\("#root"\)\.evaluate\(\(root\) => root\.outerHTML\)/u
+  )
+
+  const spa = spec.indexOf("const spaNewsMarkup =")
+  const reload = spec.indexOf("const newsResponse = await page.reload(")
+  const server = spec.indexOf("matchesNewsSearchLocale(newsServerMarkup ?? null,")
+  const hydrated = spec.indexOf("const hydratedNewsMarkup =")
+  const activity = spec.indexOf("const activityLink = page.locator(")
+  assert.ok(spa >= 0 && spa < reload && reload < server && server < hydrated && hydrated < activity)
+
+  for (const snapshot of ["spaNewsMarkup", "newsServerMarkup \\?\\? null", "hydratedNewsMarkup"]) {
+    const assertion = new RegExp(
+      `expect\\(\\s*matchesNewsSearchLocale\\(\\s*${snapshot},\\s*NEWS_SEARCH_PLACEHOLDER_CATALOGS\\[language\\]\\s*\\)\\s*\\)\\.toBe\\(\\s*true\\s*\\)`,
+      "u"
+    )
+    assert.match(spec, assertion)
+  }
+})
+
+test("AUD-137 live dashboard checks the common skip link in SSR and hydrated markup", async () => {
+  const [spec, layout] = await Promise.all([
+    readFile(specUrl, "utf8"),
+    readFile(new URL("../../src/components/layout/MainLayout.tsx", import.meta.url), "utf8"),
+  ])
+  assert.match(
+    layout,
+    /<a href="#main-content" className="skip-link"[\s\S]*?t\("common:skipToMain"\)/u
+  )
+  assert.match(spec, /import \{ matchesMainSkipLinkLocale \} from "\.\/ssr-common-locale\.mjs"/u)
+  assert.match(spec, /from "\.\.\/\.\.\/src\/i18n\/locales\/en\/common\.json"/u)
+  assert.match(spec, /from "\.\.\/\.\.\/src\/i18n\/locales\/ru\/common\.json"/u)
+  assert.match(
+    spec,
+    /MAIN_SKIP_LINK_CATALOGS[\s\S]*?enCommon\.skipToMain[\s\S]*?ruCommon\.skipToMain/u
+  )
+
+  const serverProbe = spec.indexOf("matchesMainSkipLinkLocale(serverMarkup ?? null,")
+  const hydration = spec.indexOf("await page.waitForFunction(() => window.__APP_HYDRATED === true)")
+  const clientCapture = spec.indexOf("const hydratedDashboardMarkup =")
+  const clientProbe = spec.indexOf("matchesMainSkipLinkLocale(hydratedDashboardMarkup,")
+  const newsNavigation = spec.indexOf("const newsLink = page.locator(")
+  assert.ok(
+    serverProbe >= 0 &&
+      serverProbe < hydration &&
+      hydration < clientCapture &&
+      clientCapture < clientProbe &&
+      clientProbe < newsNavigation
+  )
+  for (const snapshot of ["serverMarkup \\?\\? null", "hydratedDashboardMarkup"]) {
+    assert.match(
+      spec,
+      new RegExp(
+        `expect\\(\\s*matchesMainSkipLinkLocale\\(\\s*${snapshot},\\s*MAIN_SKIP_LINK_CATALOGS\\[language\\]\\s*\\)\\s*\\)\\.toBe\\(\\s*true\\s*\\)`,
+        "u"
+      )
+    )
+  }
+})
+
 test("live acceptance verifies each finite route title against its requested locale on SSR and client", async () => {
   const [spec, dashboardPage, newsPage, seoMetadata] = await Promise.all([
     readFile(specUrl, "utf8"),
@@ -134,6 +212,14 @@ const dashboardCatalogUrls = {
   en: new URL("../../src/i18n/locales/en/dashboard.json", import.meta.url),
   ru: new URL("../../src/i18n/locales/ru/dashboard.json", import.meta.url),
 }
+
+const newsCatalogUrls = {
+  en: new URL("../../src/i18n/locales/en/news.json", import.meta.url),
+  ru: new URL("../../src/i18n/locales/ru/news.json", import.meta.url),
+}
+
+const i18nConfigUrl = new URL("../../src/i18n/config.ts", import.meta.url)
+const i18nMetadataUrl = new URL("../../src/i18n/metadata.ts", import.meta.url)
 
 async function readJson(url) {
   return JSON.parse(await readFile(url, "utf8"))
@@ -251,11 +337,11 @@ test("shared SEO metadata extraction preserves values and counts for a root head
     <meta property="og:type" content="website">
     <meta property="og:title" content="University Ecosystem">
     <meta property="og:description" content="University services">
-    <meta property="og:image" content="/og-image.png">
+    <meta property="og:image" content="/icon-512.png">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="University Ecosystem">
     <meta name="twitter:description" content="University services">
-    <meta name="twitter:image" content="/og-image.png">
+    <meta name="twitter:image" content="/icon-512.png">
   </head></html>`
 
   assert.deepEqual(extractSeoMetadata(markup), {
@@ -267,11 +353,11 @@ test("shared SEO metadata extraction preserves values and counts for a root head
     ogType: "website",
     ogTitle: "University Ecosystem",
     ogDescription: "University services",
-    ogImage: "/og-image.png",
+    ogImage: "/icon-512.png",
     twitterCard: "summary_large_image",
     twitterTitle: "University Ecosystem",
     twitterDescription: "University services",
-    twitterImage: "/og-image.png",
+    twitterImage: "/icon-512.png",
     seoMetaCounts: {
       'meta[name="title"]': 0,
       'meta[name="description"]': 1,
@@ -285,4 +371,56 @@ test("shared SEO metadata extraction preserves values and counts for a root head
       'meta[name="twitter:image"]': 1,
     },
   })
+})
+
+test("static shell social images reference a decodable public PNG", async () => {
+  const markup = await readFile(new URL("../../index.html", import.meta.url), "utf8")
+  const metadata = extractSeoMetadata(markup)
+
+  assert.equal(metadata.ogImage, "/icon-512.png")
+  assert.equal(metadata.twitterImage, "/icon-512.png")
+  assert.equal(metadata.seoMetaCounts['meta[property="og:image"]'], 1)
+  assert.equal(metadata.seoMetaCounts['meta[name="twitter:image"]'], 1)
+
+  const imageBytes = await readFile(new URL("../../public/icon-512.png", import.meta.url))
+  const image = sharp(imageBytes)
+  const { format, width, height } = await image.metadata()
+  assert.deepEqual({ format, width, height }, { format: "png", width: 512, height: 512 })
+  assert.ok((await image.raw().toBuffer()).length > 0)
+})
+
+test("SSR locale probe catches ordinary fallback that raw-key scanning misses", async () => {
+  const [enNews, ruNews, i18nConfig, i18nMetadata] = await Promise.all([
+    readJson(newsCatalogUrls.en),
+    readJson(newsCatalogUrls.ru),
+    readFile(i18nConfigUrl, "utf8"),
+    readFile(i18nMetadataUrl, "utf8"),
+  ])
+  assert.match(i18nConfig, /fallbackLng,/u)
+  assert.match(i18nMetadata, /fallbackLng.*"ru"/u)
+
+  const catalogs = { en: enNews, ru: ruNews }
+  const missingEnglishPlaceholder = globalThis.structuredClone(catalogs)
+  delete missingEnglishPlaceholder.en.search.placeholder
+  const fallbackInstance = createInstance()
+  await fallbackInstance.init({
+    lng: "en",
+    fallbackLng: "ru",
+    supportedLngs: ["en", "ru"],
+    load: "currentOnly",
+    resources: {
+      en: { news: missingEnglishPlaceholder.en },
+      ru: { news: missingEnglishPlaceholder.ru },
+    },
+    ns: ["news"],
+    defaultNS: "common",
+    initAsync: false,
+    returnNull: false,
+    interpolation: { escapeValue: false },
+  })
+
+  const fallbackPlaceholder = fallbackInstance.t("news:search.placeholder")
+  assert.equal(fallbackPlaceholder, ruNews.search.placeholder)
+  assert.equal(fallbackPlaceholder.includes(":"), false)
+  assert.notEqual(fallbackPlaceholder, enNews.search.placeholder)
 })

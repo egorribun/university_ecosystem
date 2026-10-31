@@ -255,3 +255,123 @@ async def test_durable_cleanup_confirms_absence_after_an_ambiguous_delete_error(
         await _durable_cleanup(still_there, ["/static/chat/a"])
 
     assert str(error.value) == "Attachment cleanup failed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/static/chat_uploads/note.txt",
+        "http://localhost:8000/static/chat_uploads/note.txt",
+    ],
+    ids=["public-alias", "canonical-identity"],
+)
+async def test_durable_cleanup_accepts_both_exact_static_aliases_and_replays(
+    static_backend, url: str
+) -> None:
+    backend, root = static_backend
+    await backend.save_file("chat_uploads/note.txt", b"private")
+    service = ChatAttachmentService()
+
+    await service.cleanup_files([url], durable=True)
+    await service.cleanup_files([url], durable=True)
+
+    assert not (root / "chat_uploads" / "note.txt").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://foreign.example.test/static/chat_uploads/note.txt",
+        "http://localhost:8000/static-other/chat_uploads/note.txt",
+        "chat_uploads/note.txt",
+    ],
+)
+async def test_durable_cleanup_cannot_acknowledge_foreign_or_raw_storage_references(
+    static_backend, url: str
+) -> None:
+    backend, root = static_backend
+    await backend.save_file("chat_uploads/note.txt", b"retain me")
+
+    with pytest.raises(AttachmentCleanupError):
+        await ChatAttachmentService().cleanup_files([url], durable=True)
+
+    assert (root / "chat_uploads" / "note.txt").read_bytes() == b"retain me"
+
+
+@pytest.mark.asyncio
+async def test_canonical_cleanup_does_not_follow_an_outside_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "storage"
+    root.mkdir()
+    backend = StaticFSStorage(root)
+    monkeypatch.setattr(
+        attachment_service.file_utils, "_get_storage_backend", lambda: backend
+    )
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"retain outside")
+    directory = root / "chat_uploads"
+    directory.mkdir()
+    link = directory / "alias.txt"
+    link.symlink_to(outside)
+
+    with pytest.raises(AttachmentCleanupError):
+        await ChatAttachmentService().cleanup_files(
+            ["http://localhost:8000/static/chat_uploads/alias.txt"], durable=True
+        )
+
+    assert link.is_symlink()
+    assert outside.read_bytes() == b"retain outside"
+
+
+@pytest.mark.asyncio
+async def test_forward_copy_of_canonical_static_identity_owns_independent_bytes(
+    static_backend, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backend, root = static_backend
+    payload = b"private attachment"
+    key = "chat_uploads/source.txt"
+    await backend.save_file(key, payload)
+    source_url = "http://localhost:8000/static/chat_uploads/source.txt"
+    attachment = AttachmentDTO(
+        id=uuid.uuid4(),
+        message_id=uuid.uuid4(),
+        url=source_url,
+        file_type="file",
+        filename="note.txt",
+        size=len(payload),
+        created_at=datetime(2026, 9, 27, tzinfo=UTC),
+    )
+    destination = uuid.uuid4()
+    monkeypatch.setattr(
+        attachment_service.settings,
+        "chat_attachment_allowed_mime_types",
+        ["text/plain"],
+    )
+    monkeypatch.setattr(
+        attachment_service.settings, "chat_attachment_allowed_extensions", [".txt"]
+    )
+    monkeypatch.setattr(attachment_service, "scan_for_malware", AsyncMock())
+    monkeypatch.setattr(attachment_service.file_utils, "scan_for_malware", AsyncMock())
+    monkeypatch.setattr(
+        attachment_service.file_utils, "detect_mime_type", lambda _data: "text/plain"
+    )
+    service = ChatAttachmentService()
+
+    copied = await service.copy_for_forward(attachment, destination, locale="en")
+    copied_url = str(copied["url"])
+
+    assert copied_url.startswith(
+        f"http://localhost:8000/static/chat_uploads/chat_{destination}_"
+    )
+    assert copied_url != source_url
+    assert copied["filename"] == "note.txt"
+    assert copied["size"] == len(payload)
+    assert await backend.read_file(copied_url) == payload
+
+    await service.cleanup_files([source_url], durable=True)
+
+    assert not (root / key).exists()
+    assert await backend.read_file(copied_url) == payload

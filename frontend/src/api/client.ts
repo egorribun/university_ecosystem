@@ -77,13 +77,6 @@ const captureRequestSession = (): (() => boolean) => {
   return () => epoch === getSessionEpoch() && generation === getBrowserSessionGeneration()
 }
 
-const assertCurrentRequestSession = (config: InternalAxiosRequestConfig): void => {
-  const ownsSession = (config as ApiRequestConfig).__sessionIsCurrent
-  if (typeof ownsSession === "function" && !ownsSession()) {
-    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
-  }
-}
-
 const api = axios.create({
   baseURL: import.meta.env.DEV ? devBase : prodBase,
   withCredentials: true,
@@ -125,7 +118,9 @@ if (import.meta.env.VITE_LHCI === "true") {
   const networkAdapter = axios.getAdapter(api.defaults.adapter)
   const shouldUseE2ENetworkMocks = (config: AxiosRequestConfig) => {
     if (typeof window === "undefined") return false
-    const e2eWindow = window as Window & { __E2E_NETWORK_API_MOCKS__?: boolean }
+    const e2eWindow = window as Window & {
+      __E2E_NETWORK_API_MOCKS__?: boolean
+    }
     if (e2eWindow.__E2E_NETWORK_API_MOCKS__ !== true) return false
     const path = resolveRequestPath(config)
     return path.startsWith("/api/v1/chats") || path === "/api/v1/users"
@@ -279,6 +274,12 @@ export const ensureCsrfCookie = (): Promise<void> => {
   return _csrfBootstrapPromise
 }
 
+/** Timeout for the public News transport, which bypasses Axios. */
+const ANONYMOUS_NEWS_TIMEOUT_MS = 8_000
+
+export type AnonymousNewsPageResponse =
+  { ok: false; status: number } | { ok: true; status: number; data: unknown }
+
 /**
  * Fetch the public news list without ambient browser credentials.
  *
@@ -297,7 +298,7 @@ export const fetchAnonymousNewsPage = ({
   limit: number
   cursor?: string | null
   signal?: AbortSignal
-}): Promise<Response> => {
+}): Promise<AnonymousNewsPageResponse> => {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("Anonymous news requests require a browser origin"))
   }
@@ -306,19 +307,65 @@ export const fetchAnonymousNewsPage = ({
   url.searchParams.set("limit", String(limit))
   if (cursor != null) url.searchParams.set("cursor", cursor)
 
-  return fetch(url, {
-    method: "GET",
-    mode: "same-origin",
-    credentials: "omit",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Accept-Language": language,
-    },
-    signal,
-  })
-}
+  return (async () => {
+    const requestController = new AbortController()
+    const abortFromCaller = () => requestController.abort(signal?.reason)
+    let callerAbortListenerAttached = false
+    if (signal?.aborted) {
+      abortFromCaller()
+    } else if (signal) {
+      signal.addEventListener("abort", abortFromCaller, { once: true })
+      callerAbortListenerAttached = true
+    }
 
+    let rejectAbortedRequest: ((reason?: unknown) => void) | undefined
+    const abortedRequest = new Promise<never>((_resolve, reject) => {
+      rejectAbortedRequest = reject
+    })
+    const rejectOnAbort = () => rejectAbortedRequest?.(requestController.signal.reason)
+    requestController.signal.addEventListener("abort", rejectOnAbort, {
+      once: true,
+    })
+    if (requestController.signal.aborted) rejectOnAbort()
+
+    const timeoutId = setTimeout(() => {
+      requestController.abort(new DOMException("Anonymous news request timed out", "TimeoutError"))
+    }, ANONYMOUS_NEWS_TIMEOUT_MS)
+    const cleanup = () => {
+      clearTimeout(timeoutId)
+      requestController.signal.removeEventListener("abort", rejectOnAbort)
+      if (signal && callerAbortListenerAttached) {
+        signal.removeEventListener("abort", abortFromCaller)
+      }
+    }
+    const requestInit: RequestInit = {
+      method: "GET",
+      mode: "same-origin",
+      credentials: "omit",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Accept-Language": language,
+      },
+      signal: requestController.signal,
+    }
+
+    try {
+      const response = await Promise.race([fetch(url, requestInit), abortedRequest])
+      if (!response.ok) {
+        requestController.abort(
+          new DOMException("Unsuccessful anonymous news response body discarded", "AbortError")
+        )
+        return { ok: false, status: response.status }
+      }
+
+      const data = await Promise.race([response.json(), abortedRequest])
+      return { ok: true, status: response.status, data }
+    } finally {
+      cleanup()
+    }
+  })()
+}
 const ANONYMOUS_RESOURCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
 
 const anonymousApiUrl = (path: string): URL => {
@@ -364,28 +411,48 @@ export const fetchAnonymousNewsDetail = ({
   return fetchAnonymousGet(url, language, signal)
 }
 
+type AnonymousNewsInteractionPagination =
+  { offset: number; cursor?: never } | { offset?: never; cursor: string }
+
+export const isValidAnonymousNewsCursor = (cursor: unknown): cursor is string => {
+  if (typeof cursor !== "string" || cursor.length === 0) return false
+  let length = 0
+  for (const character of cursor) {
+    length += 1
+    const codePoint = character.codePointAt(0)!
+    if (length > 128 || (codePoint >= 0xd800 && codePoint <= 0xdfff)) return false
+  }
+  return true
+}
+
 /** Fetch public article interactions while preserving the comment-page contract. */
 export const fetchAnonymousNewsInteractions = ({
   id,
   language,
   limit,
   offset,
+  cursor,
   signal,
 }: {
   id: string
   language: string
   limit: number
-  offset: number
   signal?: AbortSignal
-}): Promise<Response> => {
+} & AnonymousNewsInteractionPagination): Promise<Response> => {
   if (!ANONYMOUS_RESOURCE_ID.test(id)) {
     return Promise.reject(new Error("Anonymous news interactions require a UUID"))
   }
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
     return Promise.reject(new Error("Anonymous news interaction limit is invalid"))
   }
-  if (!Number.isSafeInteger(offset) || offset < 0) {
+  if ((offset === undefined) === (cursor === undefined)) {
+    return Promise.reject(new Error("Anonymous news interaction pagination is invalid"))
+  }
+  if (offset !== undefined && (!Number.isSafeInteger(offset) || offset < 0)) {
     return Promise.reject(new Error("Anonymous news interaction offset is invalid"))
+  }
+  if (cursor !== undefined && !isValidAnonymousNewsCursor(cursor)) {
+    return Promise.reject(new Error("Anonymous news interaction cursor is invalid"))
   }
   const path = `/api/v1/news/${encodeURIComponent(id)}/interactions`
   let url: URL
@@ -395,7 +462,8 @@ export const fetchAnonymousNewsInteractions = ({
     return Promise.reject(error)
   }
   url.searchParams.set("limit", String(limit))
-  url.searchParams.set("offset", String(offset))
+  if (cursor !== undefined) url.searchParams.set("cursor", cursor)
+  else url.searchParams.set("offset", String(offset))
   return fetchAnonymousGet(url, language, signal)
 }
 
@@ -522,6 +590,22 @@ const isFailedRotationAuthRecoveryRequest = (config: InternalAxiosRequestConfig)
   )
 }
 
+const assertCurrentRequestSession = (config: InternalAxiosRequestConfig): void => {
+  if (
+    !isSsrRuntime &&
+    hasStaleBrowserSessionBinding() &&
+    !isSessionBootstrapRequest(config) &&
+    !isFailedRotationAuthRecoveryRequest(config)
+  ) {
+    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
+  }
+
+  const ownsSession = (config as ApiRequestConfig).__sessionIsCurrent
+  if (typeof ownsSession === "function" && !ownsSession()) {
+    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
+  }
+}
+
 api.interceptors.request.use(async (config) => {
   const candidate = config as InternalAxiosRequestConfig & ApiRequestConfig
 
@@ -551,16 +635,9 @@ api.interceptors.request.use(async (config) => {
   // A newly-started request from an old tab otherwise captures the remote
   // generation and can dispatch with that tab's browser-wide authentication
   // cookie. Keep only the two read-only requests required to identify and
-  // establish the current profile. Missing generation retains live-network
-  // auth behavior when browser storage is unavailable.
-  if (
-    !isSsrRuntime &&
-    hasStaleBrowserSessionBinding() &&
-    !isSessionBootstrapRequest(config) &&
-    !isFailedRotationAuthRecoveryRequest(config)
-  ) {
-    throw new axios.CanceledError(SESSION_CHANGED_CANCEL_MESSAGE, config)
-  }
+  // establish the current profile. Missing generation without an unresolved
+  // failed-rotation receipt retains live-network auth behavior.
+  if (!isSsrRuntime) assertCurrentRequestSession(config)
 
   // Mutation dedup: reject duplicate in-flight requests with the same Idempotency-Key.
   if (config.method && ["post", "put", "patch", "delete"].includes(config.method)) {

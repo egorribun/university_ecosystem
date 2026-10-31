@@ -11,6 +11,8 @@ Requires a live Redis instance and the Python backend configured to use it.
     RUN_INTEGRATION_TESTS=1 pytest tests/integration/test_redis_contract.py -v
 
 All tests are skipped unless ``RUN_INTEGRATION_TESTS=1`` is set.
+The expiration and revocation pubsub checks additionally require ownership
+markers provisioned by a trusted launcher in two disposable Redis stores.
 
 Design
 ------
@@ -26,8 +28,13 @@ can run without the Go binaries.
 
 from __future__ import annotations
 
+import asyncio
+import hmac
 import os
+import re
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -133,77 +140,73 @@ async def test_revocation_key_format(
     revocation_redis_client,
     session_backend,
 ):
-    """Python backend must write revocation under ``revoked:jti:{jti}``.
-
-    Cross-service invariant (contracts/redis-keys.md):
-      Go gateway reads ``revoked:jti:{jti}`` via checkSessionInRedis().
-      Go gateway listens on ``session:revocations`` pubsub and derives key as
-      fmt.Sprintf("revoked:jti:%s", msg.Payload).
-
-    This test verifies both the Redis key format AND the pubsub payload.
-    """
-    jti = str(uuid.uuid4())
-    future_expiry = datetime.now(UTC) + timedelta(hours=1)
-
-    # Register a session so revoke_session has a TTL to copy.
-    await session_backend.register_session(
-        user_id=1,
-        jti=jti,
-        expires_at=future_expiry,
+    """The dedicated store must contain and publish the revoked JTI."""
+    cache_id, revocation_id = await _assert_owned_redis_pair(
+        redis_client, revocation_redis_client
     )
-
-    # Subscribe to the revocations channel BEFORE revoking.
-    pubsub = revocation_redis_client.pubsub()
-    await pubsub.subscribe("session:revocations")
-
+    jti = str(uuid.uuid4())
+    channel = "session:revocations"
+    session_key = f"session:{jti}"
+    revoked_key = f"revoked:jti:{jti}"
+    pubsub = None
     try:
+        await _assert_owned_redis(redis_client, expected_run_id=cache_id)
+        await session_backend.register_session(
+            user_id=1,
+            jti=jti,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+        pubsub = revocation_redis_client.pubsub()
+        await pubsub.subscribe(channel)
+        await _expect_pubsub_message(pubsub, channel=channel, message_type="subscribe")
+        await _assert_owned_redis_pair(
+            redis_client,
+            revocation_redis_client,
+            expected_ids=(cache_id, revocation_id),
+        )
         await session_backend.revoke_session(jti)
 
-        # 1. Verify the revocation key exists in the expected format.
-        expected_key = f"revoked:jti:{jti}"
-        exists = await revocation_redis_client.exists(expected_key)
-        assert exists == 1, (
-            f"Expected Redis key '{expected_key}' to exist after revoke_session(), "
-            f"but it was not found.  "
-            f"Go gateway reads 'revoked:jti:{{jti}}' — if the Python backend writes "
-            f"a different key format, gateway revocation will silently fail."
+        exists = await revocation_redis_client.exists(revoked_key)
+        ttl = await revocation_redis_client.ttl(revoked_key)
+        if exists != 1 or ttl <= 0:
+            raise AssertionError("The revocation tombstone is missing or has no TTL")
+        await _expect_pubsub_message(
+            pubsub, channel=channel, message_type="message", payload=jti
         )
-
-        # 2. Verify the revocation key has a sensible TTL (not eternal).
-        ttl = await revocation_redis_client.ttl(expected_key)
-        assert ttl > 0, (
-            f"Revocation key '{expected_key}' must have a positive TTL so it expires "
-            f"when the JWT would naturally expire. Got TTL={ttl}."
-        )
-
-        # 3. Verify the pubsub payload is the raw JTI string.
-        #    Go gateway: key := fmt.Sprintf("revoked:jti:%s", msg.Payload)
-        #    Therefore msg.Payload MUST equal jti, not session_id or any other value.
-        msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=2.0)
-        # Drain any update messages.
-        attempts = 0
-        while msg is None and attempts < 5:
-            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-            attempts += 1
-
-        if msg is not None:
-            payload = msg["data"]
-            if isinstance(payload, bytes):
-                payload = payload.decode()
-            assert payload == jti, (
-                f"session:revocations pubsub payload must be the raw JTI string. "
-                f"Got '{payload}', expected '{jti}'.  "
-                f"Go gateway derives the revocation key as "
-                f"fmt.Sprintf('revoked:jti:%s', msg.Payload) — a wrong payload "
-                f"means the L1 cache is never invalidated on revocation."
-            )
-
     finally:
-        await pubsub.unsubscribe("session:revocations")
-        await pubsub.aclose()
-        # Cleanup
-        await redis_client.delete(f"session:{jti}")
-        await revocation_redis_client.delete(f"revoked:jti:{jti}")
+        try:
+            if pubsub is not None:
+                try:
+                    await pubsub.unsubscribe(channel)
+                finally:
+                    await pubsub.aclose()
+        finally:
+            try:
+                await _assert_owned_redis(redis_client, expected_run_id=cache_id)
+                await redis_client.delete(session_key)
+            finally:
+                await _assert_owned_redis(
+                    revocation_redis_client,
+                    revocation=True,
+                    expected_run_id=revocation_id,
+                )
+                await revocation_redis_client.delete(revoked_key)
+
+
+@pytest.mark.asyncio
+async def test_revocation_oracle_rejects_unpublished_jti(
+    redis_client, revocation_redis_client, session_backend, monkeypatch
+):
+    """Real tombstone creation must not pass when its publication is lost."""
+    publish = AsyncMock(return_value=0)
+    monkeypatch.setattr(revocation_redis_client, "publish", publish)
+    with pytest.raises(
+        AssertionError, match=r"Expected Redis pubsub message \(message\)"
+    ):
+        await test_revocation_key_format(
+            redis_client, revocation_redis_client, session_backend
+        )
+    publish.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -514,6 +517,181 @@ async def test_ws_ticket_getdel_atomicity(redis_client):
 # ---------------------------------------------------------------------------
 
 
+_EXPIRY_EVENT_TIMEOUT_SECONDS = 5.0
+_NOTIFICATION_CONFIG = "notify-keyspace-events"
+
+
+async def _assert_owned_redis(
+    redis_client, *, revocation: bool = False, expected_run_id: str | None = None
+) -> str:
+    """Bind any global configuration change to the launcher's disposable store."""
+    prefix = "AUD428_REVOCATION_REDIS" if revocation else "AUD428_REDIS"
+    key = os.getenv(f"{prefix}_OWNER_KEY", "")
+    value = os.getenv(f"{prefix}_OWNER_VALUE", "")
+    # Explicit raises avoid pytest's assertion rewriting printing marker values.
+    if re.fullmatch(r"aud428-owner:[0-9a-f]{32}", key) is None:
+        raise AssertionError("A disposable Redis ownership marker is required")
+    if re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise AssertionError("A disposable Redis ownership value is required")
+    if redis_client.connection_pool.connection_kwargs.get("db", 0) != 0:
+        raise AssertionError("The Redis contracts require database 0")
+    actual = await redis_client.get(key)
+    if isinstance(actual, str):
+        actual = actual.encode("utf-8")
+    if not isinstance(actual, bytes) or not hmac.compare_digest(
+        actual, value.encode("ascii")
+    ):
+        raise AssertionError("The configured Redis is not the owned disposable store")
+    run_id = (await redis_client.info("server")).get("run_id")
+    if (
+        not isinstance(run_id, str)
+        or re.fullmatch(r"[0-9a-f]{40}", run_id) is None
+        or (
+            expected_run_id is not None
+            and not hmac.compare_digest(run_id, expected_run_id)
+        )
+    ):
+        raise AssertionError(
+            "The owned Redis server identity changed or is unavailable"
+        )
+    return run_id
+
+
+async def _assert_owned_redis_pair(
+    redis_client,
+    revocation_redis_client,
+    *,
+    expected_ids: tuple[str, str] | None = None,
+) -> tuple[str, str]:
+    cache_id = await _assert_owned_redis(
+        redis_client, expected_run_id=expected_ids[0] if expected_ids else None
+    )
+    revocation_id = await _assert_owned_redis(
+        revocation_redis_client,
+        revocation=True,
+        expected_run_id=expected_ids[1] if expected_ids else None,
+    )
+    if hmac.compare_digest(cache_id, revocation_id):
+        raise AssertionError(
+            "Cache and revocation stores must be distinct owned servers"
+        )
+    return cache_id, revocation_id
+
+
+async def _notification_flags(redis_client) -> str:
+    config = await redis_client.config_get(_NOTIFICATION_CONFIG)
+    value = config.get(_NOTIFICATION_CONFIG, config.get(_NOTIFICATION_CONFIG.encode()))
+    if isinstance(value, bytes):
+        value = value.decode("ascii")
+    if not isinstance(value, str):
+        raise AssertionError("Redis notification configuration was unavailable")
+    return value
+
+
+@asynccontextmanager
+async def _temporary_expiry_notifications(
+    redis_client, *, enabled: bool
+) -> AsyncIterator[str]:
+    run_id = await _assert_owned_redis(redis_client)
+    original = await _notification_flags(redis_client)
+    desired = "".join(dict.fromkeys(f"{original}Ex")) if enabled else ""
+    try:
+        await _assert_owned_redis(redis_client, expected_run_id=run_id)
+        changed = await redis_client.config_set(_NOTIFICATION_CONFIG, desired)
+        if changed is not True:
+            raise AssertionError("Redis notification configuration was not applied")
+        configured = await _notification_flags(redis_client)
+        if enabled:
+            if "E" not in configured or (
+                "x" not in configured and "A" not in configured
+            ):
+                raise AssertionError("Redis expiry notifications were not enabled")
+        elif configured != "":
+            raise AssertionError("Redis expiry notifications were not disabled")
+        yield run_id
+    finally:
+        # Check the marker again before a server-wide write: a disappeared or
+        # replaced target must not receive the saved configuration.
+        await _assert_owned_redis(redis_client, expected_run_id=run_id)
+        restored = await redis_client.config_set(_NOTIFICATION_CONFIG, original)
+        if restored is not True:
+            raise AssertionError("Redis notification configuration was not restored")
+        if await _notification_flags(redis_client) != original:
+            raise AssertionError(
+                "Redis notification configuration differs after restore"
+            )
+
+
+async def _expect_pubsub_message(
+    pubsub, *, channel: str, message_type: str, payload: str | None = None
+) -> None:
+    deadline = asyncio.get_running_loop().time() + _EXPIRY_EVENT_TIMEOUT_SECONDS
+    while (remaining := deadline - asyncio.get_running_loop().time()) > 0:
+        timeout = asyncio.timeout(remaining)
+        try:
+            async with timeout:
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=False, timeout=min(0.2, remaining)
+                )
+        except TimeoutError:
+            if not timeout.expired():
+                raise
+            break
+        if (
+            message is not None
+            and message.get("type") == message_type
+            and message.get("channel") in (channel, channel.encode())
+            and (payload is None or message.get("data") in (payload, payload.encode()))
+        ):
+            return
+        # Fake clients and unrelated traffic may return immediately; do not spin.
+        await asyncio.sleep(
+            min(0.01, max(deadline - asyncio.get_running_loop().time(), 0))
+        )
+    raise AssertionError(
+        f"Expected Redis pubsub message ({message_type}) was not observed"
+    )
+
+
+async def _exercise_expiry_notifications(redis_client, *, enabled: bool) -> None:
+    channel = "__keyevent@0__:expired"
+    key = f"notify-test:{uuid.uuid4()}"
+    async with _temporary_expiry_notifications(redis_client, enabled=enabled) as run_id:
+        pubsub = redis_client.pubsub()
+        try:
+            await pubsub.subscribe(channel)
+            await _expect_pubsub_message(
+                pubsub, channel=channel, message_type="subscribe"
+            )
+            await _assert_owned_redis(redis_client, expected_run_id=run_id)
+            created = await redis_client.set(key, "expired-val", ex=1)
+            if created is not True:
+                raise AssertionError("The Redis expiry probe key was not created")
+            if enabled:
+                await _expect_pubsub_message(
+                    pubsub, channel=channel, message_type="message", payload=key
+                )
+            else:
+                with pytest.raises(
+                    AssertionError, match=r"Expected Redis pubsub message \(message\)"
+                ):
+                    await _expect_pubsub_message(
+                        pubsub, channel=channel, message_type="message", payload=key
+                    )
+            exists = await redis_client.exists(key)
+            if exists != 0:
+                raise AssertionError("The Redis expiry probe key did not expire")
+        finally:
+            try:
+                await pubsub.unsubscribe(channel)
+            finally:
+                try:
+                    await pubsub.aclose()
+                finally:
+                    await _assert_owned_redis(redis_client, expected_run_id=run_id)
+                    await redis_client.delete(key)
+
+
 @pytest.mark.asyncio
 async def test_redis_lua_script_contract(redis_client):
     """Verify that custom rate-limiting Lua script behaves atomically in Redis."""
@@ -552,37 +730,13 @@ async def test_redis_lua_script_contract(redis_client):
 @pytest.mark.asyncio
 async def test_redis_keyspace_notifications_contract(redis_client):
     """Verify keyspace notifications subscription and expiration events."""
-    import contextlib
+    await _exercise_expiry_notifications(redis_client, enabled=True)
 
-    with contextlib.suppress(Exception):
-        await redis_client.config_set("notify-keyspace-events", "Ex")
 
-    pubsub = redis_client.pubsub()
-    await pubsub.subscribe("__keyevent@0__:expired")
-
-    key = f"notify-test:{uuid.uuid4()}"
-    try:
-        # Set a key with 1s TTL
-        await redis_client.set(key, "expired-val", ex=1)
-
-        # Wait for expiration event
-        attempts = 0
-        event_found = False
-        while attempts < 15 and not event_found:
-            msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.2)
-            if msg is not None:
-                data = msg["data"]
-                if isinstance(data, bytes):
-                    data = data.decode()
-                if data == key:
-                    event_found = True
-                    break
-            attempts += 1
-
-    finally:
-        await pubsub.unsubscribe("__keyevent@0__:expired")
-        await pubsub.aclose()
-        await redis_client.delete(key)
+@pytest.mark.asyncio
+async def test_redis_expiry_oracle_rejects_disabled_notifications(redis_client):
+    """A real expired key must not satisfy the oracle with notifications off."""
+    await _exercise_expiry_notifications(redis_client, enabled=False)
 
 
 # ---------------------------------------------------------------------------

@@ -63,6 +63,8 @@ class MfaSettingsMixin:
     """Multi-factor authentication and password policy settings.
 
     Covers TOTP, email OTP, trusted devices, and password strength requirements.
+    Leaked-password screening (HIBP) is enabled by default in staging and
+    production (AUD-392); development keeps it opt-in.
     """
 
     mfa_enabled: bool = False
@@ -97,6 +99,7 @@ class MfaSettingsMixin:
     password_require_digit: bool = True
     password_require_special: bool = True
     password_zxcvbn_min_score: int = 1
+    # AUD-392: unset resolves to enabled in staging/production (see validator below).
     password_hibp_check_enabled: bool = False
     password_hibp_api_url: str = "https://api.pwnedpasswords.com/range"
     password_hibp_timeout_seconds: int = 5
@@ -201,6 +204,32 @@ class MfaSettingsMixin:
     def _validate_positive_mfa_values(cls, value: int, info: ValidationInfo) -> int:
         field_name = getattr(info, "field_name", None) or "mfa_value"
         return _validate_positive_int(value, label=field_name.upper())
+
+    @model_validator(mode="after")
+    def _enable_hibp_screening_in_deployed_environments(self) -> MfaSettingsMixin:
+        """AUD-392: leaked-password screening is on by default in staging/production.
+
+        Registration and admin-created accounts read this flag, while reset and
+        password change always query HIBP. An unset flag therefore resolves to
+        enabled in deployed environments, and an explicit ``false`` is rejected
+        there. Development keeps the opt-in default so local runs need no egress.
+        """
+        environment = (
+            str(getattr(self, "environment", "development") or "development")
+            .strip()
+            .lower()
+        )
+        if environment not in {"staging", "production"}:
+            return self
+        if "password_hibp_check_enabled" not in getattr(
+            self, "model_fields_set", set()
+        ):
+            self.password_hibp_check_enabled = True
+        elif not self.password_hibp_check_enabled:
+            raise ValueError(
+                "PASSWORD_HIBP_CHECK_ENABLED must be true in staging/production"
+            )
+        return self
 
     @field_validator("password_min_length", "password_max_length")
     @classmethod

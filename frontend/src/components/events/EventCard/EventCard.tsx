@@ -10,6 +10,7 @@
 import { memo, lazy, Suspense, type FC } from "react"
 import type { Event } from "@/types/Event"
 import { useEventCardLogic } from "@/hooks/useEventCardLogic"
+import type { EventQrStorageMode } from "@/hooks/useEventRegistration"
 import { useTranslation } from "react-i18next"
 import { inferEventCategory } from "@/features/events/categories"
 import { EventCardSkeleton } from "./EventCardSkeleton"
@@ -22,6 +23,7 @@ interface EventCardProps extends Partial<Event> {
   id: string
   animationIndex?: number
   onChange?: () => void
+  qrStorage?: EventQrStorageMode
   maxWidth?: string
   /** First card in grid — forwards LCP priority to SmartImage (Wave 113 PERF-113-01) */
   priority?: boolean
@@ -133,6 +135,9 @@ const areEventCardPropsEqual = (prev: EventCardProps, next: EventCardProps) =>
   prev.starts_at === next.starts_at &&
   prev.ends_at === next.ends_at &&
   prev.is_registered === next.is_registered &&
+  prev.my_qr_token === next.my_qr_token &&
+  prev.onChange === next.onChange &&
+  prev.qrStorage === next.qrStorage &&
   prev.participant_count === next.participant_count &&
   prev.speaker === next.speaker &&
   prev.event_type === next.event_type &&

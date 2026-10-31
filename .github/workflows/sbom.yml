@@ -98,6 +98,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -110,10 +112,52 @@ jobs:
           cache: true
 
       - name: Install osv-scanner
-        # Renovate's custom workflow manager updates this exact GitHub release pin.
-        # @v2.6.0 is content-addressed by the Go module sum DB (equivalent to commit pinning).
+        # The paired version and digest are reviewed together against the
+        # official release provenance before Renovate updates this pin.
+        shell: bash
         run: |
-          go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
+          set -euo pipefail
+          osv_scanner_version="v2.6.0" osv_scanner_sha256="ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
+          if [[ "${RUNNER_OS:-}" != "Linux" || "${RUNNER_ARCH:-}" != "X64" ]] || \
+             [[ "$(/usr/bin/uname -s)" != "Linux" || "$(/usr/bin/uname -m)" != "x86_64" ]]; then
+            echo "::error::OSV scanner release asset requires Linux x86-64." >&2
+            exit 1
+          fi
+          if [[ ! "$osv_scanner_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ || ! "$osv_scanner_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::OSV scanner version or checksum is malformed." >&2
+            exit 1
+          fi
+          if [[ "${RUNNER_TEMP:-}" != /* || ! -d "$RUNNER_TEMP" || -L "$RUNNER_TEMP" ]]; then
+            echo "::error::RUNNER_TEMP must be an absolute physical directory." >&2
+            exit 1
+          fi
+          osv_dir="$(mktemp -d "${RUNNER_TEMP%/}/osv-scanner.XXXXXXXX")"
+          cleanup_osv() {
+            if [[ -n "${osv_dir:-}" && "$osv_dir" == "${RUNNER_TEMP%/}"/osv-scanner.* && -d "$osv_dir" && ! -L "$osv_dir" ]]; then
+              rm -rf -- "$osv_dir"
+            fi
+          }
+          trap cleanup_osv EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          osv_binary="$osv_dir/osv-scanner"
+          /usr/bin/curl --fail --silent --show-error --location --proto '=https' \
+            --proto-redir '=https' --tlsv1.2 --max-redirs 5 --max-time 120 \
+            --max-filesize 67108864 --output "$osv_binary" \
+            "https://github.com/google/osv-scanner/releases/download/$osv_scanner_version/osv-scanner_linux_amd64"
+          if [[ ! -f "$osv_binary" || -L "$osv_binary" || ! -s "$osv_binary" ]]; then
+            echo "::error::OSV scanner asset is missing or is not a regular nonempty file." >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$osv_scanner_sha256" "$osv_binary" | /usr/bin/sha256sum --check --strict
+          chmod 0755 -- "$osv_binary"
+          osv_version_output="$("$osv_binary" --version)"
+          if [[ "${osv_version_output%%$'\n'*}" != "osv-scanner version: ${osv_scanner_version#v}" ]]; then
+            echo "::error::OSV scanner version does not match its release pin." >&2
+            exit 1
+          fi
+          printf 'OSV_SCANNER_BIN=%s\n' "$osv_binary" >> "$GITHUB_ENV"
+          trap - EXIT INT TERM
 
       - name: Scan Go modules for vulnerabilities + generate SBOM
         id: osv_scan
@@ -122,7 +166,7 @@ jobs:
           set +e
           # osv-scanner checks go.sum files against the OSV vulnerability database.
           # --recursive discovers all go.mod files under services/.
-          osv-scanner scan source --recursive --format sarif \
+          "$OSV_SCANNER_BIN" scan source --recursive --format sarif \
             --output go-vuln.sarif \
             ./services/
           scanner_status=$?
@@ -130,7 +174,7 @@ jobs:
           echo "scanner_status=$scanner_status" >> "$GITHUB_OUTPUT"
 
       - name: Upload Go vulnerability SARIF to Code Scanning
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         if: always()
         with:
           sarif_file: go-vuln.sarif
@@ -191,6 +235,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # pinned action
@@ -267,7 +313,7 @@ jobs:
   vuln-gate:
     # Keep the externally visible main-CI check context stable for run history.
     name: Vulnerability gate (CRITICAL/HIGH, main)
-    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     # Cold runs compile cargo-audit and execute three ecosystems sequentially.
     timeout-minutes: 30
@@ -275,8 +321,25 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Require successful SBOM producers
+        shell: bash
+        env:
+          PYTHON_SBOM_RESULT: ${{ needs.sbom-python.result }}
+          GO_SBOM_RESULT: ${{ needs.sbom-go.result }}
+          RUST_SBOM_RESULT: ${{ needs.sbom-rust.result }}
+        run: |
+          set -euo pipefail
+          for result in "$PYTHON_SBOM_RESULT" "$GO_SBOM_RESULT" "$RUST_SBOM_RESULT"; do
+            if [[ "$result" != "success" ]]; then
+              echo "::error::A required SBOM producer did not succeed." >&2
+              exit 1
+            fi
+          done
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
@@ -444,6 +507,109 @@ jobs:
             ./services/pkg/logging/... \
             ./services/pkg/spiffe/... \
             ./services/pkg/spicedb/...
+
+      # AUD-483: the Go OSV module inventory also runs on pull requests. It uses
+      # the same checksum-pinned scanner and fail-closed SARIF validation as the
+      # trusted-main producer, but this read-only job never uploads SARIF, an
+      # artifact, or an attestation. Reachable Go findings stay blocked by the
+      # govulncheck gate, and module-level findings keep the main-branch policy.
+      - name: Install osv-scanner (pull request inventory)
+        # The paired version and digest are reviewed together against the
+        # official release provenance before Renovate updates this pin.
+        shell: bash
+        run: |
+          set -euo pipefail
+          osv_scanner_version="v2.6.0" osv_scanner_sha256="ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
+          if [[ "${RUNNER_OS:-}" != "Linux" || "${RUNNER_ARCH:-}" != "X64" ]] || \
+             [[ "$(/usr/bin/uname -s)" != "Linux" || "$(/usr/bin/uname -m)" != "x86_64" ]]; then
+            echo "::error::OSV scanner release asset requires Linux x86-64." >&2
+            exit 1
+          fi
+          if [[ ! "$osv_scanner_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ || ! "$osv_scanner_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::OSV scanner version or checksum is malformed." >&2
+            exit 1
+          fi
+          if [[ "${RUNNER_TEMP:-}" != /* || ! -d "$RUNNER_TEMP" || -L "$RUNNER_TEMP" ]]; then
+            echo "::error::RUNNER_TEMP must be an absolute physical directory." >&2
+            exit 1
+          fi
+          osv_dir="$(mktemp -d "${RUNNER_TEMP%/}/osv-scanner.XXXXXXXX")"
+          cleanup_osv() {
+            if [[ -n "${osv_dir:-}" && "$osv_dir" == "${RUNNER_TEMP%/}"/osv-scanner.* && -d "$osv_dir" && ! -L "$osv_dir" ]]; then
+              rm -rf -- "$osv_dir"
+            fi
+          }
+          trap cleanup_osv EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          osv_binary="$osv_dir/osv-scanner"
+          /usr/bin/curl --fail --silent --show-error --location --proto '=https' \
+            --proto-redir '=https' --tlsv1.2 --max-redirs 5 --max-time 120 \
+            --max-filesize 67108864 --output "$osv_binary" \
+            "https://github.com/google/osv-scanner/releases/download/$osv_scanner_version/osv-scanner_linux_amd64"
+          if [[ ! -f "$osv_binary" || -L "$osv_binary" || ! -s "$osv_binary" ]]; then
+            echo "::error::OSV scanner asset is missing or is not a regular nonempty file." >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$osv_scanner_sha256" "$osv_binary" | /usr/bin/sha256sum --check --strict
+          chmod 0755 -- "$osv_binary"
+          osv_version_output="$("$osv_binary" --version)"
+          if [[ "${osv_version_output%%$'\n'*}" != "osv-scanner version: ${osv_scanner_version#v}" ]]; then
+            echo "::error::OSV scanner version does not match its release pin." >&2
+            exit 1
+          fi
+          printf 'OSV_SCANNER_BIN=%s\n' "$osv_binary" >> "$GITHUB_ENV"
+          trap - EXIT INT TERM
+
+      - name: Scan Go modules for vulnerabilities (pull request inventory)
+        id: osv_scan
+        shell: bash
+        run: |
+          set +e
+          # osv-scanner checks go.sum files against the OSV vulnerability database.
+          # --recursive discovers all go.mod files under services/.
+          "$OSV_SCANNER_BIN" scan source --recursive --format sarif \
+            --output go-vuln.sarif \
+            ./services/
+          scanner_status=$?
+          set -e
+          echo "scanner_status=$scanner_status" >> "$GITHUB_OUTPUT"
+
+      - name: Validate OSV scanner result (pull request inventory)
+        if: always()
+        shell: bash
+        env:
+          SCANNER_STATUS: ${{ steps.osv_scan.outputs.scanner_status }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SCANNER_STATUS" =~ ^[0-9]+$ ]]; then
+            echo "::error::OSV scanner did not publish a numeric exit status."
+            exit 1
+          fi
+          if [[ "$SCANNER_STATUS" -gt 1 ]]; then
+            echo "::error::OSV scanner failed operationally (exit $SCANNER_STATUS)."
+            exit 1
+          fi
+          if ! jq --exit-status \
+            '.version == "2.1.0" and
+             (.runs | type == "array" and length > 0) and
+             all(.runs[]; .tool.driver.name | type == "string" and length > 0) and
+             all(.runs[]; .results | type == "array")' \
+            go-vuln.sarif >/dev/null; then
+            echo "::error::OSV scanner did not produce a structurally valid SARIF report."
+            exit 1
+          fi
+
+          finding_count="$(jq '[.runs[].results[]] | length' go-vuln.sarif)"
+          if [[ "$SCANNER_STATUS" -eq 0 && "$finding_count" -ne 0 ]]; then
+            echo "::error::OSV scanner exited 0 but reported $finding_count finding(s)."
+            exit 1
+          fi
+          if [[ "$SCANNER_STATUS" -eq 1 && "$finding_count" -eq 0 ]]; then
+            echo "::error::OSV scanner exited 1 without a reportable finding."
+            exit 1
+          fi
+          echo "Validated OSV SARIF with $finding_count module-level finding(s)."
 
       - name: Install cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked

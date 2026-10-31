@@ -50,6 +50,15 @@ def _render(direction: str) -> str:
 def test_upgrade_uses_validated_shadow_cutover_for_groups_and_sessions() -> None:
     sql = _render("upgrade f7aa476e968a:148642dd1207")
 
+    assert "SET LOCAL LOCK_TIMEOUT = '10S'" in sql
+    assert "SET LOCAL STATEMENT_TIMEOUT = '60S'" in sql
+    assert (
+        sql.index("BEGIN;")
+        < sql.index("SET LOCAL LOCK_TIMEOUT = '10S'")
+        < sql.index("SET LOCAL STATEMENT_TIMEOUT = '60S'")
+        < sql.index("ALTER TABLE GROUPS ADD COLUMN")
+    )
+
     assert "ALTER TABLE GROUPS ALTER COLUMN ID TYPE" not in sql
     # PostgreSQL receives the same physical NOT NULL invariant as the other
     # supported dialects, but only after the validated check-backed preflight.
@@ -57,7 +66,7 @@ def test_upgrade_uses_validated_shadow_cutover_for_groups_and_sessions() -> None
     assert "ID__INTEGER INTEGER" in sql
     assert "CHECK (ID__INTEGER IS NOT NULL) NOT VALID" in sql
     assert "CHECK (ID IS NOT NULL) NOT VALID" in sql
-    assert "VALIDATE CONSTRAINT CK_GROUPS_ID_SHADOW_NOT_NULL" in sql
+    assert "VALIDATE CONSTRAINT CK_GROUPS_ID_SHADOW_NOT_NULL" not in sql
     assert "VALIDATE CONSTRAINT CK_GROUPS_ID_NOT_NULL" in sql
     assert "VALIDATE CONSTRAINT CK_ACTIVE_SESSIONS_SIGNING_KEY_NOT_NULL" in sql
     assert sql.index(
@@ -107,16 +116,15 @@ def test_fk_capture_preserves_non_id_mapping_and_rejects_composites() -> None:
     assert "parent_columns = ARRAY['id']" not in source
 
 
-def test_existing_not_null_constraint_definition_is_normalized_exactly() -> None:
-    migration = _load_migration()
+def test_existing_not_null_constraint_uses_exact_catalog_identity() -> None:
+    source = MIGRATION.read_text(encoding="utf-8")
 
-    expected = migration._normalize_constraint_definition(
-        "CHECK ((id__integer IS NOT NULL))"
-    )
-    assert expected == "CHECKID__INTEGERISNOTNULL"
-    assert migration._normalize_constraint_definition("CHECK (id__integer > 0)") != (
-        expected
-    )
+    assert "c.conkey = ARRAY[a.attnum]" in source
+    assert "a.attname = :column_name" in source
+    assert "NOT c.connoinherit" in source
+    assert "pg_catalog.pg_get_expr(c.conbin, c.conrelid)" in source
+    assert "pg_catalog.format('(%I IS NOT NULL)', :column_name)" in source
+    assert "_normalize_constraint_definition" not in source
 
 
 def test_existing_not_null_constraint_mismatch_fails_closed(
@@ -129,7 +137,7 @@ def test_existing_not_null_constraint_mismatch_fails_closed(
 
     class _Result:
         def first(self):
-            return ("c", True, "CHECK ((id__integer > 0))")
+            return ("c", True, False)
 
     class _Bind:
         dialect = _Dialect()
@@ -154,7 +162,7 @@ def test_existing_not_null_constraint_accepts_asyncpg_char_bytes(monkeypatch) ->
 
     class _Result:
         def first(self):
-            return (b"c", True, "CHECK ((id__integer IS NOT NULL))")
+            return (b"c", True, True)
 
     class _Bind:
         dialect = _Dialect()
@@ -176,4 +184,4 @@ def test_groups_shadow_cutover_is_bounded_and_rejects_stale_leftovers() -> None:
     assert "pg_advisory_xact_lock" in source
     assert "id__integer IS DISTINCT FROM id::integer" in source
     assert "id__varchar IS DISTINCT FROM id::varchar(20)" in source
-    assert "c.contype, c.convalidated, pg_get_constraintdef(c.oid)" in source
+    assert "c.conkey = ARRAY[a.attnum]" in source

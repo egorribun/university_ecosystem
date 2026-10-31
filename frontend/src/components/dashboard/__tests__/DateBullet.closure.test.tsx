@@ -75,7 +75,7 @@ describe("DateBullet closure branches", () => {
       "font-bold",
       "uppercase",
       "leading-tight",
-      "text-brand/(--opacity-strong)",
+      "text-brand/[calc(var(--opacity-strong)*100%)]",
       "text-[0.6rem]"
     )
     expect(useTranslationMock).toHaveBeenCalledWith("common")

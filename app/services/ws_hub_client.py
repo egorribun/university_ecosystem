@@ -37,6 +37,12 @@ _INVALIDATION_FAILURES = Counter(
 _MAX_PUBLISH_ATTEMPTS = 2
 _RETRY_BACKOFF_SECONDS = 0.1
 
+# ws-hub runs exactly one consumer per subject. Pure authorization-cache
+# invalidations are live-only; room revocations are replayed to a replica that
+# starts within the revoked token's lifetime, so they need their own subject.
+_INVALIDATION_SUBJECT = "cache.invalidate"
+_REVOCATION_SUBJECT = "cache.revoke"
+
 
 class WsHubClient:
     """Async client for ws-hub distributed cache invalidation via NATS.
@@ -65,10 +71,12 @@ class WsHubClient:
     ) -> None:
         """Publish a signed invalidation event to NATS JetStream.
 
-        Events are published to the durable 'cache.invalidate' subject. The
-        ws-hub verifies the signature using the shared InternalSecret. Durable
-        membership-revocation callers may request room eviction and propagate a
-        final publish failure back to the transactional outbox.
+        Pure invalidations are published to 'cache.invalidate'; room membership
+        revocations (evict_room) are published to 'cache.revoke'. The envelope and
+        signature are identical on both subjects. The ws-hub verifies the signature
+        using the shared InternalSecret. Durable membership-revocation callers may
+        request room eviction and propagate a final publish failure back to the
+        transactional outbox.
 
         RZ-14-04 (audit Wave 14): One retry with 100ms backoff covers transient
         NATS hiccups.  On final failure a Prometheus counter is incremented and
@@ -86,6 +94,7 @@ class WsHubClient:
         }
         if evict_room:
             payload_content["evict_room"] = True
+        subject = _REVOCATION_SUBJECT if evict_room else _INVALIDATION_SUBJECT
 
         # TD-NEW-07: Sign the payload to prevent unauthorized cache flushes.
         # Use deterministic JSON serialization for consistent signing.
@@ -107,11 +116,9 @@ class WsHubClient:
         for attempt in range(_MAX_PUBLISH_ATTEMPTS):
             try:
                 if event_id:
-                    await self._broker.publish(
-                        "cache.invalidate", full_payload, msg_id=event_id
-                    )
+                    await self._broker.publish(subject, full_payload, msg_id=event_id)
                 else:
-                    await self._broker.publish("cache.invalidate", full_payload)
+                    await self._broker.publish(subject, full_payload)
                 return
             except (ConnectionError, TimeoutError, OSError) as exc:
                 # RZ-20-04: Narrowed — NATS publish retry catches infra errors.

@@ -307,7 +307,7 @@ export const ContactList = memo(function ContactList({
                   whileHover={prefersReducedMotion ? undefined : { scale: 1.04 }}
                   whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
                   onClick={onClearSearch}
-                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-(--color-violet-500)/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-5 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-(--color-violet-500)/[calc(var(--opacity-soft)*100%)] bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] px-5 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                 >
                   <X className="size-4" strokeWidth={2.5} aria-hidden="true" />
                   <span>{t("messenger:noChats.searchEmpty.clearSearch")}</span>
@@ -408,7 +408,7 @@ export const ContactList = memo(function ContactList({
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
                   isActive
                     ? "messenger-active-chip"
-                    : "hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
+                    : "hover:bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)]"
                 )}
               >
                 <div className="relative shrink-0">

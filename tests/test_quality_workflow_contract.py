@@ -297,6 +297,22 @@ def test_sbom_cancels_superseded_pr_and_main_push_runs_only() -> None:
     }
 
 
+def test_no_pickle_gate_runs_fail_closed_ast_scan_of_backend_source() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    step = next(
+        step
+        for step in workflow["jobs"]["compose-validate"]["steps"]
+        if step.get("name") == "Enforce no-pickle gate (RED-01 RZ-W13)"
+    )
+    assert "if" not in step
+    assert not step.get("continue-on-error", False)
+    assert shlex.split(step["run"]) == [
+        "python",
+        "scripts/quality/check_no_pickle.py",
+        "app/",
+    ]
+
+
 def test_dockerfile_lint_excludes_companion_dockerignore_files() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     hadolint_step = next(
@@ -743,7 +759,7 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
         for step in inventory_job.get("steps", [])
         if isinstance(step, dict)
     )
-    assert "SECRET_KEY=$(openssl rand -hex 32)" in inventory_step_text
+    assert 'secret="$(openssl rand -hex 32)"' in inventory_step_text
     assert '>> "$GITHUB_ENV"' in inventory_step_text
 
     inventory_uploads = [
@@ -950,16 +966,21 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     # cross-process artifact job publish an unverified/orphan Pact file.
     assert "test_file_processor_contract.py" not in consumer_text
     assert "test_files_process_contract.py" not in consumer_text
-    consumer_only_ci = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "uv run pytest tests/contracts/" in consumer_only_ci
-    assert '-k "not integration"' in consumer_only_ci
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    consumer_contract_run = next(
+        str(step.get("run", ""))
+        for step in ci["jobs"]["contract-tests"]["steps"]
+        if step.get("name") == "Run contract tests (consumer-side)"
+    )
+    assert "uv run --frozen --no-sync pytest tests/contracts/" in consumer_contract_run
+    assert '-k "not integration"' in consumer_contract_run
     assert (
         "--ignore=tests/contracts/test_file_processor_contract.py"
-        not in consumer_only_ci
+        not in consumer_contract_run
     )
     assert (
         "--ignore=tests/contracts/test_files_process_contract.py"
-        not in consumer_only_ci
+        not in consumer_contract_run
     )
     assert "test_nats_message_contract.py" in consumer_text
     assert "ws-hub-university-backend.json" in artifact_path
@@ -1399,7 +1420,7 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
     trivy_ignore = yaml.safe_load(
         (REPOSITORY_ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
     )
-    assert [entry["id"] for entry in trivy_ignore["misconfigurations"]] == [
+    expected_exception_ids = [
         "KSV-0012",
         "KSV-0104",
         "KSV-0023",
@@ -1410,7 +1431,66 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
         "KSV-0017",
         "KSV-0009",
         "KSV-0010",
+        "KSV-0008",
+        "KSV-0024",
     ]
+    assert [
+        entry["id"] for entry in trivy_ignore["misconfigurations"]
+    ] == expected_exception_ids
+
+    fixture_path = "k8s/kyverno/tests/disallow-host-access/host-access.yaml"
+    scoped_fixture_entries = trivy_ignore["misconfigurations"][-2:]
+    assert [entry["paths"] for entry in scoped_fixture_entries] == [
+        [fixture_path],
+        [fixture_path],
+    ]
+    assert [str(entry["expired_at"]) for entry in scoped_fixture_entries] == [
+        "2026-11-22",
+        "2026-11-22",
+    ]
+    assert all(
+        set(entry) == {"id", "paths", "expired_at", "statement"}
+        for entry in scoped_fixture_entries
+    )
+
+
+def test_trivy_fixture_preflight_is_ordered_pinned_and_nonprinting() -> None:
+    workflow = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["docker-security"]["steps"]
+    preflight = next(
+        step
+        for step in steps
+        if step.get("name")
+        == "Verify the pinned Kyverno fixture before the Trivy configuration scan"
+    )
+    config_scan = next(
+        step
+        for step in steps
+        if step.get("name") == "Run Trivy configuration scanner (IaC)"
+    )
+
+    assert steps.index(preflight) < steps.index(config_scan)
+    assert preflight["shell"] == "bash"
+    script = str(preflight["run"])
+    version_command = 'version_output="$(trivy --version)"'
+    version_guard = "grep -Fxq 'Version: 0.75.0'"
+    assert version_command in script
+    assert version_guard in script
+    assert (
+        script.index(version_command)
+        < script.index(version_guard)
+        < script.index("trivy config")
+    )
+    assert "--ignorefile=" in script
+    assert "--format json" in script
+    assert '--output "$report"' in script
+    assert "trivy-host-access-noignore.json" in script
+    assert "python3 scripts/quality/validate_trivy_kyverno_fixture.py" in script
+    assert "--format table" not in script
+    assert not any(
+        line.lstrip().startswith(("cat ", "tee ", "jq "))
+        for line in script.splitlines()
+    )
 
 
 def test_checkov_sarif_filter_removes_only_source_backed_suppressions(tmp_path) -> None:
@@ -1607,7 +1687,7 @@ def test_sbom_go_gate_uses_symbol_aware_reachable_vulnerability_analysis() -> No
     workflow = yaml.safe_load(SBOM_WORKFLOW_PATH.read_text(encoding="utf-8"))
     report_job = workflow["jobs"]["sbom-go"]
     report_script = "\n".join(str(step.get("run", "")) for step in report_job["steps"])
-    assert "osv-scanner scan source --recursive --format sarif" in report_script
+    assert '"$OSV_SCANNER_BIN" scan source --recursive --format sarif' in report_script
     assert any(
         str(step.get("uses", "")).startswith("github/codeql-action/upload-sarif@")
         for step in report_job["steps"]
@@ -2076,6 +2156,7 @@ def test_frontend_build_memory_budget_keeps_native_headroom_bounded() -> None:
     # heap, so the process ceiling must retain finite native-memory headroom.
     assert env["FRONTEND_BUILD_MAX_RSS_MB"] == "2048"
     assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
+    assert env["ROLLDOWN_WORKER_THREADS"] == "2"
 
 
 def test_linux_build_reproducibility_gate_canonicalizes_known_metadata() -> None:
@@ -3482,8 +3563,179 @@ def test_lhci_collection_scores_the_real_404_document_without_rewriting_status()
     assert "ignoreStatusCode: true" in lhci_script
 
 
+def _assert_maplibre_budget_artifact_transport(workflow: dict[str, object]) -> None:
+    build = workflow["jobs"]["build"]
+    analysis = workflow["jobs"]["bundle-analysis"]
+    assert build["timeout-minutes"] == 45
+    assert analysis["timeout-minutes"] == 15
+    assert analysis["needs"] == "build"
+    assert "permissions" not in build
+    assert "permissions" not in analysis
+    expected_outputs = {
+        "bundle-artifact-id": "steps.upload-production-bundle.outputs.artifact-id",
+        "metadata-artifact-id": "steps.upload-maplibre-metadata.outputs.artifact-id",
+        "html-artifact-id": "steps.upload-final-html-inventory.outputs.artifact-id",
+        "metadata-sha256": "steps.capture-maplibre-metadata.outputs.metadata-sha256",
+        "html-sha256": "steps.capture-final-html-inventory.outputs.html-sha256",
+        "tree-sha": "steps.capture-final-html-inventory.outputs.tree-sha",
+    }
+    assert build["outputs"] == {
+        key: "${{ " + value + " }}" for key, value in expected_outputs.items()
+    }
+    producers = {step.get("id"): step for step in build["steps"] if "id" in step}
+    upload = producers["upload-maplibre-metadata"]
+    assert upload["uses"] == producers["upload-production-bundle"]["uses"]
+    assert upload["with"] == {
+        "name": (
+            "frontend-maplibre-metadata-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}"
+        ),
+        "path": (
+            "${{ runner.temp }}/maplibre-inventory-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}.json"
+        ),
+        "if-no-files-found": "error",
+        "retention-days": 1,
+    }
+    metadata = producers["capture-maplibre-metadata"]["run"]
+    html = producers["capture-final-html-inventory"]["run"]
+    assert metadata.index("\nMAPLIBRE_INVENTORY\n") < metadata.index("metadata_sha=")
+    assert html.index("\nFINAL_HTML_INVENTORY\n") < html.index("report_sha=")
+    assert "sha256sum --" in metadata and "sha256sum --" in html
+    assert "metadata-sha256=%s" in metadata
+    assert "html-sha256=%s" in html and "tree-sha=%s" in html
+    assert "GIT_NO_REPLACE_OBJECTS=1 git rev-parse 'HEAD^{tree}'" in html
+    steps = analysis["steps"]
+    names = [step.get("name") for step in steps]
+    by_name = {step.get("name"): step for step in steps}
+    guard = by_name["Validate bundle artifact receipts"]
+    assert guard["env"] == {
+        "BUNDLE_ARTIFACT_ID": "${{ needs.build.outputs.bundle-artifact-id }}",
+        "METADATA_ARTIFACT_ID": "${{ needs.build.outputs.metadata-artifact-id }}",
+        "HTML_ARTIFACT_ID": "${{ needs.build.outputs.html-artifact-id }}",
+        "METADATA_SHA256": "${{ needs.build.outputs.metadata-sha256 }}",
+        "HTML_SHA256": "${{ needs.build.outputs.html-sha256 }}",
+        "BUILD_TREE_SHA": "${{ needs.build.outputs.tree-sha }}",
+    }
+    for required in (
+        "/^[1-9][0-9]{0,19}$/u.test(value)",
+        "Number.isSafeInteger(Number(value))",
+        "new Set(ids).size !== 3",
+        "/^[0-9a-f]{64}$/u.test(value)",
+        "/^[0-9a-f]{40}$/u.test(process.env.BUILD_TREE_SHA)",
+        "process.exitCode = 1",
+        "BUNDLE_ARTIFACT_RECEIPTS_REJECTED",
+    ):
+        assert required in guard["run"]
+    download_action = by_name["Download immutable WASM modules"]["uses"]
+    for name, output, destination in (
+        (
+            "Download production bundle",
+            "bundle-artifact-id",
+            "${{ inputs.working-directory }}/dist",
+        ),
+        (
+            "Download MapLibre compiler metadata",
+            "metadata-artifact-id",
+            "${{ runner.temp }}/maplibre-budget-metadata",
+        ),
+        (
+            "Download final HTML budget evidence",
+            "html-artifact-id",
+            "${{ runner.temp }}/maplibre-budget-html",
+        ),
+    ):
+        step = by_name[name]
+        assert step["uses"] == download_action
+        assert step["with"] == {
+            "artifact-ids": "${{ needs.build.outputs." + output + " }}",
+            "path": destination,
+            "merge-multiple": True,
+            "digest-mismatch": "error",
+        }
+        assert names.index(guard["name"]) < names.index(name)
+        assert names.index(name) < names.index("Analyze bundle size")
+        assert "if" not in step
+        assert "continue-on-error" not in step
+    analyze = by_name["Analyze bundle size"]
+    assert analyze["env"] == {
+        "NODE_OPTIONS": "--max-old-space-size=512 --max-semi-space-size=16",
+        "MAPLIBRE_BUDGET_METADATA_PATH": (
+            "${{ runner.temp }}/maplibre-budget-metadata/"
+            "maplibre-inventory-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}.json"
+        ),
+        "MAPLIBRE_BUDGET_METADATA_SHA256": "${{ needs.build.outputs.metadata-sha256 }}",
+        "MAPLIBRE_BUDGET_HTML_PATH": (
+            "${{ runner.temp }}/maplibre-budget-html/"
+            "final-html-inventory-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}.json"
+        ),
+        "MAPLIBRE_BUDGET_HTML_SHA256": "${{ needs.build.outputs.html-sha256 }}",
+        "MAPLIBRE_BUDGET_TREE_SHA": "${{ needs.build.outputs.tree-sha }}",
+    }
+    for step in (guard, analyze, upload):
+        assert "if" not in step
+        assert "continue-on-error" not in step
+
+
+@pytest.mark.parametrize(
+    "defect",
+    (
+        "name-fallback",
+        "empty-id",
+        "digest-warning",
+        "foreign-run-token",
+        "missing-content-hash",
+        "wrong-producer",
+        "nonblocking-analyzer",
+        "missing-id-guard",
+        "unsafe-id-guard",
+        "download-before-guard",
+    ),
+)
+def test_maplibre_budget_transport_rejects_wiring_near_misses(defect: str) -> None:
+    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_maplibre_budget_artifact_transport(workflow)
+    changed = deepcopy(workflow)
+    build = changed["jobs"]["build"]
+    steps = changed["jobs"]["bundle-analysis"]["steps"]
+    by_name = {step.get("name"): step for step in steps}
+    download = by_name["Download MapLibre compiler metadata"]
+    analyze = by_name["Analyze bundle size"]
+    guard = by_name["Validate bundle artifact receipts"]
+    if defect == "name-fallback":
+        download["with"].pop("artifact-ids")
+        download["with"]["name"] = "frontend-maplibre-metadata"
+    elif defect == "empty-id":
+        download["with"]["artifact-ids"] = ""
+    elif defect == "digest-warning":
+        download["with"]["digest-mismatch"] = "warn"
+    elif defect == "foreign-run-token":
+        download["with"]["github-token"] = "${{ secrets.GITHUB_TOKEN }}"
+        download["with"]["run-id"] = "1"
+    elif defect == "missing-content-hash":
+        analyze["env"].pop("MAPLIBRE_BUDGET_METADATA_SHA256")
+    elif defect == "wrong-producer":
+        build["outputs"]["metadata-artifact-id"] = build["outputs"]["html-artifact-id"]
+    elif defect == "nonblocking-analyzer":
+        analyze["continue-on-error"] = True
+    elif defect == "missing-id-guard":
+        guard["run"] = guard["run"].replace("/^[1-9][0-9]{0,19}$/u.test(value)", "true")
+    elif defect == "unsafe-id-guard":
+        guard["run"] = guard["run"].replace(
+            "Number.isSafeInteger(Number(value))", "true"
+        )
+    else:
+        steps.remove(download)
+        steps.insert(steps.index(guard), download)
+    with pytest.raises(AssertionError):
+        _assert_maplibre_budget_artifact_transport(changed)
+
+
 def test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report() -> None:
     workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_maplibre_budget_artifact_transport(workflow)
     analysis_job = workflow["jobs"]["bundle-analysis"]
     test_step = next(
         step
@@ -3496,7 +3748,10 @@ def test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report() ->
         if step.get("name") == "Analyze bundle size"
     )
 
-    assert test_step["run"] == "node --test scripts/check-bundle-budget.test.mjs"
+    assert test_step["run"] == (
+        "node --test scripts/check-bundle-budget.test.mjs "
+        "scripts/maplibre-build-metadata.test.mjs"
+    )
     assert analyze_step["run"] == "node scripts/check-bundle-budget.mjs"
     assert not analyze_step.get("continue-on-error", False)
     assert "echo '{}'" not in FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -3757,7 +4012,12 @@ def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> 
     assert workflow["jobs"]["stabilization-window"]["needs"] == "verify-canonical-ref"
 
     checkout = workflow["jobs"]["stabilization-window"]["steps"][0]
-    assert checkout["with"] == {"ref": "main", "fetch-depth": 1}
+    # AUD-244: the read-only checkout must not persist its token for later steps.
+    assert checkout["with"] == {
+        "ref": "main",
+        "fetch-depth": 1,
+        "persist-credentials": False,
+    }
 
 
 def test_dast_active_scans_do_not_accept_pr_label_authorization() -> None:
@@ -5420,6 +5680,7 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
         "--threads=2",
         "--timeout=5",
         "--retries=0",
+        "--output-dir=sqlmap-output",
         "--flush-session",
     ]
 
@@ -6686,7 +6947,10 @@ def test_frontend_npm_installs_require_node_24_and_npm_11() -> None:
     assert 'node-version: "22"' not in workflow_sources
     assert 'default: "20"' not in workflow_sources
     assert 'default: "22"' not in workflow_sources
-    assert package["engines"] == {"node": ">=24.0.0", "npm": ">=11.0.0"}
+    assert package["engines"] == {
+        "node": "^24.15.0 || >=26.0.0",
+        "npm": ">=11.0.0",
+    }
     assert package["packageManager"] == "npm@11.17.0"
     assert "engine-strict=true" in npmrc.splitlines()
     assert "strict-allow-scripts=true" in npmrc.splitlines()
@@ -6880,3 +7144,315 @@ def test_frozen_rc_preflight_uses_bounded_parallel_merged_coverage() -> None:
         ]
     ]
     assert "coverage run" not in script
+
+
+# AUD-481 private candidate: PR scans cover every release image besides the
+# backend image already covered by the stable required Trivy job.
+def _aud481_gh(expression: str) -> str:
+    return "$" + "{{ " + expression + " }}"
+
+
+def _aud481_assert_matrix_contract(
+    ci_workflow: dict[str, object],
+    release_workflow: dict[str, object],
+    catalog: dict[str, object],
+) -> None:
+    jobs = ci_workflow["jobs"]
+    job_id = "docker-security-scan-additional"
+    assert job_id in jobs, "AUD-481 additional image scan matrix is missing"
+    job = jobs[job_id]
+    assert job["name"] == f"Trivy Image Scan - {_aud481_gh('matrix.image_name')}"
+    assert job["runs-on"] == "ubuntu-24.04"
+    assert job["timeout-minutes"] == 15
+    assert job["needs"] == "pre-commit-check"
+    assert job["permissions"] == {"security-events": "write", "contents": "read"}
+    strategy = job["strategy"]
+    assert strategy["fail-fast"] is False
+    assert strategy["max-parallel"] == 3
+    entries = strategy["matrix"]["include"]
+    actual = {
+        entry["image_name"]: (entry["file"], entry["context"]) for entry in entries
+    }
+    assert len(actual) == len(entries) == 5
+
+    release_build = release_workflow["jobs"]["build"]
+    release_entries = release_build["strategy"]["matrix"]["include"]
+    expected = {
+        entry["image_name"]: (entry["file"], entry["context"])
+        for entry in release_entries
+        if entry["image_name"] != "backend"
+    }
+    assert actual == expected
+    assert "backend" not in actual
+    assert {entry["category"] for entry in entries} == {
+        f"trivy-image-{name}" for name in actual
+    }
+
+    steps = job["steps"]
+    buildx_steps = [
+        step for step in steps if step.get("name") == "Set up Docker Buildx"
+    ]
+    assert len(buildx_steps) == 1
+    buildx = buildx_steps[0]
+    assert (
+        buildx["uses"]
+        == "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069"
+    )
+    build = next(
+        step
+        for step in steps
+        if step.get("name") == "Build local runtime image for scanning"
+    )
+    assert steps.index(buildx) < steps.index(build)
+    assert (
+        build["uses"]
+        == "docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc"
+    )
+    assert build["with"]["context"] == _aud481_gh("matrix.context")
+    assert build["with"]["file"] == _aud481_gh("matrix.file")
+    assert build["with"]["push"] is False
+    assert build["with"]["load"] is True
+    assert build["with"]["platforms"] == "linux/amd64"
+    image_ref = f"university-ecosystem/{_aud481_gh('matrix.image_name')}:{_aud481_gh('github.sha')}"
+    assert build["with"]["tags"] == image_ref
+    assert build["with"]["labels"] == (
+        f"org.opencontainers.image.source=https://github.com/{_aud481_gh('github.repository')}\n"
+        f"org.opencontainers.image.revision={_aud481_gh('github.sha')}\n"
+    )
+    build_args = build["with"]["build-args"]
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && format('VITE_APP_RELEASE={0}', github.sha) || ''"
+        )
+        in build_args
+    )
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && 'VITE_ENABLE_WEB_VITALS=false' || ''"
+        )
+        in build_args
+    )
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && 'VITE_CWV_TRUSTED_RUM=false' || ''"
+        )
+        in build_args
+    )
+    assert (
+        _aud481_gh(
+            "matrix.image_name == 'frontend' && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || ''"
+        )
+        in build_args
+    )
+    assert (
+        build["with"]["cache-from"]
+        == f"type=gha,scope=university-{_aud481_gh('matrix.image_name')}"
+    )
+    assert (
+        build["with"]["cache-to"]
+        == f"type=gha,scope=university-{_aud481_gh('matrix.image_name')},mode=max"
+    )
+    assert build["with"]["provenance"] is False
+    assert build["with"]["sbom"] is False
+
+    scanners = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    ]
+    assert len(scanners) == 1
+    scanner = scanners[0]
+    assert (
+        scanner["uses"]
+        == "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"
+    )
+    assert scanner["id"] == "trivy_scan"
+    assert "continue-on-error" not in scanner
+    assert scanner["with"]["version"] == "v0.75.0"
+    assert scanner["with"]["image-ref"] == image_ref
+    assert scanner["with"]["format"] == "sarif"
+    sarif = f"trivy-{_aud481_gh('matrix.image_name')}.sarif"
+    assert scanner["with"]["output"] == sarif
+    assert scanner["with"]["severity"] == "CRITICAL,HIGH"
+    assert scanner["with"]["limit-severities-for-sarif"] is True
+    assert scanner["with"]["exit-code"] == "1"
+    assert scanner["with"]["ignore-unfixed"] is True
+    assert scanner["env"]["TRIVY_DB_REPOSITORY"] == "ghcr.io/aquasecurity/trivy-db:2"
+
+    uploads = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("github/codeql-action/upload-sarif@")
+    ]
+    assert len(uploads) == 1
+    upload = uploads[0]
+    assert (
+        upload["uses"]
+        == "github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee"
+    )
+    assert (
+        upload["if"]
+        == "always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''"
+    )
+    assert upload["with"]["sarif_file"] == sarif
+    assert upload["with"]["category"] == _aud481_gh("matrix.category")
+    assert upload["continue-on-error"] is True
+
+    backend_job = jobs["docker-security-scan"]
+    assert backend_job["name"] == "Trivy Image Scan"
+    assert "docker-security-scan" in jobs["ci-success"]["needs"]
+    assert job_id in jobs["ci-success"]["needs"]
+    gate = next(
+        step
+        for step in jobs["ci-success"]["steps"]
+        if step.get("name") == "Check all jobs passed"
+    )
+    assert f'"{job_id}|{_aud481_gh(f"needs.{job_id}.result")}"' in gate["run"]
+
+    ci_entry = next(
+        item
+        for item in catalog["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
+    )
+    matrix_catalog = ci_entry["jobs"][job_id]
+    assert matrix_catalog["profile"] == "internal"
+    assert matrix_catalog["check_name_template"] == job["name"]
+    assert matrix_catalog["expected_timeout_minutes"] == 15
+    assert matrix_catalog["expected_duration_seconds"] == 900
+    assert matrix_catalog["matrix_governance"] == {"max_parallel": 3}
+    assert matrix_catalog["needs"] == ["pre-commit-check"]
+    assert ci_entry["jobs"]["ci-success"]["needs"] == jobs["ci-success"]["needs"]
+    assert ci_entry["jobs"]["docker-security-scan"]["profile"] == "required-pr-main"
+
+
+def test_aud481_pr_image_scan_coverage_matches_release_image_inventory() -> None:
+    candidate_root = Path(__file__).resolve().parents[1]
+    ci_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    release_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/build-release-images.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    catalog = json.loads(
+        (candidate_root / "quality/ci-check-catalog.json").read_text(encoding="utf-8")
+    )
+    _aud481_assert_matrix_contract(ci_workflow, release_workflow, catalog)
+
+
+def test_aud481_counterfactuals_reject_missing_image_and_nonblocking_scan() -> None:
+    candidate_root = Path(__file__).resolve().parents[1]
+    ci_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    release_workflow = yaml.safe_load(
+        (candidate_root / ".github/workflows/build-release-images.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    catalog = json.loads(
+        (candidate_root / "quality/ci-check-catalog.json").read_text(encoding="utf-8")
+    )
+
+    if "docker-security-scan-additional" not in ci_workflow["jobs"]:
+        with pytest.raises(AssertionError):
+            _aud481_assert_matrix_contract(ci_workflow, release_workflow, catalog)
+        return
+
+    missing_image = deepcopy(ci_workflow)
+    include = missing_image["jobs"]["docker-security-scan-additional"]["strategy"][
+        "matrix"
+    ]["include"]
+    include[:] = [entry for entry in include if entry["image_name"] != "caddy"]
+    with pytest.raises(AssertionError):
+        _aud481_assert_matrix_contract(missing_image, release_workflow, catalog)
+
+    nonblocking_scan = deepcopy(ci_workflow)
+    scanner = next(
+        step
+        for step in nonblocking_scan["jobs"]["docker-security-scan-additional"]["steps"]
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    )
+    scanner["with"]["exit-code"] = "0"
+    with pytest.raises(AssertionError):
+        _aud481_assert_matrix_contract(nonblocking_scan, release_workflow, catalog)
+
+
+def test_aud350_postgresql_counterfactual_uses_existing_migration_gate() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["db-migration-gate"]
+    steps = job["steps"]
+    roundtrip = _provenance_step(
+        job, "Run supported migration round-trip and verify boundary"
+    )
+    focused = _provenance_step(job, "Append focused migration tests to coverage")
+    postgres_case = _provenance_step(
+        job, "Append AUD-350 PostgreSQL timestamp counterfactual to migration coverage"
+    )
+    image_build = _provenance_step(job, "Build backend image for password preflight")
+
+    assert steps.index(roundtrip) < steps.index(focused) < steps.index(postgres_case)
+    assert steps.index(postgres_case) < steps.index(image_build)
+    assert job["timeout-minutes"] == 20
+    assert job["services"]["postgres"]["image"].startswith(
+        "pgvector/pgvector:pg17@sha256:"
+    )
+    assert (
+        focused["run"].count("tests/test_aud350_reconcile_migration_coverage.py") == 1
+    )
+    assert postgres_case["env"] == {
+        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "AUD350_POSTGRES_DATABASE_URL": (
+            "postgresql+psycopg://test@127.0.0.1:5433/test_migration"
+        ),
+        "RUN_INTEGRATION_TESTS": "1",
+    }
+    integration_source = (
+        REPOSITORY_ROOT
+        / "tests"
+        / "integration"
+        / "test_aud350_stored_event_timestamp_migration.py"
+    ).read_text(encoding="utf-8")
+    assert "make_url(database_url)" in integration_source
+    assert 'url.set(drivername="postgresql+psycopg")' in integration_source
+    assert "SET LOCAL TIME ZONE 'America/Los_Angeles'" in integration_source
+    assert "created_at AT TIME ZONE 'UTC' FROM stored_events" in integration_source
+    assert "actual_local.astimezone(UTC) == expected_utc" in integration_source
+    assert (
+        "actual_utc_display == expected_utc.replace(tzinfo=None)" in integration_source
+    )
+    assert "actual_local.utcoffset() == timedelta(hours=-7)" in integration_source
+    assert (
+        "BASELINE_EXPECTED_UTC - CANDIDATE_EXPECTED_UTC != timedelta(hours=7)"
+        in integration_source
+    )
+    assert "actual_utc.utcoffset().total_seconds() == 0" not in integration_source
+
+    command = str(postgres_case["run"])
+    assert "coverage run --append --data-file=.coverage.migration" in command
+    assert "--source=alembic/versions -m pytest" in command
+    assert (
+        command.count(
+            "tests/integration/test_aud350_stored_event_timestamp_migration.py"
+        )
+        == 1
+    )
+
+
+def test_aud350_integration_caller_passes_its_owned_postgres_target() -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["integration-tests"]
+    step = _provenance_step(job, "Run integration tests")
+
+    assert job["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    assert job["env"]["DATABASE_URL"].startswith("postgresql+asyncpg://")
+    assert step["env"]["AUD350_POSTGRES_DATABASE_URL"] == "${{ env.DATABASE_URL }}"
+    assert "DATABASE_URL" not in step["env"]
+    assert "AUD350_POSTGRES_DATABASE_URL" not in workflow.get("env", {})
+    assert "AUD350_POSTGRES_DATABASE_URL" not in job["env"]
+    assert "AUD350_POSTGRES_DATABASE_URL" not in (
+        workflow["jobs"]["unit-tests"].get("env", {})
+    )
+    assert "if" not in step
+    assert "continue-on-error" not in step

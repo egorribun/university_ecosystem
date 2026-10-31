@@ -14,7 +14,7 @@ from typing import Annotated, Any
 from dishka import FromComponent
 from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 
 # Imported at runtime rather than under TYPE_CHECKING: Dishka resolves an
@@ -73,7 +73,7 @@ class DLQStatusResponse(BaseModel):
 class DLQReplayRequest(BaseModel):
     """Request model for manual DLQ replay trigger."""
 
-    batch_size: int = 20
+    batch_size: int = Field(default=20, ge=1)
     force: bool = False
     target: str = "all"  # "all", "in_memory", or "db"
 
@@ -261,6 +261,15 @@ async def get_dlq_stats(
     )
 
 
+def _public_dlq_error(job: DeadLetterJob) -> str | None:
+    """Keep historical authentication errors out of the admin response."""
+    if not job.error_message:
+        return None
+    if job.job_type == "app.tasks.email.send_auth_email":
+        return "Authentication job error details redacted"
+    return job.error_message[:200]
+
+
 @router.get(
     "/jobs",
     response_model=DLQJobsListResponse,
@@ -313,7 +322,7 @@ async def list_dlq_jobs(
                 id=job.id,
                 job_type=job.job_type,
                 job_hash=job.job_hash[:16] + "...",  # Truncate for display
-                error_message=job.error_message[:200] if job.error_message else None,
+                error_message=_public_dlq_error(job),
                 retry_count=job.retry_count,
                 max_retries=job.max_retries,
                 status=job.status,
@@ -525,7 +534,7 @@ async def requeue_outbox_failure(
 @inject
 async def cleanup_dlq(
     db: FromDishka[AsyncDatabaseSession],
-    older_than_days: int = 7,
+    older_than_days: int = Query(default=7, ge=0),
     _: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> dict[str, Any]:
     """

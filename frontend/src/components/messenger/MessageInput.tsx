@@ -57,19 +57,19 @@ const ATTACH_MENU_ITEMS = [
     id: "photo",
     icon: ImageIcon,
     labelKey: "messenger:attachPhoto",
-    color: "text-(--primary-main) bg-(--primary-main)/(--opacity-subtle)",
+    color: "text-(--primary-main) bg-(--primary-main)/[calc(var(--opacity-subtle)*100%)]",
   },
   {
     id: "document",
     icon: FileText,
     labelKey: "messenger:attachDocument",
-    color: "text-(--success-text) bg-(--success-text)/(--opacity-subtle)",
+    color: "text-(--success-text) bg-(--success-text)/[calc(var(--opacity-subtle)*100%)]",
   },
   {
     id: "file",
     icon: File,
     labelKey: "messenger:attachFile",
-    color: "text-(--warning-text) bg-(--warning-text)/(--opacity-subtle)",
+    color: "text-(--warning-text) bg-(--warning-text)/[calc(var(--opacity-subtle)*100%)]",
   },
 ] as const
 
@@ -265,7 +265,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
   }
 
   return (
-    <div className="shrink-0 p-3 z-popover relative border-t border-glass-border bg-surface/(--opacity-soft) backdrop-blur-xl">
+    <div className="shrink-0 p-3 z-popover relative border-t border-glass-border bg-surface/[calc(var(--opacity-soft)*100%)] backdrop-blur-xl">
       <AnimatePresence>
         {svgRejected && (
           <m.div
@@ -292,10 +292,10 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
                 <SmartImage
                   srcRaw={previewUrl}
                   alt={file.name}
-                  className="w-16 h-16 object-cover rounded-xl border border-(--glass-border)/(--opacity-dim) shadow-sm"
+                  className="w-16 h-16 object-cover rounded-xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] shadow-sm"
                 />
               ) : (
-                <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/(--opacity-dim) shadow-sm text-(--text-secondary)">
+                <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] shadow-sm text-(--text-secondary)">
                   <FileText size={32} />
                 </div>
               )}
@@ -304,7 +304,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
               <button
                 type="button"
                 onClick={() => removeFile(id)}
-                className="absolute -top-1.5 -right-1.5 size-8 min-h-[44px] min-w-[44px] md:size-9 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                className="absolute -top-1.5 -right-1.5 size-8 min-h-[44px] min-w-[44px] md:size-9 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/[calc(var(--opacity-hover)*100%)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                 aria-label={t("messenger:aria.removeAttachment")}
               >
                 <X size={14} strokeWidth={3} aria-hidden="true" />
@@ -318,7 +318,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
           quoted sender name; the snippet is truncated. The X cancels (clears
           the controller's replyingTo state). */}
       {replyingTo ? (
-        <div className="mb-2 flex items-center gap-2 rounded-xl border-l-2 border-(--color-violet-500) bg-(--color-violet-500)/(--opacity-faint) px-3 py-2">
+        <div className="mb-2 flex items-center gap-2 rounded-xl border-l-2 border-(--color-violet-500) bg-(--color-violet-500)/[calc(var(--opacity-faint)*100%)] px-3 py-2">
           <div className="min-w-0 flex-1">
             <p className="text-micro font-semibold text-(--brand-main)">
               {t("messenger:replyingTo", {
@@ -333,13 +333,13 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
             type="button"
             onClick={onCancelReply}
             aria-label={t("common:buttons.cancel")}
-            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-medium)*100%)] hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
           >
             <X size={18} strokeWidth={2.5} aria-hidden="true" />
           </button>
         </div>
       ) : null}
-      <div className="flex items-end gap-2 bg-(--bg-surface-hover)/(--opacity-subtle) rounded-2xl border border-(--glass-border)/(--opacity-dim) p-2 focus-within:ring-4 focus-within:ring-(--brand-main)/(--opacity-faint) focus-within:border-(--brand-main)/(--opacity-dim) transition-all duration-base">
+      <div className="flex items-end gap-2 bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)] rounded-2xl border border-(--glass-border)/[calc(var(--opacity-dim)*100%)] p-2 focus-within:ring-4 focus-within:ring-(--brand-main)/[calc(var(--opacity-faint)*100%)] focus-within:border-(--brand-main)/[calc(var(--opacity-dim)*100%)] transition-all duration-base">
         <div className="relative">
           <m.button
             id="chat-attach-btn"
@@ -348,10 +348,10 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
             whileTap={attachTapAnim}
             onClick={() => setShowAttachMenu(!showAttachMenu)}
             className={cn(
-              "min-h-[44px] min-w-[44px] p-2.5 rounded-xl transition-colors hover:bg-(--bg-surface-hover)/(--opacity-soft)",
+              "min-h-[44px] min-w-[44px] p-2.5 rounded-xl transition-colors hover:bg-(--bg-surface-hover)/[calc(var(--opacity-soft)*100%)]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
               showAttachMenu
-                ? "text-(--brand-main) bg-(--brand-main)/(--opacity-subtle)"
+                ? "text-(--brand-main) bg-(--brand-main)/[calc(var(--opacity-subtle)*100%)]"
                 : "text-(--text-secondary)"
             )}
             aria-label={t("messenger:aria.attachments")}
@@ -368,7 +368,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                className="absolute bottom-full left-0 mb-4 py-2 min-w-(--min-w-column) bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-2xl border border-(--glass-border) shadow-premium overflow-hidden ring-1 ring-black/(--opacity-faint)"
+                className="absolute bottom-full left-0 mb-4 py-2 min-w-(--min-w-column) bg-(--bg-surface)/[calc(var(--opacity-heavy)*100%)] backdrop-blur-2xl rounded-2xl border border-(--glass-border) shadow-premium overflow-hidden ring-1 ring-black/[calc(var(--opacity-faint)*100%)]"
               >
                 {ATTACH_MENU_ITEMS.map((item) => (
                   <button
@@ -429,7 +429,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)",
             sendCanFire
               ? "messenger-send-btn"
-              : "bg-(--bg-surface-hover)/(--opacity-subtle) text-(--text-secondary) opacity-soft cursor-not-allowed"
+              : "bg-(--bg-surface-hover)/[calc(var(--opacity-subtle)*100%)] text-(--text-secondary) opacity-soft cursor-not-allowed"
           )}
         >
           <Send size={20} fill="currentColor" />

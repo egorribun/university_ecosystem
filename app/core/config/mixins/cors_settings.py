@@ -17,6 +17,11 @@ class CorsSettingsMixin:
 
     Computes effective allow-lists from the raw string/list settings,
     enforcing HTTPS-only origins in production (strict_security_headers_enabled).
+
+    TRUSTED_PROXIES defaults to empty (AUD-164), which trusts no peer: forwarded
+    client addresses are ignored and every request is keyed on its socket
+    address. Staging and production reject an empty list, so operators must
+    name the gateway and edge CIDRs explicitly.
     """
 
     frontend_origin: str = "http://localhost:5173"

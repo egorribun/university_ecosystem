@@ -1,7 +1,7 @@
 # Configuration Reference
 
-This document describes the operator-facing environment variables used by the
-University Ecosystem backend. Defaults in this document are the runtime
+This document describes selected operator-facing environment variables used by the
+University Ecosystem backend; it is not yet an exhaustive inventory. Defaults in this document are the runtime
 `Settings` defaults; `.env.example` is an explicit local profile and may set a
 different value intentionally. Only settings with an implemented `*_FILE`
 variant accept secret-file mounts; the file value takes precedence over the
@@ -42,13 +42,14 @@ corresponding plaintext variable.
 |----------|-------------|---------|
 | `SECRET_KEY` | Primary JWT signing secret | Required |
 | `ALGORITHM` | JWT algorithm; `HS256` is permitted only for local development/testing | `RS256` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token TTL | `60` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token TTL; ws-hub's `WS_REVOCATION_REPLAY_WINDOW_SECONDS` must be at least this many seconds | `60` |
 | `MAX_SESSIONS_PER_USER` | Concurrent sessions (0=unlimited) | `5` |
 | `AUTH_LOCKOUT_THRESHOLDS` | Lockout rules `attempts:seconds` | `5:30,8:300,10:3600` |
 | `CSRF_HMAC_SECRET` | Independent HMAC key for signed CSRF cookies; unsigned fallback is development/testing only | Empty locally; required outside development |
 | `INTERNAL_HMAC_SECRET` | Verifies the gateway `X-Internal-Signature` identity assertion (minimum 32 bytes) | Required outside development |
 | `AUDIT_LOG_SECRET` | HMAC key for audit log signatures (min 32 chars) | Development placeholder; must be overridden outside development |
 | `TOKEN_HMAC_SECRET` | Dedicated HMAC key for password-reset and email-change token digests | Required in staging/prod |
+| `PASSWORD_HIBP_CHECK_ENABLED` | Screens new passwords against the Have I Been Pwned range API (k-anonymity prefix only). Staging and production turn it on when unset and reject an explicit `false` | `false` in development; forced `true` in staging/production |
 | `JWT_PRIVATE_KEY_PATH` | RS256 private key path used to mint access tokens | `.secrets/jwt_rs256.pem` |
 | `JWT_AUDIENCE` | Expected JWT audience for zero-trust consumers | `university-ecosystem-api` |
 | `JWT_ISSUER` | Stable JWT issuer for zero-trust consumers | `university-ecosystem` |
@@ -82,7 +83,7 @@ corresponding plaintext variable.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CACHE_BACKEND` | `redis`, `memory`, `none` | `redis` |
+| `CACHE_BACKEND` | `redis`, `memory`, `tiered`, `none`, `nats` | `redis` |
 | `CACHE_ENABLED` | Enable caching | `true` |
 | `CACHE_REDIS_URL` | Redis URL | `redis://127.0.0.1:6379/0` |
 | `REVOCATION_REDIS_URL` | Dedicated persistent/noeviction Redis URL for session revocation | Required outside development |
@@ -94,7 +95,7 @@ corresponding plaintext variable.
 | `RATE_LIMIT_DEFAULT` | Default rate | `200/minute` |
 | `RATE_LIMIT_STORAGE_BACKEND` | `memory` or `redis` | `memory` |
 | `RATE_LIMIT_STORAGE_URI` | Storage URI when the rate limiter backend is Redis | `memory://` |
-| `TRUSTED_PROXIES` | Allowed `X-Forwarded-For` source IPs | Empty |
+| `TRUSTED_PROXIES` | Comma-separated IPs/CIDRs of the gateway and edge peers whose `X-Forwarded-For` the API trusts. Staging/production API processes must list at least one; the Helm chart renders `backend.config.trustedProxies` and rejects an empty, loopback-only or universal list | Empty (trusts no peer; development only) |
 
 ---
 
@@ -113,10 +114,23 @@ corresponding plaintext variable.
 
 ## 📁 Storage & File Processing
 
+StaticFS public media remains relative by default. Chat attachments persist an
+absolute storage identity but are still downloaded only through the authorized
+chat API; `STORAGE_STATIC_ORIGIN` does not make private directories public or
+cause a redirect. Configure it from trusted backend settings, never request Host
+or frontend origin. Keep it stable after uploading attachments: changing an
+identity prefix does not migrate existing stored URLs. An explicitly absolute
+HTTP(S) `STORAGE_STATIC_BASE_URL` takes precedence; only its scheme casing is
+canonicalized for private identities, leaving public URLs unchanged. Private
+identity generation rejects ambiguous URL keys/bases before final attachment
+directory preparation/save; existing quarantine behavior, generic literal
+local-key operations and S3 behavior are unchanged.
+
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `STORAGE_BACKEND` | `static`, `local`, `s3`, `minio` | `static` |
-| `STORAGE_STATIC_BASE_URL` | Public URL for static files | `/static` |
+| `STORAGE_STATIC_BASE_URL` | Public URL for static files; an absolute HTTP(S) prefix also identifies private StaticFS attachments | `/static` |
+| `STORAGE_STATIC_ORIGIN` | Trusted backend origin with a lowercase HTTP(S) scheme for persisted private StaticFS identities when the public prefix is relative; no path, credentials, query or fragment | `http://localhost:8000` |
 | `STORAGE_QUARANTINE_QUOTA_BYTES` | Charged rejected-upload payload bytes per shared storage scope | `1073741824` |
 | `STORAGE_QUARANTINE_RETENTION_DAYS` | TTL for acknowledged stored quarantine objects; ambiguous pending writes remain charged | `7` |
 | `STORAGE_QUARANTINE_SWEEP_INTERVAL_SECONDS` | API quarantine cleanup interval | `300` |
@@ -141,14 +155,22 @@ corresponding plaintext variable.
 | `SPICEDB_ENDPOINT` | SpiceDB gRPC endpoint | `spicedb:50051` |
 | `SPICEDB_PRESHARED_KEY` | SpiceDB auth key (`_FILE` supported); the development sentinel is rejected outside development | `development-preshared-key` (development only) |
 | `ELASTICSEARCH_URL` | Search engine endpoint; production/staging requires `https://` | `http://localhost:9200` (local only) |
-| `ELASTICSEARCH_PASSWORD` | ES password (`_FILE` supported) | Required |
-| `WS_HUB_INTERNAL_SECRET` | HMAC for ws-hub cache invalidation | Required |
+| `ELASTICSEARCH_PASSWORD` | ES password (`_FILE` supported) | Empty; required outside development/test unless CI |
+| `WS_HUB_INTERNAL_SECRET` | HMAC for ws-hub cache invalidation (`_FILE` supported) | Empty; required outside development/test unless CI |
 | `INTERNAL_AUTH_TOKEN` | Token for ws-hub's exact room-participant callback; managed Compose/Helm/K8s deployments derive it from the existing ws-hub secret | Empty in development |
-| `IDEMPOTENCY_HMAC_SECRET` | signs idempotency keys | Empty |
+| `IDEMPOTENCY_HMAC_SECRET` | HMAC key that signs idempotency keys (`_FILE` supported). An empty key makes keys enumerable from the `Idempotency-Key` header, so startup refuses it outside development/test unless CI | Empty (development only) |
+| `TEMPORAL_JWKS_URL` | Temporal service: the `https://` JWKS endpoint whose keys its default authorizer trusts. `services/temporal/entrypoint.sh` refuses empty or plain-HTTP values; Compose sets `https://caddy:8443/.well-known/jwks.json`, which Caddy serves with its internal CA | Required (no default) |
+| `WS_HUB_METRICS_ADDR` | Bind address of ws-hub's scrape-only Prometheus listener, separate from the public WebSocket port (AUD-438). The Helm chart binds `:9108` and admits only the monitoring namespace | `127.0.0.1:9108` |
+| `WS_REVOCATION_REPLAY_WINDOW_SECONDS` | How far back a late-starting ws-hub replica replays room revocations from `CACHE_INVALIDATIONS`. It must be at least `ACCESS_TOKEN_EXPIRE_MINUTES` × 60; the Helm value `wsHub.config.revocationReplayWindowSeconds` is validated against it | `3600` |
 
 ---
 
 ## ⚙️ Background Workers & Retention
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NOTIFICATIONS_WORKER_METRICS_HOST` | Notifications worker health and metrics listener address | `127.0.0.1` |
+| `NOTIFICATIONS_WORKER_METRICS_PORT` | Notifications worker listener port; `0` disables the listener | `9101` |
 
 ### Transactional Outbox
 
@@ -189,14 +211,13 @@ corresponding plaintext variable.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint | `http://localhost:4317` |
 | `LOG_LEVEL` | Logging verbosity | `INFO` |
 
-> **Tip**: `_FILE` loading is implemented only for `DATABASE_URL`, `SECRET_KEY`,
-> `INTERNAL_HMAC_SECRET`, `TOKEN_HMAC_SECRET`, `NATS_AUTH_TOKEN`, `SMTP_PASSWORD`,
-> `VAPID_PRIVATE_KEY`, `SPOTIFY_CLIENT_SECRET`, `SPICEDB_PRESHARED_KEY`,
-> `ELASTICSEARCH_PASSWORD`, `WS_HUB_INTERNAL_SECRET`, and
-> `MFA_TOTP_ENCRYPTION_KEYS`. For these settings, the file value takes precedence
-> over plaintext. `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` is a non-secret key name
-> supplied directly through the environment and does not support `_FILE`. Other
-> settings do not automatically accept a `_FILE` suffix.
+> **Tip**: `_FILE` loading is limited to the explicit secret-field allowlist in
+> [the backend configuration](app/core/config/base.py). It includes, for example,
+> `DATABASE_URL`, `AUDIT_LOG_SECRET`, `CSRF_HMAC_SECRET` and
+> `MFA_TOTP_ENCRYPTION_KEYS`; the file value takes precedence over plaintext.
+> `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` is a non-secret key name supplied directly
+> through the environment and does not support `_FILE`. Other settings do not
+> automatically accept a `_FILE` suffix.
 
 The active TOTP key must be independent of every configured Spotify key and of
 Spotify's `SECRET_KEY`-derived fallback. During migration, a non-active TOTP ring

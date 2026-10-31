@@ -43,7 +43,9 @@ describe("small UI primitive mutation contracts", () => {
     rerender(<Input aria-label="error" error fullWidth={false} size="sm" />)
     const errorInput = screen.getByRole("textbox", { name: "error" })
     expect(allClasses(errorInput)).toContain("border-error-text")
-    expect(allClasses(errorInput)).toContain("focus:ring-error-text/(--opacity-subtle)")
+    expect(allClasses(errorInput)).toContain(
+      "focus:ring-error-text/[calc(var(--opacity-subtle)*100%)]"
+    )
     expect(allClasses(errorInput)).toContain("w-auto")
     expect(allClasses(errorInput)).toContain("px-3")
     expect(allClasses(errorInput)).toContain("py-2")
@@ -91,7 +93,7 @@ describe("small UI primitive mutation contracts", () => {
       "text-xs",
       "font-medium",
       "leading-tight",
-      "text-(--text-tertiary)/(--opacity-strong)"
+      "text-(--text-tertiary)/[calc(var(--opacity-strong)*100%)]"
     )
     fireEvent.change(input, { target: { value: "next" } })
     fireEvent.blur(input)
@@ -338,7 +340,7 @@ describe("SEO and news boundary contracts", () => {
     expect(document.querySelectorAll('meta[property="og:image"]')).toHaveLength(1)
     expect(document.querySelector('meta[property="og:image"]')).toHaveAttribute(
       "content",
-      "/og-image.png"
+      "/icon-512.png"
     )
     expect(document.querySelectorAll('meta[name="twitter:description"]')).toHaveLength(1)
     expect(document.querySelector('meta[name="twitter:description"]')).toHaveAttribute(
@@ -348,7 +350,7 @@ describe("SEO and news boundary contracts", () => {
     expect(document.querySelectorAll('meta[name="twitter:image"]')).toHaveLength(1)
     expect(document.querySelector('meta[name="twitter:image"]')).toHaveAttribute(
       "content",
-      "/og-image.png"
+      "/icon-512.png"
     )
     expect(document.querySelector('meta[property="og:type"]')).toHaveAttribute("content", "website")
   })

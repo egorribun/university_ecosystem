@@ -656,6 +656,9 @@ fn find_optimal_slot_at(
     existing_schedule: Vec<ScheduleItem>,
     available_blocks: Vec<(String, Vec<u32>)>,
 ) -> Option<ScheduleItem> {
+    if duration_minutes == 0 {
+        return None;
+    }
     for (day, hours) in available_blocks {
         // TD-W17-03: Resolve the actual next date matching this weekday.
         let target_wd = match parse_weekday(&day) {
@@ -808,7 +811,25 @@ pub fn get_partition_info(table_name: String, month_offset: i32) -> PyResult<Par
     )
 }
 
-#[pyfunction]
+#[pyfunction(name = "is_partition_expired")]
+fn is_partition_expired_py(
+    partition_name: String,
+    table_name: String,
+    retention_days: Bound<'_, PyAny>,
+) -> PyResult<bool> {
+    match retention_days.extract::<i64>() {
+        Ok(days) => is_partition_expired(partition_name, table_name, days),
+        Err(error)
+            if error.is_instance_of::<pyo3::exceptions::PyOverflowError>(retention_days.py())
+                && retention_days.is_instance_of::<pyo3::types::PyInt>() =>
+        {
+            // An out-of-range integer cannot safely expire any partition.
+            Ok(false)
+        }
+        Err(error) => Err(error),
+    }
+}
+
 pub fn is_partition_expired(
     partition_name: String,
     table_name: String,
@@ -817,17 +838,34 @@ pub fn is_partition_expired(
     catch_unwind_value(
         "is_partition_expired",
         std::panic::AssertUnwindSafe(|| {
-            // LOW-W19: a negative retention_days would make the cutoff a future timestamp,
-            // causing every partition to appear un-expired.  Reject it defensively.
+            // LOW-W19: a negative retention_days would put the cutoff in the future
+            // and could expire partitions prematurely. Reject it defensively.
             if retention_days < 0 {
                 return false;
             }
             let prefix = format!("{}_y", table_name);
-            let Some(remainder) = partition_name.strip_prefix(&prefix) else {
-                return false;
-            };
+            let (remainder, separator) =
+                if let Some(remainder) = partition_name.strip_prefix(&prefix) {
+                    (remainder, 'm')
+                } else {
+                    // Migration 202607020001 used the exact suffix YYYY_MM.
+                    // Do not infer retention from other underscore-separated names.
+                    let historical_prefix = format!("{}_", table_name);
+                    let Some(remainder) = partition_name.strip_prefix(&historical_prefix) else {
+                        return false;
+                    };
+                    let bytes = remainder.as_bytes();
+                    if bytes.len() != 7
+                        || bytes[4] != b'_'
+                        || !bytes[..4].iter().all(u8::is_ascii_digit)
+                        || !bytes[5..].iter().all(u8::is_ascii_digit)
+                    {
+                        return false;
+                    }
+                    (remainder, '_')
+                };
 
-            let parts: Vec<&str> = remainder.split('m').collect();
+            let parts: Vec<&str> = remainder.split(separator).collect();
             if parts.len() != 2 {
                 return false;
             }
@@ -849,7 +887,10 @@ pub fn is_partition_expired(
             }
 
             let (next_year, next_month) = if p_month == 12 {
-                (p_year + 1, 1)
+                let Some(next_year) = p_year.checked_add(1) else {
+                    return false;
+                };
+                (next_year, 1)
             } else {
                 (p_year, p_month + 1)
             };
@@ -859,8 +900,9 @@ pub fn is_partition_expired(
                 .single()
             {
                 if let Some(dur) = Duration::try_days(retention_days) {
-                    let cutoff = Utc::now() - dur;
-                    return p_end_date < cutoff;
+                    if let Some(cutoff) = Utc::now().checked_sub_signed(dur) {
+                        return p_end_date < cutoff;
+                    }
                 }
             }
 
@@ -983,6 +1025,12 @@ pub fn verify_event_chain(
                     hash_valid |= key_match;
                 }
 
+                // Python compares against hexdigest(), whose representation is
+                // lowercase; decoded bytes alone would also accept uppercase.
+                hash_valid &= Choice::from(u8::from(
+                    !stored_hash.bytes().any(|byte| byte.is_ascii_uppercase()),
+                ));
+
                 if !bool::from(hash_valid) {
                     return Ok((
                         false,
@@ -1008,7 +1056,7 @@ fn rust_ext(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(batch_detect_conflicts_py, m)?)?;
     m.add_function(wrap_pyfunction!(find_optimal_slot_py, m)?)?;
     m.add_function(wrap_pyfunction!(get_partition_info, m)?)?;
-    m.add_function(wrap_pyfunction!(is_partition_expired, m)?)?;
+    m.add_function(wrap_pyfunction!(is_partition_expired_py, m)?)?;
     m.add_function(wrap_pyfunction!(verify_audit_signature, m)?)?;
     m.add_function(wrap_pyfunction!(verify_event_chain, m)?)?;
     // PERF-05: expose limit so Python callers can validate before calling into Rust.
@@ -1144,12 +1192,38 @@ mod tests {
 
             // 6. is_partition_expired
             let is_partition_expired_py = m.getattr("is_partition_expired").unwrap();
+            let old_name: String = get_partition_info_py
+                .call1(("notifications", -120i32))
+                .unwrap()
+                .getattr("name")
+                .unwrap()
+                .extract()
+                .unwrap();
             let expired: bool = is_partition_expired_py
+                .call1((old_name, "notifications", 30i64))
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert!(expired);
+            let future_name: String = get_partition_info_py
+                .call1(("notifications", 1i32))
+                .unwrap()
+                .getattr("name")
+                .unwrap()
+                .extract()
+                .unwrap();
+            let future_expired: bool = is_partition_expired_py
+                .call1((future_name, "notifications", 30i64))
+                .unwrap()
+                .extract()
+                .unwrap();
+            assert!(!future_expired);
+            let malformed_expired: bool = is_partition_expired_py
                 .call1(("notifications_y2026_m03", "notifications", 30i64))
                 .unwrap()
                 .extract()
                 .unwrap();
-            assert!(!expired);
+            assert!(!malformed_expired);
 
             // 7. verify_audit_signature
             let verify_sig = m.getattr("verify_audit_signature").unwrap();
@@ -1221,6 +1295,129 @@ mod tests {
     // -- is_partition_expired edge cases --
 
     #[test]
+    fn aud045_historical_months_obey_the_same_retention_as_runtime_names() {
+        for table in [
+            "notifications",
+            "notification_deliveries",
+            "data_access_logs",
+        ] {
+            for (year, month, days, expected) in [
+                (2020, 1, 30, true),
+                (2020, 12, 30, true),
+                (2020, 1, 0, true),
+                (2999, 1, 30, false),
+                (2999, 1, 0, false),
+                (2020, 1, -1, false),
+                (2020, 1, 100_000_000, false),
+                (2020, 1, i64::MAX, false),
+            ] {
+                let historical = format!("{table}_{year:04}_{month:02}");
+                let runtime = format!("{table}_y{year:04}m{month:02}");
+                assert_eq!(
+                    is_partition_expired(historical.clone(), table.to_string(), days).unwrap(),
+                    expected,
+                    "historical partition {historical} with retention {days}"
+                );
+                assert_eq!(
+                    is_partition_expired(runtime.clone(), table.to_string(), days).unwrap(),
+                    expected,
+                    "runtime partition {runtime} with retention {days}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn aud045_historical_months_are_retained_until_their_end() {
+        let now = Utc::now();
+        let current_month = Utc
+            .with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
+            .single()
+            .unwrap();
+        let previous_month = current_month - Duration::days(1);
+        let days = i64::from(now.day()) + 1;
+        for name in [
+            format!(
+                "notifications_{:04}_{:02}",
+                previous_month.year(),
+                previous_month.month()
+            ),
+            format!(
+                "notifications_y{:04}m{:02}",
+                previous_month.year(),
+                previous_month.month()
+            ),
+        ] {
+            assert!(
+                !is_partition_expired(name.clone(), "notifications".to_string(), days).unwrap(),
+                "{name} ends after the retention cutoff"
+            );
+        }
+    }
+
+    #[test]
+    fn aud045_historical_months_reject_noncanonical_names() {
+        let table = "notifications";
+        for name in [
+            "notifications_default",
+            "other_2020_01",
+            "notifications_archive_2020_01",
+            "notifications_2020_01_extra",
+            "notifications_2020_01_",
+            "notifications_202_01",
+            "notifications_02020_01",
+            "notifications_2020_1",
+            "notifications_2020_001",
+            "notifications_+020_01",
+            "notifications_-020_01",
+            "notifications_2020_+1",
+            "notifications_20a0_01",
+            "notifications_2020_0a",
+            "notifications_2020_٠",
+            "notifications_2020_00",
+            "notifications_2020_13",
+            "notifications_0000_01",
+            "notifications_y2020_01",
+            "notifications_2020m01",
+            "notifications_2020_01;",
+        ] {
+            assert!(
+                !is_partition_expired(name.to_string(), table.to_string(), 30).unwrap(),
+                "noncanonical partition {name} must not expire"
+            );
+        }
+    }
+
+    #[test]
+    fn aud045_historical_months_preserve_python_retention_guards() {
+        Python::initialize();
+        Python::attach(|py| {
+            let module = pyo3::types::PyModule::new(py, "rust_ext").unwrap();
+            rust_ext(&module).unwrap();
+            let expired = module.getattr("is_partition_expired").unwrap();
+            assert!(expired
+                .call1(("notifications_2020_01", "notifications", 30i64))
+                .unwrap()
+                .extract::<bool>()
+                .unwrap());
+
+            let integer = py.import("builtins").unwrap().getattr("int").unwrap();
+            for value in ["9223372036854775808", "-9223372036854775809"] {
+                let days = integer.call1((value,)).unwrap();
+                assert!(!expired
+                    .call1(("notifications_2020_01", "notifications", days))
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap());
+            }
+            let error = expired
+                .call1(("notifications_2020_01", "notifications", "30"))
+                .unwrap_err();
+            assert!(error.is_instance_of::<pyo3::exceptions::PyTypeError>(py));
+        });
+    }
+
+    #[test]
     fn expired_empty_partition_name() {
         // Empty name cannot match the expected prefix — returns false.
         assert!(!is_partition_expired("".to_string(), "tbl".to_string(), 90).unwrap());
@@ -1270,6 +1467,90 @@ mod tests {
         assert!(
             !is_partition_expired("tbl_y2147483647m01".to_string(), "tbl".to_string(), 90,)
                 .unwrap()
+        );
+    }
+
+    #[test]
+    fn partition_expiry_handles_unrepresentable_retention_through_python() {
+        Python::initialize();
+        assert!(Duration::try_days(100_000_000).is_some());
+        assert!(Utc::now()
+            .checked_sub_signed(Duration::days(100_000_000))
+            .is_none());
+        Python::attach(|py| {
+            let module = pyo3::types::PyModule::new(py, "rust_ext").unwrap();
+            rust_ext(&module).unwrap();
+            let expired = module.getattr("is_partition_expired").unwrap();
+            for days in [100_000_000i64, i64::MAX] {
+                let result: bool = expired
+                    .call1(("tbl_y2020m01", "tbl", days))
+                    .unwrap()
+                    .extract()
+                    .unwrap();
+                assert!(!result, "retention {days} must not expire a partition");
+            }
+        });
+    }
+
+    #[test]
+    fn partition_expiry_accepts_out_of_range_python_ints_without_losing_type_errors() {
+        Python::initialize();
+        Python::attach(|py| {
+            let module = pyo3::types::PyModule::new(py, "rust_ext").unwrap();
+            rust_ext(&module).unwrap();
+            let expired = module.getattr("is_partition_expired").unwrap();
+            let int = py.import("builtins").unwrap().getattr("int").unwrap();
+            for value in [
+                "9223372036854775808",
+                "-9223372036854775809",
+                "99999999999999999999999999999999999999",
+            ] {
+                let days = int.call1((value,)).unwrap();
+                let result: bool = expired
+                    .call1(("tbl_y2020m01", "tbl", days))
+                    .unwrap()
+                    .extract()
+                    .unwrap();
+                assert!(
+                    !result,
+                    "out-of-range retention {value} must not expire a partition"
+                );
+            }
+
+            let valid_index = py
+                .eval(
+                    c"type('Index', (), {'__index__': lambda self: 30})()",
+                    None,
+                    None,
+                )
+                .unwrap();
+            assert!(expired
+                .call1(("tbl_y2020m01", "tbl", valid_index))
+                .unwrap()
+                .extract::<bool>()
+                .unwrap());
+            let invalid = expired.call1(("tbl_y2020m01", "tbl", "30")).unwrap_err();
+            assert!(invalid.is_instance_of::<pyo3::exceptions::PyTypeError>(py));
+            let raising_index = py
+                .eval(
+                    c"type('Index', (), {'__index__': lambda self: (_ for _ in ()).throw(OverflowError('index failure'))})()",
+                    None,
+                    None,
+                )
+                .unwrap();
+            let error = expired
+                .call1(("tbl_y2020m01", "tbl", raising_index))
+                .unwrap_err();
+            assert!(error.is_instance_of::<pyo3::exceptions::PyOverflowError>(py));
+            assert!(error.to_string().contains("index failure"));
+        });
+    }
+
+    #[test]
+    fn december_partition_with_maximum_year_returns_false() {
+        Python::initialize();
+        assert!(
+            !is_partition_expired("tbl_y2147483647m12".to_string(), "tbl".to_string(), 90).unwrap()
         );
     }
 
@@ -1354,6 +1635,115 @@ mod tests {
         assert!(res.0);
         assert_eq!(res.1, 0);
         assert_eq!(res.2, "");
+    }
+
+    #[test]
+    fn event_chain_hash_case_matches_python_fallback() {
+        Python::initialize();
+        let key: String = Python::attach(|py| {
+            py.import("secrets")
+                .unwrap()
+                .getattr("token_hex")
+                .unwrap()
+                .call1((32,))
+                .unwrap()
+                .extract()
+                .unwrap()
+        });
+        assert!(key.len() == 64, "invalid runtime test key");
+        assert!(
+            key.bytes()
+                .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')),
+            "invalid runtime test key"
+        );
+        let mut wrong_key = key.clone();
+        // Index 1 yields "1" for a leading '0' and index 0 yields "0" otherwise, so the
+        // key-dependent replacement needs no runtime branch and no arm can go unexecuted.
+        wrong_key.replace_range(0..1, ["0", "1"][usize::from(key.starts_with('0'))]);
+        assert!(wrong_key != key, "negative test key must differ");
+
+        let prev = "0".repeat(64);
+        let timestamp = "timestamp";
+        // Require two letters so lower, upper and mixed forms are all distinct.
+        // Bound fixture construction without assuming the first random tag has letters.
+        let (payload, lowercase, first_letter) = (0..256)
+            .find_map(|nonce| {
+                let payload = format!("payload-{nonce}");
+                let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
+                mac.update(format!("{prev}|{payload}|{timestamp}").as_bytes());
+                let lowercase = hex::encode(mac.finalize().into_bytes());
+                let letters: Vec<_> = lowercase
+                    .bytes()
+                    .enumerate()
+                    .filter(|(_, byte)| byte.is_ascii_alphabetic())
+                    .map(|(index, _)| index)
+                    .take(2)
+                    .collect();
+                // bool::then keeps the two-letter requirement without an early return.
+                (letters.len() >= 2).then(|| (payload, lowercase, letters[0]))
+            })
+            .expect("failed to construct case-sensitive hash fixture");
+        let uppercase = lowercase.to_ascii_uppercase();
+        let mut mixed = lowercase.clone();
+        mixed.replace_range(
+            first_letter..first_letter + 1,
+            &uppercase[first_letter..first_letter + 1],
+        );
+        assert!(
+            lowercase != uppercase,
+            "case fixtures must be pairwise distinct"
+        );
+        assert!(
+            lowercase != mixed,
+            "case fixtures must be pairwise distinct"
+        );
+        assert!(
+            uppercase != mixed,
+            "case fixtures must be pairwise distinct"
+        );
+
+        Python::attach(|py| {
+            let compare_digest = py
+                .import("hmac")
+                .unwrap()
+                .getattr("compare_digest")
+                .unwrap();
+            for (stored_hash, expected) in [
+                (lowercase.clone(), true),
+                (uppercase, false),
+                (mixed, false),
+            ] {
+                let python_valid: bool = compare_digest
+                    .call1((&stored_hash, &lowercase))
+                    .unwrap()
+                    .extract()
+                    .unwrap();
+                assert_eq!(
+                    python_valid, expected,
+                    "Python hash-case expectation changed"
+                );
+                let rust_result = verify_event_chain(
+                    vec![wrong_key.clone(), key.clone()],
+                    prev.clone(),
+                    vec![(
+                        "event-1".to_string(),
+                        prev.clone(),
+                        payload.clone(),
+                        timestamp.to_string(),
+                        stored_hash,
+                    )],
+                )
+                .unwrap();
+                assert_eq!(
+                    rust_result.0, python_valid,
+                    "Rust/Python hash-case mismatch"
+                );
+                if !python_valid {
+                    assert_eq!(rust_result.1, 0);
+                    assert!(rust_result.2.contains("tampering detected"));
+                }
+            }
+        });
     }
 
     #[test]
@@ -1745,6 +2135,37 @@ mod tests {
         assert!(find_optimal_slot(60, Vec::new(), Vec::new())
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn zero_duration_never_returns_a_slot_through_python() {
+        Python::initialize();
+        Python::attach(|py| {
+            let module = pyo3::types::PyModule::new(py, "rust_ext").unwrap();
+            rust_ext(&module).unwrap();
+            let item = module
+                .getattr("ScheduleItem")
+                .unwrap()
+                .call1(("monday", 9 * 3600i64, 10 * 3600i64, "both"))
+                .unwrap();
+            let occupied = pyo3::types::PyList::new(py, vec![item]).unwrap();
+            let empty = pyo3::types::PyList::empty(py);
+            let find = module.getattr("find_optimal_slot").unwrap();
+            for existing in [&occupied, &empty] {
+                let result = find
+                    .call1((0u32, existing, vec![("monday", vec![9u32])]))
+                    .unwrap();
+                assert!(result.is_none(), "zero duration must not create a slot");
+            }
+            let invalid = find
+                .call1((
+                    0u32,
+                    &empty,
+                    vec![("monday", vec![9u32; MAX_SLOT_HOURS_PER_BLOCK + 1])],
+                ))
+                .unwrap_err();
+            assert!(invalid.is_instance_of::<pyo3::exceptions::PyValueError>(py));
+        });
     }
 
     #[test]

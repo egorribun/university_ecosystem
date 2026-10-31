@@ -1,6 +1,5 @@
 import { useCallback } from "react"
-import api, { fetchAnonymousNewsInteractions } from "@/api/client"
-import { isAxiosError } from "axios"
+import api, { fetchAnonymousNewsInteractions, isValidAnonymousNewsCursor } from "@/api/client"
 import {
   useInfiniteQuery,
   useMutation,
@@ -10,19 +9,12 @@ import {
 import { useAuth } from "@/contexts/AuthContext"
 import i18n from "@/i18n/config"
 import { useAnonymousReadMode } from "@/api/hooks/news"
-import { logWarning } from "@/app/logger"
-import {
-  NOTIFICATION_INTERACTIONS_DB_NAME,
-  NOTIFICATION_INTERACTIONS_DB_VERSION,
-} from "@/constants/notificationInteractionsDb"
-
-const NEWS_INTERACTION_STORE = "pending-news-interactions"
-const NEWS_INTERACTION_SYNC_TAG = "news-interaction:sync"
+import { captureSessionEpoch } from "@/stores/sessionEpoch"
 
 // Temporary comments have no server ID until the interactions query reconciles.
 export const OPTIMISTIC_COMMENT_ID_PREFIX = "optimistic-"
 
-/** Comments per /interactions request. The backend pages comments by offset, oldest first. */
+/** Comments per request; prefer opaque server cursors with legacy offset fallback. */
 export const NEWS_COMMENTS_PAGE_SIZE = 20
 
 export type NewsComment = {
@@ -38,10 +30,24 @@ export type NewsInteractions = {
   is_liked: boolean
   comments: NewsComment[]
   comments_count?: number
+  next_cursor?: string | null
 }
 
 type NewsInteractionSummary = Pick<NewsInteractions, "likes_count" | "is_liked" | "comments_count">
-type InteractionPages = InfiniteData<NewsInteractions, number>
+// Optimistic inserts and deletes change the visible array, not the number of
+// rows the server returned for this page. Keep that length with the page so
+// a later request advances from the server offset rather than the UI count.
+type InteractionPage = NewsInteractions & {
+  serverCommentsLength?: number
+  isSummarySeed?: boolean
+}
+type CommentPageParam = number | { cursor: string; requiresCursor: boolean }
+type InteractionPages = InfiniteData<InteractionPage, CommentPageParam>
+type MutationOwner = { ownsSession: () => boolean }
+
+function requireCurrentSession(ownsSession: () => boolean) {
+  if (!ownsSession()) throw new Error("News interaction session changed")
+}
 
 // Each page repeats the summary; only the comments differ between pages.
 function flattenInteractions(data: InteractionPages): NewsInteractions {
@@ -54,118 +60,34 @@ function flattenInteractions(data: InteractionPages): NewsInteractions {
   }
 }
 
-function nextCommentsOffset(lastPage: NewsInteractions, allPages: NewsInteractions[]) {
-  const loaded = allPages.reduce((total, page) => total + page.comments.length, 0)
+function nextCommentsPage(
+  lastPage: InteractionPage,
+  _allPages: InteractionPage[],
+  lastPageParam: CommentPageParam
+): CommentPageParam | undefined {
+  if (Object.hasOwn(lastPage, "next_cursor")) {
+    return lastPage.next_cursor ? { cursor: lastPage.next_cursor, requiresCursor: true } : undefined
+  }
+  // Only the initial probe may fall back when an older server omits cursors.
+  // Numeric page parameters also preserve already-loaded legacy cache entries.
+  const lastOffset = typeof lastPageParam === "number" ? lastPageParam : 0
+  const serverLength =
+    lastPage.serverCommentsLength ??
+    lastPage.comments.filter((comment) => !comment.id.startsWith(OPTIMISTIC_COMMENT_ID_PREFIX))
+      .length
+  const loaded = lastOffset + serverLength
   const total = lastPage.comments_count ?? loaded
-  return lastPage.comments.length > 0 && loaded < total ? loaded : undefined
+  return serverLength > 0 && loaded < total ? loaded : undefined
 }
 
 function mapPages(
   data: InteractionPages,
-  update: (page: NewsInteractions, isLastPage: boolean) => NewsInteractions
+  update: (page: InteractionPage, isLastPage: boolean) => InteractionPage
 ): InteractionPages {
   return {
     ...data,
     pages: data.pages.map((page, index) => update(page, index === data.pages.length - 1)),
   }
-}
-
-function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(
-      NOTIFICATION_INTERACTIONS_DB_NAME,
-      NOTIFICATION_INTERACTIONS_DB_VERSION
-    )
-    request.onupgradeneeded = () => {
-      // Mirror the service worker's schema (src/sw/offline.ts). If the page creates
-      // this version first, the worker never upgrades it, so every store it reads
-      // must exist here too.
-      const db = request.result
-      if (!db.objectStoreNames.contains("pending-navigations")) {
-        db.createObjectStore("pending-navigations", { keyPath: "id", autoIncrement: true })
-      }
-      if (!db.objectStoreNames.contains("pending-reports")) {
-        db.createObjectStore("pending-reports", { keyPath: "id", autoIncrement: true }).createIndex(
-          "dedupeKey",
-          "dedupeKey",
-          { unique: false }
-        )
-      }
-      if (!db.objectStoreNames.contains(NEWS_INTERACTION_STORE)) {
-        db.createObjectStore(NEWS_INTERACTION_STORE, { keyPath: "id", autoIncrement: true })
-      }
-      if (!db.objectStoreNames.contains("pending-mutations")) {
-        const mutations = db.createObjectStore("pending-mutations", {
-          keyPath: "id",
-          autoIncrement: true,
-        })
-        mutations.createIndex("mutationId", "mutationId", { unique: true })
-        mutations.createIndex("category", "category", { unique: false })
-        mutations.createIndex("dedupeKey", "dedupeKey", { unique: false })
-      }
-    }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-}
-
-async function queueInteraction(url: string, payload: unknown, method: string) {
-  const db = await openDatabase()
-  try {
-    const tx = db.transaction(NEWS_INTERACTION_STORE, "readwrite")
-    const store = tx.objectStore(NEWS_INTERACTION_STORE)
-    await new Promise<void>((resolve, reject) => {
-      const req = store.add({ url, payload, method, timestamp: Date.now() })
-      req.onsuccess = () => resolve()
-      req.onerror = () => reject(req.error)
-    })
-  } finally {
-    // Queue writes are short-lived. Close the connection after the request
-    // settles so repeated offline interactions cannot accumulate handles and
-    // block IndexedDB upgrades/deletion in long-lived browser sessions.
-    db.close()
-  }
-
-  // Trigger SW sync if possible
-  if ("serviceWorker" in navigator && "SyncManager" in window) {
-    const registration = await navigator.serviceWorker.ready
-    try {
-      await registration.sync.register(NEWS_INTERACTION_SYNC_TAG)
-    } catch (e) {
-      logWarning("Failed to register background sync", { error: e })
-    }
-  }
-}
-
-/**
- * Shared error handler for news interaction mutations.
- * - 401 → rethrow (auth interceptor handles it)
- * - Offline/network error → queue to IndexedDB for SW sync
- * - Otherwise → rethrow
- */
-async function handleMutationError(
-  error: unknown,
-  offlineUrl: string,
-  offlinePayload: unknown = {},
-  offlineMethod = "POST"
-): Promise<{ isOfflineStore: true }> {
-  if (isAxiosError(error) && error.response?.status === 401) throw error
-
-  const isNetworkError =
-    !navigator.onLine ||
-    (error &&
-      typeof error === "object" &&
-      (("message" in error && (error as { message?: string }).message === "Network Error") ||
-        ("code" in error && (error as { code?: string }).code === "ERR_NETWORK") ||
-        (isAxiosError(error) &&
-          (error.message === "Network Error" || error.code === "ERR_NETWORK"))))
-
-  if (isNetworkError) {
-    await queueInteraction(offlineUrl, offlinePayload, offlineMethod)
-    return { isOfflineStore: true }
-  }
-
-  throw error
 }
 
 interface NewsInteractionOptions {
@@ -194,28 +116,53 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
   const interactionsQuery = useInfiniteQuery({
     queryKey,
     queryFn: async ({ pageParam, signal }) => {
+      const pagination =
+        typeof pageParam === "number" ? { offset: pageParam } : { cursor: pageParam.cursor }
+      const cachedPages = queryClient.getQueryData<InteractionPages>(queryKey)?.pages
+      const requiresCursor =
+        (typeof pageParam !== "number" && pageParam.requiresCursor) ||
+        cachedPages?.some((page) => Object.hasOwn(page, "next_cursor")) === true
+      let interactions: NewsInteractions
       if (anonymous) {
         const response = await fetchAnonymousNewsInteractions({
           id: newsId,
           language: options.language ?? i18n.language,
           limit: NEWS_COMMENTS_PAGE_SIZE,
-          offset: pageParam,
+          ...pagination,
           signal,
         })
         if (!response.ok) {
           throw new Error(`News interactions request failed with status ${response.status}`)
         }
-        return (await response.json()) as NewsInteractions
+        interactions = (await response.json()) as NewsInteractions
+      } else {
+        const response = await api.get<NewsInteractions>(`/news/${newsId}/interactions`, {
+          params: { limit: NEWS_COMMENTS_PAGE_SIZE, ...pagination },
+          signal,
+        })
+        interactions = response.data
       }
-      const res = await api.get<NewsInteractions>(`/news/${newsId}/interactions`, {
-        params: { limit: NEWS_COMMENTS_PAGE_SIZE, offset: pageParam },
-        signal,
-      })
-      return res.data
+      const hasCursor = Object.hasOwn(interactions, "next_cursor")
+      if (
+        (requiresCursor && !hasCursor) ||
+        (hasCursor &&
+          interactions.next_cursor !== null &&
+          !isValidAnonymousNewsCursor(interactions.next_cursor))
+      ) {
+        throw new Error("News interactions cursor contract changed")
+      }
+      return {
+        ...interactions,
+        serverCommentsLength: interactions.comments.length,
+        isSummarySeed: false,
+      }
     },
-    initialPageParam: 0,
-    getNextPageParam: nextCommentsOffset,
-    select: flattenInteractions,
+    initialPageParam: { cursor: "start", requiresCursor: false } as CommentPageParam,
+    getNextPageParam: nextCommentsPage,
+    select: (data) => ({
+      interactions: flattenInteractions(data),
+      commentsLoaded: data.pages.length > 0 && data.pages[0]?.isSummarySeed !== true,
+    }),
     enabled: options.loadComments ?? true,
     staleTime: 30_000, // 30s cache — optimistic updates handle local state immediately
     // The seed is stale on purpose: a detail page mounted after a feed card must
@@ -228,31 +175,48 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
               is_liked: anonymous ? false : (seed.is_liked ?? false),
               comments: [],
               comments_count: seed.comments_count ?? 0,
+              serverCommentsLength: 0,
+              isSummarySeed: true,
             },
           ],
-          pageParams: [0],
+          pageParams: [{ cursor: "start", requiresCursor: false } as CommentPageParam],
         }
       : undefined,
     initialDataUpdatedAt: 0,
-    meta: anonymous ? { persist: false } : undefined,
+    // Optimistic comments and edits must not survive as confirmed account data
+    // in a persisted query snapshot while their request is unresolved.
+    meta: { persist: false },
   })
-  const interactions = interactionsQuery.data
+  const interactions = interactionsQuery.data?.interactions
+  const commentsStatus: "ready" | "loading" | "error" = interactionsQuery.data?.commentsLoaded
+    ? "ready"
+    : interactionsQuery.isError
+      ? "error"
+      : "loading"
   const isLoading = interactionsQuery.isLoading
   const fetchNextPage = interactionsQuery.fetchNextPage
+  const refetch = interactionsQuery.refetch
   const loadMoreComments = useCallback(() => {
     void fetchNextPage()
   }, [fetchNextPage])
+  const retryComments = useCallback(() => {
+    void refetch()
+  }, [refetch])
 
   const likeMutation = useMutation({
-    mutationFn: async () => {
-      try {
-        await api.post(`/news/${newsId}/like`)
-      } catch (error: unknown) {
-        return handleMutationError(error, `/api/v1/news/${newsId}/like`)
-      }
+    networkMode: "always",
+    meta: { persist: false },
+    mutationFn: async ({ ownsSession }: MutationOwner) => {
+      // An ambiguous network failure cannot safely be retried without a
+      // server-bound session and durable idempotency. Let it reject so the UI
+      // rolls back and the user is not told an unowned operation was queued.
+      requireCurrentSession(ownsSession)
+      await api.post(`/news/${newsId}/like`)
     },
-    onMutate: async () => {
+    onMutate: async ({ ownsSession }) => {
+      if (!ownsSession()) return { previous: undefined, ownsSession }
       await queryClient.cancelQueries({ queryKey })
+      if (!ownsSession()) return { previous: undefined, ownsSession }
       const previous = queryClient.getQueryData<InteractionPages>(queryKey)
       if (previous) {
         queryClient.setQueryData<InteractionPages>(
@@ -264,29 +228,30 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
           }))
         )
       }
-      return { previous }
+      return { previous, ownsSession }
     },
     onError: (_err, _variables, context) => {
-      if (context?.previous) {
+      if (context?.previous && context.ownsSession()) {
         queryClient.setQueryData(queryKey, context.previous)
       }
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey })
+    onSettled: (_data, _error, _variables, context) => {
+      if (context?.ownsSession()) void queryClient.invalidateQueries({ queryKey })
     },
   })
 
   const commentMutation = useMutation({
-    mutationFn: async (content: string) => {
-      try {
-        const res = await api.post(`/news/${newsId}/comment`, { content })
-        return res.data
-      } catch (error: unknown) {
-        return handleMutationError(error, `/api/v1/news/${newsId}/comment`, { content })
-      }
+    networkMode: "always",
+    meta: { persist: false },
+    mutationFn: async ({ content, ownsSession }: MutationOwner & { content: string }) => {
+      requireCurrentSession(ownsSession)
+      const res = await api.post(`/news/${newsId}/comment`, { content })
+      return res.data
     },
-    onMutate: async (content) => {
+    onMutate: async ({ content, ownsSession }) => {
+      if (!ownsSession()) return { previous: undefined, ownsSession }
       await queryClient.cancelQueries({ queryKey })
+      if (!ownsSession()) return { previous: undefined, ownsSession }
       const previous = queryClient.getQueryData<InteractionPages>(queryKey)
       if (previous) {
         // Optimistic comment
@@ -307,34 +272,34 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
           }))
         )
       }
-      return { previous }
+      return { previous, ownsSession }
     },
     onError: (_err, _variables, context) => {
-      if (context?.previous) {
+      if (context?.previous && context.ownsSession()) {
         queryClient.setQueryData(queryKey, context.previous)
       }
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey })
+    onSettled: (_data, _error, _variables, context) => {
+      if (context?.ownsSession()) void queryClient.invalidateQueries({ queryKey })
     },
   })
 
   const updateCommentMutation = useMutation({
-    mutationFn: async ({ commentId, content }: { commentId: string; content: string }) => {
-      try {
-        const res = await api.patch(`/news/comments/${commentId}`, { content })
-        return res.data
-      } catch (error: unknown) {
-        return handleMutationError(
-          error,
-          `/api/v1/news/comments/${commentId}`,
-          { content },
-          "PATCH"
-        )
-      }
+    networkMode: "always",
+    meta: { persist: false },
+    mutationFn: async ({
+      commentId,
+      content,
+      ownsSession,
+    }: MutationOwner & { commentId: string; content: string }) => {
+      requireCurrentSession(ownsSession)
+      const res = await api.patch(`/news/comments/${commentId}`, { content })
+      return res.data
     },
-    onMutate: async ({ commentId, content }) => {
+    onMutate: async ({ commentId, content, ownsSession }) => {
+      if (!ownsSession()) return { previous: undefined, ownsSession }
       await queryClient.cancelQueries({ queryKey })
+      if (!ownsSession()) return { previous: undefined, ownsSession }
       const previous = queryClient.getQueryData<InteractionPages>(queryKey)
       if (previous) {
         queryClient.setQueryData<InteractionPages>(
@@ -345,28 +310,29 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
           }))
         )
       }
-      return { previous }
+      return { previous, ownsSession }
     },
     onError: (_err, _variables, context) => {
-      if (context?.previous) {
+      if (context?.previous && context.ownsSession()) {
         queryClient.setQueryData(queryKey, context.previous)
       }
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey })
+    onSettled: (_data, _error, _variables, context) => {
+      if (context?.ownsSession()) void queryClient.invalidateQueries({ queryKey })
     },
   })
 
   const deleteCommentMutation = useMutation({
-    mutationFn: async (commentId: string) => {
-      try {
-        await api.delete(`/news/comments/${commentId}`)
-      } catch (error: unknown) {
-        return handleMutationError(error, `/api/v1/news/comments/${commentId}`, {}, "DELETE")
-      }
+    networkMode: "always",
+    meta: { persist: false },
+    mutationFn: async ({ commentId, ownsSession }: MutationOwner & { commentId: string }) => {
+      requireCurrentSession(ownsSession)
+      await api.delete(`/news/comments/${commentId}`)
     },
-    onMutate: async (commentId) => {
+    onMutate: async ({ commentId, ownsSession }) => {
+      if (!ownsSession()) return { previous: undefined, ownsSession }
       await queryClient.cancelQueries({ queryKey })
+      if (!ownsSession()) return { previous: undefined, ownsSession }
       const previous = queryClient.getQueryData<InteractionPages>(queryKey)
       if (previous) {
         const loaded = flattenInteractions(previous).comments.length
@@ -379,38 +345,63 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
           }))
         )
       }
-      return { previous }
+      return { previous, ownsSession }
     },
     onError: (_err, _variables, context) => {
-      if (context?.previous) {
+      if (context?.previous && context.ownsSession()) {
         queryClient.setQueryData(queryKey, context.previous)
       }
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey })
+    onSettled: (_data, _error, _variables, context) => {
+      if (context?.ownsSession()) void queryClient.invalidateQueries({ queryKey })
     },
   })
 
   const likeMutate = likeMutation.mutate
+  const likeMutateAsync = likeMutation.mutateAsync
   const commentMutateAsync = commentMutation.mutateAsync
   const updateCommentMutate = updateCommentMutation.mutate
+  const updateCommentMutateAsync = updateCommentMutation.mutateAsync
   const deleteCommentMutate = deleteCommentMutation.mutate
+  const deleteCommentMutateAsync = deleteCommentMutation.mutateAsync
 
   return {
     interactions,
     isLoading,
+    commentsStatus,
+    isRetryingComments: interactionsQuery.isFetching,
+    retryComments,
     hasMoreComments: interactionsQuery.hasNextPage,
     isLoadingMoreComments: interactionsQuery.isFetchingNextPage,
+    isLoadingMoreCommentsError: interactionsQuery.isFetchNextPageError,
     loadMoreComments,
-    toggleLike: useCallback(() => likeMutate(), [likeMutate]),
-    addComment: useCallback((content: string) => commentMutateAsync(content), [commentMutateAsync]),
+    toggleLike: useCallback(() => likeMutate({ ownsSession: captureSessionEpoch() }), [likeMutate]),
+    toggleLikeAsync: useCallback(
+      () => likeMutateAsync({ ownsSession: captureSessionEpoch() }),
+      [likeMutateAsync]
+    ),
+    addComment: useCallback(
+      (content: string) => commentMutateAsync({ content, ownsSession: captureSessionEpoch() }),
+      [commentMutateAsync]
+    ),
     updateComment: useCallback(
-      (commentId: string, content: string) => updateCommentMutate({ commentId, content }),
+      (commentId: string, content: string) =>
+        updateCommentMutate({ commentId, content, ownsSession: captureSessionEpoch() }),
       [updateCommentMutate]
     ),
+    updateCommentAsync: useCallback(
+      (commentId: string, content: string) =>
+        updateCommentMutateAsync({ commentId, content, ownsSession: captureSessionEpoch() }),
+      [updateCommentMutateAsync]
+    ),
     deleteComment: useCallback(
-      (commentId: string) => deleteCommentMutate(commentId),
+      (commentId: string) => deleteCommentMutate({ commentId, ownsSession: captureSessionEpoch() }),
       [deleteCommentMutate]
+    ),
+    deleteCommentAsync: useCallback(
+      (commentId: string) =>
+        deleteCommentMutateAsync({ commentId, ownsSession: captureSessionEpoch() }),
+      [deleteCommentMutateAsync]
     ),
     isLiking: likeMutation.isPending,
     isCommenting: commentMutation.isPending,

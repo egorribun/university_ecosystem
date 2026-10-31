@@ -98,8 +98,17 @@ export function useEmailMfa({ setSnackbar, openStepUpFor }: UseEmailMfaOptions) 
           code,
           challenge_token: emailChallenge.challenge_token,
         })
-        if (!(await refreshUser(isCurrent)) || !isCurrent()) return
+        if (!isCurrent()) return
         setEmailChallenge(null)
+        const refreshedUser = await refreshUser(isCurrent).catch(() => null)
+        if (!isCurrent()) return
+        if (!refreshedUser) {
+          setSnackbar({
+            text: t("settings:security.snackbar.emailMfaSavedRefreshFailed"),
+            severity: "warning",
+          })
+          return
+        }
         setSnackbar({
           text: t(
             emailMode === "verification"
@@ -160,7 +169,16 @@ export function useEmailMfa({ setSnackbar, openStepUpFor }: UseEmailMfaOptions) 
       if (!isCurrent()) return
       try {
         await disableEmailMfa()
-        if (!(await refreshUser(isCurrent)) || !isCurrent()) return
+        if (!isCurrent()) return
+        const refreshedUser = await refreshUser(isCurrent).catch(() => null)
+        if (!isCurrent()) return
+        if (!refreshedUser) {
+          setSnackbar({
+            text: t("settings:security.snackbar.emailMfaSavedRefreshFailed"),
+            severity: "warning",
+          })
+          return
+        }
         setSnackbar({
           text: t("settings:security.snackbar.emailMfaDisabled"),
           severity: "success",

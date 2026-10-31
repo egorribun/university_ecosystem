@@ -3,7 +3,7 @@ import { SkeletonMorph } from "./SkeletonMorph"
 
 const sampleSkeleton = <div className="h-32 w-full animate-pulse rounded-xl bg-input-mix" />
 const sampleContent = (
-  <div className="flex h-32 w-full items-center justify-center rounded-xl bg-brand/(--opacity-subtle) font-bold text-text-primary">
+  <div className="flex h-32 w-full items-center justify-center rounded-xl bg-brand/[calc(var(--opacity-subtle)*100%)] font-bold text-text-primary">
     Loaded content
   </div>
 )

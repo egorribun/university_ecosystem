@@ -18,7 +18,7 @@ import {
 } from "@/utils/telemetryContext"
 
 const inputClass =
-  "w-full rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-input text-text-primary shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-md border border-glass-border bg-(--bg-surface)/[calc(var(--opacity-medium)*100%)] px-4 py-2.5 text-input text-text-primary shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/[calc(var(--opacity-medium)*100%)]"
 const textareaClass = cn(inputClass, "min-h-36 resize-y leading-relaxed")
 const errorClass = "text-error-text text-xs mt-1 font-medium"
 
@@ -35,7 +35,7 @@ function Field({ label, htmlFor, children, error, required = false }: FieldProps
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-(--text-secondary)/(--opacity-hover)"
+        className="text-sm font-semibold tracking-wide text-(--text-secondary)/[calc(var(--opacity-hover)*100%)]"
       >
         {label}
         {required ? <span className="ml-1 text-error-text text-sm font-bold">*</span> : null}
@@ -106,7 +106,8 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
       const fallback = t("news:notifications.savedError") ?? "Failed to save the news"
 
       if (isAxiosError(error)) {
-        const data = error.response?.data
+        const response = error.response
+        const data = response?.data
         if (typeof data === "string" && data.trim()) return data
         if (data && typeof data === "object") {
           const detail = (data as { detail?: unknown }).detail
@@ -114,6 +115,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
           const message = (data as { message?: unknown }).message
           if (typeof message === "string" && message.trim()) return message
         }
+        if (response) return fallback
       }
 
       if (error instanceof Error && error.message?.trim()) {
@@ -176,7 +178,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
               label={t("news:form.title") ?? ""}
               htmlFor="news-title"
               required
-              error={errors.title?.message}
+              error={errors.title?.message ? t(errors.title.message) : undefined}
             >
               <input
                 id="news-title"
@@ -192,7 +194,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
               label={t("news:form.content") ?? ""}
               htmlFor="news-content"
               required
-              error={errors.content?.message}
+              error={errors.content?.message ? t(errors.content.message) : undefined}
             >
               <textarea
                 id="news-content"
@@ -209,7 +211,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
             <Field
               label={t("news:form.title_en") ?? ""}
               htmlFor="news-title-en"
-              error={errors.title_en?.message}
+              error={errors.title_en?.message ? t(errors.title_en.message) : undefined}
             >
               <input
                 id="news-title-en"
@@ -224,7 +226,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
             <Field
               label={t("news:form.content_en") ?? ""}
               htmlFor="news-content-en"
-              error={errors.content_en?.message}
+              error={errors.content_en?.message ? t(errors.content_en.message) : undefined}
             >
               <textarea
                 id="news-content-en"
@@ -252,7 +254,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
                         variant="outline"
                         size="sm"
                         className={cn(
-                          "w-full sm:w-auto bg-(--bg-surface)/(--opacity-dim) border-glass-border",
+                          "w-full sm:w-auto bg-(--bg-surface)/[calc(var(--opacity-dim)*100%)] border-glass-border",
                           errors.image && "border-error-text/50 text-error-text"
                         )}
                         disabled={isSubmitting}
@@ -293,7 +295,9 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
                   </div>
                 ) : null}
               </div>
-              {errors.image?.message ? <p className={errorClass}>{errors.image.message}</p> : null}
+              {errors.image?.message ? (
+                <p className={errorClass}>{t(errors.image.message)}</p>
+              ) : null}
             </div>
           </div>
         </form>

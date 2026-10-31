@@ -137,7 +137,7 @@ export const NewsList = ({
       {isError && (
         <div
           role="alert"
-          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-(--error-border) bg-error-bg/(--opacity-subtle) px-4 py-3"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-(--error-border) bg-error-bg/[calc(var(--opacity-subtle)*100%)] px-4 py-3"
         >
           <p className="text-sm text-(--error-text)">{t("news:states.loadError")}</p>
           <Button variant="outline" size="sm" onClick={handleRetry}>
@@ -148,7 +148,7 @@ export const NewsList = ({
       {/* Refetch indicator — thin bar during background refresh */}
       {showRefetchBar && (
         <div
-          className="h-0.5 w-full rounded-full bg-brand/(--opacity-medium) mb-4 animate-pulse"
+          className="h-0.5 w-full rounded-full bg-brand/[calc(var(--opacity-medium)*100%)] mb-4 animate-pulse"
           aria-hidden="true"
         />
       )}

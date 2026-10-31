@@ -1874,7 +1874,7 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
     private_title = "private skip title token=do-not-print"
     stdout = (
         _live_skip_reporter_rows(identities, title=private_title)
-        + "212 passed (3m)\n8 skipped\n"
+        + "216 passed (3m)\n8 skipped\n"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -1890,7 +1890,7 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
     printed = capsys.readouterr()
     expected_output = [
         "+ " + " ".join(live_stand._live_e2e_command()),
-        "live E2E counts passed=212 skipped=8",
+        "live E2E counts passed=216 skipped=8",
         *(
             f"live E2E skipped project={project} source={source} line={line_number}"
             for project, source, line_number in identities
@@ -1914,7 +1914,7 @@ def test_live_playwright_canonical_full_rejects_flaky_or_interrupted_counts(
     newline = chr(10)
     stdout = (
         _live_skip_reporter_rows(identities, title="private title")
-        + f"212 passed{newline}8 skipped{newline}1 {extra_summary}{newline}"
+        + f"216 passed{newline}8 skipped{newline}1 {extra_summary}{newline}"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -1945,7 +1945,7 @@ def test_live_playwright_canonical_full_rejects_missing_or_duplicate_skip_rows(
     newline = chr(10)
     stdout = (
         _live_skip_reporter_rows(observed, title="private title")
-        + f"212 passed{newline}8 skipped{newline}"
+        + f"216 passed{newline}8 skipped{newline}"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -1973,7 +1973,7 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
     private_title = "private skip title token=do-not-print"
     stdout = (
         _live_skip_reporter_rows(substituted, title=private_title)
-        + "212 passed (3m)\n8 skipped\n"
+        + "216 passed (3m)\n8 skipped\n"
     ).encode("utf-8")
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
@@ -1988,7 +1988,7 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
 
     printed = capsys.readouterr()
-    assert "live E2E counts passed=212 skipped=8" in printed.out
+    assert "live E2E counts passed=216 skipped=8" in printed.out
     assert (
         "live E2E skip accounting=failed observed=8 rejected=0 overflow=false"
         in printed.out
@@ -2003,12 +2003,14 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
 @pytest.mark.parametrize(
     ("passed", "accepted"),
     [
-        pytest.param(212, True, id="current-220-instance-inventory"),
+        pytest.param(216, True, id="current-224-instance-inventory"),
+        pytest.param(214, False, id="obsolete-222-instance-inventory"),
+        pytest.param(212, False, id="obsolete-220-instance-inventory"),
         pytest.param(210, False, id="obsolete-218-instance-inventory"),
         pytest.param(190, False, id="obsolete-198-instance-inventory"),
-        pytest.param(209, False, id="three-passes-missing"),
-        pytest.param(211, False, id="one-pass-missing"),
-        pytest.param(213, False, id="one-pass-extra"),
+        pytest.param(213, False, id="three-passes-missing"),
+        pytest.param(215, False, id="one-pass-missing"),
+        pytest.param(217, False, id="one-pass-extra"),
     ],
 )
 def test_live_playwright_full_count_matches_collected_inventory(
@@ -4026,10 +4028,13 @@ def test_live_playwright_emits_only_validated_failure_locations(
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text("// public source\n" * 3, encoding="utf-8")
     private_title = "password=fixture-private-password token=fixture-private-token"
-    frame_sources = [
-        str(tmp_path / source) if path_style == "absolute" else source
+    frame_sources = {
+        source: str(tmp_path / source) if path_style == "absolute" else source
         for source in sources
-    ]
+    }
+    auth_frame = frame_sources["tests/e2e-live/auth-roles.live.spec.ts"]
+    reset_frame = frame_sources["tests/e2e-live/password-reset.live.spec.ts"]
+    fixture_frame = frame_sources["tests/e2e-live/fixtures.ts"]
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"),
         return_code,
@@ -4037,21 +4042,21 @@ def test_live_playwright_emits_only_validated_failure_locations(
             "  1) [desktop] › tests/e2e-live/auth-roles.live.spec.ts:2:1 › "
             f"{private_title} ─────\n"
             "\n    Error: fixture-private-assertion\n\n"
-            f"        at fixturePrivateFunction ({frame_sources[0]}:3:1)\n"
-            f"        at {frame_sources[0]}:2:1\n"
+            f"        at fixturePrivateFunction ({auth_frame}:3:1)\n"
+            f"        at {auth_frame}:2:1\n"
             "  2) [mobile] › tests/e2e-live/password-reset.live.spec.ts:3:17 › "
             "https://private.invalid/reset?token=fixture-private-token ─────\n"
             "\n    Error: fixture-private-error\n\n"
-            f"        at {frame_sources[1]}:1:17\n"
-            f"        at privateHelper ({frame_sources[-1]}:2:17)\n"
-            f"        at {frame_sources[-1]}:3:1\n"
+            f"        at {reset_frame}:1:17\n"
+            f"        at privateHelper ({fixture_frame}:2:17)\n"
+            f"        at {fixture_frame}:3:1\n"
             "6 passed\n12 failed\n2 skipped\n1 flaky\n3 interrupted\n4 did not run\n"
         ),
         stderr=(
             "  1) [desktop] › tests/e2e-live/auth-roles.live.spec.ts:2:1 › "
             f"{private_title}\n"
             "Error: locator.fill('fixture-private-password')\n"
-            f"        at {frame_sources[0]}:1:1\n"
+            f"        at {auth_frame}:1:1\n"
         ),
     )
     if path_style == "windows":
@@ -5028,7 +5033,9 @@ def test_live_playwright_focused_scope_is_fixed_and_diagnostic_only(
             "smoke",
             (
                 "tests/e2e-live/auth-roles.live.spec.ts",
+                "tests/e2e-live/admin-notifications-rbac.live.spec.ts",
                 "tests/e2e-live/password-reset.live.spec.ts",
+                "tests/e2e-live/pwa-offline-shell.live.spec.ts",
                 "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
                 "tests/e2e-live/settings-radio-focus.live.spec.ts",
                 live_stand.LIVE_CADDY_PROBE_SPEC,
@@ -5304,7 +5311,9 @@ def test_live_e2e_probe_admission_is_bounded_and_keeps_nonprobe_defaults(
         selected_files = live_stand.LIVE_E2E_SMOKE_FILES
         assert selected_files == (
             "tests/e2e-live/auth-roles.live.spec.ts",
+            "tests/e2e-live/admin-notifications-rbac.live.spec.ts",
             "tests/e2e-live/password-reset.live.spec.ts",
+            "tests/e2e-live/pwa-offline-shell.live.spec.ts",
             "tests/e2e-live/search-dialog-keyboard.live.spec.ts",
             "tests/e2e-live/settings-radio-focus.live.spec.ts",
             live_stand.LIVE_CADDY_PROBE_SPEC,
@@ -5994,7 +6003,10 @@ def test_core_signed_resume_accepts_reallocated_published_port_values(
     original_fingerprint = owner.compose_resource_fingerprint
     assert original_fingerprint is not None
     changed_ports = dict(owner.published_ports)
-    changed_ports["CADDY_HTTP"] += 1000
+    occupied_ports = set(changed_ports.values())
+    changed_ports["CADDY_HTTP"] = next(
+        port for port in range(1024, 65536) if port not in occupied_ports
+    )
 
     incomplete = live_stand.update_stand_owner_ports(worktree, owner, changed_ports)
     rebound = live_stand._bind_stand_owner_compose_resources(worktree, incomplete)
@@ -6011,7 +6023,10 @@ def test_core_signed_resume_rejects_compose_mount_drift(
 ) -> None:
     worktree, owner = _prepare_core_owned_stand(monkeypatch, tmp_path)
     changed_ports = dict(owner.published_ports)
-    changed_ports["CADDY_HTTP"] += 1000
+    occupied_ports = set(changed_ports.values())
+    changed_ports["CADDY_HTTP"] = next(
+        port for port in range(1024, 65536) if port not in occupied_ports
+    )
     incomplete = live_stand.update_stand_owner_ports(worktree, owner, changed_ports)
     marker = worktree / live_stand.STAND_FILE
     marker_before = marker.read_bytes()
@@ -7797,13 +7812,12 @@ def test_in_place_source_current_rejects_ignored_app_source(
         ("status", "--porcelain", "--untracked-files=normal"),
     ]
     ignored_source_query = git_calls[2]
-    assert ignored_source_query[:7] == (
+    assert ignored_source_query[:6] == (
         "ls-files",
         "--others",
         "--ignored",
         "--exclude-standard",
-        "--directory",
-        "--no-empty-directory",
+        "-z",
         "--",
     )
     assert set(live_stand.IN_PLACE_BUILD_SOURCE_PATHS).issubset(ignored_source_query)
@@ -7820,6 +7834,93 @@ def test_in_place_source_guard_exclusions_match_dockerignore_rules() -> None:
     for pattern in live_stand.IN_PLACE_DOCKERIGNORE_EXCLUSIONS:
         dockerignore_rule = pattern[:-2] if pattern.endswith("/**") else pattern
         assert dockerignore_rule in rules, pattern
+
+
+@pytest.mark.parametrize(
+    ("git_output", "must_reject"),
+    [
+        pytest.param(
+            "tests/.pytest_tmp/fixture/.git/objects/pack-entry\0",
+            False,
+            id="outside-ignored-nested-git-path-is-filtered",
+        ),
+        pytest.param(
+            ".pytest_tmp/fixture/.git/objects/pack-entry\0",
+            False,
+            id="root-test-fixture-is-outside-copy-roots",
+        ),
+        pytest.param(
+            "frontend/vitest-report.xml\0",
+            True,
+            id="ignored-copy-root-report-still-rejected",
+        ),
+        pytest.param(
+            "frontend/résumé module\nreport.ts\0",
+            True,
+            id="unicode-space-and-newline-path-is-not-split-as-lines",
+        ),
+        pytest.param(
+            "tests/.pytest_tmp/fixture/.git/objects/pack-entry\0"
+            "frontend/vitest-report.xml\0",
+            True,
+            id="outside-nested-repo-does-not-hide-real-source-path",
+        ),
+        pytest.param(
+            "APP/local_settings.py\0",
+            os.path.normcase("APP") == os.path.normcase("app"),
+            id="case-variant-source-root-follows-platform-semantics",
+        ),
+        pytest.param(
+            "frontend-extra/vitest-report.xml\0"
+            "app-extra/local_settings.py\0"
+            "services/pkg-extra/file.go\0",
+            False,
+            id="root-prefix-lookalikes-are-outside-copy-roots",
+        ),
+        pytest.param("", False, id="empty-output-is-allowed"),
+        pytest.param("\0", False, id="empty-nul-record-is-allowed"),
+    ],
+)
+def test_in_place_source_guard_filters_nul_paths_to_exact_copy_roots(
+    monkeypatch: pytest.MonkeyPatch,
+    git_output: str,
+    must_reject: bool,
+) -> None:
+    git_calls: list[tuple[str, ...]] = []
+
+    def fake_git(*args: str) -> str:
+        git_calls.append(args)
+        if args and args[0] == "ls-files":
+            return git_output
+        pytest.fail(f"unexpected git command: {args}")
+
+    monkeypatch.setattr(live_stand, "_git", fake_git)
+
+    if must_reject:
+        with pytest.raises(live_stand.StandError, match="ignored untracked files"):
+            live_stand._assert_no_ignored_in_place_build_sources()
+    else:
+        live_stand._assert_no_ignored_in_place_build_sources()
+
+    assert len(git_calls) == 1
+    ignored_source_query = git_calls[0]
+    assert ignored_source_query[:6] == (
+        "ls-files",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "-z",
+        "--",
+    )
+    root_paths_end = 6 + len(live_stand.IN_PLACE_BUILD_SOURCE_PATHS)
+    assert (
+        ignored_source_query[6:root_paths_end] == live_stand.IN_PLACE_BUILD_SOURCE_PATHS
+    )
+    assert ignored_source_query[root_paths_end:] == tuple(
+        f":(exclude,glob){path}" for path in live_stand.IN_PLACE_DOCKERIGNORE_EXCLUSIONS
+    )
+    assert "--directory" not in ignored_source_query
+    assert "--no-empty-directory" not in ignored_source_query
 
 
 @pytest.mark.parametrize(
@@ -8121,6 +8222,20 @@ def test_live_overlay_replaces_every_publication_with_loopback_port_variables() 
         assert environment["SMTP_HOST"] == "mailpit"
         assert environment["VAPID_PRIVATE_KEY"].startswith("${LIVE_VAPID_PRIVATE_KEY:?")
     assert set(services["caddy"]) == {"ports"}
+
+
+def test_live_overlay_reserves_per_user_logout_budget_for_session_cleanup() -> None:
+    # Cleanup logs owned sessions out through shared accounts in one burst. The
+    # per-user sensitive bucket defaults to 5/minute, so the stand raises only it.
+    source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
+    overlay: dict[str, Any] = yaml.safe_load(
+        source.replace("!override", "").replace("!reset", "")
+    )
+    backend_environment = overlay["services"]["backend"]["environment"]
+
+    assert backend_environment["RATE_LIMIT_SENSITIVE"] == "120/minute"
+    assert backend_environment["RATE_LIMIT_AUTH_LOGIN"] == "60/minute"
+    assert "RATE_LIMIT_DEFAULT" not in backend_environment
 
 
 def test_live_overlay_keeps_base_storage_on_a_project_scoped_volume() -> None:
@@ -13003,6 +13118,213 @@ def test_live_reset_registration_runner_uses_failure_stdout_only(
     assert completed.stdout == completed.stderr == b""
 
 
+def _reset_registration_v3_record(**overrides: object) -> dict[str, object]:
+    record: dict[str, object] = {
+        "project": "mobile",
+        "step": "await-response",
+        "beforeName": {"hydrated": False, "nameState": "empty", "nameError": False},
+        "afterName": {
+            "hydrated": True,
+            "nameState": "at-least-two",
+            "nameError": False,
+        },
+        "beforeSubmit": {
+            "hydrated": True,
+            "nameState": "short",
+            "nameError": True,
+            "trigger": "click",
+        },
+    }
+    record.update(overrides)
+    return record
+
+
+def _reset_registration_v3_row(record: dict[str, object]) -> str:
+    return (
+        "UE_LIVE_RESET_REGISTRATION_V3 "
+        + json.dumps(record, separators=(",", ":"))
+        + "\n"
+    )
+
+
+def test_live_reset_registration_v3_accepts_only_finite_timeline_observations() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    record = _reset_registration_v3_record()
+    unavailable = _reset_registration_v3_record(
+        project="desktop",
+        step="click",
+        beforeName=None,
+        afterName=None,
+        beforeSubmit=None,
+    )
+    assert parser(
+        _reset_registration_v3_row(record) + _reset_registration_v3_row(unavailable)
+    ) == [
+        record,
+        unavailable,
+    ]
+    for field in ("beforeName", "afterName", "beforeSubmit"):
+        for name_state in ("missing", "empty", "short", "at-least-two"):
+            snapshot = {
+                "hydrated": True,
+                "nameState": name_state,
+                "nameError": False,
+            }
+            if field == "beforeSubmit":
+                snapshot["trigger"] = "click"
+            probe = _reset_registration_v3_record(**{field: snapshot})
+            assert parser(_reset_registration_v3_row(probe)) == [probe]
+    for trigger in ("click", "invalid", "submit"):
+        probe = _reset_registration_v3_record(
+            beforeSubmit={
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+                "trigger": trigger,
+            }
+        )
+        assert parser(_reset_registration_v3_row(probe)) == [probe]
+
+
+def test_live_reset_registration_v3_rejects_private_or_malformed_records() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    valid = _reset_registration_v3_record()
+    invalid = [
+        {**valid, "url": "private"},
+        {
+            **valid,
+            "beforeName": {
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+                "value": "private",
+            },
+        },
+        {
+            **valid,
+            "beforeName": {
+                "hydrated": True,
+                "nameState": "private",
+                "nameError": False,
+            },
+        },
+        {
+            **valid,
+            "beforeName": {"hydrated": 1, "nameState": "empty", "nameError": False},
+        },
+        {
+            **valid,
+            "beforeName": {"hydrated": True, "nameState": "empty", "nameError": 0},
+        },
+        {**valid, "beforeName": {"hydrated": True, "nameState": "empty"}},
+        {
+            **valid,
+            "beforeSubmit": {
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+            },
+        },
+        {
+            **valid,
+            "beforeSubmit": {
+                "hydrated": True,
+                "nameState": "empty",
+                "nameError": False,
+                "trigger": "private",
+            },
+        },
+        {**valid, "beforeName": []},
+        {**valid, "project": "private"},
+        {**valid, "step": "private"},
+        {key: value for key, value in valid.items() if key != "afterName"},
+    ]
+    for field in ("beforeName", "afterName", "beforeSubmit"):
+        for wrong in (True, 1, "empty", [], {}):
+            invalid.append({**valid, field: wrong})
+    assert (
+        parser("".join(_reset_registration_v3_row(record) for record in invalid)) == []
+    )
+
+
+def test_live_reset_registration_v3_rejects_duplicate_keys_and_untrusted_framing() -> (
+    None
+):
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    valid = _reset_registration_v3_row(_reset_registration_v3_record())
+    invalid = [
+        valid[:-1],
+        "private " + valid,
+        "\x1b[31m" + valid,
+        valid.replace('"hydrated":false', '"hydrated":false,"hydrated":true'),
+        valid.replace('"hydrated":false', '"hydrated":NaN'),
+        valid.rstrip("\n") + " private\n",
+        "UE_LIVE_RESET_REGISTRATION_V3 " + "x" * 1024 + "\n",
+    ]
+    assert all(parser(row) == [] for row in invalid)
+
+
+def test_live_reset_registration_v3_deduplicates_and_caps_output() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v3", None)
+    assert callable(parser), "bounded registration V3 parser is missing"
+    records = [
+        _reset_registration_v3_record(project=project, step=step)
+        for project in ("desktop", "mobile")
+        for step in ("arm-response", "click", "await-response")
+    ]
+    rows = "".join(_reset_registration_v3_row(record) * 2 for record in records)
+    overflow = _reset_registration_v3_row(
+        _reset_registration_v3_record(beforeName=None)
+    )
+    assert parser(rows + overflow) == records
+
+
+@pytest.mark.parametrize("return_code", [0, 1])
+def test_live_reset_registration_v3_runner_uses_failure_stdout_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    record = _reset_registration_v3_record()
+    valid = _reset_registration_v3_row(record)
+    stderr_only = _reset_registration_v3_row(
+        _reset_registration_v3_record(project="desktop")
+    )
+    private = "private-diagnostic-noise"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(valid + valid + private + "\n").encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    if return_code:
+        with pytest.raises(live_stand.StandError, match="exit code 1"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E reset-registration-v3 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True)
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+    assert completed.stdout == completed.stderr == b""
+
+
 def _aud174_install_window_log_selector(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -13818,3 +14140,398 @@ def test_live_caddy_capture_deadline_cannot_be_rebased_during_reader_admission(
     assert state["calls"][0][1]["command_timeout_seconds"] == pytest.approx(10.0)
     assert now[0] == 115.0
     assert started == []
+
+
+def _reset_registration_v2_record(**overrides: object) -> dict[str, object]:
+    record: dict[str, object] = {
+        "project": "mobile",
+        "step": "await-response",
+        "errorCategory": "timeout",
+        "snapshot": "available",
+        "hydrated": True,
+        "formPresent": True,
+        "formInvalid": False,
+        "formError": False,
+        "nameError": False,
+        "emailError": False,
+        "inviteError": False,
+        "passwordError": False,
+        "confirmError": False,
+        "rootError": False,
+        "submitPresent": True,
+        "submitDisabled": False,
+        "submitBusy": False,
+        "csrfRequested": True,
+        "csrfResponse": "success",
+        "csrfFailed": False,
+    }
+    record.update(overrides)
+    return record
+
+
+def _reset_registration_v2_row(record: dict[str, object]) -> str:
+    encoded = json.dumps(record, separators=(",", ":"))
+    return "UE_LIVE_RESET_REGISTRATION_V2 " + encoded + "\n"
+
+
+def test_live_reset_registration_v2_accepts_only_finite_failure_observations() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    available = _reset_registration_v2_record()
+    unavailable = _reset_registration_v2_record(
+        project="desktop",
+        step="click",
+        errorCategory="other",
+        snapshot="unavailable",
+        hydrated=False,
+        formPresent=False,
+        submitPresent=False,
+        csrfRequested=False,
+        csrfResponse="not-observed",
+    )
+    output = _reset_registration_v2_row(available).replace(
+        "\n", "\r\n"
+    ) + _reset_registration_v2_row(unavailable)
+    assert parser(output) == [available, unavailable]
+    for key, values in {
+        "project": ("desktop", "mobile"),
+        "step": ("arm-response", "click", "await-response"),
+        "errorCategory": (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        ),
+        "csrfResponse": (
+            "not-observed",
+            "success",
+            "http-error",
+            "mixed",
+            "unavailable",
+        ),
+    }.items():
+        for value in values:
+            record = _reset_registration_v2_record(**{key: value})
+            assert parser(_reset_registration_v2_row(record)) == [record]
+
+
+@pytest.mark.parametrize(
+    "key",
+    (
+        "nameError",
+        "emailError",
+        "inviteError",
+        "passwordError",
+        "confirmError",
+        "rootError",
+    ),
+)
+def test_live_reset_registration_v2_accepts_classified_error_presence(key: str) -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    record = _reset_registration_v2_record(formError=True, **{key: True})
+    assert parser(_reset_registration_v2_row(record)) == [record]
+
+
+@pytest.mark.parametrize(
+    "key",
+    (
+        "nameError",
+        "emailError",
+        "inviteError",
+        "passwordError",
+        "confirmError",
+        "rootError",
+    ),
+)
+def test_live_reset_registration_v2_rejects_classification_without_form_error(
+    key: str,
+) -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    invalid = [
+        _reset_registration_v2_record(**{key: True}),
+        _reset_registration_v2_record(
+            formPresent=False, submitPresent=False, **{key: True}
+        ),
+        _reset_registration_v2_record(
+            snapshot="unavailable",
+            hydrated=False,
+            formPresent=False,
+            submitPresent=False,
+            **{key: True},
+        ),
+    ]
+    rows = "".join(_reset_registration_v2_row(record) for record in invalid)
+    assert parser(rows) == []
+
+
+def test_live_reset_registration_v2_rejects_private_fields_and_wrong_types() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    valid = _reset_registration_v2_record()
+    invalid = [
+        {**valid, "url": "https://private.invalid/"},
+        {**valid, "message": "private-message"},
+        {**valid, "body": "private-body"},
+        {**valid, "cookie": "private-cookie"},
+        {**valid, "password": "private-input"},
+        {**valid, "alertText": "private-alert-copy"},
+        {**valid, "errorDetail": "private-error-detail"},
+        {**valid, "schema": 2},
+    ]
+    enums = {
+        "project": ("desktop", "mobile"),
+        "step": ("arm-response", "click", "await-response"),
+        "errorCategory": (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        ),
+        "snapshot": ("available", "unavailable"),
+        "csrfResponse": (
+            "not-observed",
+            "success",
+            "http-error",
+            "mixed",
+            "unavailable",
+        ),
+    }
+    for key in enums:
+        for value in ("private", "timeout\nprivate", "", True, 0, None, [], {}):
+            invalid.append({**valid, key: value})
+    boolean_keys = set(valid) - set(enums)
+    for key in boolean_keys:
+        for value in (0, 1, "true", "false", None, [], {}):
+            invalid.append({**valid, key: value})
+    for key in valid:
+        invalid.append({name: value for name, value in valid.items() if name != key})
+    output = "".join(_reset_registration_v2_row(record) for record in invalid)
+    assert parser(output) == []
+
+
+def test_live_reset_registration_v2_rejects_inconsistent_observations() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    invalid = [
+        _reset_registration_v2_record(snapshot="unavailable"),
+        _reset_registration_v2_record(formPresent=False),
+        _reset_registration_v2_record(submitPresent=False, submitDisabled=True),
+        _reset_registration_v2_record(submitPresent=False, submitBusy=True),
+        _reset_registration_v2_record(csrfRequested=False),
+        _reset_registration_v2_record(
+            csrfRequested=False, csrfResponse="not-observed", csrfFailed=True
+        ),
+    ]
+    rows = "".join(_reset_registration_v2_row(record) for record in invalid)
+    assert parser(rows) == []
+
+
+def test_live_reset_registration_v2_rejects_duplicate_keys_and_untrusted_framing() -> (
+    None
+):
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    valid = _reset_registration_v2_row(_reset_registration_v2_record())
+    rows = [
+        valid[:-1],
+        "private " + valid,
+        "private\r" + valid,
+        "private\v" + valid,
+        "private\u2028" + valid,
+        "\x1b[31m" + valid,
+        valid.replace("\n", "\r\r\n"),
+        valid.replace('"project":"mobile"', '"project":"mobile","project":"mobile"'),
+        valid.replace('"formInvalid":false', '"formInvalid":NaN'),
+        valid.replace('"formInvalid":false', '"formInvalid":Infinity'),
+        valid.replace(
+            '"snapshot":"available"', '"snapshot":"available","body":"private"'
+        ),
+        valid.rstrip("\n") + " private\n",
+        "UE_LIVE_RESET_REGISTRATION_V2 " + "x" * 1024 + "\n",
+    ]
+    for row in rows:
+        assert parser(row) == []
+
+
+def test_live_reset_registration_v2_deduplicates_and_caps_output() -> None:
+    parser = getattr(live_stand, "_live_playwright_reset_registration_v2", None)
+    assert callable(parser), "bounded registration V2 parser is missing"
+    records = [
+        _reset_registration_v2_record(errorCategory=category)
+        for category in (
+            "timeout",
+            "abort",
+            "type-error",
+            "target-closed",
+            "error",
+            "other",
+        )
+    ]
+    rows = "".join(_reset_registration_v2_row(record) * 3 for record in records)
+    overflow = _reset_registration_v2_row(
+        _reset_registration_v2_record(project="desktop")
+    )
+    assert parser(rows + overflow) == records
+
+
+@pytest.mark.parametrize("return_code", [0, 1])
+def test_live_reset_registration_v2_runner_uses_failure_stdout_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    record = _reset_registration_v2_record()
+    valid = _reset_registration_v2_row(record)
+    stderr_only = _reset_registration_v2_row(
+        _reset_registration_v2_record(project="desktop")
+    )
+    private = "private-body https://private.invalid/?token=hidden"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(valid + valid + private + "\n").encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    if return_code:
+        with pytest.raises(live_stand.StandError, match="exit code 1"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E reset-registration-v2 "
+            + json.dumps(record, separators=(",", ":"), sort_keys=True)
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+    assert completed.stdout == completed.stderr == b""
+
+
+_RESET_URL_DIAGNOSTIC_LINE = (
+    "UE_LIVE_RESET_URL_V1 project=desktop phase=reopen reset_route=false "
+    "token_query_absent=true token_fragment_absent=true token_url_absent=true\n"
+)
+
+
+def test_live_reset_url_parser_preserves_the_emitter_boolean_record() -> None:
+    assert live_stand._live_playwright_reset_url_observations(
+        _RESET_URL_DIAGNOSTIC_LINE
+    ) == [("desktop", "reopen", False, True, True, True)]
+    assert live_stand._live_playwright_reset_url_observations(
+        _RESET_URL_DIAGNOSTIC_LINE.replace("\n", "\r\n")
+    ) == [("desktop", "reopen", False, True, True, True)]
+    for field in (
+        "reset_route",
+        "token_query_absent",
+        "token_fragment_absent",
+        "token_url_absent",
+    ):
+        original = "false" if field == "reset_route" else "true"
+        for invalid in ("0", "1", "True", "FALSE", "null", "private"):
+            malformed = _RESET_URL_DIAGNOSTIC_LINE.replace(
+                f"{field}={original}", f"{field}={invalid}"
+            )
+            assert live_stand._live_playwright_reset_url_observations(malformed) == []
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "",
+        _RESET_URL_DIAGNOSTIC_LINE.rstrip("\n"),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("desktop", "private"),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("reopen", "private"),
+        _RESET_URL_DIAGNOSTIC_LINE.replace(" phase=", " extra=private phase="),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("reset_route=false ", ""),
+        _RESET_URL_DIAGNOSTIC_LINE.replace(
+            "reset_route=false ", "reset_route=false reset_route=true "
+        ),
+        _RESET_URL_DIAGNOSTIC_LINE.replace("\n", " extra=private\n"),
+        "private " + _RESET_URL_DIAGNOSTIC_LINE,
+        "private\r" + _RESET_URL_DIAGNOSTIC_LINE,
+        "private\v" + _RESET_URL_DIAGNOSTIC_LINE,
+        "private\u2028" + _RESET_URL_DIAGNOSTIC_LINE,
+        "\x1b[31m" + _RESET_URL_DIAGNOSTIC_LINE,
+        _RESET_URL_DIAGNOSTIC_LINE.replace("\n", "\r\r\n"),
+        "x" * 161 + "\n",
+    ],
+)
+def test_live_reset_url_parser_rejects_unknown_or_untrusted_framing(
+    output: str,
+) -> None:
+    assert live_stand._live_playwright_reset_url_observations(output) == []
+
+
+def test_live_reset_url_parser_keeps_first_pair_and_caps_all_four_pairs() -> None:
+    expected = [
+        (project, phase, False, True, True, True)
+        for project in ("desktop", "mobile")
+        for phase in ("history", "reopen")
+    ]
+    rows = []
+    for project, phase, *_flags in expected:
+        row = _RESET_URL_DIAGNOSTIC_LINE.replace("desktop", project).replace(
+            "reopen", phase
+        )
+        rows.extend((row, row, row.replace("reset_route=false", "reset_route=true")))
+    assert live_stand._live_playwright_reset_url_observations("".join(rows)) == expected
+
+
+@pytest.mark.parametrize("return_code", [0, 1, 23])
+def test_live_reset_url_runner_emits_failure_stdout_only_and_preserves_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    stderr_only = _RESET_URL_DIAGNOSTIC_LINE.replace("desktop", "mobile").replace(
+        "reopen", "history"
+    )
+    private = "private-body https://private.invalid/?token=hidden"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(
+            _RESET_URL_DIAGNOSTIC_LINE + _RESET_URL_DIAGNOSTIC_LINE + private + "\n"
+        ).encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    if return_code:
+        with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E reset-url project=desktop phase=reopen reset_route=false "
+            "token_query_absent=true token_fragment_absent=true token_url_absent=true"
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+    assert completed.stdout == completed.stderr == b""

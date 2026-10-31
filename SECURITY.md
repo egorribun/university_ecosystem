@@ -58,8 +58,8 @@ If you discover a vulnerability, do not publish technical details in an issue, p
 - **SSRF Protection**: `validate_url_not_internal()` blocks internal IP ranges and unauthorized internal domain callbacks (`app/core/ssrf.py`).
 - **HTTP Security Headers**:
   - `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`
-  - `Content-Security-Policy`: strict per-response nonces (`nonce-...`), framing disabled (`frame-ancestors 'none'`).
-  - `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`.
+  - The built-in production `Content-Security-Policy` uses per-response nonces and `frame-ancestors 'self'`; `X-Frame-Options` defaults to `DENY`.
+  - `Cross-Origin-Opener-Policy` defaults to `same-origin`. `Cross-Origin-Embedder-Policy` is disabled by default and uses `require-corp` when enabled.
 - **Valkey / Redis Eviction Policy**: Application cache uses `volatile-lru` (RZ-21-02). Revocation security state is deliberately isolated in a durable `noeviction` process, so cache pressure cannot resurrect a revoked JWT.
 
 ---

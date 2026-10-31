@@ -1,12 +1,20 @@
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope
 
-import { openDB, type IDBPDatabase } from "idb"
-import { log, warn } from "./logger"
+import { openDB } from "idb"
+import { warn } from "./logger"
 import {
   NOTIFICATION_INTERACTIONS_DB_NAME as CLICK_DB_NAME,
   NOTIFICATION_INTERACTIONS_DB_VERSION as DB_VERSION,
 } from "../constants/notificationInteractionsDb"
+import { requestReplayCredentials } from "./replayCredentials"
+import {
+  isExpiredOtherSessionRecord,
+  isRetryableReplayStatus,
+  REPLAY_MAX_ATTEMPTS,
+  REPLAY_REQUEST_TIMEOUT_MS,
+  replayBackoffMs,
+} from "./replayPolicy"
 
 export const STORES = {
   NAVIGATION: "pending-navigations",
@@ -27,6 +35,10 @@ export interface PendingMutationRecord {
   dedupeKey?: string
   retryCount: number
   category?: "events" | "news" | "messenger" | "profile" | "schedule" | "general"
+  /** Browser session nonce the record was created under. Absent or null records are held, never replayed. */
+  sessionNonce?: string | null
+  /** Earliest epoch-millisecond time of the next replay attempt after a retryable failure. */
+  nextAttemptAt?: number
 }
 
 /**
@@ -102,8 +114,12 @@ export async function addRecord<T extends object>(storeName: string, value: T) {
   return db.add(storeName, value)
 }
 
-export async function storePendingNavigation(record: { url: string; timestamp: number }) {
-  return addRecord(STORES.NAVIGATION, record)
+export async function storePendingNavigation(record: {
+  url: string
+  timestamp: number
+  sessionNonce?: string | null
+}) {
+  return addRecord(STORES.NAVIGATION, { ...record, sessionNonce: record.sessionNonce ?? null })
 }
 
 export async function readPendingNavigations() {
@@ -117,30 +133,33 @@ export async function storePendingReport(record: {
   timestamp: number
   payload?: unknown
   method?: string
+  sessionNonce?: string | null
 }) {
   const method = (record.method ?? "POST").toUpperCase()
+  const sessionNonce = record.sessionNonce ?? null
   const idempotentMethods = ["GET", "PUT", "DELETE", "HEAD"]
 
   if (idempotentMethods.includes(method)) {
     // DEBT-04 (audit Wave 11): deduplicate idempotent requests by a framed
-    // method+URL+body tuple so different methods and field boundaries cannot collide.
-    // A user going offline then back online while the same resource is pending
-    // should not enqueue duplicate requests that create duplicate side-effects.
+    // method+URL+body+session tuple so different methods, field boundaries and
+    // browser sessions cannot collide. A user going offline then back online while
+    // the same resource is pending should not enqueue duplicate requests that create
+    // duplicate side-effects.
     const dedupeKey = await digestKey(
-      JSON.stringify([method, record.reportUrl, record.payload ?? null])
+      JSON.stringify([method, record.reportUrl, record.payload ?? null, sessionNonce])
     )
     const db = await getDatabase()
     const existing = await db.getAllFromIndex(STORES.REPORT, "dedupeKey", dedupeKey)
     if (existing.length > 0) {
       return // already queued — skip
     }
-    return db.add(STORES.REPORT, { ...record, method, dedupeKey })
+    return db.add(STORES.REPORT, { ...record, method, dedupeKey, sessionNonce })
   }
 
   // POST (and other non-idempotent): always enqueue; attach a random idempotency
   // key so the server can deduplicate retries on its side (via Idempotency-Key header).
   const idempotencyKey = crypto.randomUUID()
-  return addRecord(STORES.REPORT, { ...record, method, idempotencyKey })
+  return addRecord(STORES.REPORT, { ...record, method, idempotencyKey, sessionNonce })
 }
 
 export async function readPendingReports() {
@@ -203,6 +222,7 @@ export async function storePendingMutation(
         : String(Date.now() + Math.random())),
     retryCount: record.retryCount ?? 0,
     category: record.category ?? "general",
+    sessionNonce: record.sessionNonce ?? null,
   }
   return addRecord(STORES.MUTATION, fullRecord)
 }
@@ -212,160 +232,213 @@ export async function readPendingMutations() {
   return db.getAll(STORES.MUTATION)
 }
 
-export async function processPendingMutations() {
+export function processPendingMutations(): Promise<void> {
+  return processOfflineQueues()
+}
+
+// Bootstrap, sync and message events can overlap in the same worker. Queue each
+// trigger so a later one also sees records added during the previous flush.
+let pendingQueueProcessing: Promise<void> = Promise.resolve()
+
+export function processOfflineQueues(): Promise<void> {
+  const next = pendingQueueProcessing.then(flushOfflineQueues, flushOfflineQueues)
+  pendingQueueProcessing = next
+  return next
+}
+
+/** Web Locks name shared by every worker instance so only one replay pass runs at a time. */
+const REPLAY_LOCK_NAME = "ecosystem-offline-queue-replay"
+const REPLAY_STORES = [STORES.NAVIGATION, STORES.REPORT, STORES.MUTATION] as const
+
+type ReplayStore = (typeof REPLAY_STORES)[number]
+type ReplayDatabase = Awaited<ReturnType<typeof getDatabase>>
+
+/** Fields shared by every queued record. A navigation record carries no request. */
+interface QueuedRecord {
+  id: number
+  url: string
+  reportUrl?: string
+  method: string
+  payload?: unknown
+  idempotencyKey?: string
+  timestamp: number
+  sessionNonce?: string | null
+  retryCount?: number
+  nextAttemptAt?: number
+}
+
+type ReplayAttempt =
+  | { status: "delivered" }
+  | { status: "retry"; reason: string }
+  | { status: "rejected"; reason: string }
+
+async function flushOfflineQueues() {
   if (!isOnline()) return
+  await withReplayLock(replayHeldRecords)
+}
+
+/** Serializes passes across worker instances. Without Web Locks the in-process chain still applies. */
+function withReplayLock(task: () => Promise<void>): Promise<void> {
+  const locks: LockManager | undefined = self.navigator.locks
+  return locks ? locks.request(REPLAY_LOCK_NAME, { mode: "exclusive" }, task) : task()
+}
+
+/**
+ * Replays only the records bound to the session that a live window vouches for. Records
+ * without a session binding, and records bound to any other session, are never sent.
+ */
+async function replayHeldRecords(): Promise<void> {
   const db = await getDatabase()
-  type PersistedPendingMutationRecord = PendingMutationRecord & { id: number }
-  const records = (await db.getAll(STORES.MUTATION)) as PersistedPendingMutationRecord[]
-  if (!records || !records.length) return
-
-  records.sort((a, b) => a.timestamp - b.timestamp)
-
-  const broadcast =
-    typeof BroadcastChannel !== "undefined"
-      ? new BroadcastChannel("offline-mutation-sync-channel")
-      : null
-  const notifyBroadcast = (msg: unknown) => {
-    if (broadcast && typeof broadcast.postMessage === "function") {
-      try {
-        broadcast.postMessage(msg)
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
   try {
-    for (const record of records) {
-      if (record.retryCount >= 5) {
-        warn("Mutation exceeded max retries, discarding:", record)
-        await db.delete(STORES.MUTATION, record.id)
-        notifyBroadcast({ type: "MUTATION_FAILED_PERMANENT", record })
-        continue
-      }
-
-      try {
-        const response = await fetch(record.url, {
-          method: record.method,
-          headers: {
-            "Content-Type": "application/json",
-            "Idempotency-Key": record.idempotencyKey,
-            ...(record.headers ?? {}),
-          },
-          body: record.payload ? JSON.stringify(record.payload) : undefined,
-          signal: AbortSignal.timeout(10_000),
-        })
-
-        if (response.ok) {
-          await db.delete(STORES.MUTATION, record.id)
-          notifyBroadcast({ type: "MUTATION_SYNCED", record })
-        } else if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-          warn(`Mutation returned non-retriable status ${response.status}:`, record)
-          await db.delete(STORES.MUTATION, record.id)
-          notifyBroadcast({ type: "MUTATION_REJECTED", record, status: response.status })
-        } else {
-          record.retryCount += 1
-          await db.put(STORES.MUTATION, record)
-        }
-      } catch (_err) {
-        record.retryCount += 1
-        await db.put(STORES.MUTATION, record)
+    const credentials = await requestReplayCredentials()
+    if (!credentials) return
+    const passSessionNonce = credentials.sessionNonce
+    const now = Date.now()
+    for (const store of REPLAY_STORES) {
+      const records = (await db.getAll(store)) as QueuedRecord[]
+      for (const record of records) {
+        if ((await replayRecord(db, store, record, passSessionNonce, now)) === "stop") return
       }
     }
   } finally {
-    broadcast?.close()
+    db.close()
   }
 }
 
-export async function processOfflineQueues() {
-  if (!isOnline()) return
-
-  log("Processing offline queues...")
-  const db = await getDatabase()
-
-  await Promise.all([
-    processPendingNavigations(),
-    processPendingReports(),
-    processNewsInteractionQueue(db),
-    processPendingMutations(),
-  ])
-}
-
-export async function processPendingNavigations() {
-  if (!isOnline()) return
-  const db = await getDatabase()
-  const records = await db.getAll(STORES.NAVIGATION)
-  for (const record of records) {
-    log("Processing navigation", record)
-    if (self.clients && typeof self.clients.openWindow === "function") {
-      await self.clients.openWindow(record.url).catch(() => {})
+async function replayRecord(
+  db: ReplayDatabase,
+  store: ReplayStore,
+  record: QueuedRecord,
+  passSessionNonce: string,
+  now: number
+): Promise<"stop" | undefined> {
+  // An unbound record has no proven owner, so no window can release it.
+  if (!record.sessionNonce) return
+  if (record.sessionNonce !== passSessionNonce) {
+    if (isExpiredOtherSessionRecord(record.timestamp, now)) {
+      await db.delete(store, record.id)
+      warn("Dropped expired offline record from another browser session", { store, id: record.id })
     }
-    await db.delete(STORES.NAVIGATION, record.id)
+    return
+  }
+
+  const target = replayTarget(store, record)
+  // A navigation has no request to replay, so it stays queued until a window consumes it.
+  if (!target || (record.nextAttemptAt ?? 0) > now) return
+
+  // Recheck only send-eligible rows, without adopting another session during this pass.
+  const credentials = await requestReplayCredentials()
+  if (!credentials || credentials.sessionNonce !== passSessionNonce) return "stop"
+
+  const attempt = await deliver(target, record, credentials.csrfToken)
+  if (attempt.status === "delivered") {
+    await db.delete(store, record.id)
+    return
+  }
+  if (attempt.status === "retry") {
+    const retryCount = (record.retryCount ?? 0) + 1
+    if (retryCount < REPLAY_MAX_ATTEMPTS) {
+      await db.put(store, {
+        ...record,
+        retryCount,
+        nextAttemptAt: now + replayBackoffMs(retryCount),
+      })
+      return
+    }
+    await deadLetter(db, store, record.id, `retries-exhausted:${attempt.reason}`)
+    return
+  }
+  await deadLetter(db, store, record.id, attempt.reason)
+}
+
+async function deadLetter(
+  db: ReplayDatabase,
+  store: ReplayStore,
+  id: number,
+  reason: string
+): Promise<void> {
+  await db.delete(store, id)
+  warn("Dead-lettered offline record", { store, id, reason })
+}
+
+function replayTarget(store: ReplayStore, record: QueuedRecord): string | undefined {
+  if (store === STORES.REPORT) return record.reportUrl
+  if (store === STORES.MUTATION) return record.url
+  return undefined
+}
+
+async function deliver(
+  url: string,
+  record: QueuedRecord,
+  csrfToken: string
+): Promise<ReplayAttempt> {
+  const target = sameOriginHref(url)
+  if (!target) return { status: "rejected", reason: "cross-origin" }
+
+  let body: string | undefined
+  try {
+    body = replayBody(record)
+  } catch {
+    return { status: "rejected", reason: "unserializable" }
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REPLAY_REQUEST_TIMEOUT_MS)
+  try {
+    const response = await fetch(target, {
+      method: record.method,
+      headers: replayHeaders(record, csrfToken, body !== undefined),
+      body,
+      // A redirect, for example to a login page, must never look like a delivered write.
+      redirect: "manual",
+      signal: controller.signal,
+    })
+    if (response.ok) return { status: "delivered" }
+    const reason = `status-${response.status}`
+    return isRetryableReplayStatus(response.status)
+      ? { status: "retry", reason }
+      : { status: "rejected", reason }
+  } catch {
+    return { status: "retry", reason: "network" }
+  } finally {
+    clearTimeout(timer)
   }
 }
 
-// RZ-NEW-06 + TD-NEW-06 (audit 2026-03): Replaced sequential for-loop (which
-// aborted remaining records on first failure) with Promise.allSettled so that
-// all reports are attempted in parallel. AbortSignal.timeout(10_000) prevents
-// a single slow endpoint from stalling the entire flush.
-export async function processPendingReports() {
-  if (!isOnline()) return
-  const db = await getDatabase()
-  const records = await db.getAll(STORES.REPORT)
-
-  const results = await Promise.allSettled(
-    records.map(async (record) => {
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
-      // DEBT-04: forward idempotency key so the server can deduplicate retries
-      if (record.idempotencyKey) {
-        headers["Idempotency-Key"] = record.idempotencyKey
-      }
-      const method = (record.method ?? "POST").toUpperCase()
-      const response = await fetch(record.reportUrl, {
-        method,
-        ...(method !== "GET" && method !== "HEAD" ? { body: JSON.stringify(record.payload) } : {}),
-        headers,
-        keepalive: true,
-        signal: AbortSignal.timeout(10_000),
-      })
-      if (response.ok) {
-        await db.delete(STORES.REPORT, record.id)
-      }
-    })
-  )
-
-  results
-    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
-    .forEach((r) => warn("Failed to sync report", r.reason))
+/** Resolves a replay target and refuses anything outside this worker's origin. */
+function sameOriginHref(value: string): string | null {
+  try {
+    const url = new URL(value, self.location.origin)
+    return url.origin === self.location.origin ? url.href : null
+  } catch {
+    return null
+  }
 }
 
-// PERF-03 (audit 2026-03-06): process all queued interactions concurrently instead
-// of sequentially. The old for-loop stalled on first network failure (break) and
-// kept all subsequent records un-synced for the entire offline period.
-// Promise.allSettled fires every fetch in parallel and collects outcomes without
-// short-circuiting — a single timeout does not block the rest of the queue.
-async function processNewsInteractionQueue(db: IDBPDatabase) {
-  const records = await db.getAll(STORES.NEWS_INTERACTION)
+function replayBody(record: QueuedRecord): string | undefined {
+  if (record.payload === undefined || record.method === "GET" || record.method === "HEAD") {
+    return undefined
+  }
+  return JSON.stringify(record.payload)
+}
 
-  const results = await Promise.allSettled(
-    records.map(async (record) => {
-      const { url, method = "POST", payload } = record
-      const options: RequestInit = {
-        method,
-        headers: { "Content-Type": "application/json" },
-        ...(method !== "GET" && method !== "HEAD" ? { body: JSON.stringify(payload) } : {}),
-      }
+function replayHeaders(
+  record: QueuedRecord,
+  csrfToken: string,
+  hasBody: boolean
+): Record<string, string> {
+  return {
+    Accept: "application/json",
+    "X-CSRF-Token": csrfToken,
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    ...(record.idempotencyKey ? { "Idempotency-Key": record.idempotencyKey } : {}),
+  }
+}
 
-      const response = await fetch(url, options)
-      if (response.ok || response.status === 400 || response.status === 404) {
-        // Drop records that succeeded or can never succeed (client errors)
-        await db.delete(STORES.NEWS_INTERACTION, record.id)
-      }
-    })
-  )
+export function processPendingNavigations(): Promise<void> {
+  return processOfflineQueues()
+}
 
-  // Log failures without breaking the loop
-  results
-    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
-    .forEach((r) => warn("Failed to sync news interaction", r.reason))
+export function processPendingReports(): Promise<void> {
+  return processOfflineQueues()
 }

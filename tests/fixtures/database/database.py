@@ -112,6 +112,41 @@ _PURE_PARSER_TEST_CASES = {
             "test_compose_decode_enforces_exact_json_container_depth",
         }
     ),
+    "tests/test_alembic_graph_metadata.py": frozenset(
+        {
+            "test_literal_roots_linear_edges_and_merges_are_read_without_execution",
+            "test_source_mapping_order_does_not_change_parent_order_or_graph",
+            "test_ambiguous_or_dynamic_metadata_cannot_form_a_graph",
+            "test_incomplete_duplicate_or_cyclic_graphs_fail_closed",
+            "test_all_current_migrations_are_retained_in_the_metadata_graph",
+            "test_legacy_single_parent_cli_contract_remains_unchanged",
+            "test_graph_reader_has_no_execution_or_admission_entrypoint",
+        }
+    ),
+    "tests/test_historical148_squawk_policy.py": frozenset(
+        {
+            "test_exact_historical_capture_matches_only_the_diagnostic_inventory",
+            "test_raw_warning_failure_is_retained_without_mutating_the_capture",
+            "test_warning_order_does_not_change_the_exact_multiset",
+            "test_each_known_occurrence_is_exact_and_required",
+            "test_span_source_and_raw_scanner_near_misses_fail_closed",
+            "test_capture_provenance_and_complete_inputs_are_required",
+            "test_policy_is_not_an_arbitrary_exception_document",
+            "test_bounded_json_is_strict",
+            "test_real_utc_expiry_boundary_has_no_caller_override",
+            "test_boolean_is_not_an_integer_scanner_exit",
+            "test_boolean_is_not_a_capture_exit",
+            "test_unknown_nested_fields_cannot_claim_approval",
+            "test_capture_source_pins_match_the_unchanged_reviewed_inputs",
+            "test_every_source_pin_remains_exact",
+            "test_only_bytes_are_accepted",
+            "test_clock_before_the_preparation_decision_cannot_match",
+            "test_correlated_policy_and_capture_changes_cannot_self_authorize",
+            "test_matcher_has_no_execution_or_admission_adapter",
+            "test_integer_metadata_does_not_accept_alternate_numeric_encodings",
+            "test_escaped_lone_surrogates_are_rejected_without_raising",
+        }
+    ),
 }
 
 

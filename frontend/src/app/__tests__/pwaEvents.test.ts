@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
+  clearPendingServiceWorkerUpdate,
   consumePendingPushEducation,
   dispatchServiceWorkerBootstrap,
+  dispatchServiceWorkerUpdate,
+  getPendingServiceWorkerUpdate,
   PUSH_EDUCATION_REQUEST_EVENT,
+  PWA_REFRESH_EVENT,
   requestPushEducation,
   SERVICE_WORKER_BOOTSTRAP_EVENT,
   type ServiceWorkerBootstrapEventDetail,
+  type ServiceWorkerUpdateEventDetail,
 } from "../pwaEvents"
 
 describe("requestPushEducation", () => {
@@ -49,6 +54,60 @@ describe("requestPushEducation", () => {
     requestPushEducation("student-1")
     vi.setSystemTime(1_060_001)
     expect(consumePendingPushEducation("student-1")).toBe(false)
+  })
+})
+
+describe("dispatchServiceWorkerUpdate", () => {
+  afterEach(() => {
+    const pending = getPendingServiceWorkerUpdate()
+    if (pending) clearPendingServiceWorkerUpdate(pending)
+    vi.unstubAllGlobals()
+  })
+
+  it("retains the latest update and only clears the matching worker detail", () => {
+    const first: ServiceWorkerUpdateEventDetail = {
+      update: vi.fn().mockResolvedValue(undefined),
+    }
+    const second: ServiceWorkerUpdateEventDetail = {
+      update: vi.fn().mockResolvedValue(undefined),
+    }
+    const received: Event[] = []
+    const listener = (event: Event) => received.push(event)
+    window.addEventListener(PWA_REFRESH_EVENT, listener)
+
+    try {
+      dispatchServiceWorkerUpdate(first)
+      dispatchServiceWorkerUpdate(second)
+
+      expect(received).toHaveLength(2)
+      expect((received[0] as CustomEvent<ServiceWorkerUpdateEventDetail>).detail).toBe(first)
+      expect(getPendingServiceWorkerUpdate()).toBe(second)
+
+      clearPendingServiceWorkerUpdate(first)
+      expect(getPendingServiceWorkerUpdate()).toBe(second)
+
+      clearPendingServiceWorkerUpdate(null)
+      expect(getPendingServiceWorkerUpdate()).toBe(second)
+      expect(second.update).not.toHaveBeenCalled()
+
+      clearPendingServiceWorkerUpdate(second)
+      expect(getPendingServiceWorkerUpdate()).toBeNull()
+    } finally {
+      window.removeEventListener(PWA_REFRESH_EVENT, listener)
+    }
+  })
+
+  it("does not retain an update callback when the browser window is unavailable", () => {
+    const previous = getPendingServiceWorkerUpdate()
+    if (previous) clearPendingServiceWorkerUpdate(previous)
+    const update = vi.fn().mockResolvedValue(undefined)
+    const detail: ServiceWorkerUpdateEventDetail = { update }
+    vi.stubGlobal("window", undefined)
+
+    dispatchServiceWorkerUpdate(detail)
+
+    expect(getPendingServiceWorkerUpdate()).toBeNull()
+    expect(update).not.toHaveBeenCalled()
   })
 })
 

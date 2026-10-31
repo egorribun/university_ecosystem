@@ -26,6 +26,7 @@ from scripts.quality.verify_dependency_review_scope import (
     _has_tracked_replace,
     _identity,
     _open_dependency_request,
+    _parse_config,
     expected_rows_for_delta,
     fetch_dependency_comparison,
     read_dependency_changes_file,
@@ -57,11 +58,16 @@ def config(
     license_ids=("MIT", "Apache-2.0", "BSD-3-Clause"),
     license_check="true",
     vuln_check="true",
+    ghsas=(),
 ):
+    ghsa_section = (
+        "allow-ghsas:\n" + "".join(f'  - "{item}"\n' for item in ghsas) if ghsas else ""
+    )
     return (
         "fail-on-severity: high\n"
         "allow-licenses:\n"
         + "".join(f"  - {item}\n" for item in license_ids)
+        + ghsa_section
         + "allow-dependencies-licenses:\n"
         + "".join(f'  - "{item}"\n' for item in purls)
         + f"vulnerability-check: {vuln_check}\n"
@@ -298,6 +304,36 @@ class DependencyLicenseGuardTests(unittest.TestCase):
         new = ["pkg:npm/preserved", *PURL_ADDITIONS.keys()]
         with self.assertRaisesRegex(ValueError, "must remain enabled"):
             verify_policy_delta(config(old), config(new, vuln_check="false"))
+
+    def test_repository_config_has_no_global_ghsa_suppressions(self):
+        config_path = Path(__file__).parents[1] / CONFIG_PATH
+        config_text = config_path.read_text(encoding="utf-8")
+        _scalars, sections = _parse_config(config_text)
+        self.assertEqual(sections.get("allow-ghsas", []), [])
+        verify_policy_scope(config_text)
+
+    def test_policy_scope_rejects_a_global_ghsa_suppression(self):
+        purls = ["pkg:npm/preserved", *PURL_ADDITIONS.keys()]
+        with self.assertRaisesRegex(ValueError, "global GHSA allowlist"):
+            verify_policy_scope(config(purls, ghsas=("GHSA-4c8g-83qw-93j6",)))
+
+    def test_policy_delta_allows_ghsa_suppression_removals(self):
+        old = ["pkg:npm/preserved", *PURL_REMOVALS.keys()]
+        new = ["pkg:npm/preserved", *PURL_ADDITIONS.keys()]
+        base_text = config(
+            old,
+            ghsas=("GHSA-4c8g-83qw-93j6", "GHSA-v2hh-gcrm-f6hx"),
+        )
+        current_text = config(new)
+        verify_policy_delta(base_text, current_text)
+
+    def test_policy_delta_rejects_ghsa_suppression_additions(self):
+        old = ["pkg:npm/preserved", *PURL_REMOVALS.keys()]
+        new = ["pkg:npm/preserved", *PURL_ADDITIONS.keys()]
+        base_text = config(old)
+        current_text = config(new, ghsas=("GHSA-4c8g-83qw-93j6",))
+        with self.assertRaisesRegex(ValueError, "GHSA allowlist additions"):
+            verify_policy_delta(base_text, current_text)
 
     def test_exact_module_pins_pass(self):
         with tempfile.TemporaryDirectory() as tmp:

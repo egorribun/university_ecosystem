@@ -34,6 +34,10 @@ target_metadata = build_migration_metadata(models.Base.metadata)
 class _OfflineInspector:
     """Fallback inspector for Alembic --sql (offline) mode when MockConnection cannot be inspected."""
 
+    def clear_cache(self) -> None:
+        """Match SQLAlchemy Inspector; this fallback stores no cache."""
+        return None
+
     def get_table_names(self, schema: str | None = None) -> list[str]:
         return []
 

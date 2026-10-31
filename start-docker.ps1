@@ -195,6 +195,142 @@ function Set-LiveStandPrivateFileMode {
     [System.IO.File]::SetUnixFileMode($absolutePath, $ownerReadWrite)
 }
 
+function Set-EnvironmentFilePrivateMode {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    if ($LiveStateMode) {
+        Set-LiveStandPrivateFileMode -Path $Path
+        return
+    }
+    if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )) {
+        return
+    }
+    $absolutePath = [System.IO.Path]::GetFullPath($Path)
+    $ownerReadWrite = [System.IO.UnixFileMode]::UserRead -bor
+        [System.IO.UnixFileMode]::UserWrite
+    [System.IO.File]::SetUnixFileMode($absolutePath, $ownerReadWrite)
+}
+
+function Assert-EnvironmentFileLeafPath {
+    param([Parameter(Mandatory=$true)][string]$Path)
+
+    $absolutePath = [System.IO.Path]::GetFullPath($Path)
+    $fileInfo = [System.IO.FileInfo]::new($absolutePath)
+    if ($null -ne $fileInfo.LinkTarget) {
+        throw "Environment file path refuses reparse points."
+    }
+    $directoryInfo = [System.IO.DirectoryInfo]::new($absolutePath)
+    if ($null -ne $directoryInfo.LinkTarget) {
+        throw "Environment file path refuses reparse points."
+    }
+    try {
+        $attributes = [System.IO.File]::GetAttributes($absolutePath)
+    } catch [System.IO.FileNotFoundException] {
+        return
+    } catch [System.IO.DirectoryNotFoundException] {
+        return
+    }
+    if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Environment file path refuses reparse points."
+    }
+    if (($attributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
+        throw "Environment file path must be a regular file."
+    }
+}
+function New-EnvironmentFileStream {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][System.IO.FileStreamOptions]$Options
+    )
+    return [System.IO.FileStream]::new($Path, $Options)
+}
+
+function Open-EnvironmentFileForWrite {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    if ($LiveStateMode -or [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )) {
+        throw "Private POSIX file streams are available only for non-live POSIX state."
+    }
+
+    $absolutePath = [System.IO.Path]::GetFullPath($Path)
+    Assert-EnvironmentFileLeafPath -Path $absolutePath
+    $ownerReadWrite = [System.IO.UnixFileMode]::UserRead -bor
+        [System.IO.UnixFileMode]::UserWrite
+    $options = [System.IO.FileStreamOptions]::new()
+    $options.Access = [System.IO.FileAccess]::Write
+    $options.Share = [System.IO.FileShare]::None
+    if (Test-Path -LiteralPath $absolutePath) {
+        $item = Get-Item -LiteralPath $absolutePath -Force
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+            throw "Environment file refuses reparse points."
+        }
+        if ($item.PSIsContainer) {
+            throw "Environment file path must be a regular file."
+        }
+        [System.IO.File]::SetUnixFileMode($absolutePath, $ownerReadWrite)
+        $options.Mode = [System.IO.FileMode]::Open
+    } else {
+        $options.Mode = [System.IO.FileMode]::CreateNew
+        $options.UnixCreateMode = $ownerReadWrite
+    }
+
+    $stream = New-EnvironmentFileStream -Path $absolutePath -Options $options
+    try {
+        $stream.SetLength(0)
+    } catch {
+        $setLengthError = $_.Exception
+        try {
+            $stream.Dispose()
+        } catch {
+            $disposeError = $_.Exception
+            throw [System.AggregateException]::new(
+                "Environment file initialization and stream cleanup both failed.",
+                [System.Exception[]]@($setLengthError, $disposeError)
+            )
+        }
+        throw
+    }
+    return $stream
+}
+
+function Copy-EnvironmentFile {
+    param(
+        [Parameter(Mandatory=$true)][string]$SourcePath,
+        [Parameter(Mandatory=$true)][string]$DestinationPath
+    )
+    $absoluteSource = Resolve-StatePath -Path $SourcePath
+    $absoluteDestination = Resolve-StatePath -Path $DestinationPath
+    Assert-EnvironmentFileLeafPath -Path $absoluteSource
+    Assert-EnvironmentFileLeafPath -Path $absoluteDestination
+    $runningOnWindows = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )
+    if ($LiveStateMode -or $runningOnWindows) {
+        Copy-Item -LiteralPath $absoluteSource -Destination $absoluteDestination -Force
+        Set-EnvironmentFilePrivateMode -Path $absoluteDestination
+        return
+    }
+
+    $sourceStream = [System.IO.FileStream]::new(
+        $absoluteSource,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::Read
+    )
+    try {
+        $destinationStream = Open-EnvironmentFileForWrite -Path $absoluteDestination
+        try {
+            $sourceStream.CopyTo($destinationStream)
+        } finally {
+            $destinationStream.Dispose()
+        }
+    } finally {
+        $sourceStream.Dispose()
+    }
+}
+
 function Set-LiveStandRuntimeSecretFileMode {
     param([Parameter(Mandatory=$true)][string]$Path)
     if (-not $LiveStateMode) { return }
@@ -825,12 +961,34 @@ function New-FernetKey {
 function Write-Utf8NoBom {
     param([string]$Path, [string]$Content)
     $absolutePath = Resolve-StatePath -Path $Path
+    Assert-EnvironmentFileLeafPath -Path $absolutePath
+    $runningOnWindows = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows
+    )
+    if (-not $LiveStateMode -and -not $runningOnWindows) {
+        $stream = Open-EnvironmentFileForWrite -Path $absolutePath
+        $writer = $null
+        try {
+            $writer = [System.IO.StreamWriter]::new(
+                $stream,
+                [System.Text.UTF8Encoding]::new($false)
+            )
+            $writer.Write($Content)
+        } finally {
+            if ($null -ne $writer) {
+                $writer.Dispose()
+            } else {
+                $stream.Dispose()
+            }
+        }
+        return
+    }
     [System.IO.File]::WriteAllText(
         $absolutePath,
         $Content,
         [System.Text.UTF8Encoding]::new($false)
     )
-    Set-LiveStandPrivateFileMode -Path $absolutePath
+    Set-EnvironmentFilePrivateMode -Path $absolutePath
 }
 
 function Get-EnvEntry {
@@ -2729,15 +2887,13 @@ SPOTIFY_OAUTH_STATE_SECRET=$spotifyOauthStateSecret
 } elseif ($needsEnvDocker -and -not $needsEnvCompose) {
     # .env exists but .env.docker missing - copy .env as base for .env.docker
     Write-Warn ".env.docker missing - deriving from .env..."
-    Copy-Item $EnvCompose $EnvFile
-    Set-LiveStandPrivateFileMode -Path (Resolve-StatePath -Path $EnvFile)
+    Copy-EnvironmentFile -SourcePath $EnvCompose -DestinationPath $EnvFile
     Write-Ok "Created $EnvFile from $EnvCompose"
     $generated = $true
 } elseif (-not $needsEnvDocker -and $needsEnvCompose) {
     # .env.docker exists but .env missing - derive .env from .env.docker
     Write-Warn ".env missing - deriving from .env.docker..."
-    Copy-Item $EnvFile $EnvCompose
-    Set-LiveStandPrivateFileMode -Path (Resolve-StatePath -Path $EnvCompose)
+    Copy-EnvironmentFile -SourcePath $EnvFile -DestinationPath $EnvCompose
     Write-Ok "Created $EnvCompose from $EnvFile"
     $generated = $true
 }

@@ -10,6 +10,7 @@ import pytest
 from app.api.ws import connection_manager, presence
 from app.core import nats_broker
 from app.deps.cache import MemoryCache, versioned_key
+from app.repositories.chat_repository import LockedChatMembership
 from app.services.chat.command_service import ChatMaintenanceService
 
 
@@ -27,7 +28,6 @@ async def test_removed_member_is_not_in_next_cached_chat_broadcast(
     cache_key = versioned_key(f"chat:{chat_id}:participants")
     await cache.set(cache_key, [str(user_id) for user_id in old_participants], ttl=3600)
     monkeypatch.setattr(presence, "get_cache", lambda: cache)
-    monkeypatch.setattr(connection_manager, "get_cache", lambda: cache)
     monkeypatch.setattr(nats_broker.broker, "publish_core", AsyncMock())
     monkeypatch.setattr(
         "app.services.ws_hub_client.invalidate_ws_hub_cache", AsyncMock()
@@ -58,18 +58,14 @@ async def test_removed_member_is_not_in_next_cached_chat_broadcast(
 
     owner = MagicMock()
     owner.id = owner_id
-    chat = MagicMock()
-    chat.id = chat_id
-    chat.created_by = owner_id
-    chat.chat_type = "group"
-    chat.participants = [
-        MagicMock(id=owner_id),
-        MagicMock(id=removed_id),
-        MagicMock(id=remaining_id),
-    ]
+    snapshot = LockedChatMembership(
+        chat_type="group",
+        created_by=owner_id,
+        participant_ids=tuple(old_participants),
+    )
     uow = MagicMock()
     uow.chats = MagicMock()
-    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.lock_membership_snapshot = AsyncMock(return_value=snapshot)
 
     async def remove_member(
         _requested_chat_id: uuid.UUID, requested_user_id: uuid.UUID
@@ -88,6 +84,9 @@ async def test_removed_member_is_not_in_next_cached_chat_broadcast(
 
     service = ChatMaintenanceService(uow, MagicMock())
     await service.remove_participant(chat_id, owner, removed_id, "en")
+    uow.chats.lock_membership_snapshot.assert_awaited_once_with(chat_id)
+    uow.chats.remove_participant.assert_awaited_once_with(chat_id, removed_id)
+    uow.commit.assert_awaited_once()
 
     manager.send_to_user.reset_mock()
     await manager.broadcast_to_chat(chat_id, {"type": "after-removal"})

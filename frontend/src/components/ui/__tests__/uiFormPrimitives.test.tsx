@@ -311,7 +311,7 @@ describe("TextField", () => {
       "text-xs",
       "font-medium",
       "leading-tight",
-      "text-(--text-tertiary)/(--opacity-strong)"
+      "text-(--text-tertiary)/[calc(var(--opacity-strong)*100%)]"
     )
 
     rerender(<TextField value="value" onChange={() => {}} error helperText="Invalid value" />)

@@ -126,8 +126,8 @@ export function Dialog({
           "relative z-surface w-full max-w-(--dialog-max-w)",
           getDialogSizeClass(size),
           fullScreenOnMobile
-            ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/(--opacity-subtle) sm:h-auto sm:rounded-2xl sm:px-6 sm:pb-7"
-            : "glass-layer-elevated overflow-y-auto rounded-2xl pb-6 pt-5 text-(--text-primary) ring-1 ring-white/(--opacity-subtle) sm:px-6 sm:pb-7",
+            ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/[calc(var(--opacity-subtle)*100%)] sm:h-auto sm:rounded-2xl sm:px-6 sm:pb-7"
+            : "glass-layer-elevated overflow-y-auto rounded-2xl pb-6 pt-5 text-(--text-primary) ring-1 ring-white/[calc(var(--opacity-subtle)*100%)] sm:px-6 sm:pb-7",
           "focus:outline-none",
           className
         )}
@@ -149,7 +149,7 @@ export function Dialog({
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/(--opacity-subtle) bg-(--glass-bg)/(--opacity-hover) text-(--primary-main) shadow-surface transition hover:bg-(--glass-bg) focus-ring-premium"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/[calc(var(--opacity-subtle)*100%)] bg-(--glass-bg)/[calc(var(--opacity-hover)*100%)] text-(--primary-main) shadow-surface transition hover:bg-(--glass-bg) focus-ring-premium"
           >
             <span className="sr-only">{closeLabel}</span>
             <X className="h-4 w-4 text-(--primary-main)" aria-hidden />

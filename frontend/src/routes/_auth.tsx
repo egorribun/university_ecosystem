@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react"
 import { createFileRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { evaluateAuthGuard } from "./guards"
+import { PageRouteSEO } from "@/components/ui/PageRouteSEO"
 
 function AuthLayout() {
   const user = useAuthStore((state) => state.user)
@@ -22,7 +23,12 @@ function AuthLayout() {
   }, [destination, navigate, needsLogin])
 
   if (needsLogin) return null
-  return <Outlet />
+  return (
+    <>
+      <PageRouteSEO />
+      <Outlet />
+    </>
+  )
 }
 
 export const Route = createFileRoute("/_auth")({

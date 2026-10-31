@@ -55,7 +55,7 @@ const Navbar = () => {
           // FIXED height — never changes, no layout shift
           "h-(--navbar-height)",
           "flex items-center justify-center",
-          showPill ? "bg-transparent" : "bg-nav/(--opacity-hover)"
+          showPill ? "bg-transparent" : "bg-nav/[calc(var(--opacity-hover)*100%)]"
         )}
       >
         <NavbarPill

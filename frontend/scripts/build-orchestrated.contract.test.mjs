@@ -1,4 +1,6 @@
 import assert from "node:assert/strict"
+import childProcess from "node:child_process"
+import { EventEmitter } from "node:events"
 import {
   mkdtempSync,
   mkdirSync,
@@ -10,11 +12,16 @@ import {
 } from "node:fs"
 import { readFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
+import { syncBuiltinESMExports } from "node:module"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { test } from "node:test"
 import { loadConfigFromFile } from "vite"
-import { advanceArtifactStability, captureViteArtifactSnapshot } from "./build-orchestrated.mjs"
+import {
+  advanceArtifactStability,
+  captureViteArtifactSnapshot,
+  step3_viteBuild,
+} from "./build-orchestrated.mjs"
 import {
   enforcePrecacheBudget,
   enforcePrecacheBudgetForEnv,
@@ -40,6 +47,145 @@ const loadedViteConfig = await loadConfigFromFile(
 )
 const resolveModulePreloadDependencies =
   loadedViteConfig?.config?.build?.modulePreload?.resolveDependencies
+
+function fakeViteBoundary(t, rawMaxWaitMs) {
+  const previousMaxWaitMs = process.env.BUILD_MAX_WAIT_MS
+  const previousTrace = process.env.BUILD_HANG_TRACE
+  if (rawMaxWaitMs === undefined) delete process.env.BUILD_MAX_WAIT_MS
+  else process.env.BUILD_MAX_WAIT_MS = rawMaxWaitMs
+  process.env.BUILD_HANG_TRACE = ""
+
+  const child = new EventEmitter()
+  child.pid = 123456789
+  const spawned = []
+  const killed = []
+  const intervals = new Set()
+  let now = 4_102_444_800_000 // Keep any real build artifacts stale.
+  const startTime = now
+
+  t.mock.method(Date, "now", () => now)
+  t.mock.method(globalThis, "setInterval", (callback, delay) => {
+    const interval = { callback, delay }
+    intervals.add(interval)
+    return interval
+  })
+  t.mock.method(globalThis, "clearInterval", (interval) => intervals.delete(interval))
+  t.mock.method(process, "kill", (pid, signal) => killed.push({ pid, signal }))
+  t.mock.method(childProcess, "spawn", (command, args) => {
+    spawned.push({ command, args })
+    return command === "taskkill.exe" ? { unref() {} } : child
+  })
+  t.mock.method(childProcess, "execFile", (...args) => {
+    args.at(-1)(new Error("RSS unavailable in the fake boundary"), "")
+  })
+  syncBuiltinESMExports()
+
+  t.after(() => {
+    t.mock.restoreAll()
+    syncBuiltinESMExports()
+    if (previousMaxWaitMs === undefined) delete process.env.BUILD_MAX_WAIT_MS
+    else process.env.BUILD_MAX_WAIT_MS = previousMaxWaitMs
+    if (previousTrace === undefined) delete process.env.BUILD_HANG_TRACE
+    else process.env.BUILD_HANG_TRACE = previousTrace
+  })
+
+  return {
+    child,
+    spawned,
+    killed,
+    intervals,
+    startTime,
+    setNow(value) {
+      now = value
+    },
+  }
+}
+
+for (const rawMaxWaitMs of [
+  "-1",
+  "0",
+  "NaN",
+  "Infinity",
+  "-Infinity",
+  "1e309",
+  "1.5",
+  "2147483648",
+  " ",
+]) {
+  test(`invalid BUILD_MAX_WAIT_MS=${JSON.stringify(rawMaxWaitMs)} fails before Vite starts`, async (t) => {
+    const boundary = fakeViteBoundary(t, rawMaxWaitMs)
+    const outcome = step3_viteBuild().then(
+      () => null,
+      (error) => error
+    )
+    const viteWasStarted = boundary.spawned.some(({ command }) => command === "node")
+    if (viteWasStarted) boundary.child.emit("close", 1, null)
+    const error = await outcome
+
+    assert.equal(viteWasStarted, false, "invalid configuration must not start Vite")
+    assert.match(error?.message ?? "", /BUILD_MAX_WAIT_MS/)
+    assert.equal(boundary.intervals.size, 0)
+  })
+}
+
+for (const [rawMaxWaitMs, expectedWaitMs] of [
+  [undefined, 360_000],
+  ["", 360_000],
+  ["1", 1],
+  ["1250", 1250],
+  ["1e3", 1000],
+  ["2147483647", 2_147_483_647],
+]) {
+  test(`BUILD_MAX_WAIT_MS=${JSON.stringify(rawMaxWaitMs)} bounds Vite and cleans up`, async (t) => {
+    const boundary = fakeViteBoundary(t, rawMaxWaitMs)
+    const outcome = step3_viteBuild().then(
+      () => null,
+      (error) => error
+    )
+    assert.equal(boundary.spawned.filter(({ command }) => command === "node").length, 1)
+    const poll = [...boundary.intervals].find(({ delay }) => delay === 500)
+    assert.ok(poll, "the artifact poll must be scheduled")
+    assert.equal(boundary.intervals.size, 2)
+
+    boundary.setNow(boundary.startTime + expectedWaitMs)
+    poll.callback()
+    assert.equal(boundary.killed.length, 0)
+    assert.equal(boundary.spawned.filter(({ command }) => command === "taskkill.exe").length, 0)
+
+    boundary.setNow(boundary.startTime + expectedWaitMs + 1)
+    poll.callback()
+    const error = await outcome
+    assert.match(error?.message ?? "", /vite build did not produce artifacts within/)
+    assert.equal(boundary.intervals.size, 0)
+    if (process.platform === "win32") {
+      assert.deepEqual(
+        boundary.spawned.filter(({ command }) => command === "taskkill.exe"),
+        [{ command: "taskkill.exe", args: ["/PID", "123456789", "/T", "/F"] }]
+      )
+    } else {
+      assert.deepEqual(boundary.killed, [{ pid: 123456789, signal: "SIGKILL" }])
+    }
+    boundary.child.emit("close", null, "SIGKILL")
+    assert.equal(boundary.intervals.size, 0)
+  })
+}
+
+test("invalid build timeout fails before build preparation", (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), "ue-invalid-build-timeout-"))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const result = childProcess.spawnSync(process.execPath, [scriptPath], {
+    cwd: root,
+    env: { ...process.env, BUILD_MAX_WAIT_MS: "NaN", SKIP_WASM_BUILD: "1" },
+    encoding: "utf8",
+    timeout: 5000,
+    windowsHide: true,
+  })
+
+  assert.equal(result.error, undefined)
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /BUILD_MAX_WAIT_MS/)
+  assert.doesNotMatch(result.stdout, /Step 1: wasm-pack/)
+})
 
 test("build orchestrator exposes bounded memory controls", () => {
   assert.match(scriptSource, /FRONTEND_BUILD_MAX_RSS_MB/)

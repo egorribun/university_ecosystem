@@ -439,6 +439,24 @@ def test_timeout_duration_and_required_policy_are_source_bound() -> None:
     assert any("required job has no required_events" in error for error in errors)
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "npm install $(printf '%s%s' --fetch-retries=0 1)",
+        "npm install $(\n  printf '%s%s' --fetch-retries=0 1\n)",
+        'const args = ["--fetch-retries=0", "1"].join("");',
+        'const args = [\n  "--fetch-retries=0",\n  "1"\n].join("");',
+        "const args = ['prefix --fetch-retries=0 suffix'];",
+        "const args = [`prefix\n --fetch-retries=0 \nsuffix`];",
+        ('const npm = (args) => args.join("");\nnpm(["--fetch-retries=0", "1"]);'),
+    ],
+)
+def test_apparent_zero_fetch_retries_in_dynamic_arguments_remain_fail_closed(
+    command: str,
+) -> None:
+    assert catalog_validator._is_retry_candidate({"steps": [{"run": command}]})
+
+
 def test_retry_like_source_cannot_be_hidden_as_no_retry() -> None:
     value = _catalog()
     workflows = value["workflows"]
@@ -842,3 +860,161 @@ def test_cli_fails_closed_for_unlisted_malformed_workflow(
         == 1
     )
     assert "cannot read workflow" in capsys.readouterr().err
+
+
+_REVIEWED_OUTBOX_NODE = (
+    "tests/test_outbox_worker.py::"
+    "test_durable_outbox_handler_failure_retries_without_pii"
+)
+_STATIC_PYTEST_COMMAND = "uv run --frozen --no-sync pytest"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE} -v",
+        (
+            f"{_STATIC_PYTEST_COMMAND} tests/contracts/ \\\n"
+            f"  {_REVIEWED_OUTBOX_NODE} \\\n"
+            "  tests/test_logging_core.py -v"
+        ),
+        (
+            "bash -c '\n"
+            "  set -euo pipefail\n"
+            f"  {_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE} -v\n"
+            "'"
+        ),
+    ],
+)
+def test_reviewed_literal_pytest_node_is_not_ci_retry_behavior(command: str) -> None:
+    job = {"steps": [{"run": command}]}
+    original = copy.deepcopy(job)
+
+    assert not catalog_validator._is_retry_candidate(job)
+    assert job == original
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE} --retries 2",
+        f"{_STATIC_PYTEST_COMMAND} --retry {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE} --fetch-retries=2",
+        (
+            f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}\n"
+            "for attempt in 1 2; do curl example.invalid; done"
+        ),
+        (
+            f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}"
+            " && curl --retry 2 example.invalid"
+        ),
+        f"retry {_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}",
+        f"echo {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} --argument={_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}_extra",
+        f"{_STATIC_PYTEST_COMMAND} tests/test_other.py::test_retry_behavior",
+        (
+            f"{_STATIC_PYTEST_COMMAND} tests/unit/test_outbox_worker.py::"
+            "test_durable_outbox_handler_failure_retries_without_pii"
+        ),
+        f'{_STATIC_PYTEST_COMMAND} "{_REVIEWED_OUTBOX_NODE}"',
+        (f"{_STATIC_PYTEST_COMMAND} $(printf '%s' '{_REVIEWED_OUTBOX_NODE}')"),
+        (f'selector={_REVIEWED_OUTBOX_NODE}\n{_STATIC_PYTEST_COMMAND} "$selector"'),
+        f"{_STATIC_PYTEST_COMMAND} -k {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} --override-ini {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} --pyargs {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} tests/; echo {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} tests/ && echo {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} tests/ || echo {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} tests/ | echo {_REVIEWED_OUTBOX_NODE}",
+        f"{_STATIC_PYTEST_COMMAND} tests/\n{_REVIEWED_OUTBOX_NODE}",
+        (f"{_STATIC_PYTEST_COMMAND} tests/ # {_REVIEWED_OUTBOX_NODE}"),
+    ],
+)
+def test_reviewed_pytest_node_does_not_hide_retry_or_dynamic_text(
+    command: str,
+) -> None:
+    job = {"steps": [{"run": command}]}
+    original = copy.deepcopy(job)
+
+    assert catalog_validator._is_retry_candidate(job)
+    assert job == original
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"name": "retry install"},
+        {"env": {"MAX_ATTEMPTS": "2"}},
+        {"uses": "nick-fields/retry@fixture"},
+        {"run": "npm install --fetch-retries=2"},
+        {"name": _REVIEWED_OUTBOX_NODE},
+        {"env": {"SELECTOR": _REVIEWED_OUTBOX_NODE}},
+        {"uses": _REVIEWED_OUTBOX_NODE},
+        {"run": f"echo {_REVIEWED_OUTBOX_NODE}"},
+    ],
+)
+def test_reviewed_pytest_node_does_not_hide_other_step_retry_metadata(
+    extra: dict[str, Any],
+) -> None:
+    job = {
+        "steps": [
+            {"run": f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}"},
+            extra,
+        ]
+    }
+    original = copy.deepcopy(job)
+
+    assert catalog_validator._is_retry_candidate(job)
+    assert job == original
+
+
+@pytest.mark.parametrize(
+    "retry_command",
+    [
+        "curl --retry 2 example.invalid",
+        "for attempt in 1 2; do curl example.invalid; done",
+    ],
+)
+def test_real_retry_alongside_reviewed_node_still_violates_none_policy(
+    tmp_path: Path, retry_command: str
+) -> None:
+    value = _catalog()
+    workflow_dir = _source_repo(tmp_path, value)
+    ci_path = workflow_dir / "ci.yml"
+    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    job = source["jobs"]["contract-tests"]
+    job["steps"].append({"name": "Additional operation", "run": retry_command})
+    ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
+
+    errors = _validate_changed_ci(tmp_path, value)
+    assert any(
+        "jobs['contract-tests']: retry behavior is present" in error for error in errors
+    ), errors
+
+
+def test_reviewed_pytest_node_does_not_hide_job_retry_metadata() -> None:
+    job = {
+        "name": _REVIEWED_OUTBOX_NODE,
+        "steps": [{"run": f"{_STATIC_PYTEST_COMMAND} {_REVIEWED_OUTBOX_NODE}"}],
+    }
+    original = copy.deepcopy(job)
+
+    assert catalog_validator._is_retry_candidate(job)
+    assert job == original
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        "retry",
+        [None, 7, {"run": 17}, {"run": None}, "retry"],
+    ],
+)
+def test_retry_scan_preserves_non_script_values_fail_closed(steps: Any) -> None:
+    job = {"steps": steps}
+    original = copy.deepcopy(job)
+
+    assert catalog_validator._is_retry_candidate(job)
+    assert job == original

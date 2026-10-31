@@ -79,7 +79,12 @@ async def test_decode_token_valid_token_returns_payload(monkeypatch):
     kid = settings.jwt_signing_active_kid
     secret = settings.jwt_signing_active_secret
 
-    token = _make_token(subject=subject, kid=kid, secret=secret)
+    token = _make_token(
+        subject=subject,
+        kid=kid,
+        secret=secret,
+        extra_claims={"iss": settings.jwt_issuer},
+    )
     payload = decode_token(token)
     assert payload is not None, "decode_token must return a dict for a valid token"
     assert payload["sub"] == subject
@@ -133,7 +138,12 @@ async def test_decode_token_expired_returns_none():
 
     kid = settings.jwt_signing_active_kid
     secret = settings.jwt_signing_active_secret
-    token = _make_token(kid=kid, secret=secret, expires_minutes=-5)
+    token = _make_token(
+        kid=kid,
+        secret=secret,
+        expires_minutes=-5,
+        extra_claims={"iss": settings.jwt_issuer},
+    )
     result = decode_token(token)
     assert result is None, "Expired token MUST be rejected"
 
@@ -149,7 +159,12 @@ async def test_decode_token_wrong_audience_returns_none():
 
     kid = settings.jwt_signing_active_kid
     secret = settings.jwt_signing_active_secret
-    token = _make_token(kid=kid, secret=secret, audience="wrong-audience")
+    token = _make_token(
+        kid=kid,
+        secret=secret,
+        audience="wrong-audience",
+        extra_claims={"iss": settings.jwt_issuer},
+    )
     result = decode_token(token)
     assert result is None, "Wrong audience token MUST be rejected"
 

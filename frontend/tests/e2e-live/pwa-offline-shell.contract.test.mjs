@@ -3,8 +3,14 @@ import { Buffer } from "node:buffer"
 import { readFile } from "node:fs/promises"
 import { clearTimeout as clearNodeTimeout, setTimeout as setNodeTimeout } from "node:timers"
 import { URL } from "node:url"
+import { runInNewContext } from "node:vm"
 import test from "node:test"
 const { replacePrecacheRevision } = await import("./pwa-precache-revision.ts")
+const { createPwaBuildMarkerScript, readPrecachedModuleAppBundleEvidence } =
+  await import("./pwa-app-bundle-evidence.ts")
+
+const primaryClickNavigationBarrierPattern =
+  /await Promise\.all\(\[\s*page\.waitForEvent\("framenavigated", \{\s*predicate: \(frame\) => frame === page\.mainFrame\(\),\s*timeout: 15_000,\s*\}\),\s*updateReloadButton\(page\)\.click\(\),?\s*\]\)/u
 
 const specUrl = new URL("./pwa-offline-shell.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
@@ -14,6 +20,7 @@ const workboxConfigUrl = new URL("../../scripts/workbox-config.mjs", import.meta
 const serviceWorkerRegistrationUrl = new URL("../../src/push/register-sw.ts", import.meta.url)
 const serviceWorkerUrl = new URL("../../src/sw.ts", import.meta.url)
 const updateProxyUrl = new URL("./pwa-update-proxy.ts", import.meta.url)
+const appBundleEvidenceUrl = new URL("./pwa-app-bundle-evidence.ts", import.meta.url)
 
 const [
   spec,
@@ -24,6 +31,7 @@ const [
   serviceWorkerRegistration,
   serviceWorker,
   updateProxy,
+  appBundleEvidence,
 ] = await Promise.all([
   readFile(specUrl, "utf8"),
   readFile(configUrl, "utf8"),
@@ -33,11 +41,87 @@ const [
   readFile(serviceWorkerRegistrationUrl, "utf8"),
   readFile(serviceWorkerUrl, "utf8"),
   readFile(updateProxyUrl, "utf8"),
+  readFile(appBundleEvidenceUrl, "utf8"),
 ])
 
 function assertProxySource(pattern, message) {
   assert.ok(pattern.test(updateProxy), message)
 }
+
+test("selects the same-origin precached module bundle instead of an earlier classic script", async () => {
+  const appOrigin = "http://localhost:30231"
+  const appBundlePath = "/assets/index-BdI8C6Li.js"
+  const appBundleUrl = new URL(appBundlePath, appOrigin).toString()
+  const cachedRequestUrls = [
+    new URL("/theme-init.js", appOrigin).toString(),
+    appBundleUrl,
+    "https://cdn.invalid/assets/external.js",
+  ]
+  const pageContext = {
+    document: {
+      scripts: [
+        { type: "", src: new URL("/theme-init.js", appOrigin).toString() },
+        { type: "module", src: appBundleUrl },
+        { type: "module", src: new URL("/assets/not-cached.js", appOrigin).toString() },
+        { type: "module", src: "https://cdn.invalid/assets/external.js" },
+      ],
+    },
+    location: { origin: appOrigin },
+    caches: {
+      async keys() {
+        return ["workbox-precache-test", "runtime-cache"]
+      },
+      async open(cacheName) {
+        assert.equal(cacheName, "workbox-precache-test")
+        return {
+          async keys() {
+            return cachedRequestUrls.map((url) => ({ url }))
+          },
+        }
+      },
+    },
+    URL,
+  }
+  const pageCallbackSource = "(" + readPrecachedModuleAppBundleEvidence.toString() + ")"
+  const pageCallback = runInNewContext(pageCallbackSource, pageContext)
+
+  const evidence = await pageCallback()
+  assert.equal(evidence.appBundlePath, appBundlePath)
+  assert.ok(
+    evidence.precacheEntries.some((entry) => entry.path === "/theme-init.js"),
+    "the earlier classic script remains present in the real precache evidence"
+  )
+
+  cachedRequestUrls.splice(1, 1)
+  assert.equal(
+    (await pageCallback()).appBundlePath,
+    null,
+    "a precached classic script cannot stand in for a missing precached module bundle"
+  )
+})
+
+test("keeps the executed bundle marker across a static document mount", () => {
+  const marker = "pwa-build-marker-contract"
+  const pageWindow = Object.create(null)
+  const body = {
+    childNodes: [{ id: "root" }, { id: "unowned-output" }],
+    append() {
+      assert.fail("the bundle marker must not be appended to React-owned body content")
+    },
+    clearForStaticDocumentMount() {
+      this.childNodes.length = 0
+    },
+  }
+
+  runInNewContext(createPwaBuildMarkerScript(marker), {
+    document: { body },
+    window: pageWindow,
+  })
+  body.clearForStaticDocumentMount()
+
+  assert.equal(Reflect.get(pageWindow, "__UE_PWA_TEST_BUILD_MARKER__"), marker)
+  assert.deepEqual(body.childNodes, [])
+})
 
 test("rewrites only the selected generated Workbox precache record", () => {
   const siblingEntry = '{"revision":"sibling-revision","url":"assets/route-chunk.js"}'
@@ -141,8 +225,55 @@ test("live PWA shell acceptance exercises the real worker without server mutatio
   )
   assert.doesNotMatch(
     spec,
-    /useMockApi|page\.route|routeWebSocket|page\.request|\.fill\(|\.click\(/u
+    /useMockApi|page\.route|routeWebSocket|page\.request|context\.request|\.(?:submit|requestSubmit)\s*\(/u,
+    "the live scenario does not mock request handling, call request APIs, or submit a form"
   )
+  assert.doesNotMatch(
+    spec,
+    /\.(?:post|put|delete|patch)\s*\(/u,
+    "the live scenario does not issue application mutation methods"
+  )
+  assert.equal(
+    [...spec.matchAll(/\bfetch\s*\(/gu)].length,
+    1,
+    "the sole fetch is the existing real asset-route fetch"
+  )
+  assert.match(spec, /const response = await route\.fetch\(\)/u)
+  assert.equal(
+    [...spec.matchAll(/context\.route\(/gu)].length,
+    1,
+    "the sole browser route remains the app-bundle marker asset route"
+  )
+  assert.equal(
+    [...spec.matchAll(/\.fill\(/gu)].length,
+    1,
+    "the peer login draft is the only form field filled"
+  )
+  assert.match(
+    spec,
+    /const peerEmailInput = peerPage\.getByRole\("textbox", \{\s*name: "E-mail"\s*\}\)[\s\S]*?await peerEmailInput\.fill\(peerDraft\)/u,
+    "the one filled field is the peer draft whose retention is checked"
+  )
+  assert.equal(
+    [...spec.matchAll(/\.click\(/gu)].length,
+    2,
+    "only the two per-page update-consent buttons are clicked"
+  )
+  assert.match(
+    spec,
+    primaryClickNavigationBarrierPattern,
+    "the primary main-frame navigation wait is armed with the real consent click"
+  )
+  assert.match(spec, /await updateReloadButton\(peerPage\)\.click\(\)/u)
+  assert.match(
+    spec,
+    /system:installPrompt\.reload[\s\S]*?const UPDATE_RELOAD_BUTTON_NAME = "Reload"[\s\S]*?getByRole\("button", \{\s*name: UPDATE_RELOAD_BUTTON_NAME,\s*exact: true\s*\}\)/u,
+    "consent clicks target the locale-pinned real translated button"
+  )
+  assert.match(spec, /context\.addCookies\(\[\{\s*name: "ue:language",\s*value: "en"/u)
+  assert.match(spec, /localStorage\.setItem\("ue:language",\s*"en"\)/u)
+  assert.match(spec, /await prepareUpdatePage\(page\)[\s\S]*?await page\.goto/u)
+  assert.match(spec, /await prepareUpdatePage\(peerPage\)[\s\S]*?await peerPage\.goto/u)
 
   assert.match(precaching, /new NetworkOnly\(/u)
   assert.match(precaching, /handlerDidError/u)
@@ -159,6 +290,12 @@ test("live PWA update replaces the active precache and proves the new app bundle
     /updates the active service worker online and serves the new precached bundle offline/u
   )
   assert.match(spec, /replacePrecacheRevision/u)
+  assert.match(spec, /page\.evaluate\(readPrecachedModuleAppBundleEvidence\)/u)
+  assert.ok(appBundleEvidence.includes('script.type === "module"'))
+  assert.ok(appBundleEvidence.includes('script.pathname.startsWith("/assets/")'))
+  assert.ok(
+    appBundleEvidence.includes("entry.origin === location.origin && entry.path === script.pathname")
+  )
   assert.match(spec, /import \{ replacePrecacheRevision \} from ["']\.\/pwa-precache-revision["']/u)
   assert.match(spec, /startPwaUpdateProxy\(context,\s*ownedSessionOrigin\(\)\)/u)
   assert.match(spec, /setWorkerResponseTransform/u)
@@ -239,7 +376,7 @@ test("live PWA update replaces the active precache and proves the new app bundle
     "proxy validates the numeric destination port before opening a socket"
   )
   assertProxySource(
-    /requestHeaders\.host = upstreamOrigin\.host[\s\S]*?httpRequest\(\s*["']http:\/\/127\.0\.0\.1["']\s*,\s*\{\s*hostname:\s*["']127\.0\.0\.1["']\s*,\s*port:\s*upstreamPort\s*,\s*method:\s*request\.method\s*,\s*path:\s*`\$\{upstreamTarget\.pathname\}\$\{upstreamTarget\.search\}`\s*,\s*headers:\s*requestHeaders/u,
+    /requestHeaders\.host = proxyOrigin\.host[\s\S]*?httpRequest\(\s*["']http:\/\/127\.0\.0\.1["']\s*,\s*\{\s*hostname:\s*["']127\.0\.0\.1["']\s*,\s*port:\s*upstreamPort\s*,\s*method:\s*request\.method\s*,\s*path:\s*`\$\{upstreamTarget\.pathname\}\$\{upstreamTarget\.search\}`\s*,\s*headers:\s*requestHeaders/u,
     "proxy fixes the socket authority and forwards only the validated request path"
   )
   assert.doesNotMatch(updateProxy, /httpRequest\(\s*upstreamTarget/u)
@@ -258,19 +395,294 @@ test("live PWA update replaces the active precache and proves the new app bundle
   assertProxySource(/MAX_WORKER_SCRIPT_BYTES/u, "worker transformation remains size bounded")
   assert.match(spec, /url\.pathname !== appBundlePath/u)
   assert.match(spec, /pwa-build-marker/u)
+  assert.match(spec, /createPwaBuildMarkerScript\(marker\)/u)
+  assert.match(
+    spec,
+    /Reflect\.get\(window, "__UE_PWA_TEST_BUILD_MARKER__"\)/u,
+    "both updated-page checks read the exact marker from the executing bundle"
+  )
   assert.match(spec, /controllerchange/u)
+  assert.match(spec, /const previousController = serviceWorker\.controller/u)
+  assert.match(spec, /if \(!previousController\)\s*\{\s*throw new Error/u)
+  assert.match(
+    spec,
+    /const onControllerChange = \(\) => \{\s*const currentController = serviceWorker\.controller\s*if \(!currentController \|\| currentController === previousController\) return\s*serviceWorker\.removeEventListener\("controllerchange", onControllerChange\)\s*resolve\(\)\s*\}/u,
+    "the observer ignores null or same-controller events and resolves only after identity changes"
+  )
+  assert.match(spec, /serviceWorker\.addEventListener\("controllerchange", onControllerChange\)/u)
+  assert.match(spec, /const peerPage = await context\.newPage\(\)/u)
+  const updateTestStartIndex = spec.indexOf(
+    'test("updates the active service worker online and serves the new precached bundle offline"'
+  )
+  const updatePageBaselineIndex = spec.indexOf("const updatePageInitialUrl = page.url()")
+  const updatePageInitialTimeOriginIndex = spec.indexOf(
+    "const updatePageInitialTimeOrigin = await page.evaluate(() => performance.timeOrigin)",
+    updateTestStartIndex
+  )
+  const updatePageNavigationCounterIndex = spec.indexOf(
+    "let updatePageMainFrameNavigations = 0",
+    updatePageInitialTimeOriginIndex
+  )
+  const updatePageNavigationListenerIndex = spec.indexOf(
+    'page.on("framenavigated", (frame) => {',
+    updatePageNavigationCounterIndex
+  )
+  const updatePageNavigationCounterHandlerIndex = spec.indexOf(
+    "if (frame === page.mainFrame()) updatePageMainFrameNavigations += 1",
+    updatePageNavigationListenerIndex
+  )
   const updateStartIndex = spec.indexOf("await activeRegistration.update()")
+  const updatePromptIndex = spec.indexOf("await waitForPwaLiveUpdatePrompt(page)", updateStartIndex)
+  const updatePromptVisibleIndex = spec.indexOf(
+    "await expect(updateReloadButton(page)).toBeVisible()",
+    updatePromptIndex
+  )
+  const waitingWorkerIndex = spec.indexOf(
+    "Boolean((await navigator.serviceWorker.ready).waiting)",
+    updatePromptVisibleIndex
+  )
+  const workerResponseAssertionIndex = spec.indexOf(
+    "expect(workerUpdateResponses).toBeGreaterThan(0)",
+    waitingWorkerIndex
+  )
+  const preConsentUrlIndex = spec.indexOf(
+    "await expect(page).toHaveURL(updatePageInitialUrl)",
+    workerResponseAssertionIndex
+  )
+  const preConsentTimeOriginIndex = spec.indexOf(
+    "expect(await page.evaluate(() => performance.timeOrigin)).toBe(updatePageInitialTimeOrigin)",
+    preConsentUrlIndex
+  )
+  const preConsentNoNavigationIndex = spec.indexOf(
+    "expect(updatePageMainFrameNavigations).toBe(0)",
+    preConsentTimeOriginIndex
+  )
+  const pageOneConsentIndex = spec.indexOf(
+    "updateReloadButton(page).click()",
+    preConsentNoNavigationIndex
+  )
+  const pageOnePromiseAllStartIndex = spec.lastIndexOf("await Promise.all([", pageOneConsentIndex)
+  const pageOneNavigationWaitIndex = spec.indexOf(
+    'page.waitForEvent("framenavigated", {',
+    pageOnePromiseAllStartIndex
+  )
+  const pageOnePromiseAllEndIndex = spec.indexOf("])", pageOneConsentIndex)
+  const pageOneHydrationIndex = spec.indexOf(
+    "await page.waitForFunction(() => window.__APP_HYDRATED === true)",
+    pageOneConsentIndex
+  )
+  const pageOneReloadUrlIndex = spec.indexOf(
+    "await expect(page).toHaveURL(/\\/forgot-password$/u)",
+    pageOneHydrationIndex
+  )
+  const pageOneNavigationCountIndex = spec.indexOf(
+    "expect(updatePageMainFrameNavigations).toBe(1)",
+    pageOneReloadUrlIndex
+  )
   const bundleAssertionIndex = spec.indexOf("expect(bundleUpdateResponses).toBeGreaterThan(0)")
+  const updateTestEndIndex = spec.indexOf("\n  })", updateTestStartIndex)
+  const updateTestSource = spec.slice(updateTestStartIndex, updateTestEndIndex)
+  const primaryPageNavigationWaitCount = [
+    ...updateTestSource.matchAll(/page\.waitForEvent\("framenavigated",/gu),
+  ].length
+  const peerControllerArmIndex = spec.indexOf(
+    "await armDifferentServiceWorkerControllerBarrier(peerPage)",
+    preConsentNoNavigationIndex
+  )
+  const primaryFlowIndices = [
+    updateTestStartIndex,
+    updatePageBaselineIndex,
+    updatePageInitialTimeOriginIndex,
+    updatePageNavigationCounterIndex,
+    updatePageNavigationListenerIndex,
+    updatePageNavigationCounterHandlerIndex,
+    updateStartIndex,
+    updatePromptIndex,
+    updatePromptVisibleIndex,
+    waitingWorkerIndex,
+    workerResponseAssertionIndex,
+    preConsentUrlIndex,
+    preConsentTimeOriginIndex,
+    preConsentNoNavigationIndex,
+    peerControllerArmIndex,
+    pageOnePromiseAllStartIndex,
+    pageOneNavigationWaitIndex,
+    pageOneConsentIndex,
+    pageOnePromiseAllEndIndex,
+    pageOneHydrationIndex,
+    pageOneReloadUrlIndex,
+    pageOneNavigationCountIndex,
+    bundleAssertionIndex,
+    updateTestEndIndex,
+  ]
+  assert.ok(
+    primaryFlowIndices.every((index) => index >= 0),
+    "every primary-page update and consent barrier marker exists"
+  )
+  assert.ok(
+    updateTestStartIndex < updatePageBaselineIndex &&
+      updatePageBaselineIndex < updatePageInitialTimeOriginIndex &&
+      updatePageInitialTimeOriginIndex < updatePageNavigationCounterIndex &&
+      updatePageNavigationCounterIndex < updatePageNavigationListenerIndex &&
+      updatePageNavigationListenerIndex < updatePageNavigationCounterHandlerIndex &&
+      updatePageNavigationCounterHandlerIndex < updateStartIndex &&
+      updateStartIndex < updatePromptIndex &&
+      updatePromptIndex < updatePromptVisibleIndex &&
+      updatePromptVisibleIndex < waitingWorkerIndex &&
+      waitingWorkerIndex < workerResponseAssertionIndex &&
+      workerResponseAssertionIndex < preConsentUrlIndex &&
+      preConsentUrlIndex < preConsentTimeOriginIndex &&
+      preConsentTimeOriginIndex < preConsentNoNavigationIndex &&
+      preConsentNoNavigationIndex < peerControllerArmIndex &&
+      peerControllerArmIndex < pageOnePromiseAllStartIndex &&
+      pageOnePromiseAllStartIndex < pageOneNavigationWaitIndex &&
+      pageOneNavigationWaitIndex < pageOneConsentIndex &&
+      pageOneConsentIndex < pageOnePromiseAllEndIndex &&
+      pageOnePromiseAllEndIndex < pageOneHydrationIndex &&
+      pageOneHydrationIndex < pageOneReloadUrlIndex &&
+      pageOneReloadUrlIndex < pageOneNavigationCountIndex &&
+      pageOneNavigationCountIndex < bundleAssertionIndex &&
+      bundleAssertionIndex < updateTestEndIndex,
+    "prompt and pre-consent identity checks precede the click-scoped waiter and post-consent reload"
+  )
+  assert.equal(
+    primaryPageNavigationWaitCount,
+    1,
+    "the update test has exactly one primary-page navigation waiter"
+  )
+  const primaryWaitSourceBeforeConsent = spec.slice(
+    updateTestStartIndex,
+    pageOnePromiseAllStartIndex
+  )
+  const primaryNavigationWaitSourcePattern = /page\.waitForEvent\("framenavigated",/u
+  assert.doesNotMatch(
+    primaryWaitSourceBeforeConsent,
+    primaryNavigationWaitSourcePattern,
+    "the primary navigation deadline is not armed before the click-scoped group"
+  )
+  const earlyNavigationWaitMutation = primaryWaitSourceBeforeConsent.replace(
+    "const updatePageInitialUrl = page.url()",
+    'const earlyNavigationWait = page.waitForEvent("framenavigated", {})\n      const updatePageInitialUrl = page.url()'
+  )
+  assert.notEqual(earlyNavigationWaitMutation, primaryWaitSourceBeforeConsent)
+  assert.throws(
+    () => assert.doesNotMatch(earlyNavigationWaitMutation, primaryNavigationWaitSourcePattern),
+    (error) => error?.name === "AssertionError",
+    "the early-wait negative control is rejected by the no-early-wait guard"
+  )
+  const primaryConsentBarrierSource = spec.slice(
+    pageOnePromiseAllStartIndex,
+    pageOnePromiseAllEndIndex + 2
+  )
+  const unawaitedPrimaryConsentBarrierSource = primaryConsentBarrierSource.replace(
+    "await Promise.all(",
+    "Promise.all("
+  )
+  assert.notEqual(unawaitedPrimaryConsentBarrierSource, primaryConsentBarrierSource)
+  assert.doesNotMatch(
+    unawaitedPrimaryConsentBarrierSource,
+    primaryClickNavigationBarrierPattern,
+    "the contract rejects an unawaited navigation-and-consent group"
+  )
+  const primaryConsentBarrierWithoutClick = primaryConsentBarrierSource.replace(
+    "updateReloadButton(page).click(),",
+    ""
+  )
+  assert.notEqual(primaryConsentBarrierWithoutClick, primaryConsentBarrierSource)
+  assert.doesNotMatch(
+    primaryConsentBarrierWithoutClick,
+    primaryClickNavigationBarrierPattern,
+    "the contract requires the real primary-page consent click"
+  )
+  const identityArmIndex = spec.indexOf(
+    "await armDifferentServiceWorkerControllerBarrier(peerPage)"
+  )
+  const identityWaitIndex = spec.indexOf("await peerNewController", pageOneConsentIndex)
+  const peerPromptVisibleIndex = spec.indexOf(
+    "await expect(updateReloadButton(peerPage)).toBeVisible()",
+    identityWaitIndex
+  )
+  const peerUrlRetainedIndex = spec.indexOf(
+    "await expect(peerPage).toHaveURL(peerInitialUrl)",
+    peerPromptVisibleIndex
+  )
+  const peerDraftRetainedIndex = spec.indexOf(
+    "await expect(peerEmailInput).toHaveValue(peerDraft)",
+    peerUrlRetainedIndex
+  )
+  const peerTimeOriginRetainedIndex = spec.indexOf(
+    "expect(await peerPage.evaluate(() => performance.timeOrigin)).toBe(peerInitialTimeOrigin)",
+    peerDraftRetainedIndex
+  )
+  const peerNoNavigationIndex = spec.indexOf(
+    "expect(peerMainFrameNavigations).toBe(0)",
+    peerTimeOriginRetainedIndex
+  )
+  const peerConsentIndex = spec.indexOf(
+    "await updateReloadButton(peerPage).click()",
+    peerNoNavigationIndex
+  )
+  const peerPostReloadNavigationIndex = spec.indexOf(
+    "expect(peerMainFrameNavigations).toBe(1)",
+    peerConsentIndex
+  )
+  const peerFlowIndices = [
+    identityArmIndex,
+    pageOneConsentIndex,
+    identityWaitIndex,
+    peerPromptVisibleIndex,
+    peerUrlRetainedIndex,
+    peerDraftRetainedIndex,
+    peerTimeOriginRetainedIndex,
+    peerNoNavigationIndex,
+    peerConsentIndex,
+    peerPostReloadNavigationIndex,
+  ]
+  assert.ok(
+    peerFlowIndices.every((index) => index >= 0),
+    "every peer consent sequence marker exists"
+  )
+  assert.ok(
+    identityArmIndex >= 0 &&
+      identityArmIndex < pageOneConsentIndex &&
+      pageOneConsentIndex < identityWaitIndex &&
+      identityWaitIndex < peerPromptVisibleIndex &&
+      peerPromptVisibleIndex < peerUrlRetainedIndex &&
+      peerUrlRetainedIndex < peerDraftRetainedIndex &&
+      peerDraftRetainedIndex < peerTimeOriginRetainedIndex &&
+      peerTimeOriginRetainedIndex < peerNoNavigationIndex &&
+      peerNoNavigationIndex < peerConsentIndex &&
+      peerConsentIndex < peerPostReloadNavigationIndex,
+    "the peer's different-controller event precedes its unchanged-document checks and own consent click"
+  )
   const activationWaitSource = spec.slice(updateStartIndex, bundleAssertionIndex)
   assert.match(
     activationWaitSource,
     /await expect\s*\.poll\([\s\S]*?CONTROLLER_CHANGE_COUNT[\s\S]*?\.toBeGreaterThan\(0\)/u,
     "the bundle response is asserted after the existing controllerchange readiness signal"
   )
+  const diagnosticTryStartIndex = spec.lastIndexOf("try {", bundleAssertionIndex)
+  const diagnosticCatchStartIndex = spec.indexOf("} catch (assertionFailure)", bundleAssertionIndex)
+  assert.ok(
+    diagnosticTryStartIndex >= updateStartIndex && diagnosticCatchStartIndex > bundleAssertionIndex,
+    "controllerchange and bundle acceptance remain inside the diagnostic try/catch"
+  )
+  const diagnosticTrySource = spec.slice(diagnosticTryStartIndex, diagnosticCatchStartIndex)
   assert.match(
-    spec,
-    /try\s*\{\s*await expect\s*\.poll\([\s\S]*?CONTROLLER_CHANGE_COUNT[\s\S]*?\.toBeGreaterThan\(0\)\s*expect\(bundleUpdateResponses\)\.toBeGreaterThan\(0\)\s*\}\s*catch\s*\(assertionFailure\)[\s\S]*?PWA_BUNDLE_ROUTE_DIAG/u,
-    "controllerchange and bundle failures share the bounded diagnostic and original rethrow path"
+    diagnosticTrySource,
+    /await expect\s*\.poll\([\s\S]*?CONTROLLER_CHANGE_COUNT[\s\S]*?\.toBeGreaterThan\(0\)[\s\S]*?expect\(bundleUpdateResponses\)\.toBeGreaterThan\(0\)[\s\S]*?const pageControllerChangeCount\s*=\s*await page\.evaluate\([\s\S]*?CONTROLLER_CHANGE_COUNT[\s\S]*?expect\(pageControllerChangeCount\)\.toBeGreaterThan\(0\)/u,
+    "both controller counters and the bundle response remain strict assertions within that guard"
+  )
+  const diagnosticThrowIndex = spec.indexOf("throw assertionFailure", diagnosticCatchStartIndex)
+  assert.ok(diagnosticThrowIndex > diagnosticCatchStartIndex)
+  const diagnosticCatchSource = spec.slice(
+    diagnosticCatchStartIndex,
+    diagnosticThrowIndex + "throw assertionFailure".length
+  )
+  assert.match(
+    diagnosticCatchSource,
+    /PWA_BUNDLE_ROUTE_DIAG[\s\S]*?emitPwaUpdateLifecycleDiagnostic[\s\S]*?throw assertionFailure/u,
+    "failure diagnostics still emit and rethrow the original assertion"
   )
   assert.match(spec, /await activeRegistration\.update\(\)/u)
   assert.match(spec, /setOffline\(true\)[\s\S]*?setOffline\(false\)[\s\S]*?setOffline\(true\)/u)
@@ -283,7 +695,36 @@ test("live PWA update replaces the active precache and proves the new app bundle
   assert.doesNotMatch(spec, /routeWebSocket|page\.request|useMockApi/u)
 
   assert.match(serviceWorkerRegistration, /updateViaCache:\s*["']none["']/u)
-  assert.match(serviceWorkerRegistration, /controllerchange[\s\S]*?window\.location\.reload\(\)/u)
+  assert.match(
+    serviceWorkerRegistration,
+    /const updateConsents = new WeakMap<ServiceWorker, UpdateConsent>\(\)\s*let reloadRequested = false\s*const updateConsentFor = \(worker: ServiceWorker\): UpdateConsent => \{\s*const existing = updateConsents\.get\(worker\)\s*if \(existing\) return existing\s*const consent: UpdateConsent = \{\s*accepted: false,\s*controllerChanged: false,\s*notified: false,\s*\}\s*updateConsents\.set\(worker, consent\)\s*return consent\s*\}/u,
+    "new consent state is unaccepted and bound to that worker on cache miss"
+  )
+  assert.match(
+    serviceWorkerRegistration,
+    /const reloadAfterAcceptedUpdate = \(worker: ServiceWorker, consent: UpdateConsent\) => \{\s*if \(reloadRequested \|\| !consent\.accepted \|\| !consent\.controllerChanged\) return\s*if \(serviceWorkerContainer\.controller !== worker\) return\s*reloadRequested = true\s*window\.location\.reload\(\)\s*\}/u,
+    "reload requires this page's consent and controller change to that same worker"
+  )
+  assert.equal(
+    [...serviceWorkerRegistration.matchAll(/window\.location\.reload\(\)/gu)].length,
+    1,
+    "the gated update helper remains the only registration reload path"
+  )
+  assert.match(
+    serviceWorkerRegistration,
+    /const showUpdateAvailable = \(worker: ServiceWorker\) => \{\s*const consent = updateConsentFor\(worker\)[\s\S]*?const detail: ServiceWorkerUpdateEventDetail = \{\s*update: async \(\) => \{[\s\S]*?consent\.accepted = true[\s\S]*?reloadAfterAcceptedUpdate\(worker, consent\)\s*\}/u,
+    "the prompted worker's own consent state is accepted before its per-page reload helper runs"
+  )
+  assert.equal(
+    [...serviceWorkerRegistration.matchAll(/consent\.accepted\s*=\s*true/gu)].length,
+    1,
+    "only the prompted update callback can accept the worker"
+  )
+  assert.match(
+    serviceWorkerRegistration,
+    /let observedController = serviceWorkerContainer\.controller\s*serviceWorkerContainer\.addEventListener\("controllerchange", \(\) => \{\s*if \(reloadRequested\) return\s*const currentController = serviceWorkerContainer\.controller\s*if \(currentController === observedController\) return\s*const previousController = observedController\s*observedController = currentController\s*if \(!previousController \|\| !currentController\) return\s*const consent = updateConsentFor\(currentController\)\s*consent\.controllerChanged = true\s*showUpdateAvailable\(currentController\)\s*reloadAfterAcceptedUpdate\(currentController, consent\)\s*\}\)/u,
+    "controller activation is paired with consent by the exact worker identity"
+  )
   assert.match(serviceWorker, /self\.skipWaiting\(\)/u)
   assert.match(precaching, /cleanupOutdatedCaches\(\)/u)
 })
@@ -340,23 +781,22 @@ async function closeTransportServer(server) {
   })
 }
 
-function requestRawProxyTarget(proxyOrigin, requestTarget) {
+function requestRawProxyTarget(proxyOrigin, requestTarget, headers) {
   const target = new URL(proxyOrigin)
   return new Promise((resolve, reject) => {
-    const request = httpRequest(
-      {
-        protocol: target.protocol,
-        hostname: target.hostname,
-        port: target.port,
-        method: "GET",
-        path: requestTarget,
-      },
-      (response) => {
-        response.resume()
-        response.once("end", () => resolve(response.statusCode ?? 0))
-        response.once("error", reject)
-      }
-    )
+    const requestOptions = {
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port,
+      method: "GET",
+      path: requestTarget,
+    }
+    if (headers !== undefined) requestOptions.headers = headers
+    const request = httpRequest(requestOptions, (response) => {
+      response.resume()
+      response.once("end", () => resolve(response.statusCode ?? 0))
+      response.once("error", reject)
+    })
     request.once("error", reject)
     request.end()
   })
@@ -416,6 +856,7 @@ test(
       originServer = await listenOnValidatedLoopbackPort(upstream)
       proxy = await startPwaUpdateProxy(new EventEmitter(), originServer.origin)
       assert.equal(new URL(proxy.origin).hostname, "localhost")
+      const proxyHost = new URL(proxy.origin).host
       proxy.setWorkerResponseTransform((source) =>
         source.replace(originalWorkerSource, transformedWorkerSource)
       )
@@ -440,7 +881,7 @@ test(
       assert.deepEqual(forwarded[0], {
         method: "GET",
         url: "/transport-probe?probe=1",
-        host: originServer.host,
+        host: proxyHost,
         cookie: syntheticHeaders.cookie,
         origin: syntheticHeaders.origin,
         csrf: syntheticHeaders["x-csrf-token"],
@@ -475,6 +916,19 @@ test(
       assert.equal(forwarded[2].method, "GET")
       assert.equal(forwarded[2].url, "/sw.js")
 
+      const beforeHostHeaderProbe = forwarded.length
+      assert.equal(
+        await requestRawProxyTarget(proxy.origin, "/host-header-probe", {
+          host: "attacker.invalid",
+        }),
+        200
+      )
+      assert.equal(
+        forwarded[beforeHostHeaderProbe]?.host,
+        proxyHost,
+        "an inbound Host header cannot control the upstream request Host"
+      )
+
       const beforeAuthorityAttacks = forwarded.length
       assert.equal(
         await requestRawProxyTarget(proxy.origin, "http://example.invalid/private"),
@@ -496,7 +950,7 @@ test(
       assert.deepEqual(forwarded[beforeAuthorityAttacks], {
         method: "GET",
         url: "/%2f%2fexample.invalid/private",
-        host: originServer.host,
+        host: proxyHost,
         cookie: undefined,
         origin: undefined,
         csrf: undefined,

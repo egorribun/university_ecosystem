@@ -219,15 +219,22 @@ vi.mock("@/components/profile", () => {
 
   const ProfileHeader = (props: Record<string, unknown>) => {
     profileState.header(props)
-    const { onEmailClick, onQrClick, onTelegramClick } = props as {
+    const { user, onEmailClick, onQrClick, onTelegramClick } = props as {
+      user: User | null
       onEmailClick: () => void
       onQrClick: () => void
       onTelegramClick: () => void
     }
     return (
       <div data-testid="profile-header">
-        <button type="button" data-testid="email-button" onClick={onEmailClick} />
-        <button type="button" data-testid="telegram-button" onClick={onTelegramClick} />
+        <button type="button" data-testid="email-button" onClick={onEmailClick}>
+          {user?.email || "profile:placeholders.email"}
+        </button>
+        {user?.profile_detail?.telegram && (
+          <button type="button" data-testid="telegram-button" onClick={onTelegramClick}>
+            {user.profile_detail.telegram}
+          </button>
+        )}
         <button type="button" data-testid="qr-button" onClick={onQrClick} />
       </div>
     )
@@ -346,6 +353,15 @@ const user = {
   },
 } as unknown as User
 
+const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard")
+
+function mockClipboard(writeText?: (text: string) => Promise<void>) {
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: writeText ? { writeText } : undefined,
+  })
+}
+
 describe("Profile behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -372,6 +388,11 @@ describe("Profile behavior", () => {
 
   afterEach(() => {
     cleanup()
+    if (originalClipboardDescriptor) {
+      Object.defineProperty(navigator, "clipboard", originalClipboardDescriptor)
+    } else {
+      Reflect.deleteProperty(navigator, "clipboard")
+    }
   })
 
   it("renders the loading skeleton before user data is ready", () => {
@@ -497,17 +518,123 @@ describe("Profile behavior", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
-  it("shows copy feedback from the contact actions", () => {
+  it("copies displayed contact values and shows feedback only after the write resolves", async () => {
+    const writeResolutions: Array<() => void> = []
+    const writeText = vi.fn(
+      (_value: string) =>
+        new Promise<void>((resolve) => {
+          writeResolutions.push(resolve)
+        })
+    )
+    mockClipboard(writeText)
     render(<Profile />)
 
-    fireEvent.click(screen.getByTestId("email-button"))
-    expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.copied")
+    const emailButton = screen.getByTestId("email-button")
+    expect(emailButton).toHaveTextContent("ada@example.com")
+    fireEvent.click(emailButton)
+    expect(writeText).toHaveBeenNthCalledWith(1, "ada@example.com")
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+
+    await act(async () => {
+      writeResolutions[0]!()
+    })
+    expect(await screen.findByTestId("snackbar")).toHaveTextContent("profile:snackbar.copied")
     fireEvent.click(screen.getByRole("button", { name: "close snackbar" }))
     expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId("telegram-button"))
-    expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.copied")
+    const telegramButton = screen.getByTestId("telegram-button")
+    expect(telegramButton).toHaveTextContent("@ada")
+    fireEvent.click(telegramButton)
+    expect(writeText).toHaveBeenNthCalledWith(2, "@ada")
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+
+    await act(async () => {
+      writeResolutions[1]!()
+    })
+    expect(await screen.findByTestId("snackbar")).toHaveTextContent("profile:snackbar.copied")
     fireEvent.click(screen.getByRole("button", { name: "close alert" }))
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+  })
+
+  it("reports a clipboard rejection instead of copied feedback", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("clipboard denied"))
+    mockClipboard(writeText)
+    render(<Profile />)
+
+    fireEvent.click(screen.getByTestId("email-button"))
+
+    expect(writeText).toHaveBeenCalledWith("ada@example.com")
+    expect(await screen.findByTestId("snackbar")).toHaveTextContent("profile:snackbar.error")
+    expect(screen.getByTestId("snackbar")).not.toHaveTextContent("profile:snackbar.copied")
+  })
+
+  it("reports an unavailable clipboard instead of copied feedback", async () => {
+    mockClipboard()
+    render(<Profile />)
+
+    fireEvent.click(screen.getByTestId("email-button"))
+
+    expect(await screen.findByTestId("snackbar")).toHaveTextContent("profile:snackbar.error")
+    expect(screen.getByTestId("snackbar")).not.toHaveTextContent("profile:snackbar.copied")
+  })
+
+  it("ignores a completed clipboard write after the session changes", async () => {
+    let resolveWrite: (() => void) | undefined
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWrite = resolve
+        })
+    )
+    mockClipboard(writeText)
+    const { rerender } = render(<Profile />)
+    fireEvent.click(screen.getByTestId("email-button"))
+    expect(writeText).toHaveBeenCalledWith("ada@example.com")
+
+    rotateBrowserSession()
+    authState.user = { ...user, id: "user-2", email: "grace@example.com" }
+    rerender(<Profile />)
+    await act(async () => {
+      resolveWrite!()
+    })
+
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+  })
+
+  it("does not write contact details when the current identity is signed out", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    mockClipboard(writeText)
+    authState.user = null
+    render(<Profile />)
+
+    fireEvent.click(screen.getByTestId("email-button"))
+
+    expect(writeText).not.toHaveBeenCalled()
+    expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
+  })
+
+  it("does not show clipboard rejection feedback after the session changes", async () => {
+    let rejectWrite: ((reason?: unknown) => void) | undefined
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectWrite = reject
+        })
+    )
+    mockClipboard(writeText)
+    const { rerender } = render(<Profile />)
+
+    fireEvent.click(screen.getByTestId("email-button"))
+    expect(writeText).toHaveBeenCalledWith("ada@example.com")
+    expect(rejectWrite).toBeDefined()
+
+    rotateBrowserSession()
+    authState.user = { ...user, id: "user-2", email: "grace@example.com" }
+    rerender(<Profile />)
+    await act(async () => {
+      rejectWrite!(new Error("clipboard denied"))
+    })
+
     expect(screen.queryByTestId("snackbar")).not.toBeInTheDocument()
   })
 

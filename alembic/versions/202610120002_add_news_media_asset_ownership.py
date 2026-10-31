@@ -282,3 +282,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Keep ownership evidence; earlier application revisions ignore this table."""
+    pass

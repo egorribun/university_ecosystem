@@ -178,6 +178,14 @@ backend:
   # from connections.existingSecret and reserved by the Deployment template.
   env: {}
   config:
+    # Gateway peer CIDRs whose X-Forwarded-For the API may trust (AUD-164). The
+    # empty default trusts no peer and is valid only in development; staging and
+    # production validation requires explicit non-loopback CIDRs.
+    trustedProxies: []
+    # Access-token lifetime rendered as ACCESS_TOKEN_EXPIRE_MINUTES. It matches the
+    # application default (60 minutes). ws-hub's revocation replay window must cover
+    # it; validate-config.yaml fails the render when it does not.
+    accessTokenExpireMinutes: 60
     jwtPrivateKeyPEM: ""
     # Development-only inline values used to create <release>-secrets. Prefer
     # applicationSecrets.existingSecret outside disposable local clusters.
@@ -308,6 +316,12 @@ wsHub:
   service:
     type: ClusterIP
     port: 8081
+  # Scrape-only Prometheus listener (AUD-438). It is separate from the public
+  # WebSocket port, so /metrics is never served by the client route table. The
+  # pod listens on this port and the NetworkPolicy admits it only from the
+  # monitoring namespace. Keep it distinct from service.port.
+  metrics:
+    port: 9108
   resources:
     requests:
       cpu: 100m
@@ -335,14 +349,16 @@ wsHub:
     clientMessageRateLimit: 10
     clientMessageBurst: 20
     ticketTTLSeconds: 15
+    # A late-starting replica replays room revocations from this many seconds back.
+    # It must cover backend.config.accessTokenExpireMinutes (3600 s by default), or
+    # a revoked token could stay usable on that replica.
+    revocationReplayWindowSeconds: 3600
     otelEndpoint: "otel-collector:4317"
     otelInsecure: true
     jetstream:
       enabled: true
       chatStream: "CHAT_EVENTS"
       notificationsStream: "NOTIFICATIONS_EVENTS"
-      chatDurable: "ws-hub-chat"
-      notificationsDurable: "ws-hub-notifications"
 
 # File Processor (Go)
 fileProcessor:
@@ -519,7 +535,8 @@ networkPolicy:
     egressCIDRs: []
   # TCP 443 egress for backup, backend, file-processor and outbox-worker. Public
   # destinations stay reachable; cluster, private and link-local ranges are
-  # excepted. Owner-verified private HTTPS endpoints go in privateCIDRs.
+  # excepted. The listed baseline exclusions must remain when adding cluster
+  # CIDRs; owner-verified private HTTPS endpoints go in privateCIDRs.
   httpsEgress:
     privateCIDRs: []
     exceptIPv4CIDRs:

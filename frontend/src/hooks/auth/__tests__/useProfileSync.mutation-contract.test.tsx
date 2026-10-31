@@ -1407,6 +1407,69 @@ describe("useProfileSync mutation contracts", () => {
     expect(localStorage.getItem("ecosystem.profile.cache.v7")).toBe("legacy")
   })
 
+  it("clears the in-memory profile without a cache-cleared diagnostic when the storage accessor throws", async () => {
+    const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+
+    try {
+      const { result, unmount } = renderProfile(null, { value: testUser })
+      await waitFor(() => expect(result.current.loading).toBe(false))
+      warningSpy.mockClear()
+      Object.defineProperty(globalThis, "localStorage", {
+        configurable: true,
+        get() {
+          throw new DOMException("Storage is unavailable", "SecurityError")
+        },
+      })
+
+      await act(async () => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: PROFILE_CACHE_STORAGE_KEY,
+          })
+        )
+      })
+      expect(result.current.user).toBeNull()
+      expect(warningSpy).not.toHaveBeenCalledWith("profile_cache.cleared", expect.anything())
+      unmount()
+    } finally {
+      if (storageDescriptor) Object.defineProperty(globalThis, "localStorage", storageDescriptor)
+    }
+  })
+
+  it("clears the in-memory profile without a cache-cleared diagnostic when storage reads throw", async () => {
+    const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
+    const { result, unmount } = renderProfile(signingKey, { value: testUser })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const originalGetItem = Storage.prototype.getItem
+    const storageRead = vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (
+      this: Storage,
+      key: string
+    ) {
+      if (key === PROFILE_CACHE_STORAGE_KEY) {
+        throw new DOMException("Storage is unavailable", "SecurityError")
+      }
+      return originalGetItem.call(this, key)
+    })
+
+    try {
+      warningSpy.mockClear()
+      await act(async () => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: PROFILE_CACHE_STORAGE_KEY,
+          })
+        )
+      })
+      expect(result.current.user).toBeNull()
+      expect(warningSpy).toHaveBeenCalledWith("profile_cache.storage_unavailable")
+      expect(warningSpy).not.toHaveBeenCalledWith("profile_cache.cleared", expect.anything())
+    } finally {
+      storageRead.mockRestore()
+      unmount()
+    }
+  })
+
   it("does not emit a cache-cleared diagnostic when localStorage is unavailable", async () => {
     const originalStorage = globalThis.localStorage
     const warningSpy = vi.spyOn(logger, "logWarning").mockImplementation(() => undefined)
@@ -3540,7 +3603,7 @@ describe("profile effect lifecycle ownership", () => {
     queryClient.clear()
   })
 
-  it("deduplicates profile cache effects when StrictMode replays committed effects", async () => {
+  it("runs profile side effects once when StrictMode replays the functional updater", async () => {
     const queryClient = createQueryClient()
     const fetchQuery = vi.spyOn(queryClient, "fetchQuery").mockResolvedValue(testUser as never)
     const signingKeyRef = { current: signingKey } as MutableRefObject<string | null>
@@ -3565,14 +3628,19 @@ describe("profile effect lifecycle ownership", () => {
     const storageWrites = vi.spyOn(Storage.prototype, "setItem")
     const queryWrites = vi.spyOn(queryClient, "setQueryData")
     const strictProfile = { ...testUser, full_name: "Committed once" }
+    const updateProfile = vi.fn((previous: UserState) => ({
+      ...previous!,
+      full_name: strictProfile.full_name,
+    }))
 
-    act(() => view.result.current.setUser(strictProfile))
+    act(() => view.result.current.setUser(updateProfile))
     await waitFor(async () => {
       expect(await readCachedUserAsync(signingKey)).toMatchObject({
         full_name: strictProfile.full_name,
       })
     })
 
+    expect(updateProfile).toHaveBeenCalledTimes(2)
     expect(view.result.current.user).toEqual(strictProfile)
     expect(queryWrites.mock.calls.filter(([key]) => key === currentUserQueryKey)).toHaveLength(1)
     expect(

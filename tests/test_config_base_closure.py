@@ -152,26 +152,35 @@ def test_resolve_env_file_warns_for_default_env_copy(
     assert any(str(example) in message for message in messages)
 
 
-def test_resolve_env_file_default_warning_keeps_both_path_arguments(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("explicit", [False, True], ids=["default", "explicit"])
+def test_resolve_env_file_warning_keeps_both_path_arguments(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, explicit: bool
 ) -> None:
-    """The warning must identify the concrete file that needs remediation."""
-    example = tmp_path / ".env.example"
-    candidate = tmp_path / ".env"
+    """Pass native text to logging while retaining the concrete Path result."""
+    example = tmp_path / ("example.env" if explicit else ".env.example")
+    candidate = tmp_path / ("candidate.env" if explicit else ".env")
     content = b"SECRET_KEY=example\n"
     example.write_bytes(content)
     candidate.write_bytes(content)
-    monkeypatch.delenv("ENV_FILE_PATH", raising=False)
-    monkeypatch.delenv("ENV_EXAMPLE_PATH", raising=False)
+    if explicit:
+        monkeypatch.setenv("ENV_FILE_PATH", str(candidate))
+        monkeypatch.setenv("ENV_EXAMPLE_PATH", str(example))
+    else:
+        monkeypatch.delenv("ENV_FILE_PATH", raising=False)
+        monkeypatch.delenv("ENV_EXAMPLE_PATH", raising=False)
 
     with patch.object(base._logger, "warning") as warning:
-        assert base._resolve_env_file(tmp_path) == candidate
+        resolved = base._resolve_env_file(tmp_path)
 
+    assert resolved == candidate
+    assert isinstance(resolved, Path)
     warning.assert_called_once()
     assert warning.call_args is not None
     args = warning.call_args.args
-    assert args[1] == candidate
-    assert args[2] == example
+    assert type(args[1]) is str
+    assert type(args[2]) is str
+    assert args[1] == str(candidate)
+    assert args[2] == str(example)
 
 
 def test_resolve_env_file_accepts_default_env_with_real_values(

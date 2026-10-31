@@ -12,7 +12,7 @@ import time as time_module
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import wraps
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Literal, ParamSpec, TypeVar, cast
 
 from app.core.logging import get_logger
 
@@ -37,7 +37,8 @@ except ImportError:
 
     orjson = OrJsonCompat()  # type: ignore[assignment]
 from fastapi.encoders import jsonable_encoder
-from nats.js.errors import NoKeysError
+from nats.errors import Error as NatsError
+from nats.js.errors import KeyNotFoundError, NoKeysError
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
@@ -49,6 +50,33 @@ if TYPE_CHECKING:
 
 
 logger = get_logger(__name__)
+
+StrictInvalidationScope = Literal["shared", "process_only", "disabled"]
+
+
+class CacheBackendUnavailable(RuntimeError):
+    """The configured cache backend cannot currently perform its operation."""
+
+
+class StrictCacheInvalidationError(CacheBackendUnavailable):
+    """A strict cache invalidation did not complete and must be retried."""
+
+
+def _strict_exact_keys(keys: tuple[str, ...]) -> tuple[str, ...]:
+    """Reject patterns before deleting any keys, and avoid duplicate operations."""
+    if any(not key or any(char in key for char in "*?[]") for key in keys):
+        raise ValueError("Strict cache invalidation accepts only exact keys")
+    return tuple(dict.fromkeys(keys))
+
+
+def _cache_key_fingerprint(key: str) -> str:
+    """Return a short digest for correlating cache errors without logging keys."""
+    return hashlib.sha256(key.encode("utf-8", errors="surrogatepass")).hexdigest()[:16]
+
+
+def _cache_key_fingerprints(keys: list[str]) -> tuple[str, ...]:
+    """Summarize only a bounded prefix of keys for invalidation error logs."""
+    return tuple(_cache_key_fingerprint(key) for key in keys[:5])
 
 
 @dataclass(slots=True)
@@ -70,6 +98,10 @@ class BaseCache:
 
     async def invalidate(self, *keys: str) -> None:
         raise NotImplementedError
+
+    async def invalidate_strict(self, *keys: str) -> StrictInvalidationScope:
+        _strict_exact_keys(keys)
+        raise StrictCacheInvalidationError("Strict invalidation is unsupported")
 
     async def close(self) -> None:
         return None
@@ -96,13 +128,28 @@ class NullCache(BaseCache):
     async def invalidate(self, *_keys: str) -> None:
         return None
 
+    async def invalidate_strict(self, *keys: str) -> StrictInvalidationScope:
+        _strict_exact_keys(keys)
+        if settings.cache_enabled:
+            raise StrictCacheInvalidationError(
+                "Enabled cache has no configured backend"
+            )
+        return "disabled"
+
 
 class MemoryCache(BaseCache):
     enabled = True
 
-    def __init__(self, default_ttl: int = 0, max_size: int = 1000) -> None:
+    def __init__(
+        self,
+        default_ttl: int = 0,
+        max_size: int = 1000,
+        *,
+        strict_shared_required: bool = False,
+    ) -> None:
         self._default_ttl = max(int(default_ttl or 0), 0)
         self._max_size = max(int(max_size or 1000), 10)
+        self._strict_shared_required = strict_shared_required
         from collections import OrderedDict
 
         self._entries: OrderedDict[str, tuple[CacheEntry, float]] = OrderedDict()
@@ -176,6 +223,13 @@ class MemoryCache(BaseCache):
                         self._entries.pop(stored_key, None)
             else:
                 self._entries.pop(key, None)
+
+    async def invalidate_strict(self, *keys: str) -> StrictInvalidationScope:
+        exact = _strict_exact_keys(keys)
+        await self.invalidate(*exact)
+        if self._strict_shared_required:
+            raise StrictCacheInvalidationError("Configured shared cache is unavailable")
+        return "process_only"
 
     def _resolve_ttl(self, ttl: int | None) -> int:
         if ttl is None:
@@ -260,11 +314,18 @@ class RedisCache(BaseCache):
                 ttl_seconds=ttl_seconds,
             )
         except orjson.JSONDecodeError:
-            logger.debug("Invalid cache payload for key %s, dropping", key)
+            logger.debug(
+                "Invalid cache payload, dropping",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+            )
             await self.invalidate(key)
             return None
-        except (RedisError, OSError):  # RZ-28-01
-            logger.warning("Redis cache get failed for key %s", key, exc_info=True)
+        except (RedisError, OSError) as exc:  # RZ-28-01
+            logger.warning(
+                "Redis cache get failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
             return None
         finally:
             record_redis_command(
@@ -293,8 +354,12 @@ class RedisCache(BaseCache):
             else:
                 await client.set(key, envelope)
             success = True
-        except (RedisError, OSError):  # RZ-28-01
-            logger.warning("Redis cache set failed for key %s", key, exc_info=True)
+        except (RedisError, OSError) as exc:  # RZ-28-01
+            logger.warning(
+                "Redis cache set failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
         finally:
             record_redis_command(
                 "set", time_module.perf_counter() - start, success=success
@@ -340,9 +405,12 @@ class RedisCache(BaseCache):
                     if cursor == 0:
                         break
             success = True
-        except (RedisError, OSError):  # RZ-28-01
+        except (RedisError, OSError) as exc:  # RZ-28-01
             logger.warning(
-                "Redis cache invalidate failed for keys %s", filtered, exc_info=True
+                "Redis cache invalidate failed",
+                cache_key_count=len(filtered),
+                cache_key_fingerprints=_cache_key_fingerprints(filtered),
+                error_type=type(exc).__name__,
             )
         finally:
             record_redis_command(
@@ -350,6 +418,18 @@ class RedisCache(BaseCache):
                 time_module.perf_counter() - start,
                 success=success,
             )
+
+    async def invalidate_strict(self, *keys: str) -> StrictInvalidationScope:
+        exact = _strict_exact_keys(keys)
+        if not exact:
+            return "shared"
+        try:
+            client = await self._get_client()
+            for key in exact:
+                await client.delete(key)
+        except (RedisError, OSError) as exc:
+            raise StrictCacheInvalidationError("Redis invalidation failed") from exc
+        return "shared"
 
     def _resolve_ttl(self, ttl: int | None) -> int:
         if ttl is None:
@@ -425,10 +505,17 @@ class RedisClusterCache(BaseCache):
                 ttl_seconds=float(parsed.get("ttl_seconds") or 0.0),
             )
         except orjson.JSONDecodeError:
-            logger.debug("Invalid cache payload in cluster for key %s", key)
+            logger.debug(
+                "Invalid cache payload in cluster",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+            )
             return None
-        except (RedisError, OSError):  # RZ-28-01
-            logger.warning("Redis cluster get failed for key %s", key, exc_info=True)
+        except (RedisError, OSError) as exc:  # RZ-28-01
+            logger.warning(
+                "Redis cluster get failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
             return None
         finally:
             record_redis_command(
@@ -457,8 +544,12 @@ class RedisClusterCache(BaseCache):
             else:
                 await client.set(key, envelope)
             success = True
-        except (RedisError, OSError):  # RZ-28-01
-            logger.warning("Redis cluster set failed for key %s", key, exc_info=True)
+        except (RedisError, OSError) as exc:  # RZ-28-01
+            logger.warning(
+                "Redis cluster set failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
         finally:
             record_redis_command(
                 "set", time_module.perf_counter() - start, success=success
@@ -503,9 +594,12 @@ class RedisClusterCache(BaseCache):
                     if cursor == 0:
                         break
             success = True
-        except (RedisError, OSError):  # RZ-28-01
+        except (RedisError, OSError) as exc:  # RZ-28-01
             logger.warning(
-                "Redis cluster invalidate failed for keys %s", filtered, exc_info=True
+                "Redis cluster invalidate failed",
+                cache_key_count=len(filtered),
+                cache_key_fingerprints=_cache_key_fingerprints(filtered),
+                error_type=type(exc).__name__,
             )
         finally:
             record_redis_command(
@@ -513,6 +607,21 @@ class RedisClusterCache(BaseCache):
                 time_module.perf_counter() - start,
                 success=success,
             )
+
+    async def invalidate_strict(self, *keys: str) -> StrictInvalidationScope:
+        exact = _strict_exact_keys(keys)
+        if not exact:
+            return "shared"
+        try:
+            client = await self._get_client()
+            # Exact keys may belong to different Redis Cluster hash slots.
+            for key in exact:
+                await client.delete(key)
+        except (RedisError, OSError) as exc:
+            raise StrictCacheInvalidationError(
+                "Redis cluster invalidation failed"
+            ) from exc
+        return "shared"
 
     def _resolve_ttl(self, ttl: int | None) -> int:
         if ttl is None:
@@ -579,7 +688,7 @@ class NatsKVCache(BaseCache):
 
                 js = global_broker.js
                 if js is None:
-                    raise RuntimeError("NATS JetStream not initialized")
+                    raise CacheBackendUnavailable("NATS JetStream not initialized")
                 self._kv = await js.key_value(bucket=self._bucket_name)
         return self._kv
 
@@ -599,7 +708,11 @@ class NatsKVCache(BaseCache):
         except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — NATS KV get failures return None (cache miss) (reviewed TD-27-04)
             # nats.js.errors.KeyNotFoundError is common on cache miss if bucket exists
             # but key doesn't.
-            logger.debug("NATS KV get failed for key %s: %s", key, exc)
+            logger.debug(
+                "NATS KV get failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
             return None
 
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
@@ -622,7 +735,11 @@ class NatsKVCache(BaseCache):
             OSError,
             ConnectionError,
         ) as exc:  # RZ-22-01: narrowed — NATS KV write errors
-            logger.warning("NATS KV set failed for key %s: %s", key, exc)
+            logger.warning(
+                "NATS KV set failed",
+                cache_key_fingerprint=_cache_key_fingerprint(key),
+                error_type=type(exc).__name__,
+            )
         return CacheEntry(
             etag=etag,
             payload=normalized,
@@ -653,7 +770,22 @@ class NatsKVCache(BaseCache):
             OSError,
             ConnectionError,
         ) as exc:  # RZ-22-01: narrowed — NATS KV invalidation errors
-            logger.warning("NATS KV invalidate failed: %s", exc)
+            logger.warning("NATS KV invalidate failed", error_type=type(exc).__name__)
+
+    async def invalidate_strict(self, *keys: str) -> StrictInvalidationScope:
+        exact = _strict_exact_keys(keys)
+        if not exact:
+            return "shared"
+        try:
+            kv = await self._get_kv()
+            for key in exact:
+                try:
+                    await kv.delete(_encode_kv_key(key))
+                except KeyNotFoundError:
+                    continue
+        except (NatsError, OSError, CacheBackendUnavailable) as exc:
+            raise StrictCacheInvalidationError("NATS KV invalidation failed") from exc
+        return "shared"
 
     async def close(self) -> None:
         self._kv = None
@@ -668,9 +800,25 @@ class NatsKVCache(BaseCache):
 _cache_key_version: int = 1
 
 
+def current_cache_key_version() -> int:
+    """Capture the exact cache namespace for a durable invalidation event."""
+    return _cache_key_version
+
+
+def versioned_key_at(key: str, version: int) -> str:
+    """Reconstruct the namespace recorded by a prior transaction."""
+    if (
+        isinstance(version, bool)
+        or not isinstance(version, int)
+        or not 0 < version <= 2**31 - 1
+    ):
+        raise ValueError("Invalid cache key version")
+    return f"v{version}:{key}"
+
+
 def versioned_key(key: str) -> str:
     """Create a versioned cache key for safe invalidation."""
-    return f"v{_cache_key_version}:{key}"
+    return versioned_key_at(key, _cache_key_version)
 
 
 class TieredCache(BaseCache):
@@ -738,6 +886,24 @@ class TieredCache(BaseCache):
             self.l2.invalidate(*keys),
         )
 
+    async def invalidate_strict(self, *keys: str) -> StrictInvalidationScope:
+        exact = _strict_exact_keys(keys)
+        results = await asyncio.gather(
+            self.l1.invalidate_strict(*exact),
+            self.l2.invalidate_strict(*exact),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+            if result not in ("shared", "process_only", "disabled"):
+                raise StrictCacheInvalidationError(
+                    "Unknown tier cache invalidation scope"
+                )
+        if "shared" in results:
+            return "shared"
+        return "process_only" if "process_only" in results else "disabled"
+
     async def close(self) -> None:
         await asyncio.gather(
             self.l1.close(),
@@ -763,6 +929,11 @@ def cached(
         ttl: Time to live for the cache entry (seconds or timedelta).
         l1_ttl: Optional separate TTL for the L1 (memory) cache.
         key_builder: Optional custom function to build the cache key.
+
+    The default key includes every positional and keyword argument. Positional
+    values are stringified, and keyword values are stringified with their names;
+    use ``key_builder`` when that representation is unsuitable for the caller's
+    data or when calls should intentionally share a key across receiver objects.
     """
 
     def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
@@ -778,12 +949,9 @@ def cached(
             if key_builder:
                 key = key_builder(*args, **kwargs)
             else:
-                # Basic key building from args/kwargs
-                # Skip `self` for bound methods to avoid unstable str(self) in keys
-                _args: tuple[object, ...] = args
-                if _args and hasattr(_args[0], "__dict__"):
-                    _args = _args[1:]
-                key_parts = [str(arg) for arg in _args]
+                # Preserve every input in the default key. Dropping a first
+                # object argument can alias calls whose results depend on it.
+                key_parts = [str(arg) for arg in args]
                 key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
                 key = ":".join(key_parts)
 
@@ -851,8 +1019,11 @@ def create_cache_backend() -> BaseCache:
         return MemoryCache(default_ttl=ttl)
 
     if backend == "tiered":
-        l1 = MemoryCache(default_ttl=int(getattr(settings, "cache_l1_ttl_seconds", 60)))
         l2_url = (settings.cache_redis_url or "").strip()
+        l1 = MemoryCache(
+            default_ttl=int(getattr(settings, "cache_l1_ttl_seconds", 60)),
+            strict_shared_required=not bool(l2_url),
+        )
         if not l2_url:
             return l1
         l2 = RedisCache(url=l2_url, default_ttl=ttl)

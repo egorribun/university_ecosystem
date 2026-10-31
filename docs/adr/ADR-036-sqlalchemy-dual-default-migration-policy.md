@@ -63,22 +63,52 @@ an irreversible downgrade and raise before changing schema.
 
 The current migration graph also contains irreversible revision 202610120001.
 Its parent, 202610010001, retains the unused tables and their data on both upgrade
-and downgrade. The existing migration_downgrade_policy.py planner selects
-202610120001 as the safe target. The CI migration gate downgrades only to that
-computed target, verifies that crossing to its parent fails with the declared
-reason, and then upgrades to head. The original owner decision does not make
-this later data-loss barrier reversible.
+and downgrade. Revision 202610200001 retains its quarantine-ledger boundary,
+whose parent is 202610120002.
 
-If recovery requires a schema below this boundary, restore a consistent
-backup/restore set rather than invoking older Alembic downgrade functions.
-This is the required recovery path across the irreversible boundary; release
-acceptance still requires a verified, paired database and S3 restore. The
-decision is recorded in the 2026-10
-audit's owner decision table; AUD-324 is intentionally not repaired for MVP:
-the 202607280001 downgrade's drops of populated grades and vector_chunks are
-on an unsupported historical path. This disposition does not claim that every
-older downgrade is data-preserving, nor does it make a database that is still
-at 202607280001 safe to downgrade.
+The newest irreversible revision is 202610250001, whose parent is 202610200001.
+The existing migration_downgrade_policy.py planner selects 202610250001 as the
+safe target. The only revision above that target is 202610310001, the AUD-447
+auth-token scrub, whose downgrade is an explicit no-op; the safe-range downgrade
+is therefore a no-op; the separate boundary probe must reject crossing to
+202610200001 with the
+declared chat-receipt reason: "Dropping chat send receipts can discard committed
+idempotency history and permit duplicate messages". The reusable backend gate
+checks that the applied revision is unchanged after the refusal, before upgrading
+to head again. A verified refusal is not a successful rollback across the boundary.
+
+The chat-receipt boundary is a new design constraint for AUD-262, not an
+extension of the eight historical owner-approved dispositions below. The original
+owner decision does not make later data-loss barriers reversible.
+
+If recovery requires a schema below an irreversible boundary, restore a
+consistent backup/restore set rather than invoking older Alembic downgrade
+functions. This is the required recovery path across the irreversible boundary;
+release acceptance still requires a verified, paired database and S3 restore.
+
+The audit's owner decision names the following eight findings. Their scope is
+recorded here without claiming that their historical downgrade implementations
+were repaired. This scope record alone does not add findings to the accepted
+audit ledger.
+
+| Finding | Revision or operation | Behavior outside the supported rollback contract |
+| --- | --- | --- |
+| AUD-268 | 202607020001 | Downgrade drops monthly and default partitions, including their rows. |
+| AUD-273 | 202607230001 | Downgrade disables RLS on messages even when the older message RLS migration remains applied. |
+| AUD-276 | 202503150001 | Downgrade writes decryption results into plaintext columns; an invalid token can become NULL before ciphertext columns are removed. |
+| AUD-324 | 202607280001 | Downgrade still drops grades and vector_chunks; preserving the parent-owned tenants table does not make those drops data-preserving. |
+| AUD-325 | 202605070001 | Downgrade deletes failed_login_attempts rows whose user_id is NULL before restoring NOT NULL. |
+| AUD-326 | Downgrade to base | Irreversible MFA, DND and quarantine revisions intentionally prevent crossing their boundaries; reaching base is not a supported recovery path. |
+| AUD-349 | 148642dd1207 | Historical downgrade drops existing messages, events, chats and profile columns without retaining their data. |
+| AUD-435 | Relative downgrade at 7ad848733a4b | The two-parent merge makes an unqualified -1 walk ambiguous; no repair of historical relative-target resolution is claimed. |
+
+The planner derives its target from the repository head, not from every live
+database starting revision or arbitrary requested target. Migration-local
+barriers protect only paths that execute them. A database already below a
+barrier, an explicit offline revision range or a direct historical migration
+call is not made safe by a later barrier. In particular, a database still at
+202607280001 is not safe to downgrade. Choosing an older explicit target or a
+relative target does not authorize an otherwise unsupported operation.
 
 The AUD-230 PostgreSQL regression may exercise 202607280001 to 202607240001
 on an isolated database created before the boundary, solely to check
@@ -87,12 +117,15 @@ production rollback support and does not certify retention of grades or
 vector_chunks. Any change to the supported rollback range requires a new
 owner decision and corresponding backup/restore and PostgreSQL evidence.
 
-References: [owner decision and AUD-324](../audits/AUDIT-2026-10.md),
+References: [owner decision and original findings](../audits/AUDIT-2026-10.md),
 [MVP master plan](../superpowers/plans/MVP_MASTER_PLAN.md),
 [202608250001](../../alembic/versions/202608250001_expand_email_otp_mfa.py),
 [202608250002](../../alembic/versions/202608250002_contract_retire_webauthn.py),
 [202610010001](../../alembic/versions/202610010001_drop_unused_user_stats_and_vector_chunks.py),
 [202610120001](../../alembic/versions/202610120001_dnd_wall_clock_time.py),
+[202610120002](../../alembic/versions/202610120002_add_news_media_asset_ownership.py),
+[202610200001](../../alembic/versions/202610200001_add_quarantine_storage_ledger.py),
+[202610250001](../../alembic/versions/202610250001_add_chat_send_receipts.py),
 [downgrade policy](../../scripts/quality/migration_downgrade_policy.py),
 [CI migration gate](../../.github/workflows/ci.yml),
 [PostgreSQL round-trip test](../../tests/integration/test_migration_roundtrip.py).
@@ -313,8 +346,9 @@ security/schema decision changes their contract:
   the time-ordered UUIDv7 invariant;
 - `active_sessions.signing_key`: a PostgreSQL default must never replace the
   CSPRNG secret generator;
-- `push_subscriptions.topics` and `user_push_topics.topics`: JSON defaults
-  require an explicit dialect/type and round-trip decision.
+- `user_push_topics.topics`: JSON defaults require an explicit dialect/type
+  and round-trip decision. `push_subscriptions.topics` is no longer listed
+  because its model declares the catalog default (see the 2026-10-31 update).
 
 `Computed` columns and `default=None` declarations are not effective defaults
 and are excluded from the dual-default denominator. Each exception must be
@@ -395,6 +429,39 @@ and 126 effective defaults (85 both, 41 Python-only and 0 server-only), with
 owned by `backend-platform`; it creates no new exception category. These are
 source/model inventory counts, not deployed PostgreSQL catalog evidence. The
 historical phase snapshots above remain unchanged.
+
+## 2026-10-25: durable chat-send receipt inventory update
+
+Revision `202610250001` adds `chat_send_receipts`. Its identifier inherits
+the existing UUIDv7 mixin; `completed_at` and `expires_at` are supplied
+explicitly by the application and have no Python or server defaults. The
+source-derived expected inventory becomes 47 tables and 127 effective defaults
+(85 both, 42 Python-only and 0 server-only). The 102 source-level default
+declarations and their counts remain unchanged because the UUIDv7 declaration
+is inherited rather than duplicated in the new model.
+
+The policy names only `chat_send_receipts.id` under the existing inherited
+UUIDv7 classification and existing `backend-platform` reason. This adds no new
+exception category or waiver. The historical phase snapshots and the 2026-10-20
+inventory evidence above remain unchanged. Current-SHA inventory, schema-drift,
+migration, PostgreSQL and required-check evidence must still be collected; these
+source expectations are not a passing check or deployed-catalog certification.
+
+## 2026-10-31: DLQ auth-token scrub and push-topic default inventory update
+
+Revision `202610310001` replaces plaintext auth-email tokens in
+`dead_letter_jobs`. It adds no model column and changes no effective default.
+Its downgrade is a reviewed no-op, so the planner treats it as reversible: it
+sits above the 202610250001 boundary without moving the safe target.
+
+Commit `77dc788c4` gives `push_subscriptions.topics` a model `server_default`
+(`'[]'::json`) that matches the catalog default installed by revision
+`f9d2b1f5e2d0`. The column is therefore dual-declared and its exception is
+withdrawn from the policy; `user_push_topics.topics` keeps its exception. The
+source-derived expected inventory becomes 47 tables and 127 effective defaults
+(86 both, 41 Python-only and 0 server-only), with 102 source-level default
+declarations (86 both and 16 Python-only). These are source and model counts,
+not deployed PostgreSQL catalog evidence.
 
 ## Related Decisions
 

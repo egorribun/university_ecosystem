@@ -3,16 +3,34 @@
 from __future__ import annotations
 
 import ast
+import base64
+import copy
 import hashlib
+import importlib.util
+import io
 import json
+import re
 import shutil
 import subprocess
+import sys
+import tarfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 
-from scripts import verify_secrets_baseline as verifier
+_VALIDATOR_PATH = (
+    Path(__file__).resolve().parents[1] / "scripts" / "verify_secrets_baseline.py"
+)
+_VALIDATOR_SPEC = importlib.util.spec_from_file_location(
+    "aud495_v4_verify_secrets_baseline", _VALIDATOR_PATH
+)
+if _VALIDATOR_SPEC is None or _VALIDATOR_SPEC.loader is None:
+    raise ImportError(f"cannot load v4 validator from {_VALIDATOR_PATH}")
+verifier = importlib.util.module_from_spec(_VALIDATOR_SPEC)
+sys.modules[_VALIDATOR_SPEC.name] = verifier
+_VALIDATOR_SPEC.loader.exec_module(verifier)
 
 Finding = tuple[str, str, str, int]
 _FINDING_TYPE = "Secret" + " Keyword"
@@ -660,7 +678,7 @@ def test_reviewed_false_positive_disposition_matches_exact_identity() -> None:
 
 
 def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
-    assert len(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES) == 27
+    assert len(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES) == 31
     assert len(verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES) == 27
     assert {
         path for path, _, _ in verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
@@ -682,7 +700,7 @@ def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
 def test_source_contract_identifier_category_is_finite_and_evidence_bound() -> None:
     category = "source_contract_identifier"
     assert len(verifier._C6_CODE_FRAGMENT_IDENTITIES) == 9
-    assert len(verifier._SOURCE_CONTRACT_IDENTIFIER_IDENTITIES) == 15
+    assert len(verifier._SOURCE_CONTRACT_IDENTIFIER_IDENTITIES) == 17
     evidence = "; ".join(verifier._FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS[category])
     paths = {path for path, _, _ in verifier._C6_CODE_FRAGMENT_IDENTITIES}
     assert paths == {
@@ -708,6 +726,115 @@ def test_source_contract_identifier_category_is_finite_and_evidence_bound() -> N
         ) == {
             verifier.FindingIdentity(path, finding_type, bytes(digest_bytes).hex(), 1)
         }
+
+
+def test_page_title_route_identifier_candidates_are_exact_and_finite() -> None:
+    category = "source_contract_identifier"
+    expected = {
+        (
+            "frontend/src/components/ui/PageRouteSEO.tsx",
+            "Secret Keyword",
+            (
+                246,
+                11,
+                35,
+                176,
+                57,
+                187,
+                96,
+                181,
+                93,
+                29,
+                195,
+                205,
+                161,
+                83,
+                22,
+                254,
+                236,
+                136,
+                40,
+                118,
+            ),
+        ),
+        (
+            "frontend/src/components/ui/PageRouteSEO.tsx",
+            "Secret Keyword",
+            (
+                13,
+                39,
+                13,
+                74,
+                47,
+                213,
+                87,
+                245,
+                102,
+                242,
+                14,
+                180,
+                169,
+                34,
+                53,
+                125,
+                169,
+                142,
+                149,
+                34,
+            ),
+        ),
+    }
+    assert verifier._PAGE_TITLE_ROUTE_IDENTIFIER_IDENTITIES == expected
+    assert expected <= verifier._SOURCE_CONTRACT_IDENTIFIER_IDENTITIES
+
+    evidence = "; ".join(verifier._FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS[category])
+    for path, finding_type, digest_bytes in expected:
+        approved = _reviewed_exact_disposition(
+            path, finding_type, digest_bytes, category
+        )
+        approved["evidence"] = evidence
+        approved["reviewed_on"] = "2026-10-23"
+        approved["expires_on"] = "2027-01-10"
+        pending = {**approved, "approval_status": "pending"}
+        with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(pending),
+                today=verifier.date(2026, 10, 23),
+            )
+
+        identity = approved["identity"]
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(approved),
+            today=verifier.date(2026, 10, 23),
+        ) == {
+            verifier.FindingIdentity(path, finding_type, bytes(digest_bytes).hex(), 1)
+        }
+
+        changed_records = (
+            {**approved, "identity": {**identity, "path": path + ".changed"}},
+            {
+                **approved,
+                "identity": {**identity, "type": "Basic Auth Credentials"},
+            },
+            {
+                **approved,
+                "identity": {
+                    **identity,
+                    "hashed_secret_bytes": [
+                        (digest_bytes[0] + 1) % 256,
+                        *digest_bytes[1:],
+                    ],
+                },
+            },
+            {**approved, "category": "auth_validation_ui_copy"},
+            {**approved, "expires_on": "2027-01-11"},
+        )
+        for changed in changed_records:
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed),
+                    today=verifier.date(2026, 10, 23),
+                )
 
 
 def test_c6_source_contract_records_require_explicit_approval() -> None:
@@ -1961,7 +2088,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 294
+    assert len(policy["records"]) == 494
     records = [
         record
         for record in policy["records"]
@@ -2005,3 +2132,4845 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
         verifier.FindingIdentity(path, finding_type, digest.hex(), 1)
         for path, finding_type, digest in expected
     }
+
+
+def _achievement_url_fixture_record() -> dict[str, Any]:
+    record = _reviewed_exact_disposition(
+        "frontend/src/components/profile/__tests__/profileUtils.closure.test.ts",
+        "Basic Auth Credentials",
+        (
+            *(157, 78, 30, 35, 189, 91, 114, 112, 70, 169),
+            *(227, 180, 183, 219, 87, 189, 141, 110, 230, 132),
+        ),
+        "synthetic_achievement_url_test_fixture",
+    )
+    record["owner"] = "egorribun"
+    record["reviewed_on"] = "2026-10-22"
+    record["evidence"] = (
+        "Synthetic profile achievement URL test fixture on reserved example.test host; "
+        "embedded-auth rejection coverage; not credential material. "
+        "Owner approved this exact path, detector type and digest on 2026-10-22; "
+        "no network request or operational login is performed."
+    )
+    return record
+
+
+@pytest.mark.parametrize(
+    "today",
+    [verifier.date(2026, 10, 22), verifier.date(2027, 1, 10)],
+)
+def test_achievement_url_fixture_is_one_exact_approved_identity(
+    today: verifier.date,
+) -> None:
+    record = _achievement_url_fixture_record()
+    identity = record["identity"]
+    expected = (
+        identity["path"],
+        identity["type"],
+        tuple(identity["hashed_secret_bytes"]),
+    )
+    assert verifier._SYNTHETIC_ACHIEVEMENT_URL_TEST_FIXTURE_IDENTITIES == {expected}
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=today
+    ) == {
+        verifier.FindingIdentity(
+            identity["path"],
+            identity["type"],
+            bytes(identity["hashed_secret_bytes"]).hex(),
+            1,
+        )
+    }
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["path", "type", "value", "evidence", "approval", "missing-approval", "expiry"],
+)
+def test_achievement_url_fixture_refuses_scope_mutation(change: str) -> None:
+    record = _achievement_url_fixture_record()
+    if change == "path":
+        record["identity"]["path"] = "frontend/src/other.test.ts"
+    elif change == "type":
+        record["identity"]["type"] = "Secret Keyword"
+    elif change == "value":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif change == "evidence":
+        record["evidence"] = "Reviewed fixture."
+    elif change == "approval":
+        record["approval_status"] = "pending"
+    elif change == "missing-approval":
+        del record["approval_status"]
+    else:
+        record["expires_on"] = "2027-01-11"
+
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 22)
+        )
+
+
+@pytest.mark.parametrize(
+    "category",
+    sorted(
+        verifier._FALSE_POSITIVE_CATEGORIES - {"synthetic_achievement_url_test_fixture"}
+    ),
+)
+def test_achievement_url_fixture_cannot_be_reclassified(category: str) -> None:
+    record = _achievement_url_fixture_record()
+    record["category"] = category
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 22)
+        )
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "synthetic profile achievement URL test fixture",
+        "reserved example.test host",
+        "embedded-auth rejection coverage",
+        "not credential material",
+    ],
+)
+def test_achievement_url_fixture_requires_each_semantic_marker(marker: str) -> None:
+    record = _achievement_url_fixture_record()
+    evidence = record["evidence"]
+    start = evidence.casefold().index(marker.casefold())
+    record["evidence"] = evidence[:start] + evidence[start + len(marker) :]
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 10, 22)
+        )
+
+
+def test_achievement_url_fixture_expires_after_owner_approved_date() -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(_achievement_url_fixture_record()),
+            today=verifier.date(2027, 1, 11),
+        )
+
+
+def test_achievement_url_fixture_binds_the_actual_source_and_policy() -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _achievement_url_fixture_record()
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    matching = [
+        entry
+        for entry in policy["records"]
+        if entry["category"] == "synthetic_achievement_url_test_fixture"
+    ]
+    assert matching == [record]
+
+    source = (root / record["identity"]["path"]).read_text(encoding="utf-8")
+    urls = [
+        urlsplit(json.loads(line.strip().removesuffix(",")))
+        for line in source.splitlines()
+        if line.strip().startswith('"https://') and "@" in line
+    ]
+    credentialed = [url for url in urls if url.password is not None]
+    assert len(credentialed) == 1
+    parsed = credentialed[0]
+    assert parsed.scheme == "https"
+    assert parsed.hostname == "example.test"
+    assert parsed.path == "/award"
+    assert parsed.username == "user"
+    assert parsed.password is not None
+    digest = hashlib.sha1(
+        parsed.password.encode("utf-8"), usedforsecurity=False
+    ).digest()
+    assert digest == bytes(record["identity"]["hashed_secret_bytes"])
+
+
+_AUTH_VALIDATION_UI_COPY_PATH = "frontend/src/i18n/locales/en/auth.json"
+_AUTH_VALIDATION_UI_COPY_CATEGORY = "auth_validation_ui_copy"
+_AUTH_VALIDATION_UI_COPY_DIGEST_BYTES = (
+    bytes(
+        (
+            62,
+            125,
+            86,
+            169,
+            88,
+            4,
+            255,
+            60,
+            50,
+            43,
+            151,
+            167,
+            231,
+            205,
+            186,
+            37,
+            220,
+            146,
+            9,
+            87,
+        )
+    ),
+    bytes(
+        (
+            81,
+            214,
+            154,
+            230,
+            4,
+            109,
+            42,
+            59,
+            226,
+            69,
+            68,
+            157,
+            91,
+            56,
+            22,
+            93,
+            93,
+            120,
+            222,
+            245,
+        )
+    ),
+    bytes(
+        (
+            214,
+            156,
+            59,
+            26,
+            197,
+            75,
+            231,
+            218,
+            54,
+            102,
+            217,
+            147,
+            123,
+            156,
+            120,
+            231,
+            195,
+            9,
+            214,
+            232,
+        )
+    ),
+)
+
+
+def _auth_validation_candidate_policy() -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    policy["records"] = policy["records"][:315]
+    return policy
+
+
+def test_auth_validation_ui_copy_accepts_only_three_exact_identities() -> None:
+    policy = _auth_validation_candidate_policy()
+    records = [
+        record
+        for record in policy["records"]
+        if record["category"] == _AUTH_VALIDATION_UI_COPY_CATEGORY
+    ]
+    assert len(records) == 3
+    assert {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            bytes(record["identity"]["hashed_secret_bytes"]).hex(),
+        )
+        for record in records
+    } == {
+        (_AUTH_VALIDATION_UI_COPY_PATH, "Secret Keyword", digest.hex())
+        for digest in _AUTH_VALIDATION_UI_COPY_DIGEST_BYTES
+    }
+    assert verifier.validate_false_positive_dispositions(
+        policy, today=verifier.date(2026, 10, 23)
+    ) >= {
+        verifier.FindingIdentity(
+            _AUTH_VALIDATION_UI_COPY_PATH, "Secret Keyword", digest.hex(), 1
+        )
+        for digest in _AUTH_VALIDATION_UI_COPY_DIGEST_BYTES
+    }
+
+
+def test_auth_validation_ui_copy_rejects_identity_or_category_transfer() -> None:
+    original = _auth_validation_candidate_policy()
+    invalid_mutations = (
+        lambda record: record["identity"].update(
+            path="frontend/src/i18n/locales/en/auth-copy.json"
+        ),
+        lambda record: record["identity"].update(type="Basic Auth Credentials"),
+        lambda record: record["identity"]["hashed_secret_bytes"].__setitem__(
+            0, (record["identity"]["hashed_secret_bytes"][0] + 1) % 256
+        ),
+        lambda record: record.update(category="source_contract_identifier"),
+        lambda record: record.update(expires_on="2027-01-11"),
+        lambda record: record.update(
+            evidence="English auth validation UI copy; not credential material."
+        ),
+    )
+    for mutate in invalid_mutations:
+        policy = copy.deepcopy(original)
+        record = next(
+            row
+            for row in policy["records"]
+            if row["category"] == _AUTH_VALIDATION_UI_COPY_CATEGORY
+        )
+        mutate(record)
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                policy, today=verifier.date(2026, 10, 23)
+            )
+
+
+def test_auth_validation_ui_copy_expires_at_the_finite_cap() -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _auth_validation_candidate_policy(), today=verifier.date(2027, 1, 11)
+        )
+
+
+def test_auth_validation_ui_copy_preserves_existing_298_records() -> None:
+    policy = _auth_validation_candidate_policy()
+    records = policy["records"]
+    proposed = [
+        record
+        for record in records
+        if record["category"] == _AUTH_VALIDATION_UI_COPY_CATEGORY
+    ]
+    existing = [
+        record
+        for record in records
+        if record["category"] != _AUTH_VALIDATION_UI_COPY_CATEGORY
+    ]
+    assert len(records) == 315
+    assert len(existing) == 312
+    assert records[:298] == existing[:298]
+    assert records[298:301] == proposed
+    assert records[301:] == existing[298:]
+    assert len(proposed) == 3
+
+
+_AUD253_DISPOSITION_CATEGORY = "aud253_private_env_mode_test_fixture"
+_AUD253_DISPOSITION_EXPIRY = "2027-01-10"
+_TRIVY_DISPOSITION_PATH = "scripts/quality/validate_trivy_kyverno_fixture.py"
+_TRIVY_DISPOSITION_EXPIRY = "2026-11-22"
+_PRIOR_301_RECORDS_SHA256_BYTES = (
+    96,
+    123,
+    56,
+    7,
+    89,
+    203,
+    93,
+    254,
+    158,
+    177,
+    160,
+    18,
+    255,
+    82,
+    60,
+    102,
+    196,
+    38,
+    90,
+    151,
+    51,
+    197,
+    65,
+    95,
+    160,
+    54,
+    204,
+    127,
+    55,
+    154,
+    8,
+    140,
+)
+_AUTHORIZED_310_RECORDS_SHA256_BYTES = (
+    108,
+    60,
+    61,
+    59,
+    80,
+    160,
+    171,
+    13,
+    95,
+    7,
+    68,
+    56,
+    156,
+    213,
+    52,
+    179,
+    6,
+    82,
+    27,
+    22,
+    85,
+    54,
+    49,
+    37,
+    152,
+    32,
+    214,
+    120,
+    166,
+    81,
+    86,
+    43,
+)
+
+
+def _owner_review_candidate_policy() -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    policy["records"] = policy["records"][:315]
+    return policy
+
+
+def _owner_review_record(
+    policy: dict[str, Any], identity: tuple[str, str, tuple[int, ...]]
+) -> dict[str, Any]:
+    path, finding_type, digest_bytes = identity
+    matches = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == path
+        and record["identity"]["type"] == finding_type
+        and tuple(record["identity"]["hashed_secret_bytes"]) == digest_bytes
+    ]
+    assert len(matches) == 1
+    return matches[0]
+
+
+def test_aud253_and_trivy_candidate_records_are_exact_and_finite() -> None:
+    policy = _owner_review_candidate_policy()
+    aud253 = [
+        record
+        for record in policy["records"]
+        if record["category"] == _AUD253_DISPOSITION_CATEGORY
+    ]
+    trivy = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == _TRIVY_DISPOSITION_PATH
+    ]
+    assert len(policy["records"]) == 315
+    assert len(aud253) == 5
+    assert len(trivy) == 2
+    assert {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in aud253
+    } == verifier._AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+    assert {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in trivy
+    } == verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+    for record in aud253:
+        assert record["expires_on"] == _AUD253_DISPOSITION_EXPIRY
+    for record in trivy:
+        assert record["category"] == "public_integrity_digest"
+        assert record["expires_on"] == _TRIVY_DISPOSITION_EXPIRY
+    assert verifier.validate_false_positive_dispositions(
+        policy, today=verifier.date(2026, 10, 23)
+    )
+
+
+def test_aud253_candidate_rejects_identity_category_evidence_and_expiry_changes() -> (
+    None
+):
+    policy = _owner_review_candidate_policy()
+    identity = next(iter(verifier._AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES))
+    mutations = (
+        lambda row: row["identity"].update(path="tests/other_fixture.py"),
+        lambda row: row["identity"].update(type="Hex High Entropy String"),
+        lambda row: row["identity"]["hashed_secret_bytes"].__setitem__(
+            0, (row["identity"]["hashed_secret_bytes"][0] + 1) % 256
+        ),
+        lambda row: row.update(category="public_integrity_digest"),
+        lambda row: row.update(expires_on="2027-01-11"),
+        lambda row: row.update(
+            evidence="synthetic test fixture; not credential material."
+        ),
+    )
+    for mutate in mutations:
+        candidate = copy.deepcopy(policy)
+        mutate(_owner_review_record(candidate, identity))
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                candidate, today=verifier.date(2026, 10, 23)
+            )
+
+
+def test_trivy_candidate_stays_exact_in_public_integrity_category() -> None:
+    policy = _owner_review_candidate_policy()
+    identity = next(iter(verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES))
+    mutations = (
+        lambda row: row["identity"].update(path="scripts/quality/other_validator.py"),
+        lambda row: row["identity"].update(type="Base64 High Entropy String"),
+        lambda row: row["identity"]["hashed_secret_bytes"].__setitem__(
+            0, (row["identity"]["hashed_secret_bytes"][0] + 1) % 256
+        ),
+        lambda row: row.update(category="documented_crypto_test_vector"),
+        lambda row: row.update(expires_on="2026-11-23"),
+        lambda row: row.update(
+            evidence="Public integrity checksum; not credential material."
+        ),
+    )
+    for mutate in mutations:
+        candidate = copy.deepcopy(policy)
+        mutate(_owner_review_record(candidate, identity))
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                candidate, today=verifier.date(2026, 10, 23)
+            )
+
+
+def test_aud253_fixture_digests_are_bound_to_embedded_powershell_literals() -> None:
+    root = Path(__file__).resolve().parents[1]
+    tree = ast.parse(
+        (root / "tests/test_aud253_private_env_files.py").read_text(encoding="utf-8")
+    )
+    values = [
+        node.value.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "POWERSHELL_HARNESS"
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    ]
+    assert len(values) == 1
+    literal_pattern = re.compile("'((?:[^']|'')*)'|\"((?:[^\"`]|`.)*)\"")
+    observed = set()
+    for match in literal_pattern.finditer(values[0]):
+        value = match.group(1) if match.group(1) is not None else match.group(2)
+        value = value.replace("''", "'")
+        observed.add(
+            hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest()
+        )
+    assert {
+        bytes(identity[2])
+        for identity in verifier._AUD253_PRIVATE_ENV_MODE_TEST_FIXTURE_IDENTITIES
+    } <= observed
+
+
+def test_trivy_checksum_digests_are_bound_to_validator_constants() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = ast.parse((root / _TRIVY_DISPOSITION_PATH).read_text(encoding="utf-8"))
+    values: dict[str, str] = {}
+    for node in ast.walk(source):
+        if not isinstance(node, ast.Assign):
+            continue
+        names = {target.id for target in node.targets if isinstance(target, ast.Name)}
+        if names & {"EXPECTED_FIXTURE_SHA256", "EXPECTED_IGNORE_POLICY_SHA256"}:
+            value = ast.literal_eval(node.value)
+            assert isinstance(value, str)
+            for name in names:
+                if name in {"EXPECTED_FIXTURE_SHA256", "EXPECTED_IGNORE_POLICY_SHA256"}:
+                    values[name] = value
+    assert set(values) == {"EXPECTED_FIXTURE_SHA256", "EXPECTED_IGNORE_POLICY_SHA256"}
+    actual = {
+        hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest()
+        for value in values.values()
+    }
+    assert actual == {
+        bytes(identity[2])
+        for identity in verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+    }
+
+
+def test_owner_review_preserves_the_previous_301_records_byte_for_byte() -> None:
+    policy = _owner_review_candidate_policy()
+    prior = policy["records"][:301]
+    encoded = json.dumps(
+        prior, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded).digest() == bytes(_PRIOR_301_RECORDS_SHA256_BYTES)
+    assert len(policy["records"]) == 315
+
+
+def test_workflow_owner_review_candidate_records_are_exact_and_finite() -> None:
+    policy = _owner_review_candidate_policy()
+    records = policy["records"][310:]
+    expected = [
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                143,
+                120,
+                48,
+                192,
+                43,
+                11,
+                20,
+                246,
+                31,
+                253,
+                204,
+                224,
+                203,
+                218,
+                179,
+                79,
+                187,
+                212,
+                10,
+                41,
+            ),
+            "public_integrity_digest",
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                85,
+                158,
+                8,
+                17,
+                13,
+                217,
+                219,
+                104,
+                145,
+                111,
+                194,
+                19,
+                60,
+                251,
+                92,
+                240,
+                212,
+                85,
+                113,
+                116,
+            ),
+            "independent_contract_fingerprint",
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                94,
+                40,
+                155,
+                35,
+                12,
+                205,
+                36,
+                191,
+                27,
+                93,
+                89,
+                252,
+                6,
+                36,
+                193,
+                174,
+                240,
+                78,
+                30,
+                64,
+            ),
+            "independent_contract_fingerprint",
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                228,
+                251,
+                163,
+                207,
+                40,
+                164,
+                144,
+                11,
+                26,
+                225,
+                79,
+                240,
+                197,
+                199,
+                12,
+                121,
+                37,
+                113,
+                215,
+                216,
+            ),
+            "independent_contract_fingerprint",
+        ),
+        (
+            "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+            "Hex High Entropy String",
+            (
+                109,
+                237,
+                50,
+                137,
+                135,
+                161,
+                1,
+                220,
+                60,
+                104,
+                144,
+                173,
+                229,
+                20,
+                90,
+                76,
+                18,
+                192,
+                224,
+                154,
+            ),
+            "independent_contract_fingerprint",
+        ),
+    ]
+    actual = [
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+            record["category"],
+        )
+        for record in records
+    ]
+    assert actual == expected
+    assert all(record["owner"] == "egorribun" for record in records)
+    assert all(record["reviewed_on"] == "2026-10-23" for record in records)
+    assert all(record["expires_on"] == "2027-01-10" for record in records)
+    assert all(record["approval_status"] == "approved" for record in records)
+
+
+def test_workflow_owner_review_candidate_preserves_authorized_310_prefix() -> None:
+    policy = _owner_review_candidate_policy()
+    prior = policy["records"][:310]
+    encoded = json.dumps(
+        prior, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded).digest() == bytes(
+        _AUTHORIZED_310_RECORDS_SHA256_BYTES
+    )
+    assert len(policy["records"]) == 315
+
+
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY = (
+    "aud495_cache_key_redaction_test_fixture"
+)
+_AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH = "tests/test_cache_object_keys_aud495.py"
+_AUD495_CACHE_KEY_HISTORICAL_IDENTITIES = {
+    (
+        _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH,
+        "Secret Keyword",
+        tuple(bytes.fromhex("9e601bae9cd4e3075d55858bed83ff4e4bfdff10")),
+    ),
+    (
+        _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH,
+        "Secret Keyword",
+        tuple(bytes.fromhex("cee0221af84e16fa6180f0600ea14be1cd97c48f")),
+    ),
+}
+
+
+def _assert_aud495_cache_canary_uses_runtime_secret(
+    function: ast.AsyncFunctionDef,
+) -> None:
+    assignments = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "secret_key"
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    value = assignments[0].value
+    assert isinstance(value, ast.Call)
+    assert isinstance(value.func, ast.Attribute)
+    assert isinstance(value.func.value, ast.Name)
+    assert value.func.value.id == "secrets"
+    assert value.func.attr == "token_urlsafe"
+    assert len(value.args) == 1
+    assert isinstance(value.args[0], ast.Constant) and value.args[0].value == 32
+    assert not value.keywords
+
+
+def _aud495_cache_key_historical_fixture_identities() -> set[
+    tuple[str, str, tuple[int, ...]]
+]:
+    path = _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH
+    source_text = (Path(__file__).resolve().parents[1] / path).read_text(
+        encoding="utf-8"
+    )
+    source = ast.parse(source_text)
+    target_functions = {
+        "test_backend_error_logs_do_not_emit_cache_key_or_exception_text",
+        "test_invalid_payload_logs_redact_cache_key",
+    }
+    function_sources: dict[str, str] = {}
+    for function in source.body:
+        if (
+            not isinstance(function, ast.AsyncFunctionDef)
+            or function.name not in target_functions
+        ):
+            continue
+        _assert_aud495_cache_canary_uses_runtime_secret(function)
+        function_source = ast.get_source_segment(source_text, function)
+        assert function_source is not None
+        function_sources[function.name] = function_source
+    assert set(function_sources) == target_functions
+    assert all(
+        "secret_key not in repr(call)" in function_source
+        for function_source in function_sources.values()
+    )
+    assert (
+        'call.kwargs.get("exc_info")'
+        in function_sources[
+            "test_backend_error_logs_do_not_emit_cache_key_or_exception_text"
+        ]
+    )
+    assert (
+        'keyed_fake.get.await_args.args[0] == (\n            f"aud495-key-derived-from-object:{secret_key}"\n        )'
+        in function_sources[
+            "test_backend_error_logs_do_not_emit_cache_key_or_exception_text"
+        ]
+    )
+    assert len(_AUD495_CACHE_KEY_HISTORICAL_IDENTITIES) == 2
+    return set(_AUD495_CACHE_KEY_HISTORICAL_IDENTITIES)
+
+
+def test_aud495_cache_key_fixture_binds_historical_records_and_runtime_source() -> None:
+    expected = _aud495_cache_key_historical_fixture_identities()
+    assert verifier._AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_IDENTITIES == expected
+    assert (
+        verifier._FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES[
+            _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+        ]
+        == expected
+    )
+    assert verifier._AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_DIGESTS == {
+        identity[2] for identity in expected
+    }
+
+
+def test_aud495_cache_key_fixture_rejects_literal_secret_mutation() -> None:
+    path = _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_PATH
+    source_text = (Path(__file__).resolve().parents[1] / path).read_text(
+        encoding="utf-8"
+    )
+    source = ast.parse(source_text)
+    function = next(
+        node
+        for node in source.body
+        if isinstance(node, ast.AsyncFunctionDef)
+        and node.name
+        == "test_backend_error_logs_do_not_emit_cache_key_or_exception_text"
+    )
+    assignment = next(
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "secret_key"
+            for target in node.targets
+        )
+    )
+    assignment.value = ast.Constant(value="literal fixture")
+    with pytest.raises(AssertionError):
+        _assert_aud495_cache_canary_uses_runtime_secret(function)
+
+
+def test_aud495_cache_key_fixture_candidate_is_exact_and_requires_owner_approval() -> (
+    None
+):
+    category = _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+    identities = _aud495_cache_key_historical_fixture_identities()
+    evidence = "; ".join(verifier._FALSE_POSITIVE_CATEGORY_EVIDENCE_MARKERS[category])
+    approved_records = []
+    for path, finding_type, digest_bytes in sorted(identities):
+        record = _reviewed_exact_disposition(path, finding_type, digest_bytes, category)
+        record["evidence"] = evidence
+        record["reviewed_on"] = "2026-10-23"
+        record["expires_on"] = "2027-01-10"
+        approved_records.append(record)
+
+    expected_findings = {
+        verifier.FindingIdentity(path, finding_type, bytes(digest).hex(), 1)
+        for path, finding_type, digest in identities
+    }
+    assert (
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(*approved_records),
+            today=verifier.date(2026, 10, 23),
+        )
+        == expected_findings
+    )
+
+    pending = copy.deepcopy(approved_records)
+    pending[0]["approval_status"] = "pending_owner_review"
+    with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(*pending), today=verifier.date(2026, 10, 23)
+        )
+
+    for mutation in (
+        lambda row: row["identity"].update(path="tests/other.py"),
+        lambda row: row["identity"].update(type="Hex High Entropy String"),
+        lambda row: row["identity"].update(
+            hashed_secret_bytes=[
+                (row["identity"]["hashed_secret_bytes"][0] + 1) % 256,
+                *row["identity"]["hashed_secret_bytes"][1:],
+            ]
+        ),
+        lambda row: row.update(category="source_contract_identifier"),
+        lambda row: row.update(evidence="synthetic fixture; not credential material"),
+        lambda row: row.update(expires_on="2027-01-11"),
+    ):
+        changed = copy.deepcopy(approved_records)
+        mutation(changed[0])
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(*changed), today=verifier.date(2026, 10, 23)
+            )
+
+
+_AUD495_IMMUTABLE_315_PREFIX_SHA256 = (
+    "16330df8c10ee81bab39b51ab54917605d1e589b1d443f0c93862a179e69e653"
+)
+_AUD495_TEST_ONLY_OWNER_MARKER = "TEST_FIXTURE_ONLY"
+_AUD495_TEST_ONLY_EVIDENCE_MARKER = "HYPOTHETICAL_TEST_FIXTURE_ONLY_NOT_OWNER_APPROVAL"
+
+
+def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    records = policy["records"]
+    assert len(records) == 494
+    prefix = records[:315]
+    encoded_prefix = json.dumps(
+        prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded_prefix).hexdigest() == (
+        _AUD495_IMMUTABLE_315_PREFIX_SHA256
+    )
+
+    suffix = records[315:317]
+    expected_identities = _aud495_cache_key_historical_fixture_identities()
+    actual_identities = {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in suffix
+    }
+    assert actual_identities == expected_identities
+    assert all(
+        record["category"] == _AUD495_CACHE_KEY_REDACTION_TEST_FIXTURE_CATEGORY
+        for record in suffix
+    )
+    assert all(
+        record["expires_on"] <= "2027-01-10" and record["approval_status"] == "approved"
+        for record in suffix
+    )
+
+    test_only_rows = [
+        record for record in suffix if record["owner"] == _AUD495_TEST_ONLY_OWNER_MARKER
+    ]
+    if test_only_rows:
+        assert len(test_only_rows) == 2
+        assert all(
+            _AUD495_TEST_ONLY_EVIDENCE_MARKER in record["evidence"]
+            for record in test_only_rows
+        )
+
+    digest_identity = _public_integrity_digest_source_identity()
+    digest_record = records[317]
+    assert (
+        digest_record["identity"]["path"],
+        digest_record["identity"]["type"],
+        tuple(digest_record["identity"]["hashed_secret_bytes"]),
+    ) == digest_identity
+    assert digest_record["category"] == "public_integrity_digest"
+    assert digest_record["expires_on"] <= "2027-01-10"
+    assert digest_record["approval_status"] == "approved"
+
+    expected_findings = {
+        verifier.FindingIdentity(path, finding_type, bytes(digest).hex(), 1)
+        for path, finding_type, digest in expected_identities
+    }
+    validated = verifier.validate_false_positive_dispositions(
+        {
+            "schema_version": policy["schema_version"],
+            "records": policy["records"][:347],
+        },
+        today=verifier.date(2026, 10, 26),
+    )
+    assert expected_findings <= validated
+    assert (
+        verifier.FindingIdentity(
+            digest_identity[0], digest_identity[1], bytes(digest_identity[2]).hex(), 1
+        )
+        in validated
+    )
+
+    pending = copy.deepcopy(policy)
+    for record in pending["records"][315:]:
+        record["approval_status"] = "pending_owner_review"
+    with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
+        verifier.validate_false_positive_dispositions(
+            pending, today=verifier.date(2026, 10, 25)
+        )
+
+
+def _public_integrity_digest_source_identity() -> tuple[str, str, tuple[int, ...]]:
+    source_path = Path(__file__).resolve()
+    source = ast.parse(source_path.read_text(encoding="utf-8"))
+    assignments = [
+        node
+        for node in source.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id == "_AUD495_IMMUTABLE_315_PREFIX_SHA256"
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    public_digest = ast.literal_eval(assignments[0].value)
+    assert isinstance(public_digest, str)
+    assert len(public_digest) == 64
+    assert all(character in "0123456789abcdef" for character in public_digest)
+    detector_digest = hashlib.sha1(
+        public_digest.encode("ascii"), usedforsecurity=False
+    ).digest()
+    return (
+        "tests/test_verify_secrets_baseline.py",
+        "Hex High Entropy String",
+        tuple(detector_digest),
+    )
+
+
+def test_public_integrity_digest_candidate_is_one_exact_source_identity() -> None:
+    # The record below is an in-memory validator fixture, not owner approval.
+    identity = _public_integrity_digest_source_identity()
+    assert verifier._PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES == {identity}
+    path, finding_type, digest_bytes = identity
+    category = "public_integrity_digest"
+    record = _reviewed_exact_disposition(path, finding_type, digest_bytes, category)
+    record["evidence"] = (
+        "Public SHA-256 integrity digest of immutable 315-record disposition prefix; "
+        "source-contract test guard in tests/test_verify_secrets_baseline.py; "
+        "not credential material."
+    )
+    identity_finding = verifier.FindingIdentity(
+        path, finding_type, bytes(digest_bytes).hex(), 1
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=verifier.date(2026, 10, 23)
+    ) == {identity_finding}
+
+    mutations = []
+    changed_path = copy.deepcopy(record)
+    changed_path["identity"]["path"] = "tests/test_other_policy.py"
+    mutations.append(changed_path)
+    changed_digest = copy.deepcopy(record)
+    changed_bytes = list(digest_bytes)
+    changed_bytes[0] ^= 1
+    changed_digest["identity"]["hashed_secret_bytes"] = changed_bytes
+    mutations.append(changed_digest)
+    changed_category = copy.deepcopy(record)
+    changed_category["category"] = "documented_crypto_test_vector"
+    mutations.append(changed_category)
+    excessive_expiry = copy.deepcopy(record)
+    excessive_expiry["expires_on"] = "2027-01-11"
+    mutations.append(excessive_expiry)
+    missing_evidence = copy.deepcopy(record)
+    missing_evidence["evidence"] = "not credential material"
+    mutations.append(missing_evidence)
+    for changed in mutations:
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(changed),
+                today=verifier.date(2026, 10, 23),
+            )
+
+
+_OCT24_APPROVED_PUBLIC_DIGEST_RECORDS = [
+    {
+        "identity": {
+            "path": "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                75,
+                241,
+                247,
+                240,
+                201,
+                124,
+                150,
+                116,
+                118,
+                155,
+                103,
+                137,
+                228,
+                223,
+                153,
+                93,
+                208,
+                224,
+                145,
+                58,
+            ],
+        },
+        "category": "public_integrity_digest",
+        "evidence": (
+            "Public SHA-256 integrity digest of the frozen AUD-350 migration "
+            "fixture; independent source-contract guard in "
+            "tests/integration/test_aud350_stored_event_timestamp_migration.py; "
+            "not credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "tests/test_verify_secrets_baseline.py",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                200,
+                36,
+                105,
+                58,
+                159,
+                122,
+                4,
+                140,
+                251,
+                170,
+                213,
+                164,
+                38,
+                210,
+                200,
+                58,
+                142,
+                211,
+                129,
+                137,
+            ],
+        },
+        "category": "independent_contract_fingerprint",
+        "evidence": (
+            "Public detect-secrets SHA-1 identity of the first historical "
+            "AUD-495 cache-key canary; independent source-contract guard in "
+            "tests/test_verify_secrets_baseline.py; original canary record "
+            "retains its aud495_cache_key_redaction_test_fixture category; not "
+            "credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "tests/test_verify_secrets_baseline.py",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                73,
+                167,
+                128,
+                111,
+                78,
+                205,
+                84,
+                128,
+                139,
+                99,
+                249,
+                165,
+                3,
+                236,
+                79,
+                56,
+                147,
+                246,
+                140,
+                151,
+            ],
+        },
+        "category": "independent_contract_fingerprint",
+        "evidence": (
+            "Public detect-secrets SHA-1 identity of the second historical "
+            "AUD-495 cache-key canary; independent source-contract guard in "
+            "tests/test_verify_secrets_baseline.py; original canary record "
+            "retains its aud495_cache_key_redaction_test_fixture category; not "
+            "credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+]
+
+_OCT24_ORIGINAL_SUFFIX = [
+    {
+        "identity": {
+            "path": "tests/test_cache_object_keys_aud495.py",
+            "type": "Secret Keyword",
+            "hashed_secret_bytes": [
+                158,
+                96,
+                27,
+                174,
+                156,
+                212,
+                227,
+                7,
+                93,
+                85,
+                133,
+                139,
+                237,
+                131,
+                255,
+                78,
+                75,
+                253,
+                255,
+                16,
+            ],
+        },
+        "category": "aud495_cache_key_redaction_test_fixture",
+        "evidence": (
+            "AUD-495 cache-key log-redaction test fixture; synthetic canary "
+            "used only by mocked backend tests; tests assert logger output "
+            "omits the canary; not credential material"
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-23",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "tests/test_cache_object_keys_aud495.py",
+            "type": "Secret Keyword",
+            "hashed_secret_bytes": [
+                206,
+                224,
+                34,
+                26,
+                248,
+                78,
+                22,
+                250,
+                97,
+                128,
+                240,
+                96,
+                14,
+                161,
+                75,
+                225,
+                205,
+                151,
+                196,
+                143,
+            ],
+        },
+        "category": "aud495_cache_key_redaction_test_fixture",
+        "evidence": (
+            "AUD-495 cache-key log-redaction test fixture; synthetic canary "
+            "used only by mocked backend tests; tests assert logger output "
+            "omits the canary; not credential material"
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-23",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "tests/test_verify_secrets_baseline.py",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                121,
+                18,
+                205,
+                213,
+                192,
+                120,
+                136,
+                208,
+                61,
+                126,
+                251,
+                249,
+                119,
+                59,
+                133,
+                113,
+                22,
+                198,
+                10,
+                132,
+            ],
+        },
+        "category": "public_integrity_digest",
+        "evidence": (
+            "Public SHA-256 integrity digest of immutable 315-record "
+            "disposition prefix; source-contract test guard in "
+            "tests/test_verify_secrets_baseline.py; not credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+]
+
+
+def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    records = policy["records"]
+    encoded_prefix = json.dumps(
+        records[:315], sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded_prefix).hexdigest() == (
+        _AUD495_IMMUTABLE_315_PREFIX_SHA256
+    )
+    assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
+    assert len(records) == 494
+    assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
+
+
+def test_oct24_public_digest_identities_are_bound_to_unchanged_source() -> None:
+    root = Path(__file__).resolve().parents[1]
+    migration_path = _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[0]["identity"]["path"]
+    migration_source = ast.parse((root / migration_path).read_text(encoding="utf-8"))
+    checksum_nodes = [
+        node
+        for node in migration_source.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "BASELINE_MIGRATION_SHA256"
+            for target in node.targets
+        )
+    ]
+    assert len(checksum_nodes) == 1
+    checksum = ast.literal_eval(checksum_nodes[0].value)
+    assert isinstance(checksum, str)
+    frozen_fixture = (
+        root
+        / "tests/fixtures/migrations/aud350"
+        / "202603280001_reconcile_post_uuid_migration_drift_baseline.py.txt"
+    )
+    assert hashlib.sha256(frozen_fixture.read_bytes()).hexdigest() == checksum
+    assert (
+        list(hashlib.sha1(checksum.encode("ascii"), usedforsecurity=False).digest())
+        == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[0]["identity"]["hashed_secret_bytes"]
+    )
+
+    source = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    historical_nodes = [
+        node
+        for node in source.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id == "_AUD495_CACHE_KEY_HISTORICAL_IDENTITIES"
+            for target in node.targets
+        )
+    ]
+    assert len(historical_nodes) == 1
+    fingerprints = [
+        node.args[0].value
+        for node in ast.walk(historical_nodes[0].value)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "bytes"
+        and node.func.attr == "fromhex"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    ]
+    assert len(fingerprints) == 2
+    assert {tuple(bytes.fromhex(value)) for value in fingerprints} == {
+        tuple(row["identity"]["hashed_secret_bytes"])
+        for row in _OCT24_ORIGINAL_SUFFIX[:2]
+    }
+    assert {
+        tuple(hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest())
+        for value in fingerprints
+    } == {
+        tuple(row["identity"]["hashed_secret_bytes"])
+        for row in _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[1:]
+    }
+
+
+@pytest.mark.parametrize("record", _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS)
+def test_oct24_public_digest_validator_accepts_only_reviewed_identity(
+    record: dict[str, Any],
+) -> None:
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize("record", _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "detector",
+        "digest",
+        "category",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_oct24_public_digest_validator_rejects_scope_or_approval_change(
+    record: dict[str, Any],
+    mutation: str,
+) -> None:
+    changed = copy.deepcopy(record)
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_public_digest.py"
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Secret Keyword"
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "public value; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+@pytest.mark.parametrize("record", _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS)
+def test_oct24_public_digest_validator_rejects_expired_disposition(
+    record: dict[str, Any],
+) -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+
+
+@pytest.mark.parametrize(
+    "category",
+    ["public_integrity_digest", "independent_contract_fingerprint"],
+)
+def test_oct24_public_digest_reserved_test_path_still_rejects_unlisted_values(
+    category: str,
+) -> None:
+    changed = copy.deepcopy(_OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[1])
+    changed["category"] = category
+    changed["identity"]["hashed_secret_bytes"] = list(range(20))
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+@pytest.mark.parametrize("record", _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[1:])
+def test_oct24_public_fingerprint_cannot_move_to_legacy_allowed_path(
+    record: dict[str, Any],
+) -> None:
+    changed = copy.deepcopy(record)
+    changed["identity"]["path"] = (
+        "tests/fixtures/full-backend-reusable-baseline.v3.yaml"
+    )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+_PUBLIC_GIT_BLOB_APPROVED_RECORDS = json.loads(
+    (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "public-git-blob-dispositions.json"
+    ).read_text(encoding="utf-8")
+)["records"]
+
+
+def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    # These existing independent guards compose the immutable 321-record prefix.
+    test_oct24_public_digest_policy_preserves_all_318_prior_records()
+    assert len(policy["records"]) == 494
+    assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 10
+
+
+def test_public_git_blob_rebind_policy_preserves_all_323_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_policy_preserves_all_321_prior_records()
+    assert policy["records"][323:325] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:4]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:4]) == 2
+    assert [
+        record["identity"]["path"] for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
+    ] == [
+        record["identity"]["path"] for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:4]
+    ]
+    assert {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
+    }.isdisjoint(
+        {
+            tuple(record["identity"]["hashed_secret_bytes"])
+            for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:4]
+        }
+    )
+
+
+def _public_git_blob_source_identity(
+    consumer: str, assignment_name: str, source: bytes
+) -> tuple[int, ...]:
+    assignments = [
+        node
+        for node in ast.parse(consumer).body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == assignment_name
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    value = ast.literal_eval(assignments[0].value)
+    assert isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value)
+    header = f"blob {len(source)}\0".encode("ascii")
+    expected = hashlib.sha1(header + source, usedforsecurity=False).hexdigest()
+    assert value == expected
+    return tuple(hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest())
+
+
+@pytest.mark.parametrize(
+    ("record", "assignment_name", "source_path"),
+    [
+        (
+            _PUBLIC_GIT_BLOB_APPROVED_RECORDS[0],
+            "SOURCE_GIT_BLOB",
+            "alembic/versions/148642dd1207_fix_missing_tables.py",
+        ),
+        (
+            _PUBLIC_GIT_BLOB_APPROVED_RECORDS[1],
+            "HISTORICAL_ORCHESTRATOR_BLOB",
+            "tests/test_migration_148642dd1207_orchestrator.py",
+        ),
+    ],
+)
+def test_public_git_blob_current_pin_has_an_exact_approved_identity(
+    record: dict[str, Any], assignment_name: str, source_path: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    consumer = root / record["identity"]["path"]
+    if not consumer.exists():
+        # Removed consumers may leave valid historical records, as with baseline.
+        return
+    # The fixture row supplies only the stable consumer path here: the current
+    # literal may match any separately approved historical or rebound identity.
+    digest = _public_git_blob_source_identity(
+        consumer.read_text(encoding="utf-8"),
+        assignment_name,
+        (root / source_path).read_bytes(),
+    )
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert any(
+        row["identity"]
+        == {
+            "path": record["identity"]["path"],
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": list(digest),
+        }
+        and row["category"] == "public_integrity_digest"
+        for row in policy["records"]
+    )
+
+
+def test_public_git_blob_orchestrator_rebind_rejects_near_misses() -> None:
+    record = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[9]
+    mutations = []
+    wrong_path = copy.deepcopy(record)
+    wrong_path["identity"]["path"] += ".changed"
+    mutations.append(wrong_path)
+    wrong_type = copy.deepcopy(record)
+    wrong_type["identity"]["type"] = "Base Auth Credentials"
+    mutations.append(wrong_type)
+    wrong_digest = copy.deepcopy(record)
+    wrong_digest["identity"]["hashed_secret_bytes"][0] ^= 1
+    mutations.append(wrong_digest)
+    wrong_category = copy.deepcopy(record)
+    wrong_category["category"] = "source_contract_identifier"
+    mutations.append(wrong_category)
+    weak_evidence = copy.deepcopy(record)
+    weak_evidence["evidence"] = weak_evidence["evidence"].replace(
+        "HISTORICAL_ORCHESTRATOR_BLOB", "OTHER_SOURCE_PIN"
+    )
+    mutations.append(weak_evidence)
+    pending = copy.deepcopy(record)
+    pending["approval_status"] = "pending"
+    mutations.append(pending)
+    placeholder_owner = copy.deepcopy(record)
+    placeholder_owner["owner"] = "PENDING_OWNER_REVIEW"
+    mutations.append(placeholder_owner)
+    extended_expiry = copy.deepcopy(record)
+    extended_expiry["expires_on"] = "2027-01-11"
+    mutations.append(extended_expiry)
+
+    for changed in mutations:
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(changed),
+                today=verifier.date(2026, 10, 26),
+            )
+
+
+def test_public_git_blob_binding_rejects_source_literal_or_assignment_drift() -> None:
+    source = b"reviewed source\n"
+    header = f"blob {len(source)}\0".encode("ascii")
+    value = hashlib.sha1(header + source, usedforsecurity=False).hexdigest()
+    consumer = f"SOURCE = {value!r}\n"
+    expected = tuple(
+        hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest()
+    )
+    assert _public_git_blob_source_identity(consumer, "SOURCE", source) == expected
+    changed_value = ("0" if value[0] != "0" else "1") + value[1:]
+    for changed_consumer, changed_source in (
+        (consumer, source + b"# drift\n"),
+        (f"SOURCE = {changed_value!r}\n", source),
+        (consumer + consumer, source),
+        (consumer.replace("SOURCE", "OTHER"), source),
+    ):
+        with pytest.raises(AssertionError):
+            _public_git_blob_source_identity(changed_consumer, "SOURCE", changed_source)
+
+
+@pytest.mark.parametrize("record", _PUBLIC_GIT_BLOB_APPROVED_RECORDS)
+def test_public_git_blob_validator_accepts_exact_historical_record_without_source(
+    record: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 26),
+    ) == {expected}
+
+
+@pytest.mark.parametrize("record", _PUBLIC_GIT_BLOB_APPROVED_RECORDS)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "path_swap",
+        "detector",
+        "digest",
+        "category",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_public_git_blob_validator_rejects_changed_scope_or_metadata(
+    record: dict[str, Any], mutation: str
+) -> None:
+    changed = copy.deepcopy(record)
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_public_digest.py"
+    elif mutation == "path_swap":
+        changed["identity"]["path"] = next(
+            row["identity"]["path"]
+            for row in _PUBLIC_GIT_BLOB_APPROVED_RECORDS
+            if row["identity"]["path"] != record["identity"]["path"]
+        )
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Secret Keyword"
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "public value; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 25)
+        )
+
+
+@pytest.mark.parametrize("record", _PUBLIC_GIT_BLOB_APPROVED_RECORDS)
+def test_public_git_blob_validator_rejects_expired_or_duplicate_record(
+    record: dict[str, Any],
+) -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+            today=verifier.date(2026, 10, 25),
+        )
+
+
+@pytest.mark.parametrize("record", _PUBLIC_GIT_BLOB_APPROVED_RECORDS)
+def test_public_git_blob_reserved_path_rejects_other_fingerprint(
+    record: dict[str, Any],
+) -> None:
+    changed = copy.deepcopy(record)
+    changed["identity"]["hashed_secret_bytes"] = list(range(20))
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 25)
+        )
+
+
+_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS = [
+    {
+        "identity": {
+            "path": "frontend/scripts/generate-zod-root-lock-candidate.mjs",
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": [
+                93,
+                153,
+                98,
+                228,
+                62,
+                95,
+                145,
+                81,
+                122,
+                89,
+                127,
+                149,
+                156,
+                66,
+                233,
+                25,
+                253,
+                139,
+                106,
+                91,
+            ],
+        },
+        "category": "public_integrity_digest",
+        "evidence": (
+            "Public upstream Git commit identifier for colinhacks/zod v4.6.7; "
+            "EXPECTED_ZOD_SOURCE_SHA in "
+            "frontend/scripts/generate-zod-root-lock-candidate.mjs; official Git "
+            "tag and hosted mature registry metadata agree; used for exact "
+            "registry source-identity comparison; not credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "tests/test_logging_pii_redaction_contract.py",
+            "type": "Secret Keyword",
+            "hashed_secret_bytes": [
+                241,
+                119,
+                30,
+                46,
+                101,
+                173,
+                30,
+                82,
+                73,
+                135,
+                104,
+                15,
+                34,
+                136,
+                138,
+                34,
+                211,
+                106,
+                94,
+                148,
+            ],
+        },
+        "category": "source_contract_identifier",
+        "evidence": (
+            "Public signing-key name csrf-signing-key in the secret_name metadata "
+            "field of "
+            "tests/test_logging_pii_redaction_contract.py::"
+            "test_sensitive_field_matching_preserves_related_nonsecret_metadata; "
+            "negative control requires this identifier to survive real log "
+            "redaction; secret-related source identifier or required key-list "
+            "expression; not credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-10-24",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    },
+]
+
+
+def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
+    assert len(policy["records"]) == 494
+    assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
+    assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
+
+
+def _zod_public_source_fingerprint(source: str) -> tuple[int, ...]:
+    values = re.findall(
+        r'^const EXPECTED_ZOD_SOURCE_SHA = "([0-9a-f]{40})"$',
+        source,
+        flags=re.MULTILINE,
+    )
+    assert len(values) == 1
+    # Default-argument and comparison behavior is exercised by the required
+    # Node helper guards; this Python check binds the scanner literal identity.
+    return tuple(
+        hashlib.sha1(values[0].encode("ascii"), usedforsecurity=False).digest()
+    )
+
+
+def _public_metadata_label_from_source(source: str) -> str:
+    functions = [
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef)
+        and node.name
+        == "test_sensitive_field_matching_preserves_related_nonsecret_metadata"
+    ]
+    assert len(functions) == 1
+    assignments = [
+        node
+        for node in functions[0].body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "event"
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    event = ast.literal_eval(assignments[0].value)
+    assert isinstance(event, dict) and "secret_name" in event
+    assertions = [
+        node.test
+        for node in functions[0].body
+        if isinstance(node, ast.Assert)
+        and isinstance(node.test, ast.Compare)
+        and isinstance(node.test.left, ast.Call)
+        and isinstance(node.test.left.func, ast.Name)
+        and node.test.left.func.id == "_redact_pii"
+    ]
+    assert len(assertions) == 1
+    comparison = assertions[0]
+    assert len(comparison.ops) == 1 and isinstance(comparison.ops[0], ast.Eq)
+    assert len(comparison.comparators) == 1
+    expected = ast.literal_eval(comparison.comparators[0])
+    call = comparison.left
+    assert len(call.args) == 3 and not call.keywords
+    assert isinstance(call.args[0], ast.Constant) and call.args[0].value is None
+    assert isinstance(call.args[1], ast.Constant) and call.args[1].value == "info"
+    assert isinstance(call.args[2], ast.Name) and call.args[2].id == "event"
+    assert event == expected
+    value = event["secret_name"]
+    assert isinstance(value, str) and value
+    return value
+
+
+def _public_metadata_label_fingerprint(source: str) -> tuple[int, ...]:
+    value = _public_metadata_label_from_source(source)
+    return tuple(hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest())
+
+
+@pytest.mark.parametrize(
+    ("record", "fingerprint"),
+    [
+        (_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS[0], _zod_public_source_fingerprint),
+        (
+            _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS[1],
+            _public_metadata_label_fingerprint,
+        ),
+    ],
+)
+def test_observed_public_metadata_current_source_has_an_exact_approved_identity(
+    record: dict[str, Any], fingerprint: Any
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = root / record["identity"]["path"]
+    if not path.exists():
+        # Historical dispositions may become stale when a consumer is removed.
+        return
+    digest = fingerprint(path.read_text(encoding="utf-8"))
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert any(
+        row["identity"]
+        == {
+            "path": record["identity"]["path"],
+            "type": record["identity"]["type"],
+            "hashed_secret_bytes": list(digest),
+        }
+        and row["category"] == record["category"]
+        for row in policy["records"]
+    )
+
+
+def test_zod_public_source_binding_rejects_changed_or_duplicate_pin() -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS[0]
+    path = root / record["identity"]["path"]
+    if not path.exists():
+        return
+    source = path.read_text(encoding="utf-8")
+    original = _zod_public_source_fingerprint(source)
+    value = re.findall(
+        r'^const EXPECTED_ZOD_SOURCE_SHA = "([0-9a-f]{40})"$',
+        source,
+        flags=re.MULTILINE,
+    )[0]
+    changed = source.replace(value, "0" * len(value), 1)
+    assert _zod_public_source_fingerprint(changed) != original
+    declaration = next(
+        line for line in source.splitlines() if line.startswith("const EXPECTED_")
+    )
+    with pytest.raises(AssertionError):
+        _zod_public_source_fingerprint(source + "\n" + declaration + "\n")
+
+
+def test_public_metadata_label_binding_rejects_changed_value_or_lost_control() -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS[1]
+    path = root / record["identity"]["path"]
+    if not path.exists():
+        return
+    source = path.read_text(encoding="utf-8")
+    label = _public_metadata_label_from_source(source)
+    original = _public_metadata_label_fingerprint(source)
+    changed = source.replace(label, "different-public-label")
+    assert _public_metadata_label_fingerprint(changed) != original
+    for changed in (
+        source.replace(label, "different-public-label", 1),
+        source.replace('"secret_name"', '"csrf_hmac_secret"'),
+        source.replace(
+            'assert _redact_pii(None, "info", event) ==',
+            "assert event ==",
+        ),
+    ):
+        with pytest.raises(AssertionError):
+            _public_metadata_label_from_source(changed)
+
+
+@pytest.mark.parametrize("record", _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS)
+def test_observed_public_metadata_accepts_exact_record_without_source(
+    record: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize("record", _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "path_swap",
+        "detector",
+        "digest",
+        "category",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_observed_public_metadata_rejects_changed_scope_or_approval(
+    record: dict[str, Any], mutation: str
+) -> None:
+    changed = copy.deepcopy(record)
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_public_metadata.py"
+    elif mutation == "path_swap":
+        changed["identity"]["path"] = next(
+            row["identity"]["path"]
+            for row in _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
+            if row["identity"]["path"] != record["identity"]["path"]
+        )
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Base64 High Entropy String"
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "public metadata; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+@pytest.mark.parametrize("record", _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS)
+def test_observed_public_metadata_rejects_expiry_duplicate_and_extra_identity(
+    record: dict[str, Any],
+) -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+            today=verifier.date(2026, 10, 24),
+        )
+    extra = copy.deepcopy(record)
+    extra["identity"]["hashed_secret_bytes"] = list(range(20))
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), extra),
+            today=verifier.date(2026, 10, 24),
+        )
+
+
+def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_observed_public_metadata_policy_preserves_all_325_prior_records()
+    assert len(policy["records"]) == 494
+    assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]) == 1
+    rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
+    assert rebound["identity"]["path"] == (
+        "tests/helpers/migration_148642dd1207_trace.py"
+    )
+    assert tuple(rebound["identity"]["hashed_secret_bytes"]) not in {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:4]
+    }
+
+
+def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
+    assert len(policy["records"]) == 494
+    assert policy["records"][328:329] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]) == 1
+    rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
+    assert (
+        rebound["identity"]["path"]
+        == (_PUBLIC_GIT_BLOB_APPROVED_RECORDS[1]["identity"]["path"])
+    )
+    assert tuple(rebound["identity"]["hashed_secret_bytes"]) not in {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:5]
+    }
+
+
+_PUBLIC_ALEMBIC_REVISION_RECORD = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "tests/fixtures/public-alembic-revision-disposition.json"
+    ).read_text(encoding="utf-8")
+)["records"][0]
+
+
+def _public_revision_calls(source: str) -> tuple[ast.With, list[ast.Call]]:
+    functions = [
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "test_groups_successors_do_not_require_the_duplicate_id_index"
+    ]
+    assert len(functions) == 1
+    assert len(functions[0].body) == 2
+    assert isinstance(functions[0].body[0], ast.Expr)
+    assert isinstance(functions[0].body[0].value, ast.Constant)
+    assert isinstance(functions[0].body[0].value.value, str)
+    scenario = functions[0].body[1]
+    assert isinstance(scenario, ast.With) and len(scenario.items) == 1
+    context = scenario.items[0].context_expr
+    assert isinstance(context, ast.Call)
+    assert isinstance(context.func, ast.Name)
+    assert context.func.id == "_owned_migration_scenario"
+    assert len(context.args) == 1 and not context.keywords
+    assert isinstance(context.args[0], ast.Name)
+    assert context.args[0].id == "migration_postgres"
+    assert isinstance(scenario.items[0].optional_vars, ast.Name)
+    assert scenario.items[0].optional_vars.id == "urls"
+    calls = [
+        node.value
+        for node in scenario.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Attribute)
+        and isinstance(node.value.func.value, ast.Name)
+        and node.value.func.value.id == "command"
+        and node.value.func.attr == "upgrade"
+    ]
+    assert len(calls) == 4
+    for call in calls:
+        assert len(call.args) == 2 and not call.keywords
+        assert isinstance(call.args[0], ast.Name) and call.args[0].id == "config"
+        assert isinstance(call.args[1], ast.Constant)
+        assert isinstance(call.args[1].value, str)
+    return scenario, calls
+
+
+def _revision_assignments(source: str) -> dict[str, str]:
+    result = {}
+    for node in ast.parse(source).body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id in {
+                "revision",
+                "down_revision",
+            }:
+                assert target.id not in result
+                assert isinstance(node.value, ast.Constant)
+                assert isinstance(node.value.value, str)
+                result[target.id] = node.value.value
+    assert set(result) == {"revision", "down_revision"}
+    return result
+
+
+def _assert_public_revision_source_binding(
+    source: str, *, revision_source: str | None = None
+) -> tuple[int, ...]:
+    _, calls = _public_revision_calls(source)
+    target = calls[2].args[1].value
+    assert re.fullmatch(r"[0-9a-f]{12}", target)
+    # Shape alone never authorizes a value: require the observed exact identity.
+    digest = tuple(hashlib.sha1(target.encode("ascii"), usedforsecurity=False).digest())
+    assert digest == tuple(
+        _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["hashed_secret_bytes"]
+    )
+    root = Path(__file__).resolve().parents[1]
+    definitions = list((root / "alembic/versions").glob(f"{target}_*.py"))
+    assert len(definitions) == 1
+    assert definitions[0].name.endswith("_fix_groups_id_sequence.py")
+    metadata = _revision_assignments(
+        definitions[0].read_text(encoding="utf-8")
+        if revision_source is None
+        else revision_source
+    )
+    assert metadata["revision"] == target
+    assert metadata["down_revision"] == calls[1].args[1].value
+    return digest
+
+
+def test_public_alembic_revision_current_source_has_exact_policy_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _PUBLIC_ALEMBIC_REVISION_RECORD
+    source = (root / record["identity"]["path"]).read_text(encoding="utf-8")
+    _assert_public_revision_source_binding(source)
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert record in policy["records"]
+
+
+def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
+    assert len(policy["records"]) == 494
+    assert policy["records"][329:330] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
+
+
+def test_public_alembic_revision_accepts_only_its_exact_record_without_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    record = _PUBLIC_ALEMBIC_REVISION_RECORD
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "detector",
+        "digest",
+        "category",
+        "integrity_category",
+        "digest_at_other_path",
+        "unknown_digest_at_reserved_path",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_public_alembic_revision_rejects_changed_scope_or_approval(
+    mutation: str,
+) -> None:
+    changed = copy.deepcopy(_PUBLIC_ALEMBIC_REVISION_RECORD)
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_revision_target.py"
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Base64 High Entropy String"
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "integrity_category":
+        changed["category"] = "public_integrity_digest"
+    elif mutation == "digest_at_other_path":
+        changed["identity"]["path"] = "tests/unapproved_revision_target.py"
+        changed["category"] = "public_integrity_digest"
+    elif mutation == "unknown_digest_at_reserved_path":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+        changed["category"] = "public_integrity_digest"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "public revision; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+def test_public_alembic_revision_rejects_expiry_duplicate_and_extra_identity() -> None:
+    record = _PUBLIC_ALEMBIC_REVISION_RECORD
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+            today=verifier.date(2026, 10, 24),
+        )
+    extra = copy.deepcopy(record)
+    extra["identity"]["hashed_secret_bytes"] = list(range(20))
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), extra),
+            today=verifier.date(2026, 10, 24),
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "changed_target",
+        "dynamic_target",
+        "different_call",
+        "duplicate_call",
+        "renamed_test",
+        "nested_upgrade",
+    ],
+)
+def test_public_alembic_revision_source_binding_rejects_changed_consumer(
+    mutation: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = root / _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["path"]
+    source = path.read_text(encoding="utf-8")
+    _assert_public_revision_source_binding(source)
+    tree = ast.parse(source)
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "test_groups_successors_do_not_require_the_duplicate_id_index"
+    )
+    calls = sorted(
+        (
+            node
+            for node in ast.walk(function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "command"
+            and node.func.attr == "upgrade"
+        ),
+        key=lambda node: node.lineno,
+    )
+    scenario = function.body[1]
+    sequence_index = next(
+        index
+        for index, node in enumerate(scenario.body)
+        if isinstance(node, ast.Expr) and node.value is calls[2]
+    )
+    target = calls[2].args[1]
+    if mutation == "changed_target":
+        target.value = "0" * len(target.value)
+    elif mutation == "dynamic_target":
+        value = target.value
+        calls[2].args[1] = ast.BinOp(
+            left=ast.Constant(value=value[:6]),
+            op=ast.Add(),
+            right=ast.Constant(value=value[6:]),
+        )
+    elif mutation == "different_call":
+        calls[2].func.value.id = "unrelated"
+    elif mutation == "duplicate_call":
+        function.body.append(ast.Expr(value=copy.deepcopy(calls[2])))
+    elif mutation == "renamed_test":
+        function.name = "test_unreviewed_revision_use"
+    else:
+        assert mutation == "nested_upgrade"
+        scenario.body[sequence_index] = ast.If(
+            test=ast.Constant(value=False),
+            body=[scenario.body[sequence_index]],
+            orelse=[],
+        )
+    changed = ast.unparse(ast.fix_missing_locations(tree))
+    with pytest.raises(AssertionError):
+        _assert_public_revision_source_binding(changed)
+
+
+@pytest.mark.parametrize("field", ["revision", "down_revision"])
+def test_public_alembic_revision_source_binding_rejects_changed_definition(
+    field: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    consumer = root / _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["path"]
+    source = consumer.read_text(encoding="utf-8")
+    _assert_public_revision_source_binding(source)
+    _, calls = _public_revision_calls(source)
+    target = calls[2].args[1].value
+    path = next((root / "alembic/versions").glob(f"{target}_*.py"))
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    changed = 0
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if any(
+            isinstance(target, ast.Name) and target.id == field for target in targets
+        ):
+            node.value = ast.Constant(value="0" * 12)
+            changed += 1
+    assert changed == 1
+    with pytest.raises(AssertionError):
+        _assert_public_revision_source_binding(
+            source, revision_source=ast.unparse(tree)
+        )
+
+
+def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_alembic_revision_policy_preserves_all_329_prior_records()
+    assert len(policy["records"]) == 494
+    assert policy["records"][330:331] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]) == 1
+    rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6]
+    assert rebound["identity"]["path"] == (
+        "tests/helpers/migration_148642dd1207_trace.py"
+    )
+    assert tuple(rebound["identity"]["hashed_secret_bytes"]) not in {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:6]
+    }
+
+
+def test_public_git_blob_index_assertion_preserves_all_331_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_index_rebind_preserves_all_330_prior_records()
+    assert len(policy["records"]) == 494
+    assert policy["records"][331:332] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]
+    assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]) == 1
+    rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7]
+    assert (
+        rebound["identity"]["path"]
+        == (_PUBLIC_GIT_BLOB_APPROVED_RECORDS[1]["identity"]["path"])
+    )
+    assert tuple(rebound["identity"]["hashed_secret_bytes"]) not in {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:7]
+    }
+
+
+_PUBLIC_COMPILER_GOLDEN_RECORDS = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "tests/fixtures/public-compiler-golden-dispositions.json"
+    ).read_text(encoding="utf-8")
+)["records"]
+_PUBLIC_COMPILER_GOLDEN_FIELDS = (
+    "sourceSha",
+    "compilerIntegrity",
+    "compilerBundleSha256",
+    "formatterEntrySha256",
+)
+
+
+def _assert_public_compiler_golden_source_binding(
+    golden: dict[str, Any], lock: dict[str, Any]
+) -> None:
+    assert len(_PUBLIC_COMPILER_GOLDEN_RECORDS) == 4
+    assert golden["kind"] == "react-compiler-legacy-baseline"
+    assert golden["schemaVersion"] == 1
+    assert golden["compilerVersion"] == "19.1.0-rc.2"
+    assert golden["evidence"]["status"] == "legacy_baseline_not_fix_verification"
+    assert golden["evidence"]["source"] == (
+        "https://github.com/egorribun/university_ecosystem/"
+        "actions/runs/40069691438/job/120802074003"
+    )
+    assert re.fullmatch(r"[0-9a-f]{40}", golden["sourceSha"])
+    compiler = lock["packages"]["node_modules/eslint-plugin-react-compiler"]
+    assert compiler["version"] == golden["compilerVersion"]
+    assert compiler["integrity"] == golden["compilerIntegrity"]
+    for index, field in enumerate(_PUBLIC_COMPILER_GOLDEN_FIELDS):
+        record = _PUBLIC_COMPILER_GOLDEN_RECORDS[index]
+        identity = record["identity"]
+        assert identity["path"] == (
+            "frontend/scripts/react-compiler-zod-compat/legacy-baseline.json"
+        )
+        assert identity["type"] == (
+            "Base64 High Entropy String"
+            if field == "compilerIntegrity"
+            else "Hex High Entropy String"
+        )
+        assert record["category"] == (
+            "public_package_integrity_metadata"
+            if field == "compilerIntegrity"
+            else "public_integrity_digest"
+        )
+        # Include the complete public literal, including the SRI algorithm prefix.
+        digest = hashlib.sha1(
+            golden[field].encode("utf-8"), usedforsecurity=False
+        ).digest()
+        assert list(digest) == identity["hashed_secret_bytes"]
+
+
+def _public_compiler_golden_source() -> tuple[dict[str, Any], dict[str, Any]]:
+    root = Path(__file__).resolve().parents[1]
+    golden = json.loads(
+        (root / _PUBLIC_COMPILER_GOLDEN_RECORDS[0]["identity"]["path"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    lock = json.loads((root / "frontend/package-lock.json").read_text(encoding="utf-8"))
+    return golden, lock
+
+
+def test_public_compiler_golden_current_source_has_exact_policy_identities() -> None:
+    golden, lock = _public_compiler_golden_source()
+    _assert_public_compiler_golden_source_binding(golden, lock)
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    for record in _PUBLIC_COMPILER_GOLDEN_RECORDS:
+        assert record in policy["records"]
+
+
+def test_public_compiler_golden_policy_preserves_all_332_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_git_blob_index_assertion_preserves_all_331_prior_records()
+    assert len(policy["records"]) == 494
+    assert policy["records"][332:336] == _PUBLIC_COMPILER_GOLDEN_RECORDS
+
+
+@pytest.mark.parametrize("index", range(4), ids=_PUBLIC_COMPILER_GOLDEN_FIELDS)
+def test_public_compiler_golden_accepts_only_exact_record_without_source(
+    index: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    record = _PUBLIC_COMPILER_GOLDEN_RECORDS[index]
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize("index", range(4), ids=_PUBLIC_COMPILER_GOLDEN_FIELDS)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "detector",
+        "digest",
+        "category",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+        "digest_at_other_path",
+        "unknown_digest_at_reserved_path",
+    ],
+)
+def test_public_compiler_golden_rejects_changed_scope_or_approval(
+    index: int, mutation: str
+) -> None:
+    changed = copy.deepcopy(_PUBLIC_COMPILER_GOLDEN_RECORDS[index])
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_compiler_golden.json"
+    elif mutation == "detector":
+        changed["identity"]["type"] = (
+            "Hex High Entropy String"
+            if changed["identity"]["type"] == "Base64 High Entropy String"
+            else "Base64 High Entropy String"
+        )
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "public checksum; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    elif mutation == "expiry_extension":
+        changed["expires_on"] = "2027-01-11"
+    elif mutation == "digest_at_other_path":
+        changed["identity"]["path"] = "tests/unapproved_compiler_golden.json"
+        changed["identity"]["type"] = "Hex High Entropy String"
+        changed["category"] = "public_integrity_digest"
+    else:
+        assert mutation == "unknown_digest_at_reserved_path"
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+        changed["identity"]["type"] = "Hex High Entropy String"
+        changed["category"] = "public_integrity_digest"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+def test_public_compiler_golden_rejects_expiry_duplicate_and_extra_identity() -> None:
+    for record in _PUBLIC_COMPILER_GOLDEN_RECORDS:
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(copy.deepcopy(record)),
+                today=verifier.date(2027, 1, 11),
+            )
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+                today=verifier.date(2026, 10, 24),
+            )
+        extra = copy.deepcopy(record)
+        extra["identity"]["hashed_secret_bytes"] = list(range(20))
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(copy.deepcopy(record), extra),
+                today=verifier.date(2026, 10, 24),
+            )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        *_PUBLIC_COMPILER_GOLDEN_FIELDS,
+        "kind",
+        "status",
+        "capture_source",
+        "lock_integrity",
+    ],
+)
+def test_public_compiler_golden_source_binding_rejects_changed_metadata(
+    mutation: str,
+) -> None:
+    golden, lock = _public_compiler_golden_source()
+    _assert_public_compiler_golden_source_binding(golden, lock)
+    if mutation in _PUBLIC_COMPILER_GOLDEN_FIELDS:
+        golden[mutation] = "0" * len(golden[mutation])
+    elif mutation == "kind":
+        golden["kind"] = "unreviewed-compiler-baseline"
+    elif mutation == "status":
+        golden["evidence"]["status"] = "fix_verified"
+    elif mutation == "capture_source":
+        golden["evidence"]["source"] = "https://example.test/unreviewed"
+    else:
+        assert mutation == "lock_integrity"
+        lock["packages"]["node_modules/eslint-plugin-react-compiler"]["integrity"] = (
+            "unreviewed-integrity"
+        )
+    with pytest.raises(AssertionError):
+        _assert_public_compiler_golden_source_binding(golden, lock)
+
+
+_NODE_REACT_COMPILER_POLICY_PREFIX_SHA256 = (
+    68,
+    67,
+    36,
+    254,
+    182,
+    104,
+    208,
+    67,
+    219,
+    29,
+    107,
+    147,
+    163,
+    226,
+    1,
+    79,
+    19,
+    210,
+    186,
+    161,
+    103,
+    31,
+    39,
+    40,
+    77,
+    63,
+    248,
+    203,
+    0,
+    126,
+    108,
+    229,
+)
+
+
+def _node_react_compiler_source_rows(
+    root: Path,
+) -> list[tuple[str, str, str, str]]:
+    generator = (
+        root / "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs"
+    ).read_text(encoding="utf-8")
+    candidate_test = (
+        root / "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs"
+    ).read_text(encoding="utf-8")
+    facade_test = (
+        root / "frontend/scripts/react-compiler-zod-compat.test.mjs"
+    ).read_text(encoding="utf-8")
+    observations = json.loads(
+        (
+            root / "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    def capture(pattern: str, source: str) -> str:
+        match = re.search(pattern, source)
+        assert match is not None
+        return match.group(1)
+
+    archive_sri = capture(r'const ARCHIVE_INTEGRITY =\s*\n\s*"([^"]+)"', generator)
+    archive_sha256 = capture(r'const ARCHIVE_SHA256 = "([0-9a-f]{64})"', generator)
+    git_head = capture(r'gitHead:\s*"([0-9a-f]{40})"', candidate_test)
+    facade_sri = capture(r'const FACADE_INTEGRITY =\s*\n\s*"([^"]+)"', facade_test)
+    facade_sha256 = capture(r'const FACADE_SHA256 = "([0-9a-f]{64})"', facade_test)
+    formatter = observations["formatter"]
+    return [
+        (
+            "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs",
+            "Base64 High Entropy String",
+            archive_sri,
+            "public_package_integrity_metadata",
+        ),
+        (
+            "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs",
+            "Hex High Entropy String",
+            archive_sha256,
+            "public_integrity_digest",
+        ),
+        (
+            "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs",
+            "Hex High Entropy String",
+            git_head,
+            "public_integrity_digest",
+        ),
+        (
+            "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json",
+            "Hex High Entropy String",
+            formatter["entrySha256"],
+            "public_integrity_digest",
+        ),
+        (
+            "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json",
+            "Base64 High Entropy String",
+            formatter["integrity"],
+            "public_package_integrity_metadata",
+        ),
+        (
+            "frontend/scripts/react-compiler-zod-compat.test.mjs",
+            "Base64 High Entropy String",
+            facade_sri,
+            "public_package_integrity_metadata",
+        ),
+        (
+            "frontend/scripts/react-compiler-zod-compat.test.mjs",
+            "Hex High Entropy String",
+            facade_sha256,
+            "public_integrity_digest",
+        ),
+    ]
+
+
+def _node_react_compiler_source_identity_categories(
+    root: Path,
+) -> dict[tuple[str, str, tuple[int, ...]], str]:
+    return {
+        (
+            path,
+            finding_type,
+            tuple(hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest()),
+        ): category
+        for path, finding_type, value, category in _node_react_compiler_source_rows(
+            root
+        )
+    }
+
+
+def _node_react_compiler_reviewed_record(
+    identity: tuple[str, str, tuple[int, ...]], category: str
+) -> dict[str, Any]:
+    """Build an ephemeral validator fixture, not a policy approval."""
+    record = _reviewed_exact_disposition(*identity, category)
+    record["evidence"] = "; ".join(
+        verifier._NODE_REACT_COMPILER_PUBLIC_METADATA_EVIDENCE_MARKERS[identity]
+    )
+    record["owner"] = "egorribun"
+    record["reviewed_on"] = "2026-10-25"
+    return record
+
+
+def _node_react_compiler_record_identity(
+    record: dict[str, Any],
+) -> tuple[str, str, tuple[int, ...]]:
+    identity = record["identity"]
+    return (
+        identity["path"],
+        identity["type"],
+        tuple(identity["hashed_secret_bytes"]),
+    )
+
+
+def _node_react_compiler_record_evidence_markers(
+    record: dict[str, Any],
+) -> tuple[str, ...]:
+    return verifier._NODE_REACT_COMPILER_PUBLIC_METADATA_EVIDENCE_MARKERS[
+        _node_react_compiler_record_identity(record)
+    ]
+
+
+def test_node_react_compiler_public_metadata_is_source_bound_and_exact() -> None:
+    root = Path(__file__).resolve().parents[1]
+    expected = _node_react_compiler_source_identity_categories(root)
+    assert len(expected) == 7
+    assert expected == (
+        verifier._NODE_REACT_COMPILER_PUBLIC_METADATA_CATEGORY_BY_IDENTITY
+    )
+    assert verifier._NODE_REACT_COMPILER_DIGEST_COLLISION_EXCEPTIONS == {
+        verifier._ZOD_PUBLIC_UPSTREAM_SOURCE_IDENTITY
+    }
+    assert {
+        (identity[0], identity[1])
+        for identity, category in expected.items()
+        if category == "public_package_integrity_metadata"
+    } <= verifier._FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES[
+        "public_package_integrity_metadata"
+    ]
+
+    generator = (
+        root / "frontend/scripts/generate-react-compiler-final-lock-candidate.mjs"
+    ).read_text(encoding="utf-8")
+    facade_test = (
+        root / "frontend/scripts/react-compiler-zod-compat.test.mjs"
+    ).read_text(encoding="utf-8")
+    candidate_test = (
+        root / "frontend/scripts/generate-react-compiler-final-lock-candidate.test.mjs"
+    ).read_text(encoding="utf-8")
+    observations = json.loads(
+        (
+            root / "frontend/scripts/react-compiler-zod-compat.postgraph-errors.json"
+        ).read_text(encoding="utf-8")
+    )
+    lock = json.loads((root / "frontend/package-lock.json").read_text(encoding="utf-8"))
+
+    def capture(pattern: str, source: str) -> str:
+        match = re.search(pattern, source)
+        assert match is not None
+        return match.group(1)
+
+    archive_sri = capture(r'const ARCHIVE_INTEGRITY =\s*\n\s*"([^"]+)"', generator)
+    archive_sha256 = capture(r'const ARCHIVE_SHA256 = "([0-9a-f]{64})"', generator)
+    facade_sri = capture(r'const FACADE_INTEGRITY =\s*\n\s*"([^"]+)"', facade_test)
+    facade_sha256 = capture(r'const FACADE_SHA256 = "([0-9a-f]{64})"', facade_test)
+    archive = (
+        root / "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz"
+    ).read_bytes()
+    assert hashlib.sha256(archive).hexdigest() == archive_sha256 == facade_sha256
+    computed_sri = "sha512-" + base64.b64encode(
+        hashlib.sha512(archive).digest()
+    ).decode("ascii")
+    assert computed_sri == archive_sri == facade_sri
+    local_package = lock["packages"][
+        "node_modules/@university-ecosystem/react-compiler-zod-compat"
+    ]
+    assert local_package["version"] == "1.0.0"
+    assert local_package["resolved"] == (
+        "file:vendor/react-compiler-zod-compat-1.0.0.tgz"
+    )
+    assert local_package["integrity"] == computed_sri
+
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as package:
+        members = [member for member in package.getmembers() if member.isfile()]
+        assert {member.name for member in members} == {
+            "package/LICENSE",
+            "package/README.md",
+            "package/index.cjs",
+            "package/package.json",
+        }
+        for member in members:
+            relative = Path(member.name.removeprefix("package/"))
+            payload = package.extractfile(member)
+            assert payload is not None
+            assert (
+                payload.read()
+                == (
+                    root / "frontend/scripts/react-compiler-zod-compat" / relative
+                ).read_bytes()
+            )
+
+    formatter = observations["formatter"]
+    locked_formatter = lock["packages"]["node_modules/zod-validation-error"]
+    assert formatter["name"] == "zod-validation-error"
+    assert formatter["version"] == locked_formatter["version"] == "4.0.2"
+    assert formatter["resolved"] == locked_formatter["resolved"]
+    assert formatter["integrity"] == locked_formatter["integrity"]
+    assert ".update(readFileSync(formatterEntryPath))" in facade_test
+    assert (
+        "assert.equal(formatterEntrySha256, "
+        "postgraphSchemaObservations.formatter.entrySha256)"
+    ) in facade_test
+
+    fixture_git_head = re.search(r'gitHead:\s*"([0-9a-f]{40})"', candidate_test)
+    source_generator = (
+        root / "frontend/scripts/generate-zod-root-lock-candidate.mjs"
+    ).read_text(encoding="utf-8")
+    expected_git_head = re.search(
+        r'EXPECTED_ZOD_SOURCE_SHA\s*=\s*"([0-9a-f]{40})"', source_generator
+    )
+    assert fixture_git_head is not None and expected_git_head is not None
+    assert fixture_git_head.group(1) == expected_git_head.group(1)
+
+
+# Conditional integration guard for the post-owner-approval policy state.
+def test_node_compiler_policy_appends_seven_and_preserves_337_prefix() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    records = policy["records"]
+    assert len(records) == 494
+    prefix = json.dumps(
+        records[:337], sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    assert hashlib.sha256(prefix).digest() == bytes(
+        _NODE_REACT_COMPILER_POLICY_PREFIX_SHA256
+    )
+
+    expected = _node_react_compiler_source_identity_categories(root)
+    suffix = records[338:345]
+    actual = {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        ): record["category"]
+        for record in suffix
+    }
+    assert actual == expected
+    assert all(record["approval_status"] == "approved" for record in suffix)
+    assert all(record["owner"] == "egorribun" for record in suffix)
+    assert all(record["reviewed_on"] == "2026-10-25" for record in suffix)
+    assert all(record["expires_on"] <= "2027-01-10" for record in suffix)
+    assert all(
+        all(
+            marker.casefold() in record["evidence"].casefold()
+            for marker in _node_react_compiler_record_evidence_markers(record)
+        )
+        for record in suffix
+    )
+    validated = verifier.validate_false_positive_dispositions(
+        {
+            "schema_version": policy["schema_version"],
+            "records": policy["records"][:347],
+        },
+        today=verifier.date(2026, 10, 26),
+    )
+    expected_findings = {
+        verifier.FindingIdentity(path, finding_type, bytes(digest).hex(), 1)
+        for path, finding_type, digest in expected
+    }
+    assert expected_findings <= validated
+
+
+def test_node_react_compiler_policy_rejects_near_misses_and_pending_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    expected = _node_react_compiler_source_identity_categories(root)
+    today = verifier.date(2026, 10, 25)
+    for identity, category in expected.items():
+        valid = _node_react_compiler_reviewed_record(identity, category)
+        finding = verifier.FindingIdentity(
+            identity[0], identity[1], bytes(identity[2]).hex(), 1
+        )
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(valid)), today=today
+        ) == {finding}
+
+        mutations = []
+        changed_path = copy.deepcopy(valid)
+        changed_path["identity"]["path"] = "tests/unreviewed-node-metadata.py"
+        mutations.append(changed_path)
+        changed_type = copy.deepcopy(valid)
+        changed_type["identity"]["type"] = "Secret Keyword"
+        mutations.append(changed_type)
+        changed_digest = copy.deepcopy(valid)
+        changed_digest["identity"]["hashed_secret_bytes"][0] ^= 1
+        mutations.append(changed_digest)
+        changed_category = copy.deepcopy(valid)
+        changed_category["category"] = (
+            "public_integrity_digest"
+            if category == "public_package_integrity_metadata"
+            else "public_package_integrity_metadata"
+        )
+        mutations.append(changed_category)
+        missing_evidence = copy.deepcopy(valid)
+        missing_evidence["evidence"] = "not credential material"
+        mutations.append(missing_evidence)
+        owner_placeholder = copy.deepcopy(valid)
+        owner_placeholder["owner"] = "PENDING_OWNER_REVIEW"
+        mutations.append(owner_placeholder)
+        future_review = copy.deepcopy(valid)
+        future_review["reviewed_on"] = "2026-10-26"
+        mutations.append(future_review)
+        excessive_expiry = copy.deepcopy(valid)
+        excessive_expiry["reviewed_on"] = "2026-10-25"
+        excessive_expiry["expires_on"] = "2027-01-11"
+        mutations.append(excessive_expiry)
+        pending = copy.deepcopy(valid)
+        pending["approval_status"] = "pending_owner_review"
+        mutations.append(pending)
+        unknown_digest_at_reserved_path = copy.deepcopy(valid)
+        unknown_digest_at_reserved_path["identity"]["hashed_secret_bytes"][0] ^= 1
+        mutations.append(unknown_digest_at_reserved_path)
+        moved_digest = copy.deepcopy(valid)
+        moved_digest["identity"]["path"] = "tests/unreviewed-node-metadata.py"
+        mutations.append(moved_digest)
+
+        for changed in mutations:
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed), today=today
+                )
+
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(copy.deepcopy(valid), copy.deepcopy(valid)),
+                today=today,
+            )
+
+
+_LIVE_PRIVATE_FIELD_RECORD = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "tests/fixtures/live-registration-private-field-disposition.json"
+    ).read_text(encoding="utf-8")
+)["records"][0]
+
+
+def _live_private_field_fixture_nodes(
+    source: str,
+) -> tuple[ast.Module, ast.FunctionDef, ast.Dict]:
+    tree = ast.parse(source)
+    functions = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name
+        == "test_live_reset_registration_v2_rejects_private_fields_and_wrong_types"
+    ]
+    assert len(functions) == 1
+    function = functions[0]
+
+    def assignment(name: str) -> ast.Assign:
+        nodes = [
+            node
+            for node in function.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == name
+                for target in node.targets
+            )
+        ]
+        assert len(nodes) == 1
+        return nodes[0]
+
+    expressions = {
+        "parser": (
+            'getattr(live_stand, "_live_playwright_reset_registration_v2", None)'
+        ),
+        "valid": "_reset_registration_v2_record()",
+        "output": ('"".join(_reset_registration_v2_row(record) for record in invalid)'),
+    }
+    for name, expression in expressions.items():
+        assert ast.dump(assignment(name).value) == ast.dump(
+            ast.parse(expression, mode="eval").body
+        )
+    rejection = ast.dump(ast.parse("parser(output) == []", mode="eval").body)
+    assert (
+        sum(
+            isinstance(node, ast.Assert) and ast.dump(node.test) == rejection
+            for node in function.body
+        )
+        == 1
+    )
+    invalid_assignment = assignment("invalid")
+    assert len(invalid_assignment.targets) == 1
+    invalid = invalid_assignment.value
+    assert isinstance(invalid, ast.List)
+    output_refs = {
+        node
+        for node in ast.walk(assignment("output").value)
+        if isinstance(node, ast.Name) and node.id == "invalid"
+    }
+    assert len(output_refs) == 1
+    parents = {
+        child: parent
+        for parent in ast.walk(function)
+        for child in ast.iter_child_nodes(parent)
+    }
+    # Keep the fixture in the corpus: reject aliases, deletion and destructive
+    # methods while retaining the real test's append-only expansion loops.
+    for node in ast.walk(function):
+        if not isinstance(node, ast.Name) or node.id != "invalid":
+            continue
+        if node in invalid_assignment.targets or node in output_refs:
+            continue
+        attribute = parents[node]
+        assert isinstance(attribute, ast.Attribute) and attribute.value is node
+        assert attribute.attr == "append"
+        call = parents[attribute]
+        assert isinstance(call, ast.Call) and call.func is attribute
+        assert len(call.args) == 1 and not call.keywords
+    fixtures = [
+        node
+        for node in invalid.elts
+        if isinstance(node, ast.Dict)
+        and any(
+            isinstance(key, ast.Constant) and key.value == "password"
+            for key in node.keys
+        )
+    ]
+    assert len(fixtures) == 1
+    fixture = fixtures[0]
+    assert len(fixture.keys) == 2 and fixture.keys[0] is None
+    assert isinstance(fixture.values[0], ast.Name)
+    assert fixture.values[0].id == "valid"
+    assert isinstance(fixture.keys[1], ast.Constant)
+    assert fixture.keys[1].value == "password"
+    value = fixture.values[1]
+    assert isinstance(value, ast.Constant) and isinstance(value.value, str)
+    digest = hashlib.sha1(value.value.encode("utf-8"), usedforsecurity=False).digest()
+    assert list(digest) == _LIVE_PRIVATE_FIELD_RECORD["identity"]["hashed_secret_bytes"]
+    assert (
+        sum(
+            isinstance(node, ast.Constant) and node.value == value.value
+            for node in ast.walk(tree)
+        )
+        == 1
+    )
+    return tree, function, fixture
+
+
+def test_live_private_field_current_source_has_exact_policy_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _LIVE_PRIVATE_FIELD_RECORD
+    source = (root / record["identity"]["path"]).read_text(encoding="utf-8")
+    _live_private_field_fixture_nodes(source)
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert record in policy["records"]
+
+
+def test_live_private_field_policy_preserves_all_336_prior_records() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_public_compiler_golden_policy_preserves_all_332_prior_records()
+    assert len(policy["records"]) == 494
+    assert policy["records"][336:337] == [_LIVE_PRIVATE_FIELD_RECORD]
+
+
+def test_live_private_field_accepts_exact_record_without_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    record = _LIVE_PRIVATE_FIELD_RECORD
+    identity = record["identity"]
+    expected = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(copy.deepcopy(record)),
+        today=verifier.date(2026, 10, 24),
+    ) == {expected}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "path_transplant",
+        "detector",
+        "digest",
+        "category",
+        "integrity_category",
+        "unknown_digest_at_reserved_path",
+        "owner",
+        "review_date",
+        "evidence",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_live_private_field_rejects_changed_scope_or_approval(mutation: str) -> None:
+    changed = copy.deepcopy(_LIVE_PRIVATE_FIELD_RECORD)
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unapproved_private_field.py"
+    elif mutation == "path_transplant":
+        changed["identity"]["path"] = ".github/workflows/ci.yml"
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Hex High Entropy String"
+    elif mutation == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        changed["category"] = "source_contract_identifier"
+    elif mutation == "integrity_category":
+        changed["identity"]["type"] = "Hex High Entropy String"
+        changed["category"] = "public_integrity_digest"
+    elif mutation == "unknown_digest_at_reserved_path":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+        changed["identity"]["type"] = "Hex High Entropy String"
+        changed["category"] = "public_integrity_digest"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-23"
+    elif mutation == "evidence":
+        changed["evidence"] = "synthetic test value; not credential material"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 24)
+        )
+
+
+def test_live_private_field_rejects_expiry_duplicate_and_extra_identity() -> None:
+    record = _LIVE_PRIVATE_FIELD_RECORD
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+            today=verifier.date(2026, 10, 24),
+        )
+    extra = copy.deepcopy(record)
+    extra["identity"]["hashed_secret_bytes"] = list(range(20))
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), extra),
+            today=verifier.date(2026, 10, 24),
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "changed_value",
+        "changed_field",
+        "duplicate_fixture",
+        "renamed_test",
+        "different_serialization",
+        "different_assertion",
+        "inactive_fixture",
+        "clear_corpus",
+        "delete_fixture",
+        "mutating_alias",
+    ],
+)
+def test_live_private_field_source_binding_rejects_changed_usage(
+    mutation: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / _LIVE_PRIVATE_FIELD_RECORD["identity"]["path"]).read_text(
+        encoding="utf-8"
+    )
+    tree, function, fixture = _live_private_field_fixture_nodes(source)
+    assignments = {
+        target.id: node
+        for node in function.body
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    if mutation == "changed_value":
+        fixture.values[1] = ast.Constant(value="changed-fixture")
+    elif mutation == "changed_field":
+        fixture.keys[1] = ast.Constant(value="unapprovedField")
+    elif mutation == "duplicate_fixture":
+        assignments["invalid"].value.elts.append(copy.deepcopy(fixture))
+    elif mutation == "renamed_test":
+        function.name = "test_unreviewed_private_field_use"
+    elif mutation == "different_serialization":
+        assignments["output"].value = ast.Constant(value="")
+    elif mutation == "different_assertion":
+        rejection = ast.dump(ast.parse("parser(output) == []", mode="eval").body)
+        node = next(
+            node
+            for node in function.body
+            if isinstance(node, ast.Assert) and ast.dump(node.test) == rejection
+        )
+        node.test.comparators[0].elts.append(ast.Constant(value=None))
+    elif mutation == "inactive_fixture":
+        assignments["invalid"].value.elts.remove(fixture)
+        function.body.append(
+            ast.If(
+                test=ast.Constant(value=False),
+                body=[ast.Expr(value=fixture)],
+                orelse=[],
+            )
+        )
+    else:
+        position = function.body.index(assignments["output"])
+        if mutation == "clear_corpus":
+            statements = ast.parse("invalid.clear()").body
+        elif mutation == "delete_fixture":
+            index = assignments["invalid"].value.elts.index(fixture)
+            statements = ast.parse(f"del invalid[{index}]").body
+        else:
+            assert mutation == "mutating_alias"
+            statements = ast.parse("alias = invalid\nalias.clear()").body
+        function.body[position:position] = statements
+    changed = ast.unparse(ast.fix_missing_locations(tree))
+    with pytest.raises(AssertionError):
+        _live_private_field_fixture_nodes(changed)
+
+
+def test_public_git_blob_sourcebinding_rebind_appends_one_exact_identity() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    test_live_private_field_policy_preserves_all_336_prior_records()
+    assert len(policy["records"]) == 494
+    record = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[8]
+    assert policy["records"][337:338] == [record]
+    assert record["identity"]["path"] == (
+        "tests/helpers/migration_148642dd1207_trace.py"
+    )
+    assert "five-site" not in record["evidence"].casefold()
+    assert "working tree based on c90e6163" in record["evidence"]
+    assert (
+        record["identity"]["path"],
+        record["identity"]["type"],
+        tuple(record["identity"]["hashed_secret_bytes"]),
+    ) == verifier._PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY
+    digest = _public_git_blob_source_identity(
+        (root / record["identity"]["path"]).read_text(encoding="utf-8"),
+        "SOURCE_GIT_BLOB",
+        (root / "alembic/versions/148642dd1207_fix_missing_tables.py").read_bytes(),
+    )
+    assert digest == tuple(record["identity"]["hashed_secret_bytes"])
+
+
+def _aud247_squawk_public_checksum_record() -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    identity = verifier._AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
+    matches = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == identity[0]
+        and record["identity"]["type"] == identity[1]
+        and tuple(record["identity"]["hashed_secret_bytes"]) == identity[2]
+    ]
+    assert len(matches) == 1
+    return copy.deepcopy(matches[0])
+
+
+def test_aud247_squawk_public_checksum_identity_matches_source_literal() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source_path = root / "tests/test_security_hardening_workflow_contract.py"
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    checksum_assignment = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "SQUAWK_SHA256"
+            for target in node.targets
+        )
+    )
+    assert isinstance(checksum_assignment.value, ast.Constant)
+    checksum = checksum_assignment.value.value
+    assert isinstance(checksum, str)
+    source_identity = (
+        "tests/test_security_hardening_workflow_contract.py",
+        "Hex High Entropy String",
+        tuple(hashlib.sha1(checksum.encode("ascii"), usedforsecurity=False).digest()),
+    )
+    assert source_identity == verifier._AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
+
+
+def test_aud247_squawk_public_checksum_accepts_only_exact_approved_record() -> None:
+    record = _aud247_squawk_public_checksum_record()
+    expected = verifier.FindingIdentity(
+        record["identity"]["path"],
+        record["identity"]["type"],
+        bytes(record["identity"]["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=verifier.date(2026, 10, 26)
+    ) == {expected}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "detector",
+        "category",
+        "evidence",
+        "owner",
+        "review_date",
+        "pending",
+        "expiry_extension",
+    ],
+)
+def test_aud247_squawk_public_checksum_rejects_changed_scope_or_review(
+    mutation: str,
+) -> None:
+    changed = _aud247_squawk_public_checksum_record()
+    if mutation == "path":
+        changed["identity"]["path"] = "tests/unrelated_contract.py"
+    elif mutation == "detector":
+        changed["identity"]["type"] = "Secret Keyword"
+    elif mutation == "category":
+        changed["category"] = "documented_crypto_test_vector"
+    elif mutation == "evidence":
+        changed["evidence"] = "public checksum; not credential material"
+    elif mutation == "owner":
+        changed["owner"] = "Different Reviewer"
+    elif mutation == "review_date":
+        changed["reviewed_on"] = "2026-10-25"
+    elif mutation == "pending":
+        changed["approval_status"] = "pending_owner_review"
+    else:
+        assert mutation == "expiry_extension"
+        changed["expires_on"] = "2027-01-11"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 10, 26)
+        )
+
+
+def test_aud247_squawk_public_checksum_rejects_expiry_and_duplicate() -> None:
+    record = _aud247_squawk_public_checksum_record()
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 11),
+        )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+            today=verifier.date(2026, 10, 26),
+        )
+
+
+def test_aud247_guard_preserves_existing_same_path_type_identities() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    identity = verifier._AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
+    same_path_type = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == identity[0]
+        and record["identity"]["type"] == identity[1]
+    ]
+    target_records = [
+        record
+        for record in same_path_type
+        if tuple(record["identity"]["hashed_secret_bytes"]) == identity[2]
+    ]
+    assert len(target_records) <= 1
+    assert len(same_path_type) == 10 + len(target_records)
+    assert verifier.validate_false_positive_dispositions(
+        {
+            "schema_version": policy["schema_version"],
+            "records": policy["records"][:347],
+        },
+        today=verifier.date(2026, 10, 26),
+    )
+
+
+# Exact source binding for the 58 owner-approved historical-148 identities.
+_HISTORICAL148_SOURCE_PINS_AND_LINES = {
+    "quality/historical148-squawk-policy.json": (
+        (
+            36,
+            132,
+            207,
+            244,
+            106,
+            240,
+            49,
+            167,
+            97,
+            171,
+            64,
+            222,
+            196,
+            190,
+            95,
+            98,
+            215,
+            36,
+            243,
+            8,
+        ),
+        (
+            15,
+            16,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            38,
+            60,
+            213,
+            488,
+            489,
+            497,
+            503,
+            509,
+            515,
+            521,
+            527,
+            533,
+            539,
+            545,
+            551,
+            557,
+            583,
+        ),
+    ),
+    "scripts/quality/validate_historical148_squawk.py": (
+        (
+            54,
+            178,
+            204,
+            32,
+            249,
+            241,
+            240,
+            25,
+            238,
+            58,
+            0,
+            148,
+            91,
+            57,
+            51,
+            128,
+            157,
+            187,
+            123,
+            95,
+        ),
+        (
+            19,
+            20,
+        ),
+    ),
+    "tests/fixtures/historical148-squawk-capture-15eaaa.json": (
+        (
+            251,
+            252,
+            68,
+            231,
+            189,
+            221,
+            124,
+            226,
+            103,
+            74,
+            101,
+            221,
+            196,
+            242,
+            213,
+            72,
+            59,
+            207,
+            188,
+            167,
+        ),
+        (
+            4,
+            5,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            35,
+            52,
+            62,
+            63,
+            64,
+            72,
+            78,
+            84,
+            90,
+            96,
+            102,
+            108,
+            114,
+            120,
+            126,
+            132,
+            158,
+        ),
+    ),
+}
+_HISTORICAL148_PRIOR_347_SHA256 = (
+    160,
+    163,
+    198,
+    32,
+    211,
+    155,
+    83,
+    161,
+    43,
+    70,
+    157,
+    234,
+    181,
+    127,
+    187,
+    82,
+    155,
+    225,
+    165,
+    248,
+    177,
+    208,
+    186,
+    42,
+    46,
+    232,
+    138,
+    211,
+    213,
+    147,
+    83,
+    40,
+)
+
+
+def _historical148_assert_original_blob(path: str, data: bytes) -> None:
+    expected_blob, _ = _HISTORICAL148_SOURCE_PINS_AND_LINES[path]
+    framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+    assert hashlib.sha1(framed, usedforsecurity=False).digest() == bytes(expected_blob)
+
+
+def _historical148_load_json(data: str | bytes) -> Any:
+    def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            assert key not in result, "duplicate JSON key"
+            result[key] = value
+        return result
+
+    return json.loads(data, object_pairs_hook=unique)
+
+
+def _historical148_pretty_json(value: Any) -> bytes:
+    return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def _historical148_canonical_json(value: Any) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _historical148_capture_fingerprint(capture: dict[str, Any]) -> str:
+    normalized = copy.deepcopy(capture)
+    scenarios = normalized["report"]["captures"]
+    assert len(scenarios) == 2
+    for count, scenario in zip((13, 24), scenarios, strict=True):
+        warnings = _historical148_load_json(scenario["stdout"])
+        assert len(warnings) == count
+        scenario["stdout"] = _historical148_canonical_json(
+            sorted(warnings, key=_historical148_canonical_json)
+        )
+    return hashlib.sha256(
+        _historical148_canonical_json(normalized).encode("ascii")
+    ).hexdigest()
+
+
+def _historical148_reconstruct_sources(
+    policy_source: bytes, validator_source: bytes, historical_capture: bytes
+) -> dict[str, bytes]:
+    policy_path = "quality/historical148-squawk-policy.json"
+    validator_path = "scripts/quality/validate_historical148_squawk.py"
+    capture_path = "tests/fixtures/historical148-squawk-capture-15eaaa.json"
+
+    # Authenticate the retained capture before parsing any of its old values.
+    _historical148_assert_original_blob(capture_path, historical_capture)
+    capture = _historical148_load_json(historical_capture)
+    policy = _historical148_load_json(policy_source)
+    assert _historical148_pretty_json(policy) == policy_source
+    for field in (
+        "source_commit",
+        "checkout_sha",
+        "workflow_sha",
+        "workflow_run_id",
+        "job_id",
+    ):
+        policy["provenance"][field] = capture["provenance"][field]
+    for field in (
+        ".github/workflows/ci.yml",
+        "scripts/quality/render_live_alembic_sql.py",
+    ):
+        policy["source_blobs"][field] = capture["ordinary"]["source_blobs"][field]
+    policy["scenarios"][0]["sql_path"] = capture["report"]["captures"][0]["sql_path"]
+    for index in (0, 1):
+        policy["scenarios"][index]["sql_identity"] = capture["report"]["captures"][
+            index
+        ]["sql_identity"]
+    for field in (
+        "checkout_sha",
+        "renderer_blob",
+        "workflow_blob",
+        "workflow_run_id",
+        "workflow_sha",
+    ):
+        policy["expanded_contract"][field] = capture["expanded"]["metadata"][field]
+
+    historical_policy = _historical148_pretty_json(policy)
+    _historical148_assert_original_blob(policy_path, historical_policy)
+    policy = _historical148_load_json(historical_policy)
+    policy_pin = hashlib.sha256(_historical148_canonical_json(policy).encode("ascii"))
+    capture_pin = _historical148_capture_fingerprint(capture)
+
+    # This inverse is limited to the known three recapture lines. A later
+    # legitimate matcher body change requires a separately reviewed inverse or
+    # retained historical evidence; it does not make current bytes an approval.
+    lines = validator_source.decode("utf-8").splitlines(keepends=True)
+    current_label = (
+        "# Reproducible from the committed historical148 policy and 3d83fb27 capture.\n"
+    )
+    historical_label = (
+        "# Reproducible from the committed historical148 policy and 15eaaa capture.\n"
+    )
+    assert lines.count(current_label) == 1
+    replacements = {
+        "_POLICY_SHA256": policy_pin.hexdigest(),
+        "_CAPTURE_SHA256": capture_pin,
+    }
+    counts = dict.fromkeys(replacements, 0)
+    for index, line in enumerate(lines):
+        if line == current_label:
+            lines[index] = historical_label
+        for name, fingerprint in replacements.items():
+            if line.startswith(name + " = "):
+                assert re.fullmatch(rf'{name} = "[0-9a-f]{{64}}"\n', line)
+                counts[name] += 1
+                lines[index] = f'{name} = "{fingerprint}"\n'
+    assert all(count == 1 for count in counts.values())
+    historical_validator = "".join(lines).encode("utf-8")
+    _historical148_assert_original_blob(validator_path, historical_validator)
+    return {
+        policy_path: historical_policy,
+        validator_path: historical_validator,
+        capture_path: historical_capture,
+    }
+
+
+def _historical148_matcher_pins(source: bytes) -> dict[str, str]:
+    nodes = [
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id in {"_POLICY_SHA256", "_CAPTURE_SHA256"}
+    ]
+    assert len(nodes) == 2
+    pins = {node.targets[0].id: ast.literal_eval(node.value) for node in nodes}
+    assert set(pins) == {"_POLICY_SHA256", "_CAPTURE_SHA256"}
+    assert all(
+        isinstance(pin, str) and re.fullmatch(r"[0-9a-f]{64}", pin)
+        for pin in pins.values()
+    )
+    return pins
+
+
+def _historical148_assert_current_bindings(
+    policy_source: bytes,
+    validator_source: bytes,
+    historical_capture: bytes,
+    current_capture: bytes,
+) -> None:
+    _historical148_reconstruct_sources(
+        policy_source, validator_source, historical_capture
+    )
+    policy = _historical148_load_json(policy_source)
+    capture = _historical148_load_json(current_capture)
+    assert _historical148_pretty_json(capture) == current_capture
+    pins = _historical148_matcher_pins(validator_source)
+    assert (
+        hashlib.sha256(
+            _historical148_canonical_json(policy).encode("ascii")
+        ).hexdigest()
+        == pins["_POLICY_SHA256"]
+    )
+    assert _historical148_capture_fingerprint(capture) == pins["_CAPTURE_SHA256"]
+    assert policy["provenance"] == capture["provenance"]
+    assert policy["expanded_contract"] == capture["expanded"]["metadata"]
+    for path, fingerprint in capture["ordinary"]["source_blobs"].items():
+        assert policy["source_blobs"][path] == fingerprint
+    for policy_scenario, captured in zip(
+        policy["scenarios"], capture["report"]["captures"], strict=True
+    ):
+        for field in ("sql_path", "sql_identity", "sql_sha256", "sql_bytes"):
+            assert policy_scenario[field] == captured[field]
+        assert policy_scenario["raw_exit"] == captured["exit_code"]
+
+
+def _historical148_source_records() -> list[dict[str, Any]]:
+    policy, validator_source, historical_capture, _ = _historical148_current_inputs()
+    sources = _historical148_reconstruct_sources(
+        policy, validator_source, historical_capture
+    )
+    records: list[dict[str, Any]] = []
+    for path, (expected_blob, lines) in _HISTORICAL148_SOURCE_PINS_AND_LINES.items():
+        data = sources[path]
+        framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+        assert hashlib.sha1(framed, usedforsecurity=False).digest() == bytes(
+            expected_blob
+        )
+        source_lines = data.decode("utf-8").splitlines()
+        for line in lines:
+            values = re.findall(
+                r'"([0-9a-f]{40}|[0-9a-f]{64})"', source_lines[line - 1]
+            )
+            assert len(values) == 1
+            digest = hashlib.sha1(
+                values[0].encode("ascii"), usedforsecurity=False
+            ).digest()
+            records.append(
+                {
+                    "identity": {
+                        "path": path,
+                        "type": "Hex High Entropy String",
+                        "hashed_secret_bytes": list(digest),
+                    },
+                    "category": "public_integrity_digest",
+                    "evidence": (
+                        "Public historical-148 integrity metadata; exact source "
+                        f"reference {path}:{line}; source-bound diagnostic capture "
+                        "and validator fingerprints; not credential material; no "
+                        "Squawk admission or migration-risk waiver."
+                    ),
+                    "owner": "egorribun",
+                    "reviewed_on": "2026-10-29",
+                    "expires_on": "2027-01-10",
+                    "approval_status": "approved",
+                }
+            )
+    assert len(records) == 58
+    return records
+
+
+def test_historical148_integrity_adds_only_58_and_preserves_347_prefix() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert len(policy["records"]) == 494
+    encoded_prefix = json.dumps(
+        policy["records"][:347],
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded_prefix).digest() == bytes(
+        _HISTORICAL148_PRIOR_347_SHA256
+    )
+    expected = _historical148_source_records()
+    assert policy["records"][347:405] == expected
+    identities = {
+        (
+            row["identity"]["path"],
+            row["identity"]["type"],
+            tuple(row["identity"]["hashed_secret_bytes"]),
+        )
+        for row in expected
+    }
+    assert len(identities) == 58
+    assert identities == getattr(
+        verifier, "_HISTORICAL148_PUBLIC_INTEGRITY_IDENTITIES", frozenset()
+    )
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                {**policy, "records": policy["records"][:405]},
+                today=verifier.date(2026, 10, 29),
+            )
+        )
+        == 405
+    )
+
+
+def test_historical148_integrity_rejects_each_changed_scope_or_review() -> None:
+    for original in _historical148_source_records():
+        for mutation in (
+            "path",
+            "detector",
+            "digest",
+            "category",
+            "evidence",
+            "owner",
+            "review_date",
+            "pending",
+            "expiry_extension",
+            "expiry_change",
+        ):
+            changed = copy.deepcopy(original)
+            if mutation == "path":
+                changed["identity"]["path"] = "tests/unreviewed_historical148.py"
+            elif mutation == "detector":
+                changed["identity"]["type"] = "Secret Keyword"
+            elif mutation == "digest":
+                changed["identity"]["hashed_secret_bytes"][0] ^= 1
+            elif mutation == "category":
+                changed["category"] = "documented_crypto_test_vector"
+            elif mutation == "evidence":
+                changed["evidence"] = "Public checksum; not credential material."
+            elif mutation == "owner":
+                changed["owner"] = "Different Reviewer"
+            elif mutation == "review_date":
+                changed["reviewed_on"] = "2026-10-28"
+            elif mutation == "pending":
+                changed["approval_status"] = "pending_owner_review"
+            elif mutation == "expiry_extension":
+                changed["expires_on"] = "2027-01-11"
+            else:
+                assert mutation == "expiry_change"
+                changed["expires_on"] = "2027-01-09"
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed), today=verifier.date(2026, 10, 29)
+                )
+
+
+def test_historical148_integrity_rejects_duplicates_and_unapproved_dates() -> None:
+    for record in _historical148_source_records():
+        for today in (verifier.date(2026, 10, 28), verifier.date(2027, 1, 11)):
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(copy.deepcopy(record)), today=today
+                )
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(copy.deepcopy(record), copy.deepcopy(record)),
+                today=verifier.date(2026, 10, 29),
+            )
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(copy.deepcopy(record)),
+            today=verifier.date(2027, 1, 10),
+        )
+
+
+def test_historical148_integrity_preserves_only_two_preexisting_collisions() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    source_digests = {
+        tuple(row["identity"]["hashed_secret_bytes"])
+        for row in _historical148_source_records()
+    }
+    expected_old_identities = frozenset(
+        {
+            verifier._PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY,
+            verifier._AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY,
+        }
+    )
+    old_collisions = [
+        row
+        for row in policy["records"][:347]
+        if tuple(row["identity"]["hashed_secret_bytes"]) in source_digests
+    ]
+    assert len(old_collisions) == 2
+    assert {
+        (
+            row["identity"]["path"],
+            row["identity"]["type"],
+            tuple(row["identity"]["hashed_secret_bytes"]),
+        )
+        for row in old_collisions
+    } == expected_old_identities
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(*copy.deepcopy(old_collisions)),
+                today=verifier.date(2026, 10, 29),
+            )
+        )
+        == 2
+    )
+    for row in old_collisions:
+        changed = copy.deepcopy(row)
+        changed["identity"]["path"] = "tests/unreviewed_historical148.py"
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(changed), today=verifier.date(2026, 10, 29)
+            )
+
+
+def test_historical148_validator_pins_are_public_canonical_fingerprints() -> None:
+    policy, validator_source, historical_capture, current_capture = (
+        _historical148_current_inputs()
+    )
+    historical = _historical148_reconstruct_sources(
+        policy, validator_source, historical_capture
+    )
+    historical_policy = _historical148_load_json(
+        historical["quality/historical148-squawk-policy.json"]
+    )
+    historical_pins = _historical148_matcher_pins(
+        historical["scripts/quality/validate_historical148_squawk.py"]
+    )
+    assert (
+        hashlib.sha256(
+            _historical148_canonical_json(historical_policy).encode("ascii")
+        ).hexdigest()
+        == historical_pins["_POLICY_SHA256"]
+    )
+    assert (
+        _historical148_capture_fingerprint(_historical148_load_json(historical_capture))
+        == historical_pins["_CAPTURE_SHA256"]
+    )
+    _historical148_assert_current_bindings(
+        policy, validator_source, historical_capture, current_capture
+    )
+
+
+def _historical148_current_inputs() -> tuple[bytes, bytes, bytes, bytes]:
+    root = Path(__file__).resolve().parents[1]
+    return (
+        (root / "quality/historical148-squawk-policy.json").read_bytes(),
+        (root / "scripts/quality/validate_historical148_squawk.py").read_bytes(),
+        (root / "tests/fixtures/historical148-squawk-capture-15eaaa.json").read_bytes(),
+        (
+            root / "tests/fixtures/historical148-squawk-capture-3d83fb27.json"
+        ).read_bytes(),
+    )
+
+
+def test_historical148_reconstruction_preserves_each_original_blob() -> None:
+    policy, validator_source, historical_capture, _ = _historical148_current_inputs()
+    reconstructed = _historical148_reconstruct_sources(
+        policy, validator_source, historical_capture
+    )
+    assert set(reconstructed) == set(_HISTORICAL148_SOURCE_PINS_AND_LINES)
+    for path, (expected_blob, _) in _HISTORICAL148_SOURCE_PINS_AND_LINES.items():
+        data = reconstructed[path]
+        framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+        assert hashlib.sha1(framed, usedforsecurity=False).digest() == bytes(
+            expected_blob
+        )
+
+
+@pytest.mark.parametrize("input_name", ["policy", "validator", "capture"])
+def test_historical148_reconstruction_rejects_changed_inputs(input_name: str) -> None:
+    policy, validator_source, historical_capture, _ = _historical148_current_inputs()
+    _historical148_reconstruct_sources(policy, validator_source, historical_capture)
+    if input_name == "policy":
+        changed = json.loads(policy)
+        changed["status"] += "-changed"
+        policy = (json.dumps(changed, indent=2, ensure_ascii=False) + "\n").encode()
+    elif input_name == "validator":
+        validator_source += b"\n# changed\n"
+    else:
+        historical_capture += b" "
+    with pytest.raises(AssertionError):
+        _historical148_reconstruct_sources(policy, validator_source, historical_capture)
+
+
+@pytest.mark.parametrize(
+    "input_name",
+    [
+        "policy",
+        "policy_recapture",
+        "policy_duplicate",
+        "capture",
+        "validator_policy_pin",
+        "validator_capture_pin",
+        "validator_body",
+    ],
+)
+def test_historical148_current_bindings_reject_changed_inputs(input_name: str) -> None:
+    policy, validator_source, historical_capture, capture = (
+        _historical148_current_inputs()
+    )
+    _historical148_assert_current_bindings(
+        policy, validator_source, historical_capture, capture
+    )
+    if input_name == "policy":
+        changed = json.loads(policy)
+        changed["status"] += "-changed"
+        policy = (json.dumps(changed, indent=2, ensure_ascii=False) + "\n").encode()
+    elif input_name == "policy_recapture":
+        changed = json.loads(policy)
+        changed["provenance"]["workflow_run_id"] += "-changed"
+        policy = (json.dumps(changed, indent=2, ensure_ascii=False) + "\n").encode()
+    elif input_name == "policy_duplicate":
+        policy = policy.replace(b"{\n", b'{\n  "status": "prepared-inactive",\n', 1)
+    elif input_name == "capture":
+        changed = json.loads(capture)
+        changed["schema"] += "-changed"
+        capture = (json.dumps(changed, indent=2, ensure_ascii=False) + "\n").encode()
+    elif input_name in {"validator_policy_pin", "validator_capture_pin"}:
+        name = (
+            b"_POLICY_SHA256"
+            if input_name == "validator_policy_pin"
+            else b"_CAPTURE_SHA256"
+        )
+        match = re.search(name + rb' = "([0-9a-f]{64})"', validator_source)
+        assert match is not None
+        digest = bytearray(match.group(1))
+        digest[0] = ord("1") if digest[0] == ord("0") else ord("0")
+        validator_source = (
+            validator_source[: match.start(1)]
+            + digest
+            + validator_source[match.end(1) :]
+        )
+    else:
+        validator_source += b"\n# changed\n"
+    with pytest.raises(AssertionError):
+        _historical148_assert_current_bindings(
+            policy, validator_source, historical_capture, capture
+        )
+
+
+_HISTORICAL148_RESTORED_POLICY_FIELDS = (
+    ("provenance", "source_commit"),
+    ("provenance", "checkout_sha"),
+    ("provenance", "workflow_sha"),
+    ("provenance", "workflow_run_id"),
+    ("provenance", "job_id"),
+    ("source_blobs", ".github/workflows/ci.yml"),
+    ("source_blobs", "scripts/quality/render_live_alembic_sql.py"),
+    ("scenarios", 0, "sql_path"),
+    ("scenarios", 0, "sql_identity"),
+    ("scenarios", 1, "sql_identity"),
+    ("expanded_contract", "checkout_sha"),
+    ("expanded_contract", "renderer_blob"),
+    ("expanded_contract", "workflow_blob"),
+    ("expanded_contract", "workflow_run_id"),
+    ("expanded_contract", "workflow_sha"),
+)
+
+_HISTORICAL148_RESTORED_CAPTURE_FIELDS = (
+    ("provenance", "source_commit"),
+    ("provenance", "checkout_sha"),
+    ("provenance", "workflow_sha"),
+    ("provenance", "workflow_run_id"),
+    ("provenance", "job_id"),
+    ("ordinary", "source_blobs", ".github/workflows/ci.yml"),
+    ("ordinary", "source_blobs", "scripts/quality/render_live_alembic_sql.py"),
+    ("report", "captures", 0, "sql_path"),
+    ("report", "captures", 0, "sql_identity"),
+    ("report", "captures", 1, "sql_identity"),
+    ("expanded", "metadata", "checkout_sha"),
+    ("expanded", "metadata", "renderer_blob"),
+    ("expanded", "metadata", "workflow_blob"),
+    ("expanded", "metadata", "workflow_run_id"),
+    ("expanded", "metadata", "workflow_sha"),
+)
+
+
+@pytest.mark.parametrize("field", _HISTORICAL148_RESTORED_POLICY_FIELDS)
+def test_historical148_current_binding_rejects_each_recapture_field_change(
+    field: tuple[str | int, ...],
+) -> None:
+    policy, validator_source, historical_capture, capture = (
+        _historical148_current_inputs()
+    )
+    changed = json.loads(policy)
+    parent = changed
+    for key in field[:-1]:
+        parent = parent[key]
+    parent[field[-1]] += "-changed"
+    changed_policy = (json.dumps(changed, indent=2, ensure_ascii=False) + "\n").encode()
+    with pytest.raises(AssertionError):
+        _historical148_assert_current_bindings(
+            changed_policy, validator_source, historical_capture, capture
+        )
+
+
+@pytest.mark.parametrize("field", _HISTORICAL148_RESTORED_CAPTURE_FIELDS)
+def test_historical148_reconstruction_rejects_each_historical_input_change(
+    field: tuple[str | int, ...],
+) -> None:
+    policy, validator_source, historical_capture, _ = _historical148_current_inputs()
+    changed = json.loads(historical_capture)
+    parent = changed
+    for key in field[:-1]:
+        parent = parent[key]
+    parent[field[-1]] += "-changed"
+    changed_capture = (
+        json.dumps(changed, indent=2, ensure_ascii=False) + "\n"
+    ).encode()
+    with pytest.raises(AssertionError):
+        _historical148_reconstruct_sources(policy, validator_source, changed_capture)
+
+
+def test_historical148_changed_current_literals_remain_unapproved() -> None:
+    root = Path(__file__).resolve().parents[1]
+    changed_paths: set[str] = set()
+    records = iter(_historical148_source_records())
+    for path, (_, lines) in _HISTORICAL148_SOURCE_PINS_AND_LINES.items():
+        source_lines = (root / path).read_text(encoding="utf-8").splitlines()
+        for line in lines:
+            historical = next(records)
+            values = re.findall(
+                r'"([0-9a-f]{40}|[0-9a-f]{64})"', source_lines[line - 1]
+            )
+            assert len(values) == 1
+            current_digest = hashlib.sha1(
+                values[0].encode("ascii"), usedforsecurity=False
+            ).digest()
+            if list(current_digest) == historical["identity"]["hashed_secret_bytes"]:
+                continue
+            changed_paths.add(path)
+            changed = copy.deepcopy(historical)
+            changed["identity"]["hashed_secret_bytes"] = list(current_digest)
+            with pytest.raises(
+                verifier.BaselineArtifactError,
+                match="historical-148 integrity identity changed scope",
+            ):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed), today=verifier.date(2026, 10, 29)
+                )
+    assert changed_paths == {
+        "quality/historical148-squawk-policy.json",
+        "scripts/quality/validate_historical148_squawk.py",
+    }
+
+
+@pytest.mark.parametrize(
+    "capture_path",
+    [
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+    ],
+)
+def test_historical148_current_capture_cannot_inherit_old_path_approvals(
+    capture_path: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    values = re.findall(
+        r'"([0-9a-f]{40}|[0-9a-f]{64})"',
+        (root / capture_path).read_text(encoding="utf-8"),
+    )
+    current_digests = {
+        tuple(hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest())
+        for value in values
+    }
+    shared = [
+        record
+        for record in _historical148_source_records()
+        if record["identity"]["path"].endswith("capture-15eaaa.json")
+        and tuple(record["identity"]["hashed_secret_bytes"]) in current_digests
+    ]
+    assert shared
+    for record in shared:
+        changed = copy.deepcopy(record)
+        changed["identity"]["path"] = capture_path
+        with pytest.raises(
+            verifier.BaselineArtifactError,
+            match="historical-148 integrity identity changed scope",
+        ):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(changed), today=verifier.date(2026, 10, 29)
+            )
+
+
+# These byte pins are test provenance, not runtime filesystem authentication.
+_OCT30_SOURCE_PINS_AND_LINES = {
+    "quality/historical148-squawk-policy.json": (
+        (
+            *(247, 23, 159, 123, 143, 10, 195, 232, 75, 58),
+            *(244, 169, 237, 58, 46, 146, 181, 105, 233, 35),
+        ),
+        (
+            15,
+            16,
+            31,
+            583,
+        ),
+    ),
+    "scripts/quality/run_owned_redis_contracts.py": (
+        (
+            *(50, 216, 60, 47, 71, 41, 78, 112, 144, 127),
+            *(150, 101, 110, 183, 96, 153, 137, 206, 128, 224),
+        ),
+        (23,),
+    ),
+    "scripts/quality/validate_historical148_squawk.py": (
+        (
+            *(143, 136, 112, 158, 229, 90, 151, 24, 218, 236),
+            *(254, 37, 132, 76, 204, 23, 174, 180, 210, 178),
+        ),
+        (
+            19,
+            20,
+        ),
+    ),
+    "tests/fixtures/historical148-squawk-capture-35aeedeb.json": (
+        (
+            *(255, 236, 125, 81, 253, 238, 124, 131, 249, 109),
+            *(170, 19, 149, 84, 162, 104, 202, 198, 31, 141),
+        ),
+        (
+            4,
+            5,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            35,
+            52,
+            62,
+            63,
+            64,
+            72,
+            78,
+            84,
+            90,
+            96,
+            102,
+            108,
+            114,
+            120,
+            126,
+            132,
+            158,
+        ),
+    ),
+    "tests/fixtures/historical148-squawk-capture-36f70a0f.json": (
+        (
+            *(160, 155, 225, 106, 122, 30, 220, 98, 12, 22),
+            *(245, 103, 211, 183, 49, 29, 72, 18, 139, 5),
+        ),
+        (
+            4,
+            5,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            35,
+            52,
+            62,
+            63,
+            64,
+            72,
+            78,
+            84,
+            90,
+            96,
+            102,
+            108,
+            114,
+            120,
+            126,
+            132,
+            158,
+        ),
+    ),
+    "tests/fixtures/historical148-squawk-capture-3d83fb27.json": (
+        (
+            *(255, 212, 82, 19, 180, 53, 170, 240, 217, 22),
+            *(143, 73, 55, 15, 100, 0, 177, 205, 94, 145),
+        ),
+        (
+            4,
+            5,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            35,
+            52,
+            62,
+            63,
+            64,
+            72,
+            78,
+            84,
+            90,
+            96,
+            102,
+            108,
+            114,
+            120,
+            126,
+            132,
+            158,
+        ),
+    ),
+    "tests/test_aud427_428_contract_quality.py": (
+        (
+            *(4, 85, 104, 38, 96, 193, 158, 83, 34, 78),
+            *(128, 27, 98, 48, 202, 93, 159, 245, 244, 211),
+        ),
+        (611,),
+    ),
+}
+_OCT30_PRIOR_405_SHA256 = (
+    224,
+    175,
+    216,
+    194,
+    48,
+    149,
+    120,
+    235,
+    215,
+    132,
+    61,
+    116,
+    149,
+    57,
+    167,
+    128,
+    248,
+    81,
+    223,
+    159,
+    94,
+    206,
+    174,
+    47,
+    142,
+    230,
+    174,
+    16,
+    143,
+    49,
+    2,
+    112,
+)
+
+
+def _oct30_assert_source_blob(path: str, data: bytes) -> None:
+    expected_blob, _ = _OCT30_SOURCE_PINS_AND_LINES[path]
+    framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+    assert hashlib.sha1(framed, usedforsecurity=False).digest() == bytes(expected_blob)
+
+
+def _oct30_source_records() -> list[dict[str, Any]]:
+    root = Path(__file__).resolve().parents[1]
+    records: list[dict[str, Any]] = []
+    for path, (_, line_numbers) in _OCT30_SOURCE_PINS_AND_LINES.items():
+        data = (root / path).read_bytes()
+        _oct30_assert_source_blob(path, data)
+        lines = data.decode("utf-8").splitlines()
+        for line_number in line_numbers:
+            values = re.findall(
+                r"\b(?:[0-9a-f]{64}|[0-9a-f]{40})\b", lines[line_number - 1]
+            )
+            assert len(values) == 1
+            digest = hashlib.sha1(
+                values[0].encode("ascii"), usedforsecurity=False
+            ).digest()
+            records.append(
+                {
+                    "identity": {
+                        "path": path,
+                        "type": "Hex High Entropy String",
+                        "hashed_secret_bytes": list(digest),
+                    },
+                    "category": "public_integrity_digest",
+                    "evidence": (
+                        "Public October-30 integrity metadata; exact source reference "
+                        f"{path}:{line_number}; approved finite 89-entry source-bound "
+                        "digest inventory; not credential material; no Squawk "
+                        "admission or migration-risk waiver."
+                    ),
+                    "owner": "egorribun",
+                    "reviewed_on": "2026-10-30",
+                    "expires_on": "2027-01-10",
+                    "approval_status": "approved",
+                }
+            )
+    assert len(records) == 89
+    return records
+
+
+def _oct30_policy() -> dict[str, Any]:
+    root = Path(__file__).resolve().parents[1]
+    path = root / "quality/security-false-positive-dispositions.json"
+    assert path.stat().st_size <= 512 * 1024
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _oct30_assert_population(
+    policy: dict[str, Any], expected: list[dict[str, Any]]
+) -> None:
+    assert len(policy["records"]) == 494
+    encoded_prefix = json.dumps(
+        policy["records"][:405],
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    assert hashlib.sha256(encoded_prefix).digest() == bytes(_OCT30_PRIOR_405_SHA256)
+    assert policy["records"][405:] == expected
+
+
+def test_oct30_integrity_adds_exact_89_and_preserves_405_prefix() -> None:
+    policy = _oct30_policy()
+    expected = _oct30_source_records()
+    _oct30_assert_population(policy, expected)
+    identities = {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in expected
+    }
+    assert len(identities) == 89
+    assert identities == getattr(
+        verifier, "_OCT30_PUBLIC_INTEGRITY_IDENTITIES", frozenset()
+    )
+    assert not identities.intersection(
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in policy["records"][:405]
+    )
+    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 512
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                policy, today=verifier.date(2026, 10, 30)
+            )
+        )
+        == 494
+    )
+
+
+def test_oct30_population_rejects_missing_extra_reordered_or_changed_prior() -> None:
+    expected = _oct30_source_records()
+    original = _oct30_policy()
+    _oct30_assert_population(original, expected)
+    for mutation in ("missing", "extra", "reordered", "prior-metadata"):
+        changed = copy.deepcopy(original)
+        if mutation == "missing":
+            changed["records"].pop()
+        elif mutation == "extra":
+            extra = copy.deepcopy(expected[-1])
+            extra["identity"]["path"] = "tests/unapproved-extra-digest.py"
+            changed["records"].append(extra)
+        elif mutation == "reordered":
+            changed["records"][-1], changed["records"][-2] = (
+                changed["records"][-2],
+                changed["records"][-1],
+            )
+        else:
+            changed["records"][404]["owner"] = "different-owner"
+        with pytest.raises(AssertionError):
+            _oct30_assert_population(changed, expected)
+
+
+def test_oct30_source_pins_reject_changed_bytes_and_transplanted_sources() -> None:
+    root = Path(__file__).resolve().parents[1]
+    paths = list(_OCT30_SOURCE_PINS_AND_LINES)
+    for index, path in enumerate(paths):
+        original = (root / path).read_bytes()
+        _oct30_assert_source_blob(path, original)
+        with pytest.raises(AssertionError):
+            _oct30_assert_source_blob(path, original + b"\n")
+        with pytest.raises(AssertionError):
+            _oct30_assert_source_blob(paths[(index + 1) % len(paths)], original)
+
+
+def test_oct30_each_identity_is_exact_and_cannot_inherit_old_58_metadata() -> None:
+    for original in _oct30_source_records():
+        identity = original["identity"]
+        approved = verifier.validate_false_positive_dispositions(
+            _disposition_document(original), today=verifier.date(2026, 10, 30)
+        )
+        assert approved == {
+            verifier.FindingIdentity(
+                identity["path"],
+                identity["type"],
+                bytes(identity["hashed_secret_bytes"]).hex(),
+                9000,
+            )
+        }
+        for mutation in ("path", "detector", "digest", "old-58-metadata"):
+            changed = copy.deepcopy(original)
+            if mutation == "path":
+                changed["identity"]["path"] = "tests/unapproved-extra-digest.py"
+            elif mutation == "detector":
+                changed["identity"]["type"] = "Secret Keyword"
+            elif mutation == "digest":
+                changed["identity"]["hashed_secret_bytes"][0] ^= 1
+            else:
+                changed["reviewed_on"] = "2026-10-29"
+                changed["evidence"] = (
+                    "Public historical-148 integrity metadata; exact source reference "
+                    f"{identity['path']}:1; source-bound diagnostic capture "
+                    "and validator "
+                    "fingerprints; not credential material; no Squawk admission or "
+                    "migration-risk waiver."
+                )
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed), today=verifier.date(2026, 10, 30)
+                )
+
+
+def test_oct30_review_metadata_and_expiry_remain_exact_for_each_source_path() -> None:
+    representatives = {
+        record["identity"]["path"]: record for record in _oct30_source_records()
+    }
+    changes = {
+        "category": "documented_crypto_test_vector",
+        "evidence": "Public digest; not credential material.",
+        "owner": "different-owner",
+        "reviewed_on": "2026-10-29",
+        "expires_on": "2027-01-11",
+        "approval_status": "pending",
+    }
+    for original in representatives.values():
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(original), today=verifier.date(2027, 1, 10)
+        )
+        for field, value in changes.items():
+            changed = copy.deepcopy(original)
+            changed[field] = value
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(changed), today=verifier.date(2026, 10, 30)
+                )
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(original), today=verifier.date(2027, 1, 11)
+            )
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(original), today=verifier.date(2026, 10, 29)
+            )
+
+
+def test_oct30_trusted_loader_does_not_inherit_candidate_only_approval(
+    tmp_path: Path,
+) -> None:
+    records = _oct30_source_records()
+    repository, prior_sha = _new_git_fixture(tmp_path)
+    policy_path = repository / "quality/security-false-positive-dispositions.json"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        json.dumps(_disposition_document(*records)), encoding="utf-8"
+    )
+    today = verifier.date(2026, 10, 30)
+    trusted_before = verifier.load_trusted_base_false_positive_dispositions(
+        prior_sha, repository_root=repository, today=today
+    )
+    assert trusted_before == set()
+    approved = verifier.load_owner_authored_candidate_false_positive_dispositions(
+        repository_root=repository, today=today
+    )
+    assert len(approved) == 89
+    accepted_sha = _commit_dispositions(repository, records)
+    changed = copy.deepcopy(records)
+    changed[0]["approval_status"] = "pending"
+    policy_path.write_text(
+        json.dumps(_disposition_document(*changed)), encoding="utf-8"
+    )
+    trusted_after = verifier.load_trusted_base_false_positive_dispositions(
+        accepted_sha, repository_root=repository, today=today
+    )
+    assert trusted_after == approved
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.load_owner_authored_candidate_false_positive_dispositions(
+            repository_root=repository, today=today
+        )

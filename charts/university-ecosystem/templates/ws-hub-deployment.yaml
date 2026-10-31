@@ -35,7 +35,7 @@ spec:
       annotations:
         university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
         prometheus.io/scrape: "true"
-        prometheus.io/port: {{ .Values.wsHub.service.port | quote }}
+        prometheus.io/port: {{ .Values.wsHub.metrics.port | quote }}
         prometheus.io/path: "/metrics"
     spec:
       {{- with .Values.global.imagePullSecrets }}
@@ -71,6 +71,9 @@ spec:
           env:
             - name: WS_HUB_PORT
               value: {{ .Values.wsHub.service.port | quote }}
+            # Bind all pod interfaces; the NetworkPolicy limits who may connect.
+            - name: WS_HUB_METRICS_ADDR
+              value: {{ printf ":%v" .Values.wsHub.metrics.port | quote }}
             - name: VITE_ENVIRONMENT
               value: {{ .Values.global.environment | quote }}
             - name: JWT_SECRET_FILE
@@ -121,10 +124,10 @@ spec:
               value: {{ .Values.wsHub.config.jetstream.chatStream | quote }}
             - name: NATS_STREAM_NOTIFICATIONS
               value: {{ .Values.wsHub.config.jetstream.notificationsStream | quote }}
-            - name: NATS_DURABLE_CHAT
-              value: {{ .Values.wsHub.config.jetstream.chatDurable | quote }}
-            - name: NATS_DURABLE_NOTIFICATIONS
-              value: {{ .Values.wsHub.config.jetstream.notificationsDurable | quote }}
+            # Late-starting replicas replay room revocations this far back. The
+            # validate-config check keeps it at or above the access-token lifetime.
+            - name: WS_REVOCATION_REPLAY_WINDOW_SECONDS
+              value: {{ .Values.wsHub.config.revocationReplayWindowSeconds | quote }}
           startupProbe:
             httpGet:
               path: /health/live

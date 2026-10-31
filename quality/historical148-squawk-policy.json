@@ -1,0 +1,587 @@
+{
+  "schema": "ue-historical148-policy-v1",
+  "status": "prepared-inactive",
+  "owner": "egorribun",
+  "preparation_approved_on": "2026-10-28",
+  "execution_scope": "new-empty-mvp-only",
+  "expires_at": "2026-11-13T00:00:00Z",
+  "normalization": "physical-line-one-terminal-semicolon-v1",
+  "migration": {
+    "path": "alembic/versions/148642dd1207_fix_missing_tables.py",
+    "revision": "148642dd1207",
+    "parent": "f7aa476e968a"
+  },
+  "provenance": {
+    "source_commit": "3d83fb27a2f7a91ddffc555afa8e12f369bbec09",
+    "checkout_sha": "1eb4a25de262c255c97efdfdd327153c01b3c72a",
+    "workflow_sha": "1eb4a25de262c255c97efdfdd327153c01b3c72a",
+    "workflow_run_id": "41005719399",
+    "workflow_run_attempt": "1",
+    "job_id": "123901199844",
+    "producer_job": "alembic-migrations"
+  },
+  "source_blobs": {
+    ".github/workflows/ci.yml": "26f6d29a19ca378b433ee2f8ba957ad518003776",
+    ".squawk.toml": "d31f69b8a7fdf34adae4a272dfb902f45305959d",
+    "alembic.ini": "ff320e0800931949e348b6059593cfda95c750e4",
+    "alembic/env.py": "e8d5432623b49ce3dcf080cd64d8e38129073a72",
+    "alembic/versions/148642dd1207_fix_missing_tables.py": "d762c45c9248c14eccf57ac8e9e2dae8867777c1",
+    "pyproject.toml": "ecce4c433635d7c8c5786e5bf66507300dd8fb92",
+    "scripts/quality/read_alembic_revision.py": "be2a19f8a918cfc6ae082c5ba83748f7c3829ba6",
+    "scripts/quality/render_live_alembic_sql.py": "27febaf0f99c01e4ca45af448513d2aa4d58739b",
+    "uv.lock": "2350989e7256b1af1015ac42dbc09d4e8be91188",
+    "tests/helpers/migration_148642dd1207_trace.py": "e197651b944413e2af01a8b2a92a086f00304155",
+    "tests/integration/test_migration_148642dd1207.py": "0d27981ede7a71541772865450ca8c782f87dd61"
+  },
+  "scanner": {
+    "version": "squawk 2.67.0",
+    "binary_sha256": "03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a",
+    "args": [
+      "--exclude",
+      "prefer-robust-stmts",
+      "--exclude",
+      "prefer-text-field",
+      "--exclude",
+      "prefer-bigint-over-int",
+      "--exclude",
+      "prefer-identity",
+      "--exclude",
+      "prefer-timestamp-tz",
+      "--exclude",
+      "disallowed-unique-constraint",
+      "--exclude",
+      "require-enum-value-ordering"
+    ]
+  },
+  "scenarios": [
+    {
+      "scenario": "ordinary-parent-live",
+      "sql_path": "/tmp/tmp.wTSlDQT8ZC/148642dd1207.sql",
+      "sql_sha256": "7e27d9cfec48afbe26d8efeb03cf27ff9140982507af0652960e512a34f39305",
+      "sql_bytes": 17031,
+      "raw_exit": 1,
+      "findings": [
+        {
+          "line": 49,
+          "column": 19,
+          "level": "Warning",
+          "message": "Using `NOT VALID` and `VALIDATE CONSTRAINT` in the same transaction will block all reads while the constraint is validated.",
+          "help": "Add constraint as `NOT VALID` in one transaction and `VALIDATE CONSTRAINT` in a separate transaction.",
+          "rule_name": "constraint-missing-not-valid",
+          "column_end": 60,
+          "line_end": 49,
+          "sql_statement": "ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_not_null"
+        },
+        {
+          "line": 50,
+          "column": 0,
+          "level": "Warning",
+          "message": "During normal index creation, table updates are blocked, but reads are still allowed.",
+          "help": "Use `concurrently` to avoid blocking writes.",
+          "rule_name": "require-concurrent-index-creation",
+          "column_end": 65,
+          "line_end": 50,
+          "sql_statement": "CREATE UNIQUE INDEX IF NOT EXISTS groups_pkey_idx ON groups (id)"
+        },
+        {
+          "line": 350,
+          "column": 28,
+          "level": "Warning",
+          "message": "Using `NOT VALID` and `VALIDATE CONSTRAINT` in the same transaction will block all reads while the constraint is validated.",
+          "help": "Add constraint as `NOT VALID` in one transaction and `VALIDATE CONSTRAINT` in a separate transaction.",
+          "rule_name": "constraint-missing-not-valid",
+          "column_end": 87,
+          "line_end": 350,
+          "sql_statement": "ALTER TABLE active_sessions VALIDATE CONSTRAINT ck_active_sessions_signing_key_not_null"
+        },
+        {
+          "line": 352,
+          "column": 0,
+          "level": "Warning",
+          "message": "A normal `DROP INDEX` acquires an `ACCESS EXCLUSIVE` lock on the table, blocking other accesses until the index drop can complete.",
+          "help": "Drop the index `CONCURRENTLY`.",
+          "rule_name": "require-concurrent-index-deletion",
+          "column_end": 45,
+          "line_end": 352,
+          "sql_statement": "DROP INDEX ix_active_sessions_user_last_seen"
+        },
+        {
+          "line": 354,
+          "column": 0,
+          "level": "Warning",
+          "message": "During normal index creation, table updates are blocked, but reads are still allowed.",
+          "help": "Use `concurrently` to avoid blocking writes.",
+          "rule_name": "require-concurrent-index-creation",
+          "column_end": 81,
+          "line_end": 354,
+          "sql_statement": "CREATE INDEX ix_failed_login_attempts_user_id ON failed_login_attempts (user_id)"
+        },
+        {
+          "line": 355,
+          "column": 0,
+          "level": "Warning",
+          "message": "A normal `DROP INDEX` acquires an `ACCESS EXCLUSIVE` lock on the table, blocking other accesses until the index drop can complete.",
+          "help": "Drop the index `CONCURRENTLY`.",
+          "rule_name": "require-concurrent-index-deletion",
+          "column_end": 40,
+          "line_end": 355,
+          "sql_statement": "DROP INDEX ix_mfa_challenges_session_id"
+        },
+        {
+          "line": 356,
+          "column": 0,
+          "level": "Warning",
+          "message": "During normal index creation, table updates are blocked, but reads are still allowed.",
+          "help": "Use `concurrently` to avoid blocking writes.",
+          "rule_name": "require-concurrent-index-creation",
+          "column_end": 79,
+          "line_end": 356,
+          "sql_statement": "CREATE INDEX ix_notification_queue_jobs_kind ON notification_queue_jobs (kind)"
+        },
+        {
+          "line": 357,
+          "column": 0,
+          "level": "Warning",
+          "message": "A normal `DROP INDEX` acquires an `ACCESS EXCLUSIVE` lock on the table, blocking other accesses until the index drop can complete.",
+          "help": "Drop the index `CONCURRENTLY`.",
+          "rule_name": "require-concurrent-index-deletion",
+          "column_end": 42,
+          "line_end": 357,
+          "sql_statement": "DROP INDEX ix_user_push_topics_updated_at"
+        },
+        {
+          "line": 358,
+          "column": 0,
+          "level": "Warning",
+          "message": "During normal index creation, table updates are blocked, but reads are still allowed.",
+          "help": "Use `concurrently` to avoid blocking writes.",
+          "rule_name": "require-concurrent-index-creation",
+          "column_end": 71,
+          "line_end": 358,
+          "sql_statement": "CREATE INDEX ix_user_push_topics_user_id ON user_push_topics (user_id)"
+        },
+        {
+          "line": 372,
+          "column": 0,
+          "level": "Warning",
+          "message": "A normal `DROP INDEX` acquires an `ACCESS EXCLUSIVE` lock on the table, blocking other accesses until the index drop can complete.",
+          "help": "Drop the index `CONCURRENTLY`.",
+          "rule_name": "require-concurrent-index-deletion",
+          "column_end": 23,
+          "line_end": 372,
+          "sql_statement": "DROP INDEX ix_users_id"
+        },
+        {
+          "line": 373,
+          "column": 0,
+          "level": "Warning",
+          "message": "During normal index creation, table updates are blocked, but reads are still allowed.",
+          "help": "Use `concurrently` to avoid blocking writes.",
+          "rule_name": "require-concurrent-index-creation",
+          "column_end": 51,
+          "line_end": 373,
+          "sql_statement": "CREATE INDEX ix_users_group_id ON users (group_id)"
+        },
+        {
+          "line": 374,
+          "column": 18,
+          "level": "Warning",
+          "message": "By default new constraints require a table scan and block writes to the table while that scan occurs.",
+          "help": "Use `NOT VALID` with a later `VALIDATE CONSTRAINT` call.",
+          "rule_name": "constraint-missing-not-valid",
+          "column_end": 121,
+          "line_end": 374,
+          "sql_statement": "ALTER TABLE users ADD CONSTRAINT fk_users_group_id_groups FOREIGN KEY(group_id) REFERENCES groups (id) ON DELETE SET NULL"
+        },
+        {
+          "line": 374,
+          "column": 22,
+          "level": "Warning",
+          "message": "Adding a foreign key constraint requires a table scan and a `SHARE ROW EXCLUSIVE` lock on both tables, which blocks writes to each table.",
+          "help": "Add `NOT VALID` to the constraint in one transaction and then VALIDATE the constraint in a separate transaction.",
+          "rule_name": "adding-foreign-key-constraint",
+          "column_end": 121,
+          "line_end": 374,
+          "sql_statement": "ALTER TABLE users ADD CONSTRAINT fk_users_group_id_groups FOREIGN KEY(group_id) REFERENCES groups (id) ON DELETE SET NULL"
+        }
+      ],
+      "sql_identity": "2049:9218318"
+    },
+    {
+      "scenario": "expanded-populated-diagnostic",
+      "sql_path": ".pytest_tmp/aud148-expanded/test_expanded_ddl_inventory_ma0/148642dd1207.expanded.sql",
+      "sql_sha256": "7b3143428c7811d6f919a2d7b340b572e6e17ce340e68bdf4d682cea7086d82c",
+      "sql_bytes": 18373,
+      "raw_exit": 1,
+      "findings": [
+        {
+          "line": 53,
+          "column": 63,
+          "level": "Warning",
+          "message": "Changing a column type requires an `ACCESS EXCLUSIVE` lock on the table which blocks reads and writes while the table is rewritten. Changing the type of the column may also break other clients reading from the table.",
+          "help": null,
+          "rule_name": "changing-column-type",
+          "column_end": 99,
+          "line_end": 53,
+          "sql_statement": "ALTER TABLE aud148_fixture.child_cascade ALTER COLUMN group_id TYPE INTEGER USING group_id::INTEGER"
+        },
+        {
+          "line": 54,
+          "column": 67,
+          "level": "Warning",
+          "message": "Changing a column type requires an `ACCESS EXCLUSIVE` lock on the table which blocks reads and writes while the table is rewritten. Changing the type of the column may also break other clients reading from the table.",
+          "help": null,
+          "rule_name": "changing-column-type",
+          "column_end": 106,
+          "line_end": 54,
+          "sql_statement": "ALTER TABLE aud148_fixture.\"child quoted\" ALTER COLUMN \"group key\" TYPE INTEGER USING \"group key\"::INTEGER"
+        },
+        {
+          "line": 55,
+          "column": 67,
+          "level": "Warning",
+          "message": "Changing a column type requires an `ACCESS EXCLUSIVE` lock on the table which blocks reads and writes while the table is rewritten. Changing the type of the column may also break other clients reading from the table.",
+          "help": null,
+          "rule_name": "changing-column-type",
+          "column_end": 103,
+          "line_end": 55,
+          "sql_statement": "ALTER TABLE aud148_fixture.child_unvalidated ALTER COLUMN group_id TYPE INTEGER USING group_id::INTEGER"
+        },
+        {
+          "line": 57,
+          "column": 19,
+          "level": "Warning",
+          "message": "Dropping a column may break existing clients.",
+          "help": null,
+          "rule_name": "ban-drop-column",
+          "column_end": 33,
+          "line_end": 57,
+          "sql_statement": "ALTER TABLE groups DROP COLUMN id"
+        },
+        {
+          "line": 61,
+          "column": 19,
+          "level": "Warning",
+          "message": "Using `NOT VALID` and `VALIDATE CONSTRAINT` in the same transaction will block all reads while the constraint is validated.",
+          "help": "Add constraint as `NOT VALID` in one transaction and `VALIDATE CONSTRAINT` in a separate transaction.",
+          "rule_name": "constraint-missing-not-valid",
+          "column_end": 60,
+          "line_end": 61,
+          "sql_statement": "ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_not_null"
+        },
+        {
+          "line": 62,
+          "column": 0,
+          "level": "Warning",
+          "message": "During normal index creation, table updates are blocked, but reads are still allowed.",
+          "help": "Use `concurrently` to avoid blocking writes.",
+          "rule_name": "require-concurrent-index-creation",
+          "column_end": 65,
+          "line_end": 62,
+          "sql_statement": "CREATE UNIQUE INDEX IF NOT EXISTS groups_pkey_idx ON groups (id)"
+        },
+        {
+          "line": 64,
+          "column": 19,
+          "level": "Warning",
+          "message": "Dropping a column may break existing clients.",
+          "help": null,
+          "rule_name": "ban-drop-column",
+          "column_end": 42,
+          "line_end": 64,
+          "sql_statement": "ALTER TABLE groups DROP COLUMN id__integer"
+        },
+        {
+          "line": 65,
+          "column": 41,
+          "level": "Warning",
+          "message": "By default new constraints require a table scan and block writes to the table while that scan occurs.",
+          "help": "Use `NOT VALID` with a later `VALIDATE CONSTRAINT` call.",
+          "rule_name": "constraint-missing-not-valid",
+          "column_end": 191,
+          "line_end": 65,
+          "sql_statement": "ALTER TABLE aud148_fixture.child_cascade ADD CONSTRAINT aud148_child_cascade_fk FOREIGN KEY (group_id) REFERENCES groups (id) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED"
+        },
+        {
+          "line": 65,
+          "column": 45,
+          "level": "Warning",
+          "message": "Adding a foreign key constraint requires a table scan and a `SHARE ROW EXCLUSIVE` lock on both tables, which blocks writes to each table.",
+          "help": "Add `NOT VALID` to the constraint in one transaction and then VALIDATE the constraint in a separate transaction.",
+          "rule_name": "adding-foreign-key-constraint",
+          "column_end": 191,
+          "line_end": 65,
+          "sql_statement": "ALTER TABLE aud148_fixture.child_cascade ADD CONSTRAINT aud148_child_cascade_fk FOREIGN KEY (group_id) REFERENCES groups (id) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED"
+        },
+        {
+          "line": 66,
+          "column": 42,
+          "level": "Warning",
+          "message": "By default new constraints require a table scan and block writes to the table while that scan occurs.",
+          "help": "Use `NOT VALID` with a later `VALIDATE CONSTRAINT` call.",
+          "rule_name": "constraint-missing-not-valid",
+          "column_end": 158,
+          "line_end": 66,
+          "sql_statement": "ALTER TABLE aud148_fixture.\"child quoted\" ADD CONSTRAINT aud148_child_quoted_fk FOREIGN KEY (\"group key\") REFERENCES groups (id) MATCH FULL ON DELETE SET NULL"
+        },
+        {
+          "line": 66,
+          "column": 46,
+          "level": "Warning",
+          "message": "Adding a foreign key constraint requires a table scan and a `SHARE ROW EXCLUSIVE` lock on both tables, which blocks writes to each table.",
+          "help": "Add `NOT VALID` to the constraint in one transaction and then VALIDATE the constraint in a separate transaction.",
+          "rule_name": "adding-foreign-key-constraint",
+          "column_end": 158,
+          "line_end": 66,
+          "sql_statement": "ALTER TABLE aud148_fixture.\"child quoted\" ADD CONSTRAINT aud148_child_quoted_fk FOREIGN KEY (\"group key\") REFERENCES groups (id) MATCH FULL ON DELETE SET NULL"
+        },
+        {
+          "line": 67,
+          "column": 45,
+          "level": "Warning",
+          "message": "By default new constraints require a table scan and block writes to the table while that scan occurs.",
+          "help": "Use `NOT VALID` with a later `VALIDATE CONSTRAINT` call.",
+          "rule_name": "constraint-missing-not-valid",
+          "column_end": 133,
+          "line_end": 67,
+          "sql_statement": "ALTER TABLE aud148_fixture.child_unvalidated ADD CONSTRAINT aud148_child_unvalidated_fk FOREIGN KEY (group_id) REFERENCES groups (id)"
+        },
+        {
+          "line": 67,
+          "column": 49,
+          "level": "Warning",
+          "message": "Adding a foreign key constraint requires a table scan and a `SHARE ROW EXCLUSIVE` lock on both tables, which blocks writes to each table.",
+          "help": "Add `NOT VALID` to the constraint in one transaction and then VALIDATE the constraint in a separate transaction.",
+          "rule_name": "adding-foreign-key-constraint",
+          "column_end": 133,
+          "line_end": 67,
+          "sql_statement": "ALTER TABLE aud148_fixture.child_unvalidated ADD CONSTRAINT aud148_child_unvalidated_fk FOREIGN KEY (group_id) REFERENCES groups (id)"
+        },
+        {
+          "line": 367,
+          "column": 28,
+          "level": "Warning",
+          "message": "Using `NOT VALID` and `VALIDATE CONSTRAINT` in the same transaction will block all reads while the constraint is validated.",
+          "help": "Add constraint as `NOT VALID` in one transaction and `VALIDATE CONSTRAINT` in a separate transaction.",
+          "rule_name": "constraint-missing-not-valid",
+          "column_end": 87,
+          "line_end": 367,
+          "sql_statement": "ALTER TABLE active_sessions VALIDATE CONSTRAINT ck_active_sessions_signing_key_not_null"
+        },
+        {
+          "line": 369,
+          "column": 0,
+          "level": "Warning",
+          "message": "A normal `DROP INDEX` acquires an `ACCESS EXCLUSIVE` lock on the table, blocking other accesses until the index drop can complete.",
+          "help": "Drop the index `CONCURRENTLY`.",
+          "rule_name": "require-concurrent-index-deletion",
+          "column_end": 45,
+          "line_end": 369,
+          "sql_statement": "DROP INDEX ix_active_sessions_user_last_seen"
+        },
+        {
+          "line": 371,
+          "column": 0,
+          "level": "Warning",
+          "message": "During normal index creation, table updates are blocked, but reads are still allowed.",
+          "help": "Use `concurrently` to avoid blocking writes.",
+          "rule_name": "require-concurrent-index-creation",
+          "column_end": 81,
+          "line_end": 371,
+          "sql_statement": "CREATE INDEX ix_failed_login_attempts_user_id ON failed_login_attempts (user_id)"
+        },
+        {
+          "line": 372,
+          "column": 0,
+          "level": "Warning",
+          "message": "A normal `DROP INDEX` acquires an `ACCESS EXCLUSIVE` lock on the table, blocking other accesses until the index drop can complete.",
+          "help": "Drop the index `CONCURRENTLY`.",
+          "rule_name": "require-concurrent-index-deletion",
+          "column_end": 40,
+          "line_end": 372,
+          "sql_statement": "DROP INDEX ix_mfa_challenges_session_id"
+        },
+        {
+          "line": 373,
+          "column": 0,
+          "level": "Warning",
+          "message": "During normal index creation, table updates are blocked, but reads are still allowed.",
+          "help": "Use `concurrently` to avoid blocking writes.",
+          "rule_name": "require-concurrent-index-creation",
+          "column_end": 79,
+          "line_end": 373,
+          "sql_statement": "CREATE INDEX ix_notification_queue_jobs_kind ON notification_queue_jobs (kind)"
+        },
+        {
+          "line": 374,
+          "column": 0,
+          "level": "Warning",
+          "message": "A normal `DROP INDEX` acquires an `ACCESS EXCLUSIVE` lock on the table, blocking other accesses until the index drop can complete.",
+          "help": "Drop the index `CONCURRENTLY`.",
+          "rule_name": "require-concurrent-index-deletion",
+          "column_end": 42,
+          "line_end": 374,
+          "sql_statement": "DROP INDEX ix_user_push_topics_updated_at"
+        },
+        {
+          "line": 375,
+          "column": 0,
+          "level": "Warning",
+          "message": "During normal index creation, table updates are blocked, but reads are still allowed.",
+          "help": "Use `concurrently` to avoid blocking writes.",
+          "rule_name": "require-concurrent-index-creation",
+          "column_end": 71,
+          "line_end": 375,
+          "sql_statement": "CREATE INDEX ix_user_push_topics_user_id ON user_push_topics (user_id)"
+        },
+        {
+          "line": 389,
+          "column": 0,
+          "level": "Warning",
+          "message": "A normal `DROP INDEX` acquires an `ACCESS EXCLUSIVE` lock on the table, blocking other accesses until the index drop can complete.",
+          "help": "Drop the index `CONCURRENTLY`.",
+          "rule_name": "require-concurrent-index-deletion",
+          "column_end": 23,
+          "line_end": 389,
+          "sql_statement": "DROP INDEX ix_users_id"
+        },
+        {
+          "line": 390,
+          "column": 0,
+          "level": "Warning",
+          "message": "During normal index creation, table updates are blocked, but reads are still allowed.",
+          "help": "Use `concurrently` to avoid blocking writes.",
+          "rule_name": "require-concurrent-index-creation",
+          "column_end": 51,
+          "line_end": 390,
+          "sql_statement": "CREATE INDEX ix_users_group_id ON users (group_id)"
+        },
+        {
+          "line": 391,
+          "column": 18,
+          "level": "Warning",
+          "message": "By default new constraints require a table scan and block writes to the table while that scan occurs.",
+          "help": "Use `NOT VALID` with a later `VALIDATE CONSTRAINT` call.",
+          "rule_name": "constraint-missing-not-valid",
+          "column_end": 121,
+          "line_end": 391,
+          "sql_statement": "ALTER TABLE users ADD CONSTRAINT fk_users_group_id_groups FOREIGN KEY(group_id) REFERENCES groups (id) ON DELETE SET NULL"
+        },
+        {
+          "line": 391,
+          "column": 22,
+          "level": "Warning",
+          "message": "Adding a foreign key constraint requires a table scan and a `SHARE ROW EXCLUSIVE` lock on both tables, which blocks writes to each table.",
+          "help": "Add `NOT VALID` to the constraint in one transaction and then VALIDATE the constraint in a separate transaction.",
+          "rule_name": "adding-foreign-key-constraint",
+          "column_end": 121,
+          "line_end": 391,
+          "sql_statement": "ALTER TABLE users ADD CONSTRAINT fk_users_group_id_groups FOREIGN KEY(group_id) REFERENCES groups (id) ON DELETE SET NULL"
+        }
+      ],
+      "sql_identity": "2049:9225480"
+    }
+  ],
+  "expanded_contract": {
+    "checkout_sha": "1eb4a25de262c255c97efdfdd327153c01b3c72a",
+    "expanded_sql_sha256": "7b3143428c7811d6f919a2d7b340b572e6e17ce340e68bdf4d682cea7086d82c",
+    "fixture_sha256": "71d22eb0432d94545d99c7892a6d92a02e28c8f5ccd4510e0f1df34a0a880319",
+    "helper_sha256": "891a9f3454560d1c804897f03b70c4d260174899625a21e449dafd88061c8499",
+    "lockfile_blob": "2350989e7256b1af1015ac42dbc09d4e8be91188",
+    "migration_blob": "d762c45c9248c14eccf57ac8e9e2dae8867777c1",
+    "nested_ddl": [
+      {
+        "outer_ordinal": 28,
+        "site": "child_fk_drop",
+        "sql": "ALTER TABLE aud148_fixture.child_cascade DROP CONSTRAINT aud148_child_cascade_fk",
+        "sql_sha256": "3223b8322d007b0fea592c0924fc5c53f7ca5ca27806970791eb13800c6eb892"
+      },
+      {
+        "outer_ordinal": 28,
+        "site": "child_fk_drop",
+        "sql": "ALTER TABLE aud148_fixture.\"child quoted\" DROP CONSTRAINT aud148_child_quoted_fk",
+        "sql_sha256": "ac3a8fbb061212f3730968fbb9542ef402c84c4115a15293ecaa1fb741319758"
+      },
+      {
+        "outer_ordinal": 28,
+        "site": "child_fk_drop",
+        "sql": "ALTER TABLE aud148_fixture.child_unvalidated DROP CONSTRAINT aud148_child_unvalidated_fk",
+        "sql_sha256": "fdcf833bf80e824b42742d50848108e42c1ec0a2ec6e207610ad989e631fb0cf"
+      },
+      {
+        "outer_ordinal": 29,
+        "site": "child_key_type",
+        "sql": "ALTER TABLE aud148_fixture.child_cascade ALTER COLUMN group_id TYPE INTEGER USING group_id::INTEGER",
+        "sql_sha256": "31bba2308e2068df400c3f6a8b39e8d701e6c2bfc86df4cf9e7da51f958850d6"
+      },
+      {
+        "outer_ordinal": 29,
+        "site": "child_key_type",
+        "sql": "ALTER TABLE aud148_fixture.\"child quoted\" ALTER COLUMN \"group key\" TYPE INTEGER USING \"group key\"::INTEGER",
+        "sql_sha256": "7dca1542bed064ff5e3868374bff30d305cf30421db36fada944ab087d706b78"
+      },
+      {
+        "outer_ordinal": 29,
+        "site": "child_key_type",
+        "sql": "ALTER TABLE aud148_fixture.child_unvalidated ALTER COLUMN group_id TYPE INTEGER USING group_id::INTEGER",
+        "sql_sha256": "2184c55482ffd8689eeba282c8b596c11e723c61f793d52c0b36e181c05bf679"
+      },
+      {
+        "outer_ordinal": 31,
+        "site": "groups_drop_id",
+        "sql": "ALTER TABLE groups DROP COLUMN id",
+        "sql_sha256": "bc70b5f4f54b894be3472d5b2f2664fb8d0376eca0e1ed31a3fd5c20f0eeb3f5"
+      },
+      {
+        "outer_ordinal": 39,
+        "site": "groups_drop_shadow",
+        "sql": "ALTER TABLE groups DROP COLUMN id__integer",
+        "sql_sha256": "d271e2fa1657a820c26c90134ab86540bc89c81492d400fcd29a478f70045dde"
+      },
+      {
+        "outer_ordinal": 40,
+        "site": "child_fk_restore",
+        "sql": "ALTER TABLE aud148_fixture.child_cascade ADD CONSTRAINT aud148_child_cascade_fk FOREIGN KEY (group_id) REFERENCES groups (id) ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED",
+        "sql_sha256": "23a464888f1fe479d7f8d7a7ebadc77fcaa9a3fb65acb59c8fb8c0185025e6b8"
+      },
+      {
+        "outer_ordinal": 40,
+        "site": "child_fk_restore",
+        "sql": "ALTER TABLE aud148_fixture.\"child quoted\" ADD CONSTRAINT aud148_child_quoted_fk FOREIGN KEY (\"group key\") REFERENCES groups (id) MATCH FULL ON DELETE SET NULL",
+        "sql_sha256": "41c1bc7ac273e9b5626efaab0c86e97c9b1c620712ab01ea6d6414da17320c7e"
+      },
+      {
+        "outer_ordinal": 40,
+        "site": "child_fk_restore",
+        "sql": "ALTER TABLE aud148_fixture.child_unvalidated ADD CONSTRAINT aud148_child_unvalidated_fk FOREIGN KEY (group_id) REFERENCES groups (id)",
+        "sql_sha256": "f67fa335148db863d22fa0cdc556f67a2007e902f40a606b2076b686e0496deb"
+      }
+    ],
+    "original_squawk_outcome": "failure",
+    "postgres_version": "PostgreSQL 17.11 (Debian 17.11-1.pgdg12+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit",
+    "renderer_blob": "27febaf0f99c01e4ca45af448513d2aa4d58739b",
+    "squawk_args": [
+      "--exclude",
+      "prefer-robust-stmts",
+      "--exclude",
+      "prefer-text-field",
+      "--exclude",
+      "prefer-bigint-over-int",
+      "--exclude",
+      "prefer-identity",
+      "--exclude",
+      "prefer-timestamp-tz",
+      "--exclude",
+      "disallowed-unique-constraint",
+      "--exclude",
+      "require-enum-value-ordering"
+    ],
+    "squawk_binary_sha256": "03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a",
+    "squawk_config_blob": "d31f69b8a7fdf34adae4a272dfb902f45305959d",
+    "squawk_version": "squawk 2.67.0",
+    "status": "diagnostic-only-not-an-exception",
+    "workflow_blob": "26f6d29a19ca378b433ee2f8ba957ad518003776",
+    "workflow_run_id": "41005719399",
+    "workflow_sha": "1eb4a25de262c255c97efdfdd327153c01b3c72a"
+  }
+}

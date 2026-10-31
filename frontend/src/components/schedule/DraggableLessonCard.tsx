@@ -45,9 +45,8 @@ export const DraggableLessonCard = memo(function DraggableLessonCard({
         type="button"
         {...attributes}
         {...listeners}
-        className="absolute -left-1 top-1/2 -translate-y-1/2 z-10 flex h-6 w-4 items-center justify-center rounded text-text-secondary opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100 cursor-grab active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-brand"
+        className="absolute -left-3 top-1/2 -translate-y-1/2 z-10 flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-text-secondary opacity-0 transition-opacity group-hover:opacity-60 hover:!opacity-100 cursor-grab active:cursor-grabbing focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-brand"
         aria-label={t("schedule:drag.handle")}
-        tabIndex={-1}
       >
         <GripVertical size={12} aria-hidden="true" />
       </button>

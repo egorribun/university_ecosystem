@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import secrets
 import sys
 from collections import UserString
 from datetime import UTC, datetime
@@ -97,6 +99,23 @@ def _sign_event(
     event.hash = service.compute_event_hash(
         prev_hash, canonical, event.created_at.replace(tzinfo=UTC).isoformat()
     )
+
+
+async def _record_v2_event(service: SecureAuditService):
+    actor_id = uuid4()
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=_Result(first=None))
+    db.flush = AsyncMock()
+    event = await service.record_domain_event(
+        db,
+        event_type="CUSTOM",
+        aggregate_type="aggregate",
+        aggregate_id="aggregate-1",
+        payload={"value": 1},
+        actor_id=actor_id,
+        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+    return db, event, actor_id
 
 
 def test_audit_service_log_includes_reason_in_payload():
@@ -224,6 +243,166 @@ async def test_record_domain_event_preserves_uuid_aggregate_identifier():
     )
 
     assert event.aggregate_id_uuid == aggregate_id
+
+
+@pytest.mark.asyncio
+async def test_record_domain_event_signs_actor_and_signature_version_metadata():
+    service = SecureAuditService(signing_key=b"key")
+    db, event, actor_id = await _record_v2_event(service)
+    signature_metadata = {
+        "actor_id": str(actor_id),
+        audit_module._DOMAIN_EVENT_SIGNATURE_VERSION_KEY: (
+            audit_module._DOMAIN_EVENT_SIGNATURE_VERSION
+        ),
+    }
+    canonical = service.canonicalize_event_payload(
+        event.aggregate_type,
+        event.aggregate_id,
+        event.event_type,
+        event.payload,
+        event.version,
+        metadata=signature_metadata,
+    )
+
+    assert event.metadata_ == signature_metadata
+    assert event.hash == service.compute_event_hash(
+        event.prev_hash, canonical, event.created_at.isoformat()
+    )
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tamper", ["actor_id", "remove_signature_marker"])
+async def test_verify_chain_integrity_rejects_actor_metadata_tampering(tamper: str):
+    service = SecureAuditService(signing_key=b"key")
+    db, event, _actor_id = await _record_v2_event(service)
+    if tamper == "actor_id":
+        event.metadata_["actor_id"] = str(uuid4())
+    else:
+        event.metadata_.pop(audit_module._DOMAIN_EVENT_SIGNATURE_VERSION_KEY)
+    db.execute = AsyncMock(return_value=_Result([event]))
+
+    with patch.dict(sys.modules, {"rust_ext": SimpleNamespace()}):
+        is_valid, failed_id, error = await service.verify_chain_integrity(db)
+
+    assert is_valid is False
+    assert failed_id == str(event.id)
+    assert error is not None
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_passes_v2_metadata_to_mocked_rust_boundary():
+    """Check the canonical payload passed to the Rust adapter mock, not native Rust."""
+    service = SecureAuditService(signing_key=b"key")
+    db, event, _actor_id = await _record_v2_event(service)
+    db.execute = AsyncMock(return_value=_Result([event]))
+    rust = MagicMock()
+    rust.verify_event_chain.return_value = (True, -1, None)
+
+    with patch.dict(sys.modules, {"rust_ext": rust}):
+        assert await service.verify_chain_integrity(db) == (True, None, None)
+
+    chain_tuples = rust.verify_event_chain.call_args.args[2]
+    canonical = json.loads(chain_tuples[0][2])
+    assert canonical["metadata"] == event.metadata_
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"_audit_signature_version": 1, "actor_id": "actor"},
+        {"_audit_signature_version": 3, "actor_id": "actor"},
+        {"_audit_signature_version": "2", "actor_id": "actor"},
+        {"_audit_signature_version": True, "actor_id": "actor"},
+        ["actor"],
+        "actor",
+    ],
+)
+@pytest.mark.parametrize("rust_available", [False, True])
+async def test_verify_chain_integrity_rejects_invalid_signature_metadata(
+    metadata: object, rust_available: bool
+):
+    service = SecureAuditService(signing_key=b"key")
+    db, event, _actor_id = await _record_v2_event(service)
+    event.metadata_ = metadata
+    db.execute = AsyncMock(return_value=_Result([event]))
+    rust = MagicMock()
+    rust.verify_event_chain.return_value = (True, -1, None)
+    verifier = rust if rust_available else SimpleNamespace()
+
+    with patch.dict(sys.modules, {"rust_ext": verifier}):
+        is_valid, failed_id, error = await service.verify_chain_integrity(db)
+
+    assert is_valid is False
+    assert failed_id == str(event.id)
+    assert "metadata" in str(error).lower()
+    if rust_available:
+        rust.verify_event_chain.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verify_chain_integrity_passes_historical_payload_to_mocked_rust_boundary():
+    """Check legacy canonicalization at the mocked Rust adapter boundary."""
+    service = SecureAuditService(signing_key=b"key")
+    event = _event(
+        "CUSTOM",
+        {"value": 1},
+        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+    event.metadata_ = {"actor_id": str(uuid4())}
+    _sign_event(service, event, "0" * 64)
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=_Result([event]))
+    rust = MagicMock()
+    rust.verify_event_chain.return_value = (True, -1, None)
+
+    with patch.dict(sys.modules, {"rust_ext": rust}):
+        assert await service.verify_chain_integrity(db) == (True, None, None)
+
+    chain_tuples = rust.verify_event_chain.call_args.args[2]
+    assert "metadata" not in json.loads(chain_tuples[0][2])
+
+
+@pytest.mark.asyncio
+async def test_v2_event_accepts_secondary_rotation_key_and_rejects_other_keys():
+    old_key = secrets.token_bytes(32)
+    new_key = secrets.token_bytes(32)
+    unknown_key = secrets.token_bytes(32)
+    signer = SecureAuditService(signing_key=old_key)
+    db, event, _actor_id = await _record_v2_event(signer)
+    db.execute = AsyncMock(return_value=_Result([event]))
+
+    primary_only = SecureAuditService(signing_key=new_key)
+    rotating = SecureAuditService(signing_keys=[new_key, old_key])
+    unknown = SecureAuditService(signing_key=unknown_key)
+    with patch.dict(sys.modules, {"rust_ext": SimpleNamespace()}):
+        primary_only_result = await primary_only.verify_chain_integrity(db)
+        rotating_result = await rotating.verify_chain_integrity(db)
+        unknown_result = await unknown.verify_chain_integrity(db)
+
+    assert primary_only_result[0] is False
+    assert rotating_result == (True, None, None)
+    assert unknown_result[0] is False
+
+
+@pytest.mark.asyncio
+async def test_legacy_unmarked_signature_keeps_payload_only_coverage():
+    """Legacy rows stay verifiable, but actor metadata is not authenticated."""
+    service = SecureAuditService(signing_key=b"key")
+    event = _event(
+        "CUSTOM",
+        {"value": 1},
+        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+    event.metadata_ = {"actor_id": str(uuid4())}
+    _sign_event(service, event, "0" * 64)
+    event.metadata_["actor_id"] = str(uuid4())
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=_Result([event]))
+
+    with patch.dict(sys.modules, {"rust_ext": SimpleNamespace()}):
+        assert await service.verify_chain_integrity(db) == (True, None, None)
 
 
 @pytest.mark.asyncio
@@ -794,3 +973,63 @@ async def test_reconstruct_state_never_replays_unchained_outbox_payload():
 
     assert result == (None, 0, False)
     db.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("isolation", "allowed"),
+    [
+        ("read committed", True),
+        ("read uncommitted", True),
+        ("repeatable read", False),
+        ("serializable", False),
+    ],
+)
+async def test_record_domain_event_checks_isolation_before_locking_the_aggregate(
+    isolation: str, allowed: bool
+) -> None:
+    """Check emitted SQL and stable identity; real PostgreSQL proves locking."""
+    service = SecureAuditService(signing_key=secrets.token_hex(32).encode("ascii"))
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = "postgresql"
+    db.scalar = AsyncMock(return_value=isolation)
+    db.execute = AsyncMock(return_value=_Result(first=None))
+    db.flush = AsyncMock()
+    event_arguments = {
+        "event_type": "CUSTOM",
+        "aggregate_type": "grade",
+        "aggregate_id": "aud340-unit",
+        "payload": {"value": 1},
+    }
+
+    if allowed:
+        event = await service.record_domain_event(db, **event_arguments)
+        assert event.sequence_number == 1
+        assert event.prev_hash == "0" * 64
+    else:
+        with pytest.raises(
+            ValueError, match=r"^Domain event writes require READ COMMITTED semantics$"
+        ):
+            await service.record_domain_event(db, **event_arguments)
+        db.add.assert_not_called()
+        db.flush.assert_not_awaited()
+
+    assert db.scalar.await_count == 1
+    isolation_statement = db.scalar.await_args.args[0]
+    assert str(isolation_statement).startswith("SELECT pg_catalog.current_setting(")
+    assert list(isolation_statement.compile().params.values()) == [
+        "transaction_isolation"
+    ]
+    statements = [call.args[0] for call in db.execute.await_args_list]
+    if not allowed:
+        assert statements == []
+        return
+
+    assert len(statements) == 2
+    lock_statement, head_statement = statements
+    assert str(lock_statement).startswith("SELECT pg_catalog.pg_advisory_xact_lock(")
+    # Fixed SHA-256 vector for the namespaced JSON tuple, not Python's hash().
+    assert list(lock_statement.compile().params.values()) == [4157649041181095682]
+    head_parameters = head_statement.compile().params
+    assert head_parameters["aggregate_type_1"] == "grade"
+    assert head_parameters["aggregate_id_1"] == "aud340-unit"

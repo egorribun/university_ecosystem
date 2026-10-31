@@ -177,6 +177,16 @@ describe("schedule calendar export selection and serialization — AUD-066", () 
     expect(shift).not.toHaveBeenCalled()
   })
 
+  it("ignores weekday configs with IDs outside the calendar offset map", () => {
+    const request = input({
+      schedule: [lesson({ weekday: "holiday" })],
+      weekdayConfigs: [{ id: "holiday", backend: ["holiday"], long: "Holiday", short: "Hol" }],
+      visibleWeekdays: ["holiday"],
+    })
+
+    expect(selectGoogleCalendarLesson(request)).toEqual({ status: "empty" })
+  })
+
   it("refuses empty, hidden, unready, unknown-zone and empty-group inputs", () => {
     expect(selectGoogleCalendarLesson(input({ schedule: [] }))).toEqual({ status: "empty" })
     const hidden = selectGoogleCalendarLesson(input({ visibleWeekdays: [] }))

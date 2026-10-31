@@ -129,7 +129,7 @@ def _caddy_uri_filter_blocks(content: str) -> list[list[tuple[str, str]]]:
         re.findall(r"^\s*regexp\s+(\S+)\s+(\S+)\s*$", block, re.MULTILINE)
         for block in blocks
     ]
-    assert all(len(operations) == 5 for operations in parsed)
+    assert all(len(operations) == 6 for operations in parsed)
     return parsed
 
 
@@ -192,7 +192,7 @@ def test_query_uri_filter_redacts_each_encoded_credential_key_character() -> Non
 
     marker = f"audit-redaction-{uuid4().hex}"
     cases: list[tuple[str, str]] = []
-    for name in ("token", "ticket", "code", "password"):
+    for name in ("token", "ticket", "code", "password", "state"):
         variants = [_one_encoded_character(name, index) for index in range(len(name))]
         variants.append("".join(f"%{ord(char):02x}" for char in name))
         for encoded_name in variants:
@@ -228,6 +228,7 @@ def test_uri_filter_preserves_ordinary_non_reset_diagnostics() -> None:
     safe_uris = (
         f"/dashboard?tab=events&marker={marker}",
         f"/reset-password-help/{marker}?tab=events",
+        f"/dashboard?tab=events&state_hint={marker}",
     )
     for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
         content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
@@ -303,6 +304,7 @@ def test_caddy_uri_redaction_rules_keep_path_first_and_sensitive_keys_ordered() 
         "${1}ticket=REDACTED",
         "${1}code=REDACTED",
         "${1}password=REDACTED",
+        "${1}state=REDACTED",
     )
     for relative_path in ("infrastructure/Caddyfile", "services/caddy/Caddyfile"):
         content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
@@ -319,3 +321,97 @@ def test_caddy_uri_redaction_rules_keep_path_first_and_sensitive_keys_ordered() 
             for pattern, _replacement in query_operations:
                 assert pattern.startswith("(?i)([?&])")
                 assert pattern.endswith("=[^&]*")
+
+
+EDGE_CADDYFILES = ("infrastructure/Caddyfile", "services/caddy/Caddyfile")
+
+
+def _squashed_caddyfile(relative_path: str) -> str:
+    """Return the Caddyfile with every whitespace run collapsed to one space."""
+    return " ".join((REPO_ROOT / relative_path).read_text(encoding="utf-8").split())
+
+
+def test_oauth_callback_uri_redacts_code_and_state_in_access_logs() -> None:
+    """AUD-449: OAuth callback code and state never persist as URI diagnostics."""
+    from uuid import uuid4
+
+    marker = f"oauth-redaction-{uuid4().hex}"
+    path = "/api/v1/integrations/spotify/callback"
+    cases = (
+        (
+            f"{path}?code={marker}&state={marker}&scope=user-read",
+            f"{path}?code=REDACTED&state=REDACTED&scope=user-read",
+        ),
+        (
+            f"{path}?%63ode={marker}&%73%74%61%74%65={marker}",
+            f"{path}?code=REDACTED&state=REDACTED",
+        ),
+    )
+    for relative_path in EDGE_CADDYFILES:
+        content = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        for operations in _caddy_uri_filter_blocks(content):
+            for uri, expected in cases:
+                assert _apply_caddy_uri_filter(operations, uri) == expected, (
+                    f"OAuth callback parameters leaked for {uri!r} in {relative_path}"
+                )
+
+
+def test_legacy_reset_links_redirect_to_fragment_form_before_any_document() -> None:
+    """AUD-178: query and path reset links are moved to the fragment form at the edge."""
+    for relative_path in EDGE_CADDYFILES:
+        squashed = _squashed_caddyfile(relative_path)
+        assert (
+            '@legacy_reset_query { path /reset-password expression {query.token} != "" }'
+            in squashed
+        ), f"{relative_path} must match the legacy query-string reset link"
+        assert (
+            'handle @legacy_reset_query { header Cache-Control "no-store" '
+            "redir @legacy_reset_query /reset-password#token={query.token} 302 }"
+        ) in squashed, f"{relative_path} must redirect the query form to the fragment"
+        assert (
+            "@legacy_reset_path { path_regexp legacy_reset ^/reset-password/([^/]+)$ }"
+            in squashed
+        ), f"{relative_path} must match the legacy path-form reset link"
+        assert (
+            'handle @legacy_reset_path { header Cache-Control "no-store" '
+            "redir @legacy_reset_path /reset-password#token={re.legacy_reset.1} 302 }"
+        ) in squashed, f"{relative_path} must redirect the path form to the fragment"
+        assert squashed.index("handle @legacy_reset_path") < squashed.index(
+            "handle { reverse_proxy frontend:3000"
+        ), f"{relative_path} must declare the reset redirects before the SSR default"
+
+
+def test_access_logs_drop_headers_that_can_carry_a_reset_token() -> None:
+    """AUD-178: Referer and Location are never persisted by either edge's logs.
+
+    The access log records request and response headers. A reset page reached with
+    the token in its URL would otherwise copy that URL into Referer, and the edge
+    redirect would copy the fragment-form Location into resp_headers.
+    """
+    for relative_path in EDGE_CADDYFILES:
+        squashed = _squashed_caddyfile(relative_path)
+        assert squashed.count("request>headers>Referer delete") == 2, (
+            f"{relative_path} must drop Referer from the runtime and access logs"
+        )
+        assert squashed.count("resp_headers>Location delete") == 2, (
+            f"{relative_path} must drop Location from the runtime and access logs"
+        )
+
+
+def test_infrastructure_edge_keeps_certificate_management_for_internal_jwks() -> None:
+    """AUD-506: the :80 edge disables redirects only, so caddy:8443 gets its local cert."""
+    squashed = _squashed_caddyfile("infrastructure/Caddyfile")
+    assert "auto_https disable_redirects" in squashed
+    assert "auto_https off" not in squashed
+
+
+def test_temporal_jwks_listener_is_internal_tls_and_serves_only_jwks() -> None:
+    """AUD-506: Temporal fetches its JWKS over TLS from an internal-only listener."""
+    for relative_path in EDGE_CADDYFILES:
+        squashed = _squashed_caddyfile(relative_path)
+        assert (
+            "caddy:8443 { tls internal handle /.well-known/jwks.json "
+            "{ reverse_proxy backend:8000 { header_up Host {upstream_hostport} } } "
+            "handle { respond 404 } }"
+        ) in squashed, f"{relative_path} must expose only the JWKS over internal TLS"
+        assert "http://backend:8000/.well-known" not in squashed

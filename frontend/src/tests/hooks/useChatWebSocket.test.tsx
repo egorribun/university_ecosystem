@@ -583,7 +583,7 @@ describe("useChatWebSocket", () => {
     unmount()
   })
 
-  it("applies a reaction_changed frame to the cache", async () => {
+  it("applies peer and actor reactions without double-counting an actor replay", async () => {
     const queryClient = new QueryClient()
     queryClient.setQueryData(["messages", CHAT_ID], makeList([makeMessage({ reactions: [] })]))
     const { socket, unmount } = await mountAndOpen(
@@ -611,11 +611,19 @@ describe("useChatWebSocket", () => {
         emoji: "👍",
         action: "added",
       })
+      socket.receive({
+        type: "reaction_changed",
+        chat_id: CHAT_ID,
+        message_id: MSG_ID,
+        user_id: USER_A,
+        emoji: "👍",
+        action: "added",
+      })
     })
     expect(
       queryClient.getQueryData<MessagesListResponse>(["messages", CHAT_ID])?.items[0]
-        ?.reactions?.[0]?.count
-    ).toBe(1)
+        ?.reactions?.[0]
+    ).toMatchObject({ emoji: "👍", count: 2, reacted_by_me: true })
     unmount()
   })
 

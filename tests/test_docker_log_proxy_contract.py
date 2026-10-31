@@ -1,7 +1,13 @@
+import re
 from pathlib import Path
 
 import pytest
 import yaml
+
+from tests.test_s3_cutover_compose_contract import (
+    _production_secret_source_overrides,
+    _rendered,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCKER_SOCKET_PATH = "/var/run/docker.sock"
@@ -197,3 +203,93 @@ def test_alloy_docker_components_use_the_proxy_endpoint() -> None:
     assert "/var/run/docker.sock" not in config
     assert 'discovery.docker "containers"' in config
     assert 'loki.source.docker "containers"' in config
+
+
+@pytest.mark.parametrize(
+    "compose_files",
+    [
+        pytest.param(("docker-compose.full.yml",), id="full"),
+        pytest.param(
+            ("docker-compose.full.yml", "docker-compose.live.yml"), id="full-live"
+        ),
+        pytest.param(
+            ("docker-compose.yml", "docker-compose.observability.yml"), id="base-obs"
+        ),
+        pytest.param(
+            (
+                "docker-compose.yml",
+                "docker-compose.observability.yml",
+                "docker-compose.prod.yml",
+            ),
+            id="base-obs-prod",
+        ),
+    ],
+)
+def test_rendered_stack_keeps_docker_socket_behind_the_proxy(
+    tmp_path: Path, compose_files: tuple[str, ...]
+) -> None:
+    production = "docker-compose.prod.yml" in compose_files
+    model = _rendered(
+        tmp_path,
+        "aud193-socket-contract",
+        *compose_files,
+        profiles=("prod",) if production else (),
+        environment_overrides=(
+            _production_secret_source_overrides(tmp_path) if production else None
+        ),
+    )
+    services = model["services"]
+    proxy = services["docker-log-proxy"]
+    socket_mounts = [
+        (name, binding)
+        for name, service in services.items()
+        for volume in service.get("volumes", [])
+        if (binding := _socket_binding(volume)) is not None
+    ]
+    assert socket_mounts == [
+        ("docker-log-proxy", (DOCKER_SOCKET_PATH, DOCKER_SOCKET_PATH, True))
+    ]
+    assert model["networks"]["alloy_docker_api"].get("internal") is True
+    assert {
+        name
+        for name, service in services.items()
+        if "alloy_docker_api" in _network_names(service)
+    } == {"alloy", "docker-log-proxy"}
+    assert _network_names(proxy) == {"alloy_docker_api"}
+    assert not proxy.get("ports")
+    assert proxy["expose"] == ["2375"]
+    assert proxy["build"]["dockerfile"] == DOCKER_PROXY_DOCKERFILE
+    assert proxy["user"] == "65532:65532"
+    assert len(proxy["group_add"]) == 1 and proxy["group_add"][0].isdigit()
+    assert proxy["read_only"] is True
+    assert proxy["cap_drop"] == ["ALL"]
+    assert not proxy.get("cap_add")
+    assert "no-new-privileges:true" in proxy["security_opt"]
+
+
+def test_alloy_source_forwards_to_the_loki_write_endpoint() -> None:
+    config = (ROOT / "infrastructure/observability/alloy/config.alloy").read_text(
+        encoding="utf-8"
+    )
+    source = re.search(
+        r'^\s*loki\.source\.docker\s+"containers"\s*\{(?P<body>.*?)^\s*\}',
+        config,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert source is not None
+    assert re.search(
+        r"^\s*forward_to\s*=\s*\[\s*loki\.write\.local\.receiver\s*\]\s*$",
+        source.group("body"),
+        re.MULTILINE,
+    )
+    sink = re.search(
+        r'^\s*loki\.write\s+"local"\s*\{(?P<body>.*?)^\s*\}',
+        config,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert sink is not None
+    assert re.search(
+        r'^\s*url\s*=\s*"http://loki:3100/loki/api/v1/push"\s*$',
+        sink.group("body"),
+        re.MULTILINE,
+    )

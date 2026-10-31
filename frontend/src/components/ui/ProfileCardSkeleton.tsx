@@ -17,7 +17,7 @@ function ProfileCardSkeletonInner({ showCover = true, className = "" }: ProfileC
   const { t } = useTranslation()
   return (
     <div
-      className={`rounded-2xl border border-white/(--opacity-subtle) bg-input-mix overflow-hidden ${className}`}
+      className={`rounded-2xl border border-white/[calc(var(--opacity-subtle)*100%)] bg-input-mix overflow-hidden ${className}`}
       aria-busy="true"
       aria-label={t("common:aria.loadingProfile")}
     >
@@ -55,7 +55,7 @@ function ProfileCardSkeletonInner({ showCover = true, className = "" }: ProfileC
         </div>
 
         {/* Stats row */}
-        <div className="flex gap-6 pt-3 border-t border-white/(--opacity-subtle)">
+        <div className="flex gap-6 pt-3 border-t border-white/[calc(var(--opacity-subtle)*100%)]">
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex flex-col items-center gap-1">
               <Skeleton width={32} height={20} />

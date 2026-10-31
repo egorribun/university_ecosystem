@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "engine": {
+    "name": "zod",
+    "version": "4.6.7"
+  },
+  "formatter": {
+    "name": "zod-validation-error",
+    "version": "4.0.2",
+    "entrySha256": "64bb2e472ed404426167036115ca64fafb7751ea8487676fa33fc6a8f9042578",
+    "integrity": "sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==",
+    "resolved": "https://registry.npmjs.org/zod-validation-error/-/zod-validation-error-4.0.2.tgz"
+  },
+  "cases": [
+    {
+      "name": "provider-value",
+      "errorName": "ZodError",
+      "issues": [
+        {
+          "code": "invalid_type",
+          "expected": "function",
+          "path": [],
+          "message": "Invalid input: expected function, received number"
+        }
+      ],
+      "text": "[\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"function\",\n    \"path\": [],\n    \"message\": \"Invalid input: expected function, received number\"\n  }\n]",
+      "formatted": "Validation error: Invalid input: expected function, received number"
+    },
+    {
+      "name": "record-value",
+      "errorName": "ZodError",
+      "issues": [
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": ["value"],
+          "message": "Invalid input: expected string, received number"
+        }
+      ],
+      "text": "[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"value\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  }\n]",
+      "formatted": "Validation error: Invalid input: expected string, received number at \"value\""
+    },
+    {
+      "name": "union-value",
+      "errorName": "ZodError",
+      "issues": [
+        {
+          "code": "invalid_union",
+          "errors": [
+            [
+              {
+                "code": "invalid_value",
+                "values": ["17"],
+                "path": [],
+                "message": "Invalid input: expected \"17\""
+              }
+            ],
+            [
+              {
+                "code": "invalid_value",
+                "values": ["18"],
+                "path": [],
+                "message": "Invalid input: expected \"18\""
+              }
+            ]
+          ],
+          "path": [],
+          "message": "Invalid input"
+        }
+      ],
+      "text": "[\n  {\n    \"code\": \"invalid_union\",\n    \"errors\": [\n      [\n        {\n          \"code\": \"invalid_value\",\n          \"values\": [\n            \"17\"\n          ],\n          \"path\": [],\n          \"message\": \"Invalid input: expected \\\"17\\\"\"\n        }\n      ],\n      [\n        {\n          \"code\": \"invalid_value\",\n          \"values\": [\n            \"18\"\n          ],\n          \"path\": [],\n          \"message\": \"Invalid input: expected \\\"18\\\"\"\n        }\n      ]\n    ],\n    \"path\": [],\n    \"message\": \"Invalid input\"\n  }\n]",
+      "formatted": "Validation error: Invalid input: expected \"17\" or Invalid input: expected \"18\""
+    },
+    {
+      "name": "minimum-value",
+      "errorName": "ZodError",
+      "issues": [
+        {
+          "origin": "number",
+          "code": "too_small",
+          "minimum": 1,
+          "inclusive": true,
+          "path": [],
+          "message": "at least one"
+        }
+      ],
+      "text": "[\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_small\",\n    \"minimum\": 1,\n    \"inclusive\": true,\n    \"path\": [],\n    \"message\": \"at least one\"\n  }\n]",
+      "formatted": "Validation error: At least one"
+    },
+    {
+      "name": "provider-argument",
+      "errorName": "$ZodError",
+      "issues": [
+        {
+          "expected": "string",
+          "code": "invalid_type",
+          "path": [0],
+          "message": "Invalid input: expected string, received number"
+        }
+      ],
+      "text": "[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      0\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  }\n]",
+      "formatted": "Validation error: Invalid input: expected string, received number at index 0"
+    }
+  ]
+}

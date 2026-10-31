@@ -774,3 +774,202 @@ def test_normalizer_v2_zero_unit_tier0_derivation_validates_end_to_end(
     assert "services/pkg/spicedb/client.go" in tier0_paths
     assert migration_path in tier0_paths
     assert manifest["validation"] == {"valid": True, "errors": []}
+
+
+_GAP_DIAGNOSTIC_PREFIX = "QUALITY_COVERAGE_GAPS "
+
+
+def _gap_diagnostics(
+    result: subprocess.CompletedProcess[str],
+) -> list[dict[str, object]]:
+    return [
+        json.loads(line.removeprefix(_GAP_DIAGNOSTIC_PREFIX))
+        for line in result.stderr.splitlines()
+        if line.startswith(_GAP_DIAGNOSTIC_PREFIX)
+    ]
+
+
+def _set_ws_hub_coverage_gap(root: Path) -> Path:
+    report = root / "artifacts/coverage/go/ws-hub/coverage.out"
+    report.write_text(
+        "mode: count\nservices/ws-hub/main.go:1.1,1.10 1 0\n",
+        encoding="utf-8",
+    )
+    return report
+
+
+def test_normalizer_v2_reports_exact_parsed_gaps_without_changing_failure(
+    evidence_repo: Path,
+) -> None:
+    report = _set_ws_hub_coverage_gap(evidence_repo)
+    original_bytes = report.read_bytes()
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 1
+    assert _gap_diagnostics(result) == [
+        {
+            "classification": "parsed-counters-not-provenance-validated",
+            "components": [
+                {
+                    "component": "go-ws-hub",
+                    "files": [
+                        {
+                            "path": "services/ws-hub/main.go",
+                            "metrics": {
+                                "lines": {
+                                    "status": "derived",
+                                    "covered": 0,
+                                    "total": 1,
+                                    "missing": 1,
+                                },
+                                "statements": {
+                                    "status": "native",
+                                    "covered": 0,
+                                    "total": 1,
+                                    "missing": 1,
+                                },
+                            },
+                        }
+                    ],
+                    "omitted_files": 0,
+                }
+            ],
+        }
+    ]
+    manifest = json.loads(
+        (evidence_repo / "artifacts/coverage/quality-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["validation"] == {
+        "valid": False,
+        "errors": [
+            "go-ws-hub.lines trusted derivation is below 100%",
+            "go-ws-hub.statements is below required coverage floor 100",
+        ],
+    }
+    assert "classification" not in manifest
+    assert report.read_bytes() == original_bytes
+    for error in manifest["validation"]["errors"]:
+        assert error in result.stderr
+
+
+def test_normalizer_v2_does_not_emit_gap_diagnostics_for_success(
+    evidence_repo: Path,
+) -> None:
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 0, result.stderr
+    assert _gap_diagnostics(result) == []
+
+
+@pytest.mark.parametrize(
+    ("fault", "expected_status", "expected_error"),
+    [
+        ("malformed", 2, "Go coverprofile record 2 is malformed"),
+        ("duplicate", 1, "exactly once for go-ws-hub"),
+        ("missing", 1, "expected report not supplied for component python"),
+        ("non-inventory", 2, "non-inventory source"),
+        ("conflicting", 2, "XML and JSON disagree for statements/lines"),
+    ],
+)
+def test_normalizer_v2_suppresses_gap_diagnostics_for_unreliable_evidence(
+    evidence_repo: Path,
+    fault: str,
+    expected_status: int,
+    expected_error: str,
+) -> None:
+    report = _set_ws_hub_coverage_gap(evidence_repo)
+    arguments = _full_arguments(evidence_repo)
+    if fault == "malformed":
+        report.write_text("mode: count\ninvalid record\n", encoding="utf-8")
+    elif fault == "duplicate":
+        arguments.extend(
+            [
+                "--go-report",
+                "go-ws-hub=artifacts/coverage/go/ws-hub/coverage.out",
+            ]
+        )
+    elif fault == "missing":
+        index = arguments.index("--python-json")
+        del arguments[index : index + 2]
+    elif fault == "non-inventory":
+        report.write_text(
+            "mode: count\nservices/ws-hub/not-tracked.go:1.1,1.10 1 0\n",
+            encoding="utf-8",
+        )
+    else:
+        python_json = evidence_repo / "artifacts/coverage/python/coverage.json"
+        payload = json.loads(python_json.read_text(encoding="utf-8"))
+        record = payload["files"]["app/example.py"]
+        record["executed_lines"] = []
+        record["missing_lines"] = [1]
+        record["summary"]["covered_lines"] = 0
+        payload["totals"]["covered_lines"] = 0
+        python_json.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = _run(evidence_repo, arguments)
+
+    assert result.returncode == expected_status, result.stderr
+    assert expected_error in result.stderr
+    assert _gap_diagnostics(result) == []
+    manifest = json.loads(
+        (evidence_repo / "artifacts/coverage/quality-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["validation"]["valid"] is False
+    assert manifest["validation"]["errors"]
+
+
+def test_normalizer_v2_bounds_and_orders_gap_diagnostics_without_source_data(
+    evidence_repo: Path,
+) -> None:
+    report = evidence_repo / "artifacts/coverage/go/ws-hub/coverage.out"
+    paths = [f"services/ws-hub/gap_{index:02d}.go" for index in range(40)]
+    for relative in paths:
+        (evidence_repo / relative).write_text(
+            "package main // source text must not enter diagnostics\n",
+            encoding="utf-8",
+        )
+    _commit_all(evidence_repo, "track bounded diagnostic fixture")
+    report.write_text(
+        "mode: count\nservices/ws-hub/main.go:1.1,1.10 1 1\n"
+        + "".join(f"{relative}:1.1,1.10 1 0\n" for relative in reversed(paths)),
+        encoding="utf-8",
+    )
+
+    first = _run(evidence_repo, _full_arguments(evidence_repo))
+    second = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert first.returncode == second.returncode == 1
+    diagnostics = _gap_diagnostics(first)
+    assert diagnostics == _gap_diagnostics(second)
+    assert len(diagnostics) == 1
+    assert diagnostics[0]["classification"] == (
+        "parsed-counters-not-provenance-validated"
+    )
+    assert len(diagnostics[0]["components"]) == 1
+    component = diagnostics[0]["components"][0]
+    assert component["component"] == "go-ws-hub"
+    assert component["omitted_files"] == 8
+    assert [entry["path"] for entry in component["files"]] == paths[:32]
+    for entry in component["files"]:
+        assert set(entry) == {"path", "metrics"}
+        assert set(entry["metrics"]) == {"lines", "statements"}
+        for metric in entry["metrics"].values():
+            assert set(metric) == {"status", "covered", "total", "missing"}
+            assert (metric["covered"], metric["total"], metric["missing"]) == (
+                0,
+                1,
+                1,
+            )
+    diagnostic_line = next(
+        line
+        for line in first.stderr.splitlines()
+        if line.startswith(_GAP_DIAGNOSTIC_PREFIX)
+    )
+    assert len(diagnostic_line.encode("utf-8")) + 1 <= 16384
+    assert "source text must not enter diagnostics" not in diagnostic_line
+    assert "services/ws-hub/main.go" not in diagnostic_line

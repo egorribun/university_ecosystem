@@ -1,430 +1,71 @@
-# AGENTS.md — University Ecosystem Platform Root Standards
+# University Ecosystem contributor standards
 
-Welcome to the **University Ecosystem Platform** repository. This document defines workspace-wide architectural invariants, quality gates, CI/CD requirements, Git workflows, and cross-cutting security baselines.
+This file records repository-wide requirements. Follow the more specific instructions in each domain file:
 
-Subsystem-specific rules are hierarchically partitioned into domain `AGENTS.md` files:
-- **Backend Domain (`app/`)**: [`app/AGENTS.md`](app/AGENTS.md) — Python 3.14, FastAPI, SQLAlchemy 2.0 async (`lazy="noload"`), Dishka DI, Argon2id, Outbox pattern.
-- **Frontend Domain (`frontend/`)**: [`frontend/AGENTS.md`](frontend/AGENTS.md) — React 19, TypeScript strict, TanStack Router/Query, Zustand, Valibot-only, SSR, ARIA standards.
-- **Go Microservices (`services/`)**: [`services/AGENTS.md`](services/AGENTS.md) — Go 1.26.4+ (CI pins 1.26.10; fuzz jobs may use 1.27.3), `ws-hub`, `gateway`, `file-processor`, `caddy` edge proxy.
+- Backend (`app/`): [app/AGENTS.md](app/AGENTS.md) — Python, FastAPI, SQLAlchemy, DI, security and data-access rules.
+- Frontend (`frontend/`): [frontend/AGENTS.md](frontend/AGENTS.md) — React, TypeScript, routing, state, validation, SSR and accessibility.
+- Services (`services/`): [services/AGENTS.md](services/AGENTS.md) — Go services, Caddy, testing and host tooling.
 
----
+The main components are the Python backend, React frontend, Go services, Rust extension (`native/rust_ext/`), database migrations (`alembic/`), deployment charts (`charts/`), Kubernetes manifests (`k8s/`) and quality policies (`quality/`). Domain files and the referenced policies are the source of detailed implementation rules.
 
-## 1. Workspace Architecture & Subsystem Layout
+## Common commands
 
-```
-university_ecosystem/
-├── app/                        # Python 3.14 backend (FastAPI + SQLAlchemy 2.0 + Dishka DI + Pydantic v2)
-│   ├── api/                    # REST routers & endpoint handlers
-│   ├── core/                   # Config (_NamespaceView composition), DI providers, security, events
-│   ├── models/                 # SQLAlchemy 2.0 ORM models (mandatory lazy="noload")
-│   ├── repositories/           # Async database repositories
-│   ├── schemas/                # Pydantic v2 DTOs and validation schemas
-│   ├── services/               # Narrow business logic services
-│   └── AGENTS.md               # Backend domain invariants & guidelines
-├── frontend/                   # React 19 frontend (Vite 8 / Rolldown + TanStack Router + Query + Zustand)
-│   ├── src/                    # Application source code
-│   │   ├── components/         # Reusable UI & design system primitives (ARIA compliant)
-│   │   ├── features/           # Feature modules, routes, and Valibot schemas
-│   │   ├── hooks/              # Custom hooks (useDebounced, useFocusTrap)
-│   │   └── stores/             # Zustand state stores (useAuthStore)
-│   └── AGENTS.md               # Frontend domain invariants & guidelines
-├── services/                   # Go microservices & edge infrastructure
-│   ├── gateway/                # Reverse proxy, JWT/JWKS validation, rate limiter, XFetch L1 cache
-│   ├── ws-hub/                 # Real-time WebSocket hub (goroutine tracking, frame limits)
-│   ├── file-processor/         # gRPC file processing & GraphQL engine
-│   ├── caddy/                  # Caddy v2 reverse proxy & TLS termination
-│   └── AGENTS.md               # Go microservices invariants & guidelines
-├── native/rust_ext/            # Rust native optimizer (PyO3 FFI — schedule conflicts, partitions, audit-signature HMAC)
-├── alembic/                    # Database migration history
-├── charts/                     # Helm deployment charts (university-ecosystem)
-├── k8s/                        # Kubernetes manifests (OpenFeature flagd, external secrets, Kyverno policies)
-├── quality/                    # Quality contract & test manifests (quality-contract.json)
-└── verify_harness.py           # Automated developer harness test suite
-```
+Run these commands from the repository root.
 
----
-
-## 2. Workspace Commands
-
-### Backend (Python 3.14)
 ```bash
-# Linting & Formatting
+# Python backend
 uv run ruff check app/
-uv run ruff format app/
-python -m py_compile app/main.py
-
-# Type Checking & Custom AST Checks
-python -m mypy --config-file pyproject.toml app/
-python scripts/custom_ast_linter.py app/
-python scripts/check_no_python2_except.py
-
-# Tests & Coverage
+uv run mypy --config-file pyproject.toml app/
 pytest --cov=app --cov-report=term-missing
-```
 
-### Frontend (React 19 / TypeScript)
-```bash
-# Type Checking & Linting
-cd frontend && npx tsc --noEmit
-cd frontend && npm run lint
+# Frontend
+npm --prefix frontend run typecheck
+npm --prefix frontend run lint
+npm --prefix frontend run test -- --silent=true
+npm --prefix frontend run build
 
-# Tests & Build
-cd frontend && npm run test -- --silent=true
-cd frontend && npm run build
-```
+# Go services
+(cd services/gateway && go test -v -race ./...)
+(cd services/ws-hub && go test -v -race ./...)
+(cd services/file-processor && go test -v -race ./...)
 
-### Go Microservices
-
-Run each command from the repository root. The pinned-container alternative is
-in [the Go domain instructions](services/AGENTS.md#11-linux-equivalent-tooling-from-a-windows-host).
-
-```bash
-# Linting (golangci-lint v2.14.0; explicit root config matches CI)
-(cd services/gateway && golangci-lint run --config ../../.golangci.yml --timeout 5m)
-(cd services/ws-hub && golangci-lint run --config ../../.golangci.yml --timeout 5m)
-(cd services/file-processor && golangci-lint run --config ../../.golangci.yml --timeout 5m)
-
-# Tests
-cd services/gateway && go test -v -race ./...
-cd services/ws-hub && go test -v -race ./...
-cd services/file-processor && go test -v -race ./...
-```
-
-### Harness & Quality Verification
-```bash
+# Repository harness
 python verify_harness.py
 ```
 
----
+Use the pinned tool versions and container guidance in the domain files and CI workflows.
 
-## 3. Git & Commit Invariants
+## Git and review
 
-- **Active Branch**: `egorribun` (all feature and maintenance work branches off and targets `egorribun`).
-- **Commit Message Format**:
-  - `feat(waveXX): description`
-  - `fix(waveXX): description`
-  - `refactor(waveXX): description`
-- Quality, security, CI, documentation, and testing maintenance are explicit
-  non-wave scopes. Use a scope such as `fix(quality):`, `fix(security):`,
-  `test(contracts):`, or `docs(quality):`; the `waveXX` form is reserved for
-  core business-feature work.
-- **STRICT PROHIBITION**: NEVER include `Co-Authored-By` trailers under any circumstances.
-- **Testing & Waves Association**: Testing coverage and roadmaps do **NOT** belong to waves (waves are strictly reserved for main business features). Do not associate testing work with waves in commit messages, branch names, or logs.
-- **Clean Git State**: After running `detect-secrets` or pre-commit hooks, always re-stage `.secrets.baseline` via `git add .secrets.baseline`.
+- The active development branch is `egorribun`. Follow the existing pull-request workflow.
+- Feature commits use `feat(waveXX):`, `fix(waveXX):` or `refactor(waveXX):`. Quality, security, CI, documentation and test maintenance use a non-wave scope such as `fix(quality):`, `fix(security):`, `test(contracts):` or `docs(quality):`.
+- NEVER include `Co-Authored-By` trailers. Testing coverage and roadmaps are not wave work.
+- Integrate through pull requests and required checks. Do not force-push or delete `egorribun`; rebase only local commits that have never been pushed. Use the admin bypass only when the owner explicitly authorizes the named pull request. Never run `scripts/merge-as-admin.ps1` to work around a failed or unavailable check; diagnose the gate or wait for recovery. Preserve all other branch-protection rules.
+- After `detect-secrets` or pre-commit hooks run, re-stage `.secrets.baseline` with `git add .secrets.baseline`.
 
----
+## Quality & Zero-Warning Contract
 
-## 4. Quality & Zero-Warning Contract
+The authoritative coverage policy is [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md), implemented by [quality/quality-contract.json](quality/quality-contract.json) and [quality/ownership-mapping.json](quality/ownership-mapping.json). Keep existing thresholds and required checks, with no new warnings. A policy change requires the ADR process and explicit owner authorization.
 
-All contributions must comply with `quality/quality-contract.json` and
-[ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md) (risk-based quality policy
-for the MVP release; the current plan is
-[`docs/superpowers/plans/MVP_MASTER_PLAN.md`](docs/superpowers/plans/MVP_MASTER_PLAN.md)):
+- Tier 0 files require 100% line, statement, branch and function coverage. The only migration exception is the exact set of 131 unchanged Alembic files in the source-bound no-decrease baseline from `ac74e915`; it expires on 2026-11-13. New, modified or unmatched migrations, including PR-touched migrations, and every other Tier 0 file remain at 100% for all metrics.
+- Other components keep their current contract floors until ADR-047 stage Q3. The current 100% patch-coverage requirement remains until ADR-047 stage Q3; the planned Q3 no-decrease ratchet and 90% changed-line floor are not active early.
+- ADR-047 stage Q1 keeps full Python `mutmut` and frontend Stryker in nightly/manual lanes outside the MVP release gate. The Q1/Q4 source migration is integrated; every new source SHA still needs its own required-check evidence. The nightly no-regression check is planned for stage Q2; it is not implemented by adopting this policy. Verify the remaining required checks for the current MVP source. Do not move them into the release gate or spend MVP effort raising the global mutation score. Equivalent-mutant exclusions require an owner, evidence and expiry in `quality/mutation-exclusions.json`; quarantine and manual `Killed` reclassification are forbidden.
+- The detect-secrets baseline contains 315 identities. The separate disposition policy contains exactly 494 finite approved path/type/digest identities in [quality/security-false-positive-dispositions.json](quality/security-false-positive-dispositions.json). Gitleaks has a separate set of exactly 26 immutable historical commit/path/rule/line fingerprints in [.gitleaksignore](.gitleaksignore). These inventories do not authorize new or changed findings.
+- Matching is exact and fail-closed: changed or unmatched findings block; expired dispositions do not match. Do not add baseline entries, inline pragmas, automatic approvals, broad exclusions, wildcards, reclassifications, expiry extensions or scanner bypasses. Keep each finding in its existing category.
+- Preserve all 78 required CI context/app pairs, blocking CodeQL `code_scanning` and the existing hooks. Do not remove, rename or weaken a required context or hook without the explicit owner authorization recorded in ADR-047.
+- Keep final-source validation and required checks for every new source SHA. Policy records alone do not establish a passing scan, test or hosted check.
 
-1. **Coverage**:
-   - Tier 0 files (`tier0_rules` in `quality/ownership-mapping.json`) require 100% line,
-     statement, branch and function coverage, except for the exact 131 unchanged
-     Alembic files in the 2026-10-14 owner-approved, source-bound no-decrease baseline from
-     commit ac74e915; the approved contract
-     retains its per-file evidence and provenance. The exception expires
-     2026-11-13. New, modified, or unmatched migrations (including PR-touched
-     migrations), and every other Tier 0 file remain at 100% for all metrics.
-     See [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md).
-   - Other components keep their current contract floors until ADR-047 stage Q3 replaces
-     them with a no-decrease ratchet and a 90% patch floor for changed lines.
-2. **Mutation Testing**:
-   - ADR-047 stage Q1 keeps full `mutmut` (Python backend) and Stryker (TypeScript frontend)
-     in nightly/manual lanes outside the MVP release gate. The Q1/Q4 source migration is
-     integrated; every new source SHA still needs its own required-check evidence.
-     Do not spend MVP effort on raising the global mutation score.
-   - The nightly no-regression check is planned for stage Q2; it is not implemented by
-     adopting this policy. Keep the integrated Q1/Q4 migration in force and verify
-     the remaining required checks for the current MVP source.
-   - A proven equivalent mutant goes to `quality/mutation-exclusions.json` with owner,
-     evidence and an expiry date; quarantine and manual `Killed` reclassification stay
-     forbidden.
-3. **Pre-Commit Enforcement**:
-   - `ruff` (v0.14.14 pinned — prevents syntax regressions).
-   - `detect-secrets` scans against `.secrets.baseline`; ADR-047 records the
-     original finite owner approval for exactly 85 path/type/digest identities
-     (83 verified public or synthetic findings and two linked fixtures limited
-     to the internal synthetic demo). A separate 2026-10-12 UTC decision
-     approved exactly one additional public NATS image digest identity at
-     `tests/test_workflow_fail_closed_contracts.py:43`. The original 85 identities
-     remain unchanged, for 86 exact policy identities total. On 2026-10-13 UTC,
-     the owner separately approved exactly 27 additional identities (12 public
-     integrity digests and 15 independent contract fingerprints), bringing the
-     approved scope to 113 exact identities at that decision, preserving the prior 86.
-     The owner reaffirmed this scope on 2026-10-13. The baseline remains at 319
-     identities and the 78 required contexts remain unchanged.
-     That decision covered only its exact 27 additions; changed or unmatched
-     identities remain fail-closed. It authorized no baseline entry, inline
-     pragma, broad scanner exclusion, bypass, or context change. Final-source
-     validation remains required.
-     Separately, the owner approved one exact Caddy image-digest disposition;
-     this distinct decision extended the approved scope from 113 to 114.
-     Implementation is tracked in [MVP STATUS](docs/superpowers/plans/STATUS.md). On 2026-10-13
-     UTC, the owner also approved exactly four additional exact-match
-     dispositions: two synthetic fake Redis `Secret Keyword` findings in
-     `tests/test_chat_command_failure_paths.py`, one public NATS image digest,
-     and one public imgproxy image digest in
-     `tests/test_docker_startup_contracts.py`. These records are scoped to
-     exact path, detector type, and finding digest and expire on 2027-01-10;
-     changed or unmatched identities remain fail-closed. The approved scope is
-     118 exact identities: 113 prior identities + the separately approved
-     Caddy identity + four newly approved identities. This changes none of the
-     319 baseline identities, 78 required contexts, CodeQL rule, or hooks.
-     Approval does not replace policy integration, tests, hosted checks, or
-     final-source validation.
+The principal source-bound checks are [tests/test_quality_contract.py](tests/test_quality_contract.py), [tests/test_verify_secrets_baseline.py](tests/test_verify_secrets_baseline.py), [tests/test_gitleaks_dispositions_contract.py](tests/test_gitleaks_dispositions_contract.py) and [tests/test_ci_check_catalog.py](tests/test_ci_check_catalog.py). Current implementation and audit state is recorded in [STATUS.md](docs/superpowers/plans/STATUS.md); audit references are indexed in [docs/audits/INDEX.md](docs/audits/INDEX.md).
 
-     On 2026-10-14 UTC, the owner separately approved exactly 17 additional
-     exact-match identities, extending the approved scope from 118 to 135 while
-     preserving all prior 118 records. They are the exact path, detector-type, and
-     finding-digest tuples in quality/security-false-positive-dispositions.json: 15
-     public_integrity_digest / Hex High Entropy String findings at
-     quality/quality-contract.json and 2 at
-     scripts/quality/validate_quality_contract.py. Each carries reviewed_on
-     2026-10-14 and expires_on 2027-01-10. No other identity, baseline entry, inline
-     pragma, broad scanner exclusion, bypass, or context change is authorized. The
-     baseline remains 319 identities, the 78 required contexts, blocking CodeQL
-     rule, and hooks remain unchanged. Approval does not replace policy integration,
-     tests, hosted checks, or final-source validation.
+## Infrastructure and cross-service security
 
-     On 2026-10-15 UTC, the owner approved exactly 90 additional exact-match
-     dispositions, extending the historically approved 135 identities to exactly
-     225. The exact repository-path, detector-type, and finding-digest tuples are
-     recorded in quality/security-false-positive-dispositions.json: 54
-     public_integrity_digest, 27 independent_contract_fingerprint, and 9
-     external_kubernetes_secret_reference identities. The 27 v4 fingerprints extend
-     the existing independent_contract_fingerprint category; the external Kubernetes
-     reference is the sole new category. Each carries reviewed_on 2026-10-15 and
-     expires_on 2027-01-10; the previous 135 records remain unchanged. Changed or
-     unmatched identities remain fail-closed. This authorizes no cross-category
-     reclassification, other identity, baseline entry, inline pragma, broad scanner
-     exclusion, bypass, or context change. The baseline stays at 319 identities and
-     78 required contexts; blocking CodeQL and hooks stay unchanged. Validator
-     integration, tests, hosted checks, and final-source validation remain separate
-     requirements.
+- Use the Python backend base `python:3.14-slim-bookworm` and frontend SSR base `node:24-alpine`. Go builders use digest-pinned `golang:1.26.10-alpine`; the runtime is `distroless/static-debian12` (file processor also ships `grpc_health_probe`). Kyverno Policy 9 rejects empty and `:latest` tags; image references must use semantic versions or immutable digests.
+- Preserve health checks: backend `/health/ready`; file processor `grpc_health_probe -addr=:50051`; Prometheus `/-/healthy`; Grafana `/api/health`; imgproxy `imgproxy health`; Tempo and Loki HTTP health endpoints. Temporal runs with `BIND_ON_IP=0.0.0.0` on the Compose bridge network.
+- Process Kubernetes `${...}` variables through `scripts/apply_raw_k8s.sh` before `kubectl apply`. The wrapper allowlists manifests, requires variables, validates the registry and accepts `IMAGE_TAG` only as a 40-character commit SHA or semantic version. Direct `envsubst | kubectl apply` is forbidden.
+- Keep `charts/university-ecosystem/values.yaml` parameterized for frontend, backend, ingress TLS, resources and HPA.
+- Preserve ADR-013 dual-key JWT rotation: the old key verifies during transition and the new key signs; ExternalSecrets refresh every minute. Preserve centralized logging redaction for email and phone data (ADR-012).
+- Retain path-traversal checks in backend storage, frontend SSR and the Go file processor. The gateway signs verified internal identity with HMAC-SHA256; receiving services verify `X-Internal-Signature`.
 
-     On 2026-10-16 Europe/Istanbul (2026-10-15 UTC), the owner approved
-     exactly 18 additional exact-match dispositions, extending the historically
-     approved 225 identities to 243. The approved scope is limited to exact
-     repository-path, detector-type, and finding-digest tuples: 9 identities in
-     the existing external_kubernetes_secret_reference category, 3 in the
-     existing ci_test_contract_sentinel category across two new path/type pairs,
-     and 6 in the new source_contract_identifier category across five finite
-     path/type pairs and requiring both fixed semantic evidence markers. Each
-     record carries reviewed_on 2026-10-15 and expires_on 2027-01-10; the prior
-     225 records remain unchanged. No raw finding digests are repeated here.
-     Changed or unmatched identities remain fail-closed. This approval authorizes
-     no category-wide match, automatic identity approval, expiry bypass,
-     cross-category reclassification, other identity, baseline entry, inline
-     pragma, broad scanner exclusion, bypass, or context change. The finite
-     131-file migration baseline is untouched. The baseline remains at 319
-     identities, 78 required contexts, blocking CodeQL, and unchanged hooks.
-     Authorization does not establish integration, test, scan, or hosted-check
-     results; each remains an independent verification requirement.
+## Documentation and private material
 
-     On 2026-10-16 Europe/Istanbul (2026-10-15 UTC), the owner separately
-     approved exactly seven additional exact-match identities in the existing
-     `external_kubernetes_secret_reference` category, extending the approved
-     scope from 243 to 250 while preserving the prior 243 records. Each is an
-     exact path/type/finding-digest identity with `reviewed_on` 2026-10-15 and
-     `expires_on` 2027-01-10; no raw digests are repeated here. This decision
-     authorizes no other identity, category-wide match, reclassification, baseline
-     entry, inline pragma, exclusion, bypass, or context change. The 21 inline
-     detect-secrets pragma comments were removed; the pre-removal 4,408/483/0
-     scan is historical and superseded by the unfiltered 4,408/490/7 scan against
-     the then-current 243-record overlay. A private conditional 250-overlay scan
-     reported 0 unmatched against the candidate overlay. The owner-approved
-     250-record policy support is now integrated in source; final-source validation
-     and hosted checks remain required for each published source. The baseline remains 319 identities and all 78
-     required contexts, blocking CodeQL, and hooks remain unchanged. See the
-     [dated audit supplement](docs/audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16).
-     On 2026-10-16, the owner approved exactly two additional exact-match identities in
-     the existing external_kubernetes_secret_reference category: Secret Keyword public
-     Kubernetes object references at security/trivy-university-values.yaml and
-     tests/test_mfa_helm_contract.py. The exact path/type/finding-digest tuples are
-     recorded in quality/security-false-positive-dispositions.json; no raw digests are
-     duplicated here. Each record has reviewed_on 2026-10-16 and expires_on 2027-01-10.
-     The previous 250 records remain unchanged, bringing the approved scope to exactly
-     252. Changed or unmatched identities remain fail-closed. This approval authorizes
-     no other identity, category-wide matching, baseline entry, pragma, broad exclusion,
-     bypass, reclassification, or context change. The policy records do not establish
-     passing tests, final-source validation, or hosted checks. The 319-entry baseline,
-     all 78 required contexts, blocking CodeQL, hooks, and the finite 131-file migration
-     exception remain unchanged. See the [two-identity audit
-     update](docs/audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16).
-
-     On 2026-10-16, the owner separately approved exactly nine additional exact-match
-     `Secret Keyword` identities in the existing `source_contract_identifier` category,
-     extending the approved scope from 252 to 261 and preserving the prior 252 records.
-     These finite function-binding/restoration identities cover portable opener selection,
-     Unix opener selection, and test cleanup restoration across the gateway, file-processor,
-     and ws-hub Go configuration packages. Exact path/type/finding-digest tuples are
-     recorded in `quality/security-false-positive-dispositions.json`; raw digests are
-     omitted. Each record has `reviewed_on` 2026-10-16 and expires on 2027-01-10.
-     This decision authorizes only those nine identities; no category-wide match,
-     automatic approval, baseline entry, inline pragma, broad exclusion, bypass,
-     reclassification, or context change is permitted. The 319-entry baseline, 78
-     required contexts, blocking CodeQL, hooks, and finite 131-file migration exception
-     remain unchanged. The policy records do not establish current-source validation or
-     hosted-check results.
-
-     On 2026-10-20 UTC, the owner approved exactly one additional public Compose
-     inspection test sentinel at `tests/test_live_nats_transport.py`, detector
-     `Secret Keyword`. Its exact path/type/finding-digest identity is recorded in
-     the finite `public_compose_inspection_test_sentinel` category, extending
-     263 prior records to 264 while preserving all prior records. Required
-     semantic evidence and a fixed maximum expiry of 2027-01-10 bind this
-     singleton; changed identities, reclassification and expiry extension remain
-     fail-closed. No raw digest is duplicated here. This authorizes no baseline
-     edit, pragma, broad exclusion, credential change or other disposition.
-     The baseline remains 319 identities, with all 78 required context/app pairs,
-     blocking CodeQL and the finite migration exception unchanged. Source
-     integration is not scanner or test evidence; each hosted gate still applies.
-
-     On 2026-10-20 UTC, the owner separately approved exactly 18 additional
-     font-provenance identities and the reviewed validator/test diff: 16 public
-     checksums and two npm SRI findings. The exact path/type/digest tuples are
-     recorded in `quality/security-false-positive-dispositions.json`, in the
-     existing `public_integrity_digest` category. The SRI support adds only two
-     finite path/type pairs. All prior 264 records remain unchanged, bringing
-     the approved scope to 282; the additions expire on 2027-01-10. Changed or
-     unmatched identities remain fail-closed. No category-wide match, further
-     identity, baseline entry, inline pragma, broad exclusion, bypass, expiry
-     extension, or context change is authorized. Baseline319, all 78 required
-     context/app pairs, blocking CodeQL, hooks and finite131 remain unchanged.
-     Approval does not establish final-source scan, tests, hosted CI or release
-     acceptance; each still requires its own evidence.
-
-     On 2026-10-21 UTC, the owner approved exactly one additional public
-     certifi 2026.10.19 wheel-checksum identity in
-     `tests/test_security_hardening_workflow_contract.py`, detector
-     `Hex High Entropy String`, under `public_integrity_digest`.
-     Its exact path/type/digest record is in the disposition policy, reviewed
-     2026-10-21 and expiring 2027-01-10. The prior 282 records remain unchanged,
-     bringing the approved scope to 283. No further identity, baseline entry,
-     inline pragma, broad exclusion, expiry extension or gate change is
-     authorized. The independent checksum assertion remains. Baseline319,
-     all 78 required context/app pairs, CodeQL, hooks and finite131 remain
-     unchanged; fresh source validation and hosted checks are still required.
-
-     On 2026-10-21 UTC, the owner separately approved exactly one additional
-     public official Go 1.26.10-alpine3.24 image-checksum identity in
-     `tests/test_docker_startup_contracts.py`, detector `Hex High Entropy String`,
-     under the existing `public_integrity_digest` category. Its exact
-     path/type/digest record is in the policy, reviewed 2026-10-21 and expiring
-     2027-01-10. All prior 283 records remain unchanged; the scope is now 284.
-     This grants no other identity, baseline edit, inline pragma, broad
-     exclusion, validator relaxation, expiry extension, or gate change.
-     Baseline319, required78, blocking CodeQL, hooks, and finite131 remain
-     unchanged; source-bound scans and tests still apply.
-
-     On 2026-10-21 UTC, the owner approved exactly ten additional public
-     benchmark-helper provenance identities: commit, parent, tree, blob and
-     SHA-256 bindings in each of `scripts/quality/benchmark_capture_activation.py`
-     and `tests/test_benchmark_capture_activation_workflow.py`. The approved
-     checkpoint contains the already-approved Go toolchain refresh. The exact
-     path/type/finding-digest records use `public_integrity_digest`, are reviewed
-     on 2026-10-21 and expire on 2027-01-10. The prior 284 records are retained
-     unchanged, bringing the scope to 294. This grants no other identity,
-     category-wide matching, baseline edit, pragma, expiry extension or gate
-     change. Independent provenance checks, benchmark population and threshold,
-     baseline 319, required 78, blocking CodeQL and finite 131 stay unchanged.
-     Fresh scans and hosted checks remain required after integration.
-
-   - `gitleaks` (repo secret scanning). On 2026-10-20 the owner approved
-     exactly 25 immutable historical commit/path/rule/line fingerprints:
-     24 public, synthetic, or prose findings and one separately reviewed
-     `SECRET_KEY` test-helper fixture identity. Repository-local test usage
-     of that singleton is verified; external origin and operational reuse
-     are not verified. The exact finite set is in `.gitleaksignore` and
-     `tests/test_gitleaks_dispositions_contract.py`. This permits no wildcard,
-     path-wide or rule-wide ignore, new identity, history rewrite, scanner
-     bypass, or gate change. New contexts remain blocking. This separate
-     Gitleaks decision changes none of the 319 detect-secrets baseline
-     identities or 264 detect-secrets dispositions. Policy integration does
-     not establish a passing full-history scan or hosted gate.
-   - `bandit` (Python security static analysis).
-   - `mypy` (strict type-checking for backend auth, services, api, core, repositories, graphql).
-   - `no-python2-except` (rejects `except A, B:` comma syntax in favor of `except (A, B):`).
-   - `actionlint` (validates GitHub Actions workflow syntax).
-   - `semgrep-sast` (Static Application Security Testing).
-   - `renovate-config-validator` (validates dependency update configurations).
-
-   The additional `trivy-fs-scan` hook (`trivyfs-docker`) runs only at the manual
-   stage. Hosted Trivy image scans are configured separately in CI.
-
----
-
-## 5. Merge Policy
-
-- Use the ordinary pull-request flow and required checks for changes to `main`.
-- **Solo-maintainer mode** (owner decision 2026-10-12): the owner is the only collaborator, so the `main` ruleset does not require a CODEOWNERS approval; the required status checks and the CodeQL `code_scanning` rule are the merge control. CODEOWNERS stays for reviewer auto-assignment.
-- **Break-glass bypass**: the Admin bypass in ruleset `8335285` works only through a pull request (`bypass_mode: pull_request`). Use it only when the owner explicitly authorizes it in the conversation for named pull requests. Never initiate a bypass on your own. Force-push and general changes to branch protection remain outside the approved MVP release workflow. Do not invoke `scripts/merge-as-admin.ps1` to work around a failed or unavailable check; diagnose the gate or wait for the external service to recover.
-- Ruleset `egorribun-protect` forbids force-push and deletion of `egorribun`. Integrate remote work with a merge, or rebase only local commits that were never pushed.
-- On 2026-10-09 the owner explicitly authorized removing the 14 Q1/Q4 required check contexts listed in [ADR-047](docs/adr/ADR-047-risk-based-quality-policy.md#authorized-required-context-removals), from main ruleset `8335285`, after the corresponding CI diff is complete, reviewed and checked. The owner subsequently approved removing exactly one additional context, `Security Audit / Semgrep SAST`, after the reviewed scanner de-duplication change passes its checks. CodeQL remains blocking and Semgrep remains in pre-commit. Preserve every other rule and context; this permission does not authorize bypass, further context removals, or early promotion of advisory live smoke. The owner-approved 2026-10-12 ruleset change (two compatibility contexts removed, four security contexts and a CodeQL `code_scanning` rule added) is recorded in ADR-047.
-
----
-
-## 6. Docker, Kubernetes & Infrastructure Standards
-
-- **Base Images**:
-  - Python backend: `python:3.14-slim-bookworm`
-  - Frontend SSR: `node:24-alpine` (running on port 3000)
-  - Go microservices: digest-pinned `golang:1.26.10-alpine` builders and a `distroless/static-debian12` runtime; `file-processor` also ships `grpc_health_probe`
-- **Healthcheck Standards**:
-  - Backend: `/health/ready` (FastAPI readiness probe)
-  - File processor: `grpc_health_probe -addr=:50051`
-  - Prometheus: `/-/healthy`
-  - Grafana: `/api/health`
-  - Imgproxy: `imgproxy health`
-  - Tempo / Loki: HTTP health endpoints
-  - Temporal server (`temporalio/server`): `BIND_ON_IP=0.0.0.0` on the Compose bridge network
-- **Kubernetes Variable Interpolation**:
-  - `${FRONTEND_HOST}`, `${API_HOST}`, `${TLS_SECRET_NAME}`, `${VAULT_URL}`, `${IMAGE_REGISTRY}` and `${IMAGE_TAG}` must be processed with `envsubst` through `scripts/apply_raw_k8s.sh` before executing `kubectl apply` (TD-31-02, TD-31-03). The wrapper allowlists supporting manifests, requires all variables, validates the registry path, and accepts `IMAGE_TAG` only as a 40-character commit SHA or semantic version. Direct raw `envsubst | kubectl apply` is forbidden.
-- **Kyverno Security Policies**:
-  - **Policy 9**: Rejects any deployment with empty or `:latest` image tags. All image references must use semantic versions or immutable image digests.
-- **Helm Configuration**:
-  - `charts/university-ecosystem/values.yaml` must remain fully parameterized for frontend, backend, ingress TLS, resources, and HPA autoscaling (MOD-30-04).
-
----
-
-## 7. Cross-Cutting Security Baseline
-
-- **Three-Tier Secret Rotation (ADR-013)**:
-  - Supports dual-key JWT rotation windows (old key remains valid for verification during transition; new key signs outbound tokens).
-  - ExternalSecrets refresh interval: `1m`.
-- **Centralized Logging & Redaction (ADR-012)**:
-  - Grafana Loki + Fluent Bit aggregation.
-  - Structlog processor `_redact_pii` automatically masks email addresses (>=2-char TLD) and phone numbers across all backend logs.
-- **Path Traversal Defense**:
-  - Backend: `StaticFSStorage._resolve_validated_path()` checks symlinks and `is_relative_to(base_dir)`.
-  - Frontend SSR: `server-prod.mjs` validates `filePath.startsWith(staticRoot)`.
-  - Go File Processor: `sourceKey` and `destKey` sanitized against directory traversal.
-- **Cross-Service Identity Assertion**:
-  - Edge gateway signs verified user identity into `X-Internal-Signature` via HMAC-SHA256. Backend services verify this signature on internal RPCs.
-
----
-
-## 8. Subagent Profiles & Progressive Context
-
-The developer harness defines 5 specialized subagents configured in `.agents/subagents.json`:
-- `lead_architect` (`inherit` mode): System design, ADR governance, Dishka DI validation.
-- `tdd_developer` (`share` mode): RED-GREEN-REFACTOR implementation in explicitly assigned files.
-- `qa_e2e_tester` (`share` mode): Browser E2E, Playwright, ARIA compliance, SSR hydration testing.
-- `security_auditor` (`inherit` mode): Argon2id, RS256 JWKS, path traversal, SAST, secret leak prevention.
-- `perf_optimizer` (`inherit` mode): EXPLAIN ANALYZE, TieredCache tuning, frontend bundle budget (<500 KB).
-
-These profiles are guidance, not active processes or enforced timers. The root
-assigns at most three GPT-6 Luna Max agents in the current `egorribun` checkout,
-with disjoint file ownership and a 30-minute checkpoint budget; root owns Git.
-The lifecycle scripts use the Antigravity protocol. They are available through
-the explicit runner and are not automatically registered as Codex hooks.
-
----
-
-## 9. Audit Trail & Documentation Index
-
-The current documentation and audit-retention policy are indexed in [`docs/README.md`](docs/README.md) and [`docs/audits/INDEX.md`](docs/audits/INDEX.md). Legacy archives have been reconciled against the active MVP plan and removed from the working tree after transferring applicable requirements. Preserve Git history; keep the verified rescue bundle private and isolated because it contains credential-shaped history. Do not add session logs or superseded snapshots to the current indexes.
+Use [docs/README.md](docs/README.md), [docs/audits/INDEX.md](docs/audits/INDEX.md), ADR-047 and `STATUS.md` for current policy and audit detail rather than copying approval history here. Preserve Git history. Keep credential-shaped rescue material private and isolated; do not commit session logs or superseded snapshots.

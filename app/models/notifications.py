@@ -20,7 +20,10 @@ from sqlalchemy import (
 )
 
 # Removed postgresql UUID import
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql.compiler import SQLCompiler
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.database import Base
 from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
@@ -231,6 +234,31 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
         super().__init__(**kwargs)
 
 
+class _EmptyJsonArrayDefault(ColumnElement[Any]):
+    """Server default for an empty JSON array, spelled for each dialect.
+
+    PostgreSQL reports the migrated default as ``'[]'::json``, which alembic's
+    server-default comparison must reproduce exactly. The SQLite unit-test schema
+    rejects the ``::`` cast and takes the plain literal.
+    """
+
+    inherit_cache = True
+
+
+@compiles(_EmptyJsonArrayDefault)
+def _compile_empty_json_array_default(
+    element: _EmptyJsonArrayDefault, compiler: SQLCompiler, **kw: Any
+) -> str:
+    return "'[]'"
+
+
+@compiles(_EmptyJsonArrayDefault, "postgresql")
+def _compile_empty_json_array_default_postgresql(
+    element: _EmptyJsonArrayDefault, compiler: SQLCompiler, **kw: Any
+) -> str:
+    return "'[]'::json"
+
+
 class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "push_subscriptions"
 
@@ -248,7 +276,13 @@ class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
     last_seen_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
     )
-    topics: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
+    topics: Mapped[list[Any]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+        # Matches the catalog default installed by revision f9d2b1f5e2d0.
+        server_default=_EmptyJsonArrayDefault(),
+    )
 
     user = relationship("User", back_populates="push_subscriptions", lazy="noload")
 

@@ -238,6 +238,10 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
 
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("CACHE_REDIS_URL", "redis://cache.example.test:6379/0")
+    monkeypatch.setenv("RATE_LIMIT_STORAGE_BACKEND", "redis")
+    monkeypatch.setenv(
+        "RATE_LIMIT_STORAGE_URI", "redis://rate-limit.example.test:6379/1"
+    )
     monkeypatch.setenv("REVOCATION_REDIS_URL", "redis://revocation.example.test:6379/0")
     monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
@@ -262,6 +266,8 @@ def test_auto_create_schema_default_false_in_production(monkeypatch, tmp_path):
     monkeypatch.setenv("SMTP_HOST", "relay.aud471.invalid")
     monkeypatch.setenv("SMTP_PORT", "587")
     monkeypatch.setenv("SMTP_SECURITY", "starttls")
+    monkeypatch.setenv("TRUSTED_PROXIES", "10.0.0.0/8")
+    monkeypatch.setenv("IDEMPOTENCY_HMAC_SECRET", Fernet.generate_key().decode("ascii"))
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):
@@ -281,6 +287,10 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, tmp_pa
 
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("CACHE_REDIS_URL", "redis://cache.example.test:6379/0")
+    monkeypatch.setenv("RATE_LIMIT_STORAGE_BACKEND", "redis")
+    monkeypatch.setenv(
+        "RATE_LIMIT_STORAGE_URI", "redis://rate-limit.example.test:6379/1"
+    )
     monkeypatch.setenv("REVOCATION_REDIS_URL", "redis://revocation.example.test:6379/0")
     monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
@@ -305,6 +315,8 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, tmp_pa
     monkeypatch.setenv("SMTP_HOST", "relay.aud471.invalid")
     monkeypatch.setenv("SMTP_PORT", "587")
     monkeypatch.setenv("SMTP_SECURITY", "starttls")
+    monkeypatch.setenv("TRUSTED_PROXIES", "10.0.0.0/8")
+    monkeypatch.setenv("IDEMPOTENCY_HMAC_SECRET", Fernet.generate_key().decode("ascii"))
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 
     with _temporary_env_file(None):

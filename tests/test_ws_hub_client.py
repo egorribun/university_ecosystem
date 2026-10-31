@@ -65,7 +65,7 @@ async def test_invalidate_cache_can_request_room_eviction_with_stable_event_id(
     )
 
     args, kwargs = mock_broker.publish.call_args
-    assert args[0] == "cache.invalidate"
+    assert args[0] == "cache.revoke"
     assert args[1]["data"]["evict_room"] is True
     signed_data = json.dumps(
         args[1]["data"], sort_keys=True, separators=(",", ":")
@@ -75,6 +75,30 @@ async def test_invalidate_cache_can_request_room_eviction_with_stable_event_id(
     ).hexdigest()
     assert args[1]["signature"] == expected_signature
     assert kwargs["msg_id"] == "stored-event-1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("evict_room", "subject"),
+    [(False, "cache.invalidate"), (True, "cache.revoke")],
+    ids=["pure-invalidation", "room-revocation"],
+)
+async def test_each_event_class_publishes_on_its_own_subject_with_retries(
+    ws_client, monkeypatch, evict_room, subject
+):
+    # ws-hub runs one consumer per subject: revocations must never share the
+    # live pure-invalidation subject, and a retry must stay on the same subject.
+    client, mock_broker = ws_client
+    mock_broker.publish.side_effect = [ConnectionError("err"), None]
+    monkeypatch.setattr("app.services.ws_hub_client.asyncio.sleep", AsyncMock())
+
+    await client.invalidate_cache("user-1", "room-1", evict_room=evict_room)
+
+    assert mock_broker.publish.call_count == 2
+    assert [call.args[0] for call in mock_broker.publish.call_args_list] == [
+        subject,
+        subject,
+    ]
 
 
 @pytest.mark.asyncio

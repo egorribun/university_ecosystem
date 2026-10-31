@@ -32,8 +32,10 @@ func newRootCmd() *cobra.Command {
 		Long:  "Administration tools for the University Ecosystem platform",
 	}
 
-	// Global flags
-	rootCmd.PersistentFlags().StringVar(&redisURL, "redis", getEnv("REDIS_URL", "redis://localhost:6379/0"), "Redis connection URL")
+	// Keep environment values out of flag defaults rendered by help and usage.
+	const defaultRedisURL = "redis://localhost:6379/0"
+	rootCmd.PersistentFlags().StringVar(&redisURL, "redis", defaultRedisURL, "Redis connection URL (overrides REDIS_URL)")
+	redisURL = getEnv("REDIS_URL", defaultRedisURL)
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output")
 
 	// Add commands

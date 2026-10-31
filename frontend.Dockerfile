@@ -49,6 +49,8 @@ RUN --mount=type=cache,id=university-frontend-wasm-cargo-registry-${TARGETARCH},
 # Stage 3: Dependencies
 FROM base AS deps
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+# npm resolves the development-only compiler facade archive during lock install.
+COPY frontend/vendor/react-compiler-zod-compat-1.0.0.tgz ./vendor/
 COPY frontend/scripts ./scripts/
 COPY frontend/WASM_SOURCE_PROVENANCE.json ./
 COPY frontend/rust-crypto/Cargo.toml frontend/rust-crypto/Cargo.lock ./rust-crypto/
@@ -73,7 +75,7 @@ RUN --mount=type=cache,target=/root/.npm \
   done
 
 # Stage 4: Builder
-FROM base AS builder
+FROM deps AS builder
 ENV SKIP_WASM_BUILD=1
 # Keep the production image build on the same finite memory envelope as the
 # Linux CI frontend builds: Vite's Rust worker pool uses native RSS outside
@@ -110,9 +112,7 @@ ENV FRONTEND_BUILD_UNMINIFIED=$FRONTEND_BUILD_UNMINIFIED
 # ~150 KB larger + slower runtime checks).
 ARG FRONTEND_REACT_DEV_MODE=""
 ENV FRONTEND_REACT_DEV_MODE=$FRONTEND_REACT_DEV_MODE
-COPY --from=deps /app/node_modules ./node_modules
-# Preserve the local lint adapter's pinned engine outside root node_modules.
-COPY --from=deps /app/scripts/boundary-micromatch-compat ./scripts/boundary-micromatch-compat
+# Reuse the dependency-stage node_modules and local file-link targets directly.
 COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
@@ -131,6 +131,8 @@ RUN rm -rf dist && npm run build
 # h3-v2, seroval, jose, ...) that must be resolvable at runtime.
 FROM base AS prod-deps
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+# Keep the locked local archive available while npm omits development packages.
+COPY frontend/vendor/react-compiler-zod-compat-1.0.0.tgz ./vendor/
 COPY frontend/scripts ./scripts/
 COPY frontend/WASM_SOURCE_PROVENANCE.json ./
 COPY frontend/rust-crypto/Cargo.toml frontend/rust-crypto/Cargo.lock ./rust-crypto/
@@ -173,6 +175,9 @@ RUN --mount=type=cache,target=/root/.npm \
 # The obsolete nginx runtime and `frontend/nginx.conf` were removed after the
 # SSR rollout. Edge routing is owned by `services/caddy/Caddyfile`.
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime
+
+# npm is used in build/install stages only; the production entrypoint runs Node directly.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 WORKDIR /app
 RUN addgroup -S -g 10001 app \

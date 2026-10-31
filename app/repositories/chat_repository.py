@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
-from typing import Any
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from opentelemetry import trace
 from sqlalchemy import (
@@ -30,6 +31,7 @@ from app.models.chat import (
     chat_participants,
     utc_now,
 )
+from app.models.chat_send_receipt import ChatSendReceipt
 from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
@@ -60,6 +62,29 @@ def _decode_uuid_keyset_cursor(
 # SQLAlchemyInstrumentor (observability.py) already adds DB-level spans;
 # these add semantic context (chat_id, user_id) for easier trace filtering.
 _tracer = trace.get_tracer("app.repositories.chat")
+
+
+@dataclass(frozen=True, slots=True)
+class SendReceiptState:
+    """Immutable private replay state, safe across a session rollback."""
+
+    message_id: uuid.UUID | None
+    expires_at: datetime
+    observed_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class LockedChatMembership:
+    """Fresh chat identity and roster held under the membership lock order."""
+
+    chat_type: str
+    created_by: uuid.UUID | None
+    participant_ids: tuple[uuid.UUID, ...]
+
+
+def _receipt_utc(value: datetime) -> datetime:
+    """SQLite returns naive timestamps; receipt comparisons are always UTC."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any]]):
@@ -105,6 +130,123 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             await self.db.begin()
         await self._set_rls_user(user_id)
 
+    def _send_receipt_clock(self) -> Any:
+        # CURRENT_TIMESTAMP is transaction-start time on PostgreSQL. Use the
+        # database wall clock so a long-running request cannot extend eligibility.
+        if self.db.get_bind().dialect.name == "postgresql":
+            return func.clock_timestamp()
+        return func.current_timestamp()
+
+    async def _send_receipt_now(self) -> datetime:
+        value = await self.db.scalar(select(self._send_receipt_clock()))
+        return _receipt_utc(cast(datetime, value))
+
+    async def get_send_receipt(
+        self, chat_id: uuid.UUID, user_id: uuid.UUID, key_digest: str
+    ) -> SendReceiptState | None:
+        """Read current primary state, including an expired receipt tombstone."""
+        await self._set_message_rls_user(user_id)
+        result = await self.db.execute(
+            select(
+                ChatSendReceipt.message_id,
+                ChatSendReceipt.expires_at,
+                self._send_receipt_clock(),
+            ).where(
+                ChatSendReceipt.chat_id == chat_id,
+                ChatSendReceipt.user_id == user_id,
+                ChatSendReceipt.key_digest == key_digest,
+            )
+        )
+        row = result.one_or_none()
+        if row is None:
+            return None
+        return SendReceiptState(
+            message_id=row[0],
+            expires_at=_receipt_utc(row[1]),
+            observed_at=_receipt_utc(row[2]),
+        )
+
+    async def create_send_receipt(
+        self,
+        chat_id: uuid.UUID,
+        user_id: uuid.UUID,
+        key_digest: str,
+        message_id: uuid.UUID,
+    ) -> datetime:
+        """Stage completed ownership in the message transaction; never commit.
+
+        Concurrent expiry replacements delete only a still-expired predecessor.
+        A competing live replacement is adjudicated by the named unique
+        constraint, so the losing request rolls back its entire message write.
+        """
+        await self._set_message_rls_user(user_id)
+        await self.db.execute(
+            delete(ChatSendReceipt)
+            .where(
+                ChatSendReceipt.chat_id == chat_id,
+                ChatSendReceipt.user_id == user_id,
+                ChatSendReceipt.key_digest == key_digest,
+                ChatSendReceipt.expires_at <= self._send_receipt_clock(),
+            )
+            .execution_options(synchronize_session=False)
+        )
+        completed_at = await self._send_receipt_now()
+        expires_at = completed_at + timedelta(hours=24)
+        self.db.add(
+            ChatSendReceipt(
+                chat_id=chat_id,
+                user_id=user_id,
+                key_digest=key_digest,
+                message_id=message_id,
+                completed_at=completed_at,
+                expires_at=expires_at,
+            )
+        )
+        await self.db.flush()
+        return expires_at
+
+    async def prune_expired_send_receipts(
+        self, chat_id: uuid.UUID, user_id: uuid.UUID, *, limit: int = 100
+    ) -> int:
+        """Bound housekeeping to one authorized scope and at most 100 rows."""
+        if limit < 1:
+            raise ValueError("Receipt cleanup limit must be positive")
+        await self._set_message_rls_user(user_id)
+        max_rows = min(limit, 100)
+        candidates = (
+            select(ChatSendReceipt.id)
+            .where(
+                ChatSendReceipt.chat_id == chat_id,
+                ChatSendReceipt.user_id == user_id,
+                ChatSendReceipt.expires_at <= self._send_receipt_clock(),
+            )
+            .order_by(ChatSendReceipt.expires_at, ChatSendReceipt.id)
+            .limit(max_rows)
+            .with_for_update(skip_locked=True)
+        )
+        candidate_result = await self.db.scalars(candidates)
+        candidate_ids = list(candidate_result.all())[:max_rows]
+        if not candidate_ids:
+            return 0
+
+        result = await self.db.execute(
+            delete(ChatSendReceipt)
+            .where(
+                ChatSendReceipt.id.in_(candidate_ids),
+                ChatSendReceipt.chat_id == chat_id,
+                ChatSendReceipt.user_id == user_id,
+                ChatSendReceipt.expires_at <= self._send_receipt_clock(),
+            )
+            .returning(ChatSendReceipt.id)
+            .execution_options(synchronize_session=False)
+        )
+        return sum(1 for _ in result.scalars())
+
+    async def send_receipt_remaining_seconds(self, expires_at: datetime) -> int:
+        """Never let a cache TTL outlive the fixed authoritative DB window."""
+        now = await self._send_receipt_now()
+        return max(0, int((_receipt_utc(expires_at) - now).total_seconds()))
+
     async def get_by_id(
         self,
         chat_id: uuid.UUID,
@@ -148,6 +290,25 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             .with_for_update()
         )
         return list(result.scalars().all())
+
+    async def lock_membership_snapshot(
+        self, chat_id: uuid.UUID
+    ) -> LockedChatMembership | None:
+        """Lock chat then roster, reading scalar values rather than ORM state."""
+        result = await self.db.execute(
+            select(Chat.chat_type, Chat.created_by)
+            .where(Chat.id == chat_id)
+            .with_for_update()
+        )
+        row = result.one_or_none()
+        if row is None:
+            return None
+        participants = await self.lock_participant_ids_for_maintenance(chat_id)
+        return LockedChatMembership(
+            chat_type=row.chat_type,
+            created_by=row.created_by,
+            participant_ids=tuple(participants),
+        )
 
     async def get_chats_for_user(
         self, user_id: uuid.UUID, cursor: str | None, limit: int

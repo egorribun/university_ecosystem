@@ -286,7 +286,7 @@ export function NewsDetailEditDialog({
                     onChange={handleImageChange}
                   />
                   {imageUrl && (
-                    <div className="overflow-hidden rounded-lg border border-glass-border/(--opacity-soft) shadow-sm">
+                    <div className="overflow-hidden rounded-lg border border-glass-border/[calc(var(--opacity-soft)*100%)] shadow-sm">
                       <SmartImage
                         srcRaw={imageUrl}
                         alt={t("news:alt.editPreview")}

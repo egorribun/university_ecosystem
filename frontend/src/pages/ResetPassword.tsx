@@ -569,9 +569,12 @@ export default function ResetPassword() {
         })
       }
     } catch (error: unknown) {
-      const detail = (error as { response?: { data?: { detail?: string } } } | null | undefined)
+      const detail = (error as { response?: { data?: { detail?: unknown } } } | null | undefined)
         ?.response?.data?.detail
-      setError("root", { type: "server", message: detail || t("auth:reset.errorGeneric") })
+      setError("root", {
+        type: "server",
+        message: typeof detail === "string" && detail ? detail : t("auth:reset.errorGeneric"),
+      })
     }
   }
 
@@ -700,13 +703,15 @@ export default function ResetPassword() {
                           disabled={isSubmitting}
                           className="rounded-lg"
                           error={!!errors.password}
-                          helperText={errors.password?.message}
+                          helperText={
+                            errors.password?.message ? t(errors.password.message) : undefined
+                          }
                           trailingIcon={
                             <button
                               id="reset-password-toggle"
                               type="button"
                               onClick={() => setShowPass(!showPass)}
-                              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/(--opacity-subtle) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/(--opacity-subtle)"
+                              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/[calc(var(--opacity-subtle)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/[calc(var(--opacity-subtle)*100%)]"
                               aria-label={t(
                                 showPass
                                   ? "auth:actions.hideCredential"
@@ -757,12 +762,12 @@ export default function ResetPassword() {
                       </div>
 
                       {!!feedback && (
-                        <div className="flex gap-2 px-2 py-2 rounded-xs bg-brand/(--opacity-subtle) border border-brand/(--opacity-subtle)">
+                        <div className="flex gap-2 px-2 py-2 rounded-xs bg-brand/[calc(var(--opacity-subtle)*100%)] border border-brand/[calc(var(--opacity-subtle)*100%)]">
                           <ShieldCheck
                             size={16}
                             className="text-(--primary-main) shrink-0 mt-0.5"
                           />
-                          <p className="text-xs font-medium text-brand/(--opacity-hover) leading-relaxed">
+                          <p className="text-xs font-medium text-brand/[calc(var(--opacity-hover)*100%)] leading-relaxed">
                             {feedback}
                           </p>
                         </div>
@@ -786,13 +791,17 @@ export default function ResetPassword() {
                           disabled={isSubmitting}
                           className="rounded-lg"
                           error={!!errors.confirmPassword}
-                          helperText={errors.confirmPassword?.message}
+                          helperText={
+                            errors.confirmPassword?.message
+                              ? t(errors.confirmPassword.message)
+                              : undefined
+                          }
                           trailingIcon={
                             <button
                               id="reset-confirm-toggle"
                               type="button"
                               onClick={() => setShowConfirm(!showConfirm)}
-                              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/(--opacity-subtle) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/(--opacity-subtle)"
+                              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/[calc(var(--opacity-subtle)*100%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/[calc(var(--opacity-subtle)*100%)]"
                               aria-label={t(
                                 showConfirm
                                   ? "auth:actions.hideCredential"
@@ -811,7 +820,7 @@ export default function ResetPassword() {
                       </div>
 
                       {(capsPass || capsConfirm) && (
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-xs bg-warning-bg border border-warning-text/(--opacity-subtle) text-warning-text">
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-xs bg-warning-bg border border-warning-text/[calc(var(--opacity-subtle)*100%)] text-warning-text">
                           <AlertTriangle size={16} />
                           <p className="text-xs font-bold uppercase tracking-wider">
                             {t("auth:messages.capsLock")}

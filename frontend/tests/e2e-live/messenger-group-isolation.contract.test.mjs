@@ -113,7 +113,14 @@ test("live WebSocket assertions exercise real group fan-out without transport mo
   assert.match(listRoute, /createFileRoute\("\/_auth\/messenger"\)/u)
   assert.match(detailRoute, /createFileRoute\("\/_auth\/messenger\/\$chatId"\)/u)
   assert.match(chatApi, /client\.post<Chat>\("\/chats\/groups"/u)
-  assert.match(chatApi, /const url = `\/chats\/\$\{chatId\}`[\s\S]*?client\.get<Chat>\(url/u)
+  assert.match(
+    chatApi,
+    /const encodePathIdentifier = \(identifier: string\): string => encodeURIComponent\(identifier\)/u
+  )
+  assert.match(
+    chatApi,
+    /const url = `\/chats\/\$\{encodePathIdentifier\(chatId\)\}`[\s\S]*?client\.get<Chat>\(url/u
+  )
   assert.match(spec, /test\.use\(\{ trace: "off", screenshot: "off" \}\)/u)
   assert.match(config, /video:\s*"off"/u)
   assert.match(spec, /page\.on\("websocket"/u)
