@@ -4664,6 +4664,96 @@ _OCT30_PUBLIC_INTEGRITY_DIGESTS = frozenset(
 )
 
 
+_AUD447_CI_ALLOCATION_CATEGORY = "ci_test_contract_sentinel"
+_AUD447_CI_ALLOCATION_TEST_DIGEST = (
+    *(169, 74, 143, 229, 204, 177, 155, 166, 28, 76),
+    *(8, 115, 211, 145, 233, 135, 152, 47, 187, 211),
+)
+_AUD447_CI_ALLOCATION_OTHER_DIGEST = (
+    *(208, 148, 30, 104, 218, 143, 56, 21, 31, 248),
+    *(106, 97, 252, 89, 247, 197, 207, 159, 202, 162),
+)
+_AUD447_CI_ALLOCATION_SPEC = (
+    (
+        "tests/integration/test_aud447_dlq_auth_scrub_postgres.py",
+        "Secret Keyword",
+        _AUD447_CI_ALLOCATION_TEST_DIGEST,
+        98,
+        "sentinel",
+        "exact loopback-only test password equality checked before connection",
+    ),
+    (
+        "tests/test_aud447_dlq_auth_scrub_migration.py",
+        "Basic Auth Credentials",
+        _AUD447_CI_ALLOCATION_TEST_DIGEST,
+        290,
+        "sentinel",
+        "owned loopback PostgreSQL URL used only by allocation acceptance "
+        "and rejection controls",
+    ),
+    (
+        "tests/test_aud447_dlq_auth_scrub_migration.py",
+        "Basic Auth Credentials",
+        _AUD447_CI_ALLOCATION_OTHER_DIGEST,
+        350,
+        "negative sentinel",
+        "wrong-password URL must be rejected before engine creation",
+    ),
+    (
+        "tests/test_quality_workflow_contract.py",
+        "Basic Auth Credentials",
+        _AUD447_CI_ALLOCATION_TEST_DIGEST,
+        7465,
+        "sentinel",
+        "source-only assertion for the exact step-local owned-service URL",
+    ),
+    (
+        "tests/test_quality_workflow_contract.py",
+        "Secret Keyword",
+        _AUD447_CI_ALLOCATION_TEST_DIGEST,
+        7479,
+        "sentinel",
+        "source-only assertion for disposable PostgreSQL service credentials",
+    ),
+)
+_AUD447_CI_ALLOCATION_EVIDENCE = {
+    (path, finding_type, digest): (
+        f"Public AUD-447 owned PostgreSQL CI allocation {label}; "
+        f"{path}:{line}; {purpose}; "
+        "source-bound by the finite five-identity contract; "
+        "not production credential material; "
+        "no database, release or Squawk authorization."
+    )
+    for path, finding_type, digest, line, label, purpose in _AUD447_CI_ALLOCATION_SPEC
+}
+_AUD447_CI_ALLOCATION_PATHS = frozenset(
+    identity[0] for identity in _AUD447_CI_ALLOCATION_EVIDENCE
+)
+_AUD447_CI_ALLOCATION_DIGESTS = frozenset(
+    identity[2] for identity in _AUD447_CI_ALLOCATION_EVIDENCE
+)
+_AUD447_PRIOR_QUALITY_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_quality_workflow_contract.py",
+            "Hex High Entropy String",
+            (
+                *(206, 71, 253, 152, 246, 12, 118, 27, 182, 59),
+                *(76, 158, 216, 255, 38, 141, 84, 183, 68, 171),
+            ),
+        ),
+        (
+            "tests/test_quality_workflow_contract.py",
+            "Hex High Entropy String",
+            (
+                *(33, 192, 46, 107, 136, 217, 63, 180, 73, 90),
+                *(25, 211, 160, 159, 91, 40, 0, 44, 68, 31),
+            ),
+        ),
+    }
+)
+
+
 _FALSE_POSITIVE_DOCUMENT_FIELDS = frozenset({"schema_version", "records"})
 _FALSE_POSITIVE_POLICY_PATH = "quality/security-false-positive-dispositions.json"
 _FALSE_POSITIVE_RECORD_LIMIT = 512
@@ -5144,6 +5234,23 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        aud447_evidence = _AUD447_CI_ALLOCATION_EVIDENCE.get(exact_source_identity)
+        if (
+            path in _AUD447_CI_ALLOCATION_PATHS
+            or tuple(raw_digest_bytes) in _AUD447_CI_ALLOCATION_DIGESTS
+        ) and not (
+            (
+                aud447_evidence is not None
+                and category == _AUD447_CI_ALLOCATION_CATEGORY
+            )
+            or (
+                exact_source_identity in _AUD447_PRIOR_QUALITY_IDENTITIES
+                and category == "public_integrity_digest"
+            )
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-447 CI allocation identity changed scope"
+            )
         historical148_identity = (
             exact_source_identity in _HISTORICAL148_PUBLIC_INTEGRITY_IDENTITIES
         )
@@ -5394,7 +5501,10 @@ def validate_false_positive_dispositions(
             allowed_pairs = _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES.get(
                 category, frozenset()
             )
-            category_matches = (path, finding_type) in allowed_pairs
+            category_matches = (path, finding_type) in allowed_pairs or (
+                category == _AUD447_CI_ALLOCATION_CATEGORY
+                and aud447_evidence is not None
+            )
         if not category_matches:
             raise BaselineArtifactError(
                 f"{artifact}: category does not allow this path and detector type"
@@ -5410,6 +5520,10 @@ def validate_false_positive_dispositions(
             )
         ):
             raise BaselineArtifactError(f"{artifact}: evidence is invalid")
+        if aud447_evidence is not None and evidence != aud447_evidence:
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-447 CI allocation evidence changed"
+            )
         if historical148_identity:
             source_reference = _HISTORICAL148_PUBLIC_INTEGRITY_REFERENCES[
                 exact_source_identity
@@ -5497,6 +5611,15 @@ def validate_false_positive_dispositions(
             or expires_on - reviewed_on > timedelta(days=90)
         ):
             raise BaselineArtifactError(f"{artifact}: date range is invalid")
+
+        if aud447_evidence is not None and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-10-31"
+            or raw_expires != "2027-01-10"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: AUD-447 CI allocation approval metadata changed"
+            )
 
         if historical148_identity and (
             owner != "egorribun"

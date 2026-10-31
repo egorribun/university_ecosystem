@@ -14944,6 +14944,176 @@
       "reviewed_on": "2026-10-30",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/integration/test_aud447_dlq_auth_scrub_postgres.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          169,
+          74,
+          143,
+          229,
+          204,
+          177,
+          155,
+          166,
+          28,
+          76,
+          8,
+          115,
+          211,
+          145,
+          233,
+          135,
+          152,
+          47,
+          187,
+          211
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "Public AUD-447 owned PostgreSQL CI allocation sentinel; tests/integration/test_aud447_dlq_auth_scrub_postgres.py:98; exact loopback-only test password equality checked before connection; source-bound by the finite five-identity contract; not production credential material; no database, release or Squawk authorization.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-31",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_aud447_dlq_auth_scrub_migration.py",
+        "type": "Basic Auth Credentials",
+        "hashed_secret_bytes": [
+          169,
+          74,
+          143,
+          229,
+          204,
+          177,
+          155,
+          166,
+          28,
+          76,
+          8,
+          115,
+          211,
+          145,
+          233,
+          135,
+          152,
+          47,
+          187,
+          211
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "Public AUD-447 owned PostgreSQL CI allocation sentinel; tests/test_aud447_dlq_auth_scrub_migration.py:290; owned loopback PostgreSQL URL used only by allocation acceptance and rejection controls; source-bound by the finite five-identity contract; not production credential material; no database, release or Squawk authorization.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-31",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_aud447_dlq_auth_scrub_migration.py",
+        "type": "Basic Auth Credentials",
+        "hashed_secret_bytes": [
+          208,
+          148,
+          30,
+          104,
+          218,
+          143,
+          56,
+          21,
+          31,
+          248,
+          106,
+          97,
+          252,
+          89,
+          247,
+          197,
+          207,
+          159,
+          202,
+          162
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "Public AUD-447 owned PostgreSQL CI allocation negative sentinel; tests/test_aud447_dlq_auth_scrub_migration.py:350; wrong-password URL must be rejected before engine creation; source-bound by the finite five-identity contract; not production credential material; no database, release or Squawk authorization.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-31",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_quality_workflow_contract.py",
+        "type": "Basic Auth Credentials",
+        "hashed_secret_bytes": [
+          169,
+          74,
+          143,
+          229,
+          204,
+          177,
+          155,
+          166,
+          28,
+          76,
+          8,
+          115,
+          211,
+          145,
+          233,
+          135,
+          152,
+          47,
+          187,
+          211
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "Public AUD-447 owned PostgreSQL CI allocation sentinel; tests/test_quality_workflow_contract.py:7465; source-only assertion for the exact step-local owned-service URL; source-bound by the finite five-identity contract; not production credential material; no database, release or Squawk authorization.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-31",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_quality_workflow_contract.py",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          169,
+          74,
+          143,
+          229,
+          204,
+          177,
+          155,
+          166,
+          28,
+          76,
+          8,
+          115,
+          211,
+          145,
+          233,
+          135,
+          152,
+          47,
+          187,
+          211
+        ]
+      },
+      "category": "ci_test_contract_sentinel",
+      "evidence": "Public AUD-447 owned PostgreSQL CI allocation sentinel; tests/test_quality_workflow_contract.py:7479; source-only assertion for disposable PostgreSQL service credentials; source-bound by the finite five-identity contract; not production credential material; no database, release or Squawk authorization.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-10-31",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

@@ -1246,3 +1246,54 @@ This decision does not activate the prepared Squawk recognizer, suppress its
 37 raw warnings, accept migration execution risks, alter migration bytes or
 authorize deployment. The historical148 preparation's 2026-11-13 expiry is
 separate and unchanged. No audit finding is accepted by this policy update.
+
+
+## AUD-447 owned CI allocation: five-identity disposition — 2026-10-31
+
+The owner approved exactly five public test identities at 17:29 UTC and
+explicitly approved publication of the complete policy artifact at 17:39 UTC.
+This is a finite, source-bound extension of the existing
+`ci_test_contract_sentinel` category, not a path-wide or detector-wide allowance.
+
+| Source path | Detector | Diagnostic line | Public purpose |
+| --- | --- | ---: | --- |
+| tests/integration/test_aud447_dlq_auth_scrub_postgres.py | Secret Keyword | 98 | Exact password equality before connecting to the owned loopback CI service |
+| tests/test_aud447_dlq_auth_scrub_migration.py | Basic Auth Credentials | 290 | Owned disposable allocation positive and rejection controls |
+| tests/test_aud447_dlq_auth_scrub_migration.py | Basic Auth Credentials | 350 | Wrong-password negative control, rejected before engine creation |
+| tests/test_quality_workflow_contract.py | Basic Auth Credentials | 7465 | Source-only contract for the step-local owned service URL |
+| tests/test_quality_workflow_contract.py | Secret Keyword | 7479 | Source-only contract for disposable PostgreSQL service metadata |
+
+Line numbers describe the reviewed source; they are not the identity key.
+Identity is the exact path, detector and digest. The pinned detect-secrets
+detectors derive these from the public test values, not credentials from an
+environment or deployed database. Tests independently reconstruct each digest
+from the reviewed literal and pin all three source blobs plus the workflow.
+The recovered raw-regex postimage is part of that source binding.
+
+The policy grows **494 → 499** records. All previous 494 records, metadata and
+order remain unchanged and are covered by a canonical-prefix checksum.
+The five new records require the exact evidence text, owner `egorribun`,
+review date **2026-10-31**, approved status and expiry **2027-01-10**.
+The validator rejects changed paths, detectors, digests, categories, evidence,
+owners, dates, wildcards, duplicates and a sixth identity. The two previously
+approved Hex identities in the shared quality-contract file remain valid only
+under their exact prior identities and category. Historical 405-prefix and
+89-record controls retain their own review date and bounded population.
+
+Negative controls exercise the actual validator, source changes/transplants,
+append-only population, expiry, trusted-base versus owner-authored candidate
+loading and unchanged cap. Candidate-only additions do not acquire trusted-base
+authorization. No generic category path/type pair is added.
+
+The record limit remains **512**, artifact byte cap **512 KiB**, baseline
+**315** identities and Gitleaks **26** fingerprints. The scanner's separately
+reported 20 stale baseline identities and 418 active matches on the preceding
+source are observations, not this policy's record count, and are not modified
+or extrapolated. Scanner settings, trust boundaries, required contexts,
+coverage thresholds and existing blocking gates remain unchanged.
+
+This decision authorizes neither production database access nor migration
+execution, deployment, new credentials, additional identities, inline pragmas
+or a Squawk exception. It accepts no audit finding. Hosted execution on the
+new source must independently confirm scanner and contract success; a reviewed
+policy or a prior-source PASS does not supply that evidence.

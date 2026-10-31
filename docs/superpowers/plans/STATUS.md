@@ -3,6 +3,91 @@
 Обновлено: 2026-10-31 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 
+## Recovery и точная область доказательств — 2026-10-31 17:42 UTC
+
+Реестр остаётся **441/512**, **71 ID открыт**. Этот пакет не принимает новые
+находки и не переносит частичный GREEN на backend, миграции или privacy closure.
+
+### Последний полностью завершённый source b364
+
+[Commit b364f908c3ca25c098542c3681a540fff90c5f9b](https://github.com/egorribun/university_ecosystem/commit/b364f908c3ca25c098542c3681a540fff90c5f9b)
+и фактический PR checkout
+`b01c014857c7c64af0d602edc13ff724163c1e6e` имеют одно полное дерево
+`242558dd8ec8312225e8bbce1557b2dc66ccf4bd`.
+Это source-equivalent evidence, не буквальный checkout branch SHA.
+
+- Все **23 workflow завершены: 18 SUCCESS, 3 FAILURE, 2 SKIPPED**.
+  [Matrix 41222679351](https://github.com/egorribun/university_ecosystem/actions/runs/41222679351)
+  завершился FAILURE: **60 jobs = 23 SUCCESS / 7 FAILURE / 30 SKIPPED**,
+  без running или cancelled jobs.
+- Frontend: **10 672 PASS, 0 FAIL, 847 файлов**; ResetPassword **87/87 PASS**.
+  [Aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/41222679351/job/124604023390):
+  **2645 changed lines, 0 missing, 100% line coverage**. Это не подтверждение
+  всех branch/общих quality thresholds.
+- Production Build и Bundle Analysis прошли: **145/145 bundle controls**,
+  MapLibre **285,83 KiB** в согласованном узком лимите 286 KiB.
+  RSS cap **2048 MiB** и heap **1536 MiB** не менялись. Успешный прогон после
+  предыдущего RSS-сбоя показывает вариативность, а не устранение memory leak.
+  Lighthouse audit был **SKIPPED**; его build не равен аудиту.
+- [Owned Core 41222679222](https://github.com/egorribun/university_ecosystem/actions/runs/41222679222/job/124600317926):
+  preflight **357 PASS**, adapter **1 PASS**, браузер **52 PASS / 2 SKIPPED**.
+  Все четыре native-edge и два used-token-reopen oracle прошли без изменения
+  assertions после устранения неоднозначного Caddy redir matcher.
+  Однако итог Core **FAILURE**: последующий Caddy access-log proof остановился
+  на **log_size**, exit 2. Это переполнение ограниченного захвата, а не
+  доказанная утечка или успешная проверка редактирования логов.
+- Backend unit shards, PostgreSQL/Alembic и password image gate на этом source
+  **не выполнялись** из-за upstream lint/type/scanner gates.
+  Новые 41 password и 43 allocation controls, оба AUD-447 PostgreSQL oracle,
+  четыре password PostgreSQL case и девять AUD-258 case не получили own-source
+  runtime proof. Contract cohort: **3588 PASS / 4 старых binding FAIL**;
+  отдельные cohorts **688 PASS** и **41 PASS**. Новые 13 allocation nodes
+  нельзя считать выполненными по одному общему названию job.
+
+### Ограниченный пакет восстановления
+
+- Recovery4: точные hosted Ruff postimages двух тестов, raw regex с тем же
+  значением и тип AsyncSession вместо Any на границе определения dialect.
+  SQL, authority predicates, исключения и runtime-решения не меняются.
+- По явному решению владельца от 17:29 UTC добавлены ровно **пять** публичных
+  тестовых identity в policy: **494 → 499**, cap **512**, expiry
+  **2027-01-10**, baseline **315**, Gitleaks **26** без изменений.
+  [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#aud-447-owned-ci-allocation-five-identity-disposition--2026-10-31)
+  фиксирует точную область, отдельное разрешение публикации полного файла,
+  source binding и отрицательные controls. Старые 494 records и их порядок
+  сохраняются. Это не разрешение на шестую identity, иной путь, реальный
+  credential, database operation или Squawk waiver.
+- Core diagnostics: только закрытые числовые/enum budget facts при конечном
+  log_size. **1 MiB**, окна **±5 секунд**, deadlines **10/25 секунд**,
+  оба потока, все строки, final pins/cleanup и исходный failure exit сохранены.
+  URI, nonce, correlation values, timestamps, command и log content не выводятся.
+  Новые controls проверяют допустимый exact-cap и отказ на неизвестных полях,
+  типах и диапазонах. Причина объёма логов пока не установлена.
+
+Source и независимый review не заменяют исполнение. Собственный CI этого
+пакета требуется отдельно; до его результата scanner, backend, allocation и
+diagnostic controls не объявляются GREEN.
+
+### Открытые причинные остатки и следующий шаг
+
+1. Получить собственные Ruff/mypy/scanner и затем фактические password/AUD-447
+   unit, PostgreSQL и image-gate receipts; thresholds не ослаблять.
+2. По безопасным budget facts определить, какой capture достигает cap.
+   Не увеличивать cap, не отбрасывать строки и не принимать browser PASS за
+   privacy closure. Telemetry fragment/history residual остаётся отдельным
+   source-only вопросом, не наблюдавшейся production exfiltration.
+3. Четыре старых nightly mutation bindings связаны с AUD-455:
+   cache-present не означает artifact-published. Подготовленный regression
+   остаётся **off-branch**, в этот пакет не включён; hash refresh без causal
+   evidence не выполняется.
+4. Dependency Review остаётся красным: отдельный go-jose/v3 HIGH в Caddy и
+   exact license identity mismatch не устранены обновлением v4.1.7.
+   Raw Squawk warnings и миграционные риски не признаны безопасными.
+5. AUD-478 startup/shared-L2 работа остановлена отдельным системным
+   ограничением инструмента; заблокированная операция не повторяется.
+
+Исторические записи ниже сохраняют свои даты, счётчики и ограничения.
+
 ## Полная сверка после паузы и уточнение приёмки — 2026-10-31 06:49 UTC
 
 Текущий реестр — **441/512 (86,1%)**, **71 ID открыт**.
