@@ -677,23 +677,36 @@ def legacy_preferences_config(
     spotify_scenario_urls: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> Config:
-    """Restore the historical preference shape in a fresh, fixture-owned DB."""
+    """Verify the retained preference shape in a fresh, fixture-owned DB."""
     config = _alembic_config(spotify_scenario_urls["alembic"])
     monkeypatch.setenv("DATABASE_URL", spotify_scenario_urls["alembic"])
     command.upgrade(config, "f7aa476e968a")
 
     with psycopg.connect(spotify_scenario_urls["sync"]) as connection:
         _add_lowercase_role_values(connection)
-        # The normal ancestry removed these columns in 202511240001. Recreate
-        # their original 23d991e593b5/202505250001 definitions to exercise the
-        # surviving-legacy-columns branch that 148642dd1207 explicitly handles.
-        connection.execute(
-            "ALTER TABLE users "
-            "ADD COLUMN dnd_enabled boolean NOT NULL DEFAULT false, "
-            "ADD COLUMN dnd_start time without time zone, "
-            "ADD COLUMN dnd_end time without time zone, "
-            "ADD COLUMN timezone varchar(64)"
-        )
+        # AUD-274 keeps these historical columns until 148642dd1207 copies
+        # their values. Assert the real ancestry instead of recreating them.
+        version = connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchall()
+        assert version == [("f7aa476e968a",)]
+        destination = connection.execute(
+            "SELECT to_regclass('public.user_preferences')"
+        ).fetchone()
+        assert destination == (None,)
+        columns = connection.execute(
+            "SELECT column_name, data_type, is_nullable, column_default, "
+            "character_maximum_length FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'users' "
+            "AND column_name IN ('dnd_enabled', 'dnd_start', 'dnd_end', 'timezone') "
+            "ORDER BY column_name"
+        ).fetchall()
+        assert columns == [
+            ("dnd_enabled", "boolean", "NO", "false", None),
+            ("dnd_end", "time without time zone", "YES", None, None),
+            ("dnd_start", "time without time zone", "YES", None, None),
+            ("timezone", "character varying", "YES", None, 64),
+        ]
         with connection.cursor() as cursor:
             cursor.executemany(
                 "INSERT INTO users (id, email, hashed_password, role, "
