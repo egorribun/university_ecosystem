@@ -7,8 +7,9 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from typer.testing import CliRunner
 
 from app.cli import migrate_passwords
@@ -62,6 +63,8 @@ def test_cli_has_no_legacy_mutation_or_completion_claims():
 @pytest.mark.asyncio
 async def test_count_uses_scalar_count_query_and_resets_rls_context():
     session = AsyncMock()
+    session.get_bind = MagicMock()
+    session.get_bind.return_value.dialect.name = "sqlite"
     session.__aenter__.return_value = session
     session.__aexit__.return_value = None
     result = MagicMock()
@@ -77,6 +80,8 @@ async def test_count_uses_scalar_count_query_and_resets_rls_context():
 @pytest.mark.asyncio
 async def test_count_executes_a_count_query_with_the_bcrypt_predicate():
     session = AsyncMock()
+    session.get_bind = MagicMock()
+    session.get_bind.return_value.dialect.name = "sqlite"
     session.__aenter__.return_value = session
     session.__aexit__.return_value = None
     result = MagicMock()
@@ -100,6 +105,8 @@ async def test_count_executes_a_count_query_with_the_bcrypt_predicate():
 @pytest.mark.asyncio
 async def test_count_enables_scoped_rls_bypass_only_during_query():
     session = AsyncMock()
+    session.get_bind = MagicMock()
+    session.get_bind.return_value.dialect.name = "sqlite"
     session.__aenter__.return_value = session
     session.__aexit__.return_value = None
     result = MagicMock()
@@ -120,6 +127,8 @@ async def test_count_enables_scoped_rls_bypass_only_during_query():
 @pytest.mark.asyncio
 async def test_count_resets_rls_bypass_when_query_fails():
     session = AsyncMock()
+    session.get_bind = MagicMock()
+    session.get_bind.return_value.dialect.name = "sqlite"
     session.__aenter__.return_value = session
     session.__aexit__.return_value = None
     session.execute.side_effect = RuntimeError("database unavailable")
@@ -162,6 +171,8 @@ async def test_report_bcrypt_users_default_sample_limit_is_fifty() -> None:
     """The operator-facing default must stay bounded at the documented limit."""
 
     session = AsyncMock()
+    session.get_bind = MagicMock()
+    session.get_bind.return_value.dialect.name = "sqlite"
     session.__aenter__.return_value = session
     session.__aexit__.return_value = None
     result = MagicMock()
@@ -184,6 +195,8 @@ async def test_report_bcrypt_users_default_sample_limit_is_fifty() -> None:
 async def test_report_bcrypt_users_projects_ids_and_applies_bcrypt_predicate() -> None:
     sample_id = uuid.uuid4()
     session = AsyncMock()
+    session.get_bind = MagicMock()
+    session.get_bind.return_value.dialect.name = "sqlite"
     session.__aenter__.return_value = session
     session.__aexit__.return_value = None
     result = MagicMock()
@@ -255,3 +268,45 @@ def test_assert_none_produces_nonzero_exit_for_remaining_accounts():
 
     assert result.exit_code == 1
     assert "Legacy bcrypt accounts remain: 1" in result.stdout
+
+
+@pytest.mark.asyncio
+async def test_sqlite_inventory_keeps_portable_queries_and_rows_unchanged() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    identifiers = [uuid.UUID(int=value) for value in range(1, 5)]
+    rows = [
+        {"id": identifiers[0].hex, "hash": "$2a$ci", "active": True},
+        {"id": identifiers[1].hex, "hash": "$2y$ci", "active": True},
+        {"id": identifiers[2].hex, "hash": "$2b$ci", "active": False},
+        {"id": identifiers[3].hex, "hash": "$argon2id$ci", "active": True},
+    ]
+    snapshot = text("SELECT id, hashed_password, is_active FROM users ORDER BY id")
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(
+                text(
+                    "CREATE TABLE users (id CHAR(32) PRIMARY KEY, "
+                    "hashed_password TEXT NOT NULL, is_active BOOLEAN NOT NULL)"
+                )
+            )
+            await connection.execute(
+                text(
+                    "INSERT INTO users (id, hashed_password, is_active) "
+                    "VALUES (:id, :hash, :active)"
+                ),
+                rows,
+            )
+            before = (await connection.execute(snapshot)).all()
+
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        with patch.object(migrate_passwords, "async_session", sessions):
+            assert await migrate_passwords._count_bcrypt_users() == 2
+            assert await migrate_passwords._report_bcrypt_users(
+                limit=1, show_ids=True
+            ) == [{"id": str(identifiers[0])}]
+
+        async with engine.connect() as connection:
+            assert (await connection.execute(snapshot)).all() == before
+        assert migrate_passwords.bypass_rls_ctx.get() is False
+    finally:
+        await engine.dispose()
