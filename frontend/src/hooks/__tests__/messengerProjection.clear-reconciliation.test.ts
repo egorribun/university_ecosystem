@@ -840,11 +840,16 @@ describe("projection edge arms reached through live stores and replays", () => {
   })
 
   it("retires a successful clear's masking when another tab rotates the browser session", () => {
-    const client = projectionClient([projectionMessage()])
+    const target = projectionMessage()
+    const client = projectionClient([target])
     subscribeStore(client)
     act(() => {
       expect(acceptClear(client)).toBeDefined()
     })
+    // A committed clear already removes the target from the canonical cache.
+    // A snapshot that still carries it (for example a refetch that began before
+    // the clear) stays masked only while this tab owns the browser session.
+    client.setQueryData(["messages", chat.id], messagesPage([target]))
     expect(
       projectMessengerMessages(client, accountId, chat.id, canonicalMessages(client))?.items
     ).toHaveLength(0)
@@ -860,7 +865,7 @@ describe("projection edge arms reached through live stores and replays", () => {
     expect(getClearRefresh(client, chat.id)).toBeUndefined()
     expect(
       projectMessengerMessages(client, accountId, chat.id, canonicalMessages(client))?.items
-    ).toHaveLength(1)
+    ).toEqual([target])
   })
 
   it("retires confirmed edit receipts when another tab rotates the browser session", async () => {

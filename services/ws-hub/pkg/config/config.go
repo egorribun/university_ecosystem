@@ -103,6 +103,12 @@ type Config struct {
 	NatsStreamChat          string
 	NatsStreamNotifications string
 	EnableJetStream         bool
+	// RevocationReplayWindowSeconds bounds how far back a late-starting replica
+	// replays room membership revocations from CACHE_INVALIDATIONS. It must cover
+	// the longest access-token lifetime the backend issues
+	// (access_token_expire_minutes, default 60). Pure cache invalidations are never
+	// replayed. Default: 3600.
+	RevocationReplayWindowSeconds int
 }
 
 // LoadConfig initializes Config from env vars and fails closed on any configured secret file error.
@@ -210,6 +216,9 @@ func LoadConfig() (*Config, error) {
 		NatsStreamChat:          getEnv("NATS_STREAM_CHAT", "CHAT_EVENTS"),
 		NatsStreamNotifications: getEnv("NATS_STREAM_NOTIFICATIONS", "NOTIFICATIONS_EVENTS"),
 		EnableJetStream:         getEnvBool("ENABLE_JETSTREAM", true),
+
+		// Must cover the backend's access_token_expire_minutes (default 60).
+		RevocationReplayWindowSeconds: getEnvInt("WS_REVOCATION_REPLAY_WINDOW_SECONDS", 3600),
 	}, nil
 }
 

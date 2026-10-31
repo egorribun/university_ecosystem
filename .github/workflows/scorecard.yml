@@ -121,3 +121,32 @@ jobs:
         uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: scorecard-results.sarif
+
+      # AUD-381: results are published above before this gate runs. A remaining
+      # Scorecard rule whose security-severity is 7.0 or higher (High) fails the
+      # run; lower-severity policy signals stay visible in the Security tab only.
+      - name: Fail on high-severity Scorecard findings
+        shell: python
+        run: |
+          import json
+          import sys
+          from pathlib import Path
+
+          sarif = json.loads(Path("scorecard-results.sarif").read_text(encoding="utf-8"))
+          blocking = []
+          for run in sarif.get("runs", []):
+              driver = run.get("tool", {}).get("driver", {})
+              severities = {
+                  rule.get("id"): float(
+                      rule.get("properties", {}).get("security-severity", 0) or 0
+                  )
+                  for rule in driver.get("rules", [])
+              }
+              for result in run.get("results", []):
+                  rule_id = result.get("ruleId")
+                  if severities.get(rule_id, 0.0) >= 7.0:
+                      blocking.append(rule_id)
+          if blocking:
+              print("::error::High-severity Scorecard findings: " + ", ".join(sorted(set(blocking))))
+              sys.exit(1)
+          print("No high-severity Scorecard findings remain after policy filtering.")

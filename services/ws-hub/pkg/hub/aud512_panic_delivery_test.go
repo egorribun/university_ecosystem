@@ -134,7 +134,7 @@ func aud512AssertRefreshPanicRetry(t *testing.T, panicValue any, panicCanary str
 		UserID:    aud511TestUserID,
 	})
 	handler := h.handleCacheInvalidation(ctx)
-	msg := aud511CacheInvalidationMessage(payload, 42, time.Now())
+	msg := aud511CacheInvalidationMessage("cache.revoke", payload, 42, time.Now())
 	handler(msg)
 
 	assert.Equal(t, []string{"nak"}, dispositions, "an unconfirmed revocation is retryable, not acknowledged or terminated")
@@ -242,7 +242,7 @@ func aud512AssertInvalidationPanicRetry(t *testing.T, panicValue any, panicCanar
 	var logs strings.Builder
 	h.Logger = slog.New(slog.NewTextHandler(&logs, nil))
 	ctx := context.Background()
-	msg := aud511CacheInvalidationMessage(signedInvalidationPayload(t, secret, invalidationData{
+	msg := aud511CacheInvalidationMessage("cache.invalidate", signedInvalidationPayload(t, secret, invalidationData{
 		RoomID: aud511TestRoomID,
 		UserID: aud511TestUserID,
 	}), 43, time.Now())

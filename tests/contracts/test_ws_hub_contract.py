@@ -57,7 +57,13 @@ def test_cache_invalidation_producer_writes_wire_fixture(pact_output_dir: Path) 
 
     events = asyncio.run(produce())
     assert len(events) == 3
-    assert [event["subject"] for event in events] == ["cache.invalidate"] * 3
+    # Room revocations (evict_room) travel on their own subject; the ws-hub
+    # consumer for cache.invalidate never sees them.
+    assert [event["subject"] for event in events] == [
+        "cache.invalidate",
+        "cache.invalidate",
+        "cache.revoke",
+    ]
     assert [event["headers"]["Nats-Msg-Id"] for event in events] == [
         "contract-room",
         "contract-user-wide",

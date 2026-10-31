@@ -95,6 +95,12 @@ services:
       # live suite. The 5/minute application default remains in effect outside
       # this owned acceptance-only overlay.
       RATE_LIMIT_AUTH_LOGIN: "60/minute"
+      # Session cleanup logs every owned session out through a few shared test
+      # accounts in one burst. Logout uses the per-user sensitive bucket (5/minute
+      # by default), so the cleanup returns 429 after the fifth logout of an
+      # account. Reserve enough room for that burst; outside this overlay the
+      # application default is unchanged.
+      RATE_LIMIT_SENSITIVE: "120/minute"
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
       SMTP_SECURITY: none

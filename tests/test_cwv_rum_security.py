@@ -77,6 +77,9 @@ def _valid_staging_environment_settings() -> dict[str, object]:
         "elasticsearch_password": secrets.token_urlsafe(32),
         "spicedb_preshared_key": secrets.token_urlsafe(32),
         "ws_hub_internal_secret": secrets.token_urlsafe(32),
+        # AUD-164 explicit API peers and AUD-490 idempotency HMAC key.
+        "trusted_proxies": "10.0.0.0/8",
+        "idempotency_hmac_secret": secrets.token_urlsafe(32),
         "spotify_token_secret": spotify_key,
         "mfa_totp_encryption_keys": f"cwv-security-test:{totp_key}",
         "mfa_totp_active_encryption_key_id": "cwv-security-test",

@@ -26,7 +26,10 @@ function makeScope() {
   const listeners = new Map<string, Listener>()
   const scope = {
     addEventListener: vi.fn((type: string, listener: Listener) => listeners.set(type, listener)),
-    clients: { openWindow: vi.fn().mockResolvedValue(null) },
+    clients: {
+      openWindow: vi.fn().mockResolvedValue(null),
+      matchAll: vi.fn().mockResolvedValue([]),
+    },
     location: new URL("https://app.example/sw.js"),
     navigator: { onLine: true },
     __SW_TESTING__: undefined as unknown,
@@ -116,6 +119,16 @@ describe("AUD-375: worker lifecycle keeps legacy queues on hold", () => {
 
     try {
       const worker = await startWorker()
+      // A live, controlled window answers every replay-credential request.
+      const answeringWindow = {
+        postMessage: vi.fn((_message: unknown, transfer: MessagePort[]) => {
+          transfer[0]?.postMessage({
+            csrfToken: "csrf-lifecycle",
+            sessionNonce: "session-lifecycle",
+          })
+        }),
+      }
+      worker.scope.clients.matchAll.mockResolvedValue([answeringWindow])
       await Promise.all([
         sendMessage(worker.listeners),
         sendMessage(
@@ -129,6 +142,7 @@ describe("AUD-375: worker lifecycle keeps legacy queues on hold", () => {
       ])
 
       expect(fetchMock).not.toHaveBeenCalled()
+      expect(answeringWindow.postMessage).toHaveBeenCalled()
       expect(openWindow).not.toHaveBeenCalled()
       expect(worker.scope.clients.openWindow).not.toHaveBeenCalled()
       expect(await Promise.all(stores.map((store) => db.getAll(store)))).toEqual(before)

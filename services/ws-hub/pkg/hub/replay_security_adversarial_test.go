@@ -617,6 +617,6 @@ func TestSubscribeToNATSTransactionalJetStreamBranches(t *testing.T) {
 		require.NoError(t, h.SubscribeToNATS(context.Background()))
 		assert.True(t, h.chatReplayAvailable.Load())
 		assert.Equal(t, created.Format(time.RFC3339Nano), h.chatStreamIncarnation)
-		assert.Len(t, h.subs, 5)
+		assert.Len(t, h.subs, 6, "chat, notifications, pure cache, room revocation, control, and JWKS")
 	})
 }

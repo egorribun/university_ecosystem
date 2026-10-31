@@ -25,6 +25,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 		"JWKS_URL", "WS_SEND_BUFFER_SIZE", "WS_BROADCAST_BUFFER_SIZE",
 		"WS_BROADCAST_WORKERS", "WS_HUB_INTERNAL_SECRET", "INTERNAL_AUTH_TOKEN", "WS_HUB_MAX_CLIENTS",
 		"WS_CLIENT_MSG_RATE_LIMIT", "WS_CLIENT_MSG_BURST", "WS_TICKET_TTL_SECONDS",
+		"WS_REVOCATION_REPLAY_WINDOW_SECONDS",
 		"REDIS_URL", "REDIS_PASSWORD", "REDIS_DB", "WS_HUB_METRICS_ADDR",
 	}
 	// Clear env at test start (each Unsetenv is benign if var already unset).
@@ -61,6 +62,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 10.0, cfg.ClientMsgRateLimit)
 	require.Equal(t, 20, cfg.ClientMsgRateBurst)
 	require.Equal(t, 15, cfg.TicketTTLSeconds)
+	require.Equal(t, 3600, cfg.RevocationReplayWindowSeconds)
 	require.Equal(t, "redis:6379", cfg.RedisURL)
 	require.Equal(t, "", cfg.RedisPassword)
 	require.Equal(t, 0, cfg.RedisDB)
@@ -87,6 +89,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	t.Setenv("WS_CLIENT_MSG_RATE_LIMIT", "25.5")
 	t.Setenv("WS_CLIENT_MSG_BURST", "50")
 	t.Setenv("WS_TICKET_TTL_SECONDS", "30")
+	t.Setenv("WS_REVOCATION_REPLAY_WINDOW_SECONDS", "120")
 	t.Setenv("REDIS_URL", "redis-prod:6379")
 	t.Setenv("REDIS_PASSWORD", "redissecret")
 	t.Setenv("REDIS_DB", "2")
@@ -117,6 +120,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 25.5, cfg.ClientMsgRateLimit)
 	require.Equal(t, 50, cfg.ClientMsgRateBurst)
 	require.Equal(t, 30, cfg.TicketTTLSeconds)
+	require.Equal(t, 120, cfg.RevocationReplayWindowSeconds)
 	require.Equal(t, "redis-prod:6379", cfg.RedisURL)
 	require.Equal(t, "redissecret", cfg.RedisPassword)
 	require.Equal(t, 2, cfg.RedisDB)
@@ -136,6 +140,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	t.Setenv("WS_CLIENT_MSG_RATE_LIMIT", "invalid-float")
 	t.Setenv("WS_CLIENT_MSG_BURST", "invalid-int")
 	t.Setenv("WS_TICKET_TTL_SECONDS", "invalid-int")
+	t.Setenv("WS_REVOCATION_REPLAY_WINDOW_SECONDS", "invalid-int")
 	t.Setenv("REDIS_DB", "invalid-int")
 	t.Setenv("ENABLE_JETSTREAM", "invalid-bool")
 
@@ -147,6 +152,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, 10.0, cfg.ClientMsgRateLimit)
 	require.Equal(t, 20, cfg.ClientMsgRateBurst)
 	require.Equal(t, 15, cfg.TicketTTLSeconds)
+	require.Equal(t, 3600, cfg.RevocationReplayWindowSeconds)
 	require.Equal(t, 0, cfg.RedisDB)
 	require.True(t, cfg.EnableJetStream)
 

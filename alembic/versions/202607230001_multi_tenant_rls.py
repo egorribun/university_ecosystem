@@ -43,6 +43,15 @@ _TENANT_PREDICATE = (
 )
 
 
+# AUD-197/198: the application does not map tenant_id, so a row it inserts from
+# a tenant-scoped session arrives with a NULL tenant and fails the WITH CHECK
+# above. This trigger gives such a row the session tenant instead. It fills only
+# an omitted tenant, so it cannot move a row to another tenant, and it cannot
+# make a NULL row visible to any tenant session.
+_TENANT_DEFAULT_FUNCTION = "ue_rls_assign_session_tenant"
+_TENANT_DEFAULT_TRIGGER = "ue_rls_assign_tenant"
+
+
 def _create_bypass_role() -> None:
     """Create the NOLOGIN bypass role once, so policies can reference it."""
     op.execute(  # nosemgrep
@@ -50,6 +59,19 @@ def _create_bypass_role() -> None:
             "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles "
             "WHERE rolname = 'ue_rls_bypass') THEN "
             "CREATE ROLE ue_rls_bypass NOLOGIN; END IF; END $$;"
+        )
+    )
+
+
+def _create_tenant_default_function() -> None:
+    """Create the BEFORE INSERT function that stamps the session tenant."""
+    op.execute(  # nosemgrep
+        sa.text(  # nosemgrep
+            f"CREATE OR REPLACE FUNCTION {_TENANT_DEFAULT_FUNCTION}() "
+            "RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+            "IF NEW.tenant_id IS NULL THEN "
+            "NEW.tenant_id := NULLIF(current_setting('app.current_tenant', true), '')::uuid; "
+            "END IF; RETURN NEW; END $$;"
         )
     )
 
@@ -111,6 +133,7 @@ def upgrade() -> None:
     # The policies below reference the bypass role, so it must exist first.
     if bind.dialect.name == "postgresql":
         _create_bypass_role()
+        _create_tenant_default_function()
 
     # 2. Add tenant_id columns, foreign keys, and indexes across core entity tables
     for table_name in CORE_TABLES:
@@ -187,6 +210,17 @@ def upgrade() -> None:
                     f"WITH CHECK ({_TENANT_PREDICATE});"
                 )
             )
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"DROP TRIGGER IF EXISTS {_TENANT_DEFAULT_TRIGGER} ON {table_name};"
+                )
+            )
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"CREATE TRIGGER {_TENANT_DEFAULT_TRIGGER} BEFORE INSERT ON {table_name} "
+                    f"FOR EACH ROW EXECUTE FUNCTION {_TENANT_DEFAULT_FUNCTION}();"
+                )
+            )
 
 
 def downgrade() -> None:
@@ -199,6 +233,11 @@ def downgrade() -> None:
             continue
 
         if bind.dialect.name == "postgresql":
+            op.execute(  # nosemgrep
+                sa.text(  # nosemgrep
+                    f"DROP TRIGGER IF EXISTS {_TENANT_DEFAULT_TRIGGER} ON {table_name};"
+                )
+            )
             op.execute(  # nosemgrep
                 sa.text(  # nosemgrep
                     f"DROP POLICY IF EXISTS default_permissive_policy ON {table_name};"
@@ -224,6 +263,11 @@ def downgrade() -> None:
         op.drop_table("tenants")
 
     if bind.dialect.name == "postgresql":
+        op.execute(  # nosemgrep
+            sa.text(  # nosemgrep
+                f"DROP FUNCTION IF EXISTS {_TENANT_DEFAULT_FUNCTION}();"
+            )
+        )
         op.execute(  # nosemgrep
             sa.text(  # nosemgrep
                 "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles "

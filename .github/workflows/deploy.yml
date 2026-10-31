@@ -51,7 +51,11 @@ concurrency:
   group: deploy-${{ github.event.inputs.environment }}
   cancel-in-progress: false
 
-permissions: read-all
+# AUD-244: least privilege. Jobs inherit read-only repository contents; only
+# the validation job reads run metadata and artifacts, and deploy declares its
+# own write scopes below.
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io
@@ -65,6 +69,9 @@ jobs:
     # controlled while later jobs hold registry/OIDC/deployment privileges.
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 30
     services:
       postgres:

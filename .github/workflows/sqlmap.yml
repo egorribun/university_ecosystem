@@ -111,4 +111,32 @@ jobs:
             --threads=2 \
             --timeout=5 \
             --retries=0 \
+            --output-dir=sqlmap-output \
             --flush-session
+
+      # AUD-381: sqlmap exits 0 even when it confirms an injection point, so the
+      # scan result is read from its own log. Missing or empty output fails
+      # closed, and any confirmed injection fails the job after publication.
+      - name: Fail on confirmed SQL injection
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -d sqlmap-output ]] || [[ -z "$(find sqlmap-output -type f -name log -print -quit)" ]]; then
+            echo "::error::SQLMap produced no result log; the scan result is unknown." >&2
+            exit 1
+          fi
+          if grep -R -l -F "identified the following injection point" sqlmap-output >/dev/null; then
+            echo "::error::SQLMap confirmed SQL injection. The result log is in the sqlmap-output artifact." >&2
+            exit 1
+          fi
+          echo "SQLMap reported no confirmed injection points."
+
+      - name: Upload SQLMap result logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sqlmap-output-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sqlmap-output/
+          if-no-files-found: warn
+          retention-days: 30

@@ -92,13 +92,13 @@ def test_phase_four_policy_accounts_for_all_remaining_exceptions() -> None:
         ).read_text(encoding="utf-8")
     )
     # The source-derived inventory follows migrations after this historical phase.
-    assert policy["expected"]["migration_head"] == "202610250001"
+    assert policy["expected"]["migration_head"] == "202610310001"
     assert policy["expected"]["effective_counts"] == {
-        "both": 85,
-        "python_only": 42,
+        "both": 86,
+        "python_only": 41,
         "server_only": 0,
     }
-    assert len(policy["exceptions"]) == 42
+    assert len(policy["exceptions"]) == 41
     quarantine_id = next(
         item
         for item in policy["exceptions"]

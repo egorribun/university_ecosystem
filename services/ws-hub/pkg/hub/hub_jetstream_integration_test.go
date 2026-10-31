@@ -146,7 +146,7 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 	room := "multi-replica-" + strings.ToLower(namespace)
 	addOwnedMemoryStream(t, js, chatStream, "chat."+room)
 	addOwnedMemoryStream(t, js, notificationStream, "notifications."+strings.ToLower(namespace))
-	addOwnedMemoryStream(t, js, cacheInvalidationStream, "cache.invalidate")
+	addOwnedMemoryStream(t, js, cacheInvalidationStream, "cache.invalidate", "cache.revoke")
 
 	cfg := &config.Config{
 		MaxClients:              10,
@@ -170,7 +170,7 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 	for _, h := range hubs {
 		t.Cleanup(h.Stop)
 		require.NoError(t, h.SubscribeToNATS(ctx))
-		require.Len(t, h.subs, 5, "chat, notifications, cache, control, and JWKS subscriptions")
+		require.Len(t, h.subs, 6, "chat, notifications, pure cache, room revocation, control, and JWKS subscriptions")
 		require.True(t, h.chatReplayAvailable.Load())
 	}
 	coreModeCfg := *cfg
@@ -179,7 +179,7 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 	coreModeHub := trackTestHub(NewHub(nc, logger, coreModeAuth, &coreModeCfg, nil))
 	t.Cleanup(coreModeHub.Stop)
 	require.NoError(t, coreModeHub.SubscribeToNATS(ctx))
-	require.Len(t, coreModeHub.subs, 5)
+	require.Len(t, coreModeHub.subs, 6)
 	require.False(t, coreModeHub.chatReplayAvailable.Load())
 
 	payload := []byte(fmt.Sprintf(
@@ -195,19 +195,32 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 
 	const revocationUser = "11111111-1111-1111-1111-111111111111"
 	const revocationRoom = "22222222-2222-2222-2222-222222222222"
-	invalidation := signedInvalidationPayload(t, cfg.InternalSecret, invalidationData{
+	const pureUser = "33333333-3333-3333-3333-333333333333"
+	const pureRoom = "44444444-4444-4444-4444-444444444444"
+
+	// A pure invalidation is live-only: running replicas apply it, but a replica that
+	// starts later must not replay it. Only the room revocation is replayed.
+	pureInvalidation := signedInvalidationPayload(t, cfg.InternalSecret, invalidationData{
+		RoomID:    pureRoom,
+		Timestamp: 5677,
+		UserID:    pureUser,
+	})
+	_, err = js.Publish("cache.invalidate", pureInvalidation)
+	require.NoError(t, err)
+	revocation := signedInvalidationPayload(t, cfg.InternalSecret, invalidationData{
 		EvictRoom: true,
 		RoomID:    revocationRoom,
 		Timestamp: 5678,
 		UserID:    revocationUser,
 	})
-	_, err = js.Publish("cache.invalidate", invalidation)
+	_, err = js.Publish("cache.revoke", revocation)
 	require.NoError(t, err)
 	for _, auth := range append(cacheAuthClients, coreModeAuth) {
 		require.Eventually(t, func() bool {
-			return len(auth.calls()) == 1
+			return len(auth.calls()) == 2
 		}, 2*time.Second, 10*time.Millisecond,
-			"each hub replica must receive the persisted membership revocation")
+			"each hub replica must receive the pure invalidation and the persisted membership revocation")
+		require.ElementsMatch(t, [][2]string{{pureUser, pureRoom}, {revocationUser, revocationRoom}}, auth.calls())
 	}
 
 	lateAuth := &recordingAuthClient{}
@@ -218,6 +231,8 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 		return len(lateAuth.calls()) == 1
 	}, 2*time.Second, 10*time.Millisecond,
 		"a replica that starts after publication must replay the stored revocation")
+	require.Equal(t, [][2]string{{revocationUser, revocationRoom}}, lateAuth.calls(),
+		"pure invalidations are live-only and must not be replayed to a late replica")
 }
 
 func TestIntegration_OwnedStreamCleanupPreservesForeignStreams(t *testing.T) {

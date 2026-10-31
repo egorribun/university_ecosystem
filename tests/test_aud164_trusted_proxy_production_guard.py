@@ -75,3 +75,32 @@ def test_aud164_construction_accepts_production_with_explicit_proxies() -> None:
     settings = Settings(**_constructed_production_values())
 
     assert settings.trusted_proxies_list == ["10.0.0.0/8"]
+
+
+@pytest.mark.parametrize(
+    ("updates", "message"),
+    [
+        (
+            {"event_file_scanner_enabled": False},
+            "EVENT_FILE_SCANNER_ENABLED must be true",
+        ),
+        (
+            {
+                "environment": "staging",
+                "cwv_rum_enabled": True,
+                "cwv_rum_signing_secret": secrets.token_urlsafe(8),
+            },
+            "CWV_RUM_SIGNING_SECRET must contain at least 32 bytes",
+        ),
+    ],
+)
+def test_aud164_peer_guard_does_not_mask_earlier_settings_errors(
+    updates: dict[str, object], message: str
+) -> None:
+    """Pre-existing Settings validators report their specific errors first."""
+    values = _constructed_production_values()
+    values.pop("trusted_proxies")
+    values.update(updates)
+
+    with pytest.raises(ValidationError, match=message):
+        Settings(**values)

@@ -178,6 +178,14 @@ backend:
   # from connections.existingSecret and reserved by the Deployment template.
   env: {}
   config:
+    # Gateway peer CIDRs whose X-Forwarded-For the API may trust (AUD-164). The
+    # empty default trusts no peer and is valid only in development; staging and
+    # production validation requires explicit non-loopback CIDRs.
+    trustedProxies: []
+    # Access-token lifetime rendered as ACCESS_TOKEN_EXPIRE_MINUTES. It matches the
+    # application default (60 minutes). ws-hub's revocation replay window must cover
+    # it; validate-config.yaml fails the render when it does not.
+    accessTokenExpireMinutes: 60
     jwtPrivateKeyPEM: ""
     # Development-only inline values used to create <release>-secrets. Prefer
     # applicationSecrets.existingSecret outside disposable local clusters.
@@ -341,14 +349,16 @@ wsHub:
     clientMessageRateLimit: 10
     clientMessageBurst: 20
     ticketTTLSeconds: 15
+    # A late-starting replica replays room revocations from this many seconds back.
+    # It must cover backend.config.accessTokenExpireMinutes (3600 s by default), or
+    # a revoked token could stay usable on that replica.
+    revocationReplayWindowSeconds: 3600
     otelEndpoint: "otel-collector:4317"
     otelInsecure: true
     jetstream:
       enabled: true
       chatStream: "CHAT_EVENTS"
       notificationsStream: "NOTIFICATIONS_EVENTS"
-      chatDurable: "ws-hub-chat"
-      notificationsDurable: "ws-hub-notifications"
 
 # File Processor (Go)
 fileProcessor:

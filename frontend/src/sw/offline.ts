@@ -2,11 +2,19 @@
 declare const self: ServiceWorkerGlobalScope
 
 import { openDB } from "idb"
-import { log } from "./logger"
+import { warn } from "./logger"
 import {
   NOTIFICATION_INTERACTIONS_DB_NAME as CLICK_DB_NAME,
   NOTIFICATION_INTERACTIONS_DB_VERSION as DB_VERSION,
 } from "../constants/notificationInteractionsDb"
+import { requestReplayCredentials, type OfflineReplayCredentials } from "./replayCredentials"
+import {
+  isExpiredOtherSessionRecord,
+  isRetryableReplayStatus,
+  REPLAY_MAX_ATTEMPTS,
+  REPLAY_REQUEST_TIMEOUT_MS,
+  replayBackoffMs,
+} from "./replayPolicy"
 
 export const STORES = {
   NAVIGATION: "pending-navigations",
@@ -27,6 +35,10 @@ export interface PendingMutationRecord {
   dedupeKey?: string
   retryCount: number
   category?: "events" | "news" | "messenger" | "profile" | "schedule" | "general"
+  /** Browser session nonce the record was created under. Absent or null records are held, never replayed. */
+  sessionNonce?: string | null
+  /** Earliest epoch-millisecond time of the next replay attempt after a retryable failure. */
+  nextAttemptAt?: number
 }
 
 /**
@@ -102,8 +114,12 @@ export async function addRecord<T extends object>(storeName: string, value: T) {
   return db.add(storeName, value)
 }
 
-export async function storePendingNavigation(record: { url: string; timestamp: number }) {
-  return addRecord(STORES.NAVIGATION, record)
+export async function storePendingNavigation(record: {
+  url: string
+  timestamp: number
+  sessionNonce?: string | null
+}) {
+  return addRecord(STORES.NAVIGATION, { ...record, sessionNonce: record.sessionNonce ?? null })
 }
 
 export async function readPendingNavigations() {
@@ -117,30 +133,33 @@ export async function storePendingReport(record: {
   timestamp: number
   payload?: unknown
   method?: string
+  sessionNonce?: string | null
 }) {
   const method = (record.method ?? "POST").toUpperCase()
+  const sessionNonce = record.sessionNonce ?? null
   const idempotentMethods = ["GET", "PUT", "DELETE", "HEAD"]
 
   if (idempotentMethods.includes(method)) {
     // DEBT-04 (audit Wave 11): deduplicate idempotent requests by a framed
-    // method+URL+body tuple so different methods and field boundaries cannot collide.
-    // A user going offline then back online while the same resource is pending
-    // should not enqueue duplicate requests that create duplicate side-effects.
+    // method+URL+body+session tuple so different methods, field boundaries and
+    // browser sessions cannot collide. A user going offline then back online while
+    // the same resource is pending should not enqueue duplicate requests that create
+    // duplicate side-effects.
     const dedupeKey = await digestKey(
-      JSON.stringify([method, record.reportUrl, record.payload ?? null])
+      JSON.stringify([method, record.reportUrl, record.payload ?? null, sessionNonce])
     )
     const db = await getDatabase()
     const existing = await db.getAllFromIndex(STORES.REPORT, "dedupeKey", dedupeKey)
     if (existing.length > 0) {
       return // already queued — skip
     }
-    return db.add(STORES.REPORT, { ...record, method, dedupeKey })
+    return db.add(STORES.REPORT, { ...record, method, dedupeKey, sessionNonce })
   }
 
   // POST (and other non-idempotent): always enqueue; attach a random idempotency
   // key so the server can deduplicate retries on its side (via Idempotency-Key header).
   const idempotencyKey = crypto.randomUUID()
-  return addRecord(STORES.REPORT, { ...record, method, idempotencyKey })
+  return addRecord(STORES.REPORT, { ...record, method, idempotencyKey, sessionNonce })
 }
 
 export async function readPendingReports() {
@@ -203,6 +222,7 @@ export async function storePendingMutation(
         : String(Date.now() + Math.random())),
     retryCount: record.retryCount ?? 0,
     category: record.category ?? "general",
+    sessionNonce: record.sessionNonce ?? null,
   }
   return addRecord(STORES.MUTATION, fullRecord)
 }
@@ -226,14 +246,188 @@ export function processOfflineQueues(): Promise<void> {
   return next
 }
 
+/** Web Locks name shared by every worker instance so only one replay pass runs at a time. */
+const REPLAY_LOCK_NAME = "ecosystem-offline-queue-replay"
+const REPLAY_STORES = [STORES.NAVIGATION, STORES.REPORT, STORES.MUTATION] as const
+
+type ReplayStore = (typeof REPLAY_STORES)[number]
+type ReplayDatabase = Awaited<ReturnType<typeof getDatabase>>
+
+/** Fields shared by every queued record. A navigation record carries no request. */
+interface QueuedRecord {
+  id: number
+  url: string
+  reportUrl?: string
+  method: string
+  payload?: unknown
+  idempotencyKey?: string
+  timestamp: number
+  sessionNonce?: string | null
+  retryCount?: number
+  nextAttemptAt?: number
+}
+
+type ReplayAttempt =
+  | { status: "delivered" }
+  | { status: "retry"; reason: string }
+  | { status: "rejected"; reason: string }
+
 async function flushOfflineQueues() {
   if (!isOnline()) return
+  await withReplayLock(replayHeldRecords)
+}
 
-  // The legacy stores do not identify their originating session. A worker can
-  // wake after another account signs in, so keep every record untouched until
-  // a session-bound, CSRF-safe replay protocol is available.
-  log("Legacy offline queues are held pending safe replay")
-  await getDatabase()
+/** Serializes passes across worker instances. Without Web Locks the in-process chain still applies. */
+function withReplayLock(task: () => Promise<void>): Promise<void> {
+  const locks: LockManager | undefined = self.navigator.locks
+  return locks ? locks.request(REPLAY_LOCK_NAME, { mode: "exclusive" }, task) : task()
+}
+
+/**
+ * Replays only the records bound to the session that a live window vouches for. Records
+ * without a session binding, and records bound to any other session, are never sent.
+ */
+async function replayHeldRecords(): Promise<void> {
+  const db = await getDatabase()
+  try {
+    const credentials = await requestReplayCredentials()
+    if (!credentials) return
+    const now = Date.now()
+    for (const store of REPLAY_STORES) {
+      const records = (await db.getAll(store)) as QueuedRecord[]
+      for (const record of records) {
+        await replayRecord(db, store, record, credentials, now)
+      }
+    }
+  } finally {
+    db.close()
+  }
+}
+
+async function replayRecord(
+  db: ReplayDatabase,
+  store: ReplayStore,
+  record: QueuedRecord,
+  credentials: OfflineReplayCredentials,
+  now: number
+): Promise<void> {
+  // An unbound record has no proven owner, so no window can release it.
+  if (!record.sessionNonce) return
+  if (record.sessionNonce !== credentials.sessionNonce) {
+    if (isExpiredOtherSessionRecord(record.timestamp, now)) {
+      await db.delete(store, record.id)
+      warn("Dropped expired offline record from another browser session", { store, id: record.id })
+    }
+    return
+  }
+
+  const target = replayTarget(store, record)
+  // A navigation has no request to replay, so it stays queued until a window consumes it.
+  if (!target || (record.nextAttemptAt ?? 0) > now) return
+
+  const attempt = await deliver(target, record, credentials.csrfToken)
+  if (attempt.status === "delivered") {
+    await db.delete(store, record.id)
+    return
+  }
+  if (attempt.status === "retry") {
+    const retryCount = (record.retryCount ?? 0) + 1
+    if (retryCount < REPLAY_MAX_ATTEMPTS) {
+      await db.put(store, {
+        ...record,
+        retryCount,
+        nextAttemptAt: now + replayBackoffMs(retryCount),
+      })
+      return
+    }
+    await deadLetter(db, store, record.id, `retries-exhausted:${attempt.reason}`)
+    return
+  }
+  await deadLetter(db, store, record.id, attempt.reason)
+}
+
+async function deadLetter(
+  db: ReplayDatabase,
+  store: ReplayStore,
+  id: number,
+  reason: string
+): Promise<void> {
+  await db.delete(store, id)
+  warn("Dead-lettered offline record", { store, id, reason })
+}
+
+function replayTarget(store: ReplayStore, record: QueuedRecord): string | undefined {
+  if (store === STORES.REPORT) return record.reportUrl
+  if (store === STORES.MUTATION) return record.url
+  return undefined
+}
+
+async function deliver(
+  url: string,
+  record: QueuedRecord,
+  csrfToken: string
+): Promise<ReplayAttempt> {
+  const target = sameOriginHref(url)
+  if (!target) return { status: "rejected", reason: "cross-origin" }
+
+  let body: string | undefined
+  try {
+    body = replayBody(record)
+  } catch {
+    return { status: "rejected", reason: "unserializable" }
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REPLAY_REQUEST_TIMEOUT_MS)
+  try {
+    const response = await fetch(target, {
+      method: record.method,
+      headers: replayHeaders(record, csrfToken, body !== undefined),
+      body,
+      // A redirect, for example to a login page, must never look like a delivered write.
+      redirect: "manual",
+      signal: controller.signal,
+    })
+    if (response.ok) return { status: "delivered" }
+    const reason = `status-${response.status}`
+    return isRetryableReplayStatus(response.status)
+      ? { status: "retry", reason }
+      : { status: "rejected", reason }
+  } catch {
+    return { status: "retry", reason: "network" }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Resolves a replay target and refuses anything outside this worker's origin. */
+function sameOriginHref(value: string): string | null {
+  try {
+    const url = new URL(value, self.location.origin)
+    return url.origin === self.location.origin ? url.href : null
+  } catch {
+    return null
+  }
+}
+
+function replayBody(record: QueuedRecord): string | undefined {
+  if (record.payload === undefined || record.method === "GET" || record.method === "HEAD") {
+    return undefined
+  }
+  return JSON.stringify(record.payload)
+}
+
+function replayHeaders(
+  record: QueuedRecord,
+  csrfToken: string,
+  hasBody: boolean
+): Record<string, string> {
+  return {
+    Accept: "application/json",
+    "X-CSRF-Token": csrfToken,
+    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    ...(record.idempotencyKey ? { "Idempotency-Key": record.idempotencyKey } : {}),
+  }
 }
 
 export function processPendingNavigations(): Promise<void> {

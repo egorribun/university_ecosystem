@@ -8224,6 +8224,20 @@ def test_live_overlay_replaces_every_publication_with_loopback_port_variables() 
     assert set(services["caddy"]) == {"ports"}
 
 
+def test_live_overlay_reserves_per_user_logout_budget_for_session_cleanup() -> None:
+    # Cleanup logs owned sessions out through shared accounts in one burst. The
+    # per-user sensitive bucket defaults to 5/minute, so the stand raises only it.
+    source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
+    overlay: dict[str, Any] = yaml.safe_load(
+        source.replace("!override", "").replace("!reset", "")
+    )
+    backend_environment = overlay["services"]["backend"]["environment"]
+
+    assert backend_environment["RATE_LIMIT_SENSITIVE"] == "120/minute"
+    assert backend_environment["RATE_LIMIT_AUTH_LOGIN"] == "60/minute"
+    assert "RATE_LIMIT_DEFAULT" not in backend_environment
+
+
 def test_live_overlay_keeps_base_storage_on_a_project_scoped_volume() -> None:
     source = (ROOT / "docker-compose.live.yml").read_text(encoding="utf-8")
     overlay: dict[str, Any] = yaml.safe_load(

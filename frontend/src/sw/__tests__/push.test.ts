@@ -35,6 +35,20 @@ vi.mock("@/push/notification-helpers", async (importOriginal) => {
   }
 })
 
+const WINDOW_CSRF = "csrf-push"
+const WINDOW_SESSION = "session-push"
+
+/** A controlled window answering the replay-credential request, as the app's responder does. */
+function answeringWindow(
+  answer: unknown = { csrfToken: WINDOW_CSRF, sessionNonce: WINDOW_SESSION }
+) {
+  return {
+    postMessage: vi.fn((_message: unknown, transfer: MessagePort[]) => {
+      transfer[0]?.postMessage(answer)
+    }),
+  }
+}
+
 const notificationDetails = (title: string, body: string, data: NotificationData) => ({
   title,
   options: { body, data },
@@ -785,7 +799,7 @@ describe("Service Worker - Push Notifications", () => {
     })
 
     it("opens a new window and reports clicks when online", async () => {
-      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      ;((self as any).clients.matchAll as any).mockResolvedValue([answeringWindow()])
       const origin = window.location.origin
       const mockClient = { url: `${origin}/mock-url` }
       ;((self as any).clients.openWindow as any).mockResolvedValue(mockClient)
@@ -812,7 +826,7 @@ describe("Service Worker - Push Notifications", () => {
       expect((self as any).clients.openWindow).toHaveBeenCalledWith(`${origin}/mock-url`)
       expect(fetchMock).toHaveBeenCalledWith(`${origin}/api/report-click`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": WINDOW_CSRF },
         body: JSON.stringify({ ref: "email", notificationId: "123" }),
         keepalive: true,
       })
@@ -852,7 +866,7 @@ describe("Service Worker - Push Notifications", () => {
       async ({ navigationSucceeds, expectQueuedNavigation }) => {
         vi.mocked(storePendingNavigation).mockClear()
         vi.mocked(storePendingReport).mockClear()
-        ;((self as any).clients.matchAll as any).mockResolvedValue([])
+        ;((self as any).clients.matchAll as any).mockResolvedValue([answeringWindow()])
         ;((self as any).clients.openWindow as any).mockResolvedValue(
           navigationSucceeds ? { url: `${window.location.origin}/mock-url` } : null
         )
@@ -879,6 +893,7 @@ describe("Service Worker - Push Notifications", () => {
           reportUrl: `${window.location.origin}/api/report-click`,
           timestamp: expect.any(Number),
           payload: { notificationId: "without-payload" },
+          sessionNonce: WINDOW_SESSION,
         })
         if (expectQueuedNavigation) {
           expect(storePendingNavigation).toHaveBeenCalled()
@@ -889,7 +904,7 @@ describe("Service Worker - Push Notifications", () => {
     )
 
     it("enqueues report offline if fetch fails or navigator is offline", async () => {
-      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      ;((self as any).clients.matchAll as any).mockResolvedValue([answeringWindow()])
       ;((self as any).clients.openWindow as any).mockResolvedValue(null) // navigation failed
 
       vi.stubGlobal("self", {
@@ -918,14 +933,97 @@ describe("Service Worker - Push Notifications", () => {
       expect(storePendingNavigation).toHaveBeenCalledWith({
         url: `${origin}/mock-url`,
         timestamp: expect.any(Number),
+        sessionNonce: WINDOW_SESSION,
       })
       expect(storePendingReport).toHaveBeenCalledWith({
         url: `${origin}/mock-url`,
         reportUrl: `${origin}/api/report-click`,
         timestamp: expect.any(Number),
         payload: { ref: "email", notificationId: "123" },
+        sessionNonce: WINDOW_SESSION,
       })
     })
+
+    it("stores a report bound to the answering session when the server rejects the protected POST", async () => {
+      vi.mocked(storePendingNavigation).mockClear()
+      vi.mocked(storePendingReport).mockClear()
+      ;((self as any).clients.matchAll as any).mockResolvedValue([answeringWindow()])
+      ;((self as any).clients.openWindow as any).mockResolvedValue({
+        url: `${window.location.origin}/mock-url`,
+      })
+      const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 403 })
+      vi.stubGlobal("fetch", fetchMock)
+
+      const mockEvent = {
+        notification: {
+          close: vi.fn(),
+          data: {
+            url: "/mock-url",
+            reportUrl: "/api/report-click",
+            notificationId: "rejected",
+            reportPayload: { ref: "push" },
+          },
+        },
+        waitUntil: vi.fn((promise) => promise),
+      }
+      await (eventListeners.notificationclick as any)(mockEvent)
+      await (mockEvent.waitUntil.mock.results[0] as any).value
+
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": WINDOW_CSRF },
+      })
+      expect(storePendingReport).toHaveBeenCalledWith({
+        url: `${window.location.origin}/mock-url`,
+        reportUrl: `${window.location.origin}/api/report-click`,
+        timestamp: expect.any(Number),
+        payload: { ref: "push", notificationId: "rejected" },
+        sessionNonce: WINDOW_SESSION,
+      })
+      expect(storePendingNavigation).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      { label: "no window controls the page", clients: [] },
+      { label: "the controlling window refuses credentials", clients: [answeringWindow(null)] },
+    ])(
+      "does not post a report when $label and queues it without a session binding",
+      async ({ clients }) => {
+        vi.mocked(storePendingNavigation).mockClear()
+        vi.mocked(storePendingReport).mockClear()
+        ;((self as any).clients.matchAll as any).mockResolvedValue(clients)
+        ;((self as any).clients.openWindow as any).mockResolvedValue({
+          url: `${window.location.origin}/mock-url`,
+        })
+        const fetchMock = vi.fn()
+        vi.stubGlobal("fetch", fetchMock)
+
+        const mockEvent = {
+          notification: {
+            close: vi.fn(),
+            data: {
+              url: "/mock-url",
+              reportUrl: "/api/report-click",
+              notificationId: "uncredentialed",
+              reportPayload: { ref: "push" },
+            },
+          },
+          waitUntil: vi.fn((promise) => promise),
+        }
+        await (eventListeners.notificationclick as any)(mockEvent)
+        await (mockEvent.waitUntil.mock.results[0] as any).value
+
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(storePendingReport).toHaveBeenCalledWith({
+          url: `${window.location.origin}/mock-url`,
+          reportUrl: `${window.location.origin}/api/report-click`,
+          timestamp: expect.any(Number),
+          payload: { ref: "push", notificationId: "uncredentialed" },
+          sessionNonce: null,
+        })
+        expect(storePendingNavigation).not.toHaveBeenCalled()
+      }
+    )
 
     it("uses the normalized metadata URL when the top-level push URL is empty", async () => {
       const helpers = await vi.importActual<typeof import("@/push/notification-helpers")>(
@@ -982,6 +1080,7 @@ describe("Service Worker - Push Notifications", () => {
       expect(storePendingNavigation).toHaveBeenCalledWith({
         url: `${window.location.origin}/without-report`,
         timestamp: expect.any(Number),
+        sessionNonce: null,
       })
     })
 
@@ -1064,6 +1163,7 @@ describe("Service Worker - Push Notifications", () => {
       expect(storePendingNavigation).toHaveBeenCalledWith({
         url: `${window.location.origin}/`,
         timestamp: expect.any(Number),
+        sessionNonce: null,
       })
     })
 
@@ -1115,6 +1215,7 @@ describe("Service Worker - Push Notifications", () => {
       expect(storePendingNavigation).toHaveBeenCalledWith({
         url: `${window.location.origin}/safe`,
         timestamp: expect.any(Number),
+        sessionNonce: null,
       })
       expect(storePendingReport).not.toHaveBeenCalled()
     })
@@ -1150,6 +1251,7 @@ describe("Service Worker - Push Notifications", () => {
         reportUrl: `${window.location.origin}/api/report-click`,
         timestamp: expect.any(Number),
         payload: { notificationId: "primitive-payload" },
+        sessionNonce: null,
       })
     })
   })

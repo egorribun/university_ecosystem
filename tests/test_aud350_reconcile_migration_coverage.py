@@ -35,15 +35,25 @@ class _Inspector:
         user_stats_present: bool,
         foreign_keys_present: bool,
         unique_constraints_present: bool,
+        record_id_integer: bool = False,
     ) -> None:
         self.migration = migration
         self.all_uuid_columns_present = all_uuid_columns_present
         self.user_stats_present = user_stats_present
         self.foreign_keys_present = foreign_keys_present
         self.unique_constraints_present = unique_constraints_present
+        self.record_id_integer = record_id_integer
 
-    def get_columns(self, table_name: str) -> list[dict[str, str]]:
-        return [{"name": "uuid_id"}] if self.all_uuid_columns_present else []
+    def get_columns(self, table_name: str) -> list[dict[str, Any]]:
+        # SQLAlchemy reflection always reports every column's "type".
+        columns: list[dict[str, Any]] = (
+            [{"name": "uuid_id", "type": sa.UUID()}]
+            if self.all_uuid_columns_present
+            else []
+        )
+        if table_name == "notification_queue_jobs" and self.record_id_integer:
+            columns.append({"name": "record_id", "type": sa.Integer()})
+        return columns
 
     def get_table_names(self) -> list[str]:
         names = {table for _name, table in self.migration._SHADOW_INDEXES}
@@ -138,6 +148,7 @@ def _bind_migration(
     user_stats_present: bool,
     foreign_keys_present: bool,
     unique_constraints_present: bool,
+    record_id_integer: bool = False,
 ):
     migration = _load_migration()
     bind = object()
@@ -148,6 +159,7 @@ def _bind_migration(
         user_stats_present=user_stats_present,
         foreign_keys_present=foreign_keys_present,
         unique_constraints_present=unique_constraints_present,
+        record_id_integer=record_id_integer,
     )
     monkeypatch.setattr(migration, "op", operations)
     monkeypatch.setattr(
@@ -215,6 +227,51 @@ def test_upgrade_removes_uuid_compatibility_columns_and_legacy_user_stats(
     )
     assert not any(call[0] == "create_foreign_key" for call in operations.calls)
     assert not any(call[0] == "create_unique_constraint" for call in operations.calls)
+
+
+@pytest.mark.parametrize("record_id_integer", [False, True])
+def test_upgrade_dead_letters_only_integer_record_ids_before_the_uuid_cast(
+    monkeypatch: pytest.MonkeyPatch,
+    record_id_integer: bool,
+) -> None:
+    """AUD-351: legacy integer jobs are dead-lettered, then cast via their own id."""
+    migration, operations = _bind_migration(
+        monkeypatch,
+        all_uuid_columns_present=False,
+        user_stats_present=False,
+        foreign_keys_present=False,
+        unique_constraints_present=False,
+        record_id_integer=record_id_integer,
+    )
+
+    migration.upgrade()
+
+    dead_letter_updates = [
+        call
+        for call in operations.calls
+        if call[0] == "execute"
+        and "SET dead_lettered = true" in str(call[1][0])
+        and "AUD-351" in str(call[1][0])
+    ]
+    record_alters = [
+        call
+        for call in operations.calls
+        if call[0] == "alter_column"
+        and call[1][:2]
+        == (
+            "notification_queue_jobs",
+            "record_id",
+        )
+    ]
+    if record_id_integer:
+        assert len(dead_letter_updates) == 1
+        assert len(record_alters) == 1
+        assert record_alters[0][2]["postgresql_using"] == "id"
+        assert record_alters[0][2]["existing_type"].__class__ is sa.Integer
+        assert record_alters[0][2]["type_"].__class__ is sa.UUID
+    else:
+        assert dead_letter_updates == []
+        assert record_alters == []
 
 
 def test_downgrade_executes_every_revision_owned_reverse_operation(

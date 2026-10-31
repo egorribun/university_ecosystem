@@ -77,6 +77,11 @@ const (
 	pendingRoomRevocationCleanupInterval = 30 * time.Second
 )
 
+// defaultRevocationReplayWindow matches the backend default access-token lifetime
+// (access_token_expire_minutes=60). A replica that starts within this window after
+// a room revocation must still learn of it, because the revoked token stays usable.
+const defaultRevocationReplayWindow = time.Hour
+
 type roomMembershipLockEntry struct {
 	mu                sync.Mutex
 	references        int
@@ -259,7 +264,7 @@ type Hub struct {
 	pendingRoomRevocationsMu sync.RWMutex
 	pendingRoomRevocations   map[roomMembershipKey]pendingRoomRevocation
 	// subscribeCacheInvalidations is a package-test seam; production leaves it
-	// nil so revocations always use the durable JetStream stream below.
+	// nil so both cache-invalidation consumers use the JetStream stream below.
 	subscribeCacheInvalidations func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error)
 	// registrationWaitTestHook observes only the rare synchronous shutdown fallback.
 	// The bool is false before waiting and true after the registration decision.
@@ -323,6 +328,9 @@ type Hub struct {
 	streamChat      string
 	streamNotif     string
 	enableJetStream bool
+	// revocationReplayWindow bounds how far back a late-starting replica replays
+	// room membership revocations from the cache.revoke subject.
+	revocationReplayWindow time.Duration
 	// chatReplayAvailable is true only when the live chat subscription itself
 	// uses JetStream. A non-nil JS context is insufficient after core fallback.
 	chatReplayAvailable   atomic.Bool
@@ -598,6 +606,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 	streamChat := "CHAT_EVENTS"
 	streamNotif := "NOTIFICATIONS_EVENTS"
 	enableJS := true
+	revocationReplayWindow := defaultRevocationReplayWindow
 
 	if cfg != nil {
 		if cfg.BroadcastBufferSize > 0 {
@@ -619,6 +628,9 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 			streamNotif = cfg.NatsStreamNotifications
 		}
 		enableJS = cfg.EnableJetStream
+		if cfg.RevocationReplayWindowSeconds > 0 {
+			revocationReplayWindow = time.Duration(cfg.RevocationReplayWindowSeconds) * time.Second
+		}
 	}
 
 	dedupCache, err := newDedupLRUFunc(10000)
@@ -666,6 +678,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		streamChat:                        streamChat,
 		streamNotif:                       streamNotif,
 		enableJetStream:                   enableJS,
+		revocationReplayWindow:            revocationReplayWindow,
 	}
 	hub.sessionRevocationCheck = hub.checkJTINotRevoked
 	return hub
@@ -1413,12 +1426,17 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	}
 	h.subs = append(h.subs, chatSub, notifSub)
 
-	// Membership revocations are published through the backend transactional
-	// outbox. This consumer stays ephemeral: ws-hub replicas are stateless, so
-	// a fresh replica holds no invalidation-derived state and must not replay
-	// the seven-day CACHE_INVALIDATIONS retention on every start (AUD-478).
-	// It remains a JetStream consumer, so acknowledgements still apply even
-	// when Core NATS is selected for chat delivery.
+	// The backend transactional outbox publishes two signed event classes on separate
+	// subjects of CACHE_INVALIDATIONS: pure authorization-cache invalidations on
+	// cache.invalidate and room membership revocations (evict_room) on cache.revoke.
+	// Each subject has exactly one ephemeral consumer per replica, so every verified
+	// event is applied once per replica.
+	//
+	// Pure invalidations are live-only. ws-hub replicas are stateless, so a fresh
+	// replica holds no invalidation-derived state and must not replay the
+	// seven-day CACHE_INVALIDATIONS retention on every start (AUD-478). Both consumers
+	// remain JetStream consumers, so acknowledgements still apply even when Core NATS
+	// is selected for chat delivery.
 	invHandler := h.handleCacheInvalidation(appCtx)
 	invOpts := []nats.SubOpt{nats.DeliverNew(), nats.AckExplicit(), nats.ManualAck()}
 	var invSub *nats.Subscription
@@ -1433,6 +1451,30 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	}
 	if invSub != nil {
 		h.subs = append(h.subs, invSub)
+	}
+
+	// A room revocation must still reach a replica that starts after publication,
+	// for as long as the revoked token can remain usable. This consumer therefore
+	// starts at now minus the revocation replay window, which is bounded by the
+	// access-token lifetime rather than by stream retention.
+	revocationHandler := h.handleCacheInvalidation(appCtx)
+	revocationOpts := []nats.SubOpt{
+		nats.StartTime(time.Now().Add(-h.revocationReplayWindow)),
+		nats.AckExplicit(),
+		nats.ManualAck(),
+	}
+	var revocationSub *nats.Subscription
+	if h.subscribeCacheInvalidations != nil {
+		revocationSub, err = h.subscribeCacheInvalidations(revocationHandler, revocationOpts...)
+	} else {
+		revocationSub, err = h.js.Subscribe("cache.revoke", revocationHandler, revocationOpts...)
+	}
+	if err != nil {
+		h.Logger.ErrorContext(appCtx, "JetStream room revocation subscription failed", "err", err)
+		return err
+	}
+	if revocationSub != nil {
+		h.subs = append(h.subs, revocationSub)
 	}
 
 	ctrlSub, err := coreNATSSubscribeFunc(h.Nats, "ws_hub.control", h.handleControlMessage(appCtx))
@@ -1717,6 +1759,9 @@ type cacheInvalidationPayload struct {
 	Signature string `json:"signature"`
 }
 
+// handleCacheInvalidation returns the consumer callback for the cache-invalidation
+// subjects. Both subjects share this handler: the verified payload decides how an
+// event is applied, and the subject decides only its replay policy.
 func (h *Hub) handleCacheInvalidation(appCtx context.Context) nats.MsgHandler {
 	return func(msg *nats.Msg) {
 		h.runNATSCallbackWithPanicRecovery(appCtx, msg, "cache.invalidate", func() {
@@ -1740,7 +1785,7 @@ func (h *Hub) handleCacheInvalidationCallback(appCtx context.Context, msg *nats.
 		trace.WithAttributes(
 			semconv.MessagingSystemKey.String("nats"),
 			semconv.MessagingOperationTypeKey.String("receive"),
-			semconv.MessagingDestinationNameKey.String("cache.invalidate"),
+			semconv.MessagingDestinationNameKey.String(msg.Subject),
 		),
 	)
 	defer span.End()
@@ -1756,10 +1801,28 @@ func (h *Hub) processCacheInvalidationMessage(ctx context.Context, msg *nats.Msg
 	if !h.verifyCacheInvalidationSignature(ctx, msg, payload) {
 		return
 	}
+	h.checkCacheInvalidationSubject(ctx, msg, payload)
 	if !h.applyCacheInvalidation(ctx, msg, span, payload) {
 		return
 	}
 	safeAck(msg)
+}
+
+// checkCacheInvalidationSubject enforces the publisher contract after verification:
+// room revocations (evict_room) travel on cache.revoke and pure invalidations on
+// cache.invalidate. A mismatch is logged as a contract violation, but the verified
+// event is still applied. Dropping a revocation would leave a removed member
+// connected, and applying a misrouted pure invalidation only forces a re-check.
+func (h *Hub) checkCacheInvalidationSubject(ctx context.Context, msg *nats.Msg, payload cacheInvalidationPayload) {
+	expected := "cache.invalidate"
+	if payload.Data.EvictRoom {
+		expected = "cache.revoke"
+	}
+	if msg.Subject == expected {
+		return
+	}
+	h.Logger.ErrorContext(ctx, "ws-hub: cache invalidation contract violation; applying verified event",
+		"subject", msg.Subject, "expected_subject", expected, "evict_room", payload.Data.EvictRoom)
 }
 
 func (h *Hub) decodeCacheInvalidationMessage(

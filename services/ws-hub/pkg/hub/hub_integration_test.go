@@ -115,7 +115,7 @@ func startNATSContainer(t *testing.T) *nats.Conn {
 	}
 	_, err = js.AddStream(&nats.StreamConfig{
 		Name:      "CACHE_INVALIDATIONS",
-		Subjects:  []string{"cache.invalidate"},
+		Subjects:  []string{"cache.invalidate", "cache.revoke"},
 		Storage:   nats.MemoryStorage,
 		Retention: nats.LimitsPolicy,
 	})

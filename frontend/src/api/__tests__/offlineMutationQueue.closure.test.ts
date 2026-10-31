@@ -7,6 +7,11 @@ const offline = vi.hoisted(() => ({
 vi.mock("@/sw/offline", () => offline)
 
 import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
+import {
+  acceptBrowserSessionGeneration,
+  getBrowserSessionGeneration,
+  rotateBrowserSession,
+} from "@/stores/sessionEpoch"
 import { enqueueOfflineMutation } from "../offlineMutationQueue"
 
 const mutation = {
@@ -19,6 +24,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   offline.storePendingMutation.mockResolvedValue(undefined)
   vi.stubGlobal("navigator", {})
+  localStorage.clear()
+  acceptBrowserSessionGeneration()
 })
 
 describe("enqueueOfflineMutation", () => {
@@ -28,6 +35,7 @@ describe("enqueueOfflineMutation", () => {
     expect(offline.storePendingMutation).toHaveBeenCalledWith({
       ...mutation,
       category: "general",
+      sessionNonce: null,
     })
   })
 
@@ -39,6 +47,7 @@ describe("enqueueOfflineMutation", () => {
     expect(offline.storePendingMutation).toHaveBeenCalledWith({
       ...mutation,
       category: "profile",
+      sessionNonce: null,
     })
   })
 
@@ -50,6 +59,37 @@ describe("enqueueOfflineMutation", () => {
     expect(offline.storePendingMutation).toHaveBeenCalledWith({
       ...mutation,
       category: "general",
+      sessionNonce: null,
+    })
+  })
+
+  it("binds the mutation to the verified browser session it was created under", async () => {
+    rotateBrowserSession()
+    const nonce = getBrowserSessionGeneration()
+
+    await enqueueOfflineMutation(mutation)
+
+    expect(nonce).not.toBeNull()
+    expect(offline.storePendingMutation).toHaveBeenCalledWith({
+      ...mutation,
+      category: "general",
+      sessionNonce: nonce,
+    })
+  })
+
+  it("leaves the mutation unbound when the browser session cannot be verified", async () => {
+    rotateBrowserSession()
+    localStorage.setItem(
+      "ecosystem.session.generation.v1",
+      JSON.stringify({ nonce: "foreign-session", hash: null })
+    )
+
+    await enqueueOfflineMutation(mutation)
+
+    expect(offline.storePendingMutation).toHaveBeenCalledWith({
+      ...mutation,
+      category: "general",
+      sessionNonce: null,
     })
   })
 

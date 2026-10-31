@@ -5,6 +5,17 @@ import { processPendingNavigations, readPendingNavigations, readPendingReports }
 
 vi.mock("../logger", () => ({ log: vi.fn(), warn: vi.fn() }))
 
+const QUEUE_SESSION = "session-queue"
+
+/** A controlled window answering the replay-credential request with the given answer. */
+function windowAnswering(answer: unknown) {
+  return {
+    postMessage: vi.fn((_message: unknown, transfer: MessagePort[]) => {
+      transfer[0]?.postMessage(answer)
+    }),
+  }
+}
+
 beforeEach(() => {
   vi.stubGlobal("indexedDB", new IDBFactory())
   vi.spyOn(navigator, "onLine", "get").mockReturnValue(true)
@@ -17,10 +28,14 @@ afterEach(() => {
 })
 
 it.each([false, true])(
-  "queues one navigation per failed click and holds legacy replay when report failure is %s",
+  "queues one navigation per failed click, bound to the answering session; report failure is %s",
   async (reportFails) => {
     const clients = {
-      matchAll: vi.fn().mockResolvedValue([]),
+      matchAll: vi
+        .fn()
+        .mockResolvedValue([
+          windowAnswering({ csrfToken: "csrf-queue", sessionNonce: QUEUE_SESSION }),
+        ]),
       openWindow: vi.fn().mockResolvedValue(null),
     }
     vi.stubGlobal("clients", clients)
@@ -49,7 +64,9 @@ it.each([false, true])(
     await event.waitUntil.mock.calls[0]?.[0]
 
     const url = `${location.origin}/news/queued`
-    expect(await readPendingNavigations()).toEqual([{ id: 1, url, timestamp: 123_456 }])
+    expect(await readPendingNavigations()).toEqual([
+      { id: 1, url, timestamp: 123_456, sessionNonce: QUEUE_SESSION },
+    ])
     const reports = await readPendingReports()
     expect(reports).toHaveLength(reportFails ? 1 : 0)
     if (reportFails) {
@@ -57,17 +74,23 @@ it.each([false, true])(
         url,
         reportUrl: `${location.origin}/api/v1/notifications/click`,
         payload: { notificationId: "queued-click" },
+        sessionNonce: QUEUE_SESSION,
       })
     }
 
     expect(clients.openWindow).toHaveBeenCalledExactlyOnceWith(url)
     clients.openWindow.mockClear()
     clients.openWindow.mockResolvedValue({})
+    // The window no longer vouches for the session, so the bound records must stay queued.
+    clients.matchAll.mockResolvedValue([windowAnswering(null)])
     await processPendingNavigations()
 
-    // Legacy rows have no owner binding: hold them rather than replay across accounts.
     expect(clients.openWindow).not.toHaveBeenCalled()
-    expect(await readPendingNavigations()).toEqual([{ id: 1, url, timestamp: 123_456 }])
+    // The click POST itself was attempted once; the refused replay pass attempted nothing more.
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(await readPendingNavigations()).toEqual([
+      { id: 1, url, timestamp: 123_456, sessionNonce: QUEUE_SESSION },
+    ])
     expect(await readPendingReports()).toEqual(reports)
   }
 )

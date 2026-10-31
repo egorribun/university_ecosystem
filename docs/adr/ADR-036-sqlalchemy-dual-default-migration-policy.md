@@ -68,8 +68,10 @@ whose parent is 202610120002.
 
 The newest irreversible revision is 202610250001, whose parent is 202610200001.
 The existing migration_downgrade_policy.py planner selects 202610250001 as the
-safe target. This currently equals head, so the safe-range downgrade is a no-op;
-the separate boundary probe must reject crossing to 202610200001 with the
+safe target. The only revision above that target is 202610310001, the AUD-447
+auth-token scrub, whose downgrade is an explicit no-op; the safe-range downgrade
+is therefore a no-op; the separate boundary probe must reject crossing to
+202610200001 with the
 declared chat-receipt reason: "Dropping chat send receipts can discard committed
 idempotency history and permit duplicate messages". The reusable backend gate
 checks that the applied revision is unchanged after the refusal, before upgrading
@@ -344,8 +346,9 @@ security/schema decision changes their contract:
   the time-ordered UUIDv7 invariant;
 - `active_sessions.signing_key`: a PostgreSQL default must never replace the
   CSPRNG secret generator;
-- `push_subscriptions.topics` and `user_push_topics.topics`: JSON defaults
-  require an explicit dialect/type and round-trip decision.
+- `user_push_topics.topics`: JSON defaults require an explicit dialect/type
+  and round-trip decision. `push_subscriptions.topics` is no longer listed
+  because its model declares the catalog default (see the 2026-10-31 update).
 
 `Computed` columns and `default=None` declarations are not effective defaults
 and are excluded from the dual-default denominator. Each exception must be
@@ -443,6 +446,22 @@ exception category or waiver. The historical phase snapshots and the 2026-10-20
 inventory evidence above remain unchanged. Current-SHA inventory, schema-drift,
 migration, PostgreSQL and required-check evidence must still be collected; these
 source expectations are not a passing check or deployed-catalog certification.
+
+## 2026-10-31: DLQ auth-token scrub and push-topic default inventory update
+
+Revision `202610310001` replaces plaintext auth-email tokens in
+`dead_letter_jobs`. It adds no model column and changes no effective default.
+Its downgrade is a reviewed no-op, so the planner treats it as reversible: it
+sits above the 202610250001 boundary without moving the safe target.
+
+Commit `77dc788c4` gives `push_subscriptions.topics` a model `server_default`
+(`'[]'::json`) that matches the catalog default installed by revision
+`f9d2b1f5e2d0`. The column is therefore dual-declared and its exception is
+withdrawn from the policy; `user_push_topics.topics` keeps its exception. The
+source-derived expected inventory becomes 47 tables and 127 effective defaults
+(86 both, 41 Python-only and 0 server-only), with 102 source-level default
+declarations (86 both and 16 Python-only). These are source and model counts,
+not deployed PostgreSQL catalog evidence.
 
 ## Related Decisions
 

@@ -427,11 +427,17 @@ def test_repository_migrations_have_a_valid_fail_closed_downgrade_plan() -> None
         "and permit duplicate messages"
     )
 
-    assert plan.head_revision == "202610250001"
+    assert plan.head_revision == "202610310001"
     assert plan.safe_target == "202610250001"
     assert plan.boundary_revision == "202610250001"
     assert plan.boundary_parent == "202610200001"
     assert plan.boundary_reason == expected_reason
+    # The AUD-447 scrub above the boundary is an explicit reversible no-op.
+    scrub = policy._parse_migration(
+        MIGRATIONS_DIR / "202610310001_scrub_plaintext_auth_tokens_from_dlq.py"
+    )
+    assert scrub.irreversible_reason is None
+    assert scrub.parents == ("202610250001",)
 
     quarantine = policy._parse_migration(
         MIGRATIONS_DIR / "202610200001_add_quarantine_storage_ledger.py"
@@ -565,9 +571,19 @@ def test_adr_rollback_boundary_matches_source_derived_plan() -> None:
         "The existing migration_downgrade_policy.py planner selects "
         f"{plan.safe_target} as the safe target."
     ) in section
-    assert plan.safe_target == plan.head_revision
+    # The safe target sits below head only because the single revision above it
+    # is a reviewed reversible no-op; no irreversible barrier lies above it.
+    assert plan.safe_target == plan.boundary_revision
+    head_metadata = policy._parse_migration(
+        MIGRATIONS_DIR / "202610310001_scrub_plaintext_auth_tokens_from_dlq.py"
+    )
+    assert head_metadata.revision == plan.head_revision
+    assert head_metadata.irreversible_reason is None
+    assert head_metadata.parents == (plan.boundary_revision,)
     assert (
-        "This currently equals head, so the safe-range downgrade is a no-op;"
+        f"The only revision above that target is {plan.head_revision}, the AUD-447 "
+        "auth-token scrub, whose downgrade is an explicit no-op; the safe-range "
+        "downgrade is therefore a no-op;"
     ) in section
     assert (
         "the separate boundary probe must reject crossing to "
@@ -685,7 +701,11 @@ def test_historical_rollback_scope_is_below_mfa_barriers_in_source_graph() -> No
     ):
         assert revision in head_history
         assert revisions[revision].irreversible_reason is not None
-    assert plan.boundary_revision == plan.head_revision
+    # Every revision above the newest barrier must be reversible: here, only head.
+    above_boundary = head_history - ancestors(plan.boundary_revision)
+    above_boundary.discard(plan.boundary_revision)
+    assert above_boundary == {plan.head_revision}
+    assert revisions[plan.head_revision].irreversible_reason is None
     assert revisions[plan.boundary_revision].parents == (plan.boundary_parent,)
     assert revisions[plan.boundary_revision].irreversible_reason == plan.boundary_reason
 

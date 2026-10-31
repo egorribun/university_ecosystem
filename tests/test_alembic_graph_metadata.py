@@ -177,7 +177,7 @@ def test_all_current_migrations_are_retained_in_the_metadata_graph() -> None:
     _valid_control()
     paths = sorted((ROOT / "alembic/versions").glob("*.py"))
     paths = [path for path in paths if path.name != "__init__.py"]
-    assert len(paths) == 142
+    assert len(paths) == 143
     sources = {path.name: path.read_text(encoding="utf-8") for path in paths}
     expected: dict[str, tuple[str, ...]] = {}
     for name, source in sources.items():
@@ -208,7 +208,7 @@ def test_all_current_migrations_are_retained_in_the_metadata_graph() -> None:
             assert isinstance(parents, tuple)
             assert all(isinstance(parent, str) for parent in parents)
             expected[revision] = parents
-    assert len(expected) == 142
+    assert len(expected) == 143
     assert sum(not parents for parents in expected.values()) == 1
     assert sum(len(parents) == 2 for parents in expected.values()) == 9
     assert sum(len(parents) == 3 for parents in expected.values()) == 1

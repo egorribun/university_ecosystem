@@ -21,9 +21,9 @@ const (
 	aud511TestRoomID = "22222222-2222-2222-2222-222222222222"
 )
 
-func aud511CacheInvalidationMessage(data []byte, streamSequence uint64, publishedAt time.Time) *nats.Msg {
+func aud511CacheInvalidationMessage(subject string, data []byte, streamSequence uint64, publishedAt time.Time) *nats.Msg {
 	return &nats.Msg{
-		Subject: "cache.invalidate",
+		Subject: subject,
 		Data:    data,
 		Sub:     &nats.Subscription{},
 		Reply: fmt.Sprintf(
@@ -51,7 +51,7 @@ func TestAUD511ExpiredPublishTimeDoesNotKeepPendingMarker(t *testing.T) {
 		RoomID:    aud511TestRoomID,
 		UserID:    aud511TestUserID,
 	})
-	msg := aud511CacheInvalidationMessage(payload, publishSequence, publishedAt)
+	msg := aud511CacheInvalidationMessage("cache.revoke", payload, publishSequence, publishedAt)
 	metadata, err := msg.Metadata()
 	require.NoError(t, err)
 	assert.Equal(t, uint64(publishSequence), metadata.Sequence.Stream)
@@ -80,7 +80,7 @@ func TestAUD511MarkerExpiryUsesPublishTimeAndOnlyNewSequencesRenew(t *testing.T)
 		RoomID:    aud511TestRoomID,
 		UserID:    aud511TestUserID,
 	})
-	first := aud511CacheInvalidationMessage(payload, 50, publishedAt)
+	first := aud511CacheInvalidationMessage("cache.revoke", payload, 50, publishedAt)
 	process(first)
 	marker := aud511PendingMarker(t, h)
 	require.False(t, marker.sticky)
@@ -93,7 +93,7 @@ func TestAUD511MarkerExpiryUsesPublishTimeAndOnlyNewSequencesRenew(t *testing.T)
 		"redelivering the same stream sequence must not renew its expiry")
 
 	newerPublishedAt := publishedAt.Add(time.Second)
-	process(aud511CacheInvalidationMessage(payload, 51, newerPublishedAt))
+	process(aud511CacheInvalidationMessage("cache.revoke", payload, 51, newerPublishedAt))
 	newer := aud511PendingMarker(t, h)
 	assert.Equal(t, uint64(51), newer.streamSequence)
 	assert.Equal(t, newerPublishedAt.Add(pendingRoomRevocationTTL).UnixNano(), newer.expiresAt.UnixNano(),
@@ -556,7 +556,7 @@ func TestAUD512TransientRevocationFailureStillUsesFiveSecondNak(t *testing.T) {
 		RoomID:    aud511TestRoomID,
 		UserID:    aud511TestUserID,
 	})
-	msg := aud511CacheInvalidationMessage(payload, 42, time.Now())
+	msg := aud511CacheInvalidationMessage("cache.revoke", payload, 42, time.Now())
 	h.handleCacheInvalidation(context.Background())(msg)
 
 	assert.Equal(t, []time.Duration{5 * time.Second}, nakDelays,

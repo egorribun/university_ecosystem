@@ -25,6 +25,13 @@ vi.mock("idb", async (importOriginal) => {
   }
 })
 
+const { openDB: realOpenDB } = await vi.importActual<typeof import("idb")>("idb")
+
+/** Every trigger closes the connection it opened, so each one receives its own handle. */
+function freshConnection() {
+  return realOpenDB("notification-interactions", 4)
+}
+
 describe("AUD-375: overlapping worker queue triggers", () => {
   beforeEach(async () => {
     vi.stubGlobal("indexedDB", new IDBFactory())
@@ -47,7 +54,7 @@ describe("AUD-375: overlapping worker queue triggers", () => {
     const open = vi.fn(async () => {
       openCount += 1
       if (openCount === 1) await pending
-      return db
+      return freshConnection()
     })
     vi.stubGlobal("__audit375_openDB__", open)
 
@@ -75,7 +82,7 @@ describe("AUD-375: overlapping worker queue triggers", () => {
     const open = vi.fn(async () => {
       openCount += 1
       if (openCount === 1) await pending
-      return db
+      return freshConnection()
     })
     vi.stubGlobal("__audit375_openDB__", open)
 
@@ -93,18 +100,16 @@ describe("AUD-375: overlapping worker queue triggers", () => {
   })
 
   it("runs a later trigger after the first database open rejects", async () => {
-    const db = await openDB("notification-interactions", 4)
     const open = vi
       .fn()
       .mockRejectedValueOnce(new Error("database unavailable"))
-      .mockResolvedValue(db)
+      .mockImplementation(() => freshConnection())
     vi.stubGlobal("__audit375_openDB__", open)
 
     const results = await Promise.allSettled([processOfflineQueues(), processOfflineQueues()])
 
     expect(results.map((result) => result.status)).toEqual(["rejected", "fulfilled"])
     expect(open).toHaveBeenCalledTimes(2)
-    db.close()
   })
 
   it("serializes direct processors with the common hold", async () => {
@@ -117,7 +122,7 @@ describe("AUD-375: overlapping worker queue triggers", () => {
     const open = vi.fn(async () => {
       openCount += 1
       if (openCount === 1) await pending
-      return db
+      return freshConnection()
     })
     vi.stubGlobal("__audit375_openDB__", open)
 

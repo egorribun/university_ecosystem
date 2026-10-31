@@ -850,6 +850,18 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "trustedProxies": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "accessTokenExpireMinutes": {
+              "type": "integer",
+              "minimum": 1
+            },
             "jwtPrivateKeyPEM": {
               "type": "string"
             },
@@ -1084,6 +1096,7 @@
             "clientMessageRateLimit",
             "clientMessageBurst",
             "ticketTTLSeconds",
+            "revocationReplayWindowSeconds",
             "otelEndpoint",
             "otelInsecure",
             "jetstream"
@@ -1137,6 +1150,10 @@
               "minimum": 1,
               "maximum": 300
             },
+            "revocationReplayWindowSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
             "otelEndpoint": {
               "type": "string",
               "minLength": 1
@@ -1150,9 +1167,7 @@
               "required": [
                 "enabled",
                 "chatStream",
-                "notificationsStream",
-                "chatDurable",
-                "notificationsDurable"
+                "notificationsStream"
               ],
               "properties": {
                 "enabled": {
@@ -1163,14 +1178,6 @@
                   "minLength": 1
                 },
                 "notificationsStream": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "chatDurable": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "notificationsDurable": {
                   "type": "string",
                   "minLength": 1
                 }

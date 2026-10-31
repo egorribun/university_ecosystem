@@ -11,7 +11,9 @@ concurrency:
 jobs:
   auto-merge:
     name: Auto Merge Dependabot Patches
-    if: github.actor == 'dependabot[bot]'
+    # AUD-244: github.actor can be changed by later events on the PR, so gate
+    # on the immutable PR author id of the dependabot[bot] account instead.
+    if: github.event.pull_request.user.id == 49699333
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -19,6 +21,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Fetch PR details
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:

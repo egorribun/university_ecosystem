@@ -50,7 +50,10 @@ on:
         type: string
         default: ""
 
-permissions: read-all
+# AUD-244: least privilege; no job in this workflow writes to the repository
+# or reads run metadata, so the workflow token is read-only repository contents.
+permissions:
+  contents: read
 
 concurrency:
   group: lhci-linux-${{ github.ref }}
@@ -113,6 +116,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

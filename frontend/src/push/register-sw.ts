@@ -5,6 +5,7 @@ import {
 } from "@/app/pwaEvents"
 import { createTrustedScriptURL } from "@/utils/trustedTypes"
 import { logError } from "@/app/logger"
+import { installReplayCredentialResponder } from "@/sw/replayCredentialResponder"
 import {
   SERVICE_WORKER_MESSAGE_TYPES,
   type ServiceWorkerMessage,
@@ -147,6 +148,8 @@ async function registerServiceWorkerOnce(
       return backgroundSync
     }
 
+    // Answer the worker's replay-credential requests before it can ask for them.
+    installReplayCredentialResponder(serviceWorkerContainer)
     sendQueueSignal()
 
     window.addEventListener("online", sendQueueSignal)

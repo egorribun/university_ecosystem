@@ -7,6 +7,8 @@ import {
   readPendingNavigations,
   storePendingReport,
   readPendingReports,
+  storePendingMutation,
+  readPendingMutations,
   sanitizeReportPayload,
   processPendingReports,
   addRecord,
@@ -313,6 +315,88 @@ describe("Service Worker - Offline Storage & Sync", () => {
         payload: { event: "click" },
         idempotencyKey: expect.any(String),
       })
+    })
+  })
+
+  describe("Session binding (AUD-375)", () => {
+    it("records the supplied session nonce on navigations, reports and mutations", async () => {
+      await storePendingNavigation({
+        url: "http://localhost/a",
+        timestamp: 1,
+        sessionNonce: "session-A",
+      })
+      await storePendingReport({
+        url: "http://localhost/a",
+        reportUrl: "http://localhost/api/a",
+        timestamp: 2,
+        method: "PUT",
+        payload: { a: 1 },
+        sessionNonce: "session-A",
+      })
+      await storePendingMutation({
+        url: "http://localhost/api/m",
+        method: "PATCH",
+        payload: {},
+        mutationId: "m-session",
+        idempotencyKey: "k-session",
+        timestamp: 3,
+        sessionNonce: "session-A",
+      })
+
+      expect(await readPendingNavigations()).toEqual([
+        expect.objectContaining({ sessionNonce: "session-A" }),
+      ])
+      expect(await readPendingReports()).toEqual([
+        expect.objectContaining({ sessionNonce: "session-A" }),
+      ])
+      expect(await readPendingMutations()).toEqual([
+        expect.objectContaining({ sessionNonce: "session-A" }),
+      ])
+    })
+
+    it("leaves a record unbound when the caller supplies no nonce or an explicit null", async () => {
+      await storePendingNavigation({ url: "http://localhost/b", timestamp: 1 })
+      await storePendingReport({
+        url: "http://localhost/b",
+        reportUrl: "http://localhost/api/b",
+        timestamp: 2,
+        sessionNonce: null,
+      })
+      await storePendingMutation({
+        url: "http://localhost/api/b",
+        method: "POST",
+        payload: {},
+        mutationId: "m-unbound",
+        idempotencyKey: "k-unbound",
+        timestamp: 3,
+      })
+
+      expect(await readPendingNavigations()).toEqual([
+        expect.objectContaining({ sessionNonce: null }),
+      ])
+      expect(await readPendingReports()).toEqual([expect.objectContaining({ sessionNonce: null })])
+      expect(await readPendingMutations()).toEqual([
+        expect.objectContaining({ sessionNonce: null }),
+      ])
+    })
+
+    it("keeps identical idempotent reports from different sessions distinct", async () => {
+      const report = {
+        url: "http://localhost/news",
+        reportUrl: "http://localhost/api/news/1",
+        timestamp: 1000,
+        payload: { read: true },
+        method: "PUT",
+      }
+
+      await storePendingReport({ ...report, sessionNonce: "session-A" })
+      await storePendingReport({ ...report, sessionNonce: "session-B" })
+      await storePendingReport({ ...report, sessionNonce: "session-A" })
+
+      expect((await readPendingReports()).map((record) => record.sessionNonce)).toEqual([
+        "session-A",
+        "session-B",
+      ])
     })
   })
 

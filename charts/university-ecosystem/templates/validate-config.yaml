@@ -2,6 +2,14 @@
 {{- if not (has $environment (list "development" "staging" "production")) -}}
   {{- fail "global.environment must be one of: development, staging, production" -}}
 {{- end -}}
+{{- /* A late-starting ws-hub replica must replay every revocation that a still-valid access token could carry. */ -}}
+{{- if .Values.wsHub.enabled -}}
+  {{- $replayWindowSeconds := int .Values.wsHub.config.revocationReplayWindowSeconds -}}
+  {{- $accessTokenSeconds := mul (int .Values.backend.config.accessTokenExpireMinutes) 60 -}}
+  {{- if lt $replayWindowSeconds $accessTokenSeconds -}}
+    {{- fail (printf "wsHub.config.revocationReplayWindowSeconds (%d) must be at least backend.config.accessTokenExpireMinutes * 60 (%d)" $replayWindowSeconds $accessTokenSeconds) -}}
+  {{- end -}}
+{{- end -}}
 {{- if .Values.gatewayApi.enabled -}}
   {{- if .Values.ingress.enabled -}}
     {{- fail "gatewayApi.enabled and ingress.enabled cannot both be true; disable Ingress before validating the Gateway API preview" -}}
@@ -101,6 +109,8 @@
   {{- if not .Values.backend.config.mfaTotpActiveEncryptionKeyId -}}
     {{- fail "backend.config.mfaTotpActiveEncryptionKeyId must be set in staging/production" -}}
   {{- end -}}
+  {{- /* AUD-164: an empty list shares the API's login, register, MFA and reset buckets across clients. The helper fails closed on an empty, loopback-only, or over-broad list. */ -}}
+  {{- $_ := include "university-ecosystem.requireIngressProxyPeers" (dict "fieldPath" "backend.config.trustedProxies" "proxies" .Values.backend.config.trustedProxies) -}}
   {{- if or (gt (len .Values.backend.env) 0) (gt (len .Values.outboxWorker.env) 0) -}}
     {{- fail "backend.env and outboxWorker.env must be empty in staging/production; use explicit chart configuration or Secret references so inline values do not enter Helm release state" -}}
   {{- end -}}

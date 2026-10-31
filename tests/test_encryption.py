@@ -360,6 +360,9 @@ def _production_auth_settings_values(
         "audit_log_secret": secrets.token_urlsafe(48),
         "spicedb_preshared_key": secrets.token_urlsafe(32),
         "ws_hub_internal_secret": secrets.token_urlsafe(32),
+        # AUD-164 explicit API peers and AUD-490 idempotency HMAC key.
+        "trusted_proxies": "10.0.0.0/8",
+        "idempotency_hmac_secret": secrets.token_urlsafe(48),
         "elasticsearch_url": "https://search.test.invalid",
         "elasticsearch_password": secrets.token_urlsafe(32),
         "minio_secure": True,

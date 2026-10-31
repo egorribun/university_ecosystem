@@ -42,13 +42,14 @@ corresponding plaintext variable.
 |----------|-------------|---------|
 | `SECRET_KEY` | Primary JWT signing secret | Required |
 | `ALGORITHM` | JWT algorithm; `HS256` is permitted only for local development/testing | `RS256` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token TTL | `60` |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token TTL; ws-hub's `WS_REVOCATION_REPLAY_WINDOW_SECONDS` must be at least this many seconds | `60` |
 | `MAX_SESSIONS_PER_USER` | Concurrent sessions (0=unlimited) | `5` |
 | `AUTH_LOCKOUT_THRESHOLDS` | Lockout rules `attempts:seconds` | `5:30,8:300,10:3600` |
 | `CSRF_HMAC_SECRET` | Independent HMAC key for signed CSRF cookies; unsigned fallback is development/testing only | Empty locally; required outside development |
 | `INTERNAL_HMAC_SECRET` | Verifies the gateway `X-Internal-Signature` identity assertion (minimum 32 bytes) | Required outside development |
 | `AUDIT_LOG_SECRET` | HMAC key for audit log signatures (min 32 chars) | Development placeholder; must be overridden outside development |
 | `TOKEN_HMAC_SECRET` | Dedicated HMAC key for password-reset and email-change token digests | Required in staging/prod |
+| `PASSWORD_HIBP_CHECK_ENABLED` | Screens new passwords against the Have I Been Pwned range API (k-anonymity prefix only). Staging and production turn it on when unset and reject an explicit `false` | `false` in development; forced `true` in staging/production |
 | `JWT_PRIVATE_KEY_PATH` | RS256 private key path used to mint access tokens | `.secrets/jwt_rs256.pem` |
 | `JWT_AUDIENCE` | Expected JWT audience for zero-trust consumers | `university-ecosystem-api` |
 | `JWT_ISSUER` | Stable JWT issuer for zero-trust consumers | `university-ecosystem` |
@@ -94,7 +95,7 @@ corresponding plaintext variable.
 | `RATE_LIMIT_DEFAULT` | Default rate | `200/minute` |
 | `RATE_LIMIT_STORAGE_BACKEND` | `memory` or `redis` | `memory` |
 | `RATE_LIMIT_STORAGE_URI` | Storage URI when the rate limiter backend is Redis | `memory://` |
-| `TRUSTED_PROXIES` | Allowed `X-Forwarded-For` source IPs | Empty |
+| `TRUSTED_PROXIES` | Comma-separated IPs/CIDRs of the gateway and edge peers whose `X-Forwarded-For` the API trusts. Staging/production API processes must list at least one; the Helm chart renders `backend.config.trustedProxies` and rejects an empty, loopback-only or universal list | Empty (trusts no peer; development only) |
 
 ---
 
@@ -157,7 +158,10 @@ local-key operations and S3 behavior are unchanged.
 | `ELASTICSEARCH_PASSWORD` | ES password (`_FILE` supported) | Empty; required outside development/test unless CI |
 | `WS_HUB_INTERNAL_SECRET` | HMAC for ws-hub cache invalidation (`_FILE` supported) | Empty; required outside development/test unless CI |
 | `INTERNAL_AUTH_TOKEN` | Token for ws-hub's exact room-participant callback; managed Compose/Helm/K8s deployments derive it from the existing ws-hub secret | Empty in development |
-| `IDEMPOTENCY_HMAC_SECRET` | signs idempotency keys | Empty |
+| `IDEMPOTENCY_HMAC_SECRET` | HMAC key that signs idempotency keys (`_FILE` supported). An empty key makes keys enumerable from the `Idempotency-Key` header, so startup refuses it outside development/test unless CI | Empty (development only) |
+| `TEMPORAL_JWKS_URL` | Temporal service: the `https://` JWKS endpoint whose keys its default authorizer trusts. `services/temporal/entrypoint.sh` refuses empty or plain-HTTP values; Compose sets `https://caddy:8443/.well-known/jwks.json`, which Caddy serves with its internal CA | Required (no default) |
+| `WS_HUB_METRICS_ADDR` | Bind address of ws-hub's scrape-only Prometheus listener, separate from the public WebSocket port (AUD-438). The Helm chart binds `:9108` and admits only the monitoring namespace | `127.0.0.1:9108` |
+| `WS_REVOCATION_REPLAY_WINDOW_SECONDS` | How far back a late-starting ws-hub replica replays room revocations from `CACHE_INVALIDATIONS`. It must be at least `ACCESS_TOKEN_EXPIRE_MINUTES` × 60; the Helm value `wsHub.config.revocationReplayWindowSeconds` is validated against it | `3600` |
 
 ---
 

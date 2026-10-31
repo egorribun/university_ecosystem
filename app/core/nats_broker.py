@@ -214,6 +214,7 @@ class NatsTaskBroker:
         self._outbox_events_subject = "outbox.*"
         self._cache_invalidations_stream_name = "CACHE_INVALIDATIONS"
         self._cache_invalidations_subject = "cache.invalidate"
+        self._cache_revocations_subject = "cache.revoke"
 
     @property
     def is_connected(self) -> bool:
@@ -314,7 +315,10 @@ class NatsTaskBroker:
                         ),
                         StreamConfig(
                             name=self._cache_invalidations_stream_name,
-                            subjects=[self._cache_invalidations_subject],
+                            subjects=[
+                                self._cache_invalidations_subject,
+                                self._cache_revocations_subject,
+                            ],
                             storage=StorageType.FILE,
                             retention=RetentionPolicy.LIMITS,
                             max_age=_SEVEN_DAYS_SECONDS,

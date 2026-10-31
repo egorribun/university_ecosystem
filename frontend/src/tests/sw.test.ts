@@ -550,7 +550,13 @@ describe("service worker offline queues", () => {
   test("notificationclick sanitizes report payloads before sending", async () => {
     const scope = self as unknown as TestServiceWorkerScope
     scope.navigator.setOnline(true)
-    scope.clients.matchAll = vi.fn(async () => [])
+    // A controlled window must supply the CSRF token before a report can be sent.
+    const controlledWindow = {
+      postMessage: vi.fn((_message: unknown, transfer: MessagePort[]) => {
+        transfer[0]?.postMessage({ csrfToken: "csrf-sanitize", sessionNonce: "session-sanitize" })
+      }),
+    }
+    scope.clients.matchAll = vi.fn(async () => [controlledWindow as unknown as WindowClient])
     scope.clients.openWindow = vi.fn(async () => null)
 
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true } as Response)
@@ -584,6 +590,7 @@ describe("service worker offline queues", () => {
     }
 
     const [, requestInit] = fetchMock.mock.calls[0]!
+    expect(requestInit?.headers).toMatchObject({ "X-CSRF-Token": "csrf-sanitize" })
     const parsed = JSON.parse((requestInit?.body as string) ?? "{}")
     expect(parsed.keep).toBe("yes")
     expect(parsed.nested).toEqual({ ok: true })

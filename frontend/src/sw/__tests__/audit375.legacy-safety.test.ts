@@ -117,4 +117,44 @@ describe("AUD-375: legacy news records have no session owner", () => {
     expect.soft(await readPendingReports()).toEqual(before.reports)
     expect.soft(await readPendingMutations()).toEqual(before.mutations)
   })
+
+  it("keeps unbound records held even when a live window answers the replay-credential request", async () => {
+    await storePendingNavigation({ url: "http://localhost/private-page", timestamp: 1 })
+    await storePendingReport({
+      url: "http://localhost/private-page",
+      reportUrl: "http://localhost/api/v1/notifications/report",
+      method: "POST",
+      payload: { action: "click" },
+      timestamp: 2,
+    })
+    await storePendingMutation({
+      url: "http://localhost/api/v1/profile",
+      method: "PATCH",
+      payload: { text: "queued text" },
+      mutationId: "mutation-live-window",
+      idempotencyKey: "operation-live-window",
+      timestamp: 3,
+    })
+    const before = {
+      navigations: await readPendingNavigations(),
+      reports: await readPendingReports(),
+      mutations: await readPendingMutations(),
+    }
+    const answeringWindow = {
+      postMessage: vi.fn((_message: unknown, transfer: MessagePort[]) => {
+        transfer[0]?.postMessage({ csrfToken: "csrf-live", sessionNonce: "session-live" })
+      }),
+    }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    vi.stubGlobal("fetch", fetchMock)
+    vi.stubGlobal("clients", { matchAll: vi.fn().mockResolvedValue([answeringWindow]) })
+
+    await processOfflineQueues()
+
+    expect(answeringWindow.postMessage).toHaveBeenCalledOnce()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(await readPendingNavigations()).toEqual(before.navigations)
+    expect(await readPendingReports()).toEqual(before.reports)
+    expect(await readPendingMutations()).toEqual(before.mutations)
+  })
 })

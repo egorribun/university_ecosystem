@@ -43,14 +43,17 @@ func (a *auditRoomAuth) RefreshRoomAuthorization(_ context.Context, user, room s
 	return false, nil
 }
 
-// Bind the captured subject to the production subscription as well as the
-// handler. This source check does not simulate a live JetStream subscription.
-func auditInvalidationSubscription(t *testing.T) string {
+// Bind the captured subjects to the production subscriptions as well as the
+// handlers. This source check does not simulate a live JetStream subscription.
+// It returns the subject bound to each cache-invalidation handler variable:
+// invHandler carries pure invalidations and revocationHandler carries room
+// revocations (evict_room).
+func auditInvalidationSubscriptions(t *testing.T) map[string]string {
 	t.Helper()
 	file, err := parser.ParseFile(token.NewFileSet(), "hub.go", nil, 0)
 	require.NoError(t, err)
-	var subjects []string
-	var handlerBound bool
+	subjects := map[string]string{}
+	handlerBound := map[string]bool{}
 	for _, declaration := range file.Decls {
 		fn, ok := declaration.(*ast.FuncDecl)
 		if !ok || fn.Name.Name != "SubscribeToNATS" || fn.Body == nil {
@@ -60,11 +63,11 @@ func auditInvalidationSubscription(t *testing.T) string {
 			if assignment, ok := node.(*ast.AssignStmt); ok && len(assignment.Lhs) == 1 && len(assignment.Rhs) == 1 {
 				name, nameOK := assignment.Lhs[0].(*ast.Ident)
 				call, callOK := assignment.Rhs[0].(*ast.CallExpr)
-				if nameOK && callOK && name.Name == "invHandler" {
+				if nameOK && callOK && (name.Name == "invHandler" || name.Name == "revocationHandler") {
 					selector, selectorOK := call.Fun.(*ast.SelectorExpr)
 					if selectorOK {
 						receiver, receiverOK := selector.X.(*ast.Ident)
-						handlerBound = receiverOK && receiver.Name == "h" && selector.Sel.Name == "handleCacheInvalidation"
+						handlerBound[name.Name] = receiverOK && receiver.Name == "h" && selector.Sel.Name == "handleCacheInvalidation"
 					}
 				}
 			}
@@ -83,17 +86,21 @@ func auditInvalidationSubscription(t *testing.T) string {
 			receiver, ok := js.X.(*ast.Ident)
 			handler, handlerOK := call.Args[1].(*ast.Ident)
 			subject, subjectOK := call.Args[0].(*ast.BasicLit)
-			if ok && receiver.Name == "h" && handlerOK && handler.Name == "invHandler" && subjectOK && subject.Kind == token.STRING {
+			if ok && receiver.Name == "h" && handlerOK && (handler.Name == "invHandler" || handler.Name == "revocationHandler") && subjectOK && subject.Kind == token.STRING {
 				value, err := strconv.Unquote(subject.Value)
 				require.NoError(t, err)
-				subjects = append(subjects, value)
+				subjects[handler.Name] = value
 			}
 			return true
 		})
 	}
-	require.True(t, handlerBound, "invalidation subscription must bind the production handler")
-	require.Len(t, subjects, 1, "expected one durable invalidation subscription")
-	return subjects[0]
+	require.True(t, handlerBound["invHandler"], "pure invalidation subscription must bind the production handler")
+	require.True(t, handlerBound["revocationHandler"], "revocation subscription must bind the production handler")
+	require.Equal(t, map[string]string{
+		"invHandler":        "cache.invalidate",
+		"revocationHandler": "cache.revoke",
+	}, subjects, "each invalidation class must have exactly one production subscription")
+	return subjects
 }
 
 func TestPythonCacheInvalidationWire(t *testing.T) {
@@ -105,17 +112,17 @@ func TestPythonCacheInvalidationWire(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &fixture))
 	require.NotEmpty(t, fixture.TestHMACKey, "per-run test key is required")
 	require.Len(t, fixture.Events, 3)
-	subject := auditInvalidationSubscription(t)
+	subjects := auditInvalidationSubscriptions(t)
 
 	const user = "11111111-1111-1111-1111-111111111111"
 	const room = "22222222-2222-2222-2222-222222222222"
 	cases := []struct {
-		name, room, messageID string
-		evict                 bool
+		name, room, messageID, handler string
+		evict                          bool
 	}{
-		{"room", room, "contract-room", false},
-		{"user-wide", "", "contract-user-wide", false},
-		{"eviction", room, "contract-eviction", true},
+		{"room", room, "contract-room", "invHandler", false},
+		{"user-wide", "", "contract-user-wide", "invHandler", false},
+		{"eviction", room, "contract-eviction", "revocationHandler", true},
 	}
 
 	oldAck, oldTerm := jetStreamAckFunc, jetStreamTermFunc
@@ -123,8 +130,8 @@ func TestPythonCacheInvalidationWire(t *testing.T) {
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			event := fixture.Events[i]
-			require.Equal(t, "cache.invalidate", subject)
-			require.Equal(t, subject, event.Subject)
+			require.Equal(t, subjects[tc.handler], event.Subject,
+				"the Python publisher must use the subject its production consumer reads")
 			require.Equal(t, tc.messageID, event.Headers["Nats-Msg-Id"])
 			auth := &auditRoomAuth{}
 			h := newNatsTestHub(auth, fixture.TestHMACKey, 10)

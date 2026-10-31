@@ -162,7 +162,7 @@ async def test_nats_jetstream_six_file_backed_streams_with_seven_day_retention()
         "CHAT_EVENTS": ["chat.*"],
         "NOTIFICATIONS_EVENTS": ["notifications.*"],
         "OUTBOX_EVENTS": ["outbox.*"],
-        "CACHE_INVALIDATIONS": ["cache.invalidate"],
+        "CACHE_INVALIDATIONS": ["cache.invalidate", "cache.revoke"],
     }
 
     for call in mock_js.add_stream.call_args_list:

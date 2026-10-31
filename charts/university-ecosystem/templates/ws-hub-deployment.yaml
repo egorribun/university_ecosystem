@@ -124,10 +124,10 @@ spec:
               value: {{ .Values.wsHub.config.jetstream.chatStream | quote }}
             - name: NATS_STREAM_NOTIFICATIONS
               value: {{ .Values.wsHub.config.jetstream.notificationsStream | quote }}
-            - name: NATS_DURABLE_CHAT
-              value: {{ .Values.wsHub.config.jetstream.chatDurable | quote }}
-            - name: NATS_DURABLE_NOTIFICATIONS
-              value: {{ .Values.wsHub.config.jetstream.notificationsDurable | quote }}
+            # Late-starting replicas replay room revocations this far back. The
+            # validate-config check keeps it at or above the access-token lifetime.
+            - name: WS_REVOCATION_REPLAY_WINDOW_SECONDS
+              value: {{ .Values.wsHub.config.revocationReplayWindowSeconds | quote }}
           startupProbe:
             httpGet:
               path: /health/live

@@ -1385,7 +1385,12 @@ async def test_legacy_null_tenant_content_ignores_worker_ambient_scope(
     monkeypatch,
     kind,
 ):
-    """Legacy NULL-tenant content must not inherit a different worker tenant."""
+    """Legacy NULL-tenant content stays hidden from tenant scopes and unacknowledged.
+
+    AUD-360: a NULL tenant row is not visible to any tenant-scoped or empty
+    session, so the global content cannot leak to tenant B through the worker's
+    ambient scope. The handler then fails closed and keeps retry evidence.
+    """
     _require_postgres()
     harness = _owned_tenant_worker
     tenant_b_id = uuid.uuid4()
@@ -1398,7 +1403,6 @@ async def test_legacy_null_tenant_content_ignores_worker_ambient_scope(
     first_global = await user_factory()
     second_global = await user_factory()
     user_b = await user_factory()
-    global_recipients = {first_global.id, second_global.id}
     await db_session.execute(
         text("UPDATE public.users SET tenant_id = :tenant_id WHERE id = :user_id"),
         {"tenant_id": tenant_b_id, "user_id": user_b.id},
@@ -1492,8 +1496,8 @@ async def test_legacy_null_tenant_content_ignores_worker_ambient_scope(
         )
 
     for scope, expected_users in (
-        ("", global_recipients),
-        (str(tenant_b_id), global_recipients | {user_b.id}),
+        ("", set()),
+        (str(tenant_b_id), {user_b.id}),
     ):
         with _tenant_proof_context(scope):
             async with asyncio.timeout(10):
@@ -1504,7 +1508,7 @@ async def test_legacy_null_tenant_content_ignores_worker_ambient_scope(
                     visible_source = await reader.scalar(
                         source_query, {"source_id": source_id}
                     )
-                    assert visible_source == source_id
+                    assert visible_source is None
                     visible_users = set((await reader.scalars(select(User.id))).all())
                     assert visible_users == expected_users
 
@@ -1552,8 +1556,9 @@ async def test_legacy_null_tenant_content_ignores_worker_ambient_scope(
         source = await administrator.get(StoredEvent, stored_id)
         assert source is not None
         assert source.metadata_ == legacy_metadata
-        assert source.error_count == 0
-        assert source.processed_at is not None
+        # Hidden global content is a retryable failure, never an acknowledgement.
+        assert source.error_count == 1
+        assert source.processed_at is None
         notifications = list(
             (
                 await administrator.scalars(
@@ -1561,12 +1566,7 @@ async def test_legacy_null_tenant_content_ignores_worker_ambient_scope(
                 )
             ).all()
         )
-        assert len(notifications) == 2
-        assert {row.user_id for row in notifications} == global_recipients
-        all_recipients = set(
-            (await administrator.scalars(select(Notification.user_id))).all()
-        )
-        assert all_recipients == global_recipients
+        assert notifications == []
         requests = list(
             (
                 await administrator.scalars(
@@ -1576,11 +1576,7 @@ async def test_legacy_null_tenant_content_ignores_worker_ambient_scope(
                 )
             ).all()
         )
-        assert len(requests) == 1
-        assert requests[0].metadata_ is None
-        notification_ids = {str(row.id) for row in notifications}
-        assert set(requests[0].payload["notification_ids"]) == notification_ids
-        assert requests[0].processed_at is None
+        assert requests == []
 
 
 @pytest_asyncio.fixture

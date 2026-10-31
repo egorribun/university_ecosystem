@@ -10,6 +10,8 @@ it does not exercise the whole revision or the full migration graph.
 
 from __future__ import annotations
 
+import ast
+import copy
 import hashlib
 import importlib.machinery
 import importlib.util
@@ -17,6 +19,7 @@ import os
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import NamedTuple
 from uuid import uuid4
 
 import pytest
@@ -55,6 +58,44 @@ pytestmark = [
 ]
 
 
+class _CreatedAtAlter(NamedTuple):
+    call: ast.Call
+    using: str | None
+
+
+def _stored_events_created_at_alter(source: bytes) -> _CreatedAtAlter:
+    """Return the one ``op.alter_column("stored_events", "created_at", ...)`` call."""
+    calls = [
+        node
+        for node in ast.walk(ast.parse(source.decode("utf-8")))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "alter_column"
+        and len(node.args) >= 2
+        and all(isinstance(arg, ast.Constant) for arg in node.args[:2])
+        and (ast.literal_eval(node.args[0]), ast.literal_eval(node.args[1]))
+        == ("stored_events", "created_at")
+    ]
+    if len(calls) != 1:
+        raise AssertionError(
+            "AUD-350 migration must alter stored_events.created_at once"
+        )
+    using = next(
+        (
+            keyword.value
+            for keyword in calls[0].keywords
+            if keyword.arg == "postgresql_using"
+        ),
+        None,
+    )
+    using_text = (
+        using.value
+        if isinstance(using, ast.Constant) and isinstance(using.value, str)
+        else None
+    )
+    return _CreatedAtAlter(calls[0], using_text)
+
+
 def _verify_frozen_baseline_and_candidate_delta() -> None:
     baseline_bytes = BASELINE_MIGRATION_PATH.read_bytes()
     actual_baseline_sha256 = hashlib.sha256(baseline_bytes).hexdigest()
@@ -62,27 +103,6 @@ def _verify_frozen_baseline_and_candidate_delta() -> None:
         raise AssertionError("AUD-350 frozen baseline migration SHA-256 mismatch")
 
     candidate_bytes = CANDIDATE_MIGRATION_PATH.read_bytes()
-    newline = b"\r\n" if b"\r\n" in baseline_bytes else b"\n"
-    anchor = (
-        b"        existing_nullable=False,"
-        + newline
-        + b"    )"
-        + newline
-        + b"    op.alter_column("
-        + newline
-        + b'        "user_preferences",'
-    )
-    replacement = (
-        b"        existing_nullable=False,"
-        + newline
-        + b"        postgresql_using=\"created_at AT TIME ZONE 'UTC'\","
-        + newline
-        + b"    )"
-        + newline
-        + b"    op.alter_column("
-        + newline
-        + b'        "user_preferences",'
-    )
     if BASELINE_EXPECTED_UTC - CANDIDATE_EXPECTED_UTC != timedelta(hours=7):
         raise AssertionError(
             "AUD-350 baseline and candidate expectations must differ by seven hours"
@@ -92,8 +112,22 @@ def _verify_frozen_baseline_and_candidate_delta() -> None:
             "AUD-350 candidate expectation must preserve the legacy UTC wall time"
         )
 
-    if baseline_bytes.count(anchor) != 1 or candidate_bytes != baseline_bytes.replace(
-        anchor, replacement, 1
+    # The candidate revision also carries the reviewed AUD-269 and AUD-351 edits,
+    # which their own tests cover. This AUD-350 delta is therefore scoped to the
+    # stored_events.created_at alteration: the candidate must add exactly the UTC
+    # USING clause to that call and leave every other argument unchanged.
+    baseline_alter = _stored_events_created_at_alter(baseline_bytes)
+    candidate_alter = _stored_events_created_at_alter(candidate_bytes)
+    candidate_without_using = copy.deepcopy(candidate_alter.call)
+    candidate_without_using.keywords = [
+        keyword
+        for keyword in candidate_without_using.keywords
+        if keyword.arg != "postgresql_using"
+    ]
+    if (
+        baseline_alter.using is not None
+        or candidate_alter.using != "created_at AT TIME ZONE 'UTC'"
+        or ast.dump(candidate_without_using) != ast.dump(baseline_alter.call)
     ):
         raise AssertionError(
             "AUD-350 candidate must differ from the frozen source only by the UTC USING clause"

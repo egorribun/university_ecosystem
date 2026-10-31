@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import runpy
 import shutil
 import subprocess
@@ -976,3 +977,51 @@ def test_script_rejects_symbolic_revision_without_creating_evidence(
     assert "full 40-character" in capsys.readouterr().err
     assert not work.exists()
     assert not output.exists()
+
+
+CADDY_BUILD = ROOT / "services/caddy"
+
+
+def _required_module_versions(go_mod: str) -> set[tuple[str, str]]:
+    """Return every module version named in the committed require block."""
+    block = re.search(r"^require \(\n(.*?)^\)", go_mod, re.M | re.S)
+    assert block is not None, "the Caddy build module must require its graph"
+    return set(re.findall(r"^\t(\S+) (v\S+?)(?: // indirect)?$", block.group(1), re.M))
+
+
+def test_caddy_build_graph_is_committed_and_read_only_during_the_image_build() -> None:
+    dockerfile = (CADDY_BUILD / "Dockerfile").read_text(encoding="utf-8")
+    go_mod = (CADDY_BUILD / "go.mod").read_text(encoding="utf-8")
+    go_sum = (CADDY_BUILD / "go.sum").read_text(encoding="utf-8")
+    main_package = (CADDY_BUILD / "main.go").read_text(encoding="utf-8")
+
+    # The image build reads only the committed module files and may not rewrite
+    # the graph: no xcaddy, no implicit go get/install, no tidy, no latest tags.
+    assert "COPY go.mod go.sum main.go ./" in dockerfile
+    assert "GOTOOLCHAIN=local" in dockerfile
+    assert "go build" in dockerfile
+    assert "-mod=readonly" in dockerfile
+    for forbidden in ("xcaddy", "go get", "go install", "go mod tidy", "@latest"):
+        assert forbidden not in dockerfile
+    assert "\ngo 1.26.10\n" in go_mod
+    assert "caddycmd.Main()" in main_package
+    assert '_ "github.com/mholt/caddy-ratelimit"' in main_package
+
+    required = _required_module_versions(go_mod)
+    assert ("github.com/caddyserver/caddy/v2", "v2.11.7") in required
+    assert ("github.com/mholt/caddy-ratelimit", "v0.1.0") in required
+
+    # Every module the build resolves needs a checksum: the zip hash and the
+    # go.mod hash for the version that is built, and the go.mod hash for a
+    # requirement that a replacement takes over.
+    replacements = dict(re.findall(r"^\t(\S+) => \S+ (v\S+)$", go_mod, re.M))
+    assert replacements["golang.org/x/net"] == "v0.60.0"
+    for module, version in sorted(required):
+        if module in replacements:
+            assert f"{module} {version}/go.mod h1:" in go_sum, module
+            continue
+        assert f"{module} {version} h1:" in go_sum, module
+        assert f"{module} {version}/go.mod h1:" in go_sum, module
+    for module, version in sorted(replacements.items()):
+        assert f"{module} {version} h1:" in go_sum, module
+        assert f"{module} {version}/go.mod h1:" in go_sum, module

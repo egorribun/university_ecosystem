@@ -4012,7 +4012,12 @@ def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> 
     assert workflow["jobs"]["stabilization-window"]["needs"] == "verify-canonical-ref"
 
     checkout = workflow["jobs"]["stabilization-window"]["steps"][0]
-    assert checkout["with"] == {"ref": "main", "fetch-depth": 1}
+    # AUD-244: the read-only checkout must not persist its token for later steps.
+    assert checkout["with"] == {
+        "ref": "main",
+        "fetch-depth": 1,
+        "persist-credentials": False,
+    }
 
 
 def test_dast_active_scans_do_not_accept_pr_label_authorization() -> None:
@@ -5675,6 +5680,7 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
         "--threads=2",
         "--timeout=5",
         "--retries=0",
+        "--output-dir=sqlmap-output",
         "--flush-session",
     ]
 

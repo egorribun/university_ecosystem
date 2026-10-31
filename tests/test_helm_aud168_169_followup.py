@@ -707,3 +707,62 @@ def test_development_without_ingress_renders_without_proxy_requirements() -> Non
     )
 
     assert not any(resource.get("kind") == "Ingress" for resource in resources)
+
+
+BACKEND_TRUST_REJECTIONS = (
+    pytest.param(
+        (),
+        "backend.config.trustedProxies requires explicit non-loopback ingress proxy CIDRs",
+        id="empty",
+    ),
+    pytest.param(
+        ("127.0.0.1", "::1"),
+        "backend.config.trustedProxies requires explicit non-loopback ingress proxy CIDRs",
+        id="loopback-only",
+    ),
+    pytest.param(
+        ("0.0.0.0/0",),
+        "backend.config.trustedProxies must not trust 0.0.0.0/0 or ::/0",
+        id="universal-ipv4",
+    ),
+)
+
+
+@pytest.mark.parametrize(("proxies", "expected_message"), BACKEND_TRUST_REJECTIONS)
+def test_staging_api_refuses_to_run_without_explicit_gateway_peers(
+    proxies: tuple[str, ...], expected_message: str
+) -> None:
+    # AUD-164: an empty API trust list would key every client on the gateway socket.
+    _assert_staging_proxy_guard_rejects(
+        "backend",
+        expected_message,
+        *_proxy_list_override("backend.config.trustedProxies", proxies),
+    )
+
+
+def test_staging_api_renders_only_the_explicit_gateway_peer_list() -> None:
+    # TEST-NET and IPv6 documentation addresses are fixtures, not deployment values.
+    gateway_peers = ("192.0.2.31/32", "2001:db8::31")
+    resources = _render_staging(
+        *_proxy_list_override("backend.config.trustedProxies", gateway_peers),
+        release_name="aud164-backend-peer-list",
+    )
+
+    backend_environment = _edge_proxy_environment(resources, "backend")
+    assert backend_environment["TRUSTED_PROXIES"] == ",".join(gateway_peers)
+
+
+def test_development_api_keeps_the_no_trust_default_without_peers() -> None:
+    resources = _render_staging(
+        "--set-string",
+        "global.environment=development",
+        "--set",
+        "ingress.enabled=false",
+        *_proxy_list_override("backend.config.trustedProxies", ()),
+        *_proxy_list_override("gateway.config.trustedProxies", ()),
+        *_proxy_list_override("wsHub.config.trustedProxies", ("127.0.0.1", "::1")),
+        release_name="aud164-development-api-no-trust",
+    )
+
+    backend_environment = _edge_proxy_environment(resources, "backend")
+    assert backend_environment["TRUSTED_PROXIES"] == ""

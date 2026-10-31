@@ -149,12 +149,13 @@ function getStore(client: QueryClient): ProjectionStore {
             store!.failedChatRefreshes.delete(event.query)
           } else {
             if (!event.action.manual) recovery.fetchUpdateCount = undefined
-            if (!event.query.state.isInvalidated) event.query.invalidate()
+            // Query.invalidate() already ignores a query that is still invalidated.
+            event.query.invalidate()
           }
         } else if (event.action.type === "setState") {
           // Cancellation can restore a pre-invalidation manual-write snapshot.
           recovery.fetchUpdateCount = undefined
-          if (!event.query.state.isInvalidated) event.query.invalidate()
+          event.query.invalidate()
         } else if (event.action.type === "error") {
           recovery.fetchUpdateCount = undefined
         }
@@ -712,24 +713,22 @@ export function finishClearRefresh(
 
 const CHAT_REFRESH_QUIET_MS = 100
 
+// The caller checks ownership synchronously before waiting; cache events and the
+// quiet timer re-check it while the wait is pending.
 function waitForQuietChatsAfterClear(
   client: QueryClient,
   operation: Extract<Operation, { kind: "clear" }>
 ): Promise<boolean> {
-  if (!ownsChats(client, operation)) return Promise.resolve(false)
   return new Promise((resolve) => {
     let timer: ReturnType<typeof setTimeout> | undefined
-    let settled = false
+    // Detaching the listener and clearing the timer let this promise settle once.
     const finish = (current: boolean) => {
-      if (settled) return
-      settled = true
-      if (timer !== undefined) clearTimeout(timer)
+      clearTimeout(timer)
       detach()
       resolve(current)
     }
     const restartQuietPeriod = () => {
-      if (settled) return
-      if (timer !== undefined) clearTimeout(timer)
+      clearTimeout(timer)
       timer = setTimeout(() => finish(ownsChats(client, operation)), CHAT_REFRESH_QUIET_MS)
     }
     const detach = client.getQueryCache().subscribe((event) => {

@@ -2773,16 +2773,16 @@ def test_non_root_python_images_create_the_declared_home_directory() -> None:
 
 def test_caddy_plugin_dependency_is_version_pinned() -> None:
     dockerfile = _read("services/caddy/Dockerfile")
+    go_mod = _read("services/caddy/go.mod")
 
-    assert "ARG XCADDY_VERSION=v0.4.7" in dockerfile
-    assert "go install" in dockerfile
-    assert "github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}" in dockerfile
+    # AUD-482: the plugin version is committed in go.mod; xcaddy no longer resolves
+    # the graph while the image is built.
+    assert "xcaddy" not in dockerfile
+    assert "go install" not in dockerfile
     assert "ca-certificates=20260909-r0" in dockerfile
     assert "git=2.54.0-r0" in dockerfile
-    assert "github.com/mholt/caddy-ratelimit@v0.1.0" in dockerfile
-    assert not re.search(
-        r"--with github\.com/mholt/caddy-ratelimit\s*$", dockerfile, re.M
-    )
+    assert "github.com/mholt/caddy-ratelimit v0.1.0" in go_mod
+    assert "github.com/caddyserver/caddy/v2 v2.11.7" in go_mod
     for caddyfile in ("services/caddy/Caddyfile", "infrastructure/Caddyfile"):
         assert "rate_limit @ws_upgrade" in _read(caddyfile), caddyfile
 
@@ -2799,11 +2799,13 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     assert runtime_image in dockerfile
     runtime_stage = dockerfile.split(runtime_image, maxsplit=1)[1]
     assert "ARG CADDY_VERSION=2.11.7" in dockerfile
-    assert "--replace golang.org/x/net=golang.org/x/net@v0.60.0" in dockerfile
-    assert "--replace golang.org/x/text=golang.org/x/text@v0.42.0" in dockerfile
-    assert (
-        "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.2" in dockerfile
-    )
+    # AUD-482: the selected security floors live in the committed build go.mod.
+    go_mod = _read("services/caddy/go.mod")
+    assert "golang.org/x/net => golang.org/x/net v0.60.0" in go_mod
+    assert "golang.org/x/text => golang.org/x/text v0.42.0" in go_mod
+    assert "google.golang.org/grpc => google.golang.org/grpc v1.83.2" in go_mod
+    assert "go build" in dockerfile
+    assert "-mod=readonly" in dockerfile
     assert re.search(r"RUN apk update \\\s+&& apk add --no-cache", dockerfile)
     for package in (
         "libapk=3.0.8-r0",
