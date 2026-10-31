@@ -14925,9 +14925,7 @@ def test_live_caddy_first_capture_summary_preserves_failure(
     }
     original_dumps = json.dumps
     summary_line = (
-        prefix
-        + original_dumps(summary, sort_keys=True, separators=(",", ":"))
-        + "\n"
+        prefix + original_dumps(summary, sort_keys=True, separators=(",", ":")) + "\n"
     )
     assert len(summary_line) <= 512
     calls: list[dict[str, Any]] = []
