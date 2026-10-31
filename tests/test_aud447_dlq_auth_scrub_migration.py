@@ -496,7 +496,7 @@ def test_owned_postgres_fixture_pins_connection_and_rolls_back_its_transaction(
     assert transaction.is_active is True
 
     if body_fails:
-        with pytest.raises(RuntimeError, match="^synthetic body failure$"):
+        with pytest.raises(RuntimeError, match=r"^synthetic body failure$"):
             fixture.throw(RuntimeError("synthetic body failure"))
     else:
         with pytest.raises(StopIteration):

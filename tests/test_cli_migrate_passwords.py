@@ -216,9 +216,7 @@ def test_global_inventory_combines_authority_and_count_in_one_statement(
 def test_global_inventory_rechecks_authority_in_opt_in_sample_statement(
     monkeypatch, mock_db_session
 ):
-    statements = _postgres_session(
-        monkeypatch, mock_db_session, [True, False], count=1
-    )
+    statements = _postgres_session(monkeypatch, mock_db_session, [True, False], count=1)
 
     result = runner.invoke(app, ["report", "--show-ids", "--limit", "1"])
 
@@ -238,9 +236,7 @@ def test_global_inventory_rechecks_authority_in_opt_in_sample_statement(
 def test_global_inventory_authorized_sample_preserves_projection_and_bound(
     monkeypatch, mock_db_session
 ):
-    statements = _postgres_session(
-        monkeypatch, mock_db_session, [True, True], count=1
-    )
+    statements = _postgres_session(monkeypatch, mock_db_session, [True, True], count=1)
 
     result = runner.invoke(app, ["report", "--show-ids", "--limit", "1"])
 
@@ -286,9 +282,7 @@ def test_global_inventory_denies_unavailable_database_binding(
 def test_global_inventory_empty_sample_retains_an_authority_result(
     monkeypatch, mock_db_session, rows, expected_exit
 ):
-    statements = _postgres_session(
-        monkeypatch, mock_db_session, [True, True], count=1
-    )
+    statements = _postgres_session(monkeypatch, mock_db_session, [True, True], count=1)
     execute = mock_db_session.execute.side_effect
 
     async def execute_with_sample(statement):

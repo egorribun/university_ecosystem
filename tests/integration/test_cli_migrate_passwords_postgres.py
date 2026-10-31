@@ -165,8 +165,8 @@ def postgres_urls(
 
 
 def _sync_url(url: str) -> str:
-    return make_url(url).set(drivername="postgresql").render_as_string(
-        hide_password=False
+    return (
+        make_url(url).set(drivername="postgresql").render_as_string(hide_password=False)
     )
 
 
