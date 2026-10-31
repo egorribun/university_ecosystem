@@ -14741,10 +14741,24 @@ def test_live_caddy_probe_overflow_reports_only_current_capture_budget(
     captured = capsys.readouterr()
     assert str(caught.value) == live_stand._LIVE_CADDY_PROBE_FAILURE
     assert captured.out == ""
-    assert captured.err == (
+    expected_diagnostics = (
         "live_caddy_probe_failure_stage=log_size\n"
         + _aud174_capture_budget_line(expected)
     )
+    if capture_ordinal == 2:
+        first_summary = {
+            "schema_version": 1,
+            "capture_ordinal": 1,
+            "stdout_bytes": previous_bytes,
+            "stderr_bytes": 0,
+            "stdout_complete_lines": 1,
+            "stderr_complete_lines": 0,
+            "stdout_max_line_bytes": previous_bytes - 1,
+            "stderr_max_line_bytes": 0,
+        }
+        encoded = json.dumps(first_summary, sort_keys=True, separators=(",", ":"))
+        expected_diagnostics += f"live_caddy_probe_first_capture={encoded}\n"
+    assert captured.err == expected_diagnostics
     assert len(reads) == capture_ordinal
     assert reads[-1]["maximum_bytes"] == expected["remaining_budget"]
     assert len(pins) == 2
@@ -14833,3 +14847,231 @@ def test_live_caddy_probe_exact_capture_cap_emits_no_budget_diagnostic(
     assert len(returned) == window_count
     assert len(pins) == 2
     assert all(item.stdout == item.stderr == b"" for item in returned)
+
+
+@pytest.mark.parametrize(
+    ("payload", "origin", "fault"),
+    [
+        ("mixed", "reader_limit", "none"),
+        ("mixed", "returned_size", "none"),
+        ("malformed-json", "reader_limit", "none"),
+        ("invalid-utf8", "reader_limit", "none"),
+        ("deep-json", "reader_limit", "none"),
+        ("at-cap", "reader_limit", "none"),
+        ("mixed", "reader_limit", "serialize"),
+        ("mixed", "reader_limit", "write"),
+        ("mixed", "reader_limit", "flush"),
+        ("mixed", "reader_limit", "post-pin"),
+        ("first-failure", "reader_limit", "none"),
+        ("first-too-large", "returned_size", "none"),
+        ("stdout-tail", "reader_limit", "none"),
+        ("stderr-tail", "reader_limit", "none"),
+        ("first-exit", "reader_limit", "none"),
+    ],
+)
+def test_live_caddy_first_capture_summary_preserves_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    payload: str,
+    origin: str,
+    fault: str,
+) -> None:
+    cap = live_stand._LIVE_CADDY_PROBE_MAX_BYTES
+    assert cap == 1_048_576
+    assert live_stand._LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS == 10
+    assert live_stand._LIVE_CADDY_PROBE_TOTAL_TIMEOUT_SECONDS == 25
+    assert live_stand._LIVE_CADDY_PROBE_WINDOW_MS == 5_000
+    private = uuid4().hex
+    marker = private.encode("ascii")
+    password_nonce = uuid4().hex
+    correlations = {"desktop": uuid4().hex, "mobile": uuid4().hex}
+    first_stdout = b"a\n" + marker + b"\r\n"
+    first_stderr = b"\nabc\n"
+    counts = (36, 5, 2, 2, 33, 3)
+    if payload in {"malformed-json", "invalid-utf8"}:
+        prefix_bytes = b"{" if payload == "malformed-json" else b"\xff"
+        first_stdout = prefix_bytes + marker + b"\n"
+        first_stderr = b""
+        counts = (34, 0, 1, 0, 33, 0)
+    elif payload == "deep-json":
+        first_stdout = b"[" * 2_048 + b'"' + marker + b'"' + b"]" * 2_048 + b"\n"
+        first_stderr = b""
+        counts = (4_131, 0, 1, 0, 4_130, 0)
+    elif payload == "at-cap":
+        first_stdout = marker + b"x" * (cap - len(marker) - 1) + b"\n"
+        first_stderr = b""
+        counts = (cap, 0, 1, 0, cap - 1, 0)
+    elif payload == "first-too-large":
+        first_stdout, first_stderr = b"x" * (cap + 1), b""
+    elif payload == "stdout-tail":
+        first_stdout, first_stderr = marker, b""
+    elif payload == "stderr-tail":
+        first_stdout, first_stderr = b"", marker
+
+    prefix = "live_caddy_probe_first_capture="
+    keys = (
+        "stdout_bytes",
+        "stderr_bytes",
+        "stdout_complete_lines",
+        "stderr_complete_lines",
+        "stdout_max_line_bytes",
+        "stderr_max_line_bytes",
+    )
+    summary = {
+        "schema_version": 1,
+        "capture_ordinal": 1,
+        **dict(zip(keys, counts, strict=True)),
+    }
+    original_dumps = json.dumps
+    summary_line = (
+        prefix
+        + original_dumps(summary, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    )
+    assert len(summary_line) <= 512
+    calls: list[dict[str, Any]] = []
+    returned: list[subprocess.CompletedProcess[bytes]] = []
+    pins: list[float] = []
+    attempts = {"serialize": 0, "write": 0, "flush": 0, "parse": 0}
+
+    def pin_check(*_args: Any, **kwargs: Any) -> None:
+        pins.append(kwargs["deadline"])
+        if fault == "post-pin" and len(pins) == 2:
+            raise live_stand.StandError(private)
+
+    def read_logs(
+        command: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[bytes]:
+        calls.append(dict(kwargs))
+        assert len(calls) <= 2
+        if payload == "first-failure" or (len(calls) == 2 and origin == "reader_limit"):
+            raise live_stand._LiveBoundedReadFailure("output_limit")
+        if len(calls) == 1:
+            result = subprocess.CompletedProcess(
+                command,
+                7 if payload == "first-exit" else 0,
+                stdout=first_stdout,
+                stderr=first_stderr,
+            )
+        else:
+            result = subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=b"x" * (kwargs["maximum_bytes"] + 1),
+                stderr=marker,
+            )
+        returned.append(result)
+        return result
+
+    owner, directory, pin, completed_at, context = _aud174_diagnostic_verifier_inputs(
+        monkeypatch,
+        tmp_path,
+        password_nonce=password_nonce,
+        correlations=correlations,
+        pin_check=pin_check,
+        log_reader=read_logs,
+    )
+    completed_at["mobile"] += 120_000
+    monkeypatch.setattr(live_stand.time, "monotonic", lambda: 100.0)
+
+    def verify(_mode: str) -> None:
+        live_stand._verify_live_caddy_probe_log(
+            owner,
+            directory,
+            started_at_ms=1_797_999_999_000,
+            finished_at_ms=1_798_000_130_000,
+            password_nonce=password_nonce,
+            correlation_ids=correlations,
+            container_pin=pin,
+            docker_context=context,
+        )
+
+    def diagnostic_dumps(value: object, *args: Any, **kwargs: Any) -> str:
+        if type(value) is dict and set(value) == set(summary):
+            attempts["serialize"] += 1
+            if fault == "serialize":
+                raise RuntimeError(private)
+        return original_dumps(value, *args, **kwargs)
+
+    def forbidden_parse(*_args: Any, **_kwargs: Any) -> None:
+        attempts["parse"] += 1
+        raise AssertionError(private)
+
+    original_stderr = live_stand.sys.stderr
+
+    class DiagnosticStream:
+        pending_summary = False
+
+        def write(self, value: str) -> int:
+            if value.startswith(prefix):
+                attempts["write"] += 1
+                self.pending_summary = True
+                if fault == "write":
+                    raise RuntimeError(private)
+            return original_stderr.write(value)
+
+        def flush(self) -> None:
+            if self.pending_summary:
+                attempts["flush"] += 1
+                self.pending_summary = False
+                if fault == "flush":
+                    raise RuntimeError(private)
+            original_stderr.flush()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(live_stand, "e2e", verify)
+        patch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+        patch.setattr(live_stand.json, "dumps", diagnostic_dumps)
+        patch.setattr(live_stand.json, "loads", forbidden_parse)
+        patch.setattr(live_stand.sys, "stderr", DiagnosticStream())
+        assert live_stand.main(["e2e", "--mode", "full"]) == 2
+
+    first_failed = payload in {
+        "first-failure",
+        "first-too-large",
+        "stdout-tail",
+        "stderr-tail",
+        "first-exit",
+    }
+    stage = {
+        "stdout-tail": "project_row",
+        "stderr-tail": "stderr_validation",
+        "first-exit": "log_exit",
+    }.get(payload, "log_size")
+    if fault == "post-pin":
+        stage = "post_pin"
+    expected = f"live_caddy_probe_failure_stage={stage}\n"
+    if stage == "log_size":
+        expected += _aud174_capture_budget_line(
+            _aud174_capture_budget_metadata(
+                window_count=2,
+                capture_ordinal=1 if first_failed else 2,
+                previous_capture_bytes=(
+                    0 if first_failed else len(first_stdout) + len(first_stderr)
+                ),
+                overflow_origin=origin,
+            )
+        )
+    eligible = not first_failed and stage == "log_size"
+    if eligible and fault not in {"serialize", "write"}:
+        expected += summary_line
+    expected += f"live_stand: {live_stand._LIVE_CADDY_PROBE_FAILURE}\n"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == expected
+    assert len(calls) == (1 if first_failed else 2)
+    assert calls[0]["maximum_bytes"] == cap
+    if not first_failed:
+        assert calls[1]["maximum_bytes"] == cap - len(first_stdout) - len(first_stderr)
+    assert all(call["deadline"] == 110.0 for call in calls)
+    assert all(call["command_timeout_seconds"] == 10.0 for call in calls)
+    assert pins == [125.0, 125.0]
+    assert all(item.stdout == item.stderr == b"" for item in returned)
+    assert attempts["parse"] == 0
+    assert attempts["serialize"] == int(eligible)
+    assert attempts["write"] == int(eligible and fault != "serialize")
+    assert attempts["flush"] == int(eligible and fault not in {"serialize", "write"})
+    for value in (private, password_nonce, *correlations.values()):
+        assert value not in captured.out
+        assert value not in captured.err
