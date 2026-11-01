@@ -188,9 +188,7 @@ def test_replay_window_negative_oracles_do_not_accept_timeout(
 
     with pytest.raises(subprocess.TimeoutExpired) as exc_info:
         if without_schema:
-            rejection_oracle = (
-                test_template_rejects_a_replay_window_beyond_stream_retention_without_schema
-            )
+            rejection_oracle = test_template_rejects_a_replay_window_beyond_stream_retention_without_schema
             rejection_oracle()
         else:
             test_replay_window_outside_the_supported_range_fails_the_render(

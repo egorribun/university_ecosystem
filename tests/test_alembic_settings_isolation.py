@@ -17,6 +17,7 @@ import pytest
 pytest_plugins = ("pytester",)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+ALEMBIC_ENTRYPOINT = PROJECT_ROOT / "alembic" / "env.py"
 # Preserve only ordinary process plumbing, never application settings or CI
 # exemptions. Python's interpreter and installed packages come from pytester.
 _PROCESS_ENVIRONMENT = (
@@ -114,15 +115,13 @@ def _bootstrap_metadata():
     from alembic.runtime.environment import EnvironmentContext
     from alembic.script import ScriptDirectory
 
-    repository = Path(os.environ["MIGRATION_ISOLATION_REPOSITORY"])
+    environment_file = Path(os.environ["MIGRATION_ISOLATION_ENTRYPOINT"])
     output = io.StringIO()
     config = Config(output_buffer=output)
-    config.set_main_option("script_location", str(repository / "alembic"))
+    config.set_main_option("script_location", str(environment_file.parent))
     config.set_main_option("path_separator", "os")
     script = ScriptDirectory.from_config(config)
-    assert Path(script.env_py_location).resolve() == (
-        repository / "alembic" / "env.py"
-    ).resolve()
+    assert Path(script.env_py_location).resolve() == environment_file.resolve()
     callbacks = []
 
     def inspect_loaded_metadata(revisions, migration_context):
@@ -290,6 +289,7 @@ def test_clean_process_probe():
 @pytest.fixture
 def isolated_alembic_probe(pytester, monkeypatch: pytest.MonkeyPatch):
     ast.parse(_CHILD_SOURCE)
+    assert ALEMBIC_ENTRYPOINT.is_file()
     probe = pytester.makepyfile(test_isolated_probe=_CHILD_SOURCE)
     ini = pytester.makeini("[pytest]\n")
     result_path = pytester.path / "safe-result.json"
@@ -316,7 +316,7 @@ def isolated_alembic_probe(pytester, monkeypatch: pytest.MonkeyPatch):
                     "offline_probe"
                 ),
                 "AUTO_CREATE_SCHEMA": "false",
-                "MIGRATION_ISOLATION_REPOSITORY": str(PROJECT_ROOT),
+                "MIGRATION_ISOLATION_ENTRYPOINT": str(ALEMBIC_ENTRYPOINT),
                 "MIGRATION_ISOLATION_MODE": mode,
                 "MIGRATION_ISOLATION_RESULT": str(result_path),
             }

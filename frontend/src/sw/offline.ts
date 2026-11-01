@@ -436,8 +436,7 @@ async function replayRecord(
 }
 
 type ReplayMutation =
-  | { kind: "delete" }
-  | { kind: "retry"; retryCount: number; nextAttemptAt: number }
+  { kind: "delete" } | { kind: "retry"; retryCount: number; nextAttemptAt: number }
 
 /** A successor's identity/retry state must never be overwritten by an old snapshot. */
 const REPLAY_RECORD_METADATA = [
@@ -468,8 +467,7 @@ async function commitReplayRecord(
   const tx = db.transaction([REPLAY_LEASE_STORE, store], "readwrite")
   try {
     const lease = (await tx.objectStore(REPLAY_LEASE_STORE).get(REPLAY_LEASE_KEY)) as
-      | ReplayLeaseRecord
-      | undefined
+      ReplayLeaseRecord | undefined
     const queue = tx.objectStore(store)
     const current = (await queue.get(record.id)) as QueuedRecord | undefined
     if (ownership.lost || lease?.owner !== ownership.owner || lease.expiresAt <= Date.now()) {
