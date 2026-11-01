@@ -1,3 +1,4 @@
+import secrets
 import sys
 import uuid
 from collections.abc import Iterator
@@ -11,6 +12,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import status
 from jwt.exceptions import PyJWTError
 from sqlalchemy import select
+from zxcvbn import zxcvbn
 
 import app.models as models
 from app.auth.security import (
@@ -73,32 +75,41 @@ def _rsa_public_pem(private_pem: str) -> str:
 
 @pytest.mark.asyncio
 async def test_get_password_hash_uses_argon2id_by_default():
-    password = "Secur3P@ss!"
+    password = "AdminMixed123!"
     hashed = await get_password_hash(password)
     assert hashed.startswith("$argon2id$")
 
 
 @pytest.mark.asyncio
 async def test_get_password_hash_enforces_length_bounds():
-    with pytest.raises(ValueError) as exc_ru:
-        await get_password_hash("short", locale="ru")
+    too_short = "Xk9#pLq2!Zm"
+    too_long = ("Tr0ub4dor&3!Xy7Mn-Qp" * 11)[:201]
+    assert len(too_short) == 11
+    assert len(too_long) == 201
+    assert zxcvbn(too_short)["score"] >= 2
+    assert zxcvbn(too_long[:72])["score"] >= 2
 
-    assert str(exc_ru.value) == "Пароль должен содержать от 8 до 200 символов."
+    with pytest.raises(ValueError) as exc_ru:
+        await get_password_hash(too_short, locale="ru")
+
+    assert str(exc_ru.value) == "Пароль должен содержать от 12 до 200 символов."
 
     with pytest.raises(ValueError) as exc_en:
-        await get_password_hash("x" * 201, locale="en")
+        await get_password_hash(too_long, locale="en")
 
-    assert str(exc_en.value) == "Password must be between 8 and 200 characters long."
+    assert str(exc_en.value) == "Password must be between 12 and 200 characters long."
 
 
 @pytest.mark.asyncio
 async def test_password_policy_allows_limits():
-    minimal = "Abcd123!"
-    # First 72 chars must score >= 1 on zxcvbn; avoid repetition-only prefixes.
+    minimal = "Qw8!zXc4Vb7@"
+    # First 72 chars must score >= 2 on zxcvbn; avoid repetition-only prefixes.
     maximal = ("Tr0ub4dor&3!Xy7Mn-Qp" * 10)[:200]
 
-    assert len(minimal) == 8
+    assert len(minimal) == 12
     assert len(maximal) == 200
+    assert zxcvbn(minimal)["score"] >= 2
+    assert zxcvbn(maximal[:72])["score"] >= 2
 
     assert (await get_password_hash(minimal)).startswith("$argon2id$")
     assert (await get_password_hash(maximal)).startswith("$argon2id$")
@@ -106,7 +117,8 @@ async def test_password_policy_allows_limits():
 
 @pytest.mark.asyncio
 async def test_unicode_password_hashing():
-    password = "Пароль🔒1234"
+    password = f"Пароль🔒9Aa!{secrets.token_urlsafe(24)}"
+    assert not password.isascii()
     hashed = await get_password_hash(password)
 
     assert hashed.startswith("$argon2id$")

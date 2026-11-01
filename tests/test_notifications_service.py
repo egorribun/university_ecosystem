@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+import secrets
 import typing
 import unittest.mock
 from contextlib import contextmanager
@@ -616,7 +617,7 @@ async def test_event_creation_persists_notification_source_event(
     user_factory,
 ):
     admin = await user_factory(role="admin")
-    password = "Adm1nPass!"
+    password = f"Aa9!{secrets.token_urlsafe(24)}"
     admin.hashed_password = await get_password_hash(password)
     await db_session.commit()
 
@@ -666,7 +667,7 @@ async def test_news_creation_persists_notification_source_event(
     user_factory,
 ):
     admin = await user_factory(role="admin")
-    password = "Adm1nPass!"
+    password = f"Aa9!{secrets.token_urlsafe(24)}"
     admin.hashed_password = await get_password_hash(password)
     await db_session.commit()
 
