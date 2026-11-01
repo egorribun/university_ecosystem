@@ -1,5 +1,44 @@
 # Post-pause reconciliation — 2026-10-30
 
+## AUD-455 acceptance and current 70-finding reconciliation (2026-10-31)
+
+The [scoped AUD-455 decision](AUDIT-2026-10.md#scoped-aud-455-acceptance-on-source-48842e23-2026-10-31)
+changes the cumulative registry from **441 to 442 accepted / 70 open**.
+Only AUD-455 leaves the preceding 71-ID complement. Its original duplicate
+cached-evidence defect and the cache-before-publication retry gap are covered
+by 84 named Node PASS results (79 leaf cases plus five parent/group results)
+and explicitly **COHORT-INFERRED selector 87** on source 488.
+Actual hosted nightly rerun, complete CI and release readiness are not claimed.
+
+The exact current complement is below: **18 S / 37 P / 12 U / 3 N = 70**.
+Every ID and classification other than AUD-455 is carried forward unchanged
+from the dated 71-ID matrix; this is not fresh proof for those 70 findings.
+S means source-fixed with applicable proof unestablished; P partial;
+U original defect remaining; N not verified or original cause unproven.
+The detailed evidence boundaries remain in that preserved matrix.
+
+- **S (18):** AUD-073, AUD-154, AUD-231, AUD-269, AUD-270, AUD-274, AUD-278, AUD-311, AUD-321, AUD-347, AUD-351, AUD-384, AUD-436, AUD-449, AUD-450, AUD-474, AUD-490, AUD-501.
+- **P (37):** AUD-164, AUD-167, AUD-169, AUD-178, AUD-188, AUD-189, AUD-208, AUD-226, AUD-251, AUD-275, AUD-322, AUD-334, AUD-348, AUD-350, AUD-360, AUD-375, AUD-381, AUD-392, AUD-393, AUD-414, AUD-416, AUD-422, AUD-423, AUD-426, AUD-428, AUD-429, AUD-432, AUD-434, AUD-438, AUD-447, AUD-454, AUD-478, AUD-480, AUD-482, AUD-483, AUD-503, AUD-506.
+- **U (12):** AUD-245, AUD-272, AUD-309, AUD-313, AUD-327, AUD-332, AUD-346, AUD-373, AUD-378, AUD-380, AUD-433, AUD-456.
+- **N (3):** AUD-277, AUD-420, AUD-484.
+
+AUD-447 remains P under the previously documented retained-storage residual.
+Its two owned-PostgreSQL passes are scoped scrub/idempotence evidence, not proof
+that all historical/error-byte conditions are repaired or that deployed rows
+were cleaned. No new production-data claim is made here.
+
+Source 488's Matrix finished **66 SUCCESS / 9 FAILURE / 16 SKIPPED**; backend
+**23,077 PASS / 433 SKIP / 16 FAIL**. The 16 failures are 11 missing Core
+diagnostics, four prior frozen bindings and the migration-148 source pin.
+Raw selector node manifests were not independently read; source collection and
+all four complete cohort summaries support the explicitly labeled inference.
+Policy 499, cap 512, expiry 2027-01-10, baseline 315 and Gitleaks 26 do not change.
+The later published ef1d592c source requires its own checks.
+
+The following 71-ID section and all older sections are retained dated
+snapshots, not competing current counters. This overlay supersedes only their
+AUD-455 open status and cumulative count.
+
 ## Current 71-finding reconciliation — 2026-10-31
 
 The [latest original-criterion decision](AUDIT-2026-10.md#scoped-five-finding-acceptance-and-aud-350-correction--2026-10-31)

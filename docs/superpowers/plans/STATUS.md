@@ -1,7 +1,126 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-10-31 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-11-01 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+
+## Terminal ef1 и следующий scanner-first шаг — 2026-11-01 09:00 UTC
+
+Эта документальная приёмка добавляет только AUD-455: **442/512 приняты,
+70 открыты**. Основание и ограничения приведены в датированном решении ниже;
+остальные 70 статусов не меняются. AUD-447 остаётся открыт.
+
+Последний проверенный source:
+[ef1d592caa65e6bf1de20da997d5cbe506414688](https://github.com/egorribun/university_ecosystem/commit/ef1d592caa65e6bf1de20da997d5cbe506414688).
+Actual PR checkout `f71d2c823c61dacb6606c4f327567e4700bc9588` имеет то же
+полное дерево `18c917c2cac8a7aeed478a242a58752c95256e36`.
+
+- [Matrix 41252608658](https://github.com/egorribun/university_ecosystem/actions/runs/41252608658)
+  завершился 2026-11-01 00:30:32 UTC: **66 SUCCESS / 9 FAILURE / 16 SKIPPED**,
+  все 91 job terminal, отмен нет. Все 23 workflow runs terminal:
+  **18 SUCCESS / 3 FAILURE / 2 SKIPPED**.
+- Backend main cohorts: **23 093 PASS / 433 SKIP / 38 FAIL**.
+  Из них 33 — фактические semantic RED новых finite-eight metadata tests,
+  без fixture/collection errors: восемь отсутствующих индексов, один неверный
+  набор, восемь непресечённых конфликтов имён и 16 отсутствующих колонок.
+  Остальные пять — четыре frozen-source bindings и migration-148 pin.
+  Пять положительных finite-eight случаев подтверждены только выводом из
+  полного containing cohort, не именными PASS.
+- Прежние 11 Core diagnostic failures устранены в собственном полном
+  [Unit 3](https://github.com/egorribun/university_ecosystem/actions/runs/41252608658/job/124695795619):
+  **7195 PASS / 160 SKIP / 0 FAIL**, без target skips/errors. Это cohort proof,
+  не отдельный список 17 именных PASS. Binding diagnostics: 24 named PASS.
+  PG migration cycle по-прежнему выявляет восемь migration-owned indexes,
+  отсутствующих в target metadata. Coverage Policy и Codecov — SKIPPED.
+- Frontend: **10 672 PASS / 847 файлов**;
+  [aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/41252608658/job/124692164595):
+  **2645 changed lines / 0 missing / 100% line**, не все coverage metrics.
+  [Node](https://github.com/egorribun/university_ecosystem/actions/runs/41252608658/job/124690027467)
+  повторно дал **84 AUD-455 PASS results = 79 leaf cases + 5 parent/group results**.
+- [Owned Core](https://github.com/egorribun/university_ecosystem/actions/runs/41252608780/job/124689070452):
+  preflight **357 + 1 PASS**, browser **52 PASS / 0 FAIL / 2 SKIP**, затем
+  `log_size`, exit 2. Первый capture: stdout 0 байт, stderr 489451 байт,
+  346 завершённых LF-строк, максимальная строка 3836 байт; второй capture
+  превысил оставшиеся 559125 байт. Содержимое и уровни строк не определялись.
+  Диагностика доказала множество строк stderr, но не причину роста и не
+  исправление overflow. NATS skipped; cleanup/receipt прошли.
+- Dependency Review остаётся FAILURE: go-jose/v3 3.0.5,
+  GHSA-mgcc-cww5-fp2q, и отдельный exact-license-row identity guard.
+  Конкретная отклонённая license row не установлена; исключение не добавлено.
+
+Следующий отдельно согласованный этап изменяет только три отпечатка уже
+проверенного CI в `tests/fixtures/full-backend-reusable-baseline.v4.yaml`.
+Сначала нужен фактический scanner receipt нового source. **Policy остаётся 499**.
+Добавление ровно трёх ожидаемых path/type/digest identities до 502 возможно
+только после их точного совпадения с фактическим сканом; при дополнительной
+находке этап останавливается. Старые 499 записей, cap 512, expiry 2027-01-10,
+baseline 315 и Gitleaks 26 не меняются этим первым этапом.
+Исторические SQL capture и Squawk admission не входят в это согласование.
+
+Finite-eight repair подготовлен отдельно после 33 semantic RED; его
+пятифайловый source review не равен runtime verification и не включён в этот
+документальный/scanner-first пакет. Новый опубликованный source требует
+собственных CI receipts. Никаких deploy или изменений эксплуатационной БД.
+
+## Приёмка AUD-455 и текущая граница CI — 2026-10-31 23:29 UTC
+
+Реестр после этой отдельной документальной приёмки — **442/512 (86,3%)**,
+**70 ID открыты**. Сохраняются все 441 ранее принятые ID; добавлен только AUD-455.
+[Точное решение](../../audits/AUDIT-2026-10.md#scoped-aud-455-acceptance-on-source-48842e23-2026-10-31)
+и [остаток 70 ID](../../audits/AUDIT-2026-10-30-reconciliation.md#aud-455-acceptance-and-current-70-finding-reconciliation-2026-10-31)
+сохраняют прежние даты и ограничения доказательств. Остальные 70 классификаций
+перенесены без утверждения о новом полном ревью: **18 S / 37 P / 12 U / 3 N**.
+
+### Последний проверенный terminal source 488
+
+[48842e23022fd3f81e45e707b1ad4361e59697d7](https://github.com/egorribun/university_ecosystem/commit/48842e23022fd3f81e45e707b1ad4361e59697d7)
+и actual PR merge `5bd2c89b96f6e9cda91b18b9b7b3d377ba2d946c` имеют
+одно полное дерево `c1be51e0679d9881f9442455f9f421256ef1a585`.
+
+- [Matrix 41246529867](https://github.com/egorribun/university_ecosystem/actions/runs/41246529867)
+  завершился 23:15:14 UTC: **91 job = 66 SUCCESS / 9 FAILURE / 16 SKIPPED**,
+  без отмен. Полного GREEN нет.
+- Backend main cohorts: **23 077 PASS / 433 SKIP / 16 FAIL**; отдельно запущенные
+  preflight cohorts не прибавляются. Отказы: **11 ожидаемых semantic RED
+  Core diagnostics**, четыре прежних frozen-source binding и migration-148 pin.
+  Coverage Policy и Codecov — **SKIPPED**.
+- [Node job](https://github.com/egorribun/university_ecosystem/actions/runs/41246529867/job/124671777208):
+  **84 именных AUD-455 PASS results: 79 leaf cases + 5 parent/group results**,
+  включая проверки восстановления после
+  failed upload и повторного использования опубликованного cached producer.
+  Selector 87 — **COHORT-INFERRED** по проверенной collection/sharding логике
+  и полным terminal результатам четырёх shards, без target failures/skips.
+  Это не 87 именных PASS и не фактический повторный hosted nightly запуск.
+- Frontend: **10 672 PASS, 847 файлов**; [aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/41246529867/job/124674816204)
+  **2645 changed lines, 0 missing, 100% line**. Это не утверждение о полном
+  прохождении всех branch/function/component floors.
+- [Owned Core 488](https://github.com/egorribun/university_ecosystem/actions/runs/41246529798/job/124671013857)
+  завершился FAILURE: preflight **357 + 1 PASS**, браузер **52 PASS / 0 FAIL /
+  2 SKIP**, затем Caddy capture **log_size**, exit 2. NATS был SKIPPED;
+  cleanup и receipt прошли. Это отказ ограниченного захвата, не доказанная
+  утечка и не установленная причина роста журналов.
+- AUD-447 остаётся **OPEN**: два именных owned-PG scrub/idempotence PASS
+  не закрывают все ранее документированные retained-storage условия.
+  Эксплуатационные данные не проверялись и не изменялись.
+
+### Текущий опубликованный source и следующий ограниченный шаг
+
+[ef1d592caa65e6bf1de20da997d5cbe506414688](https://github.com/egorribun/university_ecosystem/commit/ef1d592caa65e6bf1de20da997d5cbe506414688),
+tree `18c917c2cac8a7aeed478a242a58752c95256e36`, уже опубликован.
+На момент подготовки этой записи его собственный CI **ещё выполняется**.
+Все пять AUD-455 source/test/workflow paths byte-identical source 488, но общий GREEN
+на ef1 не переносится. Отдельные finite-eight migration metadata regressions
+и Core diagnostics требуют своих результатов на ef1.
+
+Следующий шаг — закончить уже запущенные проверки ef1 и разбирать фактические
+результаты без ослабления assertions, provenance, caps или deadlines.
+Pending nine-file binding/policy package остаётся отдельным: эта приёмка
+его не применяет и не меняет разрешённую область. **Policy 499, cap 512,
+expiry 2027-01-10, baseline 315, Gitleaks 26**, required checks, coverage floors
+и Squawk decisions неизменны. Ни deploy, ни применение миграций к
+эксплуатационной БД этой записью не выполняются.
+
+Все датированные checkpoint ниже сохраняют собственные счётчики и CI.
+Их прежние слова «текущий» относятся к указанному времени, а не к этой записи.
 
 ## Recovery и точная область доказательств — 2026-10-31 17:42 UTC
 
