@@ -241,6 +241,65 @@ test("build orchestrator keeps an operator-provided young generation limit", asy
   assert.match(nodeOptions, /(?:^|\s)--max-semi-space-size=8(?=\s|$)/u)
 })
 
+for (const [label, inheritedOptions, expectedOptions] of [
+  [
+    "underscore equals",
+    "--max-old-space-size=768 --max_semi_space_size=8",
+    "--max-old-space-size=768 --max_semi_space_size=8",
+  ],
+  [
+    "underscore separated value",
+    "--max-old-space-size=768 --max_semi_space_size 8",
+    "--max-old-space-size=768 --max_semi_space_size 8",
+  ],
+  [
+    "mixed separators",
+    "--max-old-space-size=768 --max-semi_space-size=8",
+    "--max-old-space-size=768 --max-semi_space-size=8",
+  ],
+  [
+    "underscore override last",
+    "--max-old-space-size=768 --max-semi-space-size=4 --max_semi_space_size=8",
+    "--max-old-space-size=768 --max-semi-space-size=4 --max_semi_space_size=8",
+  ],
+  [
+    "hyphen override last",
+    "--max-old-space-size=768 --max_semi_space_size=8 --max-semi-space-size=4",
+    "--max-old-space-size=768 --max_semi_space_size=8 --max-semi-space-size=4",
+  ],
+  [
+    "underscore lookalike inside the title value",
+    "--max-old-space-size=768 --title=--max_semi_space_size=8",
+    "--max-old-space-size=768 --title=--max_semi_space_size=8 --max-semi-space-size=1",
+  ],
+  [
+    "hyphen lookalike inside the title value",
+    "--max-old-space-size=768 --title=--max-semi-space-size=8",
+    "--max-old-space-size=768 --title=--max-semi-space-size=8 --max-semi-space-size=1",
+  ],
+]) {
+  test(`build orchestrator respects young-generation option boundaries: ${label}`, async (t) => {
+    const previousNodeOptions = process.env.NODE_OPTIONS
+    t.after(() => {
+      if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
+      else process.env.NODE_OPTIONS = previousNodeOptions
+    })
+    process.env.NODE_OPTIONS = inheritedOptions
+    const boundary = fakeViteBoundary(t)
+    const outcome = step3_viteBuild().then(
+      () => null,
+      (error) => error
+    )
+    const viteSpawns = boundary.spawnOptions.filter(({ command }) => command === "node")
+    boundary.child.emit("close", 1, null)
+    await outcome
+
+    assert.equal(viteSpawns.length, 1, "the real orchestrator must spawn exactly one Vite child")
+    assert.equal(viteSpawns[0].options.env.NODE_OPTIONS, expectedOptions)
+    assert.equal(boundary.intervals.size, 0)
+  })
+}
+
 test("build orchestrator terminates the exact Vite process tree on overflow", () => {
   assert.match(scriptSource, /taskkill\.exe/)
   assert.match(scriptSource, /terminateProcessTree\(child\.pid\)/)

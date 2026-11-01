@@ -382,3 +382,261 @@ def test_hardened_workflows_do_not_persist_checkout_credentials() -> None:
                     continue
                 persist = step.get("with", {}).get("persist-credentials")
                 assert persist is False, f"{workflow_name}:{job_name}"
+
+
+def test_coverage_consumer_has_only_job_scoped_artifact_read_permission() -> None:
+    workflow = _load("ci.yml")
+    job = workflow["jobs"]["coverage-policy-gate"]
+    selector = _step(job, "Select retry-safe same-run coverage producer artifacts")
+
+    assert workflow["permissions"] == {"contents": "read"}
+    assert job.get("permissions") == {"contents": "read", "actions": "read"}
+    assert selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert "scripts.quality.select_coverage_producer_artifacts" in selector["run"]
+
+
+def test_inline_trivy_builds_do_not_use_shared_github_actions_cache() -> None:
+    workflow = _load("ci.yml")
+    job = workflow["jobs"]["docker-security-scan-additional"]
+    build = _step(job, "Build local runtime image for scanning")["with"]
+    scan = _step(job, "Run Trivy vulnerability scanner")["with"]
+
+    assert workflow["cache-mode"] == "none"
+    assert "cache-from" not in build
+    assert "cache-to" not in build
+    assert build["push"] is False
+    assert build["load"] is True
+    assert {row["image_name"] for row in job["strategy"]["matrix"]["include"]} == {
+        "frontend",
+        "gateway",
+        "ws-hub",
+        "file-processor",
+        "caddy",
+    }
+    assert scan["severity"] == "CRITICAL,HIGH"
+    assert scan["exit-code"] == "1"
+
+
+def test_weekly_duration_writer_keeps_trust_and_credential_boundaries() -> None:
+    workflow = _load("weekly-test-durations.yml")
+    events = workflow.get("on", workflow.get(True))
+    assert set(events) == {"schedule", "repository_dispatch"}
+    assert events["repository_dispatch"] == {"types": ["run-weekly-test-durations"]}
+    assert workflow["permissions"] == {"actions": "read", "contents": "read"}
+    shard = workflow["jobs"]["refresh-shard"]
+    writer = workflow["jobs"]["refresh"]
+    assert shard["permissions"] == {"contents": "read"}
+    assert shard["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    assert writer["permissions"] == {
+        "actions": "read",
+        "contents": "write",
+        "pull-requests": "write",
+    }
+    assert writer["needs"] == "refresh-shard"
+    assert writer["if"] == "${{ always() && github.ref == 'refs/heads/main' }}"
+    assert _step(writer, "Fail if a duration shard failed")["if"] == (
+        "${{ needs.refresh-shard.result != 'success' }}"
+    )
+    assert _names(writer).index("Verify trusted main source") < _names(writer).index(
+        "Open update pull request"
+    )
+    assert _step(writer, "Checkout")["with"]["ref"] == "main"
+    assert _step(writer, "Open update pull request")["env"] == {
+        "GH_TOKEN": "${{ github.token }}"
+    }
+    for job in (shard, writer):
+        assert _step(job, "Checkout")["with"]["persist-credentials"] is False
+
+
+@pytest.fixture
+def weekly_duration_writer(pytester, monkeypatch: pytest.MonkeyPatch):
+    import secrets
+
+    writer = _load("weekly-test-durations.yml")["jobs"]["refresh"]
+    verify = _step(writer, "Verify trusted main source")["run"]
+    publish = _step(writer, "Open update pull request")["run"]
+    assert "${{" not in verify + publish, "Runner expressions need substitution"
+
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    bash = (
+        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
+    )
+    assert bash, "Real Bash is required for the duration writer contract"
+    monkeypatch.chdir(pytester.path)
+    for name in tuple(os.environ):
+        if name in {"BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS", "GITHUB_TOKEN"} or (
+            name.startswith(("GIT_", "GH_", "BASH_FUNC_"))
+        ):
+            monkeypatch.delenv(name, raising=False)
+    empty_bin = pytester.path / "empty-bin"
+    empty_bin.mkdir()
+    monkeypatch.setenv("PATH", empty_bin.as_posix())
+    marker = secrets.token_urlsafe(32)
+    sha = "a" * 40
+    for name, value in {
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_RUN_ID": "12345",
+        "EVENT_SHA": sha,
+        "WORKFLOW_SHA": sha,
+        "TEST_TRUSTED_SHA": sha,
+        "TEST_CHECKOUT_SHA": sha,
+        "TEST_EXPECTED_TOKEN": marker,
+    }.items():
+        monkeypatch.setenv(name, value)
+
+    journal = pytester.path / "writer-events.txt"
+    monkeypatch.setenv("TEST_WRITER_JOURNAL", journal.as_posix())
+    # Only remote Git/PR effects are doubled. The checked-in Bash, its failure
+    # propagation and the selected command-local credential helper execute.
+    transport = r"""
+record() { printf '%s\n' "$1" >> "$TEST_WRITER_JOURNAL"; }
+gh() {
+  if [[ "$*" == "auth git-credential get" ]]; then
+    local protocol host blank
+    IFS= read -r protocol
+    IFS= read -r host
+    IFS= read -r blank
+    [[ "$protocol" == protocol=https && "$host" == host=github.com ]]
+    [[ -z "$blank" && -n "${GH_TOKEN:-}" ]]
+    printf 'protocol=https\nhost=github.com\nusername=x-access-token\npassword=%s\n' "$GH_TOKEN"
+  elif [[ "$#" == 10 && "$*" == "pr create --base main --head automation/test-durations-12345 --title chore(quality): refresh pytest duration map --body Automated weekly refresh from pytest JUnit timings." ]]; then
+    record pr
+    return "$TEST_PR_STATUS"
+  else
+    return 91
+  fi
+}
+export -f gh record
+git() {
+  case "$1" in
+    fetch)
+      [[ "$*" == "fetch origin refs/heads/main:refs/remotes/origin/main --depth=1" ]]
+      ;;
+    rev-parse)
+      case "$2" in
+        refs/remotes/origin/main) printf '%s\n' "$TEST_TRUSTED_SHA" ;;
+        HEAD) printf '%s\n' "$TEST_CHECKOUT_SHA" ;;
+        *) return 92 ;;
+      esac
+      ;;
+    diff)
+      [[ "$*" == "diff --quiet -- quality/test-durations.json" ]] || return 93
+      return "$TEST_DIFF_STATUS"
+      ;;
+    switch)
+      [[ "$*" == "switch --create automation/test-durations-12345" ]] || return 94
+      record switch
+      ;;
+    config)
+      case "$*" in
+        "config user.name github-actions[bot]") record config-name ;;
+        "config user.email 41898282+github-actions[bot]@users.noreply.github.com") record config-email ;;
+        *) record forbidden-config; return 95 ;;
+      esac
+      ;;
+    add)
+      [[ "$*" == "add quality/test-durations.json" ]] || return 96
+      record add
+      ;;
+    commit)
+      [[ "$#" == 3 && "$*" == "commit -m chore(quality): refresh pytest duration map" ]] || return 97
+      record commit
+      ;;
+    -c)
+      [[ "$#" == 8 && "$2" == credential.helper= && "$3" == -c ]] || return 98
+      [[ "$4" == 'credential.https://github.com.helper=!gh auth git-credential' ]] || return 98
+      [[ "$5 $6 $7 $8" == "push --set-upstream origin automation/test-durations-12345" ]] || return 98
+      local helper credentials expected
+      helper="${4#credential.https://github.com.helper=!}"
+      credentials="$(printf 'protocol=https\nhost=github.com\n\n' |
+        "$BASH" --noprofile --norc -e -o pipefail -c "$helper get")" || return 99
+      expected="$(printf 'protocol=https\nhost=github.com\nusername=x-access-token\npassword=%s' "$TEST_EXPECTED_TOKEN")"
+      [[ "$credentials" == "$expected" ]] || return 99
+      record authenticated-push
+      return "$TEST_PUSH_STATUS"
+      ;;
+    push)
+      record unauthenticated-push
+      return 90
+      ;;
+    *) return 100 ;;
+  esac
+}
+"""
+    script = pytester.path / "actual-weekly-writer.sh"
+    script.write_text(
+        transport
+        + "\n(\nunset GH_TOKEN\n"
+        + verify
+        + "\n)\nunset EVENT_SHA WORKFLOW_SHA\n"
+        + publish,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    def run(case: str):
+        journal.unlink(missing_ok=True)
+        monkeypatch.setenv("GH_TOKEN", marker)
+        monkeypatch.setenv("TEST_DIFF_STATUS", "0" if case == "unchanged" else "1")
+        monkeypatch.setenv("TEST_PUSH_STATUS", "77" if case == "push-failed" else "0")
+        monkeypatch.setenv("TEST_PR_STATUS", "78" if case == "pr-failed" else "0")
+        if case == "missing-token":
+            monkeypatch.delenv("GH_TOKEN")
+        elif case == "wrong-ref":
+            monkeypatch.setenv("GITHUB_REF", "refs/heads/other")
+        elif case == "stale-source":
+            monkeypatch.setenv("WORKFLOW_SHA", "b" * 40)
+        result = pytester.run(
+            bash,
+            "--noprofile",
+            "--norc",
+            "-e",
+            "-o",
+            "pipefail",
+            script.as_posix(),
+            timeout=20,
+        )
+        leaked = marker in result.stdout.str() + result.stderr.str()
+        assert not leaked, "The writer exposed its synthetic credential"
+        events = (
+            journal.read_text(encoding="utf-8").splitlines()
+            if journal.exists()
+            else []
+        )
+        return result.ret, events
+
+    return run
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "changed",
+        "unchanged",
+        "missing-token",
+        "push-failed",
+        "pr-failed",
+        "wrong-ref",
+        "stale-source",
+    ],
+)
+def test_weekly_duration_writer_authenticates_only_the_guarded_push(
+    weekly_duration_writer, case: str
+) -> None:
+    status, events = weekly_duration_writer(case)
+    mutations = ["switch", "config-name", "config-email", "add", "commit"]
+    if case == "changed":
+        assert status == 0
+        assert events == mutations + ["authenticated-push", "pr"]
+    elif case == "unchanged":
+        assert status == 0
+        assert events == []
+    elif case == "push-failed":
+        assert status == 77
+        assert events == mutations + ["authenticated-push"]
+    elif case == "pr-failed":
+        assert status == 78
+        assert events == mutations + ["authenticated-push", "pr"]
+    else:
+        assert status != 0
+        assert events == []
