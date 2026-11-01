@@ -39,7 +39,7 @@ raw Squawk/admission failure and Caddy v3 advisory/license identity remain
 separate blockers. The b72 RSS-cap failure is historical: own-953 unauthenticated
 smoke succeeded, without establishing the cause of build-memory variance or
 changing its budget. No operational data was inspected or changed.
-Current policy 502, baseline 315 and Gitleaks 26 are not modified by this decision.
+Current policy502 and Gitleaks26 remain unchanged. Baseline305 reflects only the separate [ten-identity retirement](../adr/ADR-047-risk-based-quality-policy.md#ten-obsolete-test-baseline-identities-retired-2026-11-01), eight line moves and scan date. This cleanup adds no acceptance or disposition and retains the older20 stale identities; the 449/63 partition and dated source/receipt classifications above do not change.
 
 The following70 / 71 /other sections remain dated history, not competing current
 counters or newly inherited runtime results.

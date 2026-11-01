@@ -59,8 +59,9 @@ handoffs are intentionally not part of the canonical index.
   2-identity approvals, preserving the prior 250 records. The later nine-identity
   Go source-contract approval extended the historical scope to 261; see the
   [nine-identity audit update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
-  The current baseline contains 315 identities; 78 required contexts remain
-  unchanged. The
+  The current baseline contains 305 identities after the
+  [finite ten-identity retirement](adr/ADR-047-risk-based-quality-policy.md#ten-obsolete-test-baseline-identities-retired-2026-11-01);
+  78 required contexts remain unchanged. The
   [post-pragma-removal update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
   distinguishes the historical 243-policy unfiltered scan from the private
   conditional 250-overlay result. The policy approvals do not establish passing

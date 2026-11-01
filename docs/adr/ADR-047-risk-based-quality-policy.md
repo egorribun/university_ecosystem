@@ -1391,3 +1391,50 @@ The owner activated one finite Squawk admission for the unchanged historical rev
 - Disposition rebinds (owner decision 2026-10-31; one-to-one, same path and type, no identity added): record 351 (`quality/historical148-squawk-policy.json`, env.py pin, `e8d54326…` → `ac2f50a2…`); record 376 (`scripts/quality/validate_historical148_squawk.py`, historical-148 policy fingerprint, `cbf0c9d7…` → `00fb9655…`, which changes because the historical reconstruction hashes the activated policy bytes with only the recapture fields restored); and record 410 (`scripts/quality/validate_historical148_squawk.py`, compiled policy fingerprint, `8df4a533…` → `1c43d246…`). The disposition count stays **502**. Evidence text and line references are unchanged.
 - Verifier and contract pins: the historical-148 and October-30 identity tables, the pinned policy and validator blobs, the October-30 405-record and AUD-447 494-record prefix digests, and the single exact env.py difference allowed against the 3d83fb27 capture are updated for exactly these rebinds. The migration workflow contracts expect the admission verdict as the final decision and the unchanged-148 input step as the source of the ordinary outputs; the squawk shell harness again exercises the admission stub, with collector failures first. All negative tests are kept.
 - Limits: this is not scanner success, deployment or merge approval, populated-database admission, or a suppression of the 37 raw findings. It does not accept AUD-327, AUD-348 or AUD-433. Any change to `148642dd1207`, to its rendered SQL, or to a pinned scanner input needs a new source-bound capture and a new owner decision.
+
+
+## Ten obsolete test baseline identities retired (2026-11-01)
+
+The owner approved only the ten obsolete `Secret Keyword` identities below,
+eight existing-record line-number updates, and the scan timestamp.
+The detect-secrets baseline changes **315 → 305**. This removes obsolete
+exceptions after the password-fixture repairs; it adds no finding, disposition,
+pragma, wildcard, category change, automatic approval, or scanner bypass.
+
+The [own ac6 hook output](https://github.com/egorribun/university_ecosystem/actions/runs/41340638481/job/124949683580)
+contains the actual postimage with `generated_at = 2026-11-01T19:20:23Z`.
+It matches the earlier own-bcac postimage except for that timestamp.
+The approved source-bound retired population is:
+
+| Existing baseline path | Retired recorded lines | Detector |
+| --- | --- | --- |
+| `tests/test_notifications_api.py` | 43, 175 | Secret Keyword |
+| `tests/test_notifications_service.py` | 619 | Secret Keyword |
+| `tests/test_sessions_api.py` | 213, 291, 423, 451 | Secret Keyword |
+| `tests/test_notifications_localization.py` | 22 | Secret Keyword |
+| `tests/test_missing_logic_v5.py` | 52 | Secret Keyword |
+| `tests/test_auth_security.py` | 76 | Secret Keyword |
+
+These rows identify the ten existing path/type/digest tuples removed by the
+reviewed baseline diff, not permission to remove another finding at those paths.
+The eight retained-identity moves are `tests/test_auth_security.py`
+367→78, 196→208, 207→219, 224→236, 247→259, 264→276, 309→321, and
+`tests/test_notifications_api.py` 108→43. Their digests, detector types and
+`is_secret` statuses are unchanged. Empty result keys disappear only for
+notifications_service, notifications_localization and missing_logic_v5; no
+remaining result is discarded.
+
+All **305** retained identities and their classification/status fields are
+preserved apart from those eight line numbers. The separately reported **20**
+older stale identities are retained for separate review; this decision does not
+retire them. Scanner plugins, filters and version remain unchanged.
+The disposition policy stays **502**, its cap **512**, and existing individual
+expiries (including 2027-01-10) are not extended. Gitleaks stays **26**.
+The historical policy-prefix counts of 315 in verifier tests are not this
+baseline cardinality and must not be rewritten as 305.
+
+The audit register stays **449 accepted / 63 open**. Historical 315/319 scan
+receipts remain dated evidence, not claims about the new baseline.
+The final published source still needs its own scan and required checks;
+retirement approval and a reconstructed postimage do not establish full CI,
+coverage, deployment readiness, or acceptance of another finding.

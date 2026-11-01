@@ -3,6 +3,89 @@
 Обновлено: 2026-11-01 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 
+## Ограниченная очистка baseline и checkpoint ac6 — 2026-11-01
+
+Реестр остаётся **449 / 512 приняты, 63 открыты**. Baseline уменьшен только
+**315 → 305**: удалены десять подтверждённых устаревших тестовых записей,
+восемь оставшихся записей получили фактические номера строк, дата скана
+обновлена до **2026-11-01T19:20:23Z**. Это не добавление исключений или приёмок.
+[Точный scope ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#ten-obsolete-test-baseline-identities-retired-2026-11-01)
+сохраняет все 305 оставшихся identities и их статусы, прежние 20 stale identities,
+policy 502, cap 512, существующие expiry, Gitleaks 26 и все гейты.
+
+Фактический postimage получен из [own ac6 hook](https://github.com/egorribun/university_ecosystem/actions/runs/41340638481/job/124949683580):
+никаких новых findings, только согласованные 10 удалений, 8 переносов строк
+и дата. Реконструкция проверена независимо по полному diff и identity-set
+comparison. Этот receipt не заменяет scanner/required checks нового source.
+
+### Полный terminal ac6, без общего GREEN
+
+Исходный commit `ac6de5bbff271ab0930a30d95ea1379bf70225f0` и фактический PR merge
+`d49bafa493cb00402f81753441d3042eb427344e` имеют одинаковое полное дерево
+`8a204cacc22d9ea591d6f5bd09183ff377a0c8f5`.
+[Matrix ac6](https://github.com/egorribun/university_ecosystem/actions/runs/41340638481)
+снял три собственных harness-блокера: Ruff, Prettier и inventory PASS.
+
+Все 23 workflow завершились: **18 SUCCESS / 3 FAILURE / 2 SKIPPED**.
+Все 91 job Matrix: **63 SUCCESS / 12 FAILURE / 16 SKIPPED**.
+Matrix завершился **20:26:02 UTC**; повторных запусков и отмен не было.
+
+Полный backend: **23 416 PASS / 459 SKIP / 14 FAIL**, 23 889 collected;
+отдельные preflights 850 + 240 PASS. Четыре migration-isolation semantic RED
+показывают зависимость DB-only metadata bootstrap от runtime SECRET_KEY/HMAC.
+Четыре Helm deadline RED показывают отсутствие timeout в общем helper.
+Три SQLite drift-теста остановились до мутаций на SQLCommenter-суффиксе
+в сохранённом CREATE INDEX: исходный metadata positive прошёл, schema drift
+этими отказами не доказан. Возможное загрязнение от instrumentation тестов
+разбирается отдельно; конкретный предшествующий producer в quiet xdist логе
+не установлен. Остальные три отказа — historical148 pin, старый Semgrep
+source anchor и Helm services securityContext count 10≠9.
+Coverage & Quality Policy Gate и Trusted Codecov **SKIPPED**, не GREEN.
+
+Frontend: **10 705 PASS / 0 FAIL**, 847 файлов; ещё 25 production-client
+contract PASS. Строгий aggregate всё равно **FAIL**: 2767 changed lines,
+9 missing (7 webVitals, 2 offline versionchange). SW replay-file имеет
+58 PASS, но AUD-375 остаётся partial: in-flight HTTP overlap при TTL takeover
+не устранён; fake-indexeddb/component evidence не является browser/server E2E.
+
+[Core ac6](https://github.com/egorribun/university_ecosystem/actions/runs/41340638506/job/124949682227)
+завершился **50 PASS / 2 SKIP / 2 FLAKY**, exit 1 по строгому flaky gate.
+Успешные повторы не превращают job в GREEN; причины первых двух сбоев ещё
+не доказаны. Старый Core PASS и редактирование журналов не наследуются
+новым source и не доказывают устранение исторического log_size.
+
+Owned PG: **160 PASS / 1 GIN OID FAIL** из 436 collected; 275 **NOT RUN**
+из-за первого отказа. Rollback/UTC-retry cases не считаются выполненными.
+Отдельные 13 + 5 + 1 controls PASS. Contract: 3616 PASS / 1 historical148 pin
+FAIL; отдельно 848 policy и 41 transport PASS. Raw148/admission SQL digest,
+Caddy v3 HIGH и exact license identity остаются открытыми. Пороги, SQL
+allowances и существующие source bindings не ослаблены.
+
+### Следующий проверяемый source
+
+Отдельные логические изменения GIN5, coverage2 и одного Helm helper прошли
+независимый source/immutable review. GIN сохраняет валидный physical OID,
+создаёт только отсутствующий индекс через проверяемый concurrent prelude
+и отклоняет invalid/несовместимую форму без DROP. Это не обещание атомарности
+всей цепочки или rollback чужой транзакции. Два frontend test-файла проверяют
+реальные reporter и IndexedDB versionchange boundaries. В общем Helm helper
+добавлен только `timeout=60`; прежние UTF-8, фиксированные команды, check=True
+и propagation ошибок сохранены. Новых S603 exceptions нет.
+
+Новые unit/owned-PG/offline controls, coverage2 и helper должны исполниться
+на собственном новом SHA. Source review и очистка baseline автоматически
+не закрывают AUD-278, AUD-375 или другие находки. Выбранный вариант 2
+изоляции migration config/schema остаётся отдельной tests-first работой:
+DB-only bootstrap не должен требовать runtime HMAC, но historical
+encryption/signing/Redis требования нельзя удалить по одному bootstrap-тесту.
+Новый HMAC consumer и изменение historical148 bindings в этот пакет не входят.
+
+Разделы ниже сохраняют датированные прошлые состояния, включая baseline
+315/319, старые pending-описания и прежние CI outcomes. Они не переопределяют
+этот ограниченный cleanup и не являются общим current-source GREEN.
+Никаких merge/deploy/production DB/force push эта запись не выполняет.
+
+
 ## Полная сверка после паузы и семь scoped приёмок — 2026-11-01
 
 Реестр: **449 / 512 приняты, 63 открыты**. Сохраняются все прежние 442 ID,
@@ -124,7 +207,7 @@ actual merge `5e05942387f79864c4d37a42bd15ea61d3ce1d86`.
    SUCCESS (run 41321456202); это не доказывает причину или устранение
    вариативности потребления памяти. Лимит не повышается.
 
-Текущее наблюдаемое состояние policy: **502 records**, baseline 315, Gitleaks 26.
+На датированном checkpoint этого раздела: **502 records**, baseline 315, Gitleaks 26.
 User delta заменяет только bindings351 / 376 / 410; это не разрешение дополнительных
 identities, продления expiry, глобальных исключений или изменения порогов.
 Никаких merge/deploy/production DB/force push эта документация не выполняет.
