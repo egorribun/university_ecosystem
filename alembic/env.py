@@ -28,9 +28,6 @@ config: Config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-target_metadata = build_migration_metadata(models.Base.metadata)
-
-
 class _OfflineInspector:
     """Fallback inspector for Alembic --sql (offline) mode when MockConnection cannot be inspected."""
 
@@ -162,7 +159,9 @@ def run_migrations_offline() -> None:
     url: str = get_url()
     context.configure(
         url=url,
-        target_metadata=target_metadata,
+        target_metadata=build_migration_metadata(
+            models.Base.metadata, dialect_name=make_url(url).get_backend_name()
+        ),
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
@@ -189,7 +188,9 @@ def run_migrations_offline() -> None:
 def _configure_context(connection: SyncConnection) -> None:
     context.configure(
         connection=connection,
-        target_metadata=target_metadata,
+        target_metadata=build_migration_metadata(
+            models.Base.metadata, dialect_name=connection.dialect.name
+        ),
         include_object=build_partition_aware_include_object(connection),
         compare_type=True,
         render_as_batch=True,

@@ -29,9 +29,84 @@ MIGRATION_OWNED_TENANT_TABLES = (
 )
 _MIGRATION_OWNED_TENANT_REVISION = "202607230001"
 
+# These indexes are created by historical revisions rather than runtime models.
+# Register only indexes that those revisions create for the selected dialect.
+_MIGRATION_OWNED_HOT_INDEXES: tuple[
+    tuple[str, str, tuple[str, ...], tuple[str, ...], str], ...
+] = (
+    (
+        "ix_chat_participants_user_id_chat_id",
+        "chat_participants",
+        ("user_id", "chat_id"),
+        (),
+        "202603060001",
+    ),
+    (
+        "ix_chat_participants_chat_id_user_id",
+        "chat_participants",
+        ("chat_id", "user_id"),
+        (),
+        "202603060001",
+    ),
+    (
+        "ix_messages_unread_chat_sender",
+        "messages",
+        ("chat_id", "sender_id"),
+        ("read_status",),
+        "202603070001",
+    ),
+    (
+        "idx_messages_chat_pagination_covering",
+        "messages",
+        ("chat_id", "created_at", "id"),
+        ("sender_id", "read_status"),
+        "202603170001",
+    ),
+    (
+        "idx_news_comment_cursor",
+        "news_comments",
+        ("news_id", "created_at", "id"),
+        (),
+        "202603150001",
+    ),
+    (
+        "ix_stored_events_pending_created",
+        "stored_events",
+        ("created_at", "id"),
+        ("processed_at",),
+        "202603140002",
+    ),
+    (
+        "ix_stored_events_pending_aggregate_created",
+        "stored_events",
+        ("aggregate_id", "created_at", "id"),
+        ("processed_at",),
+        "202603140002",
+    ),
+    (
+        "ix_stored_events_aggregate_uuid",
+        "stored_events",
+        ("aggregate_id_uuid", "sequence_number"),
+        ("processed_at",),
+        "202603140003",
+    ),
+)
+_POSTGRESQL_ONLY_HOT_INDEXES = frozenset(
+    {
+        "ix_chat_participants_user_id_chat_id",
+        "ix_chat_participants_chat_id_user_id",
+        "ix_messages_unread_chat_sender",
+        "idx_messages_chat_pagination_covering",
+    }
+)
 
-def build_migration_metadata(runtime_metadata: sa.MetaData) -> sa.MetaData:
-    """Copy active schemas and add the explicitly retained historical schemas."""
+
+def build_migration_metadata(
+    runtime_metadata: sa.MetaData, *, dialect_name: str
+) -> sa.MetaData:
+    """Copy active schemas and add migration-owned schemas for one dialect."""
+    if dialect_name not in {"postgresql", "sqlite"}:
+        raise ValueError(f"Unsupported migration metadata dialect: {dialect_name}")
     conflicts = RETAINED_TABLES.intersection(runtime_metadata.tables)
     if conflicts:
         raise ValueError(
@@ -42,6 +117,7 @@ def build_migration_metadata(runtime_metadata: sa.MetaData) -> sa.MetaData:
         table.to_metadata(metadata)
     _register_retained_tables(metadata)
     _register_migration_owned_tenant_columns(metadata)
+    _register_migration_owned_hot_indexes(metadata, dialect_name=dialect_name)
     for name in RETAINED_TABLES:
         metadata.tables[name].info["retained_by_revision"] = "202610010001"
     return metadata
@@ -76,6 +152,79 @@ def _register_migration_owned_tenant_columns(metadata: sa.MetaData) -> None:
         )
         table.append_column(tenant_id)
         sa.Index(index_name, tenant_id)
+
+
+def _register_migration_owned_hot_indexes(
+    metadata: sa.MetaData, *, dialect_name: str
+) -> None:
+    selected = tuple(
+        spec
+        for spec in _MIGRATION_OWNED_HOT_INDEXES
+        if dialect_name == "postgresql" or spec[0] not in _POSTGRESQL_ONLY_HOT_INDEXES
+    )
+    names = {spec[0] for spec in selected}
+    conflicts = {
+        str(index.name)
+        for table in metadata.tables.values()
+        for index in table.indexes
+        if index.name in names
+    }
+    if conflicts:
+        raise ValueError(
+            "Migration-owned hot index has competing runtime ownership: "
+            f"{sorted(conflicts)}"
+        )
+
+    for index_name, table_name, column_names, extra_columns, revision in selected:
+        table = metadata.tables.get(table_name)
+        if table is None:
+            # Do not hide removal of a runtime table from normal drift detection.
+            continue
+        missing = set(column_names + extra_columns).difference(table.c.keys())
+        if missing:
+            raise ValueError(
+                "Migration-owned hot index is missing required column: "
+                f"{table_name}.{sorted(missing)}"
+            )
+
+        columns = [
+            table.c[name].desc()
+            if index_name == "idx_messages_chat_pagination_covering"
+            and name in {"created_at", "id"}
+            else table.c[name]
+            for name in column_names
+        ]
+        postgresql_where: sa.ColumnElement[bool] | None = None
+        sqlite_where: sa.ColumnElement[bool] | None = None
+        postgresql_include: tuple[str, ...] | None = None
+        if index_name == "ix_messages_unread_chat_sender":
+            postgresql_where = table.c.read_status == sa.false()
+        elif index_name in {
+            "ix_stored_events_pending_created",
+            "ix_stored_events_pending_aggregate_created",
+        }:
+            if dialect_name == "postgresql":
+                postgresql_where = table.c.processed_at.is_(None)
+            else:
+                sqlite_where = table.c.processed_at.is_(None)
+        elif (
+            index_name == "ix_stored_events_aggregate_uuid"
+            and dialect_name == "postgresql"
+        ):
+            postgresql_where = sa.and_(
+                table.c.processed_at.is_(None),
+                table.c.aggregate_id_uuid.is_not(None),
+            )
+        if index_name == "idx_messages_chat_pagination_covering":
+            postgresql_include = ("sender_id", "read_status")
+        sa.Index(
+            index_name,
+            *columns,
+            info={"migration_owned_by_revision": revision},
+            postgresql_where=postgresql_where,
+            sqlite_where=sqlite_where,
+            postgresql_include=postgresql_include,
+        )
 
 
 def _register_retained_tables(metadata: sa.MetaData) -> None:

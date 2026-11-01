@@ -91,7 +91,7 @@ def test_retained_metadata_matches_historical_postgresql_schema():
     )
 
     runtime = _runtime_metadata()
-    metadata = build_migration_metadata(runtime)
+    metadata = build_migration_metadata(runtime, dialect_name="postgresql")
     assert set(runtime.tables) == {"users", "active_content"}
     assert metadata.tables["users"] is not runtime.tables["users"]
     assert metadata.tables["user_stats"].info["retained_by_revision"] == "202610010001"
@@ -127,11 +127,25 @@ _EXPECTED_MIGRATION_OWNED_TENANT_TABLES = (
 )
 
 
+def _add_message_index_columns(table: sa.Table) -> None:
+    for column in (
+        sa.Column("chat_id", sa.UUID(), nullable=False),
+        sa.Column("sender_id", sa.UUID(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("read_status", sa.Boolean(), nullable=False),
+    ):
+        table.append_column(column)
+
+
 def _runtime_metadata_with_tenant_tables():
     metadata = sa.MetaData()
     sa.Table("tenants", metadata, sa.Column("id", sa.UUID(), primary_key=True))
     for table_name in _EXPECTED_MIGRATION_OWNED_TENANT_TABLES:
-        sa.Table(table_name, metadata, sa.Column("id", sa.UUID(), primary_key=True))
+        table = sa.Table(
+            table_name, metadata, sa.Column("id", sa.UUID(), primary_key=True)
+        )
+        if table_name == "messages":
+            _add_message_index_columns(table)
     return metadata
 
 
@@ -145,7 +159,7 @@ def test_migration_owned_tenant_metadata_matches_parent_revision():
 
     assert MIGRATION_OWNED_TENANT_TABLES == _EXPECTED_MIGRATION_OWNED_TENANT_TABLES
     runtime = _runtime_metadata_with_tenant_tables()
-    metadata = build_migration_metadata(runtime)
+    metadata = build_migration_metadata(runtime, dialect_name="postgresql")
     assert all(
         "tenant_id" not in runtime.tables[name].c
         for name in MIGRATION_OWNED_TENANT_TABLES
@@ -159,9 +173,17 @@ def test_migration_owned_tenant_metadata_matches_parent_revision():
         (foreign_key,) = tenant_id.foreign_keys
         assert foreign_key.target_fullname == "tenants.id"
         assert foreign_key.ondelete == "CASCADE"
-        assert {index.name for index in metadata.tables[table_name].indexes} == {
-            f"ix_{table_name}_tenant_id"
-        }
+        expected_indexes = {f"ix_{table_name}_tenant_id"}
+        if table_name == "messages":
+            expected_indexes.update(
+                {
+                    "ix_messages_unread_chat_sender",
+                    "idx_messages_chat_pagination_covering",
+                }
+            )
+        assert {
+            index.name for index in metadata.tables[table_name].indexes
+        } == expected_indexes
 
 
 def test_autogenerate_keeps_parent_owned_tenant_columns_fk_and_indexes():
@@ -171,7 +193,7 @@ def test_autogenerate_keeps_parent_owned_tenant_columns_fk_and_indexes():
     from app.core.db.retained_table_metadata import build_migration_metadata
 
     runtime = _runtime_metadata_with_tenant_tables()
-    target = build_migration_metadata(runtime)
+    target = build_migration_metadata(runtime, dialect_name="sqlite")
     engine = sa.create_engine("sqlite://")
     engine.dialect.ischema_names = {
         **engine.dialect.ischema_names,
@@ -207,7 +229,7 @@ def test_retained_tables_have_one_explicit_owner():
     runtime = _runtime_metadata()
     sa.Table("user_stats", runtime, sa.Column("user_id", sa.UUID(), primary_key=True))
     with pytest.raises(ValueError, match="competing runtime ownership"):
-        build_migration_metadata(runtime)
+        build_migration_metadata(runtime, dialect_name="postgresql")
 
 
 def test_autogenerate_retains_tables_and_still_detects_actual_drift():
@@ -217,7 +239,7 @@ def test_autogenerate_retains_tables_and_still_detects_actual_drift():
     from app.core.db.retained_table_metadata import build_migration_metadata
 
     runtime = _runtime_metadata()
-    metadata = build_migration_metadata(runtime)
+    metadata = build_migration_metadata(runtime, dialect_name="sqlite")
     engine = sa.create_engine("sqlite://")
     # SQLite supports the historical DDL, but its default reflection registry has
     # no vector type. Register only its type reader for this real-catalog test.
@@ -260,8 +282,8 @@ def test_autogenerate_detects_retained_column_nullability_drift(
 
     from app.core.db.retained_table_metadata import build_migration_metadata
 
-    target = build_migration_metadata(_runtime_metadata())
-    catalog = build_migration_metadata(_runtime_metadata())
+    target = build_migration_metadata(_runtime_metadata(), dialect_name="sqlite")
+    catalog = build_migration_metadata(_runtime_metadata(), dialect_name="sqlite")
     catalog.tables["vector_chunks"].c.is_active.nullable = catalog_nullable
     engine = sa.create_engine("sqlite://")
     # Exercise real SQLite reflection/autogeneration, not PostgreSQL execution.
@@ -315,9 +337,12 @@ def test_migration_owned_columns_skip_absent_runtime_tables() -> None:
 
     runtime = sa.MetaData()
     sa.Table("tenants", runtime, sa.Column("id", sa.UUID(), primary_key=True))
-    sa.Table("messages", runtime, sa.Column("id", sa.UUID(), primary_key=True))
+    messages = sa.Table(
+        "messages", runtime, sa.Column("id", sa.UUID(), primary_key=True)
+    )
+    _add_message_index_columns(messages)
 
-    metadata = build_migration_metadata(runtime)
+    metadata = build_migration_metadata(runtime, dialect_name="postgresql")
 
     assert "tenant_id" in metadata.tables["messages"].c
     assert not (set(MIGRATION_OWNED_TENANT_TABLES) - {"messages"}).intersection(
@@ -335,7 +360,7 @@ def test_migration_owned_tenant_column_conflict_fails_closed() -> None:
         ValueError,
         match="Migration-owned tenant_id has competing runtime ownership: users",
     ):
-        build_migration_metadata(runtime)
+        build_migration_metadata(runtime, dialect_name="postgresql")
 
 
 def test_migration_owned_tenant_index_conflict_fails_closed() -> None:
@@ -349,7 +374,7 @@ def test_migration_owned_tenant_index_conflict_fails_closed() -> None:
         match="Migration-owned tenant index has competing runtime ownership: "
         "ix_users_tenant_id",
     ):
-        build_migration_metadata(runtime)
+        build_migration_metadata(runtime, dialect_name="postgresql")
 
 
 _HOT_INDEX_SPECS = {
@@ -494,7 +519,7 @@ def test_migration_metadata_keeps_exact_postgresql_hot_index(index_name: str) ->
 
     runtime = _hot_index_runtime()
     before = _hot_metadata_snapshot(runtime)
-    target = build_migration_metadata(runtime)
+    target = build_migration_metadata(runtime, dialect_name="postgresql")
     table_name, columns, suffix, revision = _HOT_INDEX_SPECS[index_name]
     indexes = {index.name: index for index in target.tables[table_name].indexes}
     assert _hot_metadata_snapshot(runtime) == before
@@ -514,7 +539,7 @@ def test_migration_metadata_retains_hot_indexes_without_changing_runtime_base() 
 
     runtime = models.Base.metadata
     before = _hot_metadata_snapshot(runtime)
-    target = build_migration_metadata(runtime)
+    target = build_migration_metadata(runtime, dialect_name="postgresql")
     assert _hot_metadata_snapshot(runtime) == before
     for table_name in _HOT_TABLE_COLUMNS:
         expected = {
@@ -540,7 +565,7 @@ def test_migration_owned_hot_index_rejects_competing_runtime_name(
     sa.Index(index_name, next(iter(table.c)), unique=True)
     before = _hot_metadata_snapshot(runtime)
     with pytest.raises(ValueError, match="competing runtime ownership"):
-        build_migration_metadata(runtime)
+        build_migration_metadata(runtime, dialect_name="postgresql")
     assert _hot_metadata_snapshot(runtime) == before
 
 
@@ -562,7 +587,7 @@ def test_migration_owned_hot_index_rejects_missing_required_column(
     assert column_name not in runtime.tables[table_name].c
     before = _hot_metadata_snapshot(runtime)
     with pytest.raises(ValueError, match="missing required column"):
-        build_migration_metadata(runtime)
+        build_migration_metadata(runtime, dialect_name="postgresql")
     assert _hot_metadata_snapshot(runtime) == before
 
 
@@ -572,7 +597,7 @@ def test_migration_metadata_does_not_invent_absent_hot_tables(table_name: str) -
 
     runtime = _hot_index_runtime(omit_table=table_name)
     before = _hot_metadata_snapshot(runtime)
-    target = build_migration_metadata(runtime)
+    target = build_migration_metadata(runtime, dialect_name="postgresql")
     assert table_name not in target.tables
     assert set(target.tables) == set(runtime.tables) | {"user_stats", "vector_chunks"}
     assert _hot_metadata_snapshot(runtime) == before
@@ -583,8 +608,8 @@ def test_migration_metadata_clones_are_independent_of_runtime_and_each_other() -
 
     runtime = _hot_index_runtime()
     before = _hot_metadata_snapshot(runtime)
-    first = build_migration_metadata(runtime)
-    second = build_migration_metadata(runtime)
+    first = build_migration_metadata(runtime, dialect_name="postgresql")
+    second = build_migration_metadata(runtime, dialect_name="postgresql")
     assert set(first.tables) == set(second.tables)
     for table_name, table in first.tables.items():
         other = second.tables[table_name]
@@ -604,3 +629,231 @@ def test_migration_metadata_clones_are_independent_of_runtime_and_each_other() -
     assert second_index.unique is False
     assert second_table.c.id.nullable is False
     assert _hot_metadata_snapshot(runtime) == before
+
+
+_SQLITE_HOT_INDEX_NAMES = (
+    "idx_news_comment_cursor",
+    "ix_stored_events_pending_created",
+    "ix_stored_events_pending_aggregate_created",
+    "ix_stored_events_aggregate_uuid",
+)
+
+
+@pytest.mark.parametrize(
+    ("dialect_name", "index_name"),
+    [
+        (dialect_name, index_name)
+        for dialect_name, names in (
+            ("postgresql", tuple(_HOT_INDEX_SPECS)),
+            ("sqlite", _SQLITE_HOT_INDEX_NAMES),
+        )
+        for index_name in names
+    ],
+)
+@pytest.mark.parametrize("owner_present", [False, True])
+def test_hot_index_rejects_reserved_name_on_another_table(
+    dialect_name: str, index_name: str, owner_present: bool
+) -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    owner = _HOT_INDEX_SPECS[index_name][0]
+    runtime = _hot_index_runtime(omit_table=None if owner_present else owner)
+    sa.Index(index_name, runtime.tables["active_content"].c.id)
+    before = _hot_metadata_snapshot(runtime)
+
+    with pytest.raises(ValueError, match="competing runtime ownership"):
+        build_migration_metadata(runtime, dialect_name=dialect_name)
+
+    assert _hot_metadata_snapshot(runtime) == before
+
+
+@pytest.mark.parametrize(
+    "dialect_name", ["", "mysql", "postgresql+asyncpg", "POSTGRESQL"]
+)
+def test_migration_metadata_rejects_unknown_dialect_before_cloning(
+    monkeypatch: pytest.MonkeyPatch, dialect_name: str
+) -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _hot_index_runtime()
+    before = _hot_metadata_snapshot(runtime)
+    clone_calls = []
+
+    def unexpected_clone(*args, **kwargs):
+        clone_calls.append((args, kwargs))
+        raise AssertionError("unsupported dialect must fail before cloning")
+
+    monkeypatch.setattr(sa.Table, "to_metadata", unexpected_clone)
+    with pytest.raises(ValueError, match="Unsupported migration metadata dialect"):
+        build_migration_metadata(runtime, dialect_name=dialect_name)
+
+    assert clone_calls == []
+    assert _hot_metadata_snapshot(runtime) == before
+
+
+@pytest.mark.parametrize("index_name", _SQLITE_HOT_INDEX_NAMES)
+def test_migration_metadata_keeps_exact_sqlite_hot_index(index_name: str) -> None:
+    from sqlalchemy.dialects import sqlite
+    from sqlalchemy.schema import CreateIndex
+
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _hot_index_runtime()
+    before = _hot_metadata_snapshot(runtime)
+    target = build_migration_metadata(runtime, dialect_name="sqlite")
+    all_names = {
+        index.name for table in target.tables.values() for index in table.indexes
+    }
+    assert all_names.intersection(_HOT_INDEX_SPECS) == set(_SQLITE_HOT_INDEX_NAMES)
+    table_name, columns, suffix, revision = _HOT_INDEX_SPECS[index_name]
+    if index_name == "ix_stored_events_aggregate_uuid":
+        suffix = ""
+    indexes = {index.name: index for index in target.tables[table_name].indexes}
+    index = indexes[index_name]
+    actual = str(CreateIndex(index).compile(dialect=sqlite.dialect()))
+    expected = f"CREATE INDEX {index_name} ON {table_name} ({columns}){suffix}"
+    assert " ".join(actual.split()).upper() == expected.upper()
+    assert index.unique is False
+    assert index.info["migration_owned_by_revision"] == revision
+    assert _hot_metadata_snapshot(runtime) == before
+
+
+def test_sqlite_keeps_runtime_indexes_whose_names_are_postgresql_only() -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _hot_index_runtime()
+    postgres_only = set(_HOT_INDEX_SPECS) - set(_SQLITE_HOT_INDEX_NAMES)
+    for index_name in sorted(postgres_only):
+        sa.Index(index_name, runtime.tables["active_content"].c.id)
+    before = _hot_metadata_snapshot(runtime)
+
+    target = build_migration_metadata(runtime, dialect_name="sqlite")
+
+    assert {index.name for index in target.tables["active_content"].indexes} == {
+        "ix_hot_fixture_active_id",
+        *postgres_only,
+    }
+    assert _hot_metadata_snapshot(runtime) == before
+
+
+@pytest.mark.parametrize("mutation", ["missing", "wrong_columns", "extra"])
+def test_sqlite_autogenerate_still_detects_hot_index_drift(mutation: str) -> None:
+    from alembic.autogenerate import compare_metadata
+    from pgvector.sqlalchemy import Vector
+    from sqlalchemy.dialects import sqlite
+    from sqlalchemy.schema import CreateIndex
+
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    target = build_migration_metadata(_hot_index_runtime(), dialect_name="sqlite")
+    engine = sa.create_engine("sqlite://")
+    engine.dialect.ischema_names = {
+        **engine.dialect.ischema_names,
+        "VECTOR": Vector,
+        "UUID": sa.UUID,
+    }
+    try:
+        with engine.begin() as connection:
+            target.create_all(connection)
+            context = MigrationContext.configure(
+                connection, opts={"compare_type": True}
+            )
+            assert compare_metadata(context, target) == []
+            for index_name in _SQLITE_HOT_INDEX_NAMES:
+                table_name = _HOT_INDEX_SPECS[index_name][0]
+                index = next(
+                    index
+                    for index in target.tables[table_name].indexes
+                    if index.name == index_name
+                )
+                stored_sql = connection.exec_driver_sql(
+                    "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?",
+                    (index_name,),
+                ).scalar_one()
+                expected_sql = str(CreateIndex(index).compile(dialect=sqlite.dialect()))
+                assert " ".join(stored_sql.split()).upper() == expected_sql.upper()
+
+            if mutation == "extra":
+                connection.exec_driver_sql(
+                    "CREATE INDEX unexpected_hot_index ON news_comments(id)"
+                )
+                expected = {("remove_index", "unexpected_hot_index")}
+            else:
+                connection.exec_driver_sql("DROP INDEX idx_news_comment_cursor")
+                expected = {("add_index", "idx_news_comment_cursor")}
+                if mutation == "wrong_columns":
+                    connection.exec_driver_sql(
+                        "CREATE INDEX idx_news_comment_cursor ON news_comments(news_id)"
+                    )
+                    expected.add(("remove_index", "idx_news_comment_cursor"))
+
+            drift = compare_metadata(context, target)
+            assert all(diff[0] in {"add_index", "remove_index"} for diff in drift)
+            assert {(diff[0], diff[1].name) for diff in drift} == expected
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("offline", [False, True], ids=["injected-online", "offline"])
+def test_alembic_selects_metadata_for_the_actual_dialect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, offline: bool
+) -> None:
+    from io import StringIO
+
+    from alembic import command
+    from alembic.config import Config
+
+    from app.core.db import retained_table_metadata
+
+    script_dir = tmp_path / "alembic"
+    versions = script_dir / "versions"
+    versions.mkdir(parents=True)
+    (script_dir / "env.py").write_text(
+        (ROOT / "alembic/env.py").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (versions / "finite8_probe.py").write_text(
+        "from alembic import op\n"
+        "import sqlalchemy as sa\n"
+        "revision = 'finite8_probe'\n"
+        "down_revision = None\n"
+        "branch_labels = None\n"
+        "depends_on = None\n"
+        "def upgrade():\n"
+        "    op.execute(sa.text('SELECT 1'))\n"
+        "def downgrade():\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    database_url = "postgresql+asyncpg://migration@localhost:5432/test"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    config = Config(output_buffer=StringIO())
+    config.set_main_option("script_location", str(script_dir))
+    config.set_main_option("sqlalchemy.url", database_url)
+    original = retained_table_metadata.build_migration_metadata
+    observed = []
+
+    def recording_builder(
+        runtime_metadata: sa.MetaData, *, dialect_name: str
+    ) -> sa.MetaData:
+        target = original(runtime_metadata, dialect_name=dialect_name)
+        names = {
+            index.name for table in target.tables.values() for index in table.indexes
+        }
+        observed.append((dialect_name, names.intersection(_HOT_INDEX_SPECS)))
+        return target
+
+    monkeypatch.setattr(
+        retained_table_metadata, "build_migration_metadata", recording_builder
+    )
+    if offline:
+        command.upgrade(config, "head", sql=True)
+        assert observed == [("postgresql", set(_HOT_INDEX_SPECS))]
+    else:
+        engine = sa.create_engine("sqlite://")
+        try:
+            with engine.begin() as connection:
+                config.attributes["connection"] = connection
+                command.upgrade(config, "head")
+            assert observed == [("sqlite", set(_SQLITE_HOT_INDEX_NAMES))]
+        finally:
+            engine.dispose()

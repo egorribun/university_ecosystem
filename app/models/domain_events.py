@@ -84,8 +84,9 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
         ),
     )
 
-    # PERF-03: Partial covering indexes (cannot be expressed in SQLAlchemy
-    # mapped_column / Index DSL; created via raw SQL in migration 202603140002):
+    # PERF-03: Partial indexes are migration-owned rather than runtime-model
+    # indexes. Alembic's cloned metadata represents their dialect-specific DDL
+    # in app/core/db/retained_table_metadata.py (migration 202603140002):
     #   ix_stored_events_pending_created          (created_at, id) WHERE processed_at IS NULL
     #   ix_stored_events_pending_aggregate_created (aggregate_id, created_at, id) WHERE processed_at IS NULL
     #

@@ -192,7 +192,9 @@ def test_aud360_mapped_news_insert_omits_nullable_migration_owned_tenant(
 
     runtime_table = Base.metadata.tables["news"]
     assert "tenant_id" not in runtime_table.c
-    retained = build_migration_metadata(Base.metadata).tables["news"].c.tenant_id
+    retained = build_migration_metadata(
+        Base.metadata, dialect_name="postgresql"
+    ).tables["news"].c.tenant_id
     assert retained.nullable is True
     assert retained.info["migration_owned_by_revision"] == migration.revision
 
