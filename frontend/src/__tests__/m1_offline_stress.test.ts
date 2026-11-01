@@ -1,3 +1,4 @@
+import { NOTIFICATION_INTERACTIONS_DB_VERSION } from "@/constants/notificationInteractionsDb"
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { IDBFactory } from "fake-indexeddb"
 import { openDB } from "idb"
@@ -42,7 +43,7 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
 
     // Clear all pending stores between tests to prevent test pollution
     try {
-      const db = await openDB(CLICK_DB_NAME, 4)
+      const db = await openDB(CLICK_DB_NAME, NOTIFICATION_INTERACTIONS_DB_VERSION)
       await db.clear(STORES.MUTATION)
       await db.clear(STORES.REPORT)
       await db.clear(STORES.NEWS_INTERACTION)

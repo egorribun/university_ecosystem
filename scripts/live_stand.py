@@ -238,6 +238,12 @@ SEED_SCRIPTS = (
 LIVE_E2E_COMMAND = ("npm", "run", "test:e2e:live")
 LIVE_CADDY_PROBE_SPEC = "tests/e2e-live/zzz-aud174-prehydration-caddy-log.live.spec.ts"
 LIVE_CADDY_PROBE_PROJECTS = ("desktop", "mobile")
+# Every live-stand subprocess and lifecycle lock wait has a finite bound (AUD-309).
+LIVE_COMMAND_TIMEOUT_SECONDS = 3_600
+LIVE_PROBE_TIMEOUT_SECONDS = 120
+LIVE_INSTALL_TIMEOUT_SECONDS = 1_800
+LIVE_E2E_TIMEOUT_SECONDS = 7_200
+LIVE_LIFECYCLE_LOCK_TIMEOUT_SECONDS = 10_800
 LIVE_E2E_SMOKE_FILES = (
     "tests/e2e-live/auth-roles.live.spec.ts",
     "tests/e2e-live/admin-notifications-rbac.live.spec.ts",
@@ -1122,6 +1128,7 @@ def stand_lifecycle_lock() -> Iterator[None]:
             if os.fstat(lock_file.fileno()).st_size == 0:
                 lock_file.write(b"\0")
                 lock_file.flush()
+            deadline = time.monotonic() + LIVE_LIFECYCLE_LOCK_TIMEOUT_SECONDS
             while True:
                 try:
                     lock_file.seek(0)
@@ -1132,11 +1139,34 @@ def stand_lifecycle_lock() -> Iterator[None]:
                         raise StandError(
                             "cannot acquire the live stand lifecycle lock"
                         ) from error
+                    if time.monotonic() >= deadline:
+                        raise StandError(
+                            "timed out waiting for the live stand lifecycle lock"
+                        ) from error
                     time.sleep(0.05)
         else:
-            import fcntl
+            from fcntl import (  # type: ignore[attr-defined]
+                LOCK_EX,
+                LOCK_NB,
+                LOCK_UN,
+                flock,
+            )
 
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
+            deadline = time.monotonic() + LIVE_LIFECYCLE_LOCK_TIMEOUT_SECONDS
+            while True:
+                try:
+                    flock(lock_file.fileno(), LOCK_EX | LOCK_NB)
+                    break
+                except OSError as error:
+                    if error.errno not in {errno.EACCES, errno.EAGAIN}:
+                        raise StandError(
+                            "cannot acquire the live stand lifecycle lock"
+                        ) from error
+                    if time.monotonic() >= deadline:
+                        raise StandError(
+                            "timed out waiting for the live stand lifecycle lock"
+                        ) from error
+                    time.sleep(0.05)
         try:
             yield
         finally:
@@ -1146,9 +1176,7 @@ def stand_lifecycle_lock() -> Iterator[None]:
                 lock_file.seek(0)
                 msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
             else:
-                import fcntl
-
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+                flock(lock_file.fileno(), LOCK_UN)
 
 
 def _validate_project_name(project_name: str) -> None:
@@ -2249,6 +2277,7 @@ def _compose_resource_evidence(
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=LIVE_PROBE_TIMEOUT_SECONDS,
                 **run_options,
             )
             if docker_context is not None:
@@ -2961,6 +2990,7 @@ def _assert_compose_volume_ownership(
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=LIVE_PROBE_TIMEOUT_SECONDS,
                 **run_options,
             )
             if docker_context is not None:
@@ -3149,7 +3179,16 @@ def _run(
     command: Sequence[str], *, cwd: Path, env: dict[str, str] | None = None
 ) -> None:
     print("+", " ".join(command), flush=True)
-    subprocess.run(command, cwd=cwd, env=env, check=True)  # noqa: S603 - fixed argv
+    try:
+        subprocess.run(  # noqa: S603 - fixed argv
+            command,
+            cwd=cwd,
+            env=env,
+            check=True,
+            timeout=LIVE_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise StandError("live stand command timed out") from None
 
 
 def _docker_output(
@@ -3191,6 +3230,7 @@ def _docker_output(
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=LIVE_PROBE_TIMEOUT_SECONDS,
             **run_options,
         )
         if docker_context is not None:
@@ -4348,13 +4388,17 @@ def _remove_core_project_volumes(
 
 
 def _git(*args: str) -> str:
-    completed = subprocess.run(  # noqa: S603 - fixed git argv
-        ["git", *args],  # noqa: S607 - git resolved from PATH like every repo script
-        cwd=REPO_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        completed = subprocess.run(  # noqa: S603 - fixed git argv
+            ["git", *args],  # noqa: S607 - git resolved from PATH like every repo script
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=LIVE_PROBE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        raise StandError("live stand git probe timed out") from None
     return completed.stdout.strip()
 
 
@@ -5100,7 +5144,10 @@ def _run_live_e2e_npm_ci(frontend: Path, environment: Mapping[str, str]) -> None
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=LIVE_INSTALL_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired:
+        raise StandError("locked live E2E dependency install timed out") from None
     except OSError as error:
         raise StandError(
             "could not launch the locked live E2E dependency install"
@@ -5127,7 +5174,10 @@ def _probe_live_e2e_chromium(frontend: Path, environment: Mapping[str, str]) -> 
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=LIVE_PROBE_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired:
+        raise StandError("cached live E2E browser inspection timed out") from None
     except OSError as error:
         raise StandError("could not inspect the cached live E2E browser") from error
 
@@ -7874,7 +7924,10 @@ def _run_live_playwright(
             check=False,
             capture_output=True,
             text=False,
+            timeout=LIVE_E2E_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired:
+        raise StandError("live Playwright command timed out") from None
     except OSError as error:
         raise StandError("could not launch the live Playwright command") from error
 
@@ -8323,7 +8376,10 @@ def _run_live_playwright(
 _LIVE_CADDY_PROBE_MAX_BYTES = 1_048_576
 _LIVE_CADDY_PROBE_MARKER_MAX_BYTES = 256
 _LIVE_CADDY_PROBE_MAX_OUTPUT_DIRECTORY_ENTRIES = 512
-_LIVE_CADDY_PROBE_WINDOW_MS = 5_000
+# The probe request's own access row is written before the spec records
+# completed_at_ms, so a short half-window covers clock and log-pipeline skew.
+# Wider windows only re-read unrelated E2E traffic and exhaust the shared cap.
+_LIVE_CADDY_PROBE_WINDOW_MS = 2_000
 _LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS = 10
 _LIVE_CADDY_PROBE_ADMISSION_TIMEOUT_SECONDS = 25
 _LIVE_CADDY_PROBE_MAX_PROJECT_CONTAINERS = 64
@@ -10120,8 +10176,9 @@ def _status_compose_output(
             text=True,
             encoding="utf-8",
             errors="replace",
+            timeout=LIVE_PROBE_TIMEOUT_SECONDS,
         )
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         raise StandError("cannot read live stand status") from None
     if not isinstance(completed.stdout, str):
         raise StandError("cannot read live stand status")

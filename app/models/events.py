@@ -101,6 +101,13 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
         Index("ix_events_starts_at_is_active", "starts_at", "is_active"),
+        # AUD-278: full-text GIN index behind Event.search_vector search, restored
+        # by revision 202603280001 on every upgrade path.
+        Index(
+            "ix_events_search_vector",
+            "search_vector",
+            postgresql_using="gin",
+        ),
     )
     # RZ-23-01 (audit 2026-03-25 Wave 23): Changed lazy="selectin" → lazy="noload".
     # lazy="selectin" fires unconditional secondary SELECTs on every Event load,

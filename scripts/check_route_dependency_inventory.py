@@ -361,12 +361,17 @@ def build_inventory(app_root: Path) -> dict[str, Any]:
         for method, path in function.routes:
             if has_legacy and has_dishka:
                 ownership = "mixed"
-            elif module_name.startswith("app.api.internal") or method == "WEBSOCKET":
+            elif module_name.startswith("app.api.internal"):
                 ownership = "worker_internal"
             elif has_dishka:
                 ownership = "canonical_dishka"
             elif has_legacy:
                 ownership = "approved_legacy"
+            elif method == "WEBSOCKET":
+                # Per-frame WebSocket scopes are outside this AST inventory. A
+                # WebSocket route with no resolved owner is a session consumer,
+                # not a worker-internal route (AUD-503).
+                ownership = "websocket_session"
             else:
                 ownership = "public_no_db"
             routes.append(

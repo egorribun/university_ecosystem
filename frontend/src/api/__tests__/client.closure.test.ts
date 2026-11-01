@@ -70,6 +70,10 @@ describe("api/client — LHCI safe adapter", () => {
   })
 
   it("skips the real CSRF fetch when the LHCI adapter is active", async () => {
+    // Run as production so only the VITE_LHCI guard can skip the fetch. Under
+    // MODE=test the test-environment guard returns first, so deleting the LHCI
+    // branch would leave this assertion green.
+    vi.stubEnv("MODE", "production")
     document.cookie = "csrf_token=; Max-Age=0; path=/"
     const fetchSpy = vi.fn()
     vi.stubGlobal("fetch", fetchSpy)
@@ -77,6 +81,23 @@ describe("api/client — LHCI safe adapter", () => {
 
     await expect(ensureCsrfCookie()).resolves.toBeUndefined()
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+  it("still fetches the CSRF cookie in production when the LHCI adapter is inactive", async () => {
+    // Control for the test above: with the LHCI guard disabled the same path
+    // must reach the network, so a broken or deleted CSRF branch is detected.
+    vi.stubEnv("MODE", "production")
+    vi.stubEnv("VITE_LHCI", "false")
+    document.cookie = "csrf_token=; Max-Age=0; path=/"
+    const fetchSpy = vi.fn(async () => new Response(null, { status: 200 }))
+    vi.stubGlobal("fetch", fetchSpy)
+    const { ensureCsrfCookie } = await import("@/api/client")
+
+    await expect(ensureCsrfCookie()).resolves.toBeUndefined()
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/auth/csrf-cookie",
+      expect.objectContaining({ method: "GET", credentials: "include" })
+    )
   })
   it("delegates explicitly mocked chat routes to the real adapter", async () => {
     server.use(

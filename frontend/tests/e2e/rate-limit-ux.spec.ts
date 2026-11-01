@@ -16,9 +16,16 @@ const NEWS_PAYLOAD = {
   next_cursor: null,
 }
 
-const isNewsCollection = (url: URL) => /^\/(?:api\/(?:v1\/)?|v1\/)news\/?$/u.test(url.pathname)
+// The production build calls `/api/v1/news`; the Vite dev server calls bare `/news`.
+const NEWS_COLLECTION_PREFIXES = ["", "/api", "/api/v1", "/v1"]
+const isNewsCollection = (url: URL) =>
+  NEWS_COLLECTION_PREFIXES.some((prefix) =>
+    [`${prefix}/news`, `${prefix}/news/`].includes(url.pathname)
+  )
+// Only the page's script-initiated list fetch is limited; the document load is not.
 const isNewsPageRequest = (route: Route) =>
   route.request().method() === "GET" &&
+  ["fetch", "xhr"].includes(route.request().resourceType()) &&
   /^\/news\/?$/u.test(new URL(route.request().frame().url()).pathname)
 
 const corsHeaders = (route: Route): Record<string, string> => {

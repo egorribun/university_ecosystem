@@ -407,3 +407,94 @@ async def test_typing_and_presence_progress_under_saturated_pool(
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         tenant_id_ctx.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_removal_committed_while_broadcast_prepares_is_not_delivered(
+    owned_postgres: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AUD-454 late removal: a commit between call start and fan-out is honored."""
+    _revocation_store(monkeypatch)
+    publisher = AsyncMock()
+    monkeypatch.setattr(broker, "publish_core", publisher)
+    manager = connection_manager.ConnectionManager()
+    websocket = AsyncMock()
+    assert await manager.connect(
+        websocket, owned_postgres.recipient_id, session_jti="local-session"
+    )
+    real_room_semaphore = connection_manager._get_room_semaphore
+
+    async def commit_removal_then_prepare(room_key: str) -> asyncio.Semaphore:
+        async with owned_postgres.sessions.begin() as writer:
+            deleted = await writer.execute(
+                chat_participants.delete().where(
+                    chat_participants.c.chat_id == owned_postgres.chat_id,
+                    chat_participants.c.user_id == owned_postgres.recipient_id,
+                )
+            )
+            assert deleted.rowcount == 1
+        return await real_room_semaphore(room_key)
+
+    monkeypatch.setattr(
+        connection_manager, "_get_room_semaphore", commit_removal_then_prepare
+    )
+    token = set_current_tenant(owned_postgres.tenant_a)
+    try:
+        async with owned_postgres.sessions() as session:
+            assert (
+                await manager.broadcast_to_chat(
+                    owned_postgres.chat_id, {"type": "late"}, db_session=session
+                )
+                == 0
+            )
+    finally:
+        tenant_id_ctx.reset(token)
+    websocket.send_json.assert_not_awaited()
+    websocket.close.assert_not_awaited()
+    assert manager.is_online(owned_postgres.recipient_id)
+
+
+@pytest.mark.asyncio
+async def test_removal_during_inflight_send_bounds_exposure_to_that_broadcast(
+    owned_postgres: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AUD-454 in-flight: a frame already past the roster check is not recalled,
+    but the next broadcast on the same borrowed session is denied."""
+    _revocation_store(monkeypatch)
+    publisher = AsyncMock()
+    monkeypatch.setattr(broker, "publish_core", publisher)
+    manager = connection_manager.ConnectionManager()
+    websocket = AsyncMock()
+    assert await manager.connect(
+        websocket, owned_postgres.recipient_id, session_jti="local-session"
+    )
+
+    async def commit_removal_during_send(_payload: object) -> None:
+        async with owned_postgres.sessions.begin() as writer:
+            deleted = await writer.execute(
+                chat_participants.delete().where(
+                    chat_participants.c.chat_id == owned_postgres.chat_id,
+                    chat_participants.c.user_id == owned_postgres.recipient_id,
+                )
+            )
+            assert deleted.rowcount == 1
+
+    websocket.send_json.side_effect = commit_removal_during_send
+    token = set_current_tenant(owned_postgres.tenant_a)
+    try:
+        async with owned_postgres.sessions() as session:
+            assert (
+                await manager.broadcast_to_chat(
+                    owned_postgres.chat_id, {"type": "inflight"}, db_session=session
+                )
+                == 1
+            )
+            assert (
+                await manager.broadcast_to_chat(
+                    owned_postgres.chat_id, {"type": "after"}, db_session=session
+                )
+                == 0
+            )
+    finally:
+        tenant_id_ctx.reset(token)
+    websocket.send_json.assert_awaited_once_with({"type": "inflight"})

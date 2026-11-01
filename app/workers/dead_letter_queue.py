@@ -14,6 +14,7 @@ import asyncio
 import hashlib
 import json
 import random
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -51,28 +52,35 @@ def _unique_auth_payload_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _protected_auth_payload_bytes(job: DeadLetterJob) -> str | None:
+_AUTH_EMAIL_JOB_TYPE = "app.tasks.email.send_auth_email"
+
+
+def _protected_auth_payload_bytes(
+    job_type: str, job_hash: str, stored_payload: str
+) -> str | None:
     """Validate in an isolated frame before returning only protected bytes."""
     try:
         from app.tasks.email import prepare_auth_email_payload
 
-        if job.job_type != "app.tasks.email.send_auth_email":
+        if job_type != _AUTH_EMAIL_JOB_TYPE:
             return None
-        payload = json.loads(job.payload, object_pairs_hook=_unique_auth_payload_object)
+        payload = json.loads(
+            stored_payload, object_pairs_hook=_unique_auth_payload_object
+        )
         if not isinstance(payload, dict):
             return None
         protected, logical = prepare_auth_email_payload(payload)
-        if compute_job_hash(job.job_type, logical) != job.job_hash:
+        if compute_job_hash(job_type, logical) != job_hash:
             return None
         # Reject duplicate JSON fields above before preserving original bytes:
         # a shadowed field could otherwise retain a plaintext link on disk.
-        return job.payload if protected == payload else json.dumps(protected)
+        return stored_payload if protected == payload else json.dumps(protected)
     except Exception:  # RZ-22-01-JUSTIFIED: opaque retained auth-row validation
         return None
 
 
 def _protect_retained_auth_payload(job: DeadLetterJob) -> None:
-    protected = _protected_auth_payload_bytes(job)
+    protected = _protected_auth_payload_bytes(job.job_type, job.job_hash, job.payload)
     if protected is None:
         from app.tasks.email import AuthEmailPayloadError
 
@@ -85,6 +93,17 @@ def _protect_retained_auth_payload(job: DeadLetterJob) -> None:
 # Unprotectable retained auth bytes may hold a plaintext link, so they are replaced
 # with a constant that matches no auth task shape. Identity and retry state stay.
 _QUARANTINED_AUTH_PAYLOAD = json.dumps({"kind": "auth-email-quarantined-v1"})
+
+# Same rule as the DLQ token-scrub migration: error text that echoes a plaintext
+# ``#token=`` / ``?token=`` link is replaced, so no error field keeps the link.
+_PLAINTEXT_TOKEN_LINK = re.compile(r"[#?&]token=[^\s&\"'<>]+")
+
+
+def _scrub_error_text(error: str) -> str:
+    """Return the error text unless it echoes a plaintext token link."""
+    if _PLAINTEXT_TOKEN_LINK.search(error):
+        return _QUARANTINED_AUTH_PAYLOAD
+    return error
 
 
 class DeadLetterQueue:
@@ -153,14 +172,14 @@ class DeadLetterQueue:
             job.retry_count = 0
             job.max_retries = max_retries
             job.payload = json.dumps(payload)
-            job.error_message = error_message
+            job.error_message = _scrub_error_text(error_message)
             job.next_retry_at = next_retry
         else:
             job = DeadLetterJob(
                 job_type=job_type,
                 job_hash=job_hash,
                 payload=json.dumps(payload),
-                error_message=error_message,
+                error_message=_scrub_error_text(error_message),
                 max_retries=max_retries,
                 next_retry_at=next_retry,
             )
@@ -256,17 +275,51 @@ class DeadLetterQueue:
 
         return deleted
 
-    async def quarantine_auth_payload(self, job_hash: str) -> None:
-        """Replace an unprotectable retained auth payload inside the caller's UoW.
+    async def quarantine_auth_payload(self, job_hash: str) -> bool:
+        """Replace an unprotectable retained auth payload, as a compare-and-set.
 
-        Only the stored bytes change. The row keeps its id, hash, status, retry
-        budget and schedule, so every later replay still fails closed.
+        The stored row is read again here and judged on those bytes. Only that
+        exact payload is replaced (``WHERE payload = <observed bytes>``), so a
+        row that another writer changed after it was read is never overwritten
+        on a stale judgement. A row that is protectable now, or is not auth
+        work, is left alone. Returns whether this call replaced the bytes.
+
+        Only the stored bytes, and any error text that echoes a link, change.
+        The row keeps its id, hash, status, retry budget and schedule, so every
+        later replay still fails closed.
         """
-        await self.session.execute(
+        row = (
+            await self.session.execute(
+                select(
+                    DeadLetterJob.job_type,
+                    DeadLetterJob.job_hash,
+                    DeadLetterJob.payload,
+                    DeadLetterJob.error_message,
+                ).where(DeadLetterJob.job_hash == job_hash)
+            )
+        ).one_or_none()
+        if row is None or row.job_type != _AUTH_EMAIL_JOB_TYPE:
+            return False
+        if (
+            _protected_auth_payload_bytes(row.job_type, row.job_hash, row.payload)
+            is not None
+        ):
+            return False
+
+        values: dict[str, str] = {"payload": _QUARANTINED_AUTH_PAYLOAD}
+        if row.error_message is not None:
+            scrubbed = _scrub_error_text(row.error_message)
+            if scrubbed != row.error_message:
+                values["error_message"] = scrubbed
+        result = await self.session.execute(
             update(DeadLetterJob)
-            .where(DeadLetterJob.job_hash == job_hash)
-            .values(payload=_QUARANTINED_AUTH_PAYLOAD)
+            .where(
+                DeadLetterJob.job_hash == job_hash,
+                DeadLetterJob.payload == row.payload,
+            )
+            .values(**values)
         )
+        return bool(getattr(result, "rowcount", 0))
 
     async def auto_replay_jobs(
         self,
@@ -358,7 +411,9 @@ class DeadLetterQueue:
                                 if circuit_breaker:
                                     circuit_breaker.record_failure(admission)
 
-                                error_msg = str(exc)
+                                # A handler error can echo a retained link; store and log
+                                # only the scrubbed text.
+                                error_msg = _scrub_error_text(str(exc))
                                 retry_count = int(getattr(job, "retry_count", 0))
                                 max_retries = int(getattr(job, "max_retries", 3))
 

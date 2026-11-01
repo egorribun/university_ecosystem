@@ -1,3 +1,4 @@
+import { NOTIFICATION_INTERACTIONS_DB_VERSION } from "@/constants/notificationInteractionsDb"
 import { IDBFactory } from "fake-indexeddb"
 import { openDB } from "idb"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -29,7 +30,7 @@ const { openDB: realOpenDB } = await vi.importActual<typeof import("idb")>("idb"
 
 /** Every trigger closes the connection it opened, so each one receives its own handle. */
 function freshConnection() {
-  return realOpenDB("notification-interactions", 4)
+  return realOpenDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
 }
 
 describe("AUD-375: overlapping worker queue triggers", () => {
@@ -45,7 +46,7 @@ describe("AUD-375: overlapping worker queue triggers", () => {
   })
 
   it("serializes overlapping holds until the previous database open settles", async () => {
-    const db = await openDB("notification-interactions", 4)
+    const db = await openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     let release!: () => void
     const pending = new Promise<void>((resolve) => {
       release = resolve
@@ -73,7 +74,7 @@ describe("AUD-375: overlapping worker queue triggers", () => {
   })
 
   it("preserves a record added during a hold and runs the later trigger", async () => {
-    const db = await openDB("notification-interactions", 4)
+    const db = await openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     let release!: () => void
     const pending = new Promise<void>((resolve) => {
       release = resolve
@@ -113,7 +114,7 @@ describe("AUD-375: overlapping worker queue triggers", () => {
   })
 
   it("serializes direct processors with the common hold", async () => {
-    const db = await openDB("notification-interactions", 4)
+    const db = await openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     let release!: () => void
     const pending = new Promise<void>((resolve) => {
       release = resolve

@@ -566,6 +566,23 @@ def upgrade() -> None:
         )
     )
 
+    # ------------------------------------------------------------------
+    # 11. Event full-text index (AUD-278). Revision db31ef5d7ea4 restores
+    #     ix_events_search_vector only when events already exists, but a fresh
+    #     chain creates events later (148642dd1207), so the GIN index was never
+    #     rebuilt. This revision runs after events exists on every path. The
+    #     build is CONCURRENTLY, so events stays writable; DROP ... IF EXISTS
+    #     clears an INVALID index left by an interrupted earlier build.
+    # ------------------------------------------------------------------
+    with op.get_context().autocommit_block():
+        op.execute(sa.text("DROP INDEX CONCURRENTLY IF EXISTS ix_events_search_vector"))
+        op.execute(
+            sa.text(
+                "CREATE INDEX CONCURRENTLY ix_events_search_vector "
+                "ON events USING gin (search_vector)"
+            )
+        )
+
 
 def downgrade() -> None:
     """Reverse the reconciliation — best-effort for development use only."""
@@ -573,6 +590,7 @@ def downgrade() -> None:
     # Drop embedding indexes
     op.drop_index("ix_news_embedding", table_name="news", if_exists=True)
     op.drop_index("ix_events_embedding", table_name="events", if_exists=True)
+    op.drop_index("ix_events_search_vector", table_name="events", if_exists=True)
 
     # Drop unique constraints
     op.drop_constraint("uq_users_email", "users", type_="unique")

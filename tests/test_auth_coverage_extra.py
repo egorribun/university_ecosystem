@@ -129,7 +129,7 @@ def test_password_policy_min_classes_coverage(monkeypatch):
 
     # Fails because it only has 3 classes (Upper, Lower, Digit)
     with pytest.raises(ValueError) as excinfo:
-        security._validate_password_policy("Ab1Ab1Ab1")
+        security._validate_password_policy("Ab1Ab1Ab1Ab1")
     assert "include at least 4" in str(excinfo.value)
 
 
@@ -144,9 +144,9 @@ def test_password_policy_strength_coverage(monkeypatch):
     monkeypatch.setattr(settings, "password_require_special", False)
     monkeypatch.setattr(settings, "password_min_character_classes", 0)
 
-    # "password" is very weak
+    # "passwordpassword" is very weak (zxcvbn score 0) and meets the 12-character floor
     with pytest.raises(ValueError) as excinfo:
-        security._validate_password_policy("password")
+        security._validate_password_policy("passwordpassword")
     assert "too weak" in str(excinfo.value)
 
 

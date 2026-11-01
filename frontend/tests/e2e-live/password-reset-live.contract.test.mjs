@@ -151,7 +151,6 @@ test("password reset waits for document hydration before typing after reload", (
   assert.match(config, /failOnFlakyTests: Boolean\(process\.env\.CI\)/u)
 })
 
-
 const ownedResetHelperUrl = new URL("./password-reset-account-identity.ts", import.meta.url)
 
 test("password reset binds cleanup to its owned account before response parsing", () => {
@@ -225,8 +224,9 @@ test("password reset binds cleanup to its owned account before response parsing"
 test("owned reset identity HTTP receipts", { timeout: 10_000 }, async (t) => {
   // The actual TypeScript module is loaded by the pinned Node native TS loader.
   // The HTTP double replaces only APIRequestContext transport, never parsing or validation.
-  const { createOwnedResetAccount, readOwnedResetUserId, findOwnedResetUserId } =
-    await import(ownedResetHelperUrl.href)
+  const { createOwnedResetAccount, readOwnedResetUserId, findOwnedResetUserId } = await import(
+    ownedResetHelperUrl.href
+  )
   const origin = "https://127.0.0.1:38443"
   const nonce = "12345678-1234-4234-9234-123456789abc"
   const secondNonce = "87654321-4321-4321-a321-cba987654321"
@@ -650,11 +650,7 @@ test("reset URL snapshots serialize safely and distinguish the four predicates",
       "/reset-password?hint=" + candidate,
       [true, true, true, false],
     ],
-    [
-      "candidate in token query",
-      "/reset-password?token=" + candidate,
-      [true, false, true, false],
-    ],
+    ["candidate in token query", "/reset-password?token=" + candidate, [true, false, true, false]],
     ["case-sensitive route", "/RESET-PASSWORD", [false, true, true, true]],
   ]
 
@@ -692,8 +688,13 @@ test("reset URL snapshots serialize safely and distinguish the four predicates",
       assert.deepEqual(output, [])
       const encoded = JSON.stringify(snapshot)
       assert.equal(encoded.includes(candidate), false)
-      assert.equal(encoded.includes(origin), false)
-      assert.equal(encoded.includes(href), false)
+      // Parse each URL-shaped token rather than substring-matching the origin:
+      // a substring test also matches unrelated hosts such as `origin.example`.
+      const diagnostic = new URL(href)
+      for (const [token] of encoded.matchAll(/[a-z][a-z\d+.-]*:\/\/[^"\s]+/giu)) {
+        assert.notEqual(new URL(token).origin, diagnostic.origin)
+        assert.notEqual(new URL(token).href, diagnostic.href)
+      }
     })
   }
 })

@@ -1,3 +1,4 @@
+import { NOTIFICATION_INTERACTIONS_DB_VERSION } from "@/constants/notificationInteractionsDb"
 import { IDBFactory } from "fake-indexeddb"
 import { openDB } from "idb"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -23,7 +24,7 @@ vi.mock("../logger", () => ({
 }))
 
 async function readPendingNews() {
-  const db = await openDB("notification-interactions", 4)
+  const db = await openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
   try {
     return await db.getAll(STORES.NEWS_INTERACTION)
   } finally {
@@ -158,7 +159,10 @@ describe("Service Worker - Offline Storage & Sync", () => {
 
     it("creates the complete queue schema and mutation indexes", async () => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open("notification-interactions", 4)
+        const request = indexedDB.open(
+          "notification-interactions",
+          NOTIFICATION_INTERACTIONS_DB_VERSION
+        )
         request.onsuccess = () => resolve(request.result)
         request.onerror = () => reject(request.error)
       })

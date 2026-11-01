@@ -9,6 +9,7 @@ import pytest
 
 from tests.test_helm_staging_contract import (
     MFA_TOTP_ACTIVE_KEY_ID,
+    _component_resource,
     _render_staging,
     _values,
 )
@@ -126,6 +127,19 @@ def test_migration_settings_use_release_environment_and_required_secrets(
         environment["ELASTICSEARCH_URL"]["value"]
         == values["backend"]["config"]["elasticsearchURL"]
     )
+    # Staging and production settings reject an empty proxy allow-list, so the
+    # migration process must carry the same edge CIDRs as the serving backend.
+    backend_environment = {
+        item["name"]: item.get("value")
+        for item in _component_resource(resources, "Deployment", "backend")["spec"][
+            "template"
+        ]["spec"]["containers"][0]["env"]
+    }
+    assert backend_environment["TRUSTED_PROXIES"]
+    assert (
+        environment["TRUSTED_PROXIES"]["value"]
+        == (backend_environment["TRUSTED_PROXIES"])
+    )
 
     assert (
         environment["MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID"]["value"]
@@ -136,6 +150,7 @@ def test_migration_settings_use_release_environment_and_required_secrets(
         ("SECRET_KEY", "jwt-secret"),
         ("AUDIT_LOG_SECRET", "audit-log-secret"),
         ("ELASTICSEARCH_PASSWORD", "elasticsearch-password"),
+        ("IDEMPOTENCY_HMAC_SECRET", "idempotency-hmac-secret"),
         ("INTERNAL_AUTH_TOKEN", "ws-hub-internal-secret"),
         ("INTERNAL_HMAC_SECRET", "internal-hmac-secret"),
         ("MFA_TOTP_ENCRYPTION_KEYS", "mfa-totp-encryption-keys"),

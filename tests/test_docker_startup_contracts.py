@@ -561,6 +561,26 @@ def test_temporal_token_claims_are_initialized_and_existing_token_is_validated()
     assert "Remove-Item" in token_function
 
 
+def test_temporal_service_token_grants_the_permissions_the_default_authorizer_requires() -> (
+    None
+):
+    """Temporal's default claim mapper grants roles only from a permissions claim (AUD-506)."""
+    script = _read("start-docker.ps1")
+    minter = _powershell_function(
+        script, "New-TemporalServiceToken", "Test-ServiceHttp"
+    )
+    validator = _powershell_function(
+        script, "Test-TemporalServiceToken", "New-TemporalServiceToken"
+    )
+
+    payload_start = minter.index("$payloadObj = [PSCustomObject]@{")
+    payload = minter[payload_start : minter.index("}", payload_start)]
+    assert "permissions = @('system:reader', 'default:writer')" in payload
+    assert "$permissions = @($payload.permissions)" in validator
+    assert "$permissions -notcontains 'system:reader'" in validator
+    assert "$permissions -notcontains 'default:writer'" in validator
+
+
 def test_nightly_gate_mints_a_signed_temporal_service_jwt() -> None:
     workflow = _read(".github/workflows/nightly-full-gate.yml")
 

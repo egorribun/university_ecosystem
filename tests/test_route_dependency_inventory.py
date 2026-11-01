@@ -102,13 +102,14 @@ def test_inventory_classifies_route_ownership_deterministically(tmp_path: Path) 
         ("app.api.routes:canonical_route:POST:/canonical", "canonical_dishka"),
         ("app.api.routes:legacy_route:POST:/legacy", "approved_legacy"),
         ("app.api.routes:public_route:GET:/public", "public_no_db"),
-        ("app.api.routes:websocket_worker:WEBSOCKET:/socket", "worker_internal"),
+        ("app.api.routes:websocket_worker:WEBSOCKET:/socket", "websocket_session"),
     ]
     assert first["summary"] == {
         "approved_legacy": 1,
         "canonical_dishka": 1,
         "public_no_db": 1,
-        "worker_internal": 2,
+        "websocket_session": 1,
+        "worker_internal": 1,
     }
 
 
@@ -302,9 +303,9 @@ def test_check_rejects_summary_drift_even_when_routes_match(tmp_path: Path) -> N
     assert violations == [
         "route dependency inventory summary drift: "
         "expected {'approved_legacy': 1, 'canonical_dishka': 1, "
-        "'public_no_db': 1, 'worker_internal': 2}, "
+        "'public_no_db': 1, 'websocket_session': 1, 'worker_internal': 1}, "
         "found {'approved_legacy': 0, 'canonical_dishka': 1, "
-        "'public_no_db': 1, 'worker_internal': 2}",
+        "'public_no_db': 1, 'websocket_session': 1, 'worker_internal': 1}",
     ]
 
 
@@ -338,6 +339,56 @@ async def mixed_route(
     assert violations == [
         "mixed route dependency ownership is forbidden: "
         "app.api.routes:mixed_route:POST:/mixed"
+    ]
+
+
+def _websocket_app(root: Path) -> Path:
+    app = root / "app"
+    _write(app / "__init__.py", "")
+    _write(app / "api" / "__init__.py", "")
+    _write(app / "api" / "internal" / "__init__.py", "")
+    _write(
+        app / "api" / "chat_ws.py",
+        """
+from fastapi import APIRouter, WebSocket
+from dishka.integrations.fastapi import FromDishka, inject
+
+router = APIRouter()
+
+class ChatService:
+    pass
+
+@router.websocket("/chat")
+@inject
+async def websocket_chat(websocket: WebSocket, service: FromDishka[ChatService]):
+    return service
+""",
+    )
+    _write(
+        app / "api" / "internal" / "ws.py",
+        """
+from fastapi import APIRouter, WebSocket
+
+router = APIRouter()
+
+@router.websocket("/internal")
+async def internal_socket(websocket: WebSocket):
+    return websocket
+""",
+    )
+    return app
+
+
+def test_websocket_routes_take_their_dependency_owner_or_internal_module(
+    tmp_path: Path,
+) -> None:
+    app = _websocket_app(tmp_path)
+
+    inventory = build_inventory(app)
+
+    assert [(route["id"], route["ownership"]) for route in inventory["routes"]] == [
+        ("app.api.chat_ws:websocket_chat:WEBSOCKET:/chat", "canonical_dishka"),
+        ("app.api.internal.ws:internal_socket:WEBSOCKET:/internal", "worker_internal"),
     ]
 
 

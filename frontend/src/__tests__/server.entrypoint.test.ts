@@ -438,4 +438,31 @@ describe("server entrypoint", () => {
 
     expect(response.headers.get("vary")).toBe("Cookie")
   })
+
+  it("withholds Referer from reset-password documents, including legacy token URLs", async () => {
+    // AUD-178: the token-bearing URL must not reach subresource or CSP requests as Referer.
+    // The header applies before any <meta name="referrer"> can be parsed.
+    mocks.handlerFetch.mockImplementation(async () => new Response("reset"))
+
+    const legacy = await serverEntry.fetch(
+      new Request("https://app.example/reset-password?token=RESET-CANARY")
+    )
+    const fragment = await serverEntry.fetch(
+      new Request("https://app.example/reset-password/RESET-CANARY")
+    )
+
+    expect(legacy.headers.get("referrer-policy")).toBe("no-referrer")
+    expect(fragment.headers.get("referrer-policy")).toBe("no-referrer")
+    await expect(legacy.text()).resolves.toBe("reset")
+  })
+
+  it("leaves Referer policy unchanged outside the reset-password document", async () => {
+    mocks.handlerFetch.mockImplementation(async () => new Response("login"))
+
+    const login = await serverEntry.fetch(new Request("https://app.example/login?next=/dashboard"))
+    const nearMiss = await serverEntry.fetch(new Request("https://app.example/reset-password-help"))
+
+    expect(login.headers.get("referrer-policy")).toBeNull()
+    expect(nearMiss.headers.get("referrer-policy")).toBeNull()
+  })
 })

@@ -71,6 +71,30 @@ type MockApiOptions = {
   mockWebSocket?: boolean
 }
 
+/** Backend resource roots (the OpenAPI path segments after `/api/v1`) for dev-base requests. */
+const DEV_BASE_API_ROOTS = new Set([
+  "admin",
+  "auth",
+  "campus",
+  "chats",
+  "csp-report",
+  "cwv",
+  "events",
+  "grades",
+  "groups",
+  "img",
+  "news",
+  "notifications",
+  "password",
+  "push",
+  "schedule",
+  "search",
+  "spotify",
+  "stats",
+  "stories",
+  "users",
+])
+
 const MOCK_TOTP_SECRET = "JBSW Y3DP EHJK" // pragma: allowlist secret
 export const MOCK_NEWS_ID = "11111111-1111-4111-8111-111111111111"
 const MOCK_SECOND_NEWS_ID = "22222222-2222-4222-8222-222222222222"
@@ -580,9 +604,20 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
     }
 
     const pathname = url.pathname.replace(/^\/+/u, "")
+    // The Vite dev server uses an empty Axios base (`devBase` in api/client.ts),
+    // so the same JSON calls arrive as bare `/users/me` or `/news`. Without this
+    // normalization they fall through to Vite, which answers 406, and login never
+    // completes. Only script-initiated JSON requests under a known API root qualify.
+    const bareApiRoot = pathname.split("/")[0] ?? ""
+    const isScriptJsonRequest =
+      ["fetch", "xhr"].includes(request.resourceType()) &&
+      (request.headers()["accept"] ?? "").includes("application/json")
+    const devBaseApiPath =
+      isScriptJsonRequest && DEV_BASE_API_ROOTS.has(bareApiRoot) ? `api/${pathname}` : undefined
     // Normalize both the browser-relative `/api/v1/...` form and the CI
     // service-host `http://api/v1/...` form to the same mock path.
-    const normPath = pathname.replace(/^api\/v1\//u, "api/").replace(/^v1\//u, "api/")
+    const normPath =
+      devBaseApiPath ?? pathname.replace(/^api\/v1\//u, "api/").replace(/^v1\//u, "api/")
     // Production E2E builds use the explicit `/api/v1` Axios base (and the
     // service-host compatibility form `/v1/...` handled above). Do not
     // reinterpret arbitrary bare fetch/XHR paths as API calls: TanStack

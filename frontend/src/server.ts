@@ -123,6 +123,21 @@ const HEALTHZ_RESPONSE_INIT: ResponseInit = {
 const PRIVATE_SSR_CACHE_CONTROL = "no-store, private, max-age=0"
 const PRIVATE_SSR_VARY = "Cookie"
 const MESSENGER_PATH_PREFIX = "/messenger"
+// The reset document can carry a single-use token in its path or legacy query.
+// Its early stylesheet and script requests would otherwise send that URL as
+// Referer, and a <meta name="referrer"> is only honored after it is parsed.
+const REFERRER_SENSITIVE_PATH = /^\/reset-password(?:\/|$)/u
+
+/** Withhold Referer from a token-bearing document in its response headers, leaving the body intact. */
+const augmentResponseForNoReferrer = (response: Response): Response => {
+  const headers = new Headers(response.headers)
+  headers.set("referrer-policy", "no-referrer")
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
+}
 
 /** Mark a potentially user-specific SSR document private without changing its body or status. */
 const augmentResponseForPrivateSsr = (response: Response): Response => {
@@ -220,6 +235,9 @@ export default createServerEntry({
                       auth.isAuth || isMessengerPath
                         ? augmentResponseForPrivateSsr(response)
                         : response
+                    response = REFERRER_SENSITIVE_PATH.test(url.pathname)
+                      ? augmentResponseForNoReferrer(response)
+                      : response
                     return applyNodeCspToHtmlResponse(response, nonce)
                   })
                 })

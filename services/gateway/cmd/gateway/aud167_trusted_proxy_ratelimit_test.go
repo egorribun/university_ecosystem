@@ -1,0 +1,75 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+	"github.com/university-ecosystem/gateway/internal/config"
+	"github.com/university-ecosystem/gateway/middleware"
+)
+
+// gatewayRateLimitedRouter composes the production trusted-proxy configuration with
+// the production pre-auth IP limiter, so the proof covers the whole edge chain
+// rather than the key helper alone (AUD-167).
+func gatewayRateLimitedRouter(t *testing.T, trustedProxies []string) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	router := gin.New()
+	require.NoError(t, configureTrustedProxies(router, &config.Config{TrustedProxies: trustedProxies}))
+	limiter := middleware.NewFallbackRateLimiter()
+	t.Cleanup(func() { require.NoError(t, limiter.Close()) })
+	router.Use(limiter.Middleware(ctx))
+	router.GET("/api/v1/resource", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	return router
+}
+
+func gatewayRequestStatus(t *testing.T, router *gin.Engine, remoteAddr, forwardedFor string) int {
+	t.Helper()
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/resource", nil)
+	request.RemoteAddr = remoteAddr
+	if forwardedFor != "" {
+		request.Header.Set("X-Forwarded-For", forwardedFor)
+	}
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	return recorder.Code
+}
+
+// TestAUD167TwoClientsBehindTrustedProxyHaveSeparateRateLimitKeys: both clients
+// reach the gateway through the same trusted proxy. Exhausting the first client's
+// budget must not throttle the second, because each is keyed by its forwarded
+// client address rather than the proxy address.
+func TestAUD167TwoClientsBehindTrustedProxyHaveSeparateRateLimitKeys(t *testing.T) {
+	router := gatewayRateLimitedRouter(t, []string{"10.200.0.0/24"})
+	const proxy = "10.200.0.12:45678"
+
+	for i := 0; i < 3; i++ {
+		require.Equal(t, http.StatusNoContent, gatewayRequestStatus(t, router, proxy, "198.51.100.25"),
+			fmt.Sprintf("client A request %d is within its budget", i+1))
+	}
+	require.Equal(t, http.StatusTooManyRequests, gatewayRequestStatus(t, router, proxy, "198.51.100.25"),
+		"client A exceeds its own budget")
+	require.Equal(t, http.StatusNoContent, gatewayRequestStatus(t, router, "10.200.0.12:45679", "198.51.100.26"),
+		"client B behind the same proxy must have its own rate-limit key")
+}
+
+// TestAUD167SpoofedForwardedForFromUntrustedPeerDoesNotEscapeLimit: with no trusted
+// proxies, a client that rotates X-Forwarded-For values is still one peer. Each
+// spoofed value must not create a fresh key.
+func TestAUD167SpoofedForwardedForFromUntrustedPeerDoesNotEscapeLimit(t *testing.T) {
+	router := gatewayRateLimitedRouter(t, nil)
+	const peer = "10.41.2.7:51234"
+
+	for i := 0; i < 3; i++ {
+		require.Equal(t, http.StatusNoContent, gatewayRequestStatus(t, router, peer, fmt.Sprintf("203.0.113.%d", i+1)))
+	}
+	require.Equal(t, http.StatusTooManyRequests, gatewayRequestStatus(t, router, peer, "203.0.113.99"),
+		"a spoofed forwarded address from an untrusted peer must not reset its budget")
+}

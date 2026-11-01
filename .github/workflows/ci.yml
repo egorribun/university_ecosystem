@@ -1111,6 +1111,62 @@ jobs:
         run: |
           uv sync --frozen
 
+      # Owner-activated historical148 input (2026-10-31): the unchanged 148642dd1207
+      # revision is rendered from its live parent. Its raw Squawk exits and JSON are
+      # recorded here and admitted only by the exact-inventory matcher in the evidence
+      # step. A changed revision keeps the fatal raw gate in the lint loop below.
+      - name: Historical 148642dd1207 ordinary Squawk admission input
+        id: migration-squawk-148-ordinary
+        env:
+          SECRET_KEY: ${{ env.SECRET_KEY }}
+          ENVIRONMENT: testing
+        run: |
+          set -euo pipefail
+          squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/university-ecosystem-tools/squawk/v2.67.0/linux-x64/squawk-linux-x64"
+          expected_sha256="03efe0e666b63bf33e2493693ee0aa9dbed07cbdcd20f7a8292245c1da9d790a"
+          if [[ ! -f "$squawk_binary_path" || -L "$squawk_binary_path" || ! -x "$squawk_binary_path" ]]; then
+            echo "::error::Verified Squawk executable is missing or is not executable" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+            /usr/bin/sha256sum --check --strict
+          migration="alembic/versions/148642dd1207_fix_missing_tables.py"
+          squawk_args=(
+            --exclude prefer-robust-stmts --exclude prefer-text-field
+            --exclude prefer-bigint-over-int --exclude prefer-identity
+            --exclude prefer-timestamp-tz --exclude disallowed-unique-constraint
+            --exclude require-enum-value-ordering
+          )
+          revision_metadata="$(uv run python scripts/quality/read_alembic_revision.py "$migration")"
+          read -r revision down_revision <<< "$revision_metadata"
+          if [[ "$revision" != "148642dd1207" || "$down_revision" != "f7aa476e968a" ]]; then
+            echo "::error::AUD148 ordinary admission input: revision metadata mismatch" >&2
+            exit 1
+          fi
+          sql_dir="$(mktemp -d)"
+          sql_file="$sql_dir/148642dd1207.sql"
+          json_file="$sql_dir/148642dd1207.ordinary.json"
+          stderr_file="$sql_dir/148642dd1207.ordinary.stderr"
+          uv run python -m scripts.quality.render_live_alembic_sql "$migration" "$sql_file"
+          printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+            /usr/bin/sha256sum --check --strict
+          raw_exit=0
+          "$squawk_binary_path" "${squawk_args[@]}" "$sql_file" || raw_exit=$?
+          printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
+            /usr/bin/sha256sum --check --strict
+          json_exit=0
+          "$squawk_binary_path" "${squawk_args[@]}" --reporter json "$sql_file" > "$json_file" 2> "$stderr_file" || json_exit=$?
+          echo "AUD148 ordinary raw Squawk exit: $raw_exit; JSON exit: $json_exit (recorded for the historical148 admission)"
+          {
+            printf 'aud148_ordinary_sql=%s\n' "$sql_file"
+            printf 'aud148_ordinary_sha256=%s\n' "$(/usr/bin/sha256sum -- "$sql_file" | /usr/bin/cut -d ' ' -f 1)"
+            printf 'aud148_ordinary_identity=%s\n' "$(/usr/bin/stat -c '%d:%i' -- "$sql_file")"
+            printf 'aud148_ordinary_exit=%s\n' "$raw_exit"
+            printf 'aud148_ordinary_json=%s\n' "$json_file"
+            printf 'aud148_ordinary_json_exit=%s\n' "$json_exit"
+            printf 'aud148_ordinary_stderr=%s\n' "$stderr_file"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Lint Postgres Migrations (Squawk)
         id: migration-squawk
         env:
@@ -1331,10 +1387,13 @@ jobs:
           RUN_INTEGRATION_TESTS: "1"
           ORIGINAL_SQUAWK_OUTCOME: ${{ steps.migration-squawk.outcome }}
           AUD148_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          AUD148_ORDINARY_SQL: ${{ steps.migration-squawk.outputs.aud148_ordinary_sql }}
-          AUD148_ORDINARY_SHA256: ${{ steps.migration-squawk.outputs.aud148_ordinary_sha256 }}
-          AUD148_ORDINARY_IDENTITY: ${{ steps.migration-squawk.outputs.aud148_ordinary_identity }}
-          AUD148_RAW_ORDINARY_EXIT: ${{ steps.migration-squawk.outputs.aud148_ordinary_exit }}
+          AUD148_ORDINARY_SQL: ${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_sql }}
+          AUD148_ORDINARY_SHA256: ${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_sha256 }}
+          AUD148_ORDINARY_IDENTITY: ${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_identity }}
+          AUD148_RAW_ORDINARY_EXIT: ${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_exit }}
+          AUD148_ORDINARY_JSON: ${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_json }}
+          AUD148_ORDINARY_JSON_EXIT: ${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_json_exit }}
+          AUD148_ORDINARY_STDERR: ${{ steps.migration-squawk-148-ordinary.outputs.aud148_ordinary_stderr }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1696,7 +1755,9 @@ jobs:
               ordinary_exit = os.environ.get("AUD148_RAW_ORDINARY_EXIT", "")
               if not re.fullmatch(r"0|[1-9][0-9]{0,2}", ordinary_exit) or int(ordinary_exit) > 255:
                   fail("ordinary raw exit is invalid")
-              if outcome == "success" and ordinary_exit != "0":
+              # The input step records raw exit 1 as a successful job step. Only that
+              # recorded failure can coexist with success; the admission decides it.
+              if outcome == "success" and ordinary_exit not in ("0", "1"):
                   fail("ordinary raw exit conflicts with the step outcome")
               raw_exit = os.environ.get("AUD148_RAW_EXPANDED_EXIT", "")
               if not re.fullmatch(r"0|[1-9][0-9]{0,2}", raw_exit) or int(raw_exit) > 255:
@@ -1822,13 +1883,50 @@ jobs:
           else
             echo "AUD148_SQUAWK_JSON_SKIPPED: ordinary SQL was not handed off by the raw gate"
           fi
-          if [[ "$lint_status" -eq 0 && "$capture_status" -ne 0 ]]; then
+          # Owner-activated historical148 admission (2026-10-31): both raw exits must be
+          # the recorded failure and every warning must match the committed inventory
+          # exactly. The raw outputs stay in the logs; any other result fails closed.
+          expanded_json="$(mktemp)"
+          expanded_stderr="$(mktemp)"
+          expanded_json_exit=0
+          "$squawk_binary_path" "${squawk_args[@]}" --reporter json "$sql_file" > "$expanded_json" 2> "$expanded_stderr" || expanded_json_exit=$?
+          admission_migration="alembic/versions/148642dd1207_fix_missing_tables.py"
+          # Git hashes the working-tree migration; an unreadable id becomes an empty argument and fails the admission.
+          admission_migration_blob="$(git hash-object -- "$admission_migration" 2>/dev/null)" || admission_migration_blob=""
+          admission_log="$(mktemp)"
+          admission_status=0
+          uv run python -m scripts.quality.historical148_squawk_admission \
+            --policy quality/historical148-squawk-policy.json \
+            --migration-blob "$admission_migration_blob" \
+            --scanner-sha256 "$expected_sha256" \
+            --scanner-version "$AUD148_SQUAWK_VERSION" \
+            --exclude prefer-robust-stmts --exclude prefer-text-field \
+            --exclude prefer-bigint-over-int --exclude prefer-identity \
+            --exclude prefer-timestamp-tz --exclude disallowed-unique-constraint \
+            --exclude require-enum-value-ordering \
+            --ordinary-sql "$AUD148_ORDINARY_SQL" \
+            --ordinary-raw-exit "$AUD148_RAW_ORDINARY_EXIT" \
+            --ordinary-json "$AUD148_ORDINARY_JSON" \
+            --ordinary-json-exit "$AUD148_ORDINARY_JSON_EXIT" \
+            --ordinary-stderr "$AUD148_ORDINARY_STDERR" \
+            --expanded-sql "$sql_file" \
+            --expanded-raw-exit "$lint_status" \
+            --expanded-json "$expanded_json" \
+            --expanded-json-exit "$expanded_json_exit" \
+            --expanded-stderr "$expanded_stderr" > "$admission_log" 2>&1 || admission_status=$?
+          echo "AUD148_HISTORICAL_ADMISSION_BEGIN"
+          if ! print_bounded "$admission_log" 131072; then
+            diagnostic_status=1
+          fi
+          echo "AUD148_HISTORICAL_ADMISSION_END"
+          echo "AUD148_HISTORICAL_ADMISSION_EXIT=$admission_status"
+          if [[ "$capture_status" -ne 0 ]]; then
             exit "$capture_status"
           fi
-          if [[ "$lint_status" -eq 0 && "$diagnostic_status" -ne 0 ]]; then
+          if [[ "$diagnostic_status" -ne 0 ]]; then
             exit "$diagnostic_status"
           fi
-          exit "$lint_status"
+          exit "$admission_status"
 
       - name: Verify owned PostgreSQL tenant-context acceptance
         id: tenant-context-evidence

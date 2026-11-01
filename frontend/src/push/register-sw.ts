@@ -6,6 +6,7 @@ import {
 import { createTrustedScriptURL } from "@/utils/trustedTypes"
 import { logError } from "@/app/logger"
 import { installReplayCredentialResponder } from "@/sw/replayCredentialResponder"
+import { installOfflineDeadLetterListener } from "@/sw/offlineDeadLetterListener"
 import {
   SERVICE_WORKER_MESSAGE_TYPES,
   type ServiceWorkerMessage,
@@ -150,6 +151,8 @@ async function registerServiceWorkerOnce(
 
     // Answer the worker's replay-credential requests before it can ask for them.
     installReplayCredentialResponder(serviceWorkerContainer)
+    // Record the worker's dead-letter notices for the page; independent of any signed-in account.
+    installOfflineDeadLetterListener(serviceWorkerContainer)
     sendQueueSignal()
 
     window.addEventListener("online", sendQueueSignal)

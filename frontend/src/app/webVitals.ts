@@ -6,6 +6,8 @@ type MetricRating = Metric["rating"]
 
 export interface CustomMetric extends Omit<Metric, "name"> {
   name: string
+  /** Bounded, non-personal context for the observation, for example a queue name and reason. */
+  label?: string
 }
 
 export type WebVitalMetric = Metric | CustomMetric
@@ -309,7 +311,8 @@ export function resolveNavigationType(): WebVitalMetric["navigationType"] {
 export function createCustomMetric(
   name: string,
   value: number,
-  thresholds: [number, number]
+  thresholds: [number, number],
+  label?: string
 ): CustomMetric {
   return {
     name,
@@ -320,6 +323,7 @@ export function createCustomMetric(
     entries: [],
     navigationType: resolveNavigationType(),
     navigationId: 0,
+    ...(label === undefined ? {} : { label }),
   }
 }
 
@@ -331,6 +335,28 @@ export function reportBootstrapTTI(duration: number): boolean {
   }
 
   const metric = createCustomMetric("APP_TTI", duration, BOOTSTRAP_TTI_THRESHOLDS)
+  reporterRef(metric)
+  return true
+}
+
+/** Any dead-lettered record is a failed delivery, so a single observation already rates poor. */
+const OFFLINE_DEAD_LETTER_THRESHOLDS: [number, number] = [0, 0]
+
+/**
+ * Records one dead-lettered offline record through the active reporter. Returns false when no
+ * reporter is active. The label carries only the queue name and the failure reason.
+ */
+export function reportOfflineDeadLetter(deadLetter: { store: string; reason: string }): boolean {
+  if (!reporterRef) {
+    return false
+  }
+
+  const metric = createCustomMetric(
+    "OFFLINE_DEAD_LETTER",
+    1,
+    OFFLINE_DEAD_LETTER_THRESHOLDS,
+    `${deadLetter.store}:${deadLetter.reason}`
+  )
   reporterRef(metric)
   return true
 }

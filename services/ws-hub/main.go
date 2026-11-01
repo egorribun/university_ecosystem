@@ -56,12 +56,14 @@ var (
 		}
 		return client.Ping(ctx).Err()
 	}
-	healthJWKSReadyFunc    = func(h *hub.Hub) bool { return h.HasJWKSCache() }
-	loadTLSCertFunc        = tls.LoadX509KeyPair
-	listenUDPFunc          = net.ListenUDP
-	closeUDPFunc           = func(conn *net.UDPConn) error { return conn.Close() }
-	webTransportServeFunc  = func(server *webtransport.Server, conn net.PacketConn) error { return server.Serve(conn) }
-	shutdownHTTPServerFunc = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+	healthJWKSReadyFunc = func(h *hub.Hub) bool { return h.HasJWKSCache() }
+	// AUD-478: a replica whose cache.revoke replay is still draining is not ready.
+	healthRevocationCatchingUpFunc = func(h *hub.Hub) bool { return h.RevocationCatchingUp() }
+	loadTLSCertFunc                = tls.LoadX509KeyPair
+	listenUDPFunc                  = net.ListenUDP
+	closeUDPFunc                   = func(conn *net.UDPConn) error { return conn.Close() }
+	webTransportServeFunc          = func(server *webtransport.Server, conn net.PacketConn) error { return server.Serve(conn) }
+	shutdownHTTPServerFunc         = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 )
 
 func main() {
@@ -436,6 +438,10 @@ func newReadinessHandler(h *hub.Hub, logger *slog.Logger, nc *nats.Conn, rdb *re
 		}
 		if !healthJWKSReadyFunc(h) {
 			checks["jwks"] = "not initialized"
+		}
+		// AUD-478: a replica whose revocation replay is still draining is not ready.
+		if healthRevocationCatchingUpFunc(h) {
+			checks["revocation_replay"] = "catching up"
 		}
 		if len(checks) > 0 {
 			w.WriteHeader(http.StatusServiceUnavailable)

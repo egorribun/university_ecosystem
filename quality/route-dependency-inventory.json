@@ -1664,7 +1664,7 @@
       "dishka_signals": [],
       "id": "app.api.websocket:websocket_chat:WEBSOCKET:/chat",
       "legacy_dependencies": [],
-      "ownership": "worker_internal"
+      "ownership": "websocket_session"
     },
     {
       "dishka_dependencies": [],
@@ -1843,6 +1843,7 @@
   "summary": {
     "canonical_dishka": 143,
     "public_no_db": 10,
-    "worker_internal": 3
+    "websocket_session": 1,
+    "worker_internal": 2
   }
 }

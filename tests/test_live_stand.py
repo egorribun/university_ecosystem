@@ -1538,9 +1538,14 @@ def test_live_e2e_dependency_bootstrap_installs_only_stale_locked_dependencies_a
         text: bool,
         encoding: str,
         errors: str,
+        timeout: float,
     ) -> subprocess.CompletedProcess[str]:
         assert check is False and capture_output and text and encoding == "utf-8"
         assert errors == "replace"
+        assert timeout in {
+            live_stand.LIVE_INSTALL_TIMEOUT_SECONDS,
+            live_stand.LIVE_PROBE_TIMEOUT_SECONDS,
+        }
         calls.append((command, cwd, dict(env)))
         assert user_config.is_file() and user_config.read_bytes() == b""
         assert global_config.is_file() and global_config.read_bytes() == b""
@@ -5934,6 +5939,7 @@ def test_docker_daemon_fingerprint_hashes_engine_id_without_printing(
                 "text": True,
                 "encoding": "utf-8",
                 "errors": "replace",
+                "timeout": live_stand.LIVE_PROBE_TIMEOUT_SECONDS,
             },
         )
     ]
@@ -10006,6 +10012,7 @@ def _install_projection_process(
             "check": True,
             "capture_output": True,
             "text": True,
+            "timeout": live_stand.LIVE_PROBE_TIMEOUT_SECONDS,
         }
         assert calls == [], "unexpected additional process invocation"
         calls.append(tuple(command))
@@ -13455,15 +13462,75 @@ def test_live_caddy_probe_excludes_oversized_gap_between_project_windows(
     assert all(result.stdout == result.stderr == b"" for result in state["completed"])
 
 
+def test_live_caddy_probe_windows_fit_observed_e2e_access_log_volume(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two disjoint probe captures must fit the shared reader cap at E2E volume.
+
+    Live Core run 41299274676 logged about 40 Caddy access rows per second of
+    roughly 1.5 KB each. Reading whole plus-or-minus windows for both projects
+    overflowed the 1 MiB cap on the second capture, before any redaction check.
+    """
+    owner = object()
+    pin = ("a" * 64, "b" * 64)
+    context = _aud174_docker_read_context(tmp_path)
+    base = 1_798_000_000_000
+    observed = {"desktop": base, "mobile": base + 60_000}
+    correlations = {"desktop": "1" * 32, "mobile": "2" * 32}
+    records: list[tuple[int, bytes, bytes]] = []
+    for project, completed in observed.items():
+        for offset in range(-5_000, 5_000, 25):
+            timestamp = completed + offset
+            records.append(
+                (
+                    timestamp,
+                    b"",
+                    _aud174_access_log_row(
+                        "/static/" + "a" * 1_300,
+                        timestamp=live_stand._caddy_probe_timestamp_argument(timestamp),
+                    ),
+                )
+            )
+        records.append(
+            (
+                completed,
+                b"",
+                _aud174_access_log_row(
+                    f"/login?probe={correlations[project]}&password=REDACTED",
+                    timestamp=live_stand._caddy_probe_timestamp_argument(completed),
+                ),
+            )
+        )
+    state = _aud174_install_window_log_selector(
+        monkeypatch,
+        owner=owner,
+        container_pin=pin,
+        context=context,
+        records=records,
+    )
+
+    _aud174_read_project_logs(
+        owner,
+        container_pin=pin,
+        completed_at_ms=observed,
+        password_nonce="0" * 32,
+        correlation_ids=correlations,
+        deadline=live_stand.time.monotonic() + 25,
+        docker_context=context,
+    )
+
+    assert state["events"] == ["pin", "logs", "logs", "pin"]
+
+
 @pytest.mark.parametrize(
     ("mobile_offset", "expected_windows"),
     [
-        (0, [(-5_000, 5_000)]),
-        (2_000, [(-5_000, 7_000)]),
-        (10_000, [(-5_000, 15_000)]),
-        (10_001, [(-5_000, 5_000), (5_001, 15_001)]),
-        (-10_001, [(-15_001, -5_001), (-5_000, 5_000)]),
-        (-2_000, [(-7_000, 5_000)]),
+        (0, [(-2_000, 2_000)]),
+        (2_000, [(-2_000, 4_000)]),
+        (4_000, [(-2_000, 6_000)]),
+        (4_001, [(-2_000, 2_000), (2_001, 6_001)]),
+        (-4_001, [(-6_001, -2_001), (-2_000, 2_000)]),
+        (-2_000, [(-4_000, 2_000)]),
     ],
 )
 def test_live_caddy_probe_coalesces_only_overlapping_or_touching_windows(
@@ -14881,7 +14948,7 @@ def test_live_caddy_first_capture_summary_preserves_failure(
     assert cap == 1_048_576
     assert live_stand._LIVE_CADDY_PROBE_LOG_TIMEOUT_SECONDS == 10
     assert live_stand._LIVE_CADDY_PROBE_TOTAL_TIMEOUT_SECONDS == 25
-    assert live_stand._LIVE_CADDY_PROBE_WINDOW_MS == 5_000
+    assert live_stand._LIVE_CADDY_PROBE_WINDOW_MS == 2_000
     private = uuid4().hex
     marker = private.encode("ascii")
     password_nonce = uuid4().hex

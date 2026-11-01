@@ -18,6 +18,7 @@
   "spicedb-preshared-key"
   "spotify-token-secret"
   "token-hmac-secret"
+  "idempotency-hmac-secret"
   (required "applicationSecrets.keys.mfaTotpEncryptionKeys must be set" .Values.applicationSecrets.keys.mfaTotpEncryptionKeys)
 -}}
 apiVersion: batch/v1
@@ -87,6 +88,10 @@ spec:
               value: "true"
             - name: ENVIRONMENT
               value: {{ .Values.global.environment | quote }}
+            # Shared Settings validation requires the same gateway and edge peers as
+            # the serving backend in staging and production.
+            - name: TRUSTED_PROXIES
+              value: {{ join "," .Values.backend.config.trustedProxies | quote }}
             - name: MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID
               value: {{ .Values.backend.config.mfaTotpActiveEncryptionKeyId | quote }}
             - name: EVENT_FILE_SCANNER_ENABLED
@@ -100,8 +105,9 @@ spec:
             - name: SECRET_KEY_FILE
               value: {{ printf "/run/secrets/%s/%s" $applicationSecret "jwt-secret" | quote }}
             # The shared settings validators require these secret values in
-            # staging/production before Alembic can initialize.
-            {{- range $variable, $key := dict "AUDIT_LOG_SECRET" "audit-log-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "INTERNAL_AUTH_TOKEN" "ws-hub-internal-secret" "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "TOKEN_HMAC_SECRET" "token-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" }}
+            # staging/production before Alembic can initialize. Idempotency
+            # keys use the same production validator as the serving processes.
+            {{- range $variable, $key := dict "AUDIT_LOG_SECRET" "audit-log-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "IDEMPOTENCY_HMAC_SECRET" "idempotency-hmac-secret" "INTERNAL_AUTH_TOKEN" "ws-hub-internal-secret" "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "TOKEN_HMAC_SECRET" "token-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" }}
             - name: {{ printf "%s_FILE" $variable }}
               value: {{ printf "/run/secrets/%s/%s" $applicationSecret $key | quote }}
             {{- end }}

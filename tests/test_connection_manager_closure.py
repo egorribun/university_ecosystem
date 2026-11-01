@@ -422,3 +422,41 @@ async def test_outbox_broadcast_propagates_nats_disconnect() -> None:
     local_send.assert_awaited_once_with(
         recipient, {"type": "message_edited", "room": str(chat_id)}
     )
+
+
+@pytest.mark.asyncio
+async def test_connect_refuses_a_missing_session_before_accepting() -> None:
+    from app.api.ws import connection_manager as module
+
+    manager = module.ConnectionManager()
+    websocket = AsyncMock(spec=WebSocket)
+    assert await manager.connect(websocket, uuid.uuid4(), session_jti="") is False
+    websocket.close.assert_awaited_once_with(
+        code=4001, reason="Authentication required"
+    )
+    websocket.accept.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_send_to_user_drops_connections_without_session_identity() -> None:
+    from app.api.ws import connection_manager as module
+
+    manager = module.ConnectionManager()
+    user_id = uuid.uuid4()
+    anonymous = AsyncMock(spec=WebSocket)
+    closing_fails = AsyncMock(spec=WebSocket)
+    closing_fails.close.side_effect = RuntimeError("already closed")
+    manager.active_connections[user_id] = {anonymous, closing_fails}
+    manager.connection_users[anonymous] = user_id
+    manager.connection_users[closing_fails] = user_id
+    manager.connection_sessions[anonymous] = ""
+    manager.connection_sessions[closing_fails] = ""
+
+    assert await manager.send_to_user(user_id, {"type": "x"}) == 0
+
+    anonymous.close.assert_awaited_once_with(
+        code=4001, reason="Session expired or revoked"
+    )
+    anonymous.send_json.assert_not_awaited()
+    closing_fails.send_json.assert_not_awaited()
+    assert user_id not in manager.active_connections

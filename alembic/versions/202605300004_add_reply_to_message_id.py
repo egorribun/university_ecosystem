@@ -29,6 +29,55 @@ def _column_exists(bind, table_name: str, column_name: str) -> bool:
     return any(col["name"] == column_name for col in inspector.get_columns(table_name))
 
 
+def _reply_index_state(bind) -> str | None:
+    """Return None when the reply index is absent, otherwise "valid" or "invalid".
+
+    PostgreSQL keeps a catalog row for a CONCURRENTLY build that failed midway,
+    flagged ``indisvalid = false``. Other dialects have no such state.
+    """
+    if op.get_context().as_sql:
+        # Offline SQL has no catalog to read; render the ordinary build path.
+        return None
+    if bind.dialect.name != "postgresql":
+        names = {index["name"] for index in sa.inspect(bind).get_indexes(_TABLE_NAME)}
+        return "valid" if _INDEX_NAME in names else None
+    return bind.execute(
+        sa.text(
+            "SELECT CASE WHEN i.indisvalid THEN 'valid' ELSE 'invalid' END "
+            "FROM pg_index i WHERE i.indexrelid = to_regclass(:name)"
+        ),
+        {"name": _INDEX_NAME},
+    ).scalar()
+
+
+def _ensure_reply_index(bind) -> None:
+    """Build the reply index CONCURRENTLY, repairing an interrupted build first.
+
+    The column change commits before the concurrent build, so a failed build
+    leaves the column in place with no index or an INVALID one. A rerun must
+    rebuild that index instead of treating the column as proof it exists.
+    """
+    state = _reply_index_state(bind)
+    if state == "valid":
+        return
+    # AUD-275: a plain CREATE INDEX takes a SHARE lock that blocks every message
+    # write for the whole build. CONCURRENTLY runs outside the migration
+    # transaction, which is why both statements sit in an autocommit block.
+    with op.get_context().autocommit_block():
+        if state == "invalid":
+            op.drop_index(
+                _INDEX_NAME,
+                table_name=_TABLE_NAME,
+                postgresql_concurrently=True,
+            )
+        op.create_index(
+            _INDEX_NAME,
+            _TABLE_NAME,
+            [_COLUMN_NAME],
+            postgresql_concurrently=True,
+        )
+
+
 def upgrade() -> None:
     """Apply: add the reply_to_message_id self-FK (+ index) to messages.
 
@@ -58,16 +107,7 @@ def upgrade() -> None:
                 nullable=True,
             ),
         )
-        # AUD-275: a plain CREATE INDEX takes a SHARE lock that blocks every
-        # message write for the whole build. CONCURRENTLY runs outside the
-        # migration transaction, which is why it sits in an autocommit block.
-        with op.get_context().autocommit_block():
-            op.create_index(
-                _INDEX_NAME,
-                _TABLE_NAME,
-                [_COLUMN_NAME],
-                postgresql_concurrently=True,
-            )
+    _ensure_reply_index(bind)
 
 
 def downgrade() -> None:

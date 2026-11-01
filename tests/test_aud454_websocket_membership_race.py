@@ -138,3 +138,46 @@ async def test_roster_storage_failure_stops_local_and_nats_fanout(
 
     manager.send_to_user.assert_not_awaited()
     publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_removal_committed_after_broadcast_starts_is_honored_before_fanout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AUD-454: the one roster read happens right before fan-out, not at call start."""
+    chat_id, owner_id, removed_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    current = [owner_id, removed_id]
+    events: list[str] = []
+    real_room_semaphore = connection_manager._get_room_semaphore
+
+    class Repository:
+        def __init__(self, _session: object) -> None:
+            pass
+
+        async def get_participants(self, _chat_id: uuid.UUID) -> list[uuid.UUID]:
+            events.append("roster")
+            return list(current)
+
+    @asynccontextmanager
+    async def open_session() -> AsyncIterator[object]:
+        yield object()
+
+    async def removal_commits_during_preparation(room_key: str) -> asyncio.Semaphore:
+        # Stands in for a membership removal committed while the broadcast is in progress.
+        events.append("prepare")
+        current.remove(removed_id)
+        return await real_room_semaphore(room_key)
+
+    monkeypatch.setattr(
+        connection_manager, "_get_room_semaphore", removal_commits_during_preparation
+    )
+    monkeypatch.setattr(connection_manager, "ChatRepository", Repository)
+    monkeypatch.setattr(nats_broker.broker, "publish_core", AsyncMock())
+    manager = connection_manager.ConnectionManager(session_factory=open_session)
+    manager.send_to_user = AsyncMock(return_value=1)
+
+    await manager.broadcast_to_chat(chat_id, {"type": "after-start"})
+
+    targets = [call.args[0] for call in manager.send_to_user.await_args_list]
+    assert targets == [owner_id]
+    assert events == ["prepare", "roster"]

@@ -69,7 +69,7 @@ def _put_rows(
 
 def test_exact_historical_capture_matches_only_the_diagnostic_inventory() -> None:
     policy, capture = _load()
-    assert policy["status"] == "prepared-inactive"
+    assert policy["status"] == "owner-activated-finite"
     assert policy["execution_scope"] == "new-empty-mvp-only"
     assert [len(_rows(capture, index)) for index in range(2)] == [13, 24]
     statements = {

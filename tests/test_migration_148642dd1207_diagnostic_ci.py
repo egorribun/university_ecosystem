@@ -90,7 +90,10 @@ def test_consumer_keeps_original_gate_context_budget_and_scanner_rules() -> None
         in (diagnostic["run"])
     )
     assert 'exit "$pytest_status"' in diagnostic["run"]
-    assert diagnostic["run"].rstrip().endswith('exit "$lint_status"')
+    # Owner-activated admission (2026-10-31): the raw lint status is an input and
+    # the job decision is the admission verdict.
+    assert diagnostic["run"].rstrip().endswith('exit "$admission_status"')
+    assert '--expanded-raw-exit "$lint_status"' in diagnostic["run"]
     assert 'print_bounded "$test_log" 131072' in diagnostic["run"]
     assert 'print_bounded "$lint_log" 131072' in diagnostic["run"]
     assert "|| true" not in diagnostic["run"]
@@ -528,7 +531,8 @@ def test_ordinary_capture_precedes_the_unchanged_raw_squawk_gate() -> None:
     assert job["name"] == "Alembic Migrations"
     assert job["timeout-minutes"] == 15
     assert steps.index(diagnostic) == steps.index(original) + 1
-    assert diagnostic["run"].rstrip().endswith('exit "$lint_status"')
+    assert diagnostic["run"].rstrip().endswith('exit "$admission_status"')
+    assert '--expanded-raw-exit "$lint_status"' in diagnostic["run"]
 
 
 @pytest.mark.parametrize("pr_head", ["b" * 40, ""])

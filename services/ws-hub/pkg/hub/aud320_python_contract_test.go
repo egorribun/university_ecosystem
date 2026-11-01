@@ -54,9 +54,12 @@ func auditInvalidationSubscriptions(t *testing.T) map[string]string {
 	require.NoError(t, err)
 	subjects := map[string]string{}
 	handlerBound := map[string]bool{}
+	// The two invalidation classes are bound in their own helpers so that
+	// SubscribeToNATS stays within the cognitive-complexity budget.
+	bindingFunctions := map[string]bool{"subscribeCacheInvalidation": true, "subscribeCacheRevocation": true}
 	for _, declaration := range file.Decls {
 		fn, ok := declaration.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "SubscribeToNATS" || fn.Body == nil {
+		if !ok || fn.Body == nil || !bindingFunctions[fn.Name.Name] {
 			continue
 		}
 		ast.Inspect(fn.Body, func(node ast.Node) bool {

@@ -1,10 +1,13 @@
+import { NOTIFICATION_INTERACTIONS_DB_VERSION } from "@/constants/notificationInteractionsDb"
 import { openDB } from "idb"
 import { IDBFactory } from "fake-indexeddb"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { initOfflineQueue, STORES } from "../offline"
+import { REPLAY_LEASE_STORE } from "../replayLease"
 
 const DB_NAME = "notification-interactions"
+const ALL_STORES = [...Object.values(STORES), REPLAY_LEASE_STORE].sort()
 
 async function createVersionThreeDatabase(withDedupeIndex: boolean) {
   const db = await openDB(DB_NAME, 3, {
@@ -39,9 +42,9 @@ describe("offline database upgrade", () => {
   it("creates the complete shared schema when the worker initializes a fresh database", async () => {
     await initOfflineQueue()
 
-    const db = await openDB(DB_NAME, 4)
+    const db = await openDB(DB_NAME, NOTIFICATION_INTERACTIONS_DB_VERSION)
     try {
-      expect(Array.from(db.objectStoreNames).sort()).toEqual(Object.values(STORES).sort())
+      expect(Array.from(db.objectStoreNames).sort()).toEqual(ALL_STORES)
       expect(db.transaction(STORES.REPORT).store.indexNames.contains("dedupeKey")).toBe(true)
       const mutationIndexes = db.transaction(STORES.MUTATION).store.indexNames
       expect(Array.from(mutationIndexes).sort()).toEqual(["category", "dedupeKey", "mutationId"])
@@ -66,7 +69,7 @@ describe("offline database upgrade", () => {
 
     await initOfflineQueue()
 
-    const upgraded = await openDB(DB_NAME, 4)
+    const upgraded = await openDB(DB_NAME, NOTIFICATION_INTERACTIONS_DB_VERSION)
     try {
       expect(await upgraded.getAll(STORES.NAVIGATION)).toEqual([{ ...navigation, id: 1 }])
       expect(await upgraded.getAll(STORES.REPORT)).toEqual([{ ...report, id: 1 }])
@@ -96,9 +99,9 @@ describe("offline database upgrade", () => {
 
     await initOfflineQueue()
 
-    const upgraded = await openDB(DB_NAME, 4)
+    const upgraded = await openDB(DB_NAME, NOTIFICATION_INTERACTIONS_DB_VERSION)
     try {
-      expect(Array.from(upgraded.objectStoreNames).sort()).toEqual(Object.values(STORES).sort())
+      expect(Array.from(upgraded.objectStoreNames).sort()).toEqual(ALL_STORES)
       expect(await upgraded.getAll(STORES.NAVIGATION)).toEqual([{ ...navigation, id: 1 }])
       expect(await upgraded.getAll(STORES.REPORT)).toEqual([{ ...report, id: 1 }])
       expect(await upgraded.getAll(STORES.NEWS_INTERACTION)).toEqual([{ ...news, id: 1 }])
@@ -120,7 +123,7 @@ describe("offline database upgrade", () => {
 
     await initOfflineQueue()
 
-    const upgraded = await openDB(DB_NAME, 4)
+    const upgraded = await openDB(DB_NAME, NOTIFICATION_INTERACTIONS_DB_VERSION)
     expect(upgraded.objectStoreNames).toContain(STORES.NAVIGATION)
     expect(upgraded.objectStoreNames).toContain(STORES.REPORT)
     expect(upgraded.objectStoreNames).toContain(STORES.NEWS_INTERACTION)
@@ -134,7 +137,7 @@ describe("offline database upgrade", () => {
 
     await initOfflineQueue()
 
-    const upgraded = await openDB(DB_NAME, 4)
+    const upgraded = await openDB(DB_NAME, NOTIFICATION_INTERACTIONS_DB_VERSION)
     expect(upgraded.transaction(STORES.REPORT).store.indexNames).toContain("dedupeKey")
     upgraded.close()
   })

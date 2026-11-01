@@ -1,7 +1,10 @@
 # Configuration Reference
 
-This document describes selected operator-facing environment variables used by the
-University Ecosystem backend; it is not yet an exhaustive inventory. Defaults in this document are the runtime
+This document describes the operator-facing environment variables used by the
+University Ecosystem backend. Every typed `Settings` field is listed in the sections
+above or in the [complete Settings inventory](#complete-settings-inventory) at the end;
+`tests/test_configuration_settings_inventory.py` fails when a field is undocumented.
+Defaults in this document are the runtime
 `Settings` defaults; `.env.example` is an explicit local profile and may set a
 different value intentionally. Only settings with an implemented `*_FILE`
 variant accept secret-file mounts; the file value takes precedence over the
@@ -90,7 +93,7 @@ corresponding plaintext variable.
 | `NATS_URL` | NATS message bus endpoint | `nats://127.0.0.1:4222` |
 | `NATS_AUTH_TOKEN` | NATS authentication token | Empty locally; required in production |
 | `NATS_TASK_MAX_DELIVERIES` | Delivery attempts of a background task before it is parked in the dead-letter queue (`/admin/dlq`) | `5` |
-| `NATS_TASK_RETRY_BASE_DELAY_SECONDS` | First redelivery delay of a failed task; doubles per attempt up to 300 s | `5` |
+| `NATS_TASK_RETRY_BASE_DELAY_SECONDS` | First redelivery delay of a failed task; doubles per attempt up to 300 s. Read with `os.environ` in `app/core/nats_broker.py`, not through `Settings` | `5` |
 | `RATE_LIMIT_ENABLED` | Enable rate limiting | `true` |
 | `RATE_LIMIT_DEFAULT` | Default rate | `200/minute` |
 | `RATE_LIMIT_STORAGE_BACKEND` | `memory` or `redis` | `memory` |
@@ -227,3 +230,270 @@ with an empty ring derives a domain-separated key from `SECRET_KEY`; this fallba
 is rejected outside development/testing. The explicit non-auth `outbox-worker` and
 `notifications-worker` roles may start without the ring; TOTP crypto calls in those
 roles fail closed.
+
+---
+
+## Complete Settings Inventory
+
+Fields that are not listed in a thematic section above. Defaults are the runtime
+`Settings` defaults read from the model; secret-valued defaults are shown as
+placeholders and the secret source is named in the code. Variables read outside
+`Settings` (for example `os.environ` in `app/core/nats_broker.py`, the Go services
+and the Temporal entrypoint) are documented in their thematic sections and are not
+part of this inventory.
+
+### `app/core/config/app_gen.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ACCESS_LOG_RETENTION_DAYS` | Access log retention (days). Defined in `app/core/config/app_gen.py`. | `365` |
+| `APP_PROCESS_ROLE` | The deployment manifests set these explicitly for background workers. API/migration processes retain the secure defaults and therefore cannot start with the revocation capability silently disabled. Defined in `app/core/config/app_gen.py`. | `api` |
+| `ATTENDANCE_TOKEN_SECRET` | Attendance token secret. Defined in `app/core/config/app_gen.py`. | Empty |
+| `ATTENDANCE_TOKEN_TTL_SECONDS` | Attendance token TTL (seconds). Defined in `app/core/config/app_gen.py`. | `300` |
+| `CAMPUS_TIMEZONE` | Campus timezone. Defined in `app/core/config/app_gen.py`. | `UTC` |
+| `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES` | Email change cleanup retention (minutes). Defined in `app/core/config/app_gen.py`. | `45` |
+| `EMBEDDING_API_BASE` | Embedding API base. Defined in `app/core/config/app_gen.py`. | `https://api.openai.com/v1` |
+| `EMBEDDING_API_KEY` | Embedding API key. Defined in `app/core/config/app_gen.py`. | Empty |
+| `EMBEDDING_DIMENSIONS` | Embedding dimensions. Defined in `app/core/config/app_gen.py`. | `1536` |
+| `EMBEDDING_MODEL` | Embedding model. Defined in `app/core/config/app_gen.py`. | `text-embedding-3-small` |
+| `ENABLE_METRICS_ENDPOINT` | Enable metrics endpoint. Defined in `app/core/config/app_gen.py`. | `false` |
+| `FAILED_LOGIN_RETENTION_DAYS` | Failed login retention (days). Defined in `app/core/config/app_gen.py`. | `30` |
+| `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` | Health storage probe min interval (seconds). Defined in `app/core/config/app_gen.py`. | `3600` |
+| `METRICS_ALLOWLIST` | Metrics allowlist. Defined in `app/core/config/app_gen.py`. | Empty |
+| `METRICS_BASIC_AUTH_PASSWORD` | Metrics basic auth password. Defined in `app/core/config/app_gen.py`. | Empty |
+| `METRICS_BASIC_AUTH_USERNAME` | Metrics basic auth username. Defined in `app/core/config/app_gen.py`. | Empty |
+| `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS` | MFA challenge cleanup grace period (seconds). Defined in `app/core/config/app_gen.py`. | `600` |
+| `MFA_RETENTION_DAYS` | MFA retention (days). Defined in `app/core/config/app_gen.py`. | `30` |
+| `PARTITION_MANAGEMENT_ENABLED` | Partition management enabled. Defined in `app/core/config/app_gen.py`. | `true` |
+| `PARTITION_MANAGEMENT_INTERVAL_SECONDS` | Partition management interval (seconds). Defined in `app/core/config/app_gen.py`. | `86400` |
+| `PARTITION_RETENTION_DAYS` | Partition retention (days). Defined in `app/core/config/app_gen.py`. | `365` |
+| `PARTITION_WARMUP_MONTHS` | Partition warmup months. Defined in `app/core/config/app_gen.py`. | `1` |
+| `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES` | Password reset cleanup retention (minutes). Defined in `app/core/config/app_gen.py`. | `45` |
+| `PASSWORD_RESET_MAX_ACTIVE_TOKENS` | Password reset max active tokens. Defined in `app/core/config/app_gen.py`. | `1` |
+| `PRESENCE_PING_MIN_INTERVAL_SECONDS` | Presence ping min interval (seconds). Defined in `app/core/config/app_gen.py`. | `5` |
+| `PRESENCE_PUBSUB_CHANNEL` | Presence pubsub channel. Defined in `app/core/config/app_gen.py`. | `presence_updates` |
+| `PRESENCE_PUBSUB_ENABLED` | Presence pubsub enabled. Defined in `app/core/config/app_gen.py`. | `false` |
+| `PRIVACY_CLEANUP_INTERVAL_SECONDS` | Privacy cleanup interval (seconds). Defined in `app/core/config/app_gen.py`. | `86400` |
+| `REVOCATION_REDIS_ACCESS_ENABLED` | Revocation redis access enabled. Defined in `app/core/config/app_gen.py`. | `true` |
+| `SEMANTIC_SEARCH_ENABLED` | Semantic Search. Defined in `app/core/config/app_gen.py`. | `true` |
+| `SESSION_RETENTION_DAYS` | Session retention (days). Defined in `app/core/config/app_gen.py`. | `90` |
+| `STORIES_CLEANUP_ENABLED` | Stories cleanup enabled. Defined in `app/core/config/app_gen.py`. | `true` |
+| `WS_MAX_CONNECTIONS_PER_USER` | WS max connections per user. Defined in `app/core/config/app_gen.py`. | `5` |
+| `WS_MESSAGE_BURST` | WS message burst. Defined in `app/core/config/app_gen.py`. | `10.0` |
+| `WS_MESSAGE_RATE` | WS message rate. Defined in `app/core/config/app_gen.py`. | `5.0` |
+| `WS_TICKET_TTL_SECONDS` | WS ticket TTL (seconds). Defined in `app/core/config/app_gen.py`. | `15` |
+
+### `app/core/config/cache.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CACHE_CONFIG_MAX_SIZE` | Cache config max size. Defined in `app/core/config/cache.py`. | `100` |
+| `CACHE_CONFIG_TTL_S` | Cache config TTL s. Defined in `app/core/config/cache.py`. | `300.0` |
+| `CACHE_DEFAULT_TTL_SECONDS` | Cache default TTL (seconds). Defined in `app/core/config/cache.py`. | `300` |
+| `CACHE_L1_TTL_SECONDS` | Cache l1 TTL (seconds). Defined in `app/core/config/cache.py`. | `60` |
+| `CACHE_NATS_BUCKET` | Cache NATS bucket. Defined in `app/core/config/cache.py`. | `ue_cache` |
+| `CACHE_NEWS_L1_MAX_SIZE` | Cache news l1 max size. Defined in `app/core/config/cache.py`. | `200` |
+| `CACHE_NEWS_L1_TTL_S` | Cache news l1 TTL s. Defined in `app/core/config/cache.py`. | `60.0` |
+| `CACHE_NEWS_L2_TTL_S` | Cache news l2 TTL s. Defined in `app/core/config/cache.py`. | `3600.0` |
+| `CACHE_SCHEDULE_L1_MAX_SIZE` | Cache schedule l1 max size. Defined in `app/core/config/cache.py`. | `100` |
+| `CACHE_SCHEDULE_L1_TTL_S` | Cache schedule l1 TTL s. Defined in `app/core/config/cache.py`. | `120.0` |
+| `CACHE_SCHEDULE_L2_TTL_S` | Cache schedule l2 TTL s. Defined in `app/core/config/cache.py`. | `7200.0` |
+| `CACHE_USER_MAX_SIZE` | Cache user max size. Defined in `app/core/config/cache.py`. | `500` |
+| `CACHE_USER_TTL_S` | Cache user TTL s. Defined in `app/core/config/cache.py`. | `60.0` |
+| `CACHE_WARMUP_ENABLED` | Cache warmup enabled. Defined in `app/core/config/cache.py`. | `false` |
+| `CACHE_WARMUP_GROUPS` | Cache warmup groups. Defined in `app/core/config/cache.py`. | Empty |
+| `CACHE_WARMUP_MAX_AGE_SECONDS` | Cache warmup max age (seconds). Defined in `app/core/config/cache.py`. | `120` |
+| `CACHE_WARMUP_PERIODS` | Cache warmup periods. Defined in `app/core/config/cache.py`. | `30d,90d` |
+| `CACHE_WARMUP_STATS_USERS` | Cache warmup stats users. Defined in `app/core/config/cache.py`. | Empty |
+| `SESSION_STORAGE_BACKEND` | Session storage backend. Defined in `app/core/config/cache.py`. | `redis` |
+| `STATS_CACHE_TTL_SECONDS` | Stats cache TTL (seconds). Defined in `app/core/config/cache.py`. | `180` |
+
+### `app/core/config/database.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_READ_REPLICA_URL` | Database read replica URL. Defined in `app/core/config/database.py`. | Unset |
+
+### `app/core/config/integrations.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ELASTICSEARCH_USER` | Elasticsearch user. Defined in `app/core/config/integrations.py`. | `elastic` |
+| `FLAGD_HOST` | Flagd host. Defined in `app/core/config/integrations.py`. | `localhost` |
+| `FLAGD_PORT` | Flagd port. Defined in `app/core/config/integrations.py`. | `8013` |
+| `SPOTIFY_REDIRECT_URI` | Spotify redirect URI. Defined in `app/core/config/integrations.py`. | `http://localhost:8000/spotify/callback` |
+| `SPOTIFY_SCOPES` | Spotify scopes. Defined in `app/core/config/integrations.py`. | `user-read-currently-playing user-read-playback-state` |
+| `SPOTIFY_TOKEN_SECRET` | Spotify token secret. Defined in `app/core/config/integrations.py`. | Empty |
+
+### `app/core/config/mixins/cors_settings.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ALLOWED_HOSTS` | Allowed hosts. Defined in `app/core/config/mixins/cors_settings.py`. | Empty |
+| `APP_BASE_URL` | App base URL. Defined in `app/core/config/mixins/cors_settings.py`. | `http://localhost:5173` |
+| `CORS_ALLOW_CREDENTIALS` | CORS allow credentials. Defined in `app/core/config/mixins/cors_settings.py`. | `true` |
+| `CORS_ALLOW_HEADERS` | CORS allow headers. Defined in `app/core/config/mixins/cors_settings.py`. | `Accept,Accept-Language,Authorization,Content-Language,Content-Type,Origin,X-Requested-With,x-profile-cache-envelope` |
+| `CORS_ALLOW_METHODS` | CORS allow methods. Defined in `app/core/config/mixins/cors_settings.py`. | `GET,POST,PUT,PATCH,DELETE,OPTIONS` |
+| `CORS_EXPOSE_HEADERS` | CORS expose headers. Defined in `app/core/config/mixins/cors_settings.py`. | Empty |
+| `FRONTEND_ORIGINS` | Frontend origins. Defined in `app/core/config/mixins/cors_settings.py`. | Empty |
+| `INTERNAL_ALLOWED_IPS` | Internal allowed ips. Defined in `app/core/config/mixins/cors_settings.py`. | `127.0.0.1,::1` |
+| `INTERNAL_AUTH_HEADER` | Internal auth header. Defined in `app/core/config/mixins/cors_settings.py`. | `X-Internal-Token` |
+| `REQUEST_ID_HEADER` | Request ID header. Defined in `app/core/config/mixins/cors_settings.py`. | `x-request-id` |
+| `TRACE_HEADER` | Trace header. Defined in `app/core/config/mixins/cors_settings.py`. | `x-trace-id` |
+| `TRUSTED_HOSTS` | Trusted hosts. Defined in `app/core/config/mixins/cors_settings.py`. | `localhost,127.0.0.1` |
+
+### `app/core/config/mixins/csp_settings.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `COEP_VALUE` | Coep value. Defined in `app/core/config/mixins/csp_settings.py`. | `require-corp` |
+| `CORP_VALUE` | Corp value. Defined in `app/core/config/mixins/csp_settings.py`. | `same-site` |
+| `ENABLE_COEP` | Enable coep. Defined in `app/core/config/mixins/csp_settings.py`. | `false` |
+| `ENABLE_COOP` | Enable coop. Defined in `app/core/config/mixins/csp_settings.py`. | `true` |
+| `ENABLE_CORP` | Enable corp. Defined in `app/core/config/mixins/csp_settings.py`. | `true` |
+| `ENABLE_STRICT_SECURITY_HEADERS` | Enable strict security headers. Defined in `app/core/config/mixins/csp_settings.py`. | Unset |
+| `SECURITY_CONNECT_SRC_EXTRA` | Security connect src extra. Defined in `app/core/config/mixins/csp_settings.py`. | `https://api.spotify.com,https://fcm.googleapis.com,https://fcmregistrations.googleapis.com,https://*.push.services.mozilla.com,https://updates.push.services.mozilla.com,https://*.push.apple.com` |
+| `SECURITY_COOKIE_SAMESITE_OVERRIDE` | Security cookie samesite override. Defined in `app/core/config/mixins/csp_settings.py`. | Empty |
+| `SECURITY_CSP_REPORT_ONLY` | Security CSP report only. Defined in `app/core/config/mixins/csp_settings.py`. | Unset |
+| `SECURITY_CSP_REPORT_URI` | Security CSP report URI. Defined in `app/core/config/mixins/csp_settings.py`. | Empty |
+| `SECURITY_HSTS_BEHIND_PROXY` | Security hsts behind proxy. Defined in `app/core/config/mixins/csp_settings.py`. | `false` |
+| `SECURITY_HSTS_INCLUDE_SUBDOMAINS` | Security hsts include subdomains. Defined in `app/core/config/mixins/csp_settings.py`. | `true` |
+| `SECURITY_HSTS_MAX_AGE` | Security hsts max age. Defined in `app/core/config/mixins/csp_settings.py`. | `31536000` |
+| `SECURITY_HSTS_PRELOAD` | Security hsts preload. Defined in `app/core/config/mixins/csp_settings.py`. | `true` |
+| `SECURITY_PERMISSIONS_POLICY` | Security permissions policy. Defined in `app/core/config/mixins/csp_settings.py`. | `accelerometer=(), autoplay=(), camera=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(self), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=()` |
+| `SECURITY_REFERRER_POLICY` | Security referrer policy. Defined in `app/core/config/mixins/csp_settings.py`. | `no-referrer` |
+| `SECURITY_X_CONTENT_TYPE_OPTIONS` | Security x content type options. Defined in `app/core/config/mixins/csp_settings.py`. | `nosniff` |
+
+### `app/core/config/mixins/mfa_settings.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MFA_DEFAULT_METHOD` | MFA default method. Defined in `app/core/config/mixins/mfa_settings.py`. | Unset |
+| `MFA_TOTP_ATTEMPT_HOURLY_LIMIT` | MFA TOTP attempt hourly limit. Defined in `app/core/config/mixins/mfa_settings.py`. | `15` |
+| `MFA_TOTP_ATTEMPT_LIMIT` | MFA TOTP attempt limit. Defined in `app/core/config/mixins/mfa_settings.py`. | `5` |
+| `MFA_TOTP_INITIAL_SKEW_WINDOWS` | MFA TOTP initial skew windows. Defined in `app/core/config/mixins/mfa_settings.py`. | `1` |
+| `PASSWORD_HIBP_API_URL` | Password HIBP API URL. Defined in `app/core/config/mixins/mfa_settings.py`. | `https://api.pwnedpasswords.com/range` |
+| `PASSWORD_HIBP_FAIL_OPEN` | Password HIBP fail open. Defined in `app/core/config/mixins/mfa_settings.py`. | `false` |
+| `PASSWORD_HIBP_TIMEOUT_SECONDS` | Password HIBP timeout (seconds). Defined in `app/core/config/mixins/mfa_settings.py`. | `5` |
+| `PASSWORD_MAX_LENGTH` | Password max length. Defined in `app/core/config/mixins/mfa_settings.py`. | `200` |
+| `PASSWORD_MIN_CHARACTER_CLASSES` | Password min character classes. Defined in `app/core/config/mixins/mfa_settings.py`. | `3` |
+| `PASSWORD_MIN_LENGTH` | Password min length. Defined in `app/core/config/mixins/mfa_settings.py`. | `12` |
+| `PASSWORD_REQUIRE_DIGIT` | Password require digit. Defined in `app/core/config/mixins/mfa_settings.py`. | `true` |
+| `PASSWORD_REQUIRE_LOWERCASE` | Password require lowercase. Defined in `app/core/config/mixins/mfa_settings.py`. | `true` |
+| `PASSWORD_REQUIRE_SPECIAL` | Password require special. Defined in `app/core/config/mixins/mfa_settings.py`. | `true` |
+| `PASSWORD_REQUIRE_UPPERCASE` | Password require uppercase. Defined in `app/core/config/mixins/mfa_settings.py`. | `true` |
+| `PASSWORD_ZXCVBN_MIN_SCORE` | Password zxcvbn min score. Defined in `app/core/config/mixins/mfa_settings.py`. | `2` |
+| `TRUSTED_DEVICE_COOKIE_NAME` | Trusted device cookie name. Defined in `app/core/config/mixins/mfa_settings.py`. | `trusted_device` |
+
+### `app/core/config/mixins/rate_limit_settings.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AUTH_LOCKOUT_HISTORY_MINUTES` | Auth lockout history (minutes). Defined in `app/core/config/mixins/rate_limit_settings.py`. | `1440` |
+| `RATE_LIMIT_AUTH_LOGIN` | Rate limit auth login. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `5/minute` |
+| `RATE_LIMIT_AUTH_MFA` | Rate limit auth MFA. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `5/minute` |
+| `RATE_LIMIT_AUTH_PASSWORD_RESET` | Rate limit auth password reset. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `3/minute` |
+| `RATE_LIMIT_AUTH_REGISTER` | Rate limit auth register. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `5/minute` |
+| `RATE_LIMIT_CHAT` | Rate limit chat. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `120/minute` |
+| `RATE_LIMIT_EVENTS` | Rate limit events. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `120/minute` |
+| `RATE_LIMIT_GRAPHQL` | Rate limit graphql. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `30/minute` |
+| `RATE_LIMIT_HEADERS_ENABLED` | Rate limit headers enabled. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `true` |
+| `RATE_LIMIT_INTERACTIONS` | Rate limit interactions. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `200/minute` |
+| `RATE_LIMIT_NEWS` | Rate limit news. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `120/minute` |
+| `RATE_LIMIT_SENSITIVE` | Rate limit sensitive. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `5/minute` |
+| `RATE_LIMIT_STATIC` | Rate limit static. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `300/minute` |
+| `RATE_LIMIT_STORIES` | Rate limit stories. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `120/minute` |
+| `RATE_LIMIT_UPLOAD` | Rate limit upload. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `10/minute` |
+| `RATE_LIMIT_USERS_AVATAR` | Rate limit users avatar. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `10/minute` |
+| `RATE_LIMIT_USERS_ME` | Rate limit users me. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `120/minute` |
+| `RATE_LIMIT_WEBSOCKET` | Rate limit websocket. Defined in `app/core/config/mixins/rate_limit_settings.py`. | `60/minute` |
+
+### `app/core/config/notifications.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NOTIFICATIONS_ALLOWED_PUSH_TOPICS` | Notifications allowed push topics. Defined in `app/core/config/notifications.py`. | `['news.published', 'schedule.changed', 'events.published', 'chat.message.created', 'system.release']` |
+| `NOTIFICATIONS_QUEUE_IN_MEMORY_ONLY` | Notifications queue in memory only. Defined in `app/core/config/notifications.py`. | `false` |
+| `NOTIFICATIONS_RETENTION_BATCH_SIZE` | Notifications retention batch size. Defined in `app/core/config/notifications.py`. | `500` |
+| `NOTIFICATIONS_SCHEDULER_MAX_BACKOFF_SECONDS` | Notifications scheduler max backoff (seconds). Defined in `app/core/config/notifications.py`. | `300` |
+| `NOTIFICATIONS_SCHEDULER_POLL_SECONDS` | Notifications scheduler poll (seconds). Defined in `app/core/config/notifications.py`. | `30` |
+| `NOTIFICATIONS_SCHEDULER_WINDOW_MINUTES` | Notifications scheduler window (minutes). Defined in `app/core/config/notifications.py`. | `6` |
+| `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS` | Notification queue dead letter retention (days). Defined in `app/core/config/notifications.py`. | `30` |
+| `SMTP_MFA_TOTAL_TIMEOUT_SECONDS` | SMTP MFA total timeout (seconds). Defined in `app/core/config/notifications.py`. | `60` |
+| `VAPID_SUBJECT` | VAPID subject. Defined in `app/core/config/notifications.py`. | Empty |
+
+### `app/core/config/observability.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CWV_ALLOWED_ORIGINS` | CWV allowed origins. Defined in `app/core/config/observability.py`. | Empty |
+| `CWV_DEPLOYED_AT` | CWV deployed at. Defined in `app/core/config/observability.py`. | Unset |
+| `CWV_DEPLOYMENT_RUN_ATTEMPT` | CWV deployment run attempt. Defined in `app/core/config/observability.py`. | `0` |
+| `CWV_DEPLOYMENT_RUN_ID` | CWV deployment run ID. Defined in `app/core/config/observability.py`. | `0` |
+| `CWV_DEPLOYMENT_URL` | CWV deployment URL. Defined in `app/core/config/observability.py`. | Empty |
+| `CWV_ENVELOPE_TTL_SECONDS` | CWV envelope TTL (seconds). Defined in `app/core/config/observability.py`. | `300` |
+| `CWV_EXPORT_OIDC_ENABLED` | CWV export oidc enabled. Defined in `app/core/config/observability.py`. | `false` |
+| `CWV_EXPORT_OIDC_REPOSITORY` | CWV export oidc repository. Defined in `app/core/config/observability.py`. | Empty |
+| `CWV_EXPORT_OIDC_SUBJECT` | CWV export oidc subject. Defined in `app/core/config/observability.py`. | Empty |
+| `CWV_EXPORT_OIDC_WORKFLOW_REF` | CWV export oidc workflow ref. Defined in `app/core/config/observability.py`. | Empty |
+| `CWV_FRONTEND_IMAGE_DIGEST` | CWV frontend image digest. Defined in `app/core/config/observability.py`. | Empty |
+| `CWV_MANUAL_TESTER_USER_IDS` | Operator-curated manual staging testers. Kept in the application Secret; raw UUIDs never enter observations or exported evidence. Defined in `app/core/config/observability.py`. | Empty |
+| `CWV_RELEASE_SHA` | CWV release sha. Defined in `app/core/config/observability.py`. | Empty |
+| `CWV_RETENTION_DAYS` | CWV retention (days). Defined in `app/core/config/observability.py`. | `30` |
+| `CWV_RUM_ENABLED` | Trusted field-CWV collection is opt-in and validated fail-closed at startup. Defined in `app/core/config/observability.py`. | `false` |
+| `CWV_RUM_SIGNING_SECRET` | CWV RUM signing secret. Defined in `app/core/config/observability.py`. | Empty |
+| `ENABLE_OTEL_LOGS` | Enable OTEL logs. Defined in `app/core/config/observability.py`. | `true` |
+| `ENABLE_OTEL_METRICS` | Enable OTEL metrics. Defined in `app/core/config/observability.py`. | `true` |
+| `OTEL_EXPORTER_OTLP_HEADERS` | OTEL exporter otlp headers. Defined in `app/core/config/observability.py`. | Empty |
+| `OTEL_SERVICE_NAME` | OTEL service name. Defined in `app/core/config/observability.py`. | `university-ecosystem` |
+| `OTEL_TRACE_SAMPLER_RATIO` | OTEL trace sampler ratio. Defined in `app/core/config/observability.py`. | `1.0` |
+| `SENTRY_DSN` | Sentry DSN. Defined in `app/core/config/observability.py`. | Empty |
+| `SENTRY_ENVIRONMENT` | Sentry environment. Defined in `app/core/config/observability.py`. | Empty |
+| `SENTRY_PROFILES_SAMPLE_RATE` | Sentry profiles sample rate. Defined in `app/core/config/observability.py`. | `0.0` |
+| `SENTRY_TRACES_SAMPLE_RATE` | Sentry traces sample rate. Defined in `app/core/config/observability.py`. | `0.0` |
+| `SERVICE_VERSION` | Service version. Defined in `app/core/config/observability.py`. | Empty |
+
+### `app/core/config/security.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `API_V2_PREFIX` | API v2 prefix. Defined in `app/core/config/security.py`. | `/api/v2` |
+| `CAMPUS_SUBNETS` | Campus subnets. Defined in `app/core/config/security.py`. | `['192.168.0.0/16', '10.0.0.0/8', '127.0.0.1/32']` |
+| `CONTROL_WORK_GRACE_MINUTES` | Control work grace (minutes). Defined in `app/core/config/security.py`. | `15` |
+| `GEOIP_DATABASE_PATH` | Geoip database path. Defined in `app/core/config/security.py`. | Unset |
+| `MONITORING_HEAVY_PROBE_ENABLED` | Monitoring heavy probe enabled. Defined in `app/core/config/security.py`. | `false` |
+
+### `app/core/config/storage.py`
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CHAT_ATTACHMENT_ALLOWED_EXTENSIONS` | Chat attachment allowed extensions. Defined in `app/core/config/storage.py`. | `.jpg,.jpeg,.png,.webp,.gif,.mp4,.mov,.pdf,.txt` |
+| `CHAT_ATTACHMENT_ALLOWED_MIME_TYPES` | Chat attachment allowed mime types. Defined in `app/core/config/storage.py`. | `image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,application/pdf,text/plain` |
+| `CHAT_ATTACHMENT_MAX_FILES` | Chat attachment max files. Defined in `app/core/config/storage.py`. | `5` |
+| `CHAT_ATTACHMENT_MAX_SIZE_BYTES` | Chat attachment max size (bytes). Defined in `app/core/config/storage.py`. | `15728640` |
+| `CHAT_ATTACHMENT_MAX_TOTAL_BYTES` | Chat attachment max total (bytes). Defined in `app/core/config/storage.py`. | `31457280` |
+| `CHAT_GROUP_MAX_MEMBERS` | Chat group max members. Defined in `app/core/config/storage.py`. | `100` |
+| `CHAT_GROUP_MIN_MEMBERS` | Chat group min members. Defined in `app/core/config/storage.py`. | `3` |
+| `EVENT_FILE_ALLOWED_EXTENSIONS` | Event file allowed extensions. Defined in `app/core/config/storage.py`. | `.pdf,.txt,.doc,.docx,.xls,.xlsx` |
+| `EVENT_FILE_ALLOWED_MIME_TYPES` | Event file allowed mime types. Defined in `app/core/config/storage.py`. | `application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
+| `EVENT_FILE_SCANNER_BACKEND` | Event file scanner backend. Defined in `app/core/config/storage.py`. | `clamd` |
+| `EVENT_FILE_SCANNER_HOST` | Event file scanner host. Defined in `app/core/config/storage.py`. | `127.0.0.1` |
+| `EVENT_FILE_SCANNER_MAX_DURATION_SEC` | Event file scanner max duration sec. Defined in `app/core/config/storage.py`. | `10.0` |
+| `EVENT_FILE_SCANNER_MAX_SIZE_MB` | Event file scanner max size (MB). Defined in `app/core/config/storage.py`. | `25.0` |
+| `EVENT_FILE_SCANNER_PORT` | Event file scanner port. Defined in `app/core/config/storage.py`. | `3310` |
+| `EVENT_FILE_SCANNER_SOCKET` | Event file scanner socket. Defined in `app/core/config/storage.py`. | Empty |
+| `EVENT_FILE_SCANNER_TIMEOUT` | Event file scanner timeout. Defined in `app/core/config/storage.py`. | `30.0` |
+| `HEALTH_STORAGE_PROBE_ENABLED` | Health storage probe enabled. Defined in `app/core/config/storage.py`. | `true` |
+| `IMAGE_MAX_HEIGHT` | Image max height. Defined in `app/core/config/storage.py`. | `1920` |
+| `IMAGE_MAX_PIXELS` | Guard decoder allocations before EXIF transpose/load. The upper bound is intentionally finite so deployments cannot disable the resource policy by supplying an unbounded environment value. Defined in `app/core/config/storage.py`. | `25000000` |
+| `IMAGE_MAX_WIDTH` | Image max width. Defined in `app/core/config/storage.py`. | `1920` |
+| `IMAGE_PROXY_ALLOWED_WIDTHS` | Image proxy allowed widths. Defined in `app/core/config/storage.py`. | `100,200,400,800,1200,1600` |
+| `IMAGE_PROXY_ENABLED` | Image proxy enabled. Defined in `app/core/config/storage.py`. | `true` |
+| `MINIO_BUCKET` | Minio bucket. Defined in `app/core/config/storage.py`. | `uploads` |
+| `MINIO_ENDPOINT` | Minio endpoint. Defined in `app/core/config/storage.py`. | `minio:9000` |
+| `MINIO_SECURE` | Minio secure. Defined in `app/core/config/storage.py`. | `false` |
+| `RESPONSE_COMPRESSION_ENABLED` | Response compression enabled. Defined in `app/core/config/storage.py`. | `true` |
+| `STATIC_DIR` | Static dir. Defined in `app/core/config/storage.py`. | `app/static` |
+| `STORAGE_S3_ACCESS_KEY_ID` | Storage S3 access key ID. Defined in `app/core/config/storage.py`. | Empty |
+| `STORAGE_S3_BASE_URL` | Storage S3 base URL. Defined in `app/core/config/storage.py`. | Empty |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | Storage S3 secret access key. Defined in `app/core/config/storage.py`. | Empty |

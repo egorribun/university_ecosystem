@@ -1,3 +1,4 @@
+import { NOTIFICATION_INTERACTIONS_DB_VERSION } from "@/constants/notificationInteractionsDb"
 import "fake-indexeddb/auto"
 import { IDBFactory } from "fake-indexeddb"
 import { MessageChannel } from "node:worker_threads"
@@ -815,7 +816,7 @@ describe("service worker media cache controls", () => {
   test("idempotent report deduplication skips duplicates", async () => {
     const offline = await import("@/sw/offline")
     const idb = await import("idb")
-    const db = await idb.openDB("notification-interactions", 4)
+    const db = await idb.openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     await db.clear(offline.STORES.REPORT)
 
     await offline.storePendingReport({
@@ -841,7 +842,7 @@ describe("service worker media cache controls", () => {
     expect(secondReports).toHaveLength(1)
   })
 
-  test("IndexedDB upgrade from version 3 to 4 creates dedupeKey index", async () => {
+  test("IndexedDB upgrade from version 3 creates dedupeKey index", async () => {
     const offline = await import("@/sw/offline")
     const idb = await import("idb")
 
@@ -862,11 +863,11 @@ describe("service worker media cache controls", () => {
       return origOpen.call(globalThis.indexedDB, targetName, version)
     })
 
-    // Call initOfflineQueue which upgrades the test database to version 4 and adds the index
+    // Call initOfflineQueue which upgrades the test database to the current version and adds the index
     await offline.initOfflineQueue()
 
     // Reopen database and verify the index exists
-    const db4 = await idb.openDB(testDbName, 4)
+    const db4 = await idb.openDB(testDbName, NOTIFICATION_INTERACTIONS_DB_VERSION)
     const tx = db4.transaction(offline.STORES.REPORT, "readonly")
     const store = tx.objectStore(offline.STORES.REPORT)
     expect(store.indexNames.contains("dedupeKey")).toBe(true)
@@ -876,7 +877,7 @@ describe("service worker media cache controls", () => {
   test("the worker retains unbound news interactions without fetching", async () => {
     const offline = await import("@/sw/offline")
     const idb = await import("idb")
-    const db = await idb.openDB("notification-interactions", 4)
+    const db = await idb.openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     await db.clear(offline.STORES.NEWS_INTERACTION)
 
     await db.add(offline.STORES.NEWS_INTERACTION, {
@@ -943,7 +944,7 @@ describe("service worker media cache controls", () => {
 
     scope.navigator.setOnline(false)
     const idb = await import("idb")
-    const db = await idb.openDB("notification-interactions", 4)
+    const db = await idb.openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     await db.clear(offline.STORES.REPORT)
 
     const eventB = {
@@ -1031,7 +1032,7 @@ describe("service worker media cache controls", () => {
   test("storePendingReport keeps its default method and the worker holds unbound GET news", async () => {
     const offline = await import("@/sw/offline")
     const idb = await import("idb")
-    const db = await idb.openDB("notification-interactions", 4)
+    const db = await idb.openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     await db.clear(offline.STORES.REPORT)
     await db.clear(offline.STORES.NEWS_INTERACTION)
 

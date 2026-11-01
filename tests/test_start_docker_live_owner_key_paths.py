@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.symlink_support import DIRECTORY_SYMLINKS_SUPPORTED, FILE_SYMLINKS_SUPPORTED
+
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "start-docker.ps1"
 POWERSHELL = shutil.which("pwsh")
@@ -168,6 +170,10 @@ def test_common_git_metadata_rejects_invalid_output(
 
 
 @pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 is required")
+@pytest.mark.skipif(
+    not DIRECTORY_SYMLINKS_SUPPORTED,
+    reason="native directory symlink privilege is unavailable (AUD-332 probe)",
+)
 def test_common_git_metadata_rejects_reparse_directory_when_supported(
     tmp_path: Path,
 ) -> None:
@@ -192,6 +198,10 @@ def test_common_git_metadata_rejects_reparse_directory_when_supported(
 @pytest.mark.skipif(
     POWERSHELL is None or GIT is None,
     reason="PowerShell 7, Git, and the owner HMAC fixture are required",
+)
+@pytest.mark.skipif(
+    not FILE_SYMLINKS_SUPPORTED,
+    reason="native file symlink privilege is unavailable (AUD-332 probe)",
 )
 def test_worktree_owner_rejects_reparse_common_key_when_supported(
     tmp_path: Path,

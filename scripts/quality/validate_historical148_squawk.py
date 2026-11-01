@@ -16,7 +16,7 @@ from typing import NoReturn
 # Reproducible from the committed historical148 policy and 3d83fb27 capture.
 # Compact ASCII JSON, sorted object keys, no final LF. Only each raw warning
 # array is sorted by complete canonical rows; duplicates and all fields remain.
-_POLICY_SHA256 = "8df4a533b1704e2eb9f7e59ee22f77efd721f2e409cdf1dd2a08609179725997"
+_POLICY_SHA256 = "1c43d24680d9162df85b55ef2f65e4347cf2e70dedeccce739396432aef15915"
 _CAPTURE_SHA256 = "b95428590fb65d0ac6f74a30d7dc57f1c48c6aaf43122aba17fa926f956cedf6"
 _NOT_BEFORE = datetime(2026, 10, 28, tzinfo=UTC)
 _EXPIRES_AT = datetime(2026, 11, 13, tzinfo=UTC)

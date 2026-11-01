@@ -99,6 +99,26 @@ class _Inspector:
         return constraints
 
 
+class _AutocommitBlock:
+    def __init__(self, operations: _Operations) -> None:
+        self.operations = operations
+
+    def __enter__(self) -> _AutocommitBlock:
+        self.operations._record("autocommit_block")
+        return self
+
+    def __exit__(self, *exc_info: object) -> bool:
+        return False
+
+
+class _MigrationContext:
+    def __init__(self, operations: _Operations) -> None:
+        self.operations = operations
+
+    def autocommit_block(self) -> _AutocommitBlock:
+        return _AutocommitBlock(self.operations)
+
+
 class _Operations:
     def __init__(self, bind: object) -> None:
         self.bind = bind
@@ -106,6 +126,9 @@ class _Operations:
 
     def get_bind(self) -> object:
         return self.bind
+
+    def get_context(self) -> _MigrationContext:
+        return _MigrationContext(self)
 
     def _record(self, name: str, *args: Any, **kwargs: Any) -> None:
         self.calls.append((name, args, kwargs))
@@ -286,7 +309,8 @@ def test_downgrade_executes_every_revision_owned_reverse_operation(
     assert [call for call in operations.calls if call[0] == "drop_table"] == [
         ("drop_table", ("user_stats",), {})
     ]
-    assert sum(call[0] == "drop_index" for call in operations.calls) == 28
+    # 28 reconcile indexes plus the AUD-278 event full-text GIN index.
+    assert sum(call[0] == "drop_index" for call in operations.calls) == 29
     assert (
         sum(call[0] == "drop_constraint" for call in operations.calls)
         == len(migration._FK_SPECS) + 4

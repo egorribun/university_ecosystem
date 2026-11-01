@@ -236,8 +236,13 @@ exit "$TEST_SCANNER_EXIT"
         binary_dir / "git",
         """#!/usr/bin/env bash
 set -eu
-[[ "$1" == rev-parse && "$2" == HEAD ]] || exit 91
-printf 'controlled-checkout\\n'
+if [[ "$1" == rev-parse && "$2" == HEAD ]]; then
+  printf 'controlled-checkout\\n'
+elif [[ "$1" == hash-object && "$2" == -- && "$3" == alembic/versions/148642dd1207_fix_missing_tables.py ]]; then
+  printf '%s\\n' "$TEST_MIGRATION_BLOB"
+else
+  exit 91
+fi
 """,
     )
     _executable(
@@ -246,6 +251,9 @@ printf 'controlled-checkout\\n'
 set -eu
 if [[ "$1" == run && "$2" == pytest ]]; then
   exit "$TEST_PYTEST_EXIT"
+elif [[ "$1" == run && "$2" == python && "$3" == -m && "$4" == scripts.quality.historical148_squawk_admission ]]; then
+  printf 'ADMISSION_RAN\n'
+  exit "$TEST_ADMISSION_EXIT"
 elif [[ "$1" == run && "$2" == python && "$3" == - ]]; then
   if [[ "$4" == .pytest_tmp/aud148-expanded ]]; then
     mkdir -p "$4"
@@ -290,7 +298,18 @@ fi
     monkeypatch.setenv("RUNNER_TEMP", runner_temp.as_posix())
     monkeypatch.setenv("TMPDIR", temp_dir.as_posix())
     monkeypatch.setenv("AUD148_ORDINARY_SQL", "controlled-ordinary.sql")
+    monkeypatch.setenv("AUD148_RAW_ORDINARY_EXIT", "1")
+    monkeypatch.setenv("AUD148_ORDINARY_JSON", "controlled-ordinary.json")
+    monkeypatch.setenv("AUD148_ORDINARY_JSON_EXIT", "1")
+    monkeypatch.setenv("AUD148_ORDINARY_STDERR", "controlled-ordinary.stderr")
     monkeypatch.setenv("TEST_PYTHON_EXECUTABLE", Path(sys.executable).as_posix())
+    # The recorded Git object of the unchanged migration, as `git hash-object` reports it.
+    monkeypatch.setenv(
+        "TEST_MIGRATION_BLOB",
+        json.loads((ROOT / "quality/historical148-squawk-policy.json").read_bytes())[
+            "source_blobs"
+        ]["alembic/versions/148642dd1207_fix_missing_tables.py"],
+    )
     for name in ("TEST_PREPARED_ARTIFACTS", "TEST_RUN_METADATA", "TEST_SCANNER_TEXT"):
         monkeypatch.delenv(name, raising=False)
 
@@ -300,10 +319,12 @@ fi
         pytest_exit: int = 0,
         *,
         quiet: bool = False,
+        admission_exit: int = 0,
     ):
         monkeypatch.setenv("TEST_SCANNER_EXIT", str(scanner_exit))
         monkeypatch.setenv("TEST_COLLECTOR_EXIT", str(collector_exit))
         monkeypatch.setenv("TEST_PYTEST_EXIT", str(pytest_exit))
+        monkeypatch.setenv("TEST_ADMISSION_EXIT", str(admission_exit))
         args = _bash_command(bash, script_path)
         if quiet:
             process = pytester.popen(args, stdin=None)
@@ -320,16 +341,28 @@ fi
 
 
 @pytest.mark.parametrize(
-    ("scanner_exit", "collector_exit", "expected"),
-    [(0, 0, 0), (23, 0, 23), (0, 17, 17), (23, 17, 23)],
+    ("scanner_exit", "collector_exit", "admission_exit", "expected"),
+    [(0, 0, 0, 0), (0, 0, 1, 1), (23, 0, 0, 0), (0, 17, 0, 17), (23, 17, 1, 17)],
 )
-def test_diagnostic_step_propagates_raw_and_collector_failures(
-    diagnostic_gate, scanner_exit: int, collector_exit: int, expected: int
+def test_diagnostic_step_propagates_collector_failures_and_the_admission_verdict(
+    diagnostic_gate,
+    scanner_exit: int,
+    collector_exit: int,
+    admission_exit: int,
+    expected: int,
 ) -> None:
-    result = diagnostic_gate(scanner_exit, collector_exit)
+    """Collector failures are fatal; otherwise the job exit is the admission verdict.
+
+    The shell cannot judge the raw scanner exit. The Python admission requires the
+    recorded raw failure (1) and rejects any other value, so a raw 23 with an
+    accepted admission is only the stub verdict used by this propagation fixture.
+    """
+    result = diagnostic_gate(
+        scanner_exit, collector_exit, admission_exit=admission_exit
+    )
     assert result.ret == expected
-    assert "RAW_SCANNER_RAN" in result.stdout.str()
-    assert "COLLECTOR_RAN" in result.stdout.str()
+    for marker in ("RAW_SCANNER_RAN", "COLLECTOR_RAN", "ADMISSION_RAN"):
+        assert marker in result.stdout.str(), marker
 
 
 def test_diagnostic_step_stops_after_failed_focused_tests(diagnostic_gate) -> None:
@@ -403,9 +436,7 @@ def test_diagnostic_step_does_not_print_private_runtime_context(
         "RAW_SCANNER_RAN",
         "COLLECTOR_RAN",
     )
-    if status != (23 if scanner_exit else 17) or not all(
-        marker in stdout for marker in markers
-    ):
+    if status != 17 or not all(marker in stdout for marker in markers):
         pytest.fail(
             "diagnostic shell did not reach the expected boundaries", pytrace=False
         )

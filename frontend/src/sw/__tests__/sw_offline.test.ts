@@ -1,3 +1,4 @@
+import { NOTIFICATION_INTERACTIONS_DB_VERSION } from "@/constants/notificationInteractionsDb"
 import { IDBFactory } from "fake-indexeddb"
 import { openDB } from "idb"
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest"
@@ -258,7 +259,7 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
     await processOfflineQueues()
 
     expect(fetchMock).not.toHaveBeenCalled()
-    const db = await openDB("notification-interactions", 4)
+    const db = await openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     expect(await db.getAll(STORES.NEWS_INTERACTION)).toEqual([
       expect.objectContaining({ method: "GET", payload: { id: "read-1" } }),
       expect.objectContaining({ method: "POST", payload: { id: "bookmark-1" } }),
@@ -280,7 +281,7 @@ describe("Service Worker — Offline / Database Failures & Network Outage", () =
 
     expect(fetchMock).not.toHaveBeenCalled()
     expect(warn).not.toHaveBeenCalled()
-    const db = await openDB("notification-interactions", 4)
+    const db = await openDB("notification-interactions", NOTIFICATION_INTERACTIONS_DB_VERSION)
     expect(await db.getAll(STORES.NEWS_INTERACTION)).toEqual([
       expect.objectContaining({ payload: { id: "rejected" } }),
     ])

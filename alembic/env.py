@@ -194,6 +194,8 @@ def _configure_context(connection: SyncConnection) -> None:
         ),
         include_object=build_partition_aware_include_object(connection),
         compare_type=True,
+        # AUD-434: `alembic check` must also compare server defaults.
+        compare_server_default=True,
         render_as_batch=True,
         transactional_ddl=True,
         transaction_per_migration=True,

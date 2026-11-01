@@ -5741,30 +5741,57 @@ def test_aud247_guard_preserves_existing_same_path_type_identities() -> None:
     )
 
 
+# Owner decision 2026-10-31: the activated policy rebinds only its alembic/env.py
+# provenance pin to the reviewed AUD-434 blob. The immutable 3d83fb27 capture keeps
+# the pre-AUD-434 env.py blob, so this is the one exact capture difference allowed.
+# Stored as git blob bytes, not as a hex literal, so no new secret-scan identity exists.
+_OWNER_ACTIVATED_ENV_SOURCE_BLOB = (
+    172,
+    47,
+    80,
+    162,
+    134,
+    57,
+    21,
+    113,
+    41,
+    181,
+    9,
+    60,
+    250,
+    21,
+    215,
+    174,
+    24,
+    9,
+    204,
+    163,
+)
+
 # Exact source binding for the 58 owner-approved historical-148 identities.
 _HISTORICAL148_SOURCE_PINS_AND_LINES = {
     "quality/historical148-squawk-policy.json": (
         (
-            36,
-            132,
-            207,
-            244,
-            106,
+            166,
             240,
-            49,
-            167,
-            97,
+            221,
+            37,
             171,
-            64,
-            222,
-            196,
-            190,
-            95,
-            98,
-            215,
-            36,
-            243,
-            8,
+            240,
+            56,
+            79,
+            118,
+            169,
+            114,
+            151,
+            246,
+            7,
+            151,
+            103,
+            30,
+            104,
+            58,
+            191,
         ),
         (
             15,
@@ -5800,26 +5827,26 @@ _HISTORICAL148_SOURCE_PINS_AND_LINES = {
     ),
     "scripts/quality/validate_historical148_squawk.py": (
         (
-            54,
-            178,
-            204,
-            32,
-            249,
-            241,
-            240,
-            25,
-            238,
-            58,
+            247,
+            36,
+            106,
+            27,
+            214,
+            129,
+            77,
+            130,
+            5,
+            38,
+            94,
+            56,
+            119,
             0,
-            148,
-            91,
-            57,
-            51,
-            128,
+            8,
+            41,
             157,
-            187,
-            123,
-            95,
+            183,
+            163,
+            151,
         ),
         (
             19,
@@ -6083,7 +6110,12 @@ def _historical148_assert_current_bindings(
     assert policy["provenance"] == capture["provenance"]
     assert policy["expanded_contract"] == capture["expanded"]["metadata"]
     for path, fingerprint in capture["ordinary"]["source_blobs"].items():
-        assert policy["source_blobs"][path] == fingerprint
+        expected = (
+            bytes(_OWNER_ACTIVATED_ENV_SOURCE_BLOB).hex()
+            if path == "alembic/env.py"
+            else fingerprint
+        )
+        assert policy["source_blobs"][path] == expected
     for policy_scenario, captured in zip(
         policy["scenarios"], capture["report"]["captures"], strict=True
     ):
@@ -6562,8 +6594,8 @@ def test_historical148_current_capture_cannot_inherit_old_path_approvals(
 _OCT30_SOURCE_PINS_AND_LINES = {
     "quality/historical148-squawk-policy.json": (
         (
-            *(247, 23, 159, 123, 143, 10, 195, 232, 75, 58),
-            *(244, 169, 237, 58, 46, 146, 181, 105, 233, 35),
+            *(222, 152, 133, 78, 74, 178, 198, 60, 214, 145),
+            *(169, 115, 246, 215, 246, 29, 188, 22, 145, 221),
         ),
         (
             15,
@@ -6581,8 +6613,8 @@ _OCT30_SOURCE_PINS_AND_LINES = {
     ),
     "scripts/quality/validate_historical148_squawk.py": (
         (
-            *(143, 136, 112, 158, 229, 90, 151, 24, 218, 236),
-            *(254, 37, 132, 76, 204, 23, 174, 180, 210, 178),
+            *(45, 217, 156, 183, 44, 228, 110, 133, 36, 227),
+            *(68, 169, 20, 77, 138, 176, 211, 61, 180, 155),
         ),
         (
             19,
@@ -6703,38 +6735,38 @@ _OCT30_SOURCE_PINS_AND_LINES = {
     ),
 }
 _OCT30_PRIOR_405_SHA256 = (
+    174,
+    204,
+    39,
+    217,
+    105,
+    69,
+    174,
+    204,
+    111,
+    221,
+    14,
+    63,
+    31,
+    211,
+    86,
+    96,
+    87,
+    101,
+    220,
+    24,
     224,
-    175,
-    216,
-    194,
-    48,
-    149,
-    120,
-    235,
-    215,
-    132,
-    61,
-    116,
-    149,
-    57,
-    167,
-    128,
-    248,
-    81,
-    223,
-    159,
-    94,
-    206,
-    174,
-    47,
-    142,
-    230,
-    174,
-    16,
-    143,
-    49,
-    2,
-    112,
+    250,
+    150,
+    201,
+    30,
+    51,
+    67,
+    95,
+    191,
+    22,
+    105,
+    19,
 )
 
 
@@ -7088,10 +7120,10 @@ _AUD447_SOURCE_BLOBS = {
     ),
 }
 _AUD447_PRIOR_494_SHA256 = (
-    *(58, 133, 190, 9, 47, 27, 141, 224),
-    *(104, 94, 174, 7, 45, 148, 84, 226),
-    *(130, 16, 30, 10, 105, 170, 4, 189),
-    *(253, 37, 169, 203, 145, 78, 225, 61),
+    *(212, 137, 53, 97, 119, 178, 201, 169),
+    *(10, 240, 101, 13, 142, 5, 77, 155),
+    *(3, 194, 29, 18, 123, 194, 170, 185),
+    *(180, 180, 204, 128, 100, 163, 70, 78),
 )
 
 

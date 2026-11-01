@@ -68,28 +68,43 @@ def _run_docker_compose(cmd: str) -> str:
         raise
 
 
-def _gateway_reachable() -> bool:
-    """True if the Go gateway is up at GATEWAY_URL/health.
+def _require_gateway() -> None:
+    """Fail explicitly when the gateway required by CHAOS_TESTS=1 is not healthy.
 
-    The two gateway-dependent chaos tests below call GATEWAY_URL as their FIRST
-    action OUTSIDE any try/except, so they HARD-ERROR (not skip) when the gateway
-    isn't running — e.g. when docker-compose.go.yml isn't part of the stack. Used
-    as a skipif condition so those tests skip cleanly in that case instead.
-
-    The CHAOS_TESTS guard short-circuits to False during normal (non-chaos)
-    collection: the module is runtime-skipped via the module-level pytestmark
-    anyway, and an unguarded probe would add a connect-timeout to every `pytest`
-    collection (testpaths includes tests/, and mutmut copies tests/ into
-    mutants/tests/). When CHAOS_TESTS=1 the CI job has already brought the stack
-    up + readiness-polled the gateway before pytest collects this module.
+    AUD-322: a missing gateway is a broken precondition of the opt-in chaos run,
+    not a reason to skip the resilience check.  The module-level pytestmark is
+    the only runtime gate; once CHAOS_TESTS=1 is set every chaos test must run
+    or fail with the precondition named in the message.
     """
-    if os.getenv("CHAOS_TESTS") != "1":
-        return False
     try:
         with httpx.Client(base_url=GATEWAY_URL, timeout=3.0) as client:
-            return client.get("/health").status_code == 200
-    except (httpx.HTTPError, OSError):
-        return False
+            status = client.get("/health").status_code
+    except (httpx.HTTPError, OSError) as exc:
+        pytest.fail(
+            f"GATEWAY_URL {GATEWAY_URL} is unreachable under CHAOS_TESTS=1 "
+            f"(docker-compose.go.yml must be part of the chaos stack): {exc}"
+        )
+    if status != 200:
+        pytest.fail(
+            f"GATEWAY_URL {GATEWAY_URL}/health returned {status} under CHAOS_TESTS=1"
+        )
+
+
+def _first_chaos_chat_id(client: httpx.Client) -> str:
+    """Return a chat visible to the chaos user, or fail naming the seed precondition.
+
+    AUD-322: the chat lookup is a precondition, so a missing chat fails the test
+    explicitly (before any container is stopped) instead of skipping it.
+    """
+    response = client.get("/api/v1/chats/?limit=1")
+    items = response.json().get("items") if response.status_code == 200 else None
+    if not items:
+        pytest.fail(
+            "No chat is visible to CHAOS_TEST_USER under CHAOS_TESTS=1; the chaos "
+            f"stack must seed at least one chat for it (GET returned "
+            f"{response.status_code})."
+        )
+    return str(items[0]["id"])
 
 
 def _wait_for_outbox_event_processed(
@@ -160,7 +175,10 @@ def authenticated_client(setup_chaos_env) -> httpx.Client:
         # Obtain auth token
         response = client.post("/api/v1/auth/login", data=credentials)
         if response.status_code != 200:
-            pytest.skip(f"Could not authenticate chaos test user: {response.text}")
+            pytest.fail(
+                "Could not authenticate CHAOS_TEST_USER under CHAOS_TESTS=1; the "
+                f"chaos stack must provision it: {response.text}"
+            )
 
         token = response.json().get("access_token", "")
         client.headers["Authorization"] = f"Bearer {token}"
@@ -182,18 +200,14 @@ def test_nats_outage_outbox_durability(setup_chaos_env, authenticated_client):
         6. Wait for the outbox worker to drain the event.
         7. Assert processed_at is now set (status='processed').
     """
+    # Identify a chat to send a message to (use the first available).  Resolved
+    # before NATS is stopped so a missing precondition fails without side effects.
+    chat_id = _first_chaos_chat_id(authenticated_client)
+
     # 1. Stop NATS
     print("\n[Chaos] Stopping NATS broker...")
     _run_docker_compose("stop nats")
     time.sleep(2)
-
-    # Identify a chat to send a message to (use the first available)
-    chats_response = authenticated_client.get("/api/v1/chats/?limit=1")
-    if chats_response.status_code != 200 or not chats_response.json().get("items"):
-        _run_docker_compose("start nats")
-        pytest.skip("No chats available for chaos test — seed data required")
-
-    chat_id = chats_response.json()["items"][0]["id"]
 
     try:
         # 2. Send message while NATS is down
@@ -268,11 +282,7 @@ def test_valkey_outage_idempotency_fail_open(setup_chaos_env, authenticated_clie
         7. Send again with the same key.
         8. Assert HTTP 201 (idempotent repeat) — no duplicate message is created.
     """
-    chats_response = authenticated_client.get("/api/v1/chats/?limit=1")
-    if chats_response.status_code != 200 or not chats_response.json().get("items"):
-        pytest.skip("No chats available for chaos test — seed data required")
-
-    chat_id = chats_response.json()["items"][0]["id"]
+    chat_id = _first_chaos_chat_id(authenticated_client)
     idempotency_key = "chaos-test-idem-key-valkey-down-001"
 
     # 1. Stop Valkey
@@ -327,16 +337,13 @@ def test_valkey_outage_idempotency_fail_open(setup_chaos_env, authenticated_clie
     )
 
 
-@pytest.mark.skipif(
-    not _gateway_reachable(),
-    reason="Go gateway not reachable (docker-compose.go.yml not loaded)",
-)
 def test_valkey_redis_down_resilience(setup_chaos_env):
     """Verify that backend degrades gracefully when Redis/Valkey goes down.
 
     According to RZ-27-03, rate limiter must fail closed on double failure
     (Redis + memory), returning 503/429 rather than exposing backend.
     """
+    _require_gateway()
     # 1. Verify health when Redis is UP
     with httpx.Client(base_url=GATEWAY_URL) as client:
         res = client.get("/health")
@@ -364,10 +371,6 @@ def test_valkey_redis_down_resilience(setup_chaos_env):
         time.sleep(3)
 
 
-@pytest.mark.skipif(
-    not _gateway_reachable(),
-    reason="Go gateway not reachable (docker-compose.go.yml not loaded)",
-)
 def test_ws_hub_down_gateway_proxy_fallback(setup_chaos_env):
     """Verify that when ws-hub is down, gateway handles the failure gracefully.
 
@@ -375,6 +378,7 @@ def test_ws_hub_down_gateway_proxy_fallback(setup_chaos_env):
     If ws-hub dies, gateway should return 502 Bad Gateway to new connection
     attempts instead of crashing.
     """
+    _require_gateway()
     # 1. Stop ws-hub
     print("\n[Chaos] Stopping ws-hub...")
     _run_docker_compose("stop ws-hub")

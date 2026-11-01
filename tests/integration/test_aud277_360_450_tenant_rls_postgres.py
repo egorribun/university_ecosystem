@@ -1,198 +1,455 @@
-"""Opt-in PostgreSQL characterization of the historical tenant policies.
+"""Opt-in PostgreSQL proof of the tenant RLS revision (AUD-277, AUD-360, AUD-450).
 
-Run only against an explicitly designated disposable PostgreSQL database with a
-non-superuser, non-BYPASSRLS role allowed to create temporary tables. All DDL
-and data below use connection-local temporary tables and are rolled back. This
-does not validate a deployed database, role, migration history, or application.
+Run only against an explicitly designated disposable PostgreSQL database. Two
+identities are created by the database administrator before the test runs:
+
+* AUD_TENANT_RLS_DISPOSABLE_PG_URL: a non-superuser, non-BYPASSRLS role that may
+  create a schema. It owns the schema, so FORCE ROW LEVEL SECURITY applies to it
+  as an ordinary application role.
+* AUD_TENANT_RLS_BYPASS_PG_URL: a LOGIN role that is a member of the NOLOGIN
+  ``ue_rls_bypass`` role. The administrator creates ``ue_rls_bypass`` ahead of
+  time, as a deployment does before the migration runs.
+
+The schema holds real tables. The two migrations under test run on them through
+a minimal ``op`` adapter that executes the same SQL on a real connection. Plain
+``CREATE INDEX`` replaces ``CREATE INDEX CONCURRENTLY``; policy and trigger DDL
+is executed unchanged. Session wiring comes from the application's own
+``set_pg_tenant_context`` listener.
 """
 
 from __future__ import annotations
 
+import contextlib
+import importlib.util
 import os
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import Iterator
+from pathlib import Path
+from types import ModuleType
+from typing import Any
+from unittest.mock import patch
 
 import pytest
-import pytest_asyncio
-from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
-from sqlalchemy.pool import NullPool
+import sqlalchemy as sa
+from sqlalchemy.engine import Connection, make_url
 
 from app.core.db.listeners import set_pg_tenant_context
 from app.core.tenant import bypass_rls_ctx, tenant_id_ctx
-from tests.test_aud277_360_450_tenant_rls_contract import (
-    capture_message_upgrade,
-    capture_tenant_upgrade,
-)
 
-_URL = os.getenv("AUD_TENANT_RLS_DISPOSABLE_PG_URL", "")
+_ROOT = Path(__file__).resolve().parents[2]
+_RLS_MIGRATION = _ROOT / "alembic/versions/202607230001_multi_tenant_rls.py"
+_MESSAGE_MIGRATION = _ROOT / "alembic/versions/202603170003_enable_rls_on_messages.py"
+
+_ORDINARY_URL = os.getenv("AUD_TENANT_RLS_DISPOSABLE_PG_URL", "")
+_BYPASS_URL = os.getenv("AUD_TENANT_RLS_BYPASS_PG_URL", "")
 _OPTED_IN = os.getenv("AUD_TENANT_RLS_DISPOSABLE") == "1"
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        not (_OPTED_IN and _URL.startswith("postgresql+asyncpg://")),
-        reason="Set AUD_TENANT_RLS_DISPOSABLE=1 and a dedicated non-superuser AUD_TENANT_RLS_DISPOSABLE_PG_URL",
+        not (
+            _OPTED_IN
+            and _ORDINARY_URL.startswith("postgresql+psycopg://")
+            and _BYPASS_URL.startswith("postgresql+psycopg://")
+        ),
+        reason="Set AUD_TENANT_RLS_DISPOSABLE=1 and two postgresql+psycopg URLs",
     ),
 ]
 
+_CORE_TABLES = (
+    "users",
+    "groups",
+    "schedule",
+    "events",
+    "chats",
+    "messages",
+    "news",
+    "stories",
+    "notifications",
+)
 _TENANT_A = uuid.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 _TENANT_B = uuid.UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 _USER_A = uuid.UUID("11111111-1111-4111-8111-111111111111")
 _CHAT_A = uuid.UUID("22222222-2222-4222-8222-222222222222")
 _CHAT_B = uuid.UUID("33333333-3333-4333-8333-333333333333")
 
+# The policy as first shipped: a PERMISSIVE USING (true) plus a RESTRICTIVE tenant
+# predicate that honours the app.bypass_rls GUC and NULL-tenant rows.
+_HISTORICAL_POLICIES = (
+    "ALTER TABLE {table} ENABLE ROW LEVEL SECURITY",
+    "ALTER TABLE {table} FORCE ROW LEVEL SECURITY",
+    "CREATE POLICY default_permissive_policy ON {table} AS PERMISSIVE "
+    "USING (true) WITH CHECK (true)",
+    "CREATE POLICY tenant_isolation_policy ON {table} AS RESTRICTIVE "
+    "USING (current_setting('app.bypass_rls', true) = 'on' "
+    "OR tenant_id IS NULL "
+    "OR tenant_id = NULLIF(current_setting('app.current_tenant', true), '')::uuid)",
+)
 
-@pytest_asyncio.fixture
-async def isolated_rls_connection(
-    monkeypatch: pytest.MonkeyPatch,
-) -> AsyncIterator[AsyncConnection]:
-    with monkeypatch.context() as patch:
-        message_sql = capture_message_upgrade(patch)
-        _, tenant_sql, _ = capture_tenant_upgrade(patch, ("news", "messages"))
 
-    engine = create_async_engine(_URL, poolclass=NullPool)
+def _load(path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(f"aud277_{path.stem}", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class _ExecutingOp:
+    """The subset of ``alembic.op`` these two migrations use, run for real."""
+
+    def __init__(self, connection: Connection) -> None:
+        self._connection = connection
+
+    def get_bind(self) -> Connection:
+        return self._connection
+
+    def execute(self, statement: Any) -> None:
+        self._connection.execute(statement)
+
+    def add_column(self, table: str, column: sa.Column[Any]) -> None:
+        assert column.name == "tenant_id"
+        self._connection.execute(
+            sa.text(
+                f"ALTER TABLE {table} ADD COLUMN tenant_id uuid "
+                "REFERENCES tenants(id) ON DELETE CASCADE"
+            )
+        )
+
+    def create_index(self, name: str, table: str, columns: list[str], **_: Any) -> None:
+        self._connection.execute(
+            sa.text(f"CREATE INDEX {name} ON {table} ({', '.join(columns)})")
+        )
+
+    def get_context(self) -> _ExecutingOp:
+        return self
+
+    def autocommit_block(self) -> contextlib.AbstractContextManager[None]:
+        return contextlib.nullcontext()
+
+
+def _run_migration(connection: Connection, module: ModuleType) -> None:
+    with patch.object(module, "op", _ExecutingOp(connection)):
+        module.upgrade()
+
+
+def _engine(url: str, schema: str) -> sa.Engine:
+    return sa.create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+
+
+def _seed_legacy_rows(connection: Connection) -> None:
+    connection.execute(
+        sa.text("CREATE TABLE tenants (id uuid PRIMARY KEY, name text NOT NULL)")
+    )
+    connection.execute(
+        sa.text("INSERT INTO tenants (id, name) VALUES (:a, 'A'), (:b, 'B')"),
+        {"a": _TENANT_A, "b": _TENANT_B},
+    )
+    for table in _CORE_TABLES:
+        connection.execute(
+            sa.text(
+                f"CREATE TABLE {table} (id integer PRIMARY KEY, chat_id uuid, body text)"
+            )
+        )
+    connection.execute(
+        sa.text(
+            "CREATE TABLE chat_participants (chat_id uuid NOT NULL, user_id uuid NOT NULL)"
+        )
+    )
+    connection.execute(
+        sa.text("INSERT INTO chat_participants (chat_id, user_id) VALUES (:c, :u)"),
+        {"c": _CHAT_A, "u": _USER_A},
+    )
+    # Rows written before the tenant column existed keep a NULL tenant.
+    connection.execute(
+        sa.text("INSERT INTO news (id, body) VALUES (1, 'a'), (2, 'b'), (3, 'null')")
+    )
+    connection.execute(
+        sa.text(
+            "INSERT INTO messages (id, chat_id, body) VALUES "
+            "(11, :a, 'x'), (12, :a, 'x'), (13, :a, 'x'), (14, :b, 'x')"
+        ),
+        {"a": _CHAT_A, "b": _CHAT_B},
+    )
+
+
+@pytest.fixture(scope="module")
+def rls_schema() -> Iterator[str]:
+    """Create the schema, legacy rows and migrations once; each test rolls back."""
+    schema = "aud277_" + uuid.uuid4().hex
+    ordinary = _engine(_ORDINARY_URL, schema)
+    bypass = _engine(_BYPASS_URL, schema)
+    bypass_role = make_url(_BYPASS_URL).username
     try:
-        async with engine.connect() as conn:
-            transaction = await conn.begin()
+        with sa.create_engine(_ORDINARY_URL).begin() as admin_probe:
+            role = admin_probe.execute(
+                sa.text(
+                    "SELECT rolsuper, rolbypassrls FROM pg_roles "
+                    "WHERE rolname = current_user"
+                )
+            ).one()
+            assert tuple(role) == (False, False)
+            admin_probe.execute(sa.text(f'CREATE SCHEMA "{schema}"'))
+
+        with ordinary.begin() as connection:
+            _seed_legacy_rows(connection)
+        with ordinary.begin() as connection:
+            _run_migration(connection, _load(_MESSAGE_MIGRATION))
+            _run_migration(connection, _load(_RLS_MIGRATION))
+            connection.execute(
+                sa.text(f'GRANT USAGE ON SCHEMA "{schema}" TO "{bypass_role}"')
+            )
+            connection.execute(
+                sa.text(
+                    f'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "{schema}" '
+                    f'TO "{bypass_role}"'
+                )
+            )
+        with bypass.begin() as connection:
+            # Seeding as a bypass-role member places rows of both tenants and leaves
+            # one NULL-tenant row deliberately: news 1 (A), 2 (B), 3 (NULL).
+            connection.execute(
+                sa.text("UPDATE news SET tenant_id = :a WHERE id = 1"), {"a": _TENANT_A}
+            )
+            connection.execute(
+                sa.text("UPDATE news SET tenant_id = :b WHERE id = 2"), {"b": _TENANT_B}
+            )
+            # The participant policy still applies to messages, so seeding runs as
+            # the chat-A participant: message 11 (A), 12 (B), 13 stays NULL.
+            connection.execute(
+                sa.text("SELECT set_config('app.current_user_id', :u, true)"),
+                {"u": str(_USER_A)},
+            )
+            connection.execute(
+                sa.text("UPDATE messages SET tenant_id = :a WHERE id = 11"),
+                {"a": _TENANT_A},
+            )
+            connection.execute(
+                sa.text("UPDATE messages SET tenant_id = :b WHERE id = 12"),
+                {"b": _TENANT_B},
+            )
+        yield schema
+    finally:
+        bypass.dispose()
+        ordinary.dispose()
+        with sa.create_engine(_ORDINARY_URL).begin() as cleanup:
+            cleanup.execute(sa.text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+
+
+@contextlib.contextmanager
+def _rolled_back(url: str, schema: str) -> Iterator[Connection]:
+    """One transaction on a fresh connection, always rolled back."""
+    engine = _engine(url, schema)
+    try:
+        with engine.connect() as connection:
+            transaction = connection.begin()
             try:
-                role = (
-                    await conn.execute(
-                        text(
-                            "SELECT rolsuper, rolbypassrls FROM pg_roles "
-                            "WHERE rolname = current_user"
-                        )
-                    )
-                ).one()
-                assert role.rolsuper is False and role.rolbypassrls is False
-
-                # Temp relations shadow real names; only these are changed.
-                await conn.execute(
-                    text(
-                        "CREATE TEMP TABLE news (id integer PRIMARY KEY, tenant_id uuid, body text) ON COMMIT DROP"
-                    )
-                )
-                await conn.execute(
-                    text(
-                        "CREATE TEMP TABLE messages (id integer PRIMARY KEY, tenant_id uuid, chat_id uuid) ON COMMIT DROP"
-                    )
-                )
-                await conn.execute(
-                    text(
-                        "CREATE TEMP TABLE chat_participants (chat_id uuid, user_id uuid) ON COMMIT DROP"
-                    )
-                )
-                await conn.execute(text("SET LOCAL search_path = pg_temp, pg_catalog"))
-                for row_id, tenant in ((1, _TENANT_A), (2, _TENANT_B), (3, None)):
-                    await conn.execute(
-                        text(
-                            "INSERT INTO news (id, tenant_id, body) VALUES (:id, :tenant, 'fixture')"
-                        ),
-                        {"id": row_id, "tenant": tenant},
-                    )
-                await conn.execute(
-                    text(
-                        "INSERT INTO chat_participants (chat_id, user_id) VALUES (:chat, :user)"
-                    ),
-                    {"chat": _CHAT_A, "user": _USER_A},
-                )
-                for row_id, tenant, chat in (
-                    (11, _TENANT_A, _CHAT_A),
-                    (12, _TENANT_B, _CHAT_A),
-                    (13, None, _CHAT_A),
-                    (14, _TENANT_A, _CHAT_B),
-                ):
-                    await conn.execute(
-                        text(
-                            "INSERT INTO messages (id, tenant_id, chat_id) VALUES (:id, :tenant, :chat)"
-                        ),
-                        {"id": row_id, "tenant": tenant, "chat": chat},
-                    )
-
-                for statement in (*message_sql, *tenant_sql):
-                    await conn.execute(text(statement))
-                for table in ("news", "messages"):
-                    active = await conn.scalar(
-                        text("SELECT row_security_active(to_regclass(:relation))"),
-                        {"relation": f"pg_temp.{table}"},
-                    )
-                    assert active is True
-                yield conn
+                yield connection
             finally:
                 if transaction.is_active:
-                    await transaction.rollback()
+                    transaction.rollback()
     finally:
-        await engine.dispose()
+        engine.dispose()
 
 
-async def _set_application_tenant(
-    conn: AsyncConnection, tenant: uuid.UUID | None
-) -> None:
+@contextlib.contextmanager
+def _application_context(
+    connection: Connection, *, tenant: uuid.UUID | None, bypass: bool = False
+) -> Iterator[None]:
+    """Apply the application's own session wiring for the given request scope."""
     tenant_token = tenant_id_ctx.set(str(tenant) if tenant else "")
-    bypass_token = bypass_rls_ctx.set(False)
+    bypass_token = bypass_rls_ctx.set(bypass)
     try:
-        await conn.run_sync(
-            lambda sync_conn: set_pg_tenant_context(None, None, sync_conn)
-        )
+        set_pg_tenant_context(None, None, connection)
+        yield
     finally:
         bypass_rls_ctx.reset(bypass_token)
         tenant_id_ctx.reset(tenant_token)
 
 
-async def _ids(conn: AsyncConnection, table: str) -> set[int]:
-    statements = {
-        "news": text("SELECT id FROM news ORDER BY id"),
-        "messages": text("SELECT id FROM messages ORDER BY id"),
+def _ids(connection: Connection, table: str) -> set[int]:
+    statement = sa.select(sa.column("id")).select_from(sa.table(table))
+    return set(connection.execute(statement).scalars())
+
+
+def test_no_permissive_true_policy_remains_on_core_tables(rls_schema: str) -> None:
+    with _rolled_back(_ORDINARY_URL, rls_schema) as connection:
+        policies = connection.execute(
+            sa.text(
+                "SELECT tablename, policyname, permissive, qual FROM pg_policies "
+                "WHERE schemaname = current_schema()"
+            )
+        ).all()
+    assert not [row for row in policies if row.qual == "true"]
+    assert not [
+        row for row in policies if row.policyname == "default_permissive_policy"
+    ]
+    tenant = {
+        row.tablename: row.permissive
+        for row in policies
+        if row.policyname == "tenant_isolation_policy"
     }
-    result = await conn.execute(statements[table])
-    return set(result.scalars())
+    assert set(tenant) == set(_CORE_TABLES)
+    assert tenant["messages"] == "RESTRICTIVE"
+    assert {tenant[t] for t in _CORE_TABLES if t != "messages"} == {"PERMISSIVE"}
 
 
-@pytest.mark.asyncio
-async def test_aud277_360_450_postgres_policy_composition_null_writes_and_guc_bypass(
-    isolated_rls_connection: AsyncConnection,
-) -> None:
-    conn = isolated_rls_connection
-    await conn.execute(
-        text("SELECT set_config('app.current_user_id', :user_id, true)"),
-        {"user_id": str(_USER_A)},
-    )
-    await _set_application_tenant(conn, None)
-    assert await _ids(conn, "news") == {3}
+def test_tenant_session_sees_only_its_rows_and_never_null_rows(rls_schema: str) -> None:
+    """AUD-360: NULL-tenant rows are hidden, and another tenant's rows stay hidden."""
+    with _rolled_back(_ORDINARY_URL, rls_schema) as connection:
+        with _application_context(connection, tenant=_TENANT_A):
+            assert _ids(connection, "news") == {1}
+    with _rolled_back(_ORDINARY_URL, rls_schema) as connection:
+        with _application_context(connection, tenant=None):
+            assert _ids(connection, "news") == set()
 
-    await _set_application_tenant(conn, _TENANT_A)
-    assert await _ids(conn, "news") == {1, 3}
-    assert await _ids(conn, "messages") == {11, 13}
-    with pytest.raises(DBAPIError):
-        async with conn.begin_nested():
-            await conn.execute(
-                text(
-                    "INSERT INTO news (id, tenant_id, body) VALUES (5, :other, 'foreign')"
+
+def test_guc_bypass_cannot_expose_other_tenants_or_null_rows(rls_schema: str) -> None:
+    """AUD-450: a hand-set app.bypass_rls GUC grants nothing, and the listener never sets it."""
+    with _rolled_back(_ORDINARY_URL, rls_schema) as connection:
+        with _application_context(connection, tenant=_TENANT_A):
+            connection.execute(
+                sa.text("SELECT set_config('app.bypass_rls', 'on', true)")
+            )
+            assert _ids(connection, "news") == {1}
+    with _rolled_back(_ORDINARY_URL, rls_schema) as connection:
+        with _application_context(connection, tenant=None, bypass=True):
+            # The listener's bypass flag writes no GUC, so the setting stays unset.
+            assert (
+                connection.execute(
+                    sa.text(
+                        "SELECT coalesce(current_setting('app.bypass_rls', true), '')"
+                    )
+                ).scalar()
+                == ""
+            )
+            assert _ids(connection, "news") == set()
+
+
+def test_dedicated_bypass_role_member_sees_every_row(rls_schema: str) -> None:
+    """AUD-450 positive control: only membership in ue_rls_bypass bypasses the policy."""
+    with _rolled_back(_BYPASS_URL, rls_schema) as connection:
+        with _application_context(connection, tenant=None):
+            assert _ids(connection, "news") == {1, 2, 3}
+
+
+def test_ordinary_writes_are_stamped_with_the_session_tenant(rls_schema: str) -> None:
+    """AUD-360: an ORM-shaped INSERT that omits tenant_id is stamped by the trigger."""
+    with _rolled_back(_ORDINARY_URL, rls_schema) as connection:
+        with _application_context(connection, tenant=_TENANT_A):
+            connection.execute(
+                sa.text("INSERT INTO news (id, body) VALUES (20, 'orm')")
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO news (id, tenant_id, body) VALUES (21, NULL, 'null')"
+                )
+            )
+            # Message inserts also need the participant context the ORM sets.
+            connection.execute(
+                sa.text("SELECT set_config('app.current_user_id', :u, true)"),
+                {"u": str(_USER_A)},
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO messages (id, chat_id, body) VALUES (22, :c, 'm')"
                 ),
-                {"other": _TENANT_B},
+                {"c": _CHAT_A},
             )
-    with pytest.raises(DBAPIError):
-        async with conn.begin_nested():
-            await conn.execute(
-                text("UPDATE news SET tenant_id = :other WHERE id = 1"),
-                {"other": _TENANT_B},
+            stamped = dict(
+                connection.execute(
+                    sa.text("SELECT id, tenant_id FROM news WHERE id IN (20, 21)")
+                ).all()
+            )
+            assert stamped == {20: _TENANT_A, 21: _TENANT_A}
+            assert (
+                connection.execute(
+                    sa.text("SELECT tenant_id FROM messages WHERE id = 22")
+                ).scalar()
+                == _TENANT_A
             )
 
-    # Like the mapped news INSERT, this write omits the nullable tenant column.
-    await conn.execute(text("INSERT INTO news (id, body) VALUES (4, 'no tenant')"))
-    await _set_application_tenant(conn, _TENANT_B)
-    assert await _ids(conn, "news") == {2, 3, 4}
 
-    # SQL access also permits changing the tenant identity GUC directly.
-    await conn.execute(
-        text("SELECT set_config('app.current_tenant', :tenant_id, true)"),
-        {"tenant_id": str(_TENANT_A)},
-    )
-    assert await _ids(conn, "news") == {1, 3, 4}
+def test_writes_cannot_target_another_tenant_or_escape_the_session(
+    rls_schema: str,
+) -> None:
+    with _rolled_back(_ORDINARY_URL, rls_schema) as connection:
+        with _application_context(connection, tenant=_TENANT_A):
+            with pytest.raises(sa.exc.DBAPIError):
+                with connection.begin_nested():
+                    connection.execute(
+                        sa.text(
+                            "INSERT INTO news (id, tenant_id, body) VALUES (30, :b, 'x')"
+                        ),
+                        {"b": _TENANT_B},
+                    )
+            with pytest.raises(sa.exc.DBAPIError):
+                with connection.begin_nested():
+                    connection.execute(
+                        sa.text("UPDATE news SET tenant_id = :b WHERE id = 1"),
+                        {"b": _TENANT_B},
+                    )
+            with pytest.raises(sa.exc.DBAPIError):
+                with connection.begin_nested():
+                    connection.execute(
+                        sa.text("UPDATE news SET tenant_id = NULL WHERE id = 1")
+                    )
+    with _rolled_back(_ORDINARY_URL, rls_schema) as connection:
+        # Without a tenant context an INSERT is refused rather than stored unowned.
+        with _application_context(connection, tenant=None):
+            with pytest.raises(sa.exc.DBAPIError):
+                with connection.begin_nested():
+                    connection.execute(
+                        sa.text("INSERT INTO news (id, body) VALUES (31, 'x')")
+                    )
 
-    await _set_application_tenant(conn, _TENANT_A)
-    # This role is subject to RLS, yet can set the custom bypass GUC itself.
-    await conn.execute(text("SELECT set_config('app.bypass_rls', 'on', true)"))
-    assert await _ids(conn, "news") == {1, 2, 3, 4}
-    # The message participant policy still applies: chat B remains invisible.
-    assert await _ids(conn, "messages") == {11, 12, 13}
+
+def test_messages_need_both_participation_and_the_session_tenant(
+    rls_schema: str,
+) -> None:
+    with _rolled_back(_ORDINARY_URL, rls_schema) as connection:
+        with _application_context(connection, tenant=_TENANT_A):
+            connection.execute(
+                sa.text("SELECT set_config('app.current_user_id', :u, true)"),
+                {"u": str(_USER_A)},
+            )
+            # Participant of chat A and tenant A: only 11. Row 12 is tenant B,
+            # row 13 has a NULL tenant, and row 14 belongs to chat B.
+            assert _ids(connection, "messages") == {11}
+
+
+def test_historical_policy_cause_is_not_the_permissive_true_policy(
+    rls_schema: str,
+) -> None:
+    """Establish the original AUD-277 cause on real tables, as an ordinary role.
+
+    The historical USING (true) policy was PERMISSIVE and ANDed with a RESTRICTIVE
+    tenant predicate, so it did not widen access by itself. The leaks came from the
+    GUC bypass (AUD-450) and from NULL-tenant rows (AUD-360).
+    """
+    with _rolled_back(_ORDINARY_URL, rls_schema) as connection:
+        connection.execute(
+            sa.text(
+                "CREATE TABLE news_historical "
+                "(id integer PRIMARY KEY, tenant_id uuid, body text)"
+            )
+        )
+        for statement in _HISTORICAL_POLICIES:
+            connection.execute(sa.text(statement.format(table="news_historical")))
+        # The historical WITH CHECK honoured the GUC, which any session could set by
+        # hand, so the seed sets it directly. The listener no longer writes it.
+        connection.execute(sa.text("SELECT set_config('app.bypass_rls', 'on', true)"))
+        connection.execute(
+            sa.text(
+                "INSERT INTO news_historical (id, tenant_id, body) "
+                "VALUES (1, :a, 'a'), (2, :b, 'b'), (3, NULL, 'null')"
+            ),
+            {"a": _TENANT_A, "b": _TENANT_B},
+        )
+        # Clear the hand-set GUC before the tenant-scoped reads.
+        connection.execute(sa.text("SELECT set_config('app.bypass_rls', '', true)"))
+        with _application_context(connection, tenant=_TENANT_A):
+            assert _ids(connection, "news_historical") == {1, 3}
+            connection.execute(
+                sa.text("SELECT set_config('app.bypass_rls', 'on', true)")
+            )
+            assert _ids(connection, "news_historical") == {1, 2, 3}

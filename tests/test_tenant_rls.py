@@ -156,10 +156,9 @@ def test_pg_tenant_context_listener_postgresql() -> None:
     set_bypass_rls(False)
     set_pg_tenant_context(None, None, mock_conn)
 
-    assert mock_conn.execute.call_count == 2
+    assert mock_conn.execute.call_count == 1
     executed_sqls = [str(call.args[0]) for call in mock_conn.execute.call_args_list]
-    assert "SELECT set_config('app.current_tenant', '', true);" in executed_sqls
-    assert "SELECT set_config('app.bypass_rls', '', true);" in executed_sqls
+    assert executed_sqls == ["SELECT set_config('app.current_tenant', '', true);"]
     for sql in executed_sqls:
         assert "RESET LOCAL" not in sql
 
@@ -177,18 +176,37 @@ def test_pg_tenant_context_listener_postgresql() -> None:
     finally:
         set_current_tenant(None)
 
-    # 3. Test bypass RLS context
+    # 3. A bypass-scoped session writes nothing: the flag is not a database privilege
+    # (AUD-450), and privileged access comes only from ue_rls_bypass membership.
     mock_conn.reset_mock()
     set_bypass_rls(True)
     try:
         set_pg_tenant_context(None, None, mock_conn)
-        assert mock_conn.execute.call_count == 1
-        call_args = mock_conn.execute.call_args
-        assert "SELECT set_config('app.bypass_rls', :bypass_rls, true);" in str(
-            call_args[0][0]
-        )
-        assert call_args[0][1] == {"bypass_rls": "on"}
+        mock_conn.execute.assert_not_called()
     finally:
+        set_bypass_rls(False)
+
+
+def test_pg_tenant_context_listener_never_writes_the_bypass_guc() -> None:
+    """AUD-450: no scope, tenant or bypass, makes the listener set app.bypass_rls."""
+    mock_conn = MagicMock()
+    mock_conn.dialect.name = "postgresql"
+    scopes = (
+        (None, False),
+        ("tenant-guu-789", False),
+        (None, True),
+        ("tenant-guu-789", True),
+    )
+    try:
+        for tenant, bypass in scopes:
+            mock_conn.reset_mock()
+            set_current_tenant(tenant)
+            set_bypass_rls(bypass)
+            set_pg_tenant_context(None, None, mock_conn)
+            for call in mock_conn.execute.call_args_list:
+                assert "app.bypass_rls" not in str(call.args[0])
+    finally:
+        set_current_tenant(None)
         set_bypass_rls(False)
 
 

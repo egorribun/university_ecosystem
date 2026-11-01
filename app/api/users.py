@@ -383,7 +383,14 @@ async def create_user(
     service: FromDishka[UserComplianceService],
     user: models.User = Depends(get_current_admin_user_from_dishka),
 ) -> schemas.UserOut:
-    user_dto = await service.create_user(data, request, user)
+    from fastapi import HTTPException
+
+    try:
+        user_dto = await service.create_user(data, request, user)
+    except ValueError as exc:
+        # AUD-392: password-policy violations are raised as ValueError before any
+        # write.  Map them to 400 as registration does instead of an unhandled 500.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return schemas.UserOut.model_validate(user_dto)
 
 

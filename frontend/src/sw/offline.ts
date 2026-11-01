@@ -1,20 +1,30 @@
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope
 
-import { openDB } from "idb"
+import { openDB, type IDBPDatabase } from "idb"
 import { warn } from "./logger"
 import {
   NOTIFICATION_INTERACTIONS_DB_NAME as CLICK_DB_NAME,
   NOTIFICATION_INTERACTIONS_DB_VERSION as DB_VERSION,
 } from "../constants/notificationInteractionsDb"
+import { OFFLINE_DEAD_LETTER_MESSAGE_TYPE } from "../constants/serviceWorkerMessages"
 import { requestReplayCredentials } from "./replayCredentials"
+import {
+  claimReplayLease,
+  releaseReplayLease,
+  renewReplayLease,
+  REPLAY_LEASE_STORE,
+} from "./replayLease"
 import {
   isExpiredOtherSessionRecord,
   isRetryableReplayStatus,
+  REPLAY_LEASE_POLL_MS,
+  REPLAY_LEASE_RENEW_MS,
   REPLAY_MAX_ATTEMPTS,
   REPLAY_REQUEST_TIMEOUT_MS,
   replayBackoffMs,
 } from "./replayPolicy"
+import { broadcastMessage } from "./utils"
 
 export const STORES = {
   NAVIGATION: "pending-navigations",
@@ -46,7 +56,7 @@ export interface PendingMutationRecord {
  * All functions should use this instead of openDB directly.
  */
 async function getDatabase() {
-  return openDB(CLICK_DB_NAME, DB_VERSION, {
+  const connection: IDBPDatabase = await openDB(CLICK_DB_NAME, DB_VERSION, {
     upgrade(db, _oldVersion, _newVersion, transaction) {
       if (!db.objectStoreNames.contains(STORES.NAVIGATION)) {
         db.createObjectStore(STORES.NAVIGATION, { keyPath: "id", autoIncrement: true })
@@ -61,7 +71,7 @@ async function getDatabase() {
       } else {
         // Upgrade: add dedupeKey index using the active versionchange transaction.
         // db.transaction() cannot be called during onupgradeneeded — only the
-        // implicit upgrade transaction is valid here. Because DB_VERSION is 4,
+        // implicit upgrade transaction is valid here. Because DB_VERSION is 5,
         // an upgrade callback with an existing store necessarily comes from an
         // older version.
         const store = transaction.objectStore(STORES.REPORT)
@@ -81,8 +91,18 @@ async function getDatabase() {
         mutationStore.createIndex("category", "category", { unique: false })
         mutationStore.createIndex("dedupeKey", "dedupeKey", { unique: false })
       }
+      // Version 5: the lease row is added to an existing database without touching the queues.
+      if (!db.objectStoreNames.contains(REPLAY_LEASE_STORE)) {
+        db.createObjectStore(REPLAY_LEASE_STORE, { keyPath: "id" })
+      }
+    },
+    // An open connection from an older page or worker must not hold the schema upgrade
+    // hostage. Closing it lets this version open; the next operation reopens on demand.
+    blocking() {
+      connection.close()
     },
   })
+  return connection
 }
 
 /**
@@ -277,31 +297,72 @@ async function flushOfflineQueues() {
   await withReplayLock(replayHeldRecords)
 }
 
-/** Serializes passes across worker instances. Without Web Locks the in-process chain still applies. */
-function withReplayLock(task: () => Promise<void>): Promise<void> {
+/** A replay pass receives its connection and a check that it still owns the queue. */
+type ReplayTask = (db: ReplayDatabase, isHeld: () => Promise<boolean>) => Promise<void>
+
+/** Opens one connection for a pass and closes it once the pass settles. */
+async function withOpenDatabase<T>(run: (db: ReplayDatabase) => Promise<T>): Promise<T> {
+  const db = await getDatabase()
+  try {
+    return await run(db)
+  } finally {
+    db.close()
+  }
+}
+
+/**
+ * Serializes passes across worker instances. Without Web Locks, the IndexedDB lease is the
+ * cross-worker fallback, and the in-process chain still orders passes within one worker.
+ */
+function withReplayLock(task: ReplayTask): Promise<void> {
   const locks: LockManager | undefined = self.navigator.locks
-  return locks ? locks.request(REPLAY_LOCK_NAME, { mode: "exclusive" }, task) : task()
+  return locks
+    ? locks.request(REPLAY_LOCK_NAME, { mode: "exclusive" }, () =>
+        withOpenDatabase((db) => task(db, () => Promise.resolve(true)))
+      )
+    : withReplayLease(task)
+}
+
+/**
+ * Runs a pass while holding the IndexedDB replay lease. The lease is renewed while the pass
+ * runs, so a healthy holder keeps it. A worker that stopped renewing (for example a terminated
+ * one) loses it after the TTL and another worker can take over. A live holder makes this pass
+ * wait, so passes never overlap.
+ */
+function withReplayLease(task: ReplayTask): Promise<void> {
+  return withOpenDatabase(async (db) => {
+    const owner = crypto.randomUUID()
+    while (!(await claimReplayLease(db, owner, Date.now()))) {
+      await new Promise((resolve) => setTimeout(resolve, REPLAY_LEASE_POLL_MS))
+    }
+    const isHeld = () => renewReplayLease(db, owner, Date.now())
+    const renewal = setInterval(() => void isHeld(), REPLAY_LEASE_RENEW_MS)
+    try {
+      await task(db, isHeld)
+    } finally {
+      clearInterval(renewal)
+      await releaseReplayLease(db, owner)
+    }
+  })
 }
 
 /**
  * Replays only the records bound to the session that a live window vouches for. Records
  * without a session binding, and records bound to any other session, are never sent.
  */
-async function replayHeldRecords(): Promise<void> {
-  const db = await getDatabase()
-  try {
-    const credentials = await requestReplayCredentials()
-    if (!credentials) return
-    const passSessionNonce = credentials.sessionNonce
-    const now = Date.now()
-    for (const store of REPLAY_STORES) {
-      const records = (await db.getAll(store)) as QueuedRecord[]
-      for (const record of records) {
-        if ((await replayRecord(db, store, record, passSessionNonce, now)) === "stop") return
-      }
+async function replayHeldRecords(
+  db: ReplayDatabase,
+  isHeld: () => Promise<boolean>
+): Promise<void> {
+  const credentials = await requestReplayCredentials()
+  if (!credentials) return
+  const passSessionNonce = credentials.sessionNonce
+  const now = Date.now()
+  for (const store of REPLAY_STORES) {
+    const records = (await db.getAll(store)) as QueuedRecord[]
+    for (const record of records) {
+      if ((await replayRecord(db, store, record, passSessionNonce, now, isHeld)) === "stop") return
     }
-  } finally {
-    db.close()
   }
 }
 
@@ -310,7 +371,8 @@ async function replayRecord(
   store: ReplayStore,
   record: QueuedRecord,
   passSessionNonce: string,
-  now: number
+  now: number,
+  isHeld: () => Promise<boolean>
 ): Promise<"stop" | undefined> {
   // An unbound record has no proven owner, so no window can release it.
   if (!record.sessionNonce) return
@@ -329,6 +391,8 @@ async function replayRecord(
   // Recheck only send-eligible rows, without adopting another session during this pass.
   const credentials = await requestReplayCredentials()
   if (!credentials || credentials.sessionNonce !== passSessionNonce) return "stop"
+  // A pass whose lease was taken over must not send: the new holder owns this queue now.
+  if (!(await isHeld())) return "stop"
 
   const attempt = await deliver(target, record, credentials.csrfToken)
   if (attempt.status === "delivered") {
@@ -359,6 +423,10 @@ async function deadLetter(
 ): Promise<void> {
   await db.delete(store, id)
   warn("Dead-lettered offline record", { store, id, reason })
+  // Visibility only: the notice names the queue and the reason, never the URL, payload or account.
+  await broadcastMessage({ type: OFFLINE_DEAD_LETTER_MESSAGE_TYPE, store, reason }).catch(
+    () => undefined
+  )
 }
 
 function replayTarget(store: ReplayStore, record: QueuedRecord): string | undefined {

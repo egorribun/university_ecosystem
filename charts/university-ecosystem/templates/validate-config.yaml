@@ -9,6 +9,10 @@
   {{- if lt $replayWindowSeconds $accessTokenSeconds -}}
     {{- fail (printf "wsHub.config.revocationReplayWindowSeconds (%d) must be at least backend.config.accessTokenExpireMinutes * 60 (%d)" $replayWindowSeconds $accessTokenSeconds) -}}
   {{- end -}}
+  {{- /* The CACHE_INVALIDATIONS stream keeps cache.revoke messages for seven days. */ -}}
+  {{- if gt $replayWindowSeconds 604800 -}}
+    {{- fail (printf "wsHub.config.revocationReplayWindowSeconds (%d) must not exceed the 604800-second CACHE_INVALIDATIONS stream retention" $replayWindowSeconds) -}}
+  {{- end -}}
 {{- end -}}
 {{- if .Values.gatewayApi.enabled -}}
   {{- if .Values.ingress.enabled -}}

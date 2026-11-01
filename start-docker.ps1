@@ -1806,6 +1806,8 @@ function Test-TemporalServiceToken {
 
         if ($header.alg -ne 'RS256' -or $header.kid -ne 'primary') { return $false }
         if ($payload.sub -ne $Subject -or $payload.aud -ne $Audience) { return $false }
+        $permissions = @($payload.permissions)
+        if ($permissions -notcontains 'system:reader' -or $permissions -notcontains 'default:writer') { return $false }
         if (-not $payload.jti -or $null -eq $payload.iat -or $null -eq $payload.exp) { return $false }
         if ([long]$payload.iat -gt ($now + 60)) { return $false }
         if ([long]$payload.exp -le ($now + $MinimumValiditySeconds)) { return $false }
@@ -1891,6 +1893,10 @@ function New-TemporalServiceToken {
         iat = $now
         exp = $exp
         jti = $jti
+        # Temporal's default claim mapper reads roles only from this claim, and the
+        # default authorizer denies every token without them (AUD-506). Scope the
+        # file-processor to cluster reads (GetSystemInfo) and default-namespace writes.
+        permissions = @('system:reader', 'default:writer')
     }
 
     $headerJson  = $headerObj  | ConvertTo-Json -Compress

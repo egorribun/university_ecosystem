@@ -91,14 +91,18 @@ class MfaSettingsMixin:
     trusted_device_expire_days: int = 30
     trusted_device_cookie_name: str = "trusted_device"
 
-    password_min_length: int = 8
+    # AUD-392 orchestrator decision: length 12 and zxcvbn score 2 are the defaults
+    # in every environment.  Enforced on set/change/reset/registration only;
+    # login verifies existing hashes without re-checking policy, so accounts
+    # created under the former 8/1 defaults are not locked out.
+    password_min_length: int = 12
     password_max_length: int = 200
     password_min_character_classes: int = 3
     password_require_uppercase: bool = True
     password_require_lowercase: bool = True
     password_require_digit: bool = True
     password_require_special: bool = True
-    password_zxcvbn_min_score: int = 1
+    password_zxcvbn_min_score: int = 2
     # AUD-392: unset resolves to enabled in staging/production (see validator below).
     password_hibp_check_enabled: bool = False
     password_hibp_api_url: str = "https://api.pwnedpasswords.com/range"

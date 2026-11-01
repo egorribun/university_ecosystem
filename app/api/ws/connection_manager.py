@@ -348,6 +348,13 @@ class ConnectionManager:
         PERF-1 (audit 2026-02-26): Fan-out via asyncio.gather so latency scales
         with the slowest single send rather than O(N × send_time).
         """
+        room_sem = await _get_room_semaphore(str(chat_id))
+        session_lock = asyncio.Lock()
+
+        # AUD-454: the authoritative roster is read once per broadcast, as a single
+        # query for the whole recipient set, immediately before fan-out is scheduled.
+        # A membership removal committed while this broadcast was starting is
+        # therefore honored; a roster read taken at call start could not see it.
         if db_session is None:
             participant_ids = await self._get_chat_participants(chat_id)
         else:
@@ -357,9 +364,6 @@ class ConnectionManager:
             for p_id in participant_ids
             if exclude_user_id is None or p_id != exclude_user_id
         ]
-
-        room_sem = await _get_room_semaphore(str(chat_id))
-        session_lock = asyncio.Lock()
 
         async def _throttled_send(uid: uuid.UUID) -> int:
             async with room_sem:

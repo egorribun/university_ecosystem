@@ -335,6 +335,14 @@ type Hub struct {
 	// uses JetStream. A non-nil JS context is insufficient after core fallback.
 	chatReplayAvailable   atomic.Bool
 	chatStreamIncarnation string
+	// revocationCatchingUp is set while the cache.revoke replay window is still
+	// draining. Admission and readiness fail closed until it clears (AUD-478).
+	revocationCatchingUp atomic.Bool
+	// revocationWatchdogInterval is how often an open admission barrier re-checks the
+	// replay consumer. revocationConnected overrides the connection probe in tests;
+	// nil means the connection's own state.
+	revocationWatchdogInterval time.Duration
+	revocationConnected        func(*nats.Conn) bool
 }
 
 const (
@@ -378,6 +386,11 @@ var (
 	resumeTokenNowFunc    = time.Now
 	coreNATSSubscribeFunc = func(nc *nats.Conn, subject string, handler nats.MsgHandler) (*nats.Subscription, error) {
 		return nc.Subscribe(subject, handler)
+	}
+	// revocationConsumerInfoFunc reads the cache.revoke consumer position. It is a
+	// test seam so catch-up states can be driven without a live JetStream server.
+	revocationConsumerInfoFunc = func(sub *nats.Subscription) (*nats.ConsumerInfo, error) {
+		return sub.ConsumerInfo()
 	}
 )
 
@@ -681,6 +694,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		revocationReplayWindow:            revocationReplayWindow,
 	}
 	hub.sessionRevocationCheck = hub.checkJTINotRevoked
+	hub.revocationWatchdogInterval = time.Second
 	return hub
 }
 
@@ -1353,9 +1367,10 @@ func (h *Hub) scheduleClientEviction(client *Client) {
 // delivery to the current chat.{room_id} pattern.  Same tightening applied to
 // "notifications.*".  Both are intentional breaking changes if any internal
 // service currently publishes multi-level subjects under these prefixes.
-//
-//nolint:cyclop
 func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
+	// AUD-478: the admission barrier starts closed. Only the cache.revoke replay
+	// watcher opens it, so every failure path below leaves admission refused.
+	h.revocationCatchingUp.Store(true)
 	if h.Nats == nil {
 		err := fmt.Errorf("NATS connection is not configured")
 		if h.Logger != nil {
@@ -1364,82 +1379,138 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 		return err
 	}
 
-	var chatSub *nats.Subscription
-	var notifSub *nats.Subscription
-	var err error
 	h.chatReplayAvailable.Store(false)
 	h.chatStreamIncarnation = ""
-	if h.js == nil {
-		h.js, err = jetStreamContextFunc(h.Nats)
-		if err != nil {
-			return fmt.Errorf("initialize JetStream for durable cache invalidations: %w", err)
-		}
+	if err := h.ensureJetStreamContext(); err != nil {
+		return err
 	}
+	if err := h.subscribeChatAndNotifications(appCtx); err != nil {
+		return err
+	}
+	if err := h.subscribeCacheInvalidation(appCtx); err != nil {
+		return err
+	}
+	revocationSub, err := h.subscribeCacheRevocation(appCtx)
+	if err != nil {
+		return err
+	}
+	if err := h.subscribeControl(appCtx); err != nil {
+		return err
+	}
+	h.subscribeKeyRotation(appCtx)
+	h.watchRevocationCatchUp(appCtx, revocationSub)
 
-	if h.enableJetStream {
-		if h.internalSecret == "" {
-			return fmt.Errorf("secure chat replay requires a non-empty signing secret")
-		}
-		streamInfo, infoErr := h.js.StreamInfo(h.streamChat)
-		if infoErr != nil {
-			return fmt.Errorf("load chat stream metadata: %w", infoErr)
-		}
-		if streamInfo == nil || streamInfo.Created.IsZero() {
-			return fmt.Errorf("chat stream incarnation is unavailable")
-		}
-		incarnation := streamInfo.Created.UTC().Format(time.RFC3339Nano)
-		// Chat and notification consumers are ephemeral and start at new messages.
-		// Each replica must receive every live event for its own sockets, so no shared
-		// durable name is used: nats.go rejects a second non-queue subscriber on one push
-		// consumer, and a per-replica durable would retain and redeliver backlog after a
-		// reconnect, duplicating what the signed resume replay already serves.
-		chatSub, err = h.js.Subscribe("chat.*", h.handleChat(appCtx),
-			nats.DeliverNew(),
-			nats.AckExplicit(),
-			nats.ManualAck(),
-		)
-		if err != nil {
-			return fmt.Errorf("subscribe to JetStream chat events: %w", err)
-		}
-		notifSub, err = h.js.Subscribe("notifications.*", h.handleNotifications(appCtx),
-			nats.DeliverNew(),
-			nats.AckExplicit(),
-			nats.ManualAck(),
-		)
-		if err != nil {
-			cleanupErr := chatSub.Unsubscribe()
-			return fmt.Errorf("subscribe to JetStream notification events: %w", errors.Join(err, cleanupErr))
-		}
-		h.chatStreamIncarnation = incarnation
-		h.chatReplayAvailable.Store(true)
+	if h.chatReplayAvailable.Load() {
+		h.Logger.InfoContext(appCtx, "Subscribed to NATS JetStream streams (CHAT_EVENTS, NOTIFICATIONS_EVENTS)")
 	} else {
-		chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleCoreChat(appCtx))
-		if err != nil {
-			h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
-			return err
-		}
-		notifSub, err = coreNATSSubscribeFunc(h.Nats, "notifications.*", h.handleNotifications(appCtx))
+		h.Logger.InfoContext(appCtx, "Subscribed to NATS topics")
+	}
+	return nil
+}
+
+// ensureJetStreamContext creates the JetStream context used by the durable
+// cache-invalidation consumers when NewHub did not supply one.
+func (h *Hub) ensureJetStreamContext() error {
+	if h.js != nil {
+		return nil
+	}
+	js, err := jetStreamContextFunc(h.Nats)
+	h.js = js
+	if err != nil {
+		return fmt.Errorf("initialize JetStream for durable cache invalidations: %w", err)
+	}
+	return nil
+}
+
+// subscribeChatAndNotifications binds the chat and notification subjects. The
+// JetStream path is used only when enabled; the Core NATS fallback delivers the
+// same subjects without replay.
+func (h *Hub) subscribeChatAndNotifications(appCtx context.Context) error {
+	var chatSub, notifSub *nats.Subscription
+	var err error
+	if h.enableJetStream {
+		chatSub, notifSub, err = h.subscribeJetStreamChatAndNotifications(appCtx)
+	} else {
+		chatSub, notifSub, err = h.subscribeCoreChatAndNotifications(appCtx)
 	}
 	if err != nil {
-		h.Logger.ErrorContext(appCtx, "NATS notifications subscription failed — hub cannot deliver messages", "err", err)
 		return err
 	}
 	h.subs = append(h.subs, chatSub, notifSub)
+	return nil
+}
 
-	// The backend transactional outbox publishes two signed event classes on separate
-	// subjects of CACHE_INVALIDATIONS: pure authorization-cache invalidations on
-	// cache.invalidate and room membership revocations (evict_room) on cache.revoke.
-	// Each subject has exactly one ephemeral consumer per replica, so every verified
-	// event is applied once per replica.
-	//
-	// Pure invalidations are live-only. ws-hub replicas are stateless, so a fresh
-	// replica holds no invalidation-derived state and must not replay the
-	// seven-day CACHE_INVALIDATIONS retention on every start (AUD-478). Both consumers
-	// remain JetStream consumers, so acknowledgements still apply even when Core NATS
-	// is selected for chat delivery.
+func (h *Hub) subscribeJetStreamChatAndNotifications(appCtx context.Context) (*nats.Subscription, *nats.Subscription, error) {
+	if h.internalSecret == "" {
+		return nil, nil, fmt.Errorf("secure chat replay requires a non-empty signing secret")
+	}
+	streamInfo, err := h.js.StreamInfo(h.streamChat)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load chat stream metadata: %w", err)
+	}
+	if streamInfo == nil || streamInfo.Created.IsZero() {
+		return nil, nil, fmt.Errorf("chat stream incarnation is unavailable")
+	}
+	incarnation := streamInfo.Created.UTC().Format(time.RFC3339Nano)
+	// Chat and notification consumers are ephemeral and start at new messages.
+	// Each replica must receive every live event for its own sockets, so no shared
+	// durable name is used: nats.go rejects a second non-queue subscriber on one push
+	// consumer, and a per-replica durable would retain and redeliver backlog after a
+	// reconnect, duplicating what the signed resume replay already serves.
+	chatSub, err := h.js.Subscribe("chat.*", h.handleChat(appCtx),
+		nats.DeliverNew(),
+		nats.AckExplicit(),
+		nats.ManualAck(),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("subscribe to JetStream chat events: %w", err)
+	}
+	notifSub, err := h.js.Subscribe("notifications.*", h.handleNotifications(appCtx),
+		nats.DeliverNew(),
+		nats.AckExplicit(),
+		nats.ManualAck(),
+	)
+	if err != nil {
+		cleanupErr := chatSub.Unsubscribe()
+		return nil, nil, fmt.Errorf("subscribe to JetStream notification events: %w", errors.Join(err, cleanupErr))
+	}
+	h.chatStreamIncarnation = incarnation
+	h.chatReplayAvailable.Store(true)
+	return chatSub, notifSub, nil
+}
+
+func (h *Hub) subscribeCoreChatAndNotifications(appCtx context.Context) (*nats.Subscription, *nats.Subscription, error) {
+	chatSub, err := coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleCoreChat(appCtx))
+	if err != nil {
+		h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
+		return nil, nil, err
+	}
+	notifSub, err := coreNATSSubscribeFunc(h.Nats, "notifications.*", h.handleNotifications(appCtx))
+	if err != nil {
+		h.Logger.ErrorContext(appCtx, "NATS notifications subscription failed — hub cannot deliver messages", "err", err)
+		return nil, nil, err
+	}
+	return chatSub, notifSub, nil
+}
+
+// subscribeCacheInvalidation binds pure authorization-cache invalidations.
+//
+// The backend transactional outbox publishes two signed event classes on separate
+// subjects of CACHE_INVALIDATIONS: pure authorization-cache invalidations on
+// cache.invalidate and room membership revocations (evict_room) on cache.revoke.
+// Each subject has exactly one ephemeral consumer per replica, so every verified
+// event is applied once per replica.
+//
+// Pure invalidations are live-only. ws-hub replicas are stateless, so a fresh
+// replica holds no invalidation-derived state and must not replay the
+// seven-day CACHE_INVALIDATIONS retention on every start (AUD-478). Both consumers
+// remain JetStream consumers, so acknowledgements still apply even when Core NATS
+// is selected for chat delivery.
+func (h *Hub) subscribeCacheInvalidation(appCtx context.Context) error {
 	invHandler := h.handleCacheInvalidation(appCtx)
 	invOpts := []nats.SubOpt{nats.DeliverNew(), nats.AckExplicit(), nats.ManualAck()}
 	var invSub *nats.Subscription
+	var err error
 	if h.subscribeCacheInvalidations != nil {
 		invSub, err = h.subscribeCacheInvalidations(invHandler, invOpts...)
 	} else {
@@ -1452,11 +1523,16 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	if invSub != nil {
 		h.subs = append(h.subs, invSub)
 	}
+	return nil
+}
 
-	// A room revocation must still reach a replica that starts after publication,
-	// for as long as the revoked token can remain usable. This consumer therefore
-	// starts at now minus the revocation replay window, which is bounded by the
-	// access-token lifetime rather than by stream retention.
+// subscribeCacheRevocation binds room revocations (evict_room) on cache.revoke.
+//
+// A room revocation must still reach a replica that starts after publication,
+// for as long as the revoked token can remain usable. This consumer therefore
+// starts at now minus the revocation replay window, which is bounded by the
+// access-token lifetime rather than by stream retention.
+func (h *Hub) subscribeCacheRevocation(appCtx context.Context) (*nats.Subscription, error) {
 	revocationHandler := h.handleCacheInvalidation(appCtx)
 	revocationOpts := []nats.SubOpt{
 		nats.StartTime(time.Now().Add(-h.revocationReplayWindow)),
@@ -1464,6 +1540,7 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 		nats.ManualAck(),
 	}
 	var revocationSub *nats.Subscription
+	var err error
 	if h.subscribeCacheInvalidations != nil {
 		revocationSub, err = h.subscribeCacheInvalidations(revocationHandler, revocationOpts...)
 	} else {
@@ -1471,36 +1548,128 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	}
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "JetStream room revocation subscription failed", "err", err)
-		return err
+		return nil, err
 	}
 	if revocationSub != nil {
 		h.subs = append(h.subs, revocationSub)
 	}
+	return revocationSub, nil
+}
 
+// revocationCatchUpPollInterval bounds how often the admission barrier re-reads
+// the cache.revoke consumer position while the replay is still draining.
+const revocationCatchUpPollInterval = 50 * time.Millisecond
+
+// watchRevocationCatchUp starts the watcher that opens the admission barrier. A
+// nil subscription has no replay to observe, so the barrier stays closed.
+func (h *Hub) watchRevocationCatchUp(appCtx context.Context, sub *nats.Subscription) {
+	if sub == nil {
+		return
+	}
+	StartTrackedGoroutine(func() { h.awaitRevocationCatchUp(appCtx, sub) })
+}
+
+// awaitRevocationCatchUp ties the admission barrier to the cache.revoke consumer for
+// the life of the subscription (AUD-478). The barrier closes when the NATS connection
+// is down, when the consumer position cannot be read, or when the subscription is
+// gone. It opens only when the consumer reports no undelivered and no unacknowledged
+// messages, so a replica that lost its replay stays closed until the consumer has
+// drained again. Live revocations in flight do not close an open barrier. The watcher
+// exits when the context ends or the subscription is no longer valid.
+func (h *Hub) awaitRevocationCatchUp(ctx context.Context, sub *nats.Subscription) {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	lastReason := ""
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		if !sub.IsValid() {
+			h.closeRevocationAdmission(ctx, &lastReason, "the cache.revoke subscription is closed", nil)
+			return
+		}
+		timer.Reset(h.checkRevocationCatchUp(ctx, sub, &lastReason))
+	}
+}
+
+// checkRevocationCatchUp evaluates the admission barrier once and returns the delay
+// before the next evaluation.
+func (h *Hub) checkRevocationCatchUp(ctx context.Context, sub *nats.Subscription, lastReason *string) time.Duration {
+	if !h.natsConnectionUp() {
+		h.closeRevocationAdmission(ctx, lastReason, "the NATS connection is down", nil)
+		return revocationCatchUpPollInterval
+	}
+	info, err := revocationConsumerInfoFunc(sub)
+	if err != nil {
+		h.closeRevocationAdmission(ctx, lastReason, "the cache.revoke consumer position is unavailable", err)
+		return revocationCatchUpPollInterval
+	}
+	if info.NumPending == 0 && info.NumAckPending == 0 {
+		*lastReason = ""
+		if h.revocationCatchingUp.Swap(false) {
+			h.Logger.InfoContext(ctx, "Room revocation replay caught up; WebSocket admission enabled")
+		}
+		return h.revocationWatchdogInterval
+	}
+	// Live revocations are in flight. An open barrier stays open, and a closed barrier
+	// stays closed until the consumer has drained.
+	if h.revocationCatchingUp.Load() {
+		return revocationCatchUpPollInterval
+	}
+	return h.revocationWatchdogInterval
+}
+
+// closeRevocationAdmission closes the admission barrier. The loss is logged when it
+// starts and whenever its reason changes, not on every poll.
+func (h *Hub) closeRevocationAdmission(ctx context.Context, lastReason *string, reason string, err error) {
+	h.revocationCatchingUp.Store(true)
+	if *lastReason == reason {
+		return
+	}
+	*lastReason = reason
+	h.Logger.WarnContext(ctx, "Room revocation replay not current; WebSocket admission closed until it drains",
+		"reason", reason, "err", err)
+}
+
+// natsConnectionUp reports whether the connection that carries the replay consumer is up.
+func (h *Hub) natsConnectionUp() bool {
+	if h.revocationConnected != nil {
+		return h.revocationConnected(h.Nats)
+	}
+	return h.Nats != nil && h.Nats.IsConnected()
+}
+
+// RevocationCatchingUp reports whether the cache.revoke replay is still draining.
+// While it reports true, WebSocket and WebTransport admission and readiness fail
+// closed (AUD-478).
+func (h *Hub) RevocationCatchingUp() bool {
+	return h.revocationCatchingUp.Load()
+}
+
+func (h *Hub) subscribeControl(appCtx context.Context) error {
 	ctrlSub, err := coreNATSSubscribeFunc(h.Nats, "ws_hub.control", h.handleControlMessage(appCtx))
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS control subscription failed — hub cannot receive session control events", "err", err)
 		return err
 	}
 	h.subs = append(h.subs, ctrlSub)
+	return nil
+}
 
-	// RZ-21-05 (audit 2026-03-25 Wave 21): Pre-warm JWKS cache on key rotation.
+// subscribeKeyRotation pre-warms the JWKS cache on key rotation (RZ-21-05). Failure
+// is not fatal: the hub falls back to on-demand JWKS refresh.
+func (h *Hub) subscribeKeyRotation(appCtx context.Context) {
 	jwksSub, err := coreNATSSubscribeFunc(h.Nats, "keys.rotated", func(msg *nats.Msg) {
 		h.Logger.InfoContext(appCtx, "JWKS rotation event received — pre-warming cache")
 		h.tryForceRefreshJWKS(appCtx)
 	})
 	if err != nil {
 		h.Logger.WarnContext(appCtx, "NATS keys.rotated subscription failed — falling back to on-demand refresh", "err", err)
-	} else {
-		h.subs = append(h.subs, jwksSub)
+		return
 	}
-
-	if h.chatReplayAvailable.Load() {
-		h.Logger.InfoContext(appCtx, "Subscribed to NATS JetStream streams (CHAT_EVENTS, NOTIFICATIONS_EVENTS)")
-	} else {
-		h.Logger.InfoContext(appCtx, "Subscribed to NATS topics")
-	}
-	return nil
+	h.subs = append(h.subs, jwksSub)
 }
 
 func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {

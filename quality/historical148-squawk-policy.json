@@ -1,6 +1,6 @@
 {
   "schema": "ue-historical148-policy-v1",
-  "status": "prepared-inactive",
+  "status": "owner-activated-finite",
   "owner": "egorribun",
   "preparation_approved_on": "2026-10-28",
   "execution_scope": "new-empty-mvp-only",
@@ -24,7 +24,7 @@
     ".github/workflows/ci.yml": "26f6d29a19ca378b433ee2f8ba957ad518003776",
     ".squawk.toml": "d31f69b8a7fdf34adae4a272dfb902f45305959d",
     "alembic.ini": "ff320e0800931949e348b6059593cfda95c750e4",
-    "alembic/env.py": "e8d5432623b49ce3dcf080cd64d8e38129073a72",
+    "alembic/env.py": "ac2f50a28639157129b5093cfa15d7ae1809cca3",
     "alembic/versions/148642dd1207_fix_missing_tables.py": "d762c45c9248c14eccf57ac8e9e2dae8867777c1",
     "pyproject.toml": "ecce4c433635d7c8c5786e5bf66507300dd8fb92",
     "scripts/quality/read_alembic_revision.py": "be2a19f8a918cfc6ae082c5ba83748f7c3829ba6",
@@ -583,5 +583,14 @@
     "workflow_blob": "26f6d29a19ca378b433ee2f8ba957ad518003776",
     "workflow_run_id": "41005719399",
     "workflow_sha": "1eb4a25de262c255c97efdfdd327153c01b3c72a"
+  },
+  "activation": {
+    "decision_date": "2026-10-31",
+    "owner": "egorribun",
+    "decision_source": "owner decision in chat, 2026-10-31",
+    "admitted_inventory": "exactly 37 diagnostic findings: 13 ordinary-parent-live and 24 expanded-populated-diagnostic",
+    "matching": "exact scenario SQL digest, rule and location; any new, changed, missing, duplicate or extra finding fails closed",
+    "raw_exits": "raw Squawk exits must be the recorded failure (1) and are reported, never converted to success",
+    "expires_at": "2026-11-13T00:00:00Z"
   }
 }

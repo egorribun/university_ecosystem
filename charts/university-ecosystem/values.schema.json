@@ -1152,7 +1152,8 @@
             },
             "revocationReplayWindowSeconds": {
               "type": "integer",
-              "minimum": 1
+              "minimum": 1,
+              "maximum": 604800
             },
             "otelEndpoint": {
               "type": "string",

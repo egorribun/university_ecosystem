@@ -127,6 +127,14 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	setupCtx, setupCancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer setupCancel()
 
+	// AUD-478: refuse admission until the room-revocation replay has drained. This
+	// runs before the upgrade ticket is consumed, so a refused client keeps its ticket.
+	if h.RevocationCatchingUp() {
+		h.Logger.WarnContext(setupCtx, "WebSocket connection refused: room revocation replay is still draining")
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
 	// RZ-2: per-IP token-bucket check BEFORE any cryptographic work.
 	clientIP := RealIP(r, cfg.TrustedProxiesSet, cfg.TrustedCIDRs)
 	if !h.UpgradeLimiter.Allow(clientIP) {
@@ -236,6 +244,13 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *config.Config) {
 	setupCtx, setupCancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer setupCancel()
+
+	// AUD-478: WebTransport admission follows the same replay barrier as WebSocket.
+	if h.RevocationCatchingUp() {
+		h.Logger.WarnContext(setupCtx, "WebTransport connection refused: room revocation replay is still draining")
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
 
 	clientIP := RealIP(r, cfg.TrustedProxiesSet, cfg.TrustedCIDRs)
 	if !h.UpgradeLimiter.Allow(clientIP) {
