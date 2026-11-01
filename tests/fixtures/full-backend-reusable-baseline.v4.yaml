@@ -5,14 +5,14 @@ origin_source_files:
   manual: 63a8c260372e99e4fb674d4f502610066fccc96bb4a04ea0913c2af04d3bb834 # v3 raw workflow bytes at origin_commit
   reusable_full_backend_mutation: dda3b12833f6f0a1e2cd9766c8e04f56bb6cc7a04f4192af56c2c8732b65d053 # v3 raw workflow bytes at origin_commit
 source_files:
-  nightly: 032e7dba97aeb6f14d81388d2c1eab61711ac2c4403e92997d84af7c4ba880d0 # raw workflow digest; includes credential-persistence and MinIO env updates
+  nightly: 51c16589d69bdc6a019c6ed627b9b3687c00e5523c8a7aac755d15d10abaa2de # raw workflow digest; includes credential-persistence and MinIO env updates
   manual: 600fb0e798f3fabc5c07e3f9cdc897ff2b8726acec479ba2fd2eefb164c2f199 # reviewed raw workflow content digest; no current-commit claim
-  reusable_full_backend_mutation: 5e056447baafe3e5a404aa6976dce544d0770efed61c2b7fe6eb7f01440897fa # reviewed raw workflow content digest; no current-commit claim
+  reusable_full_backend_mutation: c124aba96e87e497da6a5a1e2a601ae46dfbea809c9442ededbd3e7fba9b92f1 # reviewed raw workflow content digest; no current-commit claim
 nightly_trigger_sha256: fdc20c3df799579edad1d3c520a3678d50fbc3359d50c2bffe8a2db8f4708a19 # parsed workflow trigger map excluding workflow_dispatch
 manual_trigger_sha256: 4d6782fb2ff21d58c80606ed26167383f075b97d0783a61489fb7e90e5b5b125 # parsed workflow trigger map
 nightly_preserved_jobs:
   frontend-mutation-preflight: 44a5487d5e57ce9bef908ea55c7ae7ba1abe73c0fa38ab7122a3f0defb045fcf # normalized after removing the asserted typecheck-only delta; updated artifact action pin
-  frontend-mutation-shards: 22313f5035372bc15e335e7a0e4fb1a4a2ef8dd4010a4b0af051c53aee98ad9c # updated immutable artifact action pins
+  frontend-mutation-shards: ba6664cc14334cb8c8026552a26a3a36daf02ffaede1c0b7c20e0168c4cd6630 # updated immutable artifact action pins
   frontend-mutation-tests-full: 07881be393376d181ce2092e6ad21d408561e1322e8026b990f9e3ad5b07c129 # updated immutable artifact action pins
   frontend-mutation-roundtrip: 0f785158900ce5078865f497833cd302a2afdc8adab00484c54f9f4a4c0bcf7a # updated immutable artifact action pin
   backend-full: d209f3a544cafc57f417b265008216f87f3477af9c35269dd98773bb9ae5a673 #  -- public Git or workflow content digest
