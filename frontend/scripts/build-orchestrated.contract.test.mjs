@@ -277,6 +277,16 @@ for (const [label, inheritedOptions, expectedOptions] of [
     "--max-old-space-size=768 --title=--max-semi-space-size=8",
     "--max-old-space-size=768 --title=--max-semi-space-size=8 --max-semi-space-size=1",
   ],
+  [
+    "fully quoted young-generation option",
+    '--max-old-space-size=768 "--max-semi-space-size=8"',
+    '--max-old-space-size=768 "--max-semi-space-size=8"',
+  ],
+  [
+    "quoted title value with a spaced option lookalike",
+    '--max-old-space-size=768 --title="worker --max-semi-space-size=8"',
+    '--max-old-space-size=768 --title="worker --max-semi-space-size=8" --max-semi-space-size=1',
+  ],
 ]) {
   test(`build orchestrator respects young-generation option boundaries: ${label}`, async (t) => {
     const previousNodeOptions = process.env.NODE_OPTIONS
