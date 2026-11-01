@@ -6,13 +6,13 @@ const STORE_NAME_PATTERN = /^pending-[a-z-]{1,40}$/u
 /** Reasons are enumerated by the worker (`status-NNN`, `network`, `retries-exhausted:...`). */
 const REASON_PATTERN = /^[a-z0-9:-]{1,64}$/u
 
-export interface OfflineDeadLetter {
+interface OfflineDeadLetter {
   store: string
   reason: string
 }
 
 /** Accepts only the PII-free dead-letter shape; every other message yields null. */
-export function parseOfflineDeadLetter(data: unknown): OfflineDeadLetter | null {
+function parseOfflineDeadLetter(data: unknown): OfflineDeadLetter | null {
   if (!data || typeof data !== "object") return null
   const { type, store, reason } = data as Record<string, unknown>
   if (type !== OFFLINE_DEAD_LETTER_MESSAGE_TYPE) return null

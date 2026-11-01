@@ -5,14 +5,67 @@ import {
   SERVICE_WORKER_BOOTSTRAP_EVENT,
   type ServiceWorkerBootstrapEventDetail,
 } from "@/app/pwaEvents"
-import { SERVICE_WORKER_MESSAGE_TYPES } from "@/constants/serviceWorkerMessages"
+import {
+  OFFLINE_DEAD_LETTER_MESSAGE_TYPE,
+  SERVICE_WORKER_MESSAGE_TYPES,
+} from "@/constants/serviceWorkerMessages"
+import * as webVitals from "@/app/webVitals"
+import * as sessionEpoch from "@/stores/sessionEpoch"
+import { REQUEST_OFFLINE_REPLAY_CREDENTIALS } from "@/sw/replayCredentials"
 import { withExpectedConsole } from "@/tests/strictConsole"
 
-// The container carries both the controller-change listener and the replay-credential responder.
+// The container carries controller-change, replay-credential and dead-letter listeners.
 const listenersOfType = (container: any, type: string) =>
   container.addEventListener.mock.calls.filter(([eventType]: unknown[]) => eventType === type)
 const controllerChangeListeners = (container: any) => listenersOfType(container, "controllerchange")
 const messageListeners = (container: any) => listenersOfType(container, "message")
+
+/** Verify both real message handlers, not merely a larger listener count. */
+function expectSingleReplayMessageHandlers(container: {
+  controller: unknown
+  addEventListener: ReturnType<typeof vi.fn>
+}): void {
+  const listeners = messageListeners(container).map(([, listener]: unknown[]) => {
+    expect(listener).toEqual(expect.any(Function))
+    return listener as (event: MessageEvent) => void
+  })
+  expect(listeners).toHaveLength(2)
+  expect(new Set(listeners).size).toBe(2)
+
+  const originalController = container.controller
+  const controller = originalController ?? { postMessage: vi.fn() }
+  const reply = vi.fn()
+  const session = vi.spyOn(sessionEpoch, "isCurrentBrowserSession").mockReturnValue(false)
+  const report = vi.spyOn(webVitals, "reportOfflineDeadLetter").mockReturnValue(false)
+  container.controller = controller
+  try {
+    for (const listener of listeners) {
+      listener({
+        data: { type: REQUEST_OFFLINE_REPLAY_CREDENTIALS },
+        source: controller,
+        ports: [{ postMessage: reply }],
+      } as unknown as MessageEvent)
+      listener({
+        data: {
+          type: OFFLINE_DEAD_LETTER_MESSAGE_TYPE,
+          store: "pending-mutations",
+          reason: "status-403",
+        },
+        source: controller,
+        ports: [],
+      } as unknown as MessageEvent)
+    }
+    expect(reply).toHaveBeenCalledExactlyOnceWith(null)
+    expect(report).toHaveBeenCalledExactlyOnceWith({
+      store: "pending-mutations",
+      reason: "status-403",
+    })
+  } finally {
+    container.controller = originalController
+    session.mockRestore()
+    report.mockRestore()
+  }
+}
 
 describe("registerServiceWorker", () => {
   let addEventListenerSpy: any
@@ -271,7 +324,7 @@ describe("registerServiceWorker", () => {
     await expect(retryAttempt).resolves.toBe(mockRegistration)
     expect(mockServiceWorkerContainer.register).toHaveBeenCalledTimes(2)
     expect(controllerChangeListeners(mockServiceWorkerContainer)).toHaveLength(1)
-    expect(messageListeners(mockServiceWorkerContainer)).toHaveLength(1)
+    expectSingleReplayMessageHandlers(mockServiceWorkerContainer)
     expect(mockRegistration.addEventListener).toHaveBeenCalledOnce()
     expect(swListeners["controllerchange"]).toEqual(expect.any(Function))
   })
@@ -325,7 +378,7 @@ describe("registerServiceWorker", () => {
     await expect(retainedDefaultPathTask).resolves.toBe(defaultRegistration)
     expect(mockServiceWorkerContainer.register).toHaveBeenCalledTimes(2)
     expect(controllerChangeListeners(mockServiceWorkerContainer)).toHaveLength(1)
-    expect(messageListeners(mockServiceWorkerContainer)).toHaveLength(1)
+    expectSingleReplayMessageHandlers(mockServiceWorkerContainer)
     expect(defaultRegistration.addEventListener).toHaveBeenCalledOnce()
 
     const retriedCustomPathTask = registerServiceWorker("/custom-sw.js")
@@ -345,7 +398,7 @@ describe("registerServiceWorker", () => {
       updateViaCache: "none",
     })
     expect(controllerChangeListeners(mockServiceWorkerContainer)).toHaveLength(2)
-    expect(messageListeners(mockServiceWorkerContainer)).toHaveLength(1)
+    expectSingleReplayMessageHandlers(mockServiceWorkerContainer)
     expect(defaultRegistration.addEventListener).toHaveBeenCalledOnce()
     expect(retriedCustomRegistration.addEventListener).toHaveBeenCalledOnce()
   })
@@ -432,7 +485,7 @@ describe("registerServiceWorker", () => {
     expect(mockServiceWorkerContainer.register).toHaveBeenCalledOnce()
     expect(mockRegistration.addEventListener).toHaveBeenCalledOnce()
     expect(controllerChangeListeners(mockServiceWorkerContainer)).toHaveLength(1)
-    expect(messageListeners(mockServiceWorkerContainer)).toHaveLength(1)
+    expectSingleReplayMessageHandlers(mockServiceWorkerContainer)
 
     const updateEvent = dispatchEventSpy.mock.calls
       .map((call: unknown[]) => call[0] as Event)
