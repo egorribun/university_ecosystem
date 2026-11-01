@@ -210,7 +210,7 @@ async def test_revoke_session_removes_from_listing(
     user_factory,
     db_session,
 ):
-    password = "Revoke123!"
+    password = "Sessions123!"
     user = await user_factory(
         email="revoker@example.com", hashed_password=await get_password_hash(password)
     )
@@ -288,7 +288,7 @@ async def test_logout_removes_session_immediately(
     user_factory,
     db_session,
 ):
-    password = "Logout123!"
+    password = "Sessions123!"
     user = await user_factory(
         email="logout@example.com", hashed_password=await get_password_hash(password)
     )
@@ -420,7 +420,7 @@ async def test_revoke_other_user_session_forbidden(
     user_factory,
     db_session,
 ):
-    password = "Nope123!"
+    password = "Sessions123!"
     actor = await user_factory(
         email="nope@example.com", hashed_password=await get_password_hash(password)
     )
@@ -448,7 +448,7 @@ async def test_revoke_missing_session_returns_404(
     user_factory,
     db_session,
 ):
-    password = "Missing404!"
+    password = "Sessions123!"
     user = await user_factory(
         email="missing@example.com", hashed_password=await get_password_hash(password)
     )
