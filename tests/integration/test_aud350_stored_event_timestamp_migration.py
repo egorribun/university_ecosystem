@@ -17,6 +17,7 @@ import importlib.machinery
 import importlib.util
 import os
 import sys
+from contextlib import nullcontext
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple
@@ -172,6 +173,14 @@ class _TargetOnlyOperations:
     def get_bind(self) -> sa.Connection:
         return self._bind
 
+    def get_context(self) -> _TargetOnlyOperations:
+        return self
+
+    def autocommit_block(self) -> nullcontext[None]:
+        # Unrelated GIN work must not commit the target-only fixture transaction
+        # or reset its SET LOCAL timezone/search_path. Its SQL remains filtered.
+        return nullcontext()
+
     def alter_column(self, table_name: str, column_name: str, *args, **kwargs):
         if (table_name, column_name) == ("stored_events", "created_at"):
             self.target_alter_count += 1
@@ -272,8 +281,12 @@ def test_upgrade_counterfactual_for_legacy_naive_utc_timestamp(
             target_operations = _TargetOnlyOperations(real_operations, connection)
             monkeypatch.setattr(migration, "op", target_operations)
 
+            fixture_transaction = connection.get_transaction()
+            assert fixture_transaction is not None
             with Operations.context(MigrationContext.configure(connection)):
                 migration.upgrade()
+            assert connection.get_transaction() is fixture_transaction
+            assert fixture_transaction.is_active
 
             assert target_operations.target_alter_count == 1
             actual_local = connection.execute(

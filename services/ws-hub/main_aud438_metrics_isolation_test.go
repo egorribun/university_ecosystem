@@ -20,6 +20,7 @@ func aud438Status(t *testing.T, url string) int {
 	require.NoError(t, err)
 	response, err := http.DefaultClient.Do(request)
 	require.NoError(t, err)
+	require.NotNil(t, response)
 	defer func() { require.NoError(t, response.Body.Close()) }()
 	return response.StatusCode
 }

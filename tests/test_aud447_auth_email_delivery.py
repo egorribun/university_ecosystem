@@ -2234,8 +2234,13 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
 ) -> None:
     import hashlib
 
+    from sqlalchemy import Select, Update
+
     from app.models.dead_letter import DeadLetterJob
-    from app.workers.dead_letter_queue import DeadLetterQueue
+    from app.workers.dead_letter_queue import (
+        _QUARANTINED_AUTH_PAYLOAD,
+        DeadLetterQueue,
+    )
 
     marker = "synthetic-" + uuid.uuid4().hex
     other_marker = "synthetic-" + uuid.uuid4().hex
@@ -2274,10 +2279,53 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
         AsyncMock(side_effect=AssertionError("unexpected broker connection")),
     )
     queue = DeadLetterQueue(session)
+    quarantine_writes: list[dict[str, Any]] = []
     if boundary == "replay":
         monkeypatch.setattr(DeadLetterQueue, "_replay_lock", asyncio.Lock())
         ready = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [job]))
-        monkeypatch.setattr(session, "execute", AsyncMock(return_value=ready))
+
+        async def execute_replay_statement(statement: Any) -> SimpleNamespace:
+            if isinstance(statement, Select):
+                selected = tuple(item["name"] for item in statement.column_descriptions)
+                if selected == ("DeadLetterJob",):
+                    return ready
+                assert selected == (
+                    "job_type",
+                    "job_hash",
+                    "payload",
+                    "error_message",
+                )
+                assert statement.compile().params == {"job_hash_1": job_hash}
+                row = SimpleNamespace(
+                    job_type=job.job_type,
+                    job_hash=job.job_hash,
+                    payload=job.payload,
+                    error_message=job.error_message,
+                )
+                return SimpleNamespace(one_or_none=lambda: row)
+            assert isinstance(statement, Update)
+            parameters = dict(statement.compile().params)
+            assert set(parameters) == {
+                "payload",
+                "updated_at",
+                "job_hash_1",
+                "payload_1",
+            }
+            assert parameters["payload"] == _QUARANTINED_AUTH_PAYLOAD
+            if (
+                parameters["job_hash_1"] != job.job_hash
+                or parameters["payload_1"] != job.payload
+            ):
+                return SimpleNamespace(rowcount=0)
+            quarantine_writes.append(parameters)
+            # ORM UPDATE uses synchronize_session="auto": the loaded matching
+            # instance receives the complete replacement, not partial JSON edits.
+            job.payload = parameters["payload"]
+            return SimpleNamespace(rowcount=1)
+
+        monkeypatch.setattr(
+            session, "execute", AsyncMock(side_effect=execute_replay_statement)
+        )
 
     async def apply_boundary() -> Any:
         if boundary == "dedup":
@@ -2294,6 +2342,7 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
     control = await apply_boundary()
     assert control == (None if boundary == "dedup" else (1, 0))
     assert js.publish.await_count == (0 if boundary == "dedup" else 1)
+    assert quarantine_writes == []
     js.reset_mock()
     job.status = "pending"
     job.retry_count = 1
@@ -2344,19 +2393,33 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
         assert await apply_boundary() == (0, 1)
         assert job.status == "pending"
         assert job.retry_count == 2
-        if bad_case == "non_object_json":
-            opaque_error = (
-                job.error_message == "Authentication email payload protection failed"
-            )
-            assert opaque_error
+        opaque_error = (
+            job.error_message == "Authentication email payload protection failed"
+        )
+        assert opaque_error
     assert js.publish.await_count == 0
-    unchanged_payload = job.payload == bad_bytes
+    if boundary == "dedup":
+        assert quarantine_writes == []
+        unchanged_payload = job.payload == bad_bytes
+        assert unchanged_payload, (
+            "dedup rejection partially rewrote the retained payload"
+        )
+    else:
+        (replacement,) = quarantine_writes
+        assert replacement["job_hash_1"] == job_hash
+        assert replacement["payload_1"] == bad_bytes
+        complete_quarantine = job.payload == _QUARANTINED_AUTH_PAYLOAD
+        assert complete_quarantine, "replay did not apply the complete quarantine"
+        safe_storage = all(value not in job.payload for value in (marker, other_marker))
+        assert safe_storage
+    assert session.jobs == [job]
+    assert job.id == 450
+    assert job.max_retries == 3
     unchanged_hash = job.job_hash == job_hash
     unchanged_input = json.dumps(incoming, sort_keys=True) == input_before
     safe_error = all(
         value not in str(job.error_message) for value in (marker, other_marker)
     )
-    assert unchanged_payload, "rejection partially rewrote the retained payload"
     assert unchanged_hash
     assert unchanged_input
     assert safe_error
