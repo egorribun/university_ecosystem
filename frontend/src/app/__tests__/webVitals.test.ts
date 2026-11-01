@@ -16,6 +16,7 @@ import {
   initWebVitals,
   isSameOriginEndpoint,
   reportBootstrapTTI,
+  reportOfflineDeadLetter,
   resetWebVitalsForTesting,
   resolveNavigationType,
   resolveRating,
@@ -488,11 +489,71 @@ describe("webVitals", () => {
       })
     )
     expect(metric.id).toMatch(/^APP_TTI-\d+$/)
+    expect(metric).not.toHaveProperty("label")
+    expect(createCustomMetric("EMPTY_LABEL", 1, [0, 0], "")).toHaveProperty("label", "")
   })
 
   it("fails closed for malformed same-origin URLs", () => {
     expect(isSameOriginEndpoint("/api/v1/cwv")).toBe(true)
     expect(isSameOriginEndpoint("http://[invalid")).toBe(false)
     expect(isSameOriginEndpoint("https://metrics.example/v1")).toBe(false)
+  })
+
+  it("does not report an offline dead letter before a reporter is initialized", () => {
+    const sendBeacon = vi.fn(() => true)
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
+    vi.stubGlobal("navigator", { ...navigator, sendBeacon })
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(
+      reportOfflineDeadLetter({ store: "pending-mutations", reason: "status-403" })
+    ).toBe(false)
+    expect(sendBeacon).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(logDebug).not.toHaveBeenCalled()
+  })
+
+  it("reports the exact offline dead-letter metric and stops sending after reset", () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
+    vi.stubGlobal("navigator", { ...navigator, sendBeacon: undefined })
+    vi.stubGlobal("fetch", fetchMock)
+    vi.stubGlobal("performance", {
+      getEntriesByType: vi.fn(() => [{ type: "reload" }]),
+    })
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000)
+
+    try {
+      expect(
+        initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "/metrics/web-vitals" }))
+      ).toBe(true)
+      expect(fetchMock).not.toHaveBeenCalled()
+
+      expect(
+        reportOfflineDeadLetter({ store: "pending-mutations", reason: "status-403" })
+      ).toBe(true)
+      expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/metrics/web-vitals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "OFFLINE_DEAD_LETTER",
+          value: 1,
+          delta: 1,
+          id: "OFFLINE_DEAD_LETTER-1700000000000",
+          rating: "poor",
+          navigationType: "reload",
+          label: "pending-mutations:status-403",
+        }),
+        keepalive: true,
+        credentials: "omit",
+      })
+
+      resetWebVitalsForTesting()
+      expect(
+        reportOfflineDeadLetter({ store: "pending-mutations", reason: "status-403" })
+      ).toBe(false)
+      expect(fetchMock).toHaveBeenCalledOnce()
+    } finally {
+      now.mockRestore()
+    }
   })
 })
