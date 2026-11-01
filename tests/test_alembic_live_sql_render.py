@@ -9,6 +9,7 @@ import sys
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,15 +21,8 @@ from sqlalchemy.engine import make_url
 from scripts.quality import render_live_alembic_sql as renderer
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
-_ROOT_MIGRATION = _PROJECT_ROOT / "alembic" / "versions" / "b05ae64aaeef_init.py"
-_AUD180_MIGRATION = (
-    _PROJECT_ROOT
-    / "alembic"
-    / "versions"
-    / "202610120002_add_news_media_asset_ownership.py"
-)
-_GUARDED_MIGRATION = (
-    _PROJECT_ROOT / "alembic" / "versions" / "148642dd1207_fix_missing_tables.py"
+_BASELINE_MIGRATION = (
+    _PROJECT_ROOT / "alembic" / "versions" / "202611020000_mvp_baseline.py"
 )
 _LIVE_DATABASE = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 _UNREACHABLE_DATABASE_URL = (
@@ -232,7 +226,7 @@ def test_main_requires_a_postgresql_database_url(
 ) -> None:
     monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./dev.db")
 
-    assert renderer.main([str(_AUD180_MIGRATION), str(tmp_path / "out.sql")]) == 2
+    assert renderer.main([str(_BASELINE_MIGRATION), str(tmp_path / "out.sql")]) == 2
     assert "DATABASE_URL must target PostgreSQL" in capsys.readouterr().err
 
 
@@ -298,7 +292,7 @@ def test_main_keeps_unexpected_migration_failure_context_private(
 
     monkeypatch.setattr(renderer, "render_revision_sql", fail_render)
 
-    assert renderer.main([str(_AUD180_MIGRATION), str(output)]) == 2
+    assert renderer.main([str(_BASELINE_MIGRATION), str(output)]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "error: live migration rendering failed\n"
@@ -323,7 +317,7 @@ def test_main_keeps_output_write_failure_context_private(
 
     monkeypatch.setattr(Path, "write_text", fail_write)
 
-    assert renderer.main([str(_AUD180_MIGRATION), str(output)]) == 2
+    assert renderer.main([str(_BASELINE_MIGRATION), str(output)]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "error: live migration rendering failed\n"
@@ -340,7 +334,7 @@ def test_main_writes_successful_render_without_changing_sql(
         renderer, "render_revision_sql", lambda _migration, _url: "SELECT 1;\n"
     )
 
-    assert renderer.main([str(_AUD180_MIGRATION), str(output)]) == 0
+    assert renderer.main([str(_BASELINE_MIGRATION), str(output)]) == 0
     assert output.read_text(encoding="utf-8") == "SELECT 1;\n"
     assert capsys.readouterr() == ("", "")
 
@@ -356,7 +350,7 @@ def test_main_does_not_swallow_process_interruptions(
 
     monkeypatch.setattr(renderer, "render_revision_sql", interrupt)
     with pytest.raises(interruption):
-        renderer.main([str(_AUD180_MIGRATION), str(tmp_path / "out.sql")])
+        renderer.main([str(_BASELINE_MIGRATION), str(tmp_path / "out.sql")])
 
 
 def test_admin_connection_is_retried_then_reported_as_unreachable(
@@ -368,7 +362,7 @@ def test_admin_connection_is_retried_then_reported_as_unreachable(
     monkeypatch.setattr(renderer.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(renderer, "_ADMIN_CONNECT_ATTEMPTS", 2)
 
-    assert renderer.main([str(_AUD180_MIGRATION), str(tmp_path / "out.sql")]) == 2
+    assert renderer.main([str(_BASELINE_MIGRATION), str(tmp_path / "out.sql")]) == 2
     assert "PostgreSQL admin connection failed" in capsys.readouterr().err
     assert not (tmp_path / "out.sql").exists()
 
@@ -384,7 +378,7 @@ def _admin_engine_for(database_url: str) -> sa.Engine:
 def test_live_render_captures_the_aud180_ddl_with_its_timeouts(
     tmp_path: Path,
 ) -> None:
-    sql = renderer.render_revision_sql(_AUD180_MIGRATION, os.environ["DATABASE_URL"])
+    sql = renderer.render_revision_sql(_BASELINE_MIGRATION, os.environ["DATABASE_URL"])
 
     assert sql.startswith(
         "-- observed SQLAlchemy begin event; transaction-event representation, "
@@ -392,30 +386,101 @@ def test_live_render_captures_the_aud180_ddl_with_its_timeouts(
     )
     lock_timeout_position = sql.index("SET LOCAL lock_timeout = '10s'")
     statement_timeout_position = sql.index("SET LOCAL statement_timeout = '60s'")
-    first_ddl_position = sql.index("CREATE TABLE news_media_assets (")
+    first_ddl_position = sql.index("CREATE EXTENSION IF NOT EXISTS pg_trgm")
     assert lock_timeout_position < statement_timeout_position < first_ddl_position
-    assert "CREATE TABLE news_media_assets (" in sql
+    assert "CREATE TABLE public.news_media_assets (" in sql
     assert (
         "CREATE INDEX ix_news_media_assets_owner_user_id "
-        "ON news_media_assets (owner_user_id);"
+        "ON public.news_media_assets USING btree (owner_user_id);"
     ) in sql
 
 
 @pytest.mark.skipif(not _LIVE_DATABASE, reason="Set RUN_INTEGRATION_TESTS=1 to run")
 def test_live_render_captures_inspector_guarded_branches_hidden_offline(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The offline inspector reports no constraints, so the restore branch that
-    # adds the shadow CHECK constraint is absent from offline --sql output.
-    sql = renderer.render_revision_sql(_GUARDED_MIGRATION, os.environ["DATABASE_URL"])
+    # Exercise the real renderer and current Alembic environment against a small
+    # graph, without reviving the retired legacy groups cutover implementation.
+    graph = tmp_path / "renderer-graph"
+    versions = graph / "versions"
+    versions.mkdir(parents=True)
+    (graph / "env.py").write_bytes((_PROJECT_ROOT / "alembic" / "env.py").read_bytes())
+    (versions / "renderer_parent.py").write_text(
+        """from alembic import op
+import sqlalchemy as sa
 
-    assert "ADD CONSTRAINT ck_groups_id_shadow_not_null" in sql
-    assert "CREATE TEMP TABLE _groups_fk_restore" in sql
+revision = "renderer_parent"
+down_revision = None
+
+
+def upgrade():
+    op.create_table(
+        "renderer_parent",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.CheckConstraint("id > 0", name="ck_renderer_parent_positive"),
+        schema="public",
+    )
+
+
+def downgrade():
+    op.drop_table("renderer_parent", schema="public")
+""",
+        encoding="utf-8",
+    )
+    migration = versions / "renderer_guarded.py"
+    migration.write_text(
+        """from alembic import op
+import sqlalchemy as sa
+
+revision = "renderer_guarded"
+down_revision = "renderer_parent"
+
+
+def upgrade():
+    constraints = sa.inspect(op.get_bind()).get_check_constraints(
+        "renderer_parent", schema="public"
+    )
+    if any(item["name"] == "ck_renderer_parent_positive" for item in constraints):
+        op.create_table(
+            "renderer_guarded",
+            sa.Column("id", sa.Integer(), nullable=False),
+            schema="public",
+        )
+
+
+def downgrade():
+    op.drop_table("renderer_guarded", schema="public")
+""",
+        encoding="utf-8",
+    )
+    original_config = renderer._alembic_config
+
+    def fixture_config() -> renderer.Config:
+        config = original_config()
+        config.set_main_option("script_location", str(graph))
+        return config
+
+    monkeypatch.setattr(renderer, "_alembic_config", fixture_config)
+    offline_output = StringIO()
+    offline_config = fixture_config()
+    offline_config.output_buffer = offline_output
+    renderer.command.upgrade(
+        offline_config, "renderer_parent:renderer_guarded", sql=True
+    )
+    assert "renderer_guarded" in offline_output.getvalue()
+    assert "CREATE TABLE public.renderer_guarded" not in offline_output.getvalue()
+
+    sql = renderer.render_revision_sql(migration, os.environ["DATABASE_URL"])
+
+    assert "CREATE TABLE public.renderer_guarded (" in sql
+    assert "CREATE TABLE public.renderer_parent" not in sql
+    assert "BEGIN;" in sql
+    assert "COMMIT;" in sql
 
 
 @pytest.mark.skipif(not _LIVE_DATABASE, reason="Set RUN_INTEGRATION_TESTS=1 to run")
 def test_live_render_of_the_root_revision_needs_no_parent_upgrade() -> None:
-    sql = renderer.render_revision_sql(_ROOT_MIGRATION, os.environ["DATABASE_URL"])
+    sql = renderer.render_revision_sql(_BASELINE_MIGRATION, os.environ["DATABASE_URL"])
 
     assert "CREATE TABLE" in sql
 
@@ -429,7 +494,7 @@ def test_live_render_drops_its_scratch_database_and_restores_the_environment(
     monkeypatch.setattr(renderer, "uuid", SimpleNamespace(uuid4=lambda: fixed))
     scratch = f"alembic_squawk_{fixed.hex[:16]}"
 
-    renderer.render_revision_sql(_AUD180_MIGRATION, database_url)
+    renderer.render_revision_sql(_BASELINE_MIGRATION, database_url)
 
     admin = _admin_engine_for(database_url)
     try:
@@ -451,9 +516,9 @@ def test_live_render_restores_an_unset_database_url(
     database_url = os.environ["DATABASE_URL"]
     monkeypatch.delenv("DATABASE_URL")
 
-    sql = renderer.render_revision_sql(_AUD180_MIGRATION, database_url)
+    sql = renderer.render_revision_sql(_BASELINE_MIGRATION, database_url)
 
-    assert "CREATE TABLE news_media_assets (" in sql
+    assert "CREATE TABLE public.news_media_assets (" in sql
     assert "DATABASE_URL" not in os.environ
 
 
@@ -476,10 +541,12 @@ def test_main_writes_the_rendered_sql_to_the_output_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("DATABASE_URL", os.environ["DATABASE_URL"])
-    output = tmp_path / "aud180.sql"
+    output = tmp_path / "baseline.sql"
 
-    assert renderer.main([str(_AUD180_MIGRATION), str(output)]) == 0
-    assert "CREATE TABLE news_media_assets (" in output.read_text(encoding="utf-8")
+    assert renderer.main([str(_BASELINE_MIGRATION), str(output)]) == 0
+    assert "CREATE TABLE public.news_media_assets (" in output.read_text(
+        encoding="utf-8"
+    )
 
 
 class _ScratchRows:
@@ -1118,7 +1185,7 @@ def test_owned_live_renderer_root_lifecycle_cleans_up(
     previous_url = os.environ.get("DATABASE_URL")
     try:
         sql = renderer.render_revision_sql(
-            _ROOT_MIGRATION,
+            _BASELINE_MIGRATION,
             owned_renderer_admin.url.render_as_string(hide_password=False),
         )
         assert "CREATE TABLE" in sql
@@ -1161,7 +1228,7 @@ def test_owned_live_renderer_create_collision_preserves_existing_database(
                 match=r"^PostgreSQL scratch creation failed$",
             ):
                 renderer.render_revision_sql(
-                    _ROOT_MIGRATION,
+                    _BASELINE_MIGRATION,
                     owned_renderer_admin.url.render_as_string(hide_password=False),
                 )
             current_identity = _owned_renderer_database_identity(
