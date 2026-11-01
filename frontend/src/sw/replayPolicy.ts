@@ -8,8 +8,9 @@ export const REPLAY_REQUEST_TIMEOUT_MS = 15_000
 /** Records bound to another browser session are never sent and expire after this age. */
 export const OTHER_SESSION_RECORD_TTL_MS = 7 * 24 * 60 * 60 * 1000
 /**
- * Cross-worker lease used only without Web Locks. A holder whose pass stops renewing for
- * this long (for example a terminated worker) is stealable by any other worker.
+ * Cross-worker lease shared by every replay pass, including passes using Web Locks.
+ * A holder whose pass stops renewing for this long (for example a terminated worker)
+ * is stealable by any other worker.
  */
 export const REPLAY_LEASE_TTL_MS = 30_000
 /** Renewal cadence while a pass runs, well inside the TTL even when a request is slow. */

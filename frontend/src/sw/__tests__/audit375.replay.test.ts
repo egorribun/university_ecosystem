@@ -1,4 +1,4 @@
-import { IDBFactory } from "fake-indexeddb"
+import { IDBFactory, IDBObjectStore as FakeIDBObjectStore } from "fake-indexeddb"
 import { openDB, type IDBPDatabase } from "idb"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -16,13 +16,21 @@ import {
 } from "../offline"
 import {
   OTHER_SESSION_RECORD_TTL_MS,
+  REPLAY_LEASE_POLL_MS,
+  REPLAY_LEASE_RENEW_MS,
   REPLAY_LEASE_TTL_MS,
   REPLAY_MAX_ATTEMPTS,
   REPLAY_REQUEST_TIMEOUT_MS,
 } from "../replayPolicy"
 import { warn } from "../logger"
 import * as offline from "../offline"
-import { claimReplayLease, releaseReplayLease, renewReplayLease } from "../replayLease"
+import {
+  claimReplayLease,
+  releaseReplayLease,
+  renewReplayLease,
+  REPLAY_LEASE_KEY,
+  REPLAY_LEASE_STORE,
+} from "../replayLease"
 import {
   NOTIFICATION_INTERACTIONS_DB_NAME as REPLAY_DB_NAME,
   NOTIFICATION_INTERACTIONS_DB_VERSION as REPLAY_DB_VERSION,
@@ -718,5 +726,529 @@ describe("AUD-375: IndexedDB lease takeover never revives a stale replay pass", 
       await releaseReplayLease(second, "owner-b")
       expect(await claimReplayLease(first, "owner-c", NOW + REPLAY_LEASE_TTL_MS + 1)).toBe(true)
     })
+  })
+})
+
+/** Fresh worker modules keep production lease/queue code while controlling only external seams. */
+async function fencedReplayWorker() {
+  const worker = await loadSecondWorker()
+  const credentials = await import("../replayCredentials")
+  const lease = await import("../replayLease")
+  const logger = await import("../logger")
+  const messages = await import("../utils")
+  const proof = { csrfToken: CSRF, sessionNonce: SESSION }
+  const credentialsSpy = vi.spyOn(credentials, "requestReplayCredentials").mockResolvedValue(proof)
+  const notices = vi.spyOn(messages, "broadcastMessage").mockResolvedValue(undefined)
+  await worker.initOfflineQueue()
+  return { worker, lease, logger, proof, credentialsSpy, notices }
+}
+
+describe("AUD-375: replay mutations are fenced by the shared live lease", () => {
+  beforeEach(() => {
+    vi.stubGlobal("indexedDB", new IDBFactory())
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true)
+    vi.spyOn(Date, "now").mockReturnValue(NOW)
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+    Object.defineProperty(navigator, "locks", { value: undefined, configurable: true })
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    Reflect.deleteProperty(navigator, "locks")
+  })
+
+  it.each(["missing", "expired-self", "foreign-live", "foreign-expired", "released-successor"])(
+    "never acquires a %s lease through renewal",
+    async (state) => {
+      await withLeaseConnections(async (first, second) => {
+        let now = NOW + REPLAY_LEASE_TTL_MS
+        if (state !== "missing") {
+          expect(await claimReplayLease(first, "owner-a", NOW)).toBe(true)
+        }
+        if (state.startsWith("foreign") || state === "released-successor") {
+          expect(await claimReplayLease(second, "owner-b", now)).toBe(true)
+          if (state === "foreign-expired") now += REPLAY_LEASE_TTL_MS
+          if (state === "released-successor") await releaseReplayLease(second, "owner-b")
+        }
+        const before = await first.get(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)
+        expect(await renewReplayLease(first, "owner-a", now)).toBe(false)
+        expect(await first.get(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)).toEqual(before)
+      })
+    }
+  )
+
+  it("refuses renewal through a closed connection without changing its lease", async () => {
+    await withLeaseConnections(async (first, second) => {
+      expect(await claimReplayLease(first, "owner-a", NOW)).toBe(true)
+      const before = await second.get(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)
+      first.close()
+      expect(await renewReplayLease(first, "owner-a", NOW)).toBe(false)
+      expect(await second.get(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)).toEqual(before)
+    })
+  })
+
+  it.each(["claim", "renew"] as const)(
+    "samples the %s clock after the lease read rather than before its IDB wait",
+    async (operation) => {
+      await withLeaseConnections(async (first, second) => {
+        expect(await claimReplayLease(first, "owner-a", NOW)).toBe(true)
+        let clock = NOW
+        const get = FakeIDBObjectStore.prototype.get
+        const operationSpy = vi.spyOn(FakeIDBObjectStore.prototype, "get")
+        operationSpy.mockImplementation(function (this: IDBObjectStore, key) {
+          const request = get.call(this, key)
+          if (this.name === REPLAY_LEASE_STORE) {
+            request.addEventListener(
+              "success",
+              () => {
+                clock = NOW + REPLAY_LEASE_TTL_MS
+              },
+              { once: true }
+            )
+          }
+          return request
+        })
+        if (operation === "claim") {
+          expect(await claimReplayLease(second, "owner-b", () => clock)).toBe(true)
+          expect(await first.get(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)).toEqual({
+            id: REPLAY_LEASE_KEY,
+            owner: "owner-b",
+            expiresAt: NOW + 2 * REPLAY_LEASE_TTL_MS,
+          })
+        } else {
+          expect(await renewReplayLease(first, "owner-a", () => clock)).toBe(false)
+          expect(await first.get(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)).toEqual({
+            id: REPLAY_LEASE_KEY,
+            owner: "owner-a",
+            expiresAt: NOW + REPLAY_LEASE_TTL_MS,
+          })
+        }
+      })
+    }
+  )
+
+  it.each([true, false])(
+    "shares one lease when native Web Locks are available to the first worker: %s",
+    async (nativeFirst) => {
+      const first = await fencedReplayWorker()
+      const second = await fencedReplayWorker()
+      const locks = fakeLockManager()
+      Object.defineProperty(navigator, "locks", {
+        value: nativeFirst ? locks : undefined,
+        configurable: true,
+      })
+      await first.worker.storePendingMutation(mutationRecord())
+      const entered = replayGate<void>()
+      const response = replayGate<Response>()
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce(() => {
+          entered.resolve(undefined)
+          return response.promise
+        })
+        .mockResolvedValue(okResponse())
+      vi.stubGlobal("fetch", fetchMock)
+      const firstPass = first.worker.processOfflineQueues()
+      let secondPass: Promise<void> | undefined
+      try {
+        await Promise.race([
+          entered.promise,
+          firstPass.then(() => {
+            throw new Error("First worker settled before sending its held request")
+          }),
+        ])
+        const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+        try {
+          expect(await observer.get(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)).toEqual({
+            id: REPLAY_LEASE_KEY,
+            owner: expect.any(String),
+            expiresAt: NOW + REPLAY_LEASE_TTL_MS,
+          })
+        } finally {
+          observer.close()
+        }
+        Object.defineProperty(navigator, "locks", {
+          value: nativeFirst ? undefined : locks,
+          configurable: true,
+        })
+        const acquisition = replayGate<boolean>()
+        const claim = second.lease.claimReplayLease
+        vi.spyOn(second.lease, "claimReplayLease").mockImplementation(async (...args) => {
+          const result = await claim(...args)
+          acquisition.resolve(result)
+          return result
+        })
+        secondPass = second.worker.processOfflineQueues()
+        expect(
+          await Promise.race([acquisition.promise, secondPass.then(() => "bypassed-shared-lease")])
+        ).toBe(false)
+        expect(fetchMock).toHaveBeenCalledOnce()
+        response.resolve(okResponse())
+        await firstPass
+        await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS)
+        await secondPass
+        expect(fetchMock).toHaveBeenCalledOnce()
+        expect(locks.request).toHaveBeenCalledOnce()
+        expect(await first.worker.readPendingMutations()).toEqual([])
+      } finally {
+        response.resolve(okResponse())
+        await firstPass
+        await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS)
+        await secondPass
+      }
+    }
+  )
+
+  it("does not revive a pass after a heartbeat observed ownership loss", async () => {
+    const first = await fencedReplayWorker()
+    const paused = replayGate<void>()
+    const resume = replayGate<typeof first.proof | null>()
+    first.credentialsSpy.mockResolvedValueOnce(first.proof).mockImplementationOnce(() => {
+      paused.resolve(undefined)
+      return resume.promise
+    })
+    await first.worker.storePendingMutation(mutationRecord())
+    const fetchMock = vi.fn().mockResolvedValue(okResponse())
+    vi.stubGlobal("fetch", fetchMock)
+    const pass = first.worker.processOfflineQueues()
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    try {
+      await paused.promise
+      const lease = await observer.get(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)
+      expect(lease).toBeDefined()
+      await observer.delete(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)
+      const failed = replayGate<boolean>()
+      const renew = first.lease.renewReplayLease
+      vi.spyOn(first.lease, "renewReplayLease").mockImplementation(async (...args) => {
+        const result = await renew(...args)
+        failed.resolve(result)
+        return result
+      })
+      await vi.advanceTimersByTimeAsync(REPLAY_LEASE_RENEW_MS)
+      expect(await failed.promise).toBe(false)
+      await observer.put(REPLAY_LEASE_STORE, lease)
+      resume.resolve(first.proof)
+      await pass
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(await first.worker.readPendingMutations()).toHaveLength(1)
+    } finally {
+      resume.resolve(null)
+      await pass
+      observer.close()
+    }
+  })
+
+  it.each(["delivered", "rejected", "retry", "network", "exhausted"])(
+    "does not apply a stale %s result or announce a false dead letter",
+    async (outcome) => {
+      const first = await fencedReplayWorker()
+      const second = await fencedReplayWorker()
+      await first.worker.storePendingMutation(
+        mutationRecord({ retryCount: outcome === "exhausted" ? REPLAY_MAX_ATTEMPTS - 1 : 0 })
+      )
+      const entered = replayGate<void>()
+      const response = replayGate<Response>()
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce(() => {
+          entered.resolve(undefined)
+          return response.promise
+        })
+        .mockResolvedValue(okResponse(outcome === "exhausted" ? 204 : 500))
+      vi.stubGlobal("fetch", fetchMock)
+      const pass = first.worker.processOfflineQueues()
+      try {
+        await Promise.race([
+          entered.promise,
+          pass.then(() => {
+            throw new Error("First worker settled before its controlled fetch")
+          }),
+        ])
+        vi.mocked(Date.now).mockReturnValue(NOW + REPLAY_LEASE_TTL_MS + 1)
+        await second.worker.processOfflineQueues()
+        const replacement = await first.worker.readPendingMutations()
+        if (outcome === "exhausted") {
+          expect(replacement).toEqual([])
+        } else {
+          expect(replacement).toEqual([
+            expect.objectContaining({
+              retryCount: 1,
+              nextAttemptAt: NOW + REPLAY_LEASE_TTL_MS + 501,
+            }),
+          ])
+        }
+        const noticeCount = first.notices.mock.calls.length
+        const warningCount = vi.mocked(first.logger.warn).mock.calls.length
+        if (outcome === "network") {
+          response.resolve(Promise.reject(new TypeError("Controlled network failure")))
+        } else {
+          response.resolve(
+            okResponse(outcome === "delivered" ? 204 : outcome === "rejected" ? 403 : 500)
+          )
+        }
+        await pass
+        expect(fetchMock).toHaveBeenCalledTimes(2)
+        expect(await first.worker.readPendingMutations()).toEqual(replacement)
+        expect(first.notices).toHaveBeenCalledTimes(noticeCount)
+        expect(first.logger.warn).toHaveBeenCalledTimes(warningCount)
+      } finally {
+        response.resolve(okResponse())
+        await pass
+      }
+    }
+  )
+
+  it("fences expired-session cleanup after a queue-snapshot takeover", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingReport({
+      url: "/page",
+      reportUrl: "/api/v1/report",
+      timestamp: NOW - OTHER_SESSION_RECORD_TTL_MS,
+      sessionNonce: "another-session",
+    })
+    const before = await first.worker.readPendingReports()
+    const successor = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    let takeover: Promise<boolean> | undefined
+    const getAll = FakeIDBObjectStore.prototype.getAll
+    const operationSpy = vi.spyOn(FakeIDBObjectStore.prototype, "getAll")
+    operationSpy.mockImplementation(function (this: IDBObjectStore, ...args) {
+      const request = getAll.apply(this, args)
+      if (this.name === STORES.REPORT && !takeover) {
+        request.addEventListener(
+          "success",
+          () => {
+            vi.mocked(Date.now).mockReturnValue(NOW + REPLAY_LEASE_TTL_MS)
+            takeover = claimReplayLease(successor, "successor", Date.now())
+          },
+          { once: true }
+        )
+      }
+      return request
+    })
+    const fetchMock = vi.fn()
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      await first.worker.processOfflineQueues()
+      expect(takeover).toBeDefined()
+      expect(await takeover).toBe(true)
+      expect(await first.worker.readPendingReports()).toEqual(before)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(first.logger.warn).not.toHaveBeenCalled()
+      expect(first.notices).not.toHaveBeenCalled()
+    } finally {
+      await takeover
+      await releaseReplayLease(successor, "successor")
+      successor.close()
+    }
+  })
+
+  it.each(["identity", "retry-state", "removed"])(
+    "does not replace a queue row whose %s changed while its request was pending",
+    async (change) => {
+      const first = await fencedReplayWorker()
+      await first.worker.storePendingMutation(mutationRecord())
+      const entered = replayGate<void>()
+      const response = replayGate<Response>()
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => {
+          entered.resolve(undefined)
+          return response.promise
+        })
+      )
+      const pass = first.worker.processOfflineQueues()
+      const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+      try {
+        await entered.promise
+        const [row] = await first.worker.readPendingMutations()
+        if (change === "removed") {
+          await observer.delete(STORES.MUTATION, row.id)
+        } else {
+          await observer.put(
+            STORES.MUTATION,
+            change === "identity"
+              ? { ...row, mutationId: "replacement", idempotencyKey: "replacement-key" }
+              : { ...row, retryCount: 2, nextAttemptAt: NOW + 10_000 }
+          )
+        }
+        const replacement = await first.worker.readPendingMutations()
+        response.resolve(okResponse(change === "removed" ? 500 : 204))
+        await pass
+        expect(await first.worker.readPendingMutations()).toEqual(replacement)
+        expect(first.notices).not.toHaveBeenCalled()
+      } finally {
+        response.resolve(okResponse())
+        await pass
+        observer.close()
+      }
+    }
+  )
+
+  it("preserves unrelated latest-row metadata on an owned retry", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const entered = replayGate<void>()
+    const response = replayGate<Response>()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        entered.resolve(undefined)
+        return response.promise
+      })
+    )
+    const pass = first.worker.processOfflineQueues()
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    try {
+      await entered.promise
+      const [row] = await first.worker.readPendingMutations()
+      await observer.put(STORES.MUTATION, { ...row, retainedMetadata: "keep" })
+      response.resolve(okResponse(500))
+      await pass
+      expect(await first.worker.readPendingMutations()).toEqual([
+        { ...row, retainedMetadata: "keep", retryCount: 1, nextAttemptAt: NOW + 500 },
+      ])
+    } finally {
+      response.resolve(okResponse())
+      await pass
+      observer.close()
+    }
+  })
+
+  it("keeps takeover outside the transaction that authorizes and updates a queue row", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const successor = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    let takeover: Promise<boolean> | undefined
+    let takeoverFinished = false
+    let mutationCommitted = false
+    let takeoverBeforeCommit = false
+    let takeoverAtWriteSuccess: boolean | undefined
+    let mutationStores: string[] = []
+    const put = FakeIDBObjectStore.prototype.put
+    const operationSpy = vi.spyOn(FakeIDBObjectStore.prototype, "put")
+    operationSpy.mockImplementation(function (this: IDBObjectStore, ...args) {
+      if (this.name !== STORES.MUTATION) return put.apply(this, args)
+      mutationStores = Array.from(this.transaction.objectStoreNames)
+      this.transaction.addEventListener(
+        "complete",
+        () => {
+          mutationCommitted = true
+        },
+        { once: true }
+      )
+      vi.mocked(Date.now).mockReturnValue(NOW + REPLAY_LEASE_TTL_MS)
+      takeover = claimReplayLease(successor, "successor", Date.now).then((held) => {
+        takeoverFinished = true
+        takeoverBeforeCommit = !mutationCommitted
+        return held
+      })
+      const request = put.apply(this, args)
+      request.addEventListener(
+        "success",
+        () => {
+          takeoverAtWriteSuccess = takeoverFinished
+        },
+        { once: true }
+      )
+      return request
+    })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse(500)))
+    try {
+      await first.worker.processOfflineQueues()
+      expect(takeover).toBeDefined()
+      expect(await takeover).toBe(true)
+      expect(mutationStores.sort()).toEqual([STORES.MUTATION, REPLAY_LEASE_STORE].sort())
+      expect(mutationCommitted).toBe(true)
+      expect(takeoverAtWriteSuccess).toBe(false)
+      expect(takeoverBeforeCommit).toBe(false)
+      expect(await first.worker.readPendingMutations()).toEqual([
+        expect.objectContaining({ retryCount: 1, nextAttemptAt: NOW + 500 }),
+      ])
+      expect(await successor.get(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)).toEqual({
+        id: REPLAY_LEASE_KEY,
+        owner: "successor",
+        expiresAt: NOW + 2 * REPLAY_LEASE_TTL_MS,
+      })
+    } finally {
+      await takeover
+      await releaseReplayLease(successor, "successor")
+      successor.close()
+    }
+  })
+
+  it("checks current expiry after reading the row inside its mutation transaction", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const before = await first.worker.readPendingMutations()
+    let observed = false
+    const get = FakeIDBObjectStore.prototype.get
+    const operationSpy = vi.spyOn(FakeIDBObjectStore.prototype, "get")
+    operationSpy.mockImplementation(function (this: IDBObjectStore, key) {
+      const request = get.call(this, key)
+      if (
+        this.name === STORES.MUTATION &&
+        this.transaction.objectStoreNames.contains(REPLAY_LEASE_STORE)
+      ) {
+        request.addEventListener(
+          "success",
+          () => {
+            observed = true
+            vi.mocked(Date.now).mockReturnValue(NOW + REPLAY_LEASE_TTL_MS)
+          },
+          { once: true }
+        )
+      }
+      return request
+    })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse(500)))
+    await first.worker.processOfflineQueues()
+    expect(observed).toBe(true)
+    expect(await first.worker.readPendingMutations()).toEqual(before)
+    expect(first.notices).not.toHaveBeenCalled()
+  })
+
+  it("propagates a failed queue commit without deletion or a false notice", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const before = await first.worker.readPendingMutations()
+    const remove = FakeIDBObjectStore.prototype.delete
+    const operationSpy = vi.spyOn(FakeIDBObjectStore.prototype, "delete")
+    operationSpy.mockImplementation(function (this: IDBObjectStore, key) {
+      const request = remove.call(this, key)
+      if (this.name === STORES.MUTATION) this.transaction.abort()
+      return request
+    })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse(403)))
+    await expect(first.worker.processOfflineQueues()).rejects.toMatchObject({ name: "AbortError" })
+    expect(await first.worker.readPendingMutations()).toEqual(before)
+    expect(first.logger.warn).not.toHaveBeenCalled()
+    expect(first.notices).not.toHaveBeenCalled()
+  })
+
+  it("announces a real dead letter only after its deletion is committed", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    let observedMessage: unknown
+    let rowsAtNotice: unknown
+    first.notices.mockImplementation(async (message) => {
+      observedMessage = message
+      rowsAtNotice = await first.worker.readPendingMutations()
+    })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse(403)))
+    await first.worker.processOfflineQueues()
+    expect(first.notices).toHaveBeenCalledOnce()
+    expect(observedMessage).toEqual({
+      type: "offline-dead-letter",
+      store: STORES.MUTATION,
+      reason: "status-403",
+    })
+    expect(rowsAtNotice).toEqual([])
+    expect(first.logger.warn).toHaveBeenCalledOnce()
+    expect(await first.worker.readPendingMutations()).toEqual([])
   })
 })

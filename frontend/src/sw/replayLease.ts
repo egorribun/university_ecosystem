@@ -3,9 +3,9 @@ import { REPLAY_LEASE_TTL_MS } from "./replayPolicy"
 
 /** Object store holding the single replay-lease row. Created by schema version 5. */
 export const REPLAY_LEASE_STORE = "replay-lease"
-const REPLAY_LEASE_KEY = "replay"
+export const REPLAY_LEASE_KEY = "replay"
 
-interface ReplayLeaseRecord {
+export interface ReplayLeaseRecord {
   id: typeof REPLAY_LEASE_KEY
   owner: string
   expiresAt: number
@@ -19,15 +19,16 @@ interface ReplayLeaseRecord {
 export async function claimReplayLease(
   db: IDBPDatabase,
   owner: string,
-  now: number
+  now: number | (() => number)
 ): Promise<boolean> {
   const tx = db.transaction(REPLAY_LEASE_STORE, "readwrite")
   const current = (await tx.store.get(REPLAY_LEASE_KEY)) as ReplayLeaseRecord | undefined
-  if (current && current.owner !== owner && current.expiresAt > now) {
+  const timestamp = typeof now === "function" ? now() : now
+  if (current && current.owner !== owner && current.expiresAt > timestamp) {
     await tx.done
     return false
   }
-  await tx.store.put({ id: REPLAY_LEASE_KEY, owner, expiresAt: now + REPLAY_LEASE_TTL_MS })
+  await tx.store.put({ id: REPLAY_LEASE_KEY, owner, expiresAt: timestamp + REPLAY_LEASE_TTL_MS })
   await tx.done
   return true
 }
@@ -39,10 +40,19 @@ export async function claimReplayLease(
 export async function renewReplayLease(
   db: IDBPDatabase,
   owner: string,
-  now: number
+  now: number | (() => number)
 ): Promise<boolean> {
   try {
-    return await claimReplayLease(db, owner, now)
+    const tx = db.transaction(REPLAY_LEASE_STORE, "readwrite")
+    const current = (await tx.store.get(REPLAY_LEASE_KEY)) as ReplayLeaseRecord | undefined
+    const timestamp = typeof now === "function" ? now() : now
+    if (!current || current.owner !== owner || current.expiresAt <= timestamp) {
+      await tx.done
+      return false
+    }
+    await tx.store.put({ ...current, expiresAt: timestamp + REPLAY_LEASE_TTL_MS })
+    await tx.done
+    return true
   } catch {
     return false
   }
