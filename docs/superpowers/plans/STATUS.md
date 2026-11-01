@@ -3,6 +3,133 @@
 Обновлено: 2026-11-01 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 
+## Полная сверка после паузы и семь scoped приёмок — 2026-11-01
+
+Реестр: **449 / 512 приняты, 63 открыты**. Сохраняются все прежние 442 ID,
+добавлены только **AUD-270 / 274 / 311 / 351 / 456 / 490 / 503** по их исходным критериям.
+[Приёмка](../../audits/AUDIT-2026-10.md#scoped-seven-finding-acceptance-after-b72-review-2026-11-01),
+[полный обзор](../../audits/AUDIT-2026-11-01-review.md) и
+[остаток 63 ID](../../audits/AUDIT-2026-10-30-reconciliation.md#current-63-finding-reconciliation--2026-11-01)
+согласованы: **15 source-fixed/proof-pending, 36 partial, 9 unfixed,
+3 unverified/original-cause-unproven**.
+
+Проверен весь пользовательский диапазон
+`06c08f9d23130b7ffec6de5e89aa2ca6c19da6e9` →
+`b72ca72264eb31f9417a74390a1fe1963419ee5a`: один commit, все **94 пути
+(73 modified + 21 new)**, без удалений/переименований. Полные Git trees
+6064→6085 entries, оба без truncation; compare совпадает с leaf delta.
+Все 70 прежних открытых ID учтены: 41 строка имеет текущие notes,
+29 явно перенесены исторически без нового утверждения об исполнении.
+
+### Границы приёмки
+
+- AUD-270 / 351: именованные owned PostgreSQL PASS на b72, повторённые
+  собственным 953 в 15:42:39.8702211 / 15:42:17.2867926 UTC.
+- AUD-274: три свежих именованных PostgreSQL PASS на 953 (15:44:21 / 23 / 25 UTC)
+  в дополнение к историческим source-equivalent receipts на 06c. Прогон b72
+  до модуля не дошёл; полный PG job на 953 упал позже на другой fixture.
+- AUD-456: actual production/LHCI positive/negative controls, file-level46 PASS.
+- AUD-311 / 490 / 503: **COHORT-INFERRED 4 / 7 / 10**, полная source collection/allocation
+  и учёт четырёх shard outcomes, без target fail/skip/error. Это не именованные
+  receipts; raw manifests не читались, union/coverage gate SKIPPED.
+- AUD-269 **не принят**: исторический DROP-list содержит 19 non-shadow имён:
+  8 сохранены, 6 имеют локальную source-loss причину, 3 source-equivalent замены,
+  2 требуют уточнения. Девять проверенных имён не закрывают исходный критерий;
+  это не измерение production query performance.
+  AUD-278 также partial из-за нового transaction/retry риска GIN.
+- AUD-350 / 375 / 447 / 478 остаются открыты; полного CI/deployment/production-data
+  или общей privacy-приёмки нет.
+
+### Точный terminal b72 и опубликованный recovery953
+
+[Matrix b72](https://github.com/egorribun/university_ecosystem/actions/runs/41312782528):
+91 job = **61 SUCCESS / 14 FAILURE / 16 SKIPPED**, отмен нет.
+Все23 workflow: **17 SUCCESS / 4 FAILURE / 2 SKIPPED**.
+Backend: **23 395 PASS / 456 SKIP / 21 FAIL**. Frontend: **10 672 PASS / 3 FAIL**.
+Core: **52 browser PASS / 2 SKIP**, плюс357 Node и1 preflight.
+PG: **173 PASS / 11 SKIP / 1 FAIL; 248 NOT RUN** после `-x`;
+отдельные13 + 5 PASS. Coverage Policy/Codecov SKIPPED.
+Actual PR merge `dcd6518e9fc4691532a96e31559e0f296c370abd` имеет
+идентичное source-дерево `52aae0798fae3676f336f7a6983d0f76d2c75461`.
+
+Узкий [recovery953c6aa2](https://github.com/egorribun/university_ecosystem/commit/953c6aa2aee8fb4044ccbbe3dd5cc26b568058f8)
+опубликован после independent whole-chain review: ровно5 путей в2 commits,
+без изменений production DLQ/миграций/policy. Он восстанавливает target-only
+PG adapter, корректный SQLAlchemy result double, явный nil guard в Go-тесте,
+два реальных SW listeners в тестах и убирает два неиспользуемых TS exports.
+Полное дерево `4ed0ca3abba9164c834b3f84950a92cef43379c8` совпадает с
+actual merge `5e05942387f79864c4d37a42bd15ea61d3ce1d86`.
+
+Собственный [Matrix 953](https://github.com/egorribun/university_ecosystem/actions/runs/41321456248)
+полностью завершился **16:37:11 UTC**. Прочитаны все 23 workflow и 91 job:
+**19 SUCCESS / 2 FAILURE / 2 SKIPPED** и **64 SUCCESS / 11 FAILURE / 16 SKIPPED**.
+Отмен и повторных запусков не было.
+
+- Все четыре backend shard: **23 396 PASS / 456 SKIP / 20 FAIL**, 23 872 collected;
+  отдельные preflights: 850 + 240 PASS. Остаток — 17 password fixtures,
+  Helm secret-key cardinality, Semgrep source anchor и historical-148 pin.
+- Все четыре frontend shard: **10 675 PASS / 0 FAIL**, 847 файлов; RegisterSw20
+  и client.closure46 PASS. Aggregate **FAIL**: 10 непокрытых строк из 2728
+  изменённых (webVitals7, offline2, replayLease1), LCOV/Istanbul согласованы.
+- AUD-447: 85 уникальных named PASS, включая все десять invalid-retained cases;
+  это unit proof, не очистка retained/deployed error rows.
+- DB gate: 91 PASS, два AUD-350 counterfactual PASS и семь renderer PASS;
+  immutable password image PASS. Исходный rewrite/locking risk остаётся.
+- Go AUD-438 socket test, Nilaway, KNIP/Prettier, Ruff/types/baseline PASS.
+- Contract: 3616 PASS / один старый strict148 pin FAIL, отдельно 848 policy
+  и 41 transport PASS.
+- [Core](https://github.com/egorribun/university_ecosystem/actions/runs/41321456147):
+  357 Node + один preflight + **52 live PASS / 2 SKIP**, SUCCESS.
+- PG: **330 PASS / 24 SKIP / 1 FAIL**, 78 из 433 collected не достигнуты
+  после `-x`; отдельные 13 + 5 PASS. Отказ — tenantless RLS-identity fixture;
+  последующий MissingGreenlet teardown — отдельная ошибка. Tenant-RLS8
+  и quarantine-CAS3 SKIPPED, не runtime GREEN.
+- Alembic: raw148/admission SQL digest FAIL; 132 + 46 + 41 других PASS
+  не отменяют этих отказов. Dependency v3 HIGH и identity mismatch остаются.
+- Coverage & Quality Policy Gate, Trusted Codecov и rollback gate
+  **SKIPPED**, не приняты. Новый SHA обязан получить собственные проверки.
+
+### Открытые причины и следующий ограниченный шаг
+
+1. Finite historical 148 admission отвергает ordinary-parent-live SQL digest;
+   raw 17 warnings остаются FAIL. Не менять raw exit, атомарность или policy
+   ради зелёного результата; точная причина/границы требуют отдельного разбора.
+2. Password12 /two-class hardening/HIBP сохраняются. Подготовленный отдельный
+   пакет7 test fixtures адресует17 старых положительных inputs/length expectations;
+   все score/class/boundary preconditions должны подтвердиться собственным CI.
+   Исходники предсказывают 10 исчезнувших старых baseline identities и переносы
+   строк, но actual scanner ещё не запускался на этом кандидате. Baseline 315
+   и policy 502 не меняются автоматически; любой maintenance delta требует
+   фактического скана и отдельно ограниченного решения.
+3. Три GIN и пять replay-lease tests-first контролей подготовлены отдельно:
+   ожидаемые causal RED пока не выполнены. Существующий PG command использует
+   `-x`: первый отказ может оставить остальные GIN cases NOT RUN; три
+   выполненных RED не предполагаются заранее. Первый пакет не содержит production repair. Реальный
+   commit/retry и stale-owner duplicate/resurrection различаются от setup errors.
+4. AUD-447 active dedup может сохранять старую reset-link ошибку; нужны реальные
+   persistence/producer controls. Mock PASS не закрывает original storage criterion.
+5. Migration isolation остаётся выбранным least-privilege вариантом2.
+   Eager runtime Settings/model imports вызывают ложную HMAC-зависимость;
+   пользовательский chart consumer не считается завершением изоляции.
+   Фактический Helm отказ 10≠9 относится к числу projected Secret keys;
+   добавление десятого expected key не заменяет выбранный вариант 2.
+   Будущий staged plan сохраняет реальные historical encryption/signing/Redis
+   требования и не даёт новый HMAC consumer как shortcut.
+6. Trusted dead-letter RUM drop, bare mock API schema bypass, unreachable MFA
+   assertions, bounded Helm subprocess/annotation scope и capture timing±2s
+   остаются отдельными source findings. Core PASS не доказывает устранение
+   старого log_size или полного privacy chain.
+7. Caddy go-jose/v3 HIGH и exact license-row mismatch остаются открыты.
+   Исторический b72 dark build превысил 2048 MiB RSS. Собственный 953 smoke
+   SUCCESS (run 41321456202); это не доказывает причину или устранение
+   вариативности потребления памяти. Лимит не повышается.
+
+Текущее наблюдаемое состояние policy: **502 records**, baseline 315, Gitleaks 26.
+User delta заменяет только bindings351 / 376 / 410; это не разрешение дополнительных
+identities, продления expiry, глобальных исключений или изменения порогов.
+Никаких merge/deploy/production DB/force push эта документация не выполняет.
+
+
 ## Три source-bound dispositions и восстановление форматирования — 2026-11-01 10:43 UTC
 
 Реестр не меняется: **442/512 приняты, 70 открыты**. AUD-447 остаётся открыт.

@@ -1,5 +1,50 @@
 # Post-pause reconciliation — 2026-10-30
 
+## Current 63-finding reconciliation — 2026-11-01
+
+The [seven original-criterion decisions](AUDIT-2026-10.md#scoped-seven-finding-acceptance-after-b72-review-2026-11-01)
+preserve all 442 previous acceptances and add only **AUD-270 / 274 / 311 / 351 / 456 / 490 / 503**:
+**449 accepted / 63 open**. [The complete new source review](AUDIT-2026-11-01-review.md)
+covers the single b72 commit, 94 changed paths and every one of the 70 input rows.
+41 rows have current source/receipt notes; 29 are explicitly historical carry-forward,
+not a new execution verdict.
+
+Updated descriptive classification before the 7 decisions is21S/ 37P/ 9U/ 3N.
+After acceptance: **15S/ 36P/ 9U/ 3N= 63**. S means source-fixed/proof-pending,
+P partial, U unfixed, N unverified/original-cause-unproven.
+
+- **S (15):** AUD-073, AUD-154, AUD-231, AUD-309, AUD-321, AUD-322, AUD-332, AUD-347, AUD-384, AUD-392, AUD-436, AUD-449, AUD-450, AUD-474, AUD-501.
+- **P (36):** AUD-164, AUD-167, AUD-169, AUD-178, AUD-188, AUD-189, AUD-208, AUD-226, AUD-251, AUD-269, AUD-275, AUD-278, AUD-334, AUD-348, AUD-350, AUD-360, AUD-375, AUD-381, AUD-393, AUD-414, AUD-416, AUD-422, AUD-423, AUD-426, AUD-428, AUD-429, AUD-432, AUD-434, AUD-438, AUD-447, AUD-454, AUD-478, AUD-480, AUD-482, AUD-483, AUD-506.
+- **U (9):** AUD-245, AUD-272, AUD-313, AUD-327, AUD-346, AUD-373, AUD-378, AUD-380, AUD-433.
+- **N (3):** AUD-277, AUD-420, AUD-484.
+
+AUD-269 and AUD-278 change S→P: the reconstructed 19-name historical DROP
+population contains six local source-loss candidates and two unresolved definitions;
+GIN success-only tests do not exclude the new transaction/retry risk. AUD-309 / 332 move U→S and322 / 392 P→S on current source, without runtime
+acceptance. AUD-456 leaves U only with its discriminating actual file-level
+receipt. No other original criterion is broadened or silently closed.
+The prior HIBP-off concern is retracted after reviewing its staging/production
+validator; stronger12 /two-class defaults are retained.
+
+Evidence precision: AUD-270 / 351 have named b72 owned-PG passes; AUD-274 has
+three fresh named own-953 PG passes as well as historical source-equivalent 06c
+receipts. The b72 run did not reach that module; the complete 953 PG job fails later.
+311 / 490 / 503 have COHORT-INFERRED 4 / 7 / 10 supported by complete four-shard
+allocation/fail/skip accounting, not named logs or a successful union/coverage
+gate.456 is file-level46 PASS. All limitations are in the linked review.
+
+AUD-350 / 375 / 447 / 478 remain open. Retained DLQ error storage, no-Web-Locks lease
+takeover, discarded dead-letter telemetry, migration-only Settings isolation,
+raw Squawk/admission failure and Caddy v3 advisory/license identity remain
+separate blockers. The b72 RSS-cap failure is historical: own-953 unauthenticated
+smoke succeeded, without establishing the cause of build-memory variance or
+changing its budget. No operational data was inspected or changed.
+Current policy 502, baseline 315 and Gitleaks 26 are not modified by this decision.
+
+The following70 / 71 /other sections remain dated history, not competing current
+counters or newly inherited runtime results.
+
+
 ## AUD-455 acceptance and current 70-finding reconciliation (2026-10-31)
 
 The [scoped AUD-455 decision](AUDIT-2026-10.md#scoped-aud-455-acceptance-on-source-48842e23-2026-10-31)
