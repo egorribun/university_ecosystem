@@ -129,6 +129,7 @@ def _render_staging(
         capture_output=True,
         text=True,
         encoding="utf-8",
+        timeout=60,
     )
     return [resource for resource in yaml.safe_load_all(result.stdout) if resource]
 
