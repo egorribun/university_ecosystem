@@ -1,4 +1,5 @@
 import { IDBFactory } from "fake-indexeddb"
+import { openDB, type IDBPDatabase } from "idb"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -15,11 +16,17 @@ import {
 } from "../offline"
 import {
   OTHER_SESSION_RECORD_TTL_MS,
+  REPLAY_LEASE_TTL_MS,
   REPLAY_MAX_ATTEMPTS,
   REPLAY_REQUEST_TIMEOUT_MS,
 } from "../replayPolicy"
 import { warn } from "../logger"
 import * as offline from "../offline"
+import { claimReplayLease, releaseReplayLease, renewReplayLease } from "../replayLease"
+import {
+  NOTIFICATION_INTERACTIONS_DB_NAME as REPLAY_DB_NAME,
+  NOTIFICATION_INTERACTIONS_DB_VERSION as REPLAY_DB_VERSION,
+} from "@/constants/notificationInteractionsDb"
 
 vi.mock("../logger", () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
@@ -539,5 +546,177 @@ describe("AUD-375: session-bound records replay under the window's CSRF proof", 
 
     expect(fetchMock).toHaveBeenCalledOnce()
     expect(await readPendingMutations()).toEqual([])
+  })
+})
+
+/** Promise gates advance only the selected worker boundary, never wall-clock sleeps. */
+function replayGate<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
+/** Both modules execute their own replay chain against the same real IndexedDB factory. */
+async function noLockWorkers() {
+  const first = await loadSecondWorker()
+  const firstCredentials = await import("../replayCredentials")
+  const second = await loadSecondWorker()
+  const secondCredentials = await import("../replayCredentials")
+  const proof = { csrfToken: CSRF, sessionNonce: SESSION }
+  const firstProof = vi.spyOn(firstCredentials, "requestReplayCredentials").mockResolvedValue(proof)
+  vi.spyOn(secondCredentials, "requestReplayCredentials").mockResolvedValue(proof)
+  await first.initOfflineQueue()
+  expect(first.processOfflineQueues).not.toBe(second.processOfflineQueues)
+  return { first, second, firstProof, proof }
+}
+
+async function withLeaseConnections(
+  run: (first: IDBPDatabase, second: IDBPDatabase) => Promise<void>
+): Promise<void> {
+  await initOfflineQueue()
+  const first = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+  const second = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+  try {
+    await run(first, second)
+  } finally {
+    first.close()
+    second.close()
+  }
+}
+
+describe("AUD-375: IndexedDB lease takeover never revives a stale replay pass", () => {
+  beforeEach(() => {
+    vi.stubGlobal("indexedDB", new IDBFactory())
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true)
+    vi.spyOn(Date, "now").mockReturnValue(NOW)
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+    Object.defineProperty(navigator, "locks", { value: undefined, configurable: true })
+    // A frozen worker cannot run heartbeat or request-deadline callbacks. Advance only
+    // Date.now below; IndexedDB tasks and controlled promise continuations remain real.
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    Reflect.deleteProperty(navigator, "locks")
+  })
+
+  it("does not resend a stale snapshot after a successor drains and releases", async () => {
+    const { first, second, firstProof, proof } = await noLockWorkers()
+    const paused = replayGate<void>()
+    const resume = replayGate<typeof proof | null>()
+    firstProof.mockResolvedValueOnce(proof).mockImplementationOnce(() => {
+      paused.resolve(undefined)
+      return resume.promise
+    })
+    await first.storePendingMutation(
+      mutationRecord({ mutationId: "m-stale-snapshot", idempotencyKey: "op-stale-snapshot" })
+    )
+    const fetchMock = vi.fn().mockResolvedValue(okResponse())
+    vi.stubGlobal("fetch", fetchMock)
+
+    const firstPass = first.processOfflineQueues()
+    try {
+      await Promise.race([
+        paused.promise,
+        firstPass.then(() => {
+          throw new Error("First replay settled before its per-record credential boundary")
+        }),
+      ])
+      vi.mocked(Date.now).mockReturnValue(NOW + REPLAY_LEASE_TTL_MS + 1)
+      await second.processOfflineQueues()
+      const afterSecond = await first.readPendingMutations()
+      resume.resolve(proof)
+      await firstPass
+
+      expect(afterSecond).toEqual([])
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${ORIGIN}/api/v1/profile`,
+        expect.objectContaining({
+          headers: expect.objectContaining({ "Idempotency-Key": "op-stale-snapshot" }),
+        })
+      )
+      expect(await first.readPendingMutations()).toEqual([])
+    } finally {
+      resume.resolve(null)
+      await firstPass
+    }
+  })
+
+  it("does not resurrect a drained row after a stale request returns a retry", async () => {
+    const { first, second } = await noLockWorkers()
+    const entered = replayGate<void>()
+    const response = replayGate<Response>()
+    await first.storePendingMutation(
+      mutationRecord({ mutationId: "m-stale-retry", idempotencyKey: "op-stale-retry" })
+    )
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        entered.resolve(undefined)
+        return response.promise
+      })
+      .mockResolvedValue(okResponse())
+    vi.stubGlobal("fetch", fetchMock)
+
+    const firstPass = first.processOfflineQueues()
+    try {
+      await Promise.race([
+        entered.promise,
+        firstPass.then(() => {
+          throw new Error("First replay settled before its controlled request boundary")
+        }),
+      ])
+      vi.mocked(Date.now).mockReturnValue(NOW + REPLAY_LEASE_TTL_MS + 1)
+      await second.processOfflineQueues()
+      const afterSecond = await first.readPendingMutations()
+      response.resolve(okResponse(500))
+      await firstPass
+
+      expect(afterSecond).toEqual([])
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock.mock.calls.every(([url]) => url === `${ORIGIN}/api/v1/profile`)).toBe(true)
+      expect(await first.readPendingMutations()).toEqual([])
+    } finally {
+      response.resolve(okResponse())
+      await firstPass
+    }
+  })
+
+  it("keeps a healthy renewed owner exclusive until that owner releases", async () => {
+    await withLeaseConnections(async (first, second) => {
+      expect(await claimReplayLease(first, "owner-a", NOW)).toBe(true)
+      expect(await renewReplayLease(first, "owner-a", NOW + REPLAY_LEASE_TTL_MS - 1)).toBe(true)
+      expect(await claimReplayLease(second, "owner-b", NOW + REPLAY_LEASE_TTL_MS)).toBe(false)
+      await releaseReplayLease(first, "owner-a")
+      expect(await claimReplayLease(second, "owner-b", NOW + REPLAY_LEASE_TTL_MS)).toBe(true)
+    })
+  })
+
+  it("allows a new owner to claim an abandoned lease only after its expiry", async () => {
+    await withLeaseConnections(async (first, second) => {
+      expect(await claimReplayLease(first, "owner-a", NOW)).toBe(true)
+      expect(await claimReplayLease(second, "owner-b", NOW + REPLAY_LEASE_TTL_MS - 1)).toBe(false)
+      expect(await claimReplayLease(second, "owner-b", NOW + REPLAY_LEASE_TTL_MS)).toBe(true)
+    })
+  })
+
+  it("does not let an old owner release the lease that another worker took over", async () => {
+    await withLeaseConnections(async (first, second) => {
+      expect(await claimReplayLease(first, "owner-a", NOW)).toBe(true)
+      expect(await claimReplayLease(second, "owner-b", NOW + REPLAY_LEASE_TTL_MS)).toBe(true)
+      await releaseReplayLease(first, "owner-a")
+      expect(await claimReplayLease(first, "owner-c", NOW + REPLAY_LEASE_TTL_MS)).toBe(false)
+      expect(await renewReplayLease(second, "owner-b", NOW + REPLAY_LEASE_TTL_MS + 1)).toBe(true)
+      await releaseReplayLease(second, "owner-b")
+      expect(await claimReplayLease(first, "owner-c", NOW + REPLAY_LEASE_TTL_MS + 1)).toBe(true)
+    })
   })
 })
