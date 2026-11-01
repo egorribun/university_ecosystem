@@ -7401,3 +7401,285 @@ def test_aud447_allocation_trusted_loader_refuses_candidate_only_expansion(
         verifier.load_owner_authored_candidate_false_positive_dispositions(
             repository_root=repository, today=today
         )
+
+
+_NOV1_V4_FIXTURE_PATH = "tests/fixtures/full-backend-reusable-baseline.v4.yaml"
+_NOV1_V4_BINDING_CASES = (
+    (
+        8,
+        "source_files",
+        "nightly",
+        (
+            104,
+            215,
+            61,
+            176,
+            93,
+            44,
+            188,
+            13,
+            9,
+            109,
+            33,
+            33,
+            193,
+            71,
+            85,
+            207,
+            238,
+            56,
+            142,
+            158,
+        ),
+        "public_integrity_digest",
+        "workflow integrity digest",
+    ),
+    (
+        10,
+        "source_files",
+        "reusable_full_backend_mutation",
+        (
+            168,
+            182,
+            163,
+            180,
+            38,
+            70,
+            249,
+            240,
+            40,
+            189,
+            200,
+            180,
+            229,
+            150,
+            242,
+            191,
+            229,
+            241,
+            27,
+            130,
+        ),
+        "public_integrity_digest",
+        "workflow integrity digest",
+    ),
+    (
+        15,
+        "nightly_preserved_jobs",
+        "frontend-mutation-shards",
+        (
+            24,
+            128,
+            227,
+            180,
+            81,
+            89,
+            153,
+            235,
+            9,
+            241,
+            222,
+            140,
+            195,
+            209,
+            75,
+            255,
+            90,
+            204,
+            155,
+            96,
+        ),
+        "independent_contract_fingerprint",
+        "normalized workflow-contract fingerprint",
+    ),
+)
+
+
+def _nov1_v4_binding_record(index: int) -> dict[str, Any]:
+    line, section, field, digest, category, public_kind = _NOV1_V4_BINDING_CASES[index]
+    return {
+        "identity": {
+            "path": _NOV1_V4_FIXTURE_PATH,
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": list(digest),
+        },
+        "category": category,
+        "evidence": (
+            f"Public {public_kind}; source {_NOV1_V4_FIXTURE_PATH}:{line} "
+            f"field {section}.{field}; observed scanner job 124805024868 "
+            "(detect-secrets 1.5.0); identity derived with pinned parser/hash; "
+            "not credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-01",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    }
+
+
+@pytest.mark.parametrize("index", range(3))
+@pytest.mark.parametrize(
+    "today",
+    [verifier.date(2026, 11, 1), verifier.date(2027, 1, 10)],
+)
+def test_nov1_v4_binding_exact_identity_is_admitted_without_source(
+    index: int,
+    today: verifier.date,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    record = _nov1_v4_binding_record(index)
+    identity = record["identity"]
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=today
+    ) == {
+        verifier.FindingIdentity(
+            identity["path"],
+            identity["type"],
+            bytes(identity["hashed_secret_bytes"]).hex(),
+            1,
+        )
+    }
+
+
+@pytest.mark.parametrize("index", range(3))
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path-v3",
+        "path-other",
+        "type",
+        "digest",
+        "category",
+        "evidence",
+        "owner",
+        "reviewed-on",
+        "expires-on",
+        "approval-status",
+        "path-and-category",
+        "missing-field",
+        "noncanonical-path",
+    ],
+)
+def test_nov1_v4_binding_refuses_scope_and_approval_mutations(
+    index: int, mutation: str
+) -> None:
+    record = _nov1_v4_binding_record(index)
+    identity = record["identity"]
+    if mutation == "path-v3":
+        identity["path"] = "tests/fixtures/full-backend-reusable-baseline.v3.yaml"
+    elif mutation == "path-other":
+        identity["path"] = "src/unreviewed-v4-digest.txt"
+    elif mutation == "type":
+        identity["type"] = "Secret Keyword"
+    elif mutation == "digest":
+        identity["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        record["category"] = "documented_crypto_test_vector"
+    elif mutation == "evidence":
+        record["evidence"] += " Changed scope."
+    elif mutation == "owner":
+        record["owner"] = "another-owner"
+    elif mutation == "reviewed-on":
+        record["reviewed_on"] = "2026-10-31"
+    elif mutation == "expires-on":
+        record["expires_on"] = "2027-01-11"
+    elif mutation == "approval-status":
+        record["approval_status"] = "pending"
+    elif mutation == "path-and-category":
+        identity["path"] = "src/unreviewed-v4-digest.txt"
+        record["category"] = "documented_crypto_test_vector"
+    elif mutation == "missing-field":
+        del record["owner"]
+    else:
+        assert mutation == "noncanonical-path"
+        identity["path"] = "./" + _NOV1_V4_FIXTURE_PATH
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 11, 1)
+        )
+
+
+def test_nov1_v4_binding_preserves_all_prior_499_records() -> None:
+    records = _oct30_policy()["records"][:499]
+    assert len(records) == 499
+    validated = verifier.validate_false_positive_dispositions(
+        _disposition_document(*records), today=verifier.date(2026, 11, 1)
+    )
+    assert len(validated) == 499
+
+
+def test_nov1_v4_binding_preserves_historical_off_fixture_collisions() -> None:
+    records = _oct30_policy()["records"][:499]
+    fixture_records = [
+        record
+        for record in records
+        if record["identity"]["path"] == _NOV1_V4_FIXTURE_PATH
+    ]
+    assert len(fixture_records) == 42
+    historical_digests = {
+        tuple(record["identity"]["hashed_secret_bytes"])
+        for record in fixture_records
+    }
+    collisions = [
+        record
+        for record in records
+        if record["identity"]["path"] != _NOV1_V4_FIXTURE_PATH
+        and tuple(record["identity"]["hashed_secret_bytes"]) in historical_digests
+    ]
+    assert len(collisions) == 25
+    assert {record["identity"]["path"] for record in collisions} == {
+        "tests/fixtures/full-backend-reusable-baseline.v3.yaml",
+        "tests/test_full_backend_reusable_contract.py",
+    }
+    validated = verifier.validate_false_positive_dispositions(
+        _disposition_document(*collisions), today=verifier.date(2026, 11, 1)
+    )
+    assert len(validated) == 25
+
+
+def test_nov1_v4_binding_refuses_unknown_fourth_fixture_identity() -> None:
+    record = _nov1_v4_binding_record(0)
+    record["identity"]["hashed_secret_bytes"] = [0] * 20
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 11, 1)
+        )
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_nov1_v4_binding_digest_matches_exact_public_fixture_field(
+    index: int,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    lines = (root / _NOV1_V4_FIXTURE_PATH).read_text(encoding="utf-8").splitlines()
+    line, section, field, digest, _, _ = _NOV1_V4_BINDING_CASES[index]
+    parents = [
+        value
+        for value in lines[: line - 1]
+        if value and not value.startswith((" ", "#"))
+    ]
+    assert parents[-1] == section + ":"
+    matched = re.fullmatch(
+        rf"  {re.escape(field)}: ([0-9a-f]{{64}})(?: #.*)?", lines[line - 1]
+    )
+    assert matched is not None
+    actual = hashlib.sha1(
+        matched.group(1).encode("utf-8"), usedforsecurity=False
+    ).digest()
+    assert actual == bytes(digest)
+
+
+@pytest.mark.parametrize("index", range(3))
+@pytest.mark.parametrize(
+    "today",
+    [verifier.date(2026, 10, 31), verifier.date(2027, 1, 11)],
+)
+def test_nov1_v4_binding_refuses_future_review_and_expired_identity(
+    index: int, today: verifier.date
+) -> None:
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(_nov1_v4_binding_record(index)), today=today
+        )
