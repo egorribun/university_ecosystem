@@ -13,6 +13,7 @@ import os
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -370,3 +371,239 @@ def test_cutover_guard_refuses_populated_child_and_keeps_every_row(
     with psycopg.connect(scenario.sync_url) as connection:
         rows = connection.execute("SELECT id FROM mig3a_child ORDER BY id").fetchall()
     assert rows == [(1,), (2,)]
+
+
+_RECONCILE_PARENT = "7ad848733a4b"
+_RECONCILE_REVISION = "202603280001"
+_RECONCILE_GIN_CREATE = (
+    "CREATE INDEX CONCURRENTLY ix_events_search_vector "
+    "ON events USING gin (search_vector)"
+)
+_RECONCILE_GIN_DROP = "DROP INDEX CONCURRENTLY IF EXISTS ix_events_search_vector"
+_RECONCILE_NAIVE_UTC = datetime(2026, 7, 1, 12, 34, 56, 123456)
+
+
+class _InjectedGinBuildFailure(RuntimeError):
+    pass
+
+
+def _run_reconcile_probe(
+    scenario: _Scenario, *, fail_gin_create: bool = False
+) -> list[str]:
+    """Run the real revision, optionally failing only its exact GIN CREATE."""
+    observed: list[str] = []
+
+    def observe_statement(
+        _connection: sa.Connection,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        normalized = " ".join(statement.split()).rstrip(";")
+        if normalized == _RECONCILE_GIN_DROP:
+            observed.append("drop")
+        elif normalized == _RECONCILE_GIN_CREATE:
+            observed.append("create")
+            if fail_gin_create:
+                raise _InjectedGinBuildFailure("injected GIN build failure")
+
+    # Startup options set the session zone without autobegin before Alembic
+    # configures ownership of the real transaction. This engine is test-owned.
+    engine = sa.create_engine(
+        scenario.alembic_url,
+        connect_args={
+            "connect_timeout": 10,
+            "options": "-c timezone=America/Los_Angeles",
+        },
+    )
+    try:
+        with engine.connect() as connection:
+            assert not connection.in_transaction()
+            assert "connection" not in scenario.config.attributes
+            sa.event.listen(connection, "before_cursor_execute", observe_statement)
+            scenario.config.attributes["connection"] = connection
+            try:
+                if fail_gin_create:
+                    with pytest.raises(
+                        _InjectedGinBuildFailure, match="injected GIN build failure"
+                    ):
+                        command.upgrade(scenario.config, _RECONCILE_REVISION)
+                    assert observed.count("create") == 1
+                else:
+                    command.upgrade(scenario.config, _RECONCILE_REVISION)
+            finally:
+                sa.event.remove(connection, "before_cursor_execute", observe_statement)
+                removed = scenario.config.attributes.pop("connection")
+                assert removed is connection
+                assert not sa.event.contains(
+                    connection, "before_cursor_execute", observe_statement
+                )
+            assert connection.execute(sa.text("SHOW TIME ZONE")).scalar_one() == (
+                "America/Los_Angeles"
+            )
+            connection.rollback()
+    finally:
+        engine.dispose()
+    return observed
+
+
+def _event_search_index_catalog(connection: psycopg.Connection) -> tuple | None:
+    return connection.execute(
+        "SELECT index_class.oid, pg_get_indexdef(index_class.oid), "
+        "index_state.indisvalid, index_state.indisready, access_method.amname, "
+        "index_state.indisunique, index_state.indnkeyatts, index_state.indnatts, "
+        "pg_get_expr(index_state.indpred, index_state.indrelid) "
+        "FROM pg_index AS index_state "
+        "JOIN pg_class AS index_class ON index_class.oid = index_state.indexrelid "
+        "JOIN pg_am AS access_method ON access_method.oid = index_class.relam "
+        "WHERE index_state.indexrelid = to_regclass('public.ix_events_search_vector') "
+        "AND index_state.indrelid = to_regclass('public.events')"
+    ).fetchone()
+
+
+def test_reconcile_preserves_an_existing_valid_event_search_index(
+    scenario: _Scenario,
+) -> None:
+    _upgrade(scenario, _RECONCILE_PARENT)
+    event_id = uuid4()
+    with psycopg.connect(scenario.sync_url) as connection:
+        connection.execute(
+            "INSERT INTO events (id, title, starts_at, ends_at, is_active) "
+            "VALUES (%s, 'Quartzcanyon preservation', now(), "
+            "now() + interval '1 hour', true)",
+            (event_id,),
+        )
+        if _event_search_index_catalog(connection) is None:
+            connection.execute(
+                "CREATE INDEX ix_events_search_vector "
+                "ON events USING gin (search_vector)"
+            )
+        before = _event_search_index_catalog(connection)
+        assert before is not None
+        assert isinstance(before[0], int) and before[0] > 0
+        assert before[1] == (
+            "CREATE INDEX ix_events_search_vector ON public.events "
+            "USING gin (search_vector)"
+        )
+        assert before[2:] == (True, True, "gin", False, 1, 1, None)
+        matches_before = connection.execute(
+            "SELECT id FROM events WHERE search_vector @@ "
+            "to_tsquery('simple', 'quartzcanyon')"
+        ).fetchall()
+        assert matches_before == [(event_id,)]
+        connection.commit()
+
+    observed = _run_reconcile_probe(scenario)
+
+    with psycopg.connect(scenario.sync_url) as connection:
+        after = _event_search_index_catalog(connection)
+        matches_after = connection.execute(
+            "SELECT id FROM events WHERE search_vector @@ "
+            "to_tsquery('simple', 'quartzcanyon')"
+        ).fetchall()
+    # Equality includes the physical OID, not merely a recreated index name.
+    assert after == before
+    assert matches_after == matches_before
+    assert observed == []
+
+
+def _seed_reconcile_timestamp(scenario: _Scenario):
+    _upgrade(scenario, _RECONCILE_PARENT)
+    row_id = uuid4()
+    with psycopg.connect(scenario.sync_url) as connection:
+        column_type = connection.execute(
+            "SELECT data_type FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'stored_events' "
+            "AND column_name = 'created_at'"
+        ).fetchone()
+        assert column_type == ("timestamp without time zone",)
+        connection.execute(
+            "INSERT INTO stored_events "
+            "(id, event_type, aggregate_type, aggregate_id, payload, "
+            "version, created_at) "
+            "VALUES (%s, 'gin-regression', 'fixture', 'gin-row', %s::json, 1, %s)",
+            (row_id, '{"marker": "gin-retry"}', _RECONCILE_NAIVE_UTC),
+        )
+        connection.commit()
+    return row_id
+
+
+def _reconcile_timestamp_snapshot(scenario: _Scenario) -> tuple:
+    with psycopg.connect(scenario.sync_url) as connection:
+        revision = connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchall()
+        rows = connection.execute(
+            "SELECT id, event_type, aggregate_type, aggregate_id, payload, "
+            "version, created_at, pg_typeof(created_at)::text "
+            "FROM stored_events ORDER BY id"
+        ).fetchall()
+    return revision, rows
+
+
+def test_failed_event_search_build_does_not_commit_earlier_reconcile_changes(
+    scenario: _Scenario,
+) -> None:
+    row_id = _seed_reconcile_timestamp(scenario)
+    before = _reconcile_timestamp_snapshot(scenario)
+    assert before == (
+        [(_RECONCILE_PARENT,)],
+        [
+            (
+                row_id,
+                "gin-regression",
+                "fixture",
+                "gin-row",
+                {"marker": "gin-retry"},
+                1,
+                _RECONCILE_NAIVE_UTC,
+                "timestamp without time zone",
+            )
+        ],
+    )
+
+    _run_reconcile_probe(scenario, fail_gin_create=True)
+
+    # A failed revision must not retain a predecessor stamp over converted data.
+    assert _reconcile_timestamp_snapshot(scenario) == before
+
+
+def test_retry_after_failed_event_search_build_preserves_utc_instant(
+    scenario: _Scenario,
+) -> None:
+    row_id = _seed_reconcile_timestamp(scenario)
+    _run_reconcile_probe(scenario, fail_gin_create=True)
+    failed_revision, failed_rows = _reconcile_timestamp_snapshot(scenario)
+    assert failed_revision == [(_RECONCILE_PARENT,)]
+    assert len(failed_rows) == 1
+    assert failed_rows[0][:6] == (
+        row_id,
+        "gin-regression",
+        "fixture",
+        "gin-row",
+        {"marker": "gin-retry"},
+        1,
+    )
+
+    _run_reconcile_probe(scenario)
+
+    revision, rows = _reconcile_timestamp_snapshot(scenario)
+    assert revision == [(_RECONCILE_REVISION,)]
+    assert rows == [
+        (
+            row_id,
+            "gin-regression",
+            "fixture",
+            "gin-row",
+            {"marker": "gin-retry"},
+            1,
+            _RECONCILE_NAIVE_UTC.replace(tzinfo=UTC),
+            "timestamp with time zone",
+        )
+    ]
+    with psycopg.connect(scenario.sync_url) as connection:
+        index = _event_search_index_catalog(connection)
+        assert index is not None
+        assert index[2:5] == (True, True, "gin")
