@@ -9,6 +9,7 @@ what a deployment would keep rather than the SQL text the revision generates.
 from __future__ import annotations
 
 import importlib.util
+import io
 import os
 import re
 from collections.abc import Iterator
@@ -22,6 +23,8 @@ import pytest
 import sqlalchemy as sa
 import yaml
 from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from psycopg import sql
 from sqlalchemy.engine import make_url
 from testcontainers.community.postgres import PostgresContainer
@@ -376,8 +379,8 @@ def test_cutover_guard_refuses_populated_child_and_keeps_every_row(
 _RECONCILE_PARENT = "7ad848733a4b"
 _RECONCILE_REVISION = "202603280001"
 _RECONCILE_GIN_CREATE = (
-    "CREATE INDEX CONCURRENTLY ix_events_search_vector "
-    "ON events USING gin (search_vector)"
+    "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_events_search_vector "
+    "ON public.events USING gin (search_vector)"
 )
 _RECONCILE_GIN_DROP = "DROP INDEX CONCURRENTLY IF EXISTS ix_events_search_vector"
 _RECONCILE_NAIVE_UTC = datetime(2026, 7, 1, 12, 34, 56, 123456)
@@ -387,10 +390,18 @@ class _InjectedGinBuildFailure(RuntimeError):
     pass
 
 
+class _InjectedReconcileFailure(RuntimeError):
+    pass
+
+
 def _run_reconcile_probe(
-    scenario: _Scenario, *, fail_gin_create: bool = False
+    scenario: _Scenario,
+    *,
+    fail_gin_create: bool = False,
+    fail_after_gin: bool = False,
 ) -> list[str]:
-    """Run the real revision, optionally failing only its exact GIN CREATE."""
+    """Run the real revision with one bounded, explicitly selected failure seam."""
+    assert not (fail_gin_create and fail_after_gin)
     observed: list[str] = []
 
     def observe_statement(
@@ -408,6 +419,12 @@ def _run_reconcile_probe(
             observed.append("create")
             if fail_gin_create:
                 raise _InjectedGinBuildFailure("injected GIN build failure")
+        elif fail_after_gin and normalized == (
+            "ALTER TABLE user_preferences ALTER COLUMN dnd_start "
+            "TYPE TIME WITH TIME ZONE"
+        ):
+            observed.append("later-ddl")
+            raise _InjectedReconcileFailure("injected later reconciliation failure")
 
     # Startup options set the session zone without autobegin before Alembic
     # configures ownership of the real transaction. This engine is test-owned.
@@ -431,6 +448,13 @@ def _run_reconcile_probe(
                     ):
                         command.upgrade(scenario.config, _RECONCILE_REVISION)
                     assert observed.count("create") == 1
+                elif fail_after_gin:
+                    with pytest.raises(
+                        _InjectedReconcileFailure,
+                        match="injected later reconciliation failure",
+                    ):
+                        command.upgrade(scenario.config, _RECONCILE_REVISION)
+                    assert observed == ["create", "later-ddl"]
                 else:
                     command.upgrade(scenario.config, _RECONCILE_REVISION)
             finally:
@@ -513,6 +537,11 @@ def _seed_reconcile_timestamp(scenario: _Scenario):
     _upgrade(scenario, _RECONCILE_PARENT)
     row_id = uuid4()
     with psycopg.connect(scenario.sync_url) as connection:
+        # These cases deliberately exercise a missing-index build. Dropping only
+        # this test-owned fixture index prevents a valid predecessor from bypassing
+        # the exact CREATE failure seam; production code never performs this DROP.
+        connection.execute("DROP INDEX IF EXISTS public.ix_events_search_vector")
+        assert _event_search_index_catalog(connection) is None
         column_type = connection.execute(
             "SELECT data_type FROM information_schema.columns "
             "WHERE table_schema = 'public' AND table_name = 'stored_events' "
@@ -607,3 +636,231 @@ def test_retry_after_failed_event_search_build_preserves_utc_instant(
         index = _event_search_index_catalog(connection)
         assert index is not None
         assert index[2:5] == (True, True, "gin")
+
+
+def _offline_event_search_prelude() -> tuple[str, str, str]:
+    path = (
+        PROJECT_ROOT
+        / "alembic"
+        / "versions"
+        / "202603280001_reconcile_post_uuid_migration_drift.py"
+    )
+    spec = importlib.util.spec_from_file_location("aud278_offline_prelude", path)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    output = io.StringIO()
+    context = MigrationContext.configure(
+        dialect_name="postgresql", opts={"as_sql": True, "output_buffer": output}
+    )
+    with Operations.context(context):
+        migration._ensure_event_search_index()
+    # Preserve Alembic's emitted transaction boundaries. Each DO block contains
+    # only inline internal semicolons; the generator separates statements by
+    # two newlines. No captured SQL is exported or executed against a live system.
+    statements = tuple(
+        part.strip().removesuffix(";")
+        for part in output.getvalue().split(";\n\n")
+        if part.strip()
+    )
+    assert statements == (
+        "COMMIT",
+        migration._event_search_index_guard(require_present=False),
+        _RECONCILE_GIN_CREATE,
+        migration._event_search_index_guard(require_present=True),
+        "BEGIN",
+    )
+    return statements[1], statements[2], statements[3]
+
+
+def _named_event_search_object(connection: psycopg.Connection) -> tuple | None:
+    return connection.execute(
+        "SELECT c.oid, c.relkind, "
+        "CASE WHEN c.relkind = 'i' THEN pg_get_indexdef(c.oid) END, "
+        "i.indrelid, i.indisvalid, i.indisready, i.indislive "
+        "FROM pg_class AS c LEFT JOIN pg_index AS i ON i.indexrelid = c.oid "
+        "WHERE c.oid = to_regclass('public.ix_events_search_vector')"
+    ).fetchone()
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_emitted_event_search_prelude_preserves_valid_oid_or_builds_missing_index(
+    scenario: _Scenario, existing: bool
+) -> None:
+    _seed_reconcile_timestamp(scenario)
+    statements = _offline_event_search_prelude()
+    before_data = _reconcile_timestamp_snapshot(scenario)
+    notices: list[str | None] = []
+    with psycopg.connect(scenario.sync_url, autocommit=True) as connection:
+        if existing:
+            connection.execute(
+                "CREATE INDEX ix_events_search_vector "
+                "ON public.events USING gin (search_vector)"
+            )
+        before = _event_search_index_catalog(connection)
+        assert (before is not None) is existing
+        connection.add_notice_handler(
+            lambda diagnostic: notices.append(diagnostic.sqlstate)
+        )
+        for statement in statements:
+            connection.execute(statement)
+        after = _event_search_index_catalog(connection)
+    assert after is not None
+    assert after[1:] == (
+        (
+            "CREATE INDEX ix_events_search_vector ON public.events "
+            "USING gin (search_vector)"
+        ),
+        True,
+        True,
+        "gin",
+        False,
+        1,
+        1,
+        None,
+    )
+    if existing:
+        assert after == before
+        # IF NOT EXISTS emits its normal duplicate-relation notice. It is not
+        # suppressed or treated as proof; the following guard validates shape.
+        assert notices == ["42P07"]
+    else:
+        assert isinstance(after[0], int) and after[0] > 0
+        assert notices == []
+    assert _reconcile_timestamp_snapshot(scenario) == before_data
+
+
+@pytest.mark.parametrize(
+    "conflict",
+    [
+        "wrong-table",
+        "btree",
+        "predicate",
+        "expression",
+        "invalid",
+        "not-ready",
+        "non-index",
+    ],
+)
+def test_event_search_conflicts_fail_before_data_changes_and_remain_untouched(
+    scenario: _Scenario, conflict: str
+) -> None:
+    _seed_reconcile_timestamp(scenario)
+    statements = _offline_event_search_prelude()
+    with psycopg.connect(scenario.sync_url) as connection:
+        if conflict == "wrong-table":
+            connection.execute("CREATE TABLE aud278_other (search_vector tsvector)")
+            connection.execute(
+                "CREATE INDEX ix_events_search_vector "
+                "ON public.aud278_other USING gin (search_vector)"
+            )
+        elif conflict == "btree":
+            connection.execute(
+                "CREATE INDEX ix_events_search_vector ON public.events (title)"
+            )
+        elif conflict == "predicate":
+            connection.execute(
+                "CREATE INDEX ix_events_search_vector "
+                "ON public.events USING gin (search_vector) WHERE is_active"
+            )
+        elif conflict == "expression":
+            connection.execute(
+                "CREATE INDEX ix_events_search_vector "
+                "ON public.events USING gin (setweight(search_vector, 'A'))"
+            )
+        elif conflict == "non-index":
+            connection.execute("CREATE SEQUENCE public.ix_events_search_vector")
+        else:
+            connection.execute(
+                "CREATE INDEX ix_events_search_vector "
+                "ON public.events USING gin (search_vector)"
+            )
+            # This test-owned disposable database uses the same catalog-state
+            # fixture as the existing reply-index test. It simulates flags, not
+            # an actual cancellation or production-catalog mutation.
+            if conflict == "invalid":
+                connection.execute(
+                    "UPDATE pg_index SET indisvalid = false WHERE indexrelid = "
+                    "to_regclass('public.ix_events_search_vector')"
+                )
+            else:
+                connection.execute(
+                    "UPDATE pg_index SET indisready = false WHERE indexrelid = "
+                    "to_regclass('public.ix_events_search_vector')"
+                )
+        before = _named_event_search_object(connection)
+        assert before is not None
+        connection.commit()
+    before_data = _reconcile_timestamp_snapshot(scenario)
+
+    with pytest.raises(
+        RuntimeError, match="event search index requires reviewed repair"
+    ):
+        _run_reconcile_probe(scenario)
+
+    attempted = 0
+    with psycopg.connect(scenario.sync_url, autocommit=True) as connection:
+        with pytest.raises(
+            psycopg.errors.RaiseException,
+            match="event search index requires reviewed repair",
+        ):
+            for statement in statements:
+                attempted += 1
+                connection.execute(statement)
+        assert attempted == 1
+        assert _named_event_search_object(connection) == before
+    assert _reconcile_timestamp_snapshot(scenario) == before_data
+
+
+def test_event_search_postguard_refuses_drift_after_the_concurrent_build(
+    scenario: _Scenario,
+) -> None:
+    _seed_reconcile_timestamp(scenario)
+    preflight, create, postflight = _offline_event_search_prelude()
+    before_data = _reconcile_timestamp_snapshot(scenario)
+    with psycopg.connect(scenario.sync_url, autocommit=True) as connection:
+        connection.execute(preflight)
+        connection.execute(create)
+        # An independent DDL actor is not assumed to participate in a lock
+        # protocol. The postguard must reject a now-different physical index.
+        connection.execute(
+            "ALTER INDEX public.ix_events_search_vector SET (fastupdate = off)"
+        )
+        changed = _named_event_search_object(connection)
+        assert changed is not None
+        with pytest.raises(
+            psycopg.errors.RaiseException,
+            match="event search index requires reviewed repair",
+        ):
+            connection.execute(postflight)
+        assert _named_event_search_object(connection) == changed
+    assert _reconcile_timestamp_snapshot(scenario) == before_data
+
+
+def test_later_reconcile_failure_rolls_back_data_but_keeps_completed_prelude_index(
+    scenario: _Scenario,
+) -> None:
+    _seed_reconcile_timestamp(scenario)
+    before_data = _reconcile_timestamp_snapshot(scenario)
+
+    assert _run_reconcile_probe(scenario, fail_after_gin=True) == [
+        "create",
+        "later-ddl",
+    ]
+
+    assert _reconcile_timestamp_snapshot(scenario) == before_data
+    with psycopg.connect(scenario.sync_url) as connection:
+        built = _event_search_index_catalog(connection)
+    assert built is not None
+    assert built[2:5] == (True, True, "gin")
+    assert _run_reconcile_probe(scenario) == []
+    with psycopg.connect(scenario.sync_url) as connection:
+        assert _event_search_index_catalog(connection) == built
+    revision, rows = _reconcile_timestamp_snapshot(scenario)
+    assert revision == [(_RECONCILE_REVISION,)]
+    assert len(rows) == 1
+    assert rows[0][:6] == before_data[1][0][:6]
+    assert rows[0][6:] == (
+        _RECONCILE_NAIVE_UTC.replace(tzinfo=UTC),
+        "timestamp with time zone",
+    )

@@ -165,6 +165,11 @@ class _EmptyInspector:
 class _TargetOnlyOperations:
     """Forward only the real target alter; ignore unrelated migration operations."""
 
+    # Unrelated prelude SQL is rendered and filtered by this target-only adapter.
+    # It must not read the public catalog or commit this schema's UTC transaction.
+    # Full prelude behavior is exercised by the populated-chain regressions.
+    as_sql = True
+
     def __init__(self, operations: Operations, bind: sa.Connection) -> None:
         self._operations = operations
         self._bind = bind

@@ -269,6 +269,104 @@ _NOT_NULL_CHANGES: list[tuple[str, str]] = [
 ]
 
 
+# The fixed public-schema identity is validated before any reconciliation DDL.
+# A matching valid index is retained, including its physical OID. Drift or an
+# invalid interrupted build requires a separately reviewed repair, never a DROP.
+_EVENT_SEARCH_INDEX_STATE_SQL = """
+SELECT CASE
+    WHEN NOT EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_class AS target
+        JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = target.relnamespace
+        JOIN pg_catalog.pg_attribute AS column_state
+          ON column_state.attrelid = target.oid
+        WHERE namespace.nspname = 'public'
+          AND target.relname = 'events'
+          AND target.relkind = 'r'
+          AND column_state.attname = 'search_vector'
+          AND NOT column_state.attisdropped
+          AND column_state.atttypid = 'pg_catalog.tsvector'::pg_catalog.regtype
+    ) THEN 'conflict'
+    WHEN named_object.oid IS NULL THEN 'absent'
+    WHEN named_object.relkind <> 'i' OR index_state.indexrelid IS NULL
+        THEN 'conflict'
+    WHEN index_state.indrelid = pg_catalog.to_regclass('public.events')
+      AND index_state.indisvalid
+      AND index_state.indisready
+      AND index_state.indislive
+      AND NOT index_state.indisunique
+      AND NOT index_state.indisprimary
+      AND NOT index_state.indisexclusion
+      AND index_state.indnkeyatts = 1
+      AND index_state.indnatts = 1
+      AND index_state.indexprs IS NULL
+      AND index_state.indpred IS NULL
+      AND pg_catalog.pg_get_indexdef(named_object.oid) =
+          'CREATE INDEX ix_events_search_vector ON public.events USING gin (search_vector)'
+        THEN 'valid'
+    ELSE 'conflict'
+END
+FROM (SELECT pg_catalog.to_regclass('public.ix_events_search_vector') AS oid) AS lookup
+LEFT JOIN pg_catalog.pg_class AS named_object ON named_object.oid = lookup.oid
+LEFT JOIN pg_catalog.pg_index AS index_state
+  ON index_state.indexrelid = named_object.oid
+""".strip()
+
+
+def _event_search_index_guard(*, require_present: bool) -> str:
+    """Render a catalog guard, not a decision based on offline result shims."""
+    accepted = "('valid')" if require_present else "('absent', 'valid')"
+    return (
+        "DO $reconcile_event_search$ BEGIN IF ("
+        + _EVENT_SEARCH_INDEX_STATE_SQL
+        + ") NOT IN "
+        + accepted
+        + " THEN RAISE EXCEPTION "
+        "'AUD-278: event search index requires reviewed repair'; "
+        "END IF; END; $reconcile_event_search$"
+    )
+
+
+def _ensure_event_search_index() -> None:
+    """Complete the nontransactional prelude before any data-changing DDL.
+
+    PostgreSQL's concurrent build keeps events writable. Existing caller
+    lock/statement timeout settings remain authoritative and are not disabled.
+    A successful build may survive a later transactional revision failure; the
+    remaining DDL and Alembic stamp still roll back together. A retry keeps that
+    valid index. No lock protocol against arbitrary external DDL is assumed.
+    """
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        return
+    if bind.dialect.name != "postgresql":
+        raise RuntimeError("AUD-278: unsupported event search index dialect")
+    context = op.get_context()
+    if not context.as_sql:
+        state = bind.execute(sa.text(_EVENT_SEARCH_INDEX_STATE_SQL)).scalar_one()
+        if state == "valid":
+            return
+        if state != "absent":
+            raise RuntimeError("AUD-278: event search index requires reviewed repair")
+
+    # Offline generation emits the same validation, rather than treating None
+    # from _OfflineResult as absence. IF NOT EXISTS handles a concurrent creator,
+    # but only the following catalog guard can authorize the remaining DDL.
+    # This prelude precedes this revision's reconciliation DDL. Alembic commits
+    # preceding transaction work here; the repository's per-migration setting
+    # does not provide whole-chain or arbitrary caller-transaction rollback.
+    with context.autocommit_block():
+        op.execute(sa.text(_event_search_index_guard(require_present=False)))
+        op.execute(
+            sa.text(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_events_search_vector "
+                "ON public.events USING gin (search_vector)"
+            )
+        )
+        op.execute(sa.text(_event_search_index_guard(require_present=True)))
+
+
 def _record_id_is_integer(inspector) -> bool:
     """Return whether notification_queue_jobs.record_id still holds legacy integers."""
     columns = {
@@ -279,6 +377,8 @@ def _record_id_is_integer(inspector) -> bool:
 
 def upgrade() -> None:
     """Reconcile ORM models with DB after UUID v7 migration."""
+
+    _ensure_event_search_index()
 
     # ------------------------------------------------------------------
     # 0. data_access_logs_default — intentionally KEPT.
@@ -565,23 +665,6 @@ def upgrade() -> None:
             "ON news USING hnsw (embedding vector_cosine_ops)"
         )
     )
-
-    # ------------------------------------------------------------------
-    # 11. Event full-text index (AUD-278). Revision db31ef5d7ea4 restores
-    #     ix_events_search_vector only when events already exists, but a fresh
-    #     chain creates events later (148642dd1207), so the GIN index was never
-    #     rebuilt. This revision runs after events exists on every path. The
-    #     build is CONCURRENTLY, so events stays writable; DROP ... IF EXISTS
-    #     clears an INVALID index left by an interrupted earlier build.
-    # ------------------------------------------------------------------
-    with op.get_context().autocommit_block():
-        op.execute(sa.text("DROP INDEX CONCURRENTLY IF EXISTS ix_events_search_vector"))
-        op.execute(
-            sa.text(
-                "CREATE INDEX CONCURRENTLY ix_events_search_vector "
-                "ON events USING gin (search_vector)"
-            )
-        )
 
 
 def downgrade() -> None:

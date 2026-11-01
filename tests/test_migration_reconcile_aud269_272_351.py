@@ -307,3 +307,68 @@ def test_legacy_integer_text_is_not_uuid_input(record_id: int) -> None:
     assert len(str(record_id)) <= 11
     with pytest.raises(ValueError):
         uuid.UUID(str(record_id))
+
+
+def test_event_search_offline_prelude_has_two_real_guards_before_destructive_ddl(
+    reconcile_sql: str,
+) -> None:
+    module = _load_revision("202603280001_reconcile_post_uuid_migration_drift.py")
+    preflight = module._event_search_index_guard(require_present=False)
+    validated = module._event_search_index_guard(require_present=True)
+    creation = (
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_events_search_vector "
+        "ON public.events USING gin (search_vector)"
+    )
+    assert reconcile_sql.count(preflight) == 1
+    assert reconcile_sql.count(creation) == 1
+    assert reconcile_sql.count(validated) == 1
+    assert (
+        reconcile_sql.index(preflight)
+        < reconcile_sql.index(creation)
+        < reconcile_sql.index(validated)
+        < reconcile_sql.index("DROP INDEX IF EXISTS ")
+        < reconcile_sql.index("ALTER TABLE stored_events ALTER COLUMN created_at")
+    )
+    assert reconcile_sql.index("COMMIT;") < reconcile_sql.index(preflight)
+    assert reconcile_sql.index(validated) < reconcile_sql.index("BEGIN;")
+    assert "DROP INDEX CONCURRENTLY" not in reconcile_sql
+    assert "SET client_min_messages" not in reconcile_sql
+    assert "WHEN named_object.oid IS NULL THEN 'absent'" in preflight
+    assert "('absent', 'valid')" in preflight
+    assert "('valid')" in validated
+    assert "RAISE EXCEPTION" in preflight and "RAISE EXCEPTION" in validated
+
+
+def test_event_search_catalog_guard_rejects_wrong_objects_and_noncanonical_shape(
+    reconcile_sql: str,
+) -> None:
+    # The same emitted predicate validates online and offline execution. Runtime
+    # catalog outcomes are exercised separately on disposable PostgreSQL databases.
+    required = (
+        "pg_catalog.to_regclass('public.ix_events_search_vector')",
+        "namespace.nspname = 'public'",
+        "target.relname = 'events'",
+        "target.relkind = 'r'",
+        "column_state.attname = 'search_vector'",
+        "NOT column_state.attisdropped",
+        "'pg_catalog.tsvector'::pg_catalog.regtype",
+        "named_object.relkind <> 'i' OR index_state.indexrelid IS NULL",
+        "index_state.indrelid = pg_catalog.to_regclass('public.events')",
+        "index_state.indisvalid",
+        "index_state.indisready",
+        "index_state.indislive",
+        "NOT index_state.indisunique",
+        "NOT index_state.indisprimary",
+        "NOT index_state.indisexclusion",
+        "index_state.indnkeyatts = 1",
+        "index_state.indnatts = 1",
+        "index_state.indexprs IS NULL",
+        "index_state.indpred IS NULL",
+        "pg_catalog.pg_get_indexdef(named_object.oid)",
+        (
+            "CREATE INDEX ix_events_search_vector ON public.events "
+            "USING gin (search_vector)"
+        ),
+    )
+    for predicate in required:
+        assert reconcile_sql.count(predicate) == 2

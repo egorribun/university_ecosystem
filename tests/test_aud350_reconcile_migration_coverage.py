@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -112,6 +113,8 @@ class _AutocommitBlock:
 
 
 class _MigrationContext:
+    as_sql = False
+
     def __init__(self, operations: _Operations) -> None:
         self.operations = operations
 
@@ -174,7 +177,7 @@ def _bind_migration(
     record_id_integer: bool = False,
 ):
     migration = _load_migration()
-    bind = object()
+    bind = _CatalogBind(migration)
     operations = _Operations(bind)
     inspector = _Inspector(
         migration,
@@ -315,3 +318,185 @@ def test_downgrade_executes_every_revision_owned_reverse_operation(
         sum(call[0] == "drop_constraint" for call in operations.calls)
         == len(migration._FK_SPECS) + 4
     )
+
+
+class _CatalogResult:
+    def __init__(self, state: object) -> None:
+        self.state = state
+
+    def scalar_one(self) -> object:
+        return self.state
+
+
+class _CatalogBind:
+    def __init__(
+        self, migration: Any, state: object = "valid", dialect: str = "postgresql"
+    ) -> None:
+        self.migration = migration
+        self.state = state
+        self.dialect = SimpleNamespace(name=dialect)
+        self.statements: list[str] = []
+
+    def execute(self, statement: Any) -> _CatalogResult:
+        sql = str(statement)
+        assert sql == self.migration._EVENT_SEARCH_INDEX_STATE_SQL
+        self.statements.append(sql)
+        return _CatalogResult(self.state)
+
+
+@pytest.mark.parametrize("state", ["conflict", None, "", "unknown", False])
+def test_event_search_prelude_rejects_noncanonical_catalog_before_any_ddl(
+    monkeypatch: pytest.MonkeyPatch, state: object
+) -> None:
+    migration = _load_migration()
+    bind = _CatalogBind(migration, state)
+    operations = _Operations(bind)
+    monkeypatch.setattr(migration, "op", operations)
+
+    with pytest.raises(RuntimeError, match="requires reviewed repair"):
+        migration.upgrade()
+
+    assert bind.statements == [migration._EVENT_SEARCH_INDEX_STATE_SQL]
+    assert operations.calls == []
+
+
+def test_event_search_prelude_keeps_valid_index_without_autocommit_or_ddl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = _load_migration()
+    bind = _CatalogBind(migration)
+    operations = _Operations(bind)
+    monkeypatch.setattr(migration, "op", operations)
+
+    migration._ensure_event_search_index()
+
+    assert bind.statements == [migration._EVENT_SEARCH_INDEX_STATE_SQL]
+    assert operations.calls == []
+
+
+def test_missing_event_search_index_finishes_guarded_prelude_before_shadow_ddl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration, operations = _bind_migration(
+        monkeypatch,
+        all_uuid_columns_present=False,
+        user_stats_present=False,
+        foreign_keys_present=False,
+        unique_constraints_present=False,
+    )
+    operations.bind.state = "absent"
+
+    migration.upgrade()
+
+    prefix = operations.calls[:4]
+    assert prefix[0] == ("autocommit_block", (), {})
+    assert [str(call[1][0]) for call in prefix[1:]] == [
+        migration._event_search_index_guard(require_present=False),
+        (
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_events_search_vector "
+            "ON public.events USING gin (search_vector)"
+        ),
+        migration._event_search_index_guard(require_present=True),
+    ]
+    assert all(call[0] == "execute" for call in prefix[1:])
+    assert str(operations.calls[4][1][0]).startswith("DROP INDEX IF EXISTS ")
+    assert sum(call[0] == "autocommit_block" for call in operations.calls) == 1
+    assert not any(
+        "DROP INDEX CONCURRENTLY" in str(call[1]) for call in operations.calls
+    )
+
+
+@pytest.mark.parametrize("offline", [False, True])
+def test_event_search_prelude_does_not_issue_postgresql_sql_for_sqlite(
+    monkeypatch: pytest.MonkeyPatch, offline: bool
+) -> None:
+    migration = _load_migration()
+    bind = _CatalogBind(migration, dialect="sqlite")
+    operations = _Operations(bind)
+    context = _MigrationContext(operations)
+    context.as_sql = offline
+    monkeypatch.setattr(operations, "get_context", lambda: context)
+    monkeypatch.setattr(migration, "op", operations)
+
+    migration._ensure_event_search_index()
+
+    assert bind.statements == []
+    assert operations.calls == []
+
+
+def test_event_search_prelude_rejects_an_unsupported_dialect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = _load_migration()
+    bind = _CatalogBind(migration, dialect="sqlite")
+    bind.dialect.name = "unknown"
+    operations = _Operations(bind)
+    monkeypatch.setattr(migration, "op", operations)
+
+    with pytest.raises(RuntimeError, match="unsupported event search index dialect"):
+        migration._ensure_event_search_index()
+
+    assert bind.statements == []
+    assert operations.calls == []
+
+
+def test_offline_prelude_never_reads_a_fake_catalog_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration = _load_migration()
+    bind = _CatalogBind(migration, state=None)
+    operations = _Operations(bind)
+    context = _MigrationContext(operations)
+    context.as_sql = True
+    monkeypatch.setattr(operations, "get_context", lambda: context)
+    monkeypatch.setattr(migration, "op", operations)
+
+    migration._ensure_event_search_index()
+
+    assert bind.statements == []
+    assert operations.calls[0] == ("autocommit_block", (), {})
+    assert [str(call[1][0]) for call in operations.calls[1:]] == [
+        migration._event_search_index_guard(require_present=False),
+        (
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_events_search_vector "
+            "ON public.events USING gin (search_vector)"
+        ),
+        migration._event_search_index_guard(require_present=True),
+    ]
+
+
+@pytest.mark.parametrize("phase", ["preflight", "create", "postflight"])
+def test_prelude_statement_failure_propagates_before_reconciliation_ddl(
+    monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    migration = _load_migration()
+    bind = _CatalogBind(migration, state="absent")
+    operations = _Operations(bind)
+    monkeypatch.setattr(migration, "op", operations)
+    ordered = [
+        migration._event_search_index_guard(require_present=False),
+        (
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_events_search_vector "
+            "ON public.events USING gin (search_vector)"
+        ),
+        migration._event_search_index_guard(require_present=True),
+    ]
+    failing = ordered[["preflight", "create", "postflight"].index(phase)]
+    failure = RuntimeError("controlled prelude statement failure")
+    execute = operations.execute
+
+    def execute_or_fail(statement: Any, *args: Any, **kwargs: Any) -> None:
+        execute(statement, *args, **kwargs)
+        if str(statement) == failing:
+            raise failure
+
+    monkeypatch.setattr(operations, "execute", execute_or_fail)
+
+    with pytest.raises(RuntimeError) as caught:
+        migration.upgrade()
+
+    assert caught.value is failure
+    assert [str(call[1][0]) for call in operations.calls[1:]] == ordered[
+        : ordered.index(failing) + 1
+    ]
+    assert operations.calls[0] == ("autocommit_block", (), {})
