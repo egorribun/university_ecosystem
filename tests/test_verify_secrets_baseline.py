@@ -678,7 +678,8 @@ def test_reviewed_false_positive_disposition_matches_exact_identity() -> None:
 
 
 def test_exact_new_identity_allowlists_remain_finite_and_path_scoped() -> None:
-    assert len(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES) == 31
+    assert len(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES) == 32
+    assert len(verifier._V4_PRIOR_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES) == 31
     assert len(verifier._EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES) == 27
     assert {
         path for path, _, _ in verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
@@ -923,7 +924,7 @@ def test_c6_source_contract_records_reject_mutated_identity_or_category() -> Non
 
 @pytest.mark.parametrize(
     ("path", "finding_type", "digest_bytes"),
-    sorted(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES),
+    sorted(verifier._V4_PRIOR_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES),
 )
 def test_v4_independent_contract_fingerprints_match_exact_identities(
     path: str, finding_type: str, digest_bytes: tuple[int, ...]
@@ -1022,7 +1023,9 @@ def test_trivy_university_secret_reference_is_exact_and_requires_approval() -> N
     ("category", "identity"),
     [
         ("independent_contract_fingerprint", identity)
-        for identity in sorted(verifier._V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES)
+        for identity in sorted(
+            verifier._V4_PRIOR_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
+        )
     ]
     + [
         ("external_kubernetes_secret_reference", identity)
@@ -2088,7 +2091,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     records = [
         record
         for record in policy["records"]
@@ -3084,7 +3087,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 499
+    assert len(records) == 502
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3490,7 +3493,7 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 499
+    assert len(records) == 502
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
@@ -3680,7 +3683,7 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 10
 
@@ -4028,7 +4031,7 @@ def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> No
         )
     )
     test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
     assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
 
@@ -4279,7 +4282,7 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
         )
     )
     test_observed_public_metadata_policy_preserves_all_325_prior_records()
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
@@ -4300,7 +4303,7 @@ def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> Non
         )
     )
     test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     assert policy["records"][328:329] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
@@ -4429,7 +4432,7 @@ def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> Non
         )
     )
     test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     assert policy["records"][329:330] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
 
 
@@ -4634,7 +4637,7 @@ def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
         )
     )
     test_public_alembic_revision_policy_preserves_all_329_prior_records()
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     assert policy["records"][330:331] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6]
@@ -4655,7 +4658,7 @@ def test_public_git_blob_index_assertion_preserves_all_331_prior_records() -> No
         )
     )
     test_public_git_blob_index_rebind_preserves_all_330_prior_records()
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     assert policy["records"][331:332] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7]
@@ -4754,7 +4757,7 @@ def test_public_compiler_golden_policy_preserves_all_332_prior_records() -> None
         )
     )
     test_public_git_blob_index_assertion_preserves_all_331_prior_records()
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     assert policy["records"][332:336] == _PUBLIC_COMPILER_GOLDEN_RECORDS
 
 
@@ -5157,7 +5160,7 @@ def test_node_compiler_policy_appends_seven_and_preserves_337_prefix() -> None:
         )
     )
     records = policy["records"]
-    assert len(records) == 499
+    assert len(records) == 502
     prefix = json.dumps(
         records[:337], sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
@@ -5400,7 +5403,7 @@ def test_live_private_field_policy_preserves_all_336_prior_records() -> None:
         )
     )
     test_public_compiler_golden_policy_preserves_all_332_prior_records()
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     assert policy["records"][336:337] == [_LIVE_PRIVATE_FIELD_RECORD]
 
 
@@ -5577,7 +5580,7 @@ def test_public_git_blob_sourcebinding_rebind_appends_one_exact_identity() -> No
         )
     )
     test_live_private_field_policy_preserves_all_336_prior_records()
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     record = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[8]
     assert policy["records"][337:338] == [record]
     assert record["identity"]["path"] == (
@@ -6141,7 +6144,7 @@ def test_historical148_integrity_adds_only_58_and_preserves_347_prefix() -> None
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     encoded_prefix = json.dumps(
         policy["records"][:347],
         sort_keys=True,
@@ -6790,7 +6793,7 @@ def _oct30_policy() -> dict[str, Any]:
 def _oct30_assert_population(
     policy: dict[str, Any], expected: list[dict[str, Any]]
 ) -> None:
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     encoded_prefix = json.dumps(
         policy["records"][:405],
         sort_keys=True,
@@ -7144,7 +7147,7 @@ def _aud447_assert_population(
     policy: dict[str, Any], expected: list[dict[str, Any]]
 ) -> None:
     assert len(expected) == 5
-    assert len(policy["records"]) == 499
+    assert len(policy["records"]) == 502
     encoded_prefix = json.dumps(
         policy["records"][:494],
         sort_keys=True,
@@ -7152,7 +7155,7 @@ def _aud447_assert_population(
         ensure_ascii=False,
     ).encode("utf-8")
     assert hashlib.sha256(encoded_prefix).digest() == bytes(_AUD447_PRIOR_494_SHA256)
-    assert policy["records"][494:] == expected
+    assert policy["records"][494:499] == expected
 
 
 def test_aud447_allocation_adds_exact_five_and_preserves_all_prior_records() -> None:
@@ -7170,7 +7173,8 @@ def test_aud447_allocation_adds_exact_five_and_preserves_all_prior_records() -> 
     assert (
         len(
             verifier.validate_false_positive_dispositions(
-                policy, today=verifier.date(2026, 10, 31)
+                {**policy, "records": policy["records"][:499]},
+                today=verifier.date(2026, 10, 31),
             )
         )
         == 499
@@ -7681,4 +7685,189 @@ def test_nov1_v4_binding_refuses_future_review_and_expired_identity(
     with pytest.raises(verifier.BaselineArtifactError):
         verifier.validate_false_positive_dispositions(
             _disposition_document(_nov1_v4_binding_record(index)), today=today
+        )
+
+
+def _nov1_v4_assert_append_only_population(policy: dict[str, Any]) -> None:
+    expected = [_nov1_v4_binding_record(index) for index in range(3)]
+    assert len(expected) == 3
+    _aud447_assert_population(policy, _aud447_allocation_records())
+    assert policy["records"][499:] == expected
+
+
+def test_nov1_v4_policy_appends_only_three_to_the_unchanged_499_prefix() -> None:
+    policy = _oct30_policy()
+    _nov1_v4_assert_append_only_population(policy)
+    assert len(policy["records"]) == 502
+    validated = verifier.validate_false_positive_dispositions(
+        policy, today=verifier.date(2026, 11, 1)
+    )
+    assert len(validated) == 502
+
+
+def test_nov1_v4_guard_reserves_exact_fixture_categories_and_only_new_digests() -> None:
+    policy = _oct30_policy()
+    _nov1_v4_assert_append_only_population(policy)
+    fixture_records = [
+        record
+        for record in policy["records"]
+        if record["identity"]["path"] == _NOV1_V4_FIXTURE_PATH
+    ]
+    expected = {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        ): record["category"]
+        for record in fixture_records
+    }
+    assert len(expected) == 45
+    assert list(expected.values()).count("public_integrity_digest") == 13
+    assert list(expected.values()).count("independent_contract_fingerprint") == 32
+    assert verifier._V4_FIXTURE_CATEGORY_BY_IDENTITY == expected
+    assert verifier._NOV1_V4_BINDING_DIGESTS == frozenset(
+        case[3] for case in _NOV1_V4_BINDING_CASES
+    )
+    prior_fingerprints = {
+        (
+            record["identity"]["path"],
+            record["identity"]["type"],
+            tuple(record["identity"]["hashed_secret_bytes"]),
+        )
+        for record in policy["records"][:499]
+        if record["identity"]["path"] == _NOV1_V4_FIXTURE_PATH
+        and record["category"] == "independent_contract_fingerprint"
+    }
+    assert len(prior_fingerprints) == 31
+    assert (
+        verifier._V4_PRIOR_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
+        == prior_fingerprints
+    )
+
+
+def test_nov1_v4_guard_keeps_historical_categories_exact() -> None:
+    records = [
+        record
+        for record in _oct30_policy()["records"][:499]
+        if record["identity"]["path"] == _NOV1_V4_FIXTURE_PATH
+    ]
+    assert len(records) == 42
+    for original in records:
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(original), today=verifier.date(2026, 11, 1)
+        )
+        changed = copy.deepcopy(original)
+        changed["category"] = "documented_crypto_test_vector"
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(changed), today=verifier.date(2026, 11, 1)
+            )
+
+
+@pytest.mark.parametrize("index", range(3))
+def test_nov1_v4_policy_rejects_each_duplicate_identity(index: int) -> None:
+    record = _nov1_v4_binding_record(index)
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=verifier.date(2026, 11, 1)
+    )
+    with pytest.raises(verifier.BaselineArtifactError, match="duplicate"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record, copy.deepcopy(record)),
+            today=verifier.date(2026, 11, 1),
+        )
+
+
+def test_nov1_v4_policy_keeps_the_512_record_cap() -> None:
+    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 512
+    record = _nov1_v4_binding_record(0)
+    with pytest.raises(verifier.BaselineArtifactError, match="record list is invalid"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(*([record] * 513)),
+            today=verifier.date(2026, 11, 1),
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing-prior",
+        "reordered-prior",
+        "prior-metadata",
+        "missing-aud447",
+        "reordered-aud447",
+        "aud447-metadata",
+        "missing-new",
+        "reordered-new",
+        "new-metadata",
+        "extra",
+    ],
+)
+def test_nov1_v4_policy_population_rejects_changes_to_any_authorized_block(
+    mutation: str,
+) -> None:
+    policy = _oct30_policy()
+    _nov1_v4_assert_append_only_population(policy)
+    changed = copy.deepcopy(policy)
+    records = changed["records"]
+    if mutation == "missing-prior":
+        del records[0]
+    elif mutation == "reordered-prior":
+        records[0], records[1] = records[1], records[0]
+    elif mutation == "prior-metadata":
+        records[493]["owner"] = "another-owner"
+    elif mutation == "missing-aud447":
+        del records[494]
+    elif mutation == "reordered-aud447":
+        records[494], records[495] = records[495], records[494]
+    elif mutation == "aud447-metadata":
+        records[498]["owner"] = "another-owner"
+    elif mutation == "missing-new":
+        del records[499]
+    elif mutation == "reordered-new":
+        records[499], records[500] = records[500], records[499]
+    elif mutation == "new-metadata":
+        records[501]["owner"] = "another-owner"
+    else:
+        assert mutation == "extra"
+        records.append(copy.deepcopy(records[499]))
+    with pytest.raises(AssertionError):
+        _nov1_v4_assert_append_only_population(changed)
+
+
+def test_nov1_v4_trusted_loader_keeps_candidate_only_approval_separate(
+    tmp_path: Path,
+) -> None:
+    records = [_nov1_v4_binding_record(index) for index in range(3)]
+    repository, prior_sha = _new_git_fixture(tmp_path)
+    policy_path = repository / "quality/security-false-positive-dispositions.json"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        json.dumps(_disposition_document(*records)), encoding="utf-8"
+    )
+    today = verifier.date(2026, 11, 1)
+    assert (
+        verifier.load_trusted_base_false_positive_dispositions(
+            prior_sha, repository_root=repository, today=today
+        )
+        == set()
+    )
+    approved = verifier.load_owner_authored_candidate_false_positive_dispositions(
+        repository_root=repository, today=today
+    )
+    assert len(approved) == 3
+    accepted_sha = _commit_dispositions(repository, records)
+    changed = copy.deepcopy(records)
+    changed[0]["identity"]["hashed_secret_bytes"][0] ^= 1
+    policy_path.write_text(
+        json.dumps(_disposition_document(*changed)), encoding="utf-8"
+    )
+    assert (
+        verifier.load_trusted_base_false_positive_dispositions(
+            accepted_sha, repository_root=repository, today=today
+        )
+        == approved
+    )
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.load_owner_authored_candidate_false_positive_dispositions(
+            repository_root=repository, today=today
         )

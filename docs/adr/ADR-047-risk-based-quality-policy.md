@@ -1297,3 +1297,84 @@ execution, deployment, new credentials, additional identities, inline pragmas
 or a Squawk exception. It accepts no audit finding. Hosted execution on the
 new source must independently confirm scanner and contract success; a reviewed
 policy or a prior-source PASS does not supply that evidence.
+
+
+## 2026-11-01: finite three-entry v4 workflow-binding refresh
+
+The owner approved a conditional, two-stage update on 2026-11-01: publish
+only the three reviewed fixture fields first, then add their exact dispositions
+only if the actual repository scan reports exactly the expected three findings.
+Any additional or ambiguous finding stops that admission step.
+
+The source-only stage was published in
+[e71d06a3](https://github.com/egorribun/university_ecosystem/commit/e71d06a380ab5a478ae2df4d8832f5c758e80998).
+The dedicated [scanner job 124805024868](https://github.com/egorribun/university_ecosystem/actions/runs/41291740905/job/124805024868)
+reported exactly three new findings and no extras. The same result was repeated
+after the separate metadata/test changes in
+[b543fc02](https://github.com/egorribun/university_ecosystem/commit/b543fc0235fed27468b162519b5f36917d450e5b),
+in [scanner job 124820361602](https://github.com/egorribun/university_ecosystem/actions/runs/41296936313/job/124820361602).
+Both actual PR checkouts have the exact full tree of their respective branch
+heads. The fixture bytes, pinned scanner requirements and scan configuration
+are identical across those two sources.
+
+All three rows use detector **Hex High Entropy String** and the exact path
+`tests/fixtures/full-backend-reusable-baseline.v4.yaml`:
+
+| Observed line | Exact field | Category |
+| --- | --- | --- |
+| 8 | source_files.nightly | public_integrity_digest |
+| 10 | source_files.reusable_full_backend_mutation | public_integrity_digest |
+| 15 | nightly_preserved_jobs.frontend-mutation-shards | independent_contract_fingerprint |
+
+The workflow digests bind the reviewed nightly recovery changes and the
+reusable workflow's existing checkout hardening. The fingerprint binds only
+the reviewed frontend-mutation-shards job. Other fixture fields, historical
+identities and validation predicates remain unchanged.
+
+The scanner logs expose path, line and detector, not the detector's digest.
+The three identities are therefore explicitly **DERIVED**, not exported:
+each observed line has one unambiguous public scalar; the installed
+detect-secrets 1.5.0 / PyYAML 6.0.3 pipeline preserves that scalar, and the pinned
+official implementation hashes its UTF-8 value with SHA-1. Independent review
+checked the full mapping against the actual source and scan configuration.
+See the pinned
+[YAML transformer](https://github.com/Yelp/detect-secrets/blob/01886c8a910c64595c47f186ca1ffc0b77fa5458/detect_secrets/transformers/yaml.py),
+[Hex detector](https://github.com/Yelp/detect-secrets/blob/01886c8a910c64595c47f186ca1ffc0b77fa5458/detect_secrets/plugins/high_entropy_strings.py)
+and [identity hashing](https://github.com/Yelp/detect-secrets/blob/01886c8a910c64595c47f186ca1ffc0b77fa5458/detect_secrets/core/potential_secret.py).
+No new raw-scan export, scanner exclusion or inline pragma is introduced.
+
+This source change appends exactly **three** records: **499 → 502**.
+The previous 499 records retain their bytes, order, categories, evidence,
+owners and individual expiry dates. Their canonical 494-record prefix and
+the subsequent exact five AUD-447 records remain independently checked;
+no historical record is retired, renewed or replaced.
+
+The new records require the exact evidence text, owner `egorribun`, review
+date **2026-11-01**, approved status and expiry **2027-01-10**. The v4 fixture
+is restricted to 45 exact identity/category pairs: the prior 42 and these
+three. Only the three new digests are reserved globally against transplantation.
+The 25 previously approved off-fixture collision records remain admitted
+unchanged; historical metadata is not rewritten.
+
+The published tests-first contract produced **24 semantic failures** against
+the old validator: two rejected exact new fingerprint admissions, 21 accepted
+scope/metadata mutations and one accepted unknown fourth fixture identity.
+The other 33 new cases passed by complete containing-cohort inference, not a
+named PASS list. The policy cohort was **806 PASS / 24 FAIL**, without setup
+or collection errors. Those RED receipts justify the narrow guard correction;
+they do not establish success of this new implementation.
+
+Negative controls cover changed identities/categories/approval metadata,
+new-digest transplantation, unknown fourth identities, duplicates, the
+unchanged cap, append-only ordered population, expiry and trusted-base versus
+owner-authored candidate loading. Historical date cohorts retain their prior
+bounded populations. The complete current policy is tested on 2026-11-01;
+older records with earlier individual expiry dates are not silently extended.
+
+The record cap remains **512**, artifact byte cap **512 KiB**, baseline
+**315** identities and Gitleaks **26** fingerprints. The separate 20 stale
+baseline findings are unchanged. No SQL capture, migration-148 source pin,
+Squawk admission, dependency/license allowance, CI threshold, required context,
+deployment or production-database authority is included. The audit registry
+remains **442/512**. This change requires its own scanner and contract receipts;
+neither earlier scans nor source review establishes a GREEN final source.

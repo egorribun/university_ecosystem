@@ -15114,6 +15114,108 @@
       "reviewed_on": "2026-10-31",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          104,
+          215,
+          61,
+          176,
+          93,
+          44,
+          188,
+          13,
+          9,
+          109,
+          33,
+          33,
+          193,
+          71,
+          85,
+          207,
+          238,
+          56,
+          142,
+          158
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public workflow integrity digest; source tests/fixtures/full-backend-reusable-baseline.v4.yaml:8 field source_files.nightly; observed scanner job 124805024868 (detect-secrets 1.5.0); identity derived with pinned parser/hash; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-01",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          168,
+          182,
+          163,
+          180,
+          38,
+          70,
+          249,
+          240,
+          40,
+          189,
+          200,
+          180,
+          229,
+          150,
+          242,
+          191,
+          229,
+          241,
+          27,
+          130
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public workflow integrity digest; source tests/fixtures/full-backend-reusable-baseline.v4.yaml:10 field source_files.reusable_full_backend_mutation; observed scanner job 124805024868 (detect-secrets 1.5.0); identity derived with pinned parser/hash; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-01",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          24,
+          128,
+          227,
+          180,
+          81,
+          89,
+          153,
+          235,
+          9,
+          241,
+          222,
+          140,
+          195,
+          209,
+          75,
+          255,
+          90,
+          204,
+          155,
+          96
+        ]
+      },
+      "category": "independent_contract_fingerprint",
+      "evidence": "Public normalized workflow-contract fingerprint; source tests/fixtures/full-backend-reusable-baseline.v4.yaml:15 field nightly_preserved_jobs.frontend-mutation-shards; observed scanner job 124805024868 (detect-secrets 1.5.0); identity derived with pinned parser/hash; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-01",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

@@ -239,7 +239,7 @@ _FALSE_POSITIVE_CATEGORIES = (
 _INDEPENDENT_CONTRACT_FINGERPRINT_PATH = (
     "tests/fixtures/full-backend-reusable-baseline.v3.yaml"
 )
-_V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES = frozenset(
+_V4_PRIOR_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES = frozenset(
     {
         (
             "tests/fixtures/full-backend-reusable-baseline.v4.yaml",
@@ -563,6 +563,384 @@ _V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES = frozenset(
         ),
     }
 )
+
+_V4_FIXTURE_PATH = "tests/fixtures/full-backend-reusable-baseline.v4.yaml"
+_V4_PRIOR_PUBLIC_INTEGRITY_DIGESTS = frozenset(
+    {
+        (
+            209,
+            189,
+            145,
+            171,
+            90,
+            207,
+            102,
+            59,
+            105,
+            103,
+            202,
+            217,
+            66,
+            135,
+            240,
+            171,
+            75,
+            137,
+            235,
+            139,
+        ),
+        (
+            30,
+            201,
+            53,
+            130,
+            55,
+            89,
+            11,
+            108,
+            209,
+            47,
+            89,
+            178,
+            225,
+            126,
+            214,
+            32,
+            121,
+            40,
+            232,
+            77,
+        ),
+        (
+            98,
+            75,
+            100,
+            0,
+            44,
+            195,
+            149,
+            152,
+            153,
+            238,
+            32,
+            42,
+            82,
+            129,
+            29,
+            109,
+            118,
+            207,
+            96,
+            47,
+        ),
+        (
+            67,
+            214,
+            26,
+            148,
+            149,
+            122,
+            36,
+            135,
+            233,
+            137,
+            30,
+            31,
+            88,
+            61,
+            60,
+            206,
+            222,
+            254,
+            85,
+            207,
+        ),
+        (
+            53,
+            199,
+            81,
+            144,
+            138,
+            179,
+            88,
+            24,
+            83,
+            15,
+            115,
+            226,
+            234,
+            231,
+            217,
+            44,
+            233,
+            43,
+            136,
+            138,
+        ),
+        (
+            177,
+            88,
+            54,
+            35,
+            167,
+            33,
+            4,
+            97,
+            74,
+            145,
+            119,
+            145,
+            137,
+            78,
+            19,
+            37,
+            232,
+            85,
+            248,
+            213,
+        ),
+        (
+            26,
+            158,
+            23,
+            12,
+            245,
+            154,
+            65,
+            90,
+            183,
+            200,
+            101,
+            215,
+            216,
+            199,
+            75,
+            34,
+            100,
+            202,
+            186,
+            34,
+        ),
+        (
+            60,
+            242,
+            219,
+            98,
+            214,
+            242,
+            227,
+            149,
+            224,
+            164,
+            63,
+            253,
+            49,
+            155,
+            126,
+            56,
+            252,
+            82,
+            229,
+            121,
+        ),
+        (
+            47,
+            171,
+            225,
+            48,
+            217,
+            12,
+            60,
+            214,
+            146,
+            152,
+            144,
+            11,
+            1,
+            144,
+            26,
+            16,
+            28,
+            85,
+            108,
+            230,
+        ),
+        (
+            165,
+            3,
+            175,
+            175,
+            20,
+            107,
+            98,
+            94,
+            126,
+            52,
+            50,
+            1,
+            174,
+            172,
+            90,
+            92,
+            196,
+            166,
+            22,
+            165,
+        ),
+        (
+            143,
+            120,
+            48,
+            192,
+            43,
+            11,
+            20,
+            246,
+            31,
+            253,
+            204,
+            224,
+            203,
+            218,
+            179,
+            79,
+            187,
+            212,
+            10,
+            41,
+        ),
+    }
+)
+_NOV1_V4_BINDING_DETAILS = {
+    (
+        _V4_FIXTURE_PATH,
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            104,
+            215,
+            61,
+            176,
+            93,
+            44,
+            188,
+            13,
+            9,
+            109,
+            33,
+            33,
+            193,
+            71,
+            85,
+            207,
+            238,
+            56,
+            142,
+            158,
+        ),
+    ): (
+        "public_integrity_digest",
+        "Public workflow integrity digest; source "
+        f"{_V4_FIXTURE_PATH}:8 "
+        "field source_files.nightly; "
+        "observed scanner job 124805024868 (detect-secrets 1.5.0); "
+        "identity derived with pinned parser/hash; not credential material.",
+    ),
+    (
+        _V4_FIXTURE_PATH,
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            168,
+            182,
+            163,
+            180,
+            38,
+            70,
+            249,
+            240,
+            40,
+            189,
+            200,
+            180,
+            229,
+            150,
+            242,
+            191,
+            229,
+            241,
+            27,
+            130,
+        ),
+    ): (
+        "public_integrity_digest",
+        "Public workflow integrity digest; source "
+        f"{_V4_FIXTURE_PATH}:10 "
+        "field source_files.reusable_full_backend_mutation; "
+        "observed scanner job 124805024868 (detect-secrets 1.5.0); "
+        "identity derived with pinned parser/hash; not credential material.",
+    ),
+    (
+        _V4_FIXTURE_PATH,
+        _FALSE_POSITIVE_ALLOWED_TYPE,
+        (
+            24,
+            128,
+            227,
+            180,
+            81,
+            89,
+            153,
+            235,
+            9,
+            241,
+            222,
+            140,
+            195,
+            209,
+            75,
+            255,
+            90,
+            204,
+            155,
+            96,
+        ),
+    ): (
+        "independent_contract_fingerprint",
+        "Public normalized workflow-contract fingerprint; source "
+        f"{_V4_FIXTURE_PATH}:15 "
+        "field nightly_preserved_jobs.frontend-mutation-shards; "
+        "observed scanner job 124805024868 (detect-secrets 1.5.0); "
+        "identity derived with pinned parser/hash; not credential material.",
+    ),
+}
+_NOV1_V4_BINDING_DIGESTS = frozenset(
+    identity[2] for identity in _NOV1_V4_BINDING_DETAILS
+)
+_V4_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES = (
+    _V4_PRIOR_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
+    | frozenset(
+        identity
+        for identity, (category, _) in _NOV1_V4_BINDING_DETAILS.items()
+        if category == "independent_contract_fingerprint"
+    )
+)
+_V4_FIXTURE_CATEGORY_BY_IDENTITY = {
+    **{
+        identity: "independent_contract_fingerprint"
+        for identity in _V4_PRIOR_INDEPENDENT_CONTRACT_FINGERPRINT_IDENTITIES
+    },
+    **{
+        (
+            _V4_FIXTURE_PATH,
+            _FALSE_POSITIVE_ALLOWED_TYPE,
+            digest,
+        ): "public_integrity_digest"
+        for digest in _V4_PRIOR_PUBLIC_INTEGRITY_DIGESTS
+    },
+    **{
+        identity: category
+        for identity, (category, _) in _NOV1_V4_BINDING_DETAILS.items()
+    },
+}
 
 _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES = frozenset(
     {
@@ -5234,6 +5612,15 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        v4_category = _V4_FIXTURE_CATEGORY_BY_IDENTITY.get(exact_source_identity)
+        if (
+            path == _V4_FIXTURE_PATH
+            or tuple(raw_digest_bytes) in _NOV1_V4_BINDING_DIGESTS
+        ) and (v4_category is None or category != v4_category):
+            raise BaselineArtifactError(
+                f"{artifact}: v4 fixture identity changed scope"
+            )
+        nov1_v4_details = _NOV1_V4_BINDING_DETAILS.get(exact_source_identity)
         aud447_evidence = _AUD447_CI_ALLOCATION_EVIDENCE.get(exact_source_identity)
         if (
             path in _AUD447_CI_ALLOCATION_PATHS
@@ -5517,6 +5904,10 @@ def validate_false_positive_dispositions(
             )
         ):
             raise BaselineArtifactError(f"{artifact}: evidence is invalid")
+        if nov1_v4_details is not None and evidence != nov1_v4_details[1]:
+            raise BaselineArtifactError(
+                f"{artifact}: November-1 v4 binding evidence changed"
+            )
         if aud447_evidence is not None and evidence != aud447_evidence:
             raise BaselineArtifactError(
                 f"{artifact}: AUD-447 CI allocation evidence changed"
@@ -5608,6 +5999,15 @@ def validate_false_positive_dispositions(
             or expires_on - reviewed_on > timedelta(days=90)
         ):
             raise BaselineArtifactError(f"{artifact}: date range is invalid")
+
+        if nov1_v4_details is not None and (
+            owner != "egorribun"
+            or raw_reviewed != "2026-11-01"
+            or raw_expires != "2027-01-10"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: November-1 v4 binding approval metadata changed"
+            )
 
         if aud447_evidence is not None and (
             owner != "egorribun"

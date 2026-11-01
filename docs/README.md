@@ -65,7 +65,7 @@ handoffs are intentionally not part of the canonical index.
   distinguishes the historical 243-policy unfiltered scan from the private
   conditional 250-overlay result. The policy approvals do not establish passing
   tests, final-source validation, or hosted-check results. Git and PR #1343 determine published source
-  and hosted status. The current detect-secrets disposition scope is 499;
+  and hosted status. The current detect-secrets disposition scope is 502;
   the separate finite Gitleaks approval covers 26 historical fingerprints.
   See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](adr/ADR-047-risk-based-quality-policy.md#exact-migration-catalog-proof-pin-and-coordinated-scanner-scope-2026-10-24).
   See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)

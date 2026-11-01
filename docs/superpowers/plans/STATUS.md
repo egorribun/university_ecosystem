@@ -3,6 +3,104 @@
 Обновлено: 2026-11-01 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 
+## Три source-bound dispositions и восстановление форматирования — 2026-11-01 10:43 UTC
+
+Реестр не меняется: **442/512 приняты, 70 открыты**. AUD-447 остаётся открыт.
+Этот пакет добавляет только три ранее согласованных публичных технических
+identity: **policy 499 → 502**. Baseline 315, Gitleaks 26, cap 512,
+пороги, required checks и исторические SQL/Squawk ограничения не меняются.
+Старые 499 записей, порядок, metadata и индивидуальные даты окончания
+сохранены. Новые три действуют до **2027-01-10**, без продления старых записей.
+
+### Фактическое выполнение условного scanner-first решения
+
+Source-only fixture опубликован в
+[e71d06a3](https://github.com/egorribun/university_ecosystem/commit/e71d06a380ab5a478ae2df4d8832f5c758e80998).
+[Scanner 124805024868](https://github.com/egorribun/university_ecosystem/actions/runs/41291740905/job/124805024868)
+выявил ровно три ожидаемые строки 8/10/15 в
+`tests/fixtures/full-backend-reusable-baseline.v4.yaml`, detector
+`Hex High Entropy String`, без дополнительных находок.
+[Повтор на b543](https://github.com/egorribun/university_ecosystem/actions/runs/41296936313/job/124820361602)
+дал те же три строки при неизменных fixture, scanner 1.5.0 и конфигурации.
+
+Идентичности **DERIVED**, не выгружены сканером: actual path/line/type,
+единственный scalar в каждой строке и закреплённый официальный YAML/Hex/SHA-1
+алгоритм однозначно определяют digest. Полное соответствие независимо
+проверено; исходные сканы не публиковались. Решение, границы и источники:
+[ADR-047](../../adr/ADR-047-risk-based-quality-policy.md#2026-11-01-finite-three-entry-v4-workflow-binding-refresh).
+Любое дополнительное срабатывание не входит в это разрешение.
+
+Новый guard ограничивает v4 fixture 45 точными identity/category pairs
+(42 прежних и три новых), резервирует глобально только три новых digest,
+сохраняет 25 прежних off-fixture collisions и точную metadata новых записей.
+Тесты сохраняют прежние даты и bounded populations; canonical 499 prefix
+проверяется через неизменный 494 prefix и следующие пять AUD-447 records.
+Это source implementation, **не собственный GREEN** нового пакета.
+
+### Последний полный backend: e71
+
+[e71 Matrix 41291740905](https://github.com/egorribun/university_ecosystem/actions/runs/41291740905)
+завершился 10:17:49 UTC: **64 SUCCESS / 11 FAILURE / 16 SKIPPED**, 91 job,
+отмен нет. Все 23 workflow terminal: **18 SUCCESS / 3 FAILURE / 2 SKIPPED**.
+Actual checkout `eff361f0d77af57352cbe1e2fd92a3aa6d41eb66` совпадает с e71
+по полному дереву `5bde2393b18f7b6ee6c93d24b8f4205a0c2bf3fa`.
+
+Backend: **23 097 PASS / 433 SKIP / 34 FAIL** — 33 finite-eight semantic RED
+и один historical-148 pin. Четыре прежних binding failures стали named PASS;
+Contract **3615 PASS / 1 pin FAIL**, отдельно policy 773 PASS и transport
+41 PASS. PG: **263 PASS / 12 SKIP / 1 index-drift FAIL**; AUD258 nine,
+AUD447 two и password-inventory four — named PASS. Coverage и Codecov SKIPPED.
+Этот прогон предшествует finite-eight repair и не доказывает его исправление.
+
+### Tests-first source b543: terminal, но backend пропущен
+
+[b543fc02](https://github.com/egorribun/university_ecosystem/commit/b543fc0235fed27468b162519b5f36917d450e5b)
+содержит отдельный пятифайловый metadata repair и 57 новых tests-only cases.
+Actual checkout `53d8fbe5ca73cb356591b909a647e88fb8df6f69` имеет то же
+дерево `e920cb3d0704d78c01c0638813ba10bcda0b6a55`.
+[Matrix 41296936313](https://github.com/egorribun/university_ecosystem/actions/runs/41296936313)
+завершился 10:41:42 UTC: **23 SUCCESS / 7 FAILURE / 30 SKIPPED**, 60 job,
+отмен нет. Все 23 workflow terminal: **18 SUCCESS / 3 FAILURE / 2 SKIPPED**.
+
+- [Fast lint](https://github.com/egorribun/university_ecosystem/actions/runs/41296936313/job/124819644471)
+  обнаружил нашу ошибку оформления в четырёх путях: один import-order и три
+  formatter hunks. Этот пакет переносит точные hosted postimages отдельным
+  commit, без изменения выражений, assertions, fixtures или поведения.
+  Backend, PG, Alembic и DB gate были **SKIPPED**. Runtime finite-eight repair
+  ещё не подтверждён; прежний PG drift не объявляется устранённым.
+- [Contract](https://github.com/egorribun/university_ecosystem/actions/runs/41296936313/job/124819644550)
+  реально исполнил новые 57 cases: **24 named semantic FAIL** и **33 PASS
+  только по containing-cohort inference**, без setup/collection errors.
+  Два отказа — прежний validator отверг точный новый fingerprint; 21 —
+  пропустил изменение scope/metadata; один — пропустил четвёртую identity.
+  Policy cohort: **806 PASS / 24 FAIL**. Основной Contract: **3615 PASS /
+  1 historical-148 pin FAIL**, transport 41 PASS. Historical pin теперь первым
+  отклоняет изменённый `alembic/env.py`; pin и capture намеренно не обновлялись.
+- Frontend: **10 672 PASS / 847 файлов**;
+  [aggregate](https://github.com/egorribun/university_ecosystem/actions/runs/41296936313/job/124824287731):
+  **2645 changed lines / 0 missing / 100% line**, не все coverage metrics.
+  AUD455 Node: 84 PASS results = 79 leaf cases + 5 parent/group results;
+  оба causal controls снова named PASS.
+- [Core](https://github.com/egorribun/university_ecosystem/actions/runs/41296936191/job/124819643038)
+  завершился FAILURE: preflight 357+1 PASS, browser **52 PASS / 2 SKIP**, затем
+  `log_size`, exit 2, capture 2/2. Первая выборка stderr 644907 bytes,
+  472 complete lines, max line 3785 bytes; оставалось 403669 bytes, stdout 0.
+  Причина объёма не установлена; это не доказательство утечки или исправления.
+  NATS SKIPPED; cleanup и receipt PASS.
+- Dependency Review сохраняет отдельные go-jose/v3 HIGH и exact license-row
+  failures. Downstream image Trivy/SLSA/Matrix SBOM и Python coverage были
+  SKIPPED, не PASS. Полного CI GREEN нет.
+
+### Следующие обязательные проверки
+
+Новый source требует собственных scanner/strict negative controls, всех
+backend/PG/metadata dialect tests и полного terminal CI. Нельзя наследовать
+e71/b543 GREEN или увеличивать реестр по source review. Finite-eight repair
+не меняет runtime Base, physical schema или production migrations; здесь
+нет DB apply, deploy, новых прав, SQL admission или ослабления проверок.
+Core capture cause, historical148 и dependency/license blockers остаются
+отдельными открытыми задачами.
+
 ## Terminal ef1 и следующий scanner-first шаг — 2026-11-01 09:00 UTC
 
 Эта документальная приёмка добавляет только AUD-455: **442/512 приняты,
