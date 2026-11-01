@@ -210,6 +210,12 @@
 		}
 	}
 
+	# Hashed Vite bundles under /assets/ are public, high-volume static files with no
+	# credential-bearing URI. Skip only their access rows; API, login, WebSocket and
+	# proxy rows keep the filtered URI redaction below.
+	@static_bundles path /assets/*
+	log_skip @static_bundles
+
 	# Preserve useful request details while redacting passwords, reset tokens,
 	# OAuth code/state, and WebSocket tickets from access-log URI values.
 	log {

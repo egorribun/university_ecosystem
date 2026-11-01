@@ -204,7 +204,10 @@ describe("offline database upgrade", () => {
       expect(upgraded.transaction(STORES.MUTATION).store.index("mutationId").unique).toBe(true)
     } finally {
       observer.close()
-      await pendingUpgrade?.then((database) => database.close(), () => undefined)
+      await pendingUpgrade?.then(
+        (database) => database.close(),
+        () => undefined
+      )
     }
   })
 
@@ -264,7 +267,10 @@ describe("offline database upgrade", () => {
       expect(Array.from(upgraded.objectStoreNames).sort()).toEqual(ALL_STORES)
     } finally {
       observer.close()
-      await pendingUpgrade?.then((database) => database.close(), () => undefined)
+      await pendingUpgrade?.then(
+        (database) => database.close(),
+        () => undefined
+      )
     }
   })
 })

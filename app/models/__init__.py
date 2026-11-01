@@ -88,6 +88,9 @@ from app.models.notifications import (
     NotificationDelivery as NotificationDelivery,
 )
 from app.models.notifications import (
+    NotificationDeliveryOnce as NotificationDeliveryOnce,
+)
+from app.models.notifications import (
     NotificationQueueJob as NotificationQueueJob,
 )
 from app.models.notifications import (

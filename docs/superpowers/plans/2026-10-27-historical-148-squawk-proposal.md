@@ -30,7 +30,7 @@ The [15eaaa Alembic job](https://github.com/egorribun/university_ecosystem/actio
 captured both complete SQL inputs and the Squawk JSON reporter. PR source
 `15eaaa5194642a4f3e52b5207f57235df968cb8e` was tested as merge
 `37b82de67516752bb8c11462759b381c533db7fd`. The independent fixture
-[`historical148-squawk-capture-15eaaa.json`](../../../tests/fixtures/historical148-squawk-capture-15eaaa.json)
+[`historical148-squawk-capture-15eaaa.json`](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/tests/fixtures/historical148-squawk-capture-15eaaa.json)
 retains the ordinary capture, expanded diagnostic metadata/SQL, both raw JSON
 streams, their exit codes and provenance. No credentials or database row values
 are introduced by this fixture.
@@ -40,7 +40,7 @@ repeated exactly the same ordinary SQL (17,031 bytes) and expanded SQL (18,373
 bytes), with 13 and 24 warnings respectively. Both raw exits were 1 and both
 JSON-reporter stderr streams were empty. SQL digests, source pins, full warnings,
 locations and the seven existing ordered `--exclude` arguments are recorded
-in [the inactive policy](../../../quality/historical148-squawk-policy.json).
+in [the inactive policy](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/quality/historical148-squawk-policy.json).
 The rule does not introduce an exclusion; the existing arguments are not
 misrepresented as an exclusion-free scan.
 
@@ -57,7 +57,7 @@ The [35aeedeb Alembic job](https://github.com/egorribun/university_ecosystem/act
 recaptured source `35aeedeb62d5036b2280d60067477d2c74c58ff7`, tested merge
 `e3fc69103be30ea390634ed4744110ede05c890d`, with the same source tree
 `529e2042d15551dd42f3e9728654012e6dd63e33`.
-The [new fixture](../../../tests/fixtures/historical148-squawk-capture-35aeedeb.json)
+The [new fixture](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/tests/fixtures/historical148-squawk-capture-35aeedeb.json)
 retains both actual captures, not a simulated or relabelled old run. The old
 15eaaa fixture remains an unchanged historical artifact.
 
@@ -93,7 +93,7 @@ The [36f70a0f Alembic job](https://github.com/egorribun/university_ecosystem/act
 captures source `36f70a0f27065231d7c0ad66ded01d22385a0a81`, tested merge
 `587a180333d962d5c25e984f54567835a3071e93`, identical source tree
 `e38f2243726cd11b25e44958655e7fa61c41314e`.
-The [new immutable capture](../../../tests/fixtures/historical148-squawk-capture-36f70a0f.json)
+The [new immutable capture](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/tests/fixtures/historical148-squawk-capture-36f70a0f.json)
 contains this run's actual ordinary and expanded SQL, raw JSON, temporary
 identities and provenance. Both older 15eaaa and 35aeedeb fixtures remain
 unchanged historical evidence.
@@ -267,7 +267,7 @@ more complex and still does not eliminate the existing historical lint input.
 This package prepares one historical148-specific recognizer and inventory, not a
 general exception framework. Keep it separate from finite131 coverage, secret
 dispositions and unsupported-downgrade policy. The
-[pure matcher](../../../scripts/quality/validate_historical148_squawk.py) recognizes
+[pure matcher](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/scripts/quality/validate_historical148_squawk.py) recognizes
 only the compiled fingerprints of the exact prepared policy and historical
 capture. A caller cannot authorize a replacement policy by supplying matching
 changed findings. No CLI, subprocess, database, file reader or migration-gate
@@ -291,10 +291,10 @@ terminal newline. Preserve every field and all array order except each raw
 warning array: parse it strictly, sort complete rows by their canonical JSON
 strings without deduplicating, and serialize that array back to its JSON string.
 SQL strings are not normalized. The two source constants are derived from the
-committed [policy](../../../quality/historical148-squawk-policy.json) and
-[capture](../../../tests/fixtures/historical148-squawk-capture-36f70a0f.json), never
+committed [policy](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/quality/historical148-squawk-policy.json) and
+[capture](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/tests/fixtures/historical148-squawk-capture-36f70a0f.json), never
 from caller-supplied approval data. The
-[contract tests](../../../tests/test_historical148_squawk_policy.py) and required
+[contract tests](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/tests/test_historical148_squawk_policy.py) and required
 checks need exact published-source receipts; this source description is not a
 passing test, scanner, full-CI or deployment receipt.
 

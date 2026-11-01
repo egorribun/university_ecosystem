@@ -19,6 +19,24 @@ def _rows(values: list[object]) -> MagicMock:
     return result
 
 
+def _claimed(*pairs: tuple[object, object]) -> MagicMock:
+    """Result of the AUD-272 claim insert: the (notification, subscription) pairs it won."""
+    result = MagicMock()
+    result.all.return_value = list(pairs)
+    return result
+
+
+def _session(side_effect: object) -> MagicMock:
+    """Session double on PostgreSQL, so the AUD-272 claim takes its production branch."""
+    bind = MagicMock()
+    bind.dialect.name = "postgresql"
+    return MagicMock(
+        execute=AsyncMock(side_effect=side_effect),
+        flush=AsyncMock(),
+        get_bind=MagicMock(return_value=bind),
+    )
+
+
 @pytest.mark.asyncio
 async def test_deliver_and_process_uses_shared_default_deliverer(
     monkeypatch: pytest.MonkeyPatch,
@@ -123,16 +141,14 @@ async def test_redelivery_uses_safe_url_and_unknown_metric_type_fallback(
         delivery.metrics, "record_notification_delivered", record_delivered
     )
 
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _rows([notification]),
-                _rows([subscription]),
-                _rows([]),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _rows([notification]),
+            _rows([subscription]),
+            _rows([]),
+            _claimed((notification.id, subscription.id)),
+            MagicMock(),
+        ]
     )
 
     outcome = await delivery.redeliver_notifications(
@@ -228,9 +244,12 @@ async def test_redelivery_updates_the_latest_attempt_for_each_pair(
             # idempotency contract rather than just inspecting SQL text.
             ordered = bool(getattr(statement, "_order_by_clauses", ()))
             return _rows([newer, older] if ordered else [older, newer])
+        if calls == 4:
+            # AUD-272 claim: this attempt wins the pair, so it is sent.
+            return _claimed((notification_id, subscription_id))
         raise AssertionError("unexpected database query")
 
-    db = MagicMock(execute=AsyncMock(side_effect=execute), flush=AsyncMock())
+    db = _session(execute)
 
     outcome = await delivery.redeliver_notifications(
         db, notification_ids=[notification_id]
@@ -293,15 +312,14 @@ async def test_redelivery_preserves_provider_detail_when_updating_prior_attempt(
     )
     monkeypatch.setattr(delivery, "_process_canonical_push_results", AsyncMock())
     monkeypatch.setattr(delivery.metrics, "record_notification_failed", Mock())
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _rows([notification]),
-                _rows([subscription]),
-                _rows([prior]),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _rows([notification]),
+            _rows([subscription]),
+            _rows([prior]),
+            _claimed((notification.id, subscription.id)),
+            MagicMock(),
+        ]
     )
 
     outcome = await delivery.redeliver_notifications(
@@ -385,16 +403,15 @@ async def test_redelivery_records_exception_metric_with_unknown_type_fallback(
     monkeypatch.setattr(delivery.metrics, "record_notification_failed", failed)
     monkeypatch.setattr(delivery, "_build_delivery_row", build_row)
 
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _rows([notification]),
-                _rows([subscription]),
-                _rows([]),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _rows([notification]),
+            _rows([subscription]),
+            _rows([]),
+            _claimed((notification.id, subscription.id)),
+            MagicMock(),
+            MagicMock(),
+        ]
     )
 
     outcome = await delivery.redeliver_notifications(
@@ -453,16 +470,15 @@ async def test_redelivery_error_result_uses_canonical_unknown_metric_type(
     )
     monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
     monkeypatch.setattr(delivery.metrics, "record_notification_failed", failed)
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _rows([notification]),
-                _rows([subscription]),
-                _rows([]),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _rows([notification]),
+            _rows([subscription]),
+            _rows([]),
+            _claimed((notification.id, subscription.id)),
+            MagicMock(),
+            MagicMock(),
+        ]
     )
 
     outcome = await delivery.redeliver_notifications(
@@ -510,16 +526,14 @@ async def test_redelivery_payload_preserves_canonical_topic_metadata(
     monkeypatch.setattr(delivery, "normalize_topic", lambda topic: topic)
     monkeypatch.setattr(delivery.webpush_module, "_send_push_async", send)
     monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _rows([notification]),
-                _rows([subscription]),
-                _rows([]),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _rows([notification]),
+            _rows([subscription]),
+            _rows([]),
+            _claimed((notification.id, subscription.id)),
+            MagicMock(),
+        ]
     )
 
     outcome = await delivery.redeliver_notifications(
@@ -583,16 +597,15 @@ async def test_redelivery_gone_result_uses_lowercase_metric_reason(
     )
     monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
     monkeypatch.setattr(delivery.metrics, "record_notification_failed", failed)
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _rows([notification]),
-                _rows([subscription]),
-                _rows([]),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _rows([notification]),
+            _rows([subscription]),
+            _rows([]),
+            _claimed((notification.id, subscription.id)),
+            MagicMock(),
+            MagicMock(),
+        ]
     )
 
     outcome = await delivery.redeliver_notifications(
@@ -652,16 +665,14 @@ async def test_redelivery_continues_after_an_already_delivered_subscription(
     monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)
     monkeypatch.setattr(delivery.webpush_module, "_send_push_async", send)
     monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _rows([notification]),
-                _rows([first, second]),
-                _rows([prior]),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _rows([notification]),
+            _rows([first, second]),
+            _rows([prior]),
+            _claimed((notification.id, second.id)),
+            MagicMock(),
+        ]
     )
 
     outcome = await delivery.redeliver_notifications(
@@ -717,16 +728,14 @@ async def test_redelivery_continues_after_an_unsupported_subscription(
     monkeypatch.setattr(delivery, "subscription_supports_topic", supports_topic)
     monkeypatch.setattr(delivery.webpush_module, "_send_push_async", send)
     monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _rows([notification]),
-                _rows([unsupported, supported]),
-                _rows([]),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _rows([notification]),
+            _rows([unsupported, supported]),
+            _rows([]),
+            _claimed((notification.id, supported.id)),
+            MagicMock(),
+        ]
     )
 
     outcome = await delivery.redeliver_notifications(
@@ -785,16 +794,15 @@ async def test_redelivery_accumulates_retryable_failures_across_all_jobs(
     )
     monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
     monkeypatch.setattr(delivery.metrics, "record_notification_failed", Mock())
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _rows(notifications),
-                _rows([subscription]),
-                _rows([]),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _rows(notifications),
+            _rows([subscription]),
+            _rows([]),
+            _claimed(*((item.id, subscription.id) for item in notifications)),
+            MagicMock(),
+            MagicMock(),
+        ]
     )
 
     outcome = await delivery.redeliver_notifications(
@@ -893,15 +901,13 @@ async def test_redelivery_requires_one_provider_result_per_send_job(
         Mock(return_value=object()),
     )
     monkeypatch.setattr(delivery.asyncio, "gather", AsyncMock(return_value=[]))
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _rows([notification]),
-                _rows([subscription]),
-                _rows([]),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _rows([notification]),
+            _rows([subscription]),
+            _rows([]),
+            _claimed((notification.id, subscription.id)),
+        ]
     )
 
     with pytest.raises(ValueError, match="zip"):

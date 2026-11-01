@@ -319,13 +319,13 @@ async def ensure_partitions_exist() -> None:
             return
 
         # 1a. Ensure DEFAULT partition exists for notification tables.
-        # Migration 148642dd1207 creates these tables with postgresql_partition_by
+        # The MVP baseline creates these tables with postgresql_partition_by
         # but no DEFAULT partition; without one, rows whose date falls outside
         # `partition_warmup_months` (e.g. older test data) fail with
         # "no partition of relation X found for row". Self-heal here so the fix
-        # also covers production DBs that already ran the buggy migration.
+        # also covers DBs whose partitions were created without a DEFAULT.
         # Note: data_access_logs intentionally has no DEFAULT partition
-        # (migration 202603280001 explicitly drops it as an "autogenerate artefact").
+        # (the squashed chain dropped it as an "autogenerate artefact").
         _DEFAULT_PARTITION_TABLES = ("notifications", "notification_deliveries")
         for table in _DEFAULT_PARTITION_TABLES:
             if not _SAFE_IDENTIFIER_RE.match(table):

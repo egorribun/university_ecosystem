@@ -431,6 +431,23 @@ def test_access_logs_drop_headers_that_can_carry_a_reset_token() -> None:
         )
 
 
+def test_static_bundle_access_rows_are_the_only_skipped_access_logs() -> None:
+    """Only public hashed-bundle access rows are skipped; login, API and proxy rows stay.
+
+    Hashed Vite bundles under /assets/ carry no credential-bearing URI. Only their
+    access rows may be skipped; the login, API, WebSocket and proxy rows that carry
+    credential-bearing URIs must keep the redacted logging.
+    """
+    for relative_path in EDGE_CADDYFILES:
+        squashed = _squashed_caddyfile(relative_path)
+        assert squashed.count("log_skip") == 1, (
+            f"{relative_path} may declare exactly one access-log skip"
+        )
+        assert "@static_bundles path /assets/* log_skip @static_bundles" in squashed, (
+            f"{relative_path} must skip access rows for the hashed bundle prefix only"
+        )
+
+
 def test_infrastructure_edge_keeps_certificate_management_for_internal_jwks() -> None:
     """AUD-506: the :80 edge disables redirects only, so caddy:8443 gets its local cert."""
     squashed = _squashed_caddyfile("infrastructure/Caddyfile")

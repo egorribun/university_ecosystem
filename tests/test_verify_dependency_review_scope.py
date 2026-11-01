@@ -1,9 +1,11 @@
+import io
 import json
 import ssl
 import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,6 +18,7 @@ from scripts.quality.verify_dependency_review_scope import (
     CONFIG_PATH,
     EXPECTED_MODULES,
     EXPECTED_ROWS,
+    GHSA_EXCEPTIONS,
     LICENSE_REF,
     MAX_DEPENDENCY_COMPARE_BYTES,
     PURL_ADDITIONS,
@@ -29,9 +32,12 @@ from scripts.quality.verify_dependency_review_scope import (
     _parse_config,
     expected_rows_for_delta,
     fetch_dependency_comparison,
+    main,
+    preflight,
     read_dependency_changes_file,
     verify_current_pins,
     verify_dependency_changes,
+    verify_ghsa_exception_rows,
     verify_policy_delta,
     verify_policy_scope,
     write_dependency_changes_file,
@@ -305,12 +311,16 @@ class DependencyLicenseGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must remain enabled"):
             verify_policy_delta(config(old), config(new, vuln_check="false"))
 
-    def test_repository_config_has_no_global_ghsa_suppressions(self):
+    def test_repository_config_ghsa_entries_are_bounded_exceptions(self):
+        # AUD-479: every allowed GHSA must have a scoped, owned, expiring record.
         config_path = Path(__file__).parents[1] / CONFIG_PATH
         config_text = config_path.read_text(encoding="utf-8")
         _scalars, sections = _parse_config(config_text)
-        self.assertEqual(sections.get("allow-ghsas", []), [])
-        verify_policy_scope(config_text)
+        self.assertEqual(
+            sorted(sections.get("allow-ghsas", [])),
+            sorted(record["ghsa"] for record in GHSA_EXCEPTIONS),
+        )
+        verify_policy_scope(config_text, today=date(2026, 11, 2))
 
     def test_policy_scope_rejects_a_global_ghsa_suppression(self):
         purls = ["pkg:npm/preserved", *PURL_ADDITIONS.keys()]
@@ -1084,3 +1094,237 @@ class ProtectedBaseGitReadTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _advisory_row(manifest, name, version, ghsa, change_type="added"):
+    vulnerabilities = []
+    if ghsa:
+        vulnerabilities.append(
+            {
+                "severity": "high",
+                "advisory_ghsa_id": ghsa,
+                "advisory_summary": "Go JOSE: DoS when parsing JWKs that contain RSA keys",
+                "advisory_url": f"https://github.com/advisories/{ghsa}",
+            }
+        )
+    return {
+        "change_type": change_type,
+        "manifest": manifest,
+        "ecosystem": "gomod",
+        "name": name,
+        "version": version,
+        "package_url": f"pkg:golang/{name}@{version}",
+        "license": "Apache-2.0 AND BSD-3-Clause",
+        "source_repository_url": None,
+        "vulnerabilities": vulnerabilities,
+    }
+
+
+CADDY_JOSE_GHSA = "GHSA-mgcc-cww5-fp2q"
+CADDY_JOSE_ROW = _advisory_row(
+    "services/caddy/go.mod", "github.com/go-jose/go-jose/v3", "3.0.5", CADDY_JOSE_GHSA
+)
+
+
+class GhsaBoundedExceptionTests(unittest.TestCase):
+    """AUD-479: the GHSA exception is bounded to one manifest, package and version."""
+
+    def test_exception_is_recorded_with_owner_expiry_and_scope(self):
+        (record,) = GHSA_EXCEPTIONS
+        self.assertEqual(record["ghsa"], CADDY_JOSE_GHSA)
+        self.assertEqual(record["owner"], "egorribun")
+        self.assertEqual(record["expires"], date(2027, 1, 10))
+        self.assertEqual(record["manifest"], "services/caddy/go.mod")
+        self.assertEqual(record["ecosystem"], "gomod")
+        self.assertEqual(record["name"], "github.com/go-jose/go-jose/v3")
+        self.assertEqual(record["version"], "3.0.5")
+        self.assertTrue(record["reason"].strip())
+        self.assertTrue(record["reachability"].strip())
+
+    def test_exact_caddy_manifest_row_is_accepted_under_exception(self):
+        self.assertEqual(
+            verify_ghsa_exception_rows([CADDY_JOSE_ROW], today=date(2026, 11, 2)),
+            1,
+        )
+
+    def test_same_ghsa_in_another_manifest_fails(self):
+        row = _advisory_row(
+            "services/gateway/go.mod",
+            "github.com/go-jose/go-jose/v3",
+            "3.0.5",
+            CADDY_JOSE_GHSA,
+        )
+        with self.assertRaisesRegex(ValueError, "outside its reviewed"):
+            verify_ghsa_exception_rows([row], today=date(2026, 11, 2))
+
+    def test_same_ghsa_for_another_package_or_version_fails(self):
+        other_version = _advisory_row(
+            "services/caddy/go.mod",
+            "github.com/go-jose/go-jose/v3",
+            "3.0.6",
+            CADDY_JOSE_GHSA,
+        )
+        other_package = _advisory_row(
+            "services/caddy/go.mod",
+            "github.com/go-jose/go-jose/v4",
+            "3.0.5",
+            CADDY_JOSE_GHSA,
+        )
+        for row in (other_version, other_package):
+            with self.subTest(package_url=row["package_url"]):
+                with self.assertRaisesRegex(ValueError, "outside its reviewed"):
+                    verify_ghsa_exception_rows([row], today=date(2026, 11, 2))
+
+    def test_exception_fails_on_and_after_expiry_date(self):
+        for day in (date(2027, 1, 10), date(2027, 2, 1)):
+            with self.subTest(day=day.isoformat()):
+                with self.assertRaisesRegex(ValueError, "expired"):
+                    verify_ghsa_exception_rows([CADDY_JOSE_ROW], today=day)
+
+    def test_exception_still_passes_the_day_before_expiry(self):
+        self.assertEqual(
+            verify_ghsa_exception_rows([CADDY_JOSE_ROW], today=date(2027, 1, 9)),
+            1,
+        )
+
+    def test_removed_rows_and_clean_rows_are_not_counted(self):
+        removed = _advisory_row(
+            "services/gateway/go.mod",
+            "github.com/go-jose/go-jose/v3",
+            "3.0.5",
+            CADDY_JOSE_GHSA,
+            change_type="removed",
+        )
+        clean = _advisory_row(
+            "services/caddy/go.mod", "github.com/go-jose/go-jose/v3", "3.0.5", None
+        )
+        self.assertEqual(
+            verify_ghsa_exception_rows([removed, clean], today=date(2026, 11, 2)),
+            0,
+        )
+
+    def test_malformed_exception_records_fail_closed(self):
+        base = dict(GHSA_EXCEPTIONS[0])
+        malformed = {
+            "missing owner": {k: v for k, v in base.items() if k != "owner"},
+            "wildcard manifest": {**base, "manifest": "services/*/go.mod"},
+            "string expiry": {**base, "expires": "2027-01-10"},
+            "invalid advisory id": {**base, "ghsa": "GHSA-short"},
+            "unknown field": {**base, "global": True},
+        }
+        for label, record in malformed.items():
+            with self.subTest(label=label):
+                with self.assertRaises(ValueError):
+                    verify_ghsa_exception_rows(
+                        [CADDY_JOSE_ROW],
+                        today=date(2026, 11, 2),
+                        exceptions=[record],
+                    )
+
+    def test_policy_scope_accepts_only_the_bounded_config_entry(self):
+        purls = ["pkg:npm/preserved", *PURL_ADDITIONS.keys()]
+        verify_policy_scope(
+            config(purls, ghsas=(CADDY_JOSE_GHSA,)), today=date(2026, 11, 2)
+        )
+
+    def test_policy_scope_rejects_expired_config_entry_on_expiry_date(self):
+        purls = ["pkg:npm/preserved", *PURL_ADDITIONS.keys()]
+        with self.assertRaisesRegex(ValueError, "expired"):
+            verify_policy_scope(
+                config(purls, ghsas=(CADDY_JOSE_GHSA,)), today=date(2027, 1, 10)
+            )
+
+    def test_policy_delta_allows_only_the_recorded_ghsa_addition(self):
+        old = ["pkg:npm/preserved", *PURL_REMOVALS.keys()]
+        new = ["pkg:npm/preserved", *PURL_ADDITIONS.keys()]
+        verify_policy_delta(config(old), config(new, ghsas=(CADDY_JOSE_GHSA,)))
+        with self.assertRaisesRegex(ValueError, "GHSA allowlist additions"):
+            verify_policy_delta(
+                config(old),
+                config(new, ghsas=(CADDY_JOSE_GHSA, "GHSA-4c8g-83qw-93j6")),
+            )
+
+    def test_non_mapping_exception_record_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "incomplete or has unknown fields"):
+            verify_ghsa_exception_rows(
+                [CADDY_JOSE_ROW],
+                today=date(2026, 11, 2),
+                exceptions=["GHSA-mgcc-cww5-fp2q"],
+            )
+
+    def test_duplicate_exception_record_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "duplicate GHSA exception record"):
+            verify_ghsa_exception_rows(
+                [CADDY_JOSE_ROW],
+                today=date(2026, 11, 2),
+                exceptions=[GHSA_EXCEPTIONS[0], GHSA_EXCEPTIONS[0]],
+            )
+
+    def test_empty_exception_reason_fails_closed(self):
+        record = {**GHSA_EXCEPTIONS[0], "reason": "   "}
+        with self.assertRaisesRegex(ValueError, "invalid reason"):
+            verify_ghsa_exception_rows(
+                [CADDY_JOSE_ROW],
+                today=date(2026, 11, 2),
+                exceptions=[record],
+            )
+
+    def test_malformed_vulnerability_entry_fails_closed(self):
+        row = _advisory_row("services/caddy/go.mod", "github.com/x/y", "1.0.0", None)
+        row["vulnerabilities"] = ["GHSA-mgcc-cww5-fp2q"]
+        with self.assertRaisesRegex(ValueError, "invalid vulnerability entry"):
+            verify_ghsa_exception_rows([row], today=date(2026, 11, 2))
+
+    def test_default_date_scans_rows_without_recorded_advisories(self):
+        clean = _advisory_row("services/caddy/go.mod", "github.com/x/y", "1.0.0", None)
+        self.assertEqual(verify_ghsa_exception_rows([clean]), 0)
+
+    def test_unrecorded_advisory_on_a_scoped_row_is_not_counted(self):
+        row = _advisory_row(
+            "services/caddy/go.mod",
+            "github.com/go-jose/go-jose/v3",
+            "3.0.5",
+            "GHSA-4c8g-83qw-93j6",
+        )
+        self.assertEqual(verify_ghsa_exception_rows([row], today=date(2026, 11, 2)), 0)
+
+    def test_vulnerability_without_an_advisory_id_is_not_counted(self):
+        row = _advisory_row("services/caddy/go.mod", "github.com/x/y", "1.0.0", None)
+        row["vulnerabilities"] = [{"severity": "high"}]
+        self.assertEqual(verify_ghsa_exception_rows([row], today=date(2026, 11, 2)), 0)
+
+    def test_preflight_passes_the_supplied_date_to_the_policy_scope(self):
+        root = Path(__file__).parents[1]
+        module = "scripts.quality.verify_dependency_review_scope"
+        with (
+            patch(f"{module}.verify_current_pins", return_value={}),
+            patch(f"{module}._git_show", return_value=""),
+            patch(f"{module}.verify_policy_delta"),
+            patch(f"{module}._base_pins", return_value={}),
+            patch(f"{module}.expected_rows_for_delta", return_value=set()),
+            patch(f"{module}.verify_policy_scope") as scope,
+        ):
+            preflight(root, "0" * 40, today=date(2026, 11, 2))
+        scope.assert_called_once()
+        self.assertEqual(scope.call_args.kwargs["today"], date(2026, 11, 2))
+
+    def test_changes_phase_reports_the_bounded_exception_use(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        argv = [
+            "verify",
+            "changes",
+            "--base-sha",
+            "0" * 40,
+            "--changes-file",
+            "changes.json",
+        ]
+        with (
+            patch(f"{module}.preflight", return_value=set()),
+            patch(
+                f"{module}.read_dependency_changes_file", return_value=[CADDY_JOSE_ROW]
+            ),
+            patch.object(sys, "argv", argv),
+            patch("sys.stdout", new_callable=io.StringIO) as output,
+        ):
+            self.assertEqual(main(), 0)
+        self.assertIn("ghsa_exceptions_used=1", output.getvalue())

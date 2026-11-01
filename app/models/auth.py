@@ -19,6 +19,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy import (
     Enum as SAEnum,
@@ -54,6 +55,19 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "active_sessions"
     __table_args__ = (
         Index("ix_active_sessions_user_id_expires_at", "user_id", "expires_at"),
+        # AUD-269: live-session hot-path indexes restored by the MVP baseline.
+        Index(
+            "idx_active_sessions_user_valid",
+            "user_id",
+            "revoked_at",
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
+        Index(
+            "ix_active_sessions_user_active_created",
+            "user_id",
+            "created_at",
+            postgresql_where=text("revoked_at IS NULL"),
+        ),
     )
 
     # DEBT-01 (RZ-W13): JTI is a UUID4 string — 36 chars. Explicit bound prevents

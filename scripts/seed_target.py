@@ -79,11 +79,12 @@ def require_owned_live_stand_target() -> str:
         return _require_admin_smoke_target()
 
     project = os.environ.get("LIVE_STAND_SEED_PROJECT", "")
+    # live_stand creates owned projects as ue-live-<token_hex(8)> only (AUD-313).
     if (
         not project
         or os.environ.get("LIVE_STAND_OWNER_VERIFIED") != "1"
         or os.environ.get("COMPOSE_PROJECT_NAME") != project
-        or re.fullmatch(r"[a-z0-9][a-z0-9_-]*", project) is None
+        or re.fullmatch(r"ue-live-[0-9a-f]{16}", project) is None
     ):
         raise RuntimeError(
             "seed requires an explicitly verified owned live stand project"

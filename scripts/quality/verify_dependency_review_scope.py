@@ -10,6 +10,7 @@ import stat
 import subprocess
 import time
 from collections import Counter
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -140,6 +141,126 @@ PURL_ADDITIONS = Counter(
     }
 )
 PURL_REMOVALS = Counter({"pkg:golang/github.com/klauspost/compress@1.20.1": 1})
+
+# AUD-479 bounded GHSA exceptions (owner decision 2026-11-02). The pinned
+# Dependency Review action can only allow an advisory globally (allow-ghsas),
+# so each allowed GHSA is recorded here with its owner, expiry and exact scope.
+# The verifier fails any occurrence outside that manifest, package and version,
+# and fails on or after `expires` (valid through 2027-01-09).
+GHSA_EXCEPTIONS: tuple[dict[str, Any], ...] = (
+    {
+        "ghsa": "GHSA-mgcc-cww5-fp2q",
+        "owner": "egorribun",
+        "expires": date(2027, 1, 10),
+        "manifest": "services/caddy/go.mod",
+        "ecosystem": "gomod",
+        "name": "github.com/go-jose/go-jose/v3",
+        "version": "3.0.5",
+        "reason": (
+            "Go JOSE DoS when parsing JWKs that contain RSA keys (high). "
+            "go-jose/v3 v3.0.5 has no patched release and is pulled into every "
+            "Caddy HTTP build via caddyhttp -> caddytls -> caddypki -> smallstep "
+            "-> go.step.sm/crypto/jose."
+        ),
+        "reachability": (
+            "The advisory is triggered by parsing attacker-supplied JWKs that "
+            "contain RSA keys. Whether a deployed Caddy configuration reaches that "
+            "parser was not established by this change. Re-evaluate when a patched "
+            "go-jose/v3 release or a Caddy release without go-jose/v3 is available."
+        ),
+    },
+)
+_GHSA_ID_PATTERN = re.compile(r"GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}")
+_GHSA_EXCEPTION_FIELDS = frozenset(
+    {
+        "ghsa",
+        "owner",
+        "expires",
+        "manifest",
+        "ecosystem",
+        "name",
+        "version",
+        "reason",
+        "reachability",
+    }
+)
+_GHSA_EXCEPTION_TEXT_FIELDS = (
+    "owner",
+    "manifest",
+    "ecosystem",
+    "name",
+    "version",
+    "reason",
+    "reachability",
+)
+
+
+def _as_of(today: date | None) -> date:
+    return datetime.now(UTC).date() if today is None else today
+
+
+def _validated_ghsa_exceptions(exceptions: Any) -> dict[str, dict[str, Any]]:
+    records: dict[str, dict[str, Any]] = {}
+    for record in exceptions:
+        if not isinstance(record, dict) or set(record) != _GHSA_EXCEPTION_FIELDS:
+            raise ValueError(
+                "GHSA exception record is incomplete or has unknown fields"
+            )
+        ghsa = record["ghsa"]
+        if not isinstance(ghsa, str) or _GHSA_ID_PATTERN.fullmatch(ghsa) is None:
+            raise ValueError("GHSA exception record has an invalid advisory id")
+        if type(record["expires"]) is not date:
+            raise ValueError("GHSA exception record needs a calendar expiry date")
+        for field in _GHSA_EXCEPTION_TEXT_FIELDS:
+            value = record[field]
+            if not isinstance(value, str) or not value.strip() or "*" in value:
+                raise ValueError(f"GHSA exception record has an invalid {field}")
+        if ghsa in records:
+            raise ValueError("duplicate GHSA exception record")
+        records[ghsa] = record
+    return records
+
+
+def verify_ghsa_exception_rows(
+    rows: list[dict[str, Any]],
+    today: date | None = None,
+    exceptions: Any = GHSA_EXCEPTIONS,
+) -> int:
+    """Fail closed on any use of a recorded GHSA exception outside its scope."""
+    records = _validated_ghsa_exceptions(exceptions)
+    as_of = _as_of(today)
+    matched = 0
+    for row in rows:
+        if row.get("change_type") == "removed":
+            continue
+        for vulnerability in row.get("vulnerabilities") or []:
+            if not isinstance(vulnerability, dict):
+                raise ValueError("dependency row has an invalid vulnerability entry")
+            ghsa = vulnerability.get("advisory_ghsa_id")
+            record = records.get(ghsa) if isinstance(ghsa, str) else None
+            if record is None:
+                continue
+            scope = (
+                row.get("manifest"),
+                row.get("ecosystem"),
+                row.get("name"),
+                row.get("version"),
+            )
+            reviewed = (
+                record["manifest"],
+                record["ecosystem"],
+                record["name"],
+                record["version"],
+            )
+            if scope != reviewed:
+                raise ValueError(
+                    "GHSA exception is used outside its reviewed manifest, "
+                    "package and version"
+                )
+            if as_of >= record["expires"]:
+                raise ValueError("GHSA exception expired; renew or remove it")
+            matched += 1
+    return matched
 
 
 def _action_row(row: Any) -> tuple[str, ...]:
@@ -888,15 +1009,26 @@ def _parse_config(text: str) -> tuple[dict[str, str], dict[str, list[str]]]:
     return scalars, sections
 
 
-def verify_policy_scope(current_text: str) -> None:
+def verify_policy_scope(
+    current_text: str, today: date | None = None, exceptions: Any = GHSA_EXCEPTIONS
+) -> None:
     scalars, sections = _parse_config(current_text)
     if (
         scalars.get("license-check") != "true"
         or scalars.get("vulnerability-check") != "true"
     ):
         raise ValueError("license-check and vulnerability-check must remain enabled")
-    if sections.get("allow-ghsas", []):
-        raise ValueError("global GHSA allowlist must remain empty")
+    records = _validated_ghsa_exceptions(exceptions)
+    as_of = _as_of(today)
+    for ghsa in sections.get("allow-ghsas", []):
+        record = records.get(ghsa)
+        if record is None:
+            raise ValueError(
+                "global GHSA allowlist entry lacks a bounded owner, expiry and "
+                "scope exception"
+            )
+        if as_of >= record["expires"]:
+            raise ValueError("GHSA allowlist exception expired; renew or remove it")
     if LICENSE_REF in sections.get("allow-licenses", []):
         raise ValueError(
             "the unresolved OpenTelemetry marker must not enter global allow-licenses"
@@ -934,7 +1066,8 @@ def verify_policy_delta(base_text: str, current_text: str) -> None:
             )
     old_ghsas = Counter(base_sections.get("allow-ghsas", []))
     new_ghsas = Counter(current_sections.get("allow-ghsas", []))
-    if new_ghsas - old_ghsas:
+    recorded = _validated_ghsa_exceptions(GHSA_EXCEPTIONS)
+    if any(ghsa not in recorded for ghsa in new_ghsas - old_ghsas):
         raise ValueError("GHSA allowlist additions are prohibited")
     old = Counter(base_sections.get("allow-dependencies-licenses", []))
     new = Counter(current_sections.get("allow-dependencies-licenses", []))
@@ -949,12 +1082,14 @@ def verify_policy_delta(base_text: str, current_text: str) -> None:
         )
 
 
-def preflight(root: Path, base_sha: str) -> set[tuple[str, ...]]:
+def preflight(
+    root: Path, base_sha: str, today: date | None = None
+) -> set[tuple[str, ...]]:
     if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
         raise ValueError("BASE_SHA must be an immutable 40-character commit SHA")
     current = verify_current_pins(root)
     current_config = (root / CONFIG_PATH).read_text(encoding="utf-8")
-    verify_policy_scope(current_config)
+    verify_policy_scope(current_config, today=today)
     verify_policy_delta(_git_show(root, base_sha, CONFIG_PATH), current_config)
     return expected_rows_for_delta(_base_pins(root, base_sha), current)
 
@@ -993,7 +1128,11 @@ def main() -> int:
         raise ValueError("--changes-file is required for the changes phase")
     changes = read_dependency_changes_file(args.changes_file)
     accepted = verify_dependency_changes(changes, required)
-    print(f"verified comparison schema and exact license rows; accepted={accepted}")
+    ghsa_exceptions_used = verify_ghsa_exception_rows(changes)
+    print(
+        "verified comparison schema and exact license rows; "
+        f"accepted={accepted} ghsa_exceptions_used={ghsa_exceptions_used}"
+    )
     return 0
 
 

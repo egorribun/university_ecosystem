@@ -15,7 +15,14 @@ on:
 
 # Least-privilege defaults — individual jobs extend as needed.
 # Prevents Poisoned Pipeline Execution (PPE) from fork PRs (OWASP CI/CD C-PPE-1).
-permissions: read-all
+permissions:
+  contents: read
+
+# zizmor cache-poisoning (ADR-047 supply-chain gate): this workflow runs for
+# delivery-branch pushes (main, develop, release/*), so its inline jobs must
+# neither restore nor save shared caches. Reusable workflows keep their own
+# cache policy. Setting cache-mode is the documented zizmor remedy.
+cache-mode: none
 
 concurrency:
   # Required PR runs share an admission group per PR so a newer commit cancels
@@ -233,6 +240,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Generate CI secret key if not configured (RZ-14-06)
         # RZ-14-06: the workflow-wide key is intentionally empty for every
         # event; generate an ephemeral 32-byte value only in this job.
@@ -512,6 +521,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Run Hadolint
         run: |
           set -euo pipefail
@@ -534,6 +545,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install shellcheck
         run: |
           set -euo pipefail
@@ -562,6 +575,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -605,6 +620,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Run markdownlint
         uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
         with:
@@ -635,6 +652,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -750,6 +769,8 @@ jobs:
       # to supply chain attacks via tag mutation (OWASP CI/CD C-PPE-1).
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -952,6 +973,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Generate SBOM with Syft
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
@@ -980,6 +1003,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install slsa-verifier
         run: |
@@ -998,14 +1023,23 @@ jobs:
           /tmp/slsa-verifier version
           echo "SLSA verifier is available and functional."
 
-      - name: Validate provenance config exists
+      - name: Verify SLSA provenance attestation of slsa-verifier
+        # AUD-378: verify the Sigstore-backed SLSA provenance published with the
+        # exact pinned slsa-verifier release (digest b567f5ed... pins the file).
         run: |
-          # Check that the repo has the expected CI structure for provenance.
-          if [ ! -f ".github/workflows/ci.yml" ]; then
-            echo "::error::CI workflow not found — provenance generation requires ci.yml"
-            exit 1
-          fi
-          echo "Provenance configuration validated."
+          set -euo pipefail
+          provenance="$RUNNER_TEMP/slsa-verifier-linux-amd64.intoto.jsonl"
+          provenance_sha256="b567f5ed9a08d0cbddffc169c4ad2d4101abc6b29f9a4c81893a801e432df1f4"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --output "$provenance" \
+            "https://github.com/slsa-framework/slsa-verifier/releases/download/v2.7.1/slsa-verifier-linux-amd64.intoto.jsonl"
+          echo "$provenance_sha256  $provenance" | sha256sum --check --strict
+          /tmp/slsa-verifier verify-artifact /tmp/slsa-verifier \
+            --provenance-path "$provenance" \
+            --source-uri github.com/slsa-framework/slsa-verifier \
+            --source-tag v2.7.1
+          echo "SLSA provenance attestation verified for the pinned slsa-verifier."
 
   alembic-migrations:
     name: Alembic Migrations
@@ -2154,6 +2188,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -2253,6 +2289,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -2324,6 +2362,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build backend image for scanning
         # LOW-W19: root Dockerfile does not exist; backend image uses backend.Dockerfile
@@ -2495,6 +2535,8 @@ jobs:
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -2848,6 +2890,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -3609,6 +3653,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -3711,6 +3757,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -3776,6 +3824,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -3838,6 +3888,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         # rust_ext is a PyO3 crate: even with --no-default-features (extension-module
@@ -4109,6 +4161,8 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install k6
         run: |
           set -euo pipefail
@@ -5011,6 +5065,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -5083,6 +5139,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Kyverno CLI v1.19.1
         shell: bash

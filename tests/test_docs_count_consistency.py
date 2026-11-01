@@ -33,7 +33,7 @@ def _text(relative: str) -> str:
 
 
 def test_secrets_baseline_count_matches_the_committed_file() -> None:
-    assert _baseline_identities() == 315
+    assert _baseline_identities() == 304
 
 
 def test_disposition_policy_count_matches_the_committed_file() -> None:

@@ -7,6 +7,7 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     DateTime,
+    Index,
     Integer,
     String,
     func,
@@ -82,6 +83,8 @@ class StoredEvent(Base, UUID7PrimaryKeyMixin):
             "status IN ('pending','processed','failed')",
             name="ck_stored_events_status_valid",
         ),
+        # AUD-269: outbox poll index restored by the MVP baseline.
+        Index("ix_stored_events_pending", "status", "created_at"),
     )
 
     # PERF-03: Partial indexes are migration-owned rather than runtime-model

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,20 @@ DEPENDENCY_REVIEW = ROOT / ".github" / "dependency-review-config.yml"
 pytest_plugins = ("pytester",)
 
 
+def _config_without_ghsa_exception() -> str:
+    # The repository config carries the owner-bounded AUD-479 GHSA exception.
+    # Tests that append their own allow-ghsas key must start from a config
+    # without it, or the duplicate-key rule would mask the behavior under test.
+    text = DEPENDENCY_REVIEW.read_text(encoding="utf-8")
+    text = re.sub(
+        r'(?m)^# AUD-479 bounded GHSA exception[\s\S]*?^allow-ghsas:\n  - "GHSA-mgcc-cww5-fp2q"\n',
+        "",
+        text,
+    )
+    assert "allow-ghsas" not in text
+    return text
+
+
 @pytest.mark.parametrize(
     "suppression",
     [
@@ -33,7 +48,7 @@ pytest_plugins = ("pytester",)
 def test_aud479_global_advisory_suppressions_fail_even_on_existing_base(
     suppression: str,
 ) -> None:
-    config = DEPENDENCY_REVIEW.read_text(encoding="utf-8") + "\n" + suppression + "\n"
+    config = _config_without_ghsa_exception() + "\n" + suppression + "\n"
     # Both encodings are ordinary YAML lists as consumed by the action.
     assert yaml.safe_load(config)["allow-ghsas"] == ["GHSA-aaaa-bbbb-cccc"]
     with pytest.raises(ValueError):
@@ -50,7 +65,7 @@ def test_aud479_rejects_duplicate_keys_even_when_yaml_uses_the_last_value() -> N
 
 
 def test_aud479_an_explicit_empty_ghsa_list_remains_valid() -> None:
-    config = DEPENDENCY_REVIEW.read_text(encoding="utf-8") + "\nallow-ghsas: []\n"
+    config = _config_without_ghsa_exception() + "\nallow-ghsas: []\n"
     verify_policy_scope(config)
 
 

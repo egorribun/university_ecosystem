@@ -30,6 +30,7 @@ jobs:
       - name: Checkout main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: true
           ref: main
           fetch-depth: 0
 
@@ -154,6 +155,7 @@ jobs:
         if: steps.collect-manifest.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          TI_COLLECT_MANIFEST_HEAD_SHA: ${{ steps.collect-manifest.outputs.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -164,7 +166,7 @@ jobs:
             echo "No new quality history to commit."
             exit 0
           fi
-          head_sha="${{ steps.collect-manifest.outputs.head_sha }}"
+          head_sha="${TI_COLLECT_MANIFEST_HEAD_SHA}"
           if ! [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Quality history source SHA is missing or invalid."
             exit 1

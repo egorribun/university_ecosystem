@@ -505,9 +505,9 @@ describe("webVitals", () => {
     vi.stubGlobal("navigator", { ...navigator, sendBeacon })
     vi.stubGlobal("fetch", fetchMock)
 
-    expect(
-      reportOfflineDeadLetter({ store: "pending-mutations", reason: "status-403" })
-    ).toBe(false)
+    expect(reportOfflineDeadLetter({ store: "pending-mutations", reason: "status-403" })).toBe(
+      false
+    )
     expect(sendBeacon).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
     expect(logDebug).not.toHaveBeenCalled()
@@ -523,14 +523,14 @@ describe("webVitals", () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000)
 
     try {
-      expect(
-        initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "/metrics/web-vitals" }))
-      ).toBe(true)
+      expect(initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "/metrics/web-vitals" }))).toBe(
+        true
+      )
       expect(fetchMock).not.toHaveBeenCalled()
 
-      expect(
-        reportOfflineDeadLetter({ store: "pending-mutations", reason: "status-403" })
-      ).toBe(true)
+      expect(reportOfflineDeadLetter({ store: "pending-mutations", reason: "status-403" })).toBe(
+        true
+      )
       expect(fetchMock).toHaveBeenCalledExactlyOnceWith("/metrics/web-vitals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -548,9 +548,9 @@ describe("webVitals", () => {
       })
 
       resetWebVitalsForTesting()
-      expect(
-        reportOfflineDeadLetter({ store: "pending-mutations", reason: "status-403" })
-      ).toBe(false)
+      expect(reportOfflineDeadLetter({ store: "pending-mutations", reason: "status-403" })).toBe(
+        false
+      )
       expect(fetchMock).toHaveBeenCalledOnce()
     } finally {
       now.mockRestore()

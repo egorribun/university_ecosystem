@@ -321,6 +321,15 @@ jobs:
         env:
           CI: "true"
 
+      - name: Run seeded WASM binary fuzz campaign
+        # AUD-416: fixed-seed campaign over the WASM binary harness; the
+        # fuzzer exits non-zero on any failing case, failing this job.
+        run: node scripts/wasm-fuzzer.mjs
+        env:
+          CI: "true"
+          WASM_FUZZ_SEED: "20261101"
+          WASM_FUZZ_ITERATIONS: "100000"
+
       - name: Run worker and export regression contracts
         run: >-
           npm exec -- vitest run

@@ -457,12 +457,40 @@ async def test_demo_content_includes_english_fields() -> None:
         ), "every seeded content record must have its English fields"
 
 
+@pytest.mark.parametrize(
+    "project",
+    [
+        "ue-live-testproject",
+        "ue-live-ABCDEF0123456789",
+        "ue-live-0123456789abcdef0",
+        "ue-live-0123456789abcde",
+        "postgres",
+    ],
+)
+async def test_seed_target_rejects_project_names_outside_the_generated_format(
+    monkeypatch, project: str
+) -> None:
+    # live_stand names owned projects ue-live-<16 lowercase hex>; any other name,
+    # even one that matches the environment flags, is not an owned live stand.
+    monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", project)
+    monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", project)
+    monkeypatch.setattr(
+        seed_target,
+        "_configured_database_url",
+        lambda: "postgresql+asyncpg://tester@postgres:5432/demo",
+    )
+
+    with pytest.raises(RuntimeError, match="owned live stand"):
+        seed_target.require_owned_live_stand_target()
+
+
 async def test_seed_target_rejects_a_database_outside_compose_postgres(
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", "ue-live-testproject")
+    monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", "ue-live-0123456789abcdef")
     monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
-    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "ue-live-testproject")
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "ue-live-0123456789abcdef")
     monkeypatch.setattr(
         seed_target,
         "_configured_database_url",
@@ -476,7 +504,7 @@ async def test_seed_target_rejects_a_database_outside_compose_postgres(
 async def test_seed_target_accepts_the_verified_compose_postgres_service(
     monkeypatch,
 ) -> None:
-    project = "ue-live-testproject"
+    project = "ue-live-0123456789abcdef"
     monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", project)
     monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
     monkeypatch.setenv("COMPOSE_PROJECT_NAME", project)
@@ -607,9 +635,9 @@ async def test_seed_target_rejects_database_outside_admin_smoke_service(
 
 
 async def test_seed_target_rejects_mismatched_compose_project(monkeypatch) -> None:
-    monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", "ue-live-owned")
+    monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", "ue-live-0123456789abcdef")
     monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
-    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "ue-live-other")
+    monkeypatch.setenv("COMPOSE_PROJECT_NAME", "ue-live-fedcba9876543210")
     monkeypatch.setattr(
         seed_target,
         "_configured_database_url",
@@ -623,7 +651,7 @@ async def test_seed_target_rejects_mismatched_compose_project(monkeypatch) -> No
 async def test_seed_target_fails_closed_when_database_url_cannot_be_read(
     monkeypatch,
 ) -> None:
-    project = "ue-live-testproject"
+    project = "ue-live-0123456789abcdef"
     monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", project)
     monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
     monkeypatch.setenv("COMPOSE_PROJECT_NAME", project)

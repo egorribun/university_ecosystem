@@ -10,11 +10,13 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -128,6 +130,10 @@ class Chat(Base, UUID7PrimaryKeyMixin):
 
 class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "messages"
+    # AUD-269: per-chat timeline index restored by the MVP baseline.
+    __table_args__ = (
+        Index("idx_messages_chat_created", "chat_id", text("created_at DESC")),
+    )
 
     chat_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("chats.id", ondelete="CASCADE"), nullable=False

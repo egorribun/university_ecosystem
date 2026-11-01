@@ -43,6 +43,9 @@ handoffs are intentionally not part of the canonical index.
   — Tier 0 keeps 100% coverage, with the owner-approved finite no-decrease
   baseline for exactly 131 unchanged migrations through 2026-11-13. Mutation
   testing is a nightly signal after Q1; other coverage floors remain until Q3.
+- [ADR-051: MVP migration baseline squash](adr/ADR-051-mvp-migration-baseline-squash.md)
+  — the 143 historical Alembic revisions are replaced by one irreversible
+  baseline, accepted 2026-11-02; pre-squash databases must be recreated.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)
@@ -59,8 +62,9 @@ handoffs are intentionally not part of the canonical index.
   2-identity approvals, preserving the prior 250 records. The later nine-identity
   Go source-contract approval extended the historical scope to 261; see the
   [nine-identity audit update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
-  The current baseline contains 305 identities after the
-  [finite ten-identity retirement](adr/ADR-047-risk-based-quality-policy.md#ten-obsolete-test-baseline-identities-retired-2026-11-01);
+  The current baseline contains 304 identities after the
+  [finite ten-identity retirement](adr/ADR-047-risk-based-quality-policy.md#ten-obsolete-test-baseline-identities-retired-2026-11-01)
+  and the removal of one stale `tests/test_auth_security.py` identity;
   78 required contexts remain unchanged. The
   [post-pragma-removal update](audits/AUDIT-2026-10.md#post-pragma-removal-scan-and-seven-identity-owner-update-2026-10-16)
   distinguishes the historical 243-policy unfiltered scan from the private

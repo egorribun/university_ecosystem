@@ -17,7 +17,9 @@ from datetime import UTC
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import insert, select
+from sqlalchemy import delete, insert, select, tuple_
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import selectinload
 
 from app.core import metrics
@@ -31,6 +33,7 @@ from app.core.tenant import capture_tenant_id
 from app.models import (
     Notification,
     NotificationDelivery,
+    NotificationDeliveryOnce,
     PushSubscription,
     User,
 )
@@ -178,6 +181,75 @@ def _unique_notification_ids(values: Sequence[uuid.UUID | str]) -> list[uuid.UUI
     return identifiers
 
 
+WEB_PUSH_CHANNEL = "webpush"
+
+
+async def _claim_web_push_deliveries(
+    db: AsyncSession,
+    pairs: Sequence[tuple[uuid.UUID, uuid.UUID]],
+) -> set[tuple[uuid.UUID, uuid.UUID]]:
+    """Insert one claim per (notification, subscription) and return the new claims.
+
+    AUD-272: the claim ledger has no ``attempted_at`` in its key, so a second claim
+    for the same pair conflicts. ``ON CONFLICT DO NOTHING`` turns that conflict into
+    a silent skip, and the caller sends only the pairs returned here.
+    """
+
+    if not pairs:
+        return set()
+    rows = [
+        {
+            "id": generate_uuid7(),
+            "notification_id": notification_id,
+            "subscription_id": subscription_id,
+            "channel": WEB_PUSH_CHANNEL,
+        }
+        for notification_id, subscription_id in pairs
+    ]
+    dialect = db.get_bind().dialect.name
+    claim: Any
+    if dialect == "postgresql":
+        claim = postgresql_insert(NotificationDeliveryOnce).values(rows)
+    elif dialect == "sqlite":
+        claim = sqlite_insert(NotificationDeliveryOnce).values(rows)
+    else:
+        raise RuntimeError("Web Push delivery claims require PostgreSQL or SQLite")
+    claimed = await db.execute(
+        claim.on_conflict_do_nothing().returning(
+            NotificationDeliveryOnce.notification_id,
+            NotificationDeliveryOnce.subscription_id,
+        )
+    )
+    return {
+        (uuid.UUID(str(notification_id)), uuid.UUID(str(subscription_id)))
+        for notification_id, subscription_id in claimed.all()
+    }
+
+
+async def _release_web_push_claims(
+    db: AsyncSession,
+    pairs: Sequence[tuple[uuid.UUID, uuid.UUID]],
+) -> None:
+    """Drop claims whose send did not succeed so a later attempt can retry them."""
+
+    if not pairs:
+        return
+    await db.execute(
+        delete(NotificationDeliveryOnce).where(
+            tuple_(
+                NotificationDeliveryOnce.notification_id,
+                NotificationDeliveryOnce.subscription_id,
+                NotificationDeliveryOnce.channel,
+            ).in_(
+                [
+                    (notification_id, subscription_id, WEB_PUSH_CHANNEL)
+                    for notification_id, subscription_id in pairs
+                ]
+            )
+        )
+    )
+
+
 async def redeliver_notifications(
     db: AsyncSession,
     *,
@@ -252,8 +324,7 @@ async def redeliver_notifications(
 
     already_delivered = 0
     terminal_failures = 0
-    send_jobs: list[tuple[Notification, PushSubscription]] = []
-    tasks: list[Awaitable[WebPushResult]] = []
+    candidates: list[tuple[Notification, PushSubscription, Any]] = []
     for notification in notifications:
         notification_id = uuid.UUID(str(notification.id))
         topic = normalize_topic(infer_notification_topic(notification.type))
@@ -287,13 +358,32 @@ async def redeliver_notifications(
             prepared = prepare_push_payload_for_user(
                 payload, getattr(subscription, "user", None)
             )
-            send_jobs.append((notification, subscription))
-            tasks.append(webpush_module._send_push_async(subscription, prepared))
+            candidates.append((notification, subscription, prepared))
+
+    # AUD-272: claim every pair before sending. A pair another attempt already
+    # claimed is skipped, and it counts as already delivered.
+    claimed = await _claim_web_push_deliveries(
+        db,
+        [
+            (uuid.UUID(str(notification.id)), uuid.UUID(str(subscription.id)))
+            for notification, subscription, _prepared in candidates
+        ],
+    )
+    send_jobs: list[tuple[Notification, PushSubscription]] = []
+    tasks: list[Awaitable[WebPushResult]] = []
+    for notification, subscription, prepared in candidates:
+        pair = (uuid.UUID(str(notification.id)), uuid.UUID(str(subscription.id)))
+        if pair not in claimed:
+            already_delivered += 1
+            continue
+        send_jobs.append((notification, subscription))
+        tasks.append(webpush_module._send_push_async(subscription, prepared))
 
     sent = 0
     retryable_failures = 0
     delivery_rows: list[dict[str, Any]] = []
     push_results: list[WebPushResult] = []
+    results: list[WebPushResult | BaseException] = []
     if tasks:
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for (notification, subscription), result in zip(
@@ -368,6 +458,18 @@ async def redeliver_notifications(
                     reason="exception",
                 )
 
+    # AUD-272: a claim outlives only a successful send. Any other outcome releases
+    # its claim, so the outbox retry can send the pair again.
+    await _release_web_push_claims(
+        db,
+        [
+            (uuid.UUID(str(notification.id)), uuid.UUID(str(subscription.id)))
+            for (notification, subscription), result in zip(
+                send_jobs, results, strict=True
+            )
+            if not (isinstance(result, WebPushResult) and result.status == "sent")
+        ],
+    )
     if delivery_rows:
         await db.execute(insert(NotificationDelivery).values(delivery_rows))
     await db.flush()

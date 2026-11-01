@@ -75,7 +75,7 @@ def _rsa_public_pem(private_pem: str) -> str:
 
 @pytest.mark.asyncio
 async def test_get_password_hash_uses_argon2id_by_default():
-    password = "AdminMixed123!"
+    password = secrets.token_urlsafe(24) + "Aa1!"
     hashed = await get_password_hash(password)
     assert hashed.startswith("$argon2id$")
 
@@ -376,7 +376,7 @@ async def test_forgot_password_accepts_mixed_case_email(
 
 @pytest.mark.asyncio
 async def test_admin_update_normalizes_email(async_client, user_factory, db_session):
-    admin_password = "AdminMixed123!"
+    admin_password = secrets.token_urlsafe(24) + "Aa1!"
     admin = await user_factory(
         role="admin",
         hashed_password=await get_password_hash(admin_password),

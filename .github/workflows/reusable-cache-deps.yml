@@ -91,13 +91,16 @@ jobs:
                       services/ws-hub/go.sum
 
             - name: Cache summary
+              env:
+                TI_PYTHON_CACHE_CACHE_HIT_FALSE: ${{ steps.python-cache.outputs.cache-hit || 'false' }}
+                TI_NODE_CACHE_CACHE_HIT_FALSE: ${{ steps.node-cache.outputs.cache-hit || 'false' }}
               run: |
                   {
                     echo "## Dependency Cache Status"
                     echo ""
                     echo "| Language | Cache Hit |"
                     echo "|----------|-----------|"
-                    echo "| Python | ${{ steps.python-cache.outputs.cache-hit || 'false' }} |"
-                    echo "| Node.js | ${{ steps.node-cache.outputs.cache-hit || 'false' }} |"
+                    echo "| Python | ${TI_PYTHON_CACHE_CACHE_HIT_FALSE} |"
+                    echo "| Node.js | ${TI_NODE_CACHE_CACHE_HIT_FALSE} |"
                     echo "| Go | (managed by setup-go) |"
                   } >> "$GITHUB_STEP_SUMMARY"

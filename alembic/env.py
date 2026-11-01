@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import os
 import sys
 from logging.config import fileConfig
@@ -23,7 +24,17 @@ from app.core.config.base import _DEVELOPMENT_ENVIRONMENTS
 import app.models as models
 from app.core.db.retained_table_metadata import build_migration_metadata
 
-_settings = Settings(_allow_missing=True)
+
+@functools.cache
+def _settings() -> Settings:
+    """Return migration-tolerant settings, built only when a run needs them.
+
+    Offline SQL generation with DATABASE_URL configured needs no runtime secrets,
+    so validation must not happen while Alembic loads this module.
+    """
+    return Settings(_allow_missing=True)
+
+
 config: Config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
@@ -139,8 +150,8 @@ def get_url() -> str:
     env_url = os.getenv("DATABASE_URL", "")
     if env_url:
         return env_url
-    if _settings.database_url:
-        return _settings.database_url
+    if _settings().database_url:
+        return _settings().database_url
     url = config.get_main_option("sqlalchemy.url")
     if url:
         return url
@@ -151,7 +162,7 @@ def _development_fallback_skip_allowed() -> bool:
     """Allow a skip only for the documented local SQLite default in development."""
     environment_name = (os.getenv("ENVIRONMENT") or "").strip().lower()
     return (
-        "database_url" in _settings.development_fallback_fields
+        "database_url" in _settings().development_fallback_fields
         and environment_name in _DEVELOPMENT_ENVIRONMENTS
     )
 
@@ -214,9 +225,9 @@ def run_migrations_online() -> None:
     # AUD-168 (audit 2026-10): only the documented local SQLite default may skip,
     # and only in a development environment. Every other development fallback
     # fails closed, because exit 0 without migrating looks like a successful deploy.
-    if _settings.has_development_fallbacks:
+    if _settings().has_development_fallbacks:
         if not _development_fallback_skip_allowed():
-            fallback_fields = ", ".join(_settings.development_fallback_fields)
+            fallback_fields = ", ".join(_settings().development_fallback_fields)
             raise RuntimeError(
                 "Refusing to skip Alembic migrations: development fallbacks are "
                 f"active for {fallback_fields}. Set DATABASE_URL and every "

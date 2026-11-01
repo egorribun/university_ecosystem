@@ -58,6 +58,7 @@ function fakeViteBoundary(t, rawMaxWaitMs) {
   const child = new EventEmitter()
   child.pid = 123456789
   const spawned = []
+  const spawnOptions = []
   const killed = []
   const intervals = new Set()
   let now = 4_102_444_800_000 // Keep any real build artifacts stale.
@@ -71,8 +72,9 @@ function fakeViteBoundary(t, rawMaxWaitMs) {
   })
   t.mock.method(globalThis, "clearInterval", (interval) => intervals.delete(interval))
   t.mock.method(process, "kill", (pid, signal) => killed.push({ pid, signal }))
-  t.mock.method(childProcess, "spawn", (command, args) => {
+  t.mock.method(childProcess, "spawn", (command, args, options) => {
     spawned.push({ command, args })
+    spawnOptions.push({ command, options })
     return command === "taskkill.exe" ? { unref() {} } : child
   })
   t.mock.method(childProcess, "execFile", (...args) => {
@@ -92,6 +94,7 @@ function fakeViteBoundary(t, rawMaxWaitMs) {
   return {
     child,
     spawned,
+    spawnOptions,
     killed,
     intervals,
     startTime,
@@ -192,6 +195,50 @@ test("build orchestrator exposes bounded memory controls", () => {
   assert.match(scriptSource, /FRONTEND_BUILD_MAX_OLD_SPACE_MB/)
   assert.match(scriptSource, /--max-old-space-size=\$\{maxOldSpaceMb\}/)
   assert.match(scriptSource, /readProcessRssBytes\(child\.pid\)/)
+})
+
+test("production Vite build keeps Rolldown lazy barrel optimization enabled", () => {
+  assert.equal(loadedViteConfig?.config?.build?.rolldownOptions?.experimental?.lazyBarrel, true)
+})
+
+test("build orchestrator bounds the Vite young generation unless NODE_OPTIONS already sets one", async (t) => {
+  const previousNodeOptions = process.env.NODE_OPTIONS
+  t.after(() => {
+    if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
+    else process.env.NODE_OPTIONS = previousNodeOptions
+  })
+  delete process.env.NODE_OPTIONS
+  const boundary = fakeViteBoundary(t)
+  const outcome = step3_viteBuild().then(
+    () => null,
+    (error) => error
+  )
+  const viteSpawn = boundary.spawnOptions.find(({ command }) => command === "node")
+  boundary.child.emit("close", 1, null)
+  await outcome
+
+  assert.match(viteSpawn.options.env.NODE_OPTIONS, /(?:^|\s)--max-semi-space-size=1(?=\s|$)/u)
+})
+
+test("build orchestrator keeps an operator-provided young generation limit", async (t) => {
+  const previousNodeOptions = process.env.NODE_OPTIONS
+  t.after(() => {
+    if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
+    else process.env.NODE_OPTIONS = previousNodeOptions
+  })
+  process.env.NODE_OPTIONS = "--max-semi-space-size=8"
+  const boundary = fakeViteBoundary(t)
+  const outcome = step3_viteBuild().then(
+    () => null,
+    (error) => error
+  )
+  const viteSpawn = boundary.spawnOptions.find(({ command }) => command === "node")
+  boundary.child.emit("close", 1, null)
+  await outcome
+
+  const nodeOptions = viteSpawn.options.env.NODE_OPTIONS
+  assert.equal(nodeOptions.match(/--max-semi-space-size/gu)?.length, 1)
+  assert.match(nodeOptions, /(?:^|\s)--max-semi-space-size=8(?=\s|$)/u)
 })
 
 test("build orchestrator terminates the exact Vite process tree on overflow", () => {

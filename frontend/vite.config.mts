@@ -386,6 +386,12 @@ export default defineConfig(({ mode }) => {
         },
       },
       rolldownOptions: {
+        // Lazy barrel optimization keeps Rolldown from loading the unused
+        // re-export modules of side-effect-free barrels, such as lucide-react's
+        // ~1,900 icon files, which otherwise dominate the transform-phase RSS
+        // watched by build-orchestrated.mjs. Emitted modules and their rendered
+        // lengths are unchanged; only minified identifier names may shift.
+        experimental: { lazyBarrel: true },
         onwarn(warning, warn) {
           if (warning.code === "EVAL" && warning.id?.includes("@protobufjs/inquire")) return
           warn(warning)

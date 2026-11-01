@@ -36,6 +36,14 @@ allow-licenses:
   - LicenseRef-scancode-google-patent-license-golang
   - LicenseRef-scancode-public-domain
 
+# AUD-479 bounded GHSA exception (owner egorribun, decision 2026-11-02). The
+# action can only allow an advisory globally, so the scope is enforced by
+# scripts/quality/verify_dependency_review_scope.py (GHSA_EXCEPTIONS): this
+# advisory is accepted only for go-jose/v3 v3.0.5 in services/caddy/go.mod. The
+# verifier fails on any other occurrence and on or after 2027-01-10.
+allow-ghsas:
+  - "GHSA-mgcc-cww5-fp2q"
+
 # W149 SW4 — per-package allow for pact-python 3.4.0+.
 # Bot reports "We could not detect a license" because the package's
 # metadata uses PEP 621 free-text `License: MIT License` instead of PEP

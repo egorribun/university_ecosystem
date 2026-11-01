@@ -33,7 +33,6 @@ def _is_registration_email_conflict(exc: IntegrityError) -> bool:
     """Recognize only the users email uniqueness constraints from our schemas."""
     names = {
         "ix_users_email",
-        "ix_users_email_lower",
         "uq_users_email",
         "users_email_key",
         "ux_users_lower_email",
@@ -59,7 +58,6 @@ def _is_registration_email_conflict(exc: IntegrityError) -> bool:
             and str(current)
             in {
                 "UNIQUE constraint failed: users.email",
-                "UNIQUE constraint failed: index 'ix_users_email_lower'",
                 "UNIQUE constraint failed: index 'ux_users_lower_email'",
             }
         ):

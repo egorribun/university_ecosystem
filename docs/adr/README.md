@@ -49,3 +49,5 @@ This directory contains architectural decision records (ADRs) for the University
 47. [ADR-047: Risk-Based Quality Policy for the MVP Release](ADR-047-risk-based-quality-policy.md)
 48. [ADR-048: Dev-only React Compiler Schema Compatibility Boundary](ADR-048-react-compiler-schema-compatibility.md)
 49. [ADR-049: Version-bound MapLibre Lazy-chunk Budget](ADR-049-maplibre-lazy-chunk-budget.md)
+50. [ADR-050: Two Exact Security-Release Cooldown Exceptions](ADR-050-security-release-cooldown-exceptions.md)
+51. [ADR-051: MVP Migration Baseline Squash](ADR-051-mvp-migration-baseline-squash.md)

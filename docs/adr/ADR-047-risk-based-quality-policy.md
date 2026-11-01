@@ -1064,7 +1064,7 @@ authorized.
 The [historical148 preparation](../superpowers/plans/2026-10-27-historical-148-squawk-proposal.md)
 records complete ordinary and expanded SQL plus JSON evidence. Stage A contains
 an exact `prepared-inactive` inventory and a
-[pure historical recognizer](../../scripts/quality/validate_historical148_squawk.py)
+[pure historical recognizer](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/scripts/quality/validate_historical148_squawk.py)
 with compiled fingerprints of that policy and capture. It accepts bounded byte
 inputs, normalizes only raw-warning JSON representation/order and checks the real
 UTC window. Its only positive verdict is `matched-diagnostic-inventory`, not
@@ -1381,7 +1381,7 @@ neither earlier scans nor source review establishes a GREEN final source.
 
 ## Owner decision 2026-10-31: finite historical-148 Squawk admission activated
 
-The owner activated one finite Squawk admission for the unchanged historical revision `148642dd1207` (parent `f7aa476e968a`) in the Alembic job. It admits only the exact 37-finding diagnostic inventory in [quality/historical148-squawk-policy.json](../../quality/historical148-squawk-policy.json): 13 `ordinary-parent-live` and 24 `expanded-populated-diagnostic` findings. Matching is exact by scenario SQL digest, rule and location. The scanner pins and the seven ordered `--exclude` arguments are unchanged.
+The owner activated one finite Squawk admission for the unchanged historical revision `148642dd1207` (parent `f7aa476e968a`) in the Alembic job. It admits only the exact 37-finding diagnostic inventory in [quality/historical148-squawk-policy.json](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/quality/historical148-squawk-policy.json): 13 `ordinary-parent-live` and 24 `expanded-populated-diagnostic` findings. Matching is exact by scenario SQL digest, rule and location. The scanner pins and the seven ordered `--exclude` arguments are unchanged.
 
 - Scope: creation of a new empty MVP database only (`execution_scope: new-empty-mvp-only`). Populated upgrades are not admitted.
 - Expiry: `2026-11-13T00:00:00Z`, read from the real UTC clock by `scripts/quality/historical148_squawk_admission.py`, which accepts no caller clock. Extension or widening requires a new owner decision.

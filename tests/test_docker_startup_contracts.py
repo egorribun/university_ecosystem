@@ -2006,6 +2006,7 @@ MIGRATION_APPLICATION_SECRET_KEYS = {
     "spicedb-preshared-key",
     "spotify-token-secret",
     "token-hmac-secret",
+    "idempotency-hmac-secret",
     "mfa-totp-encryption-keys",
 }
 OUTBOX_CONNECTION_SECRET_KEYS = {
@@ -2252,6 +2253,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
             "SECRET_KEY": "jwt-secret",
             "AUDIT_LOG_SECRET": "audit-log-secret",
             "ELASTICSEARCH_PASSWORD": "elasticsearch-password",
+            "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",
             "INTERNAL_AUTH_TOKEN": "ws-hub-internal-secret",
             "INTERNAL_HMAC_SECRET": "internal-hmac-secret",
             "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",

@@ -282,6 +282,10 @@ export async function step3_viteBuild(configuredMaxWaitMs = process.env.BUILD_MA
   const maxOldSpaceMb = parseMemoryLimit(process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB, 1536)
   const inheritedNodeOptions = process.env.NODE_OPTIONS ?? ""
   const hasOldSpaceLimit = /(?:^|\s)--max-old-space-size(?:=|\s)/.test(inheritedNodeOptions)
+  // A one-megabyte young generation measured about 150 MB below V8's default
+  // peak RSS on the production graph, with no change to the emitted chunks.
+  // An inherited --max-semi-space-size keeps operator control.
+  const hasSemiSpaceLimit = /(?:^|\s)--max-semi-space-size(?:=|\s)/.test(inheritedNodeOptions)
 
   // FRONTEND_REACT_DEV_MODE propagates a client-only diagnostic mode.
   // When set locally, vite.config.mts adds react-dom/client →
@@ -296,6 +300,7 @@ export async function step3_viteBuild(configuredMaxWaitMs = process.env.BUILD_MA
   const nodeOptions = [
     inheritedNodeOptions,
     hasOldSpaceLimit ? "" : `--max-old-space-size=${maxOldSpaceMb}`,
+    hasSemiSpaceLimit ? "" : "--max-semi-space-size=1",
     traceEnabled ? `--require ${JSON.stringify(traceAgentPath)}` : "",
   ]
     .filter(Boolean)

@@ -13,7 +13,11 @@ from sqlalchemy.dialects import postgresql
 
 RETAINED_TABLES = frozenset({"user_stats", "vector_chunks"})
 
-# The parent multi-tenant migration still owns these columns after the runtime
+# The squashed MVP baseline is the single revision that owns every migration-owned
+# object below. It replaces the historical revisions these annotations used to name.
+_BASELINE_REVISION = "202611020000"
+
+# The MVP baseline still owns these columns after the runtime
 # models stopped mapping them. Keep their FK and index in Alembic metadata so
 # later autogenerate checks do not propose destructive removals.
 MIGRATION_OWNED_TENANT_TABLES = (
@@ -27,10 +31,10 @@ MIGRATION_OWNED_TENANT_TABLES = (
     "stories",
     "notifications",
 )
-_MIGRATION_OWNED_TENANT_REVISION = "202607230001"
+_MIGRATION_OWNED_TENANT_REVISION = _BASELINE_REVISION
 
-# These indexes are created by historical revisions rather than runtime models.
-# Register only indexes that those revisions create for the selected dialect.
+# These indexes are created by the MVP baseline rather than runtime models.
+# Register only indexes that the baseline creates for the selected dialect.
 _MIGRATION_OWNED_HOT_INDEXES: tuple[
     tuple[str, str, tuple[str, ...], tuple[str, ...], str], ...
 ] = (
@@ -39,56 +43,56 @@ _MIGRATION_OWNED_HOT_INDEXES: tuple[
         "chat_participants",
         ("user_id", "chat_id"),
         (),
-        "202603060001",
+        _BASELINE_REVISION,
     ),
     (
         "ix_chat_participants_chat_id_user_id",
         "chat_participants",
         ("chat_id", "user_id"),
         (),
-        "202603060001",
+        _BASELINE_REVISION,
     ),
     (
         "ix_messages_unread_chat_sender",
         "messages",
         ("chat_id", "sender_id"),
         ("read_status",),
-        "202603070001",
+        _BASELINE_REVISION,
     ),
     (
         "idx_messages_chat_pagination_covering",
         "messages",
         ("chat_id", "created_at", "id"),
         ("sender_id", "read_status"),
-        "202603170001",
+        _BASELINE_REVISION,
     ),
     (
         "idx_news_comment_cursor",
         "news_comments",
         ("news_id", "created_at", "id"),
         (),
-        "202603150001",
+        _BASELINE_REVISION,
     ),
     (
         "ix_stored_events_pending_created",
         "stored_events",
         ("created_at", "id"),
         ("processed_at",),
-        "202603140002",
+        _BASELINE_REVISION,
     ),
     (
         "ix_stored_events_pending_aggregate_created",
         "stored_events",
         ("aggregate_id", "created_at", "id"),
         ("processed_at",),
-        "202603140002",
+        _BASELINE_REVISION,
     ),
     (
         "ix_stored_events_aggregate_uuid",
         "stored_events",
         ("aggregate_id_uuid", "sequence_number"),
         ("processed_at",),
-        "202603140003",
+        _BASELINE_REVISION,
     ),
 )
 _POSTGRESQL_ONLY_HOT_INDEXES = frozenset(
@@ -119,12 +123,12 @@ def build_migration_metadata(
     _register_migration_owned_tenant_columns(metadata)
     _register_migration_owned_hot_indexes(metadata, dialect_name=dialect_name)
     for name in RETAINED_TABLES:
-        metadata.tables[name].info["retained_by_revision"] = "202610010001"
+        metadata.tables[name].info["retained_by_revision"] = _BASELINE_REVISION
     return metadata
 
 
 def _register_migration_owned_tenant_columns(metadata: sa.MetaData) -> None:
-    """Retain the tenant schema owned by revision 202607230001."""
+    """Retain the tenant schema owned by the MVP baseline revision."""
     if "tenants" not in metadata.tables:
         # Small isolated metadata fixtures may not model the tenant registry.
         return

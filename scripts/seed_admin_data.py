@@ -250,24 +250,24 @@ def _admin_profile(user_id) -> UserProfile:
     )
 
 
-async def find_or_create_admin(
-    db,
-    *,
-    admin_password: str,
-    reconcile_stand_password: bool = False,
-) -> User:
-    """Create or repair the synthetic admin without changing unrelated accounts."""
+async def find_or_create_admin(db, *, admin_password: str) -> User:
+    """Create the synthetic admin, or verify that an existing one already matches.
+
+    An existing admin's password hash is never rewritten. A mismatch means the
+    stand's database no longer agrees with its persisted admin password, so the
+    stand must be recreated instead of re-keying the account (AUD-313).
+    """
     existing = await db.scalar(select(User).where(User.email == ADMIN_EMAIL))
     if existing:
         if existing.role != UserRole.ADMIN:
             raise ValueError(
                 "refusing to elevate an existing account with a different role"
             )
-        if reconcile_stand_password and not verify_password_sync(
-            admin_password, existing.hashed_password
-        ):
-            existing.hashed_password = get_password_hash_sync(admin_password)
-            db.add(existing)
+        if not verify_password_sync(admin_password, existing.hashed_password):
+            raise RuntimeError(
+                "existing admin password does not match the seed password; "
+                "recreate the owned stand instead of rewriting its admin credential"
+            )
         profile_exists = await db.scalar(
             select(UserProfile.user_id).where(UserProfile.user_id == existing.id)
         )
@@ -663,7 +663,6 @@ async def seed_dead_letter_jobs(db) -> None:
 
 async def main() -> None:
     seed_target = require_owned_live_stand_target()
-    reconcile_stand_password = seed_target != ADMIN_SMOKE_PROJECT
     admin_password = _required_test_password()
     print("Initialising database connection…")
     init_database()
@@ -679,7 +678,6 @@ async def main() -> None:
                 admin = await find_or_create_admin(
                     db,
                     admin_password=admin_password,
-                    reconcile_stand_password=reconcile_stand_password,
                 )
             finally:
                 del admin_password

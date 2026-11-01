@@ -805,6 +805,24 @@ def _scalar_rows(rows: list[object]) -> MagicMock:
     return result
 
 
+def _claimed(*pairs: tuple[object, object]) -> MagicMock:
+    """Result of the AUD-272 claim insert: the (notification, subscription) pairs it won."""
+    result = MagicMock()
+    result.all.return_value = list(pairs)
+    return result
+
+
+def _session(side_effect: object) -> MagicMock:
+    """Session double on PostgreSQL, so the AUD-272 claim takes its production branch."""
+    bind = MagicMock()
+    bind.dialect.name = "postgresql"
+    return MagicMock(
+        execute=AsyncMock(side_effect=side_effect),
+        flush=AsyncMock(),
+        get_bind=MagicMock(return_value=bind),
+    )
+
+
 def _notification(user_id: UUID) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid4(),
@@ -883,16 +901,14 @@ async def test_notification_redelivery_applies_user_quiet_hours_to_payload(
     subscription.user = SimpleNamespace(
         preferences=SimpleNamespace(dnd_enabled=True, dnd_start=None, dnd_end=None)
     )
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _scalar_rows([notification]),
-                _scalar_rows([subscription]),
-                _scalar_rows([]),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _scalar_rows([notification]),
+            _scalar_rows([subscription]),
+            _scalar_rows([]),
+            _claimed((notification.id, subscription.id)),
+            MagicMock(),
+        ]
     )
     monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
     monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)
@@ -942,16 +958,15 @@ async def test_notification_redelivery_records_provider_exceptions(
         detail="old",
     )
     journal = [prior] if with_prior else []
-    db = MagicMock(
-        execute=AsyncMock(
-            side_effect=[
-                _scalar_rows([notification]),
-                _scalar_rows([subscription]),
-                _scalar_rows(journal),
-                MagicMock(),
-            ]
-        ),
-        flush=AsyncMock(),
+    db = _session(
+        [
+            _scalar_rows([notification]),
+            _scalar_rows([subscription]),
+            _scalar_rows(journal),
+            _claimed((notification.id, subscription.id)),
+            MagicMock(),
+            MagicMock(),
+        ]
     )
     monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
     monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)

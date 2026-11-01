@@ -65,15 +65,11 @@ async def test_admin_seed_fails_closed_before_database_initialization_without_pa
         capsys.readouterr()
 
 
-@pytest.mark.parametrize(
-    ("seed_target", "should_reconcile"),
-    (("ue-live-0123456789abcdef", True), ("ci-admin-smoke", False)),
-)
-async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
+@pytest.mark.parametrize("seed_target", ("ue-live-0123456789abcdef", "ci-admin-smoke"))
+async def test_admin_seed_passes_only_the_transient_password_for_every_target(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     seed_target: str,
-    should_reconcile: bool,
 ) -> None:
     import secrets
 
@@ -107,12 +103,10 @@ async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
         async def rollback(self) -> None:
             return None
 
-    observed_passwords: list[tuple[str, bool]] = []
+    observed_passwords: list[str] = []
 
-    async def capture_admin_password(
-        db, *, admin_password: str, reconcile_stand_password: bool
-    ):
-        observed_passwords.append((admin_password, reconcile_stand_password))
+    async def capture_admin_password(db, *, admin_password: str):
+        observed_passwords.append(admin_password)
         return object()
 
     async def no_op_seed(db, *args):
@@ -145,13 +139,11 @@ async def test_admin_seed_scopes_password_reconciliation_to_live_stands(
         output = capsys.readouterr()
 
     if len(observed_passwords) != 1 or not secrets.compare_digest(
-        observed_passwords[0][0], runtime_password
+        observed_passwords[0], runtime_password
     ):
         pytest.fail(
             "admin seeder did not pass the transient password to the admin creator"
         )
-    if observed_passwords[0][1] is not should_reconcile:
-        pytest.fail("password reconciliation escaped its owned live stand scope")
 
     if runtime_password in output.out or runtime_password in output.err:
         pytest.fail("admin seeder wrote the transient password to captured output")
@@ -352,7 +344,7 @@ async def test_notification_fixture_refuses_a_nonempty_dedicated_group(
     )
 
 
-async def test_reseeding_existing_admin_preserves_the_password_hash(
+async def test_reseeding_existing_admin_rejects_a_different_password_without_rekeying(
     db_session, user_factory, capsys: pytest.CaptureFixture[str]
 ) -> None:
     import secrets
@@ -361,12 +353,43 @@ async def test_reseeding_existing_admin_preserves_the_password_hash(
     from scripts import seed_admin_data
 
     previous_password = secrets.token_urlsafe(32) + "!Aa0"
-    current_password = secrets.token_urlsafe(32) + "!Aa0"
+    current_password = secrets.token_urlsafe(32) + "!Bb1"
     previous_hash = seed_admin_data.get_password_hash_sync(previous_password)
     existing = await user_factory(
         email=seed_admin_data.ADMIN_EMAIL,
         role="admin",
         hashed_password=previous_hash,
+    )
+
+    with pytest.raises(RuntimeError, match="recreate the owned stand"):
+        await seed_admin_data.find_or_create_admin(
+            db_session, admin_password=current_password
+        )
+    await db_session.commit()
+    await db_session.refresh(existing)
+    output = capsys.readouterr()
+
+    if existing.hashed_password != previous_hash:
+        pytest.fail("a mismatched seed password must never rewrite the admin hash")
+    if not verify_password_sync(previous_password, existing.hashed_password):
+        pytest.fail("the existing admin password must keep working after the refusal")
+    if current_password in output.out or current_password in output.err:
+        pytest.fail("the refused seed password must not reach captured output")
+
+
+async def test_reseeding_existing_admin_with_the_matching_password_keeps_the_hash(
+    db_session, user_factory, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import secrets
+
+    from scripts import seed_admin_data
+
+    password = secrets.token_urlsafe(32) + "!Aa0"
+    existing_hash = seed_admin_data.get_password_hash_sync(password)
+    existing = await user_factory(
+        email=seed_admin_data.ADMIN_EMAIL,
+        role="admin",
+        hashed_password=existing_hash,
     )
     profile = await db_session.scalar(
         select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
@@ -376,7 +399,7 @@ async def test_reseeding_existing_admin_preserves_the_password_hash(
     await db_session.flush()
 
     result = await seed_admin_data.find_or_create_admin(
-        db_session, admin_password=current_password
+        db_session, admin_password=password
     )
     await db_session.commit()
     await db_session.refresh(existing)
@@ -384,56 +407,15 @@ async def test_reseeding_existing_admin_preserves_the_password_hash(
 
     if result.id != existing.id:
         pytest.fail("admin reseeding must leave the matching account in place")
-    if existing.hashed_password != previous_hash:
+    if existing.hashed_password != existing_hash:
         pytest.fail("admin reseeding must preserve an existing password hash")
-    if not verify_password_sync(previous_password, existing.hashed_password):
-        pytest.fail("admin reseeding must preserve the existing account password")
-    if verify_password_sync(current_password, existing.hashed_password):
-        pytest.fail(
-            "admin reseeding must not apply a new password to an existing account"
-        )
-
-    if current_password in output.out or current_password in output.err:
-        pytest.fail("admin reseeding must not log the current password")
+    if password in output.out or password in output.err:
+        pytest.fail("admin reseeding must not log the admin password")
     restored_profile = await db_session.scalar(
         select(models.UserProfile).where(models.UserProfile.user_id == existing.id)
     )
     assert restored_profile is not None
     assert restored_profile.full_name == "Платформенный администратор"
-
-
-async def test_live_stand_seed_reconciles_its_persisted_admin_password(
-    db_session, user_factory, capsys: pytest.CaptureFixture[str]
-) -> None:
-    import secrets
-
-    from app.auth.security import verify_password_sync
-    from scripts import seed_admin_data
-
-    previous_password = secrets.token_urlsafe(32) + "!Aa0"
-    stand_password = secrets.token_urlsafe(32) + "!Bb1"
-    previous_hash = seed_admin_data.get_password_hash_sync(previous_password)
-    existing = await user_factory(
-        email=seed_admin_data.ADMIN_EMAIL,
-        role="admin",
-        hashed_password=previous_hash,
-    )
-
-    result = await seed_admin_data.find_or_create_admin(
-        db_session,
-        admin_password=stand_password,
-        reconcile_stand_password=True,
-    )
-    await db_session.commit()
-    await db_session.refresh(existing)
-    output = capsys.readouterr()
-
-    assert result.id == existing.id
-    assert existing.hashed_password != previous_hash
-    assert verify_password_sync(stand_password, existing.hashed_password)
-    assert not verify_password_sync(previous_password, existing.hashed_password)
-    assert stand_password not in output.out
-    assert stand_password not in output.err
 
 
 async def test_reseeding_existing_extra_user_repairs_missing_demo_relations(
