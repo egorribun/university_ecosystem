@@ -7619,8 +7619,7 @@ def test_nov1_v4_binding_preserves_historical_off_fixture_collisions() -> None:
     ]
     assert len(fixture_records) == 42
     historical_digests = {
-        tuple(record["identity"]["hashed_secret_bytes"])
-        for record in fixture_records
+        tuple(record["identity"]["hashed_secret_bytes"]) for record in fixture_records
     }
     collisions = [
         record

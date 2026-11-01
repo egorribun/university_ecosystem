@@ -800,9 +800,9 @@ def test_alembic_selects_metadata_for_the_actual_dialect(
 ) -> None:
     from io import StringIO
 
-    from alembic import command
     from alembic.config import Config
 
+    from alembic import command
     from app.core.db import retained_table_metadata
 
     script_dir = tmp_path / "alembic"
