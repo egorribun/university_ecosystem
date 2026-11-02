@@ -1275,4 +1275,3 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 		c.Next()
 	}
 }
-
