@@ -1329,6 +1329,60 @@ function Ensure-ApplicationSecrets {
     }
 }
 
+function Get-OwnedSeedTenantId {
+    param([Parameter(Mandatory=$true)][string]$Project)
+    if ($Project -cnotmatch '^ue-live-[0-9a-f]{16}$') {
+        throw "Owned live tenant identity requires an exact project name."
+    }
+    # UUIDv5 URL namespace bytes in network order, not Guid.ToByteArray order.
+    # SHA-1 here implements the UUID identity standard, not a security digest.
+    [byte[]]$namespace = @(0x6b,0xa7,0xb8,0x11,0x9d,0xad,0x11,0xd1,0x80,0xb4,0x00,0xc0,0x4f,0xd4,0x30,0xc8)
+    [byte[]]$name = [Text.Encoding]::UTF8.GetBytes("urn:university-ecosystem:owned-seed:$Project")
+    $sha1 = [Security.Cryptography.SHA1]::Create()
+    try {
+        [byte[]]$digest = $sha1.ComputeHash([byte[]]($namespace + $name))
+    } finally {
+        $sha1.Dispose()
+    }
+    $digest[6] = ($digest[6] -band 0x0f) -bor 0x50
+    $digest[8] = ($digest[8] -band 0x3f) -bor 0x80
+    $hex = -join ($digest[0..15] | ForEach-Object { $_.ToString('x2') })
+    return "{0}-{1}-{2}-{3}-{4}" -f $hex.Substring(0,8), $hex.Substring(8,4), $hex.Substring(12,4), $hex.Substring(16,4), $hex.Substring(20,12)
+}
+
+function Ensure-OwnedLiveTenantEnvironment {
+    # Only the owner-checked live overlay opts into this disposable MVP tenant.
+    # Unconfigured ordinary/production deployments are never auto-activated.
+    if (@($ExtraCompose).Count -ne 1 -or $ExtraCompose[0] -cne "docker-compose.live.yml") {
+        return
+    }
+    $project = [string]$env:COMPOSE_PROJECT_NAME
+    if ($null -eq $script:LiveStandOwner -or
+        [string]$script:LiveStandOwner.project_name -cne $project) {
+        throw "Owned live MVP_TENANT_ID requires verified project ownership."
+    }
+    $expected = Get-OwnedSeedTenantId -Project $project
+    if ([string]$env:MVP_TENANT_ID -cne $expected) {
+        throw "Owned live MVP_TENANT_ID does not match the launcher project."
+    }
+    # Validate both persisted views before changing either; never adopt drift.
+    foreach ($path in @($EnvFile, $EnvCompose)) {
+        $entries = @(Get-Content -LiteralPath (Resolve-StatePath -Path $path) -ErrorAction Stop |
+            Where-Object { $_ -match '^\s*(?:export\s+)?MVP_TENANT_ID\s*=' })
+        if ($entries.Count -gt 1 -or
+            ($entries.Count -eq 1 -and $entries[0] -cne "MVP_TENANT_ID=$expected")) {
+            throw "Owned live MVP_TENANT_ID has conflicting or noncanonical saved entries."
+        }
+        $stored = Get-EnvEntry -Path $path -Key "MVP_TENANT_ID"
+        if ($null -ne $stored -and $stored -cne $expected) {
+            throw "Owned live MVP_TENANT_ID differs from the saved environment."
+        }
+    }
+    foreach ($path in @($EnvFile, $EnvCompose)) {
+        Set-EnvEntry -Path $path -Key "MVP_TENANT_ID" -Value $expected
+    }
+}
+
 function Ensure-DatabaseRolePasswords {
     # Login passwords for the roles created by
     # infrastructure/postgres-roles/bootstrap-app-roles.sql. Each value is embedded
@@ -2952,6 +3006,7 @@ Ensure-MetricsEnvironment
 # Give each application security domain an independent launcher-managed key.
 Ensure-ApplicationSecrets
 Ensure-DatabaseRolePasswords
+Ensure-OwnedLiveTenantEnvironment
 Ensure-MfaEmailKeyRings
 
 # Fail closed if an existing local configuration reuses the cache password for

@@ -7,7 +7,8 @@ import hmac
 import uuid
 from typing import Any
 
-from fastapi import Request
+from fastapi import HTTPException, Request
+from starlette.responses import JSONResponse
 from structlog.contextvars import clear_contextvars
 
 from app.core.logging import bind_context
@@ -26,8 +27,14 @@ class TenantContextMiddleware:
     affect database RLS or ReBAC checks.
     """
 
-    def __init__(self, app: Any, internal_hmac_secret: str | None = None) -> None:
+    def __init__(
+        self,
+        app: Any,
+        internal_hmac_secret: str | None = None,
+        mvp_tenant_id: uuid.UUID | None = None,
+    ) -> None:
         self._app = app
+        self._mvp_tenant_id = str(mvp_tenant_id) if mvp_tenant_id else ""
         self._internal_hmac_secret = (internal_hmac_secret or "").encode()
 
     def _resolve_trusted_tenant(self, request: Request) -> str:
@@ -44,7 +51,12 @@ class TenantContextMiddleware:
         user_id = request.headers.get("x-user-id", "")
         session_id = request.headers.get("x-session-id", "")
         signature = request.headers.get("x-internal-signature", "")
-        if not user_id or not session_id or not signature:
+        if (
+            not user_id
+            or not session_id
+            or len(signature) != 64
+            or not signature.isascii()
+        ):
             return ""
 
         expected = hmac.new(
@@ -55,6 +67,40 @@ class TenantContextMiddleware:
         if not hmac.compare_digest(expected, signature):
             return ""
         return sanitised
+
+    def _accept_mvp_identity(self, request: Request, trusted_tenant: str) -> bool:
+        """Never downgrade an invalid supplied identity to anonymous routing."""
+        identity_headers = ("x-user-id", "x-session-id", "x-internal-signature")
+        if any(name in request.headers for name in identity_headers):
+            return trusted_tenant == self._mvp_tenant_id
+        authorization = request.headers.get("authorization")
+        cookie = request.cookies.get("access_token_v2")
+        if authorization is None and cookie is None:
+            # A raw X-Tenant-ID is only an untrusted hint and is ignored.
+            return True
+        token = None
+        if authorization is not None:
+            # This exact endpoint owns a distinct Basic-auth service principal.
+            # Its handler still verifies credentials and the source allowlist;
+            # no user/session identity is inferred and no other path is exempt.
+            if (
+                request.method == "GET"
+                and request.url.path == "/metrics"
+                and authorization.startswith("Basic ")
+            ):
+                return True
+            scheme, separator, token = authorization.partition(" ")
+            if scheme.lower() != "bearer" or not separator or not token.strip():
+                return False
+            token = token.strip()
+        from app.services.auth.token_service import AuthTokenService
+
+        try:
+            payload = AuthTokenService.extract_and_decode_token(request, token, "en")
+            AuthTokenService.validate_payload(payload, "en")
+        except HTTPException:
+            return False
+        return payload.get("tenant_id") == self._mvp_tenant_id
 
     async def __call__(
         self,
@@ -68,6 +114,19 @@ class TenantContextMiddleware:
 
         request = Request(scope, receive)
         tenant_id = self._resolve_trusted_tenant(request)
+        if self._mvp_tenant_id:
+            if not self._accept_mvp_identity(request, tenant_id):
+                response = JSONResponse(
+                    {"detail": "credentials_invalid"}, status_code=401
+                )
+                if "access_token_v2" in request.cookies:
+                    response.delete_cookie("access_token_v2", path="/")
+                await response(scope, receive, send)
+                return
+            # Only absent credentials bootstrap through operator authority.
+            # Present identity must already bind to this organization; normal
+            # auth dependencies still check durable sessions and revocation.
+            tenant_id = self._mvp_tenant_id
 
         scope.setdefault("state", {})["tenant_id"] = tenant_id
         t_token = tenant_id_ctx.set(tenant_id)

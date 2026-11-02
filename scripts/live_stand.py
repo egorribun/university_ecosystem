@@ -59,6 +59,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from scripts import fast_preflight
+from scripts.seed_identity import owned_seed_tenant_id
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKTREE_NAME = "ue-live"
@@ -2056,6 +2057,10 @@ def stand_environment(
     _validate_project_name(project_name)
     ports = dict(_validate_published_ports(published_ports, allow_privileged=True))
     env = os.environ.copy()
+    tenant_identity = str(owned_seed_tenant_id(project_name))
+    if "MVP_TENANT_ID" in env and env["MVP_TENANT_ID"] != tenant_identity:
+        raise StandError("MVP_TENANT_ID does not match the owned live project")
+    env["MVP_TENANT_ID"] = tenant_identity
     env["COMPOSE_PROJECT_NAME"] = project_name
     env["LIVE_VAPID_PUBLIC_KEY"] = keys["public"]
     env["LIVE_VAPID_PRIVATE_KEY"] = keys["private"]

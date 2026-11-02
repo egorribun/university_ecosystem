@@ -309,6 +309,9 @@ class UserComplianceService:
         )
 
     async def register_user(self, user_in: schemas.UserCreate) -> UserDTO:
+        from app.core.tenant import require_mvp_tenant
+
+        tenant_id = await require_mvp_tenant(self.uow.session)
         raw_role = getattr(user_in, "role", None)
         requested_role = UserRole(raw_role) if raw_role else UserRole.STUDENT
         if requested_role not in (UserRole.STUDENT, UserRole.TEACHER, UserRole.ADMIN):
@@ -356,6 +359,8 @@ class UserComplianceService:
                 "cover_url",
             }
         )
+        if tenant_id is not None:
+            user_data["tenant_id"] = tenant_id
         user_data.update(
             {
                 "hashed_password": hashed_password,

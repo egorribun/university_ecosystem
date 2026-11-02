@@ -1152,8 +1152,8 @@ func (m *JWTMiddleware) Validate(ctx context.Context) gin.HandlerFunc { //nolint
 		// Tenant identity is accepted only from signed claims. A client-supplied
 		// X-Tenant-ID is a routing hint, not authenticated membership, and must
 		// never be promoted into signed gateway identity headers. The current
-		// Python login issuer emits no tenant claim until authoritative membership
-		// resolution exists, so production tenant context is intentionally empty.
+		// Python MVP issuer binds this claim to the locked users.tenant_id for
+		// its operator-configured organization; the backend enforces that binding.
 		tenantID := claims.TenantID
 		c.Set("user_id", claims.UserID)
 		c.Set("user_role", claims.Role)
@@ -1275,3 +1275,4 @@ func (m *JWTMiddleware) Optional(ctx context.Context) gin.HandlerFunc { //nolint
 		c.Next()
 	}
 }
+

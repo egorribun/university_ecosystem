@@ -54,6 +54,11 @@ from app.models.schedule import Group, Schedule
 from app.models.users import EducationPath, User, UserProfile
 from app.services.audit_service import SecureAuditService
 from scripts.seed_target import ADMIN_SMOKE_PROJECT, require_owned_live_stand_target
+from scripts.seed_tenant import (
+    ensure_seed_tenant,
+    seed_tenant_context,
+    validate_seed_tenant_configuration,
+)
 
 # ---------------------------------------------------------------------------
 # Admin user credentials (no `!` per CLAUDE.md docker gotcha)
@@ -664,59 +669,62 @@ async def seed_dead_letter_jobs(db) -> None:
 async def main() -> None:
     seed_target = require_owned_live_stand_target()
     admin_password = _required_test_password()
+    validate_seed_tenant_configuration(seed_target)
     print("Initialising database connection…")
     init_database()
 
-    async with async_session() as db:
-        try:
-            seed_notification_fixture = should_seed_live_notification_fixture(
-                seed_target=seed_target,
-            )
-
-            print("\n[1/6] Admin user")
+    with seed_tenant_context(seed_target) as tenant_identity:
+        async with async_session() as db:
             try:
-                admin = await find_or_create_admin(
-                    db,
-                    admin_password=admin_password,
+                await ensure_seed_tenant(db, seed_target, tenant_identity)
+                seed_notification_fixture = should_seed_live_notification_fixture(
+                    seed_target=seed_target,
                 )
-            finally:
-                del admin_password
 
-            print("\n[2/6] Extra groups")
-            groups = await seed_extra_groups(db)
+                print("\n[1/6] Admin user")
+                try:
+                    admin = await find_or_create_admin(
+                        db,
+                        admin_password=admin_password,
+                    )
+                finally:
+                    del admin_password
 
-            print("\n[3/6] Extra users")
-            others = await seed_extra_users(db, groups)
+                print("\n[2/6] Extra groups")
+                groups = await seed_extra_groups(db)
 
-            if seed_notification_fixture:
-                print("\n[4/6] Owned-stand notification fixture")
-                await seed_live_notification_delivery_fixture(db)
-                await seed_live_notification_queue_fixture(db)
+                print("\n[3/6] Extra users")
+                others = await seed_extra_users(db, groups)
 
-            print("\n[5/6] Audit logs")
-            await seed_audit_logs(db, admin, others)
+                if seed_notification_fixture:
+                    print("\n[4/6] Owned-stand notification fixture")
+                    await seed_live_notification_delivery_fixture(db)
+                    await seed_live_notification_queue_fixture(db)
 
-            print("\n[6/6] Dead-letter notification jobs")
-            await seed_dead_letter_jobs(db)
+                print("\n[5/6] Audit logs")
+                await seed_audit_logs(db, admin, others)
 
-            await db.commit()
-            print("\n" + "=" * 60)
-            print("Admin seed data committed successfully.")
-            print("=" * 60)
-            print(f"\n  Admin account:  {ADMIN_EMAIL}")
-            print("  Student demo account: seeded")
-            print(
-                f"  Other users:    {len(EXTRA_USERS)} created (mix of student/teacher)"
-            )
-            print(
-                f"  Dead-letter:    {len(DEAD_LETTER_JOBS)} jobs (mix of pending/retrying/failed)"
-            )
-            print("\n  Open: http://localhost:5173/admin/audit (or your dev URL)")
-        except IntegrityError:
-            await db.rollback()
-            raise RuntimeError(
-                "admin seed transaction failed and was rolled back"
-            ) from None
+                print("\n[6/6] Dead-letter notification jobs")
+                await seed_dead_letter_jobs(db)
+
+                await db.commit()
+                print("\n" + "=" * 60)
+                print("Admin seed data committed successfully.")
+                print("=" * 60)
+                print(f"\n  Admin account:  {ADMIN_EMAIL}")
+                print("  Student demo account: seeded")
+                print(
+                    f"  Other users:    {len(EXTRA_USERS)} created (mix of student/teacher)"
+                )
+                print(
+                    f"  Dead-letter:    {len(DEAD_LETTER_JOBS)} jobs (mix of pending/retrying/failed)"
+                )
+                print("\n  Open: http://localhost:5173/admin/audit (or your dev URL)")
+            except IntegrityError:
+                await db.rollback()
+                raise RuntimeError(
+                    "admin seed transaction failed and was rolled back"
+                ) from None
 
 
 if __name__ == "__main__":

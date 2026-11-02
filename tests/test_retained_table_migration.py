@@ -122,7 +122,6 @@ def test_retained_metadata_matches_historical_postgresql_schema():
 
 
 _EXPECTED_MIGRATION_OWNED_TENANT_TABLES = (
-    "users",
     "groups",
     "schedule",
     "events",
@@ -147,6 +146,18 @@ def _add_message_index_columns(table: sa.Table) -> None:
 def _runtime_metadata_with_tenant_tables():
     metadata = sa.MetaData()
     sa.Table("tenants", metadata, sa.Column("id", sa.UUID(), primary_key=True))
+    users = sa.Table(
+        "users",
+        metadata,
+        sa.Column("id", sa.UUID(), primary_key=True),
+        sa.Column(
+            "tenant_id",
+            sa.UUID(),
+            sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+            nullable=True,
+        ),
+    )
+    sa.Index("ix_users_tenant_id", users.c.tenant_id)
     for table_name in _EXPECTED_MIGRATION_OWNED_TENANT_TABLES:
         table = sa.Table(
             table_name, metadata, sa.Column("id", sa.UUID(), primary_key=True)
@@ -363,11 +374,11 @@ def test_migration_owned_tenant_column_conflict_fails_closed() -> None:
     from app.core.db.retained_table_metadata import build_migration_metadata
 
     runtime = _runtime_metadata_with_tenant_tables()
-    runtime.tables["users"].append_column(sa.Column("tenant_id", sa.UUID()))
+    runtime.tables["groups"].append_column(sa.Column("tenant_id", sa.UUID()))
 
     with pytest.raises(
         ValueError,
-        match="Migration-owned tenant_id has competing runtime ownership: users",
+        match="Migration-owned tenant_id has competing runtime ownership: groups",
     ):
         build_migration_metadata(runtime, dialect_name="postgresql")
 
@@ -376,12 +387,12 @@ def test_migration_owned_tenant_index_conflict_fails_closed() -> None:
     from app.core.db.retained_table_metadata import build_migration_metadata
 
     runtime = _runtime_metadata_with_tenant_tables()
-    sa.Index("ix_users_tenant_id", runtime.tables["users"].c.id)
+    sa.Index("ix_groups_tenant_id", runtime.tables["groups"].c.id)
 
     with pytest.raises(
         ValueError,
         match="Migration-owned tenant index has competing runtime ownership: "
-        "ix_users_tenant_id",
+        "ix_groups_tenant_id",
     ):
         build_migration_metadata(runtime, dialect_name="postgresql")
 
@@ -866,3 +877,86 @@ def test_alembic_selects_metadata_for_the_actual_dialect(
             assert observed == [("sqlite", set(_SQLITE_HOT_INDEX_NAMES))]
         finally:
             engine.dispose()
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlite"])
+def test_runtime_users_tenant_ownership_is_exact_and_not_mutated(dialect: str) -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _runtime_metadata_with_tenant_tables()
+    original = runtime.tables["users"].c.tenant_id
+    target = build_migration_metadata(runtime, dialect_name=dialect)
+    column = target.tables["users"].c.tenant_id
+    assert column is not original
+    assert original.nullable is True and column.nullable is True
+    assert "migration_owned_by_revision" not in column.info
+    assert [(fk.target_fullname, fk.ondelete) for fk in column.foreign_keys] == [
+        ("tenants.id", "CASCADE")
+    ]
+    indexes = list(target.tables["users"].indexes)
+    assert len(indexes) == 1
+    assert indexes[0].name == "ix_users_tenant_id"
+    assert tuple(indexes[0].columns.keys()) == ("tenant_id",)
+    assert indexes[0].unique is False
+
+
+@pytest.mark.parametrize(
+    "drift",
+    [
+        "type",
+        "nullable",
+        "default",
+        "server_default",
+        "primary_key",
+        "unique",
+        "foreign_key",
+        "ondelete",
+        "onupdate",
+        "missing_index",
+        "index_name",
+        "index_unique",
+        "index_columns",
+        "index_options",
+        "extra_index",
+    ],
+)
+def test_runtime_users_tenant_shape_drift_is_rejected(drift: str) -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = _runtime_metadata_with_tenant_tables()
+    table = runtime.tables["users"]
+    column = table.c.tenant_id
+    index = next(iter(table.indexes))
+    if drift == "type":
+        column.type = sa.String()
+    elif drift == "nullable":
+        column.nullable = False
+    elif drift == "default":
+        column.default = sa.ColumnDefault("unexpected")
+    elif drift == "server_default":
+        column.server_default = sa.DefaultClause("unexpected")
+    elif drift == "primary_key":
+        column.primary_key = True
+    elif drift == "unique":
+        column.unique = True
+    elif drift == "foreign_key":
+        column.append_foreign_key(sa.ForeignKey("users.id"))
+    elif drift == "ondelete":
+        next(iter(column.foreign_keys)).ondelete = "SET NULL"
+    elif drift == "onupdate":
+        next(iter(column.foreign_keys)).onupdate = "CASCADE"
+    elif drift == "missing_index":
+        table.indexes.clear()
+    elif drift == "index_name":
+        index.name = "other"
+    elif drift == "index_unique":
+        index.unique = True
+    elif drift == "index_columns":
+        table.indexes.clear()
+        sa.Index("ix_users_tenant_id", table.c.id)
+    elif drift == "index_options":
+        index.dialect_kwargs["postgresql_where"] = column.is_not(None)
+    elif drift == "extra_index":
+        sa.Index("extra_tenant", column)
+    with pytest.raises(ValueError, match="Runtime users tenant schema"):
+        build_migration_metadata(runtime, dialect_name="postgresql")

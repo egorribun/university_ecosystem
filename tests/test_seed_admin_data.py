@@ -83,12 +83,26 @@ async def test_admin_seed_passes_only_the_transient_password_for_every_target(
 
     runtime_password = secrets.token_urlsafe(32)
     monkeypatch.setenv("TEST_PASSWORD", runtime_password)
+    from scripts.seed_identity import owned_seed_tenant_id
+
+    monkeypatch.setattr(
+        seed_admin_data.settings, "mvp_tenant_id", owned_seed_tenant_id(seed_target)
+    )
 
     def no_op_init_database() -> None:
         return None
 
     class FakeSession:
         async def scalar(self, statement):
+            return None
+
+        def add(self, tenant) -> None:
+            from app.core.tenant import get_current_tenant
+
+            assert str(tenant.id) == get_current_tenant()
+            assert tenant.slug == seed_target
+
+        async def flush(self) -> None:
             return None
 
         async def __aenter__(self) -> FakeSession:
@@ -170,9 +184,26 @@ async def test_notification_fixture_runs_for_a_full_owned_stand(
         lambda: seed_target,
     )
     monkeypatch.setenv("TEST_PASSWORD", "Live-Seed-Test-Password9!")
+    from scripts.seed_identity import owned_seed_tenant_id
+
+    monkeypatch.setattr(
+        seed_admin_data.settings, "mvp_tenant_id", owned_seed_tenant_id(seed_target)
+    )
     prepared: list[str] = []
 
     class FakeSession:
+        async def scalar(self, statement):
+            return None
+
+        def add(self, tenant) -> None:
+            from app.core.tenant import get_current_tenant
+
+            assert str(tenant.id) == get_current_tenant()
+            assert tenant.slug == seed_target
+
+        async def flush(self) -> None:
+            return None
+
         async def __aenter__(self) -> FakeSession:
             return self
 

@@ -21,9 +21,9 @@ _BASELINE_REVISION = "202611020000"
 
 # The MVP baseline still owns these columns after the runtime
 # models stopped mapping them. Keep their FK and index in Alembic metadata so
-# later autogenerate checks do not propose destructive removals.
+# later autogenerate checks do not propose destructive removals. ADR-053 transfers
+# only users.tenant_id back to runtime ownership, with exact shape validation.
 MIGRATION_OWNED_TENANT_TABLES = (
-    "users",
     "groups",
     "schedule",
     "events",
@@ -118,6 +118,7 @@ def build_migration_metadata(
         raise ValueError(
             f"Retained tables have competing runtime ownership: {sorted(conflicts)}"
         )
+    _validate_runtime_user_tenant_column(runtime_metadata)
     audit_table = runtime_metadata.tables.get("data_access_logs")
     if audit_table is not None:
         # Reject malformed runtime declarations before SQLAlchemy can reconcile
@@ -202,6 +203,61 @@ def _project_data_access_log_primary_key(
     # nullability drift remains visible rather than being silently repaired.
     for column in table.c:
         column.nullable = nullable[column.name]
+
+
+def _validate_runtime_user_tenant_column(metadata: sa.MetaData) -> None:
+    """Transfer only the existing users tenant column, never normalize drift."""
+    table = metadata.tables.get("users")
+    if table is None or "tenants" not in metadata.tables:
+        # Isolated metadata fixtures need not model the tenant registry.
+        return
+    diagnostic = "Runtime users tenant schema differs from the MVP baseline"
+    if "tenant_id" not in table.c:
+        raise ValueError(diagnostic)
+    column = table.c.tenant_id
+    if (
+        not isinstance(column.type, sa.UUID)
+        or not column.type.as_uuid
+        or column.nullable is not True
+        or column.primary_key
+        or column.unique not in (None, False)
+        or column.default is not None
+        or column.server_default is not None
+        or column.computed is not None
+        or column.identity is not None
+    ):
+        raise ValueError(diagnostic)
+    foreign_keys = tuple(column.foreign_keys)
+    if len(foreign_keys) != 1:
+        raise ValueError(diagnostic)
+    foreign_key = foreign_keys[0]
+    if (
+        foreign_key.target_fullname != "tenants.id"
+        or foreign_key.ondelete != "CASCADE"
+        or foreign_key.onupdate is not None
+        or foreign_key.deferrable is not None
+        or foreign_key.initially is not None
+        or foreign_key.match is not None
+        or foreign_key.use_alter
+    ):
+        raise ValueError(diagnostic)
+    indexes = [
+        index
+        for index in table.indexes
+        if index.name == "ix_users_tenant_id"
+        or any(expression is column for expression in index.expressions)
+    ]
+    if len(indexes) != 1:
+        raise ValueError(diagnostic)
+    index = indexes[0]
+    if (
+        index.name != "ix_users_tenant_id"
+        or index.unique
+        or len(index.expressions) != 1
+        or index.expressions[0] is not column
+        or dict(index.dialect_kwargs)
+    ):
+        raise ValueError(diagnostic)
 
 
 def _register_migration_owned_tenant_columns(metadata: sa.MetaData) -> None:

@@ -649,14 +649,20 @@ async def get_db() -> AsyncGenerator[AsyncDatabaseSession]:
     # FastAPI generator dependencies yield exactly once — the loop body after
     # `yield` is never re-entered, so all three retry iterations were dead code.
     # Stale connections are already handled by pool_pre_ping=True at engine level.
+    from app.core.tenant import require_mvp_tenant
+
     async with async_session() as session:
+        await require_mvp_tenant(session)
         yield session
 
 
 async def get_read_db() -> AsyncGenerator[AsyncDatabaseSession]:
     """Get a read-only session (uses replica if configured, otherwise primary)."""
     # Use the pre-allocated read_session_factory for efficiency
+    from app.core.tenant import require_mvp_tenant
+
     async with read_session_factory() as session:
+        await require_mvp_tenant(session)
         yield session
 
 

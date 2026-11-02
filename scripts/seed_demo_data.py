@@ -53,6 +53,11 @@ from app.services.schedule_optimizer import (
     ScheduleOptimizerService,
 )
 from scripts.seed_target import require_owned_live_stand_target
+from scripts.seed_tenant import (
+    ensure_seed_tenant,
+    seed_tenant_context,
+    validate_seed_tenant_configuration,
+)
 
 # RFC 2606 example.com identities remain synthetic and satisfy the API EmailStr contract.
 DEMO_PEER_EMAIL = "demo.peer@example.com"
@@ -65,6 +70,7 @@ DEMO_CLASS_GROUP_SEED_KEY = "ue-demo-v1:group:class"
 DEMO_DM_SEED_KEY = "ue-demo-v1:messenger:dm-primary-peer"
 DEMO_GROUP_SEED_KEY = "ue-demo-v1:messenger:group"
 DEMO_GROUP_NAME = "University Ecosystem Demo Group"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1559,30 +1565,33 @@ def _is_live_stand_demo_target(project: str) -> bool:
 
 async def main() -> None:
     target_project = require_owned_live_stand_target()
+    validate_seed_tenant_configuration(target_project)
     print("Initialising database connection…")
     init_database()
 
-    async with async_session() as db:
-        try:
-            group = await seed_group(db)
-            user = await seed_user(db, group)
-            await seed_news(db, user)
-            await seed_stories(db, user)
-            await seed_events(db, user)
-            await seed_archived_events(db, user)
-            await seed_schedule(db, group, user)
-            if _is_live_stand_demo_target(target_project):
-                peer = await seed_demo_peer_user(db, group)
-                second_peer = await seed_demo_second_peer_user(db, group)
-                await seed_demo_dm(db, user, peer)
-                await seed_demo_group(db, user, [peer, second_peer])
-            await db.commit()
-            print("\nAll demo data committed successfully.")
-        except IntegrityError:
-            await db.rollback()
-            raise RuntimeError(
-                "demo seed transaction failed and was rolled back"
-            ) from None
+    with seed_tenant_context(target_project) as tenant_identity:
+        async with async_session() as db:
+            try:
+                await ensure_seed_tenant(db, target_project, tenant_identity)
+                group = await seed_group(db)
+                user = await seed_user(db, group)
+                await seed_news(db, user)
+                await seed_stories(db, user)
+                await seed_events(db, user)
+                await seed_archived_events(db, user)
+                await seed_schedule(db, group, user)
+                if _is_live_stand_demo_target(target_project):
+                    peer = await seed_demo_peer_user(db, group)
+                    second_peer = await seed_demo_second_peer_user(db, group)
+                    await seed_demo_dm(db, user, peer)
+                    await seed_demo_group(db, user, [peer, second_peer])
+                await db.commit()
+                print("\nAll demo data committed successfully.")
+            except IntegrityError:
+                await db.rollback()
+                raise RuntimeError(
+                    "demo seed transaction failed and was rolled back"
+                ) from None
 
 
 if __name__ == "__main__":

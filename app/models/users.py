@@ -31,6 +31,13 @@ from app.models.spotify import SpotifyIntegration
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "users"
+    # Existing baseline column: operator assignment is not public profile input.
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     # DEBT-01 (RZ-W13): RFC 5321 §4.5.3.1.1 limits local-part to 64 chars and
     # domain to 255 chars → total max 320; we use 254 (RFC 5321 §4.5.3.1 total).
     # Prevents storage-amplification via unbounded email payloads.
