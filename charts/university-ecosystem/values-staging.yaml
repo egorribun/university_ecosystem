@@ -53,9 +53,9 @@ internalHttpMTLS:
   gatewaySpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway
   wsHubSpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/ws-hub
   backendServer:
-    existingSecret: university-internal-http-backend-server # pragma: allowlist secret
+    existingSecret: university-internal-http-backend-server
     certKey: tls.crt
-    privateKeyKey: tls.key # pragma: allowlist secret
+    privateKeyKey: tls.key
     caKey: ca.crt
 
 internalGrpcMTLS:

@@ -136,7 +136,7 @@ internalHttpMTLS:
   backendServer:
     existingSecret: ""
     certKey: "tls.crt"
-    privateKeyKey: "tls.key" # pragma: allowlist secret
+    privateKeyKey: "tls.key"
     caKey: "ca.crt"
   workloadAPI:
     csiDriver: "csi.spiffe.io"
