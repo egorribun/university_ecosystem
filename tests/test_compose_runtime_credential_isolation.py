@@ -27,6 +27,20 @@ COMPOSE_FILES = (
 APP_ALLOWLIST = "docker-compose.runtime-app.allowlist"
 WORKER_ALLOWLIST = "docker-compose.runtime-worker.allowlist"
 
+_SOURCE_FILES = {
+    path.name: path
+    for path in (
+        REPO_ROOT / "docker-compose.yml",
+        REPO_ROOT / "docker-compose.full.yml",
+        REPO_ROOT / "docker-compose.prod.yml",
+        REPO_ROOT / "docker-compose.runtime-app.allowlist",
+        REPO_ROOT / "docker-compose.runtime-worker.allowlist",
+        REPO_ROOT / ".env.example",
+        REPO_ROOT / ".env.docker.example",
+        REPO_ROOT / "start-docker.ps1",
+    )
+}
+
 # Names whose values are database superuser or role credentials, or URLs embedding them.
 SUPERUSER_KEYS = frozenset(
     {"POSTGRES_PASSWORD", "PGPASSWORD", "SQL_PASSWORD", "POSTGRES_PWD"}
@@ -96,7 +110,7 @@ _INTERPOLATION = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)")
 
 
 def _read(name: str) -> str:
-    return (REPO_ROOT / name).read_text(encoding="utf-8")
+    return _SOURCE_FILES[name].read_text(encoding="utf-8")
 
 
 def _load_compose(name: str) -> dict[str, Any]:
