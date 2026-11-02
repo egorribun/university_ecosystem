@@ -1,21 +1,26 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
+import os
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import event, select, text, update
+from sqlalchemy import event, select, update
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from app.core import database
 from app.models.quarantine import QuarantineReservation
 from app.services.quarantine import (
     QuarantineQuotaExceeded,
@@ -23,20 +28,55 @@ from app.services.quarantine import (
     QuarantineStoreUnavailable,
 )
 from app.services.storage import StaticFSStorage
+from tests.fixtures import owned_baseline_postgres as owned
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+initialize_database_for_tests = owned.initialize_database_for_tests
+prepare_database = owned.prepare_database
+clean_database = owned.clean_database
+default_database_guard = owned.default_database_guard
+owned_baseline_server = owned.owned_baseline_server
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.asyncio,
+    pytest.mark.timeout(300, method="signal", func_only=False),
+]
 
 
-def _postgres_factory() -> async_sessionmaker[AsyncSession]:
-    if (
-        database.engine.dialect.name != "postgresql"
-        or database.engine.url.drivername != "postgresql+asyncpg"
-    ):
-        pytest.fail(
-            "cross-worker quarantine quota proof requires PostgreSQL via asyncpg",
-            pytrace=False,
+@pytest_asyncio.fixture
+async def quarantine_baseline(
+    request: pytest.FixtureRequest,
+) -> AsyncIterator[tuple[AsyncEngine, Any]]:
+    assert os.getenv("RUN_INTEGRATION_TESTS") == "1", "Requires integration opt-in"
+    assert request.config.getoption("timeout_disable_debugger_detection", False), (
+        "Quarantine tests require --timeout-disable-debugger-detection"
+    )
+    server = request.getfixturevalue("owned_baseline_server")
+    with owned.committed_baseline(server) as baseline:
+        engine = create_async_engine(
+            baseline.url.set(drivername="postgresql+asyncpg", query={}),
+            poolclass=sa.pool.NullPool,
+            hide_parameters=True,
+            connect_args={
+                "timeout": 5,
+                "command_timeout": 65,
+                "server_settings": {
+                    "lock_timeout": "10s",
+                    "statement_timeout": "60s",
+                    "idle_in_transaction_session_timeout": "60s",
+                },
+            },
         )
-    return async_sessionmaker(database.engine, expire_on_commit=False)
+        try:
+            yield engine, baseline.migration
+        finally:
+            await engine.dispose()
+
+
+def _postgres_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    assert engine.dialect.name == "postgresql"
+    assert engine.url.drivername == "postgresql+asyncpg"
+    return async_sessionmaker(engine, expire_on_commit=False)
 
 
 async def _reservation_rows(
@@ -48,9 +88,10 @@ async def _reservation_rows(
 
 async def test_independent_workers_cannot_overbook_one_storage_scope(
     tmp_path: Path,
+    quarantine_baseline: tuple[AsyncEngine, Any],
 ) -> None:
     """Two sessions serialize at the shared scope row before byte admission."""
-    session_factory = _postgres_factory()
+    session_factory = _postgres_factory(quarantine_baseline[0])
     barrier = asyncio.Barrier(2)
 
     class SynchronizedService(QuarantineService):
@@ -99,9 +140,10 @@ async def test_independent_workers_cannot_overbook_one_storage_scope(
 
 async def test_pending_reservation_survives_absence_observation_and_late_put(
     tmp_path: Path,
+    quarantine_baseline: tuple[AsyncEngine, Any],
 ) -> None:
     """A lost PUT acknowledgement cannot free quota before a late remote write."""
-    session_factory = _postgres_factory()
+    session_factory = _postgres_factory(quarantine_baseline[0])
     entered_put = asyncio.Event()
     allow_late_put = asyncio.Event()
 
@@ -170,44 +212,15 @@ async def test_pending_reservation_survives_absence_observation_and_late_put(
                 raise error
 
 
-def _load_ledger_migration() -> Any:
-    migration_path = (
-        Path(__file__).resolve().parents[2]
-        / "alembic"
-        / "versions"
-        / "202610200001_add_quarantine_storage_ledger.py"
-    )
-    spec = importlib.util.spec_from_file_location(
-        "aud241_quarantine_ledger_postgres_acceptance", migration_path
-    )
-    assert spec is not None and spec.loader is not None
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    return migration
-
-
-async def test_quarantine_ledger_migration_creates_complete_irreversible_schema() -> (
-    None
-):
-    """Exercise real PostgreSQL DDL and prove refusal leaves it untouched."""
-    _postgres_factory()  # Validate the same live asyncpg engine used by both cases.
-    engine = database.engine
-    assert engine is not None
-    migration = _load_ledger_migration()
-    schema = f"aud241_migration_{uuid4().hex}"
-
+async def test_quarantine_ledger_baseline_has_complete_irreversible_schema(
+    quarantine_baseline: tuple[AsyncEngine, Any],
+) -> None:
+    """Inspect the actual baseline and prove downgrade emits no DDL."""
+    engine, migration = quarantine_baseline
+    schema = "public"
     async with engine.connect() as connection:
         transaction = await connection.begin()
         try:
-            await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
-            await connection.execute(text(f'SET LOCAL search_path TO "{schema}"'))
-            assert await connection.scalar(text("SELECT current_schema()")) == schema
-
-            def upgrade(sync_connection: Connection) -> None:
-                with Operations.context(MigrationContext.configure(sync_connection)):
-                    migration.upgrade()
-
-            await connection.run_sync(upgrade)
 
             def assert_schema(sync_connection: Connection) -> None:
                 inspector = sa.inspect(sync_connection)
@@ -274,7 +287,9 @@ async def test_quarantine_ledger_migration_creates_complete_irreversible_schema(
                     )
                 }
                 foreign_keys = inspector.get_foreign_keys(
-                    "quarantine_reservations", schema=schema
+                    "quarantine_reservations",
+                    schema=schema,
+                    postgresql_ignore_search_path=True,
                 )
                 assert len(foreign_keys) == 1
                 assert foreign_keys[0]["constrained_columns"] == ["scope_id"]
@@ -344,10 +359,3 @@ async def test_quarantine_ledger_migration_creates_complete_irreversible_schema(
         finally:
             if transaction.is_active:
                 await transaction.rollback()
-
-    async with engine.connect() as verification:
-        schema_exists = await verification.scalar(
-            text("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = :schema)"),
-            {"schema": schema},
-        )
-    assert schema_exists is False

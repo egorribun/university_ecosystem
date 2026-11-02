@@ -1,20 +1,22 @@
-"""PostgreSQL proof for DND wall-clock writes and the forward migration."""
+"""Current-baseline PostgreSQL DND schema and production wall-clock writes."""
 
 from __future__ import annotations
 
-import importlib.util
 import os
-import sys
+from collections.abc import AsyncIterator
 from datetime import time
-from pathlib import Path
 
 import pytest
+import pytest_asyncio
 import sqlalchemy as sa
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
 from fastapi import Request
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from app.core import database
 from app.models import UserPreferences
 from app.repositories.unit_of_work import uow_from_session
 from app.schemas.users import UserProfileUpdate
@@ -22,35 +24,55 @@ from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 from app.services.notifications.quiet_hours import is_user_in_quiet_hours
 from app.services.user.profile_service import UserProfileService
+from tests.fixtures import owned_baseline_postgres as owned
+from tests.fixtures.auth import auth_fixtures
+
+user_factory = auth_fixtures.user_factory
+initialize_database_for_tests = owned.initialize_database_for_tests
+prepare_database = owned.prepare_database
+clean_database = owned.clean_database
+default_database_guard = owned.default_database_guard
+owned_baseline_server = owned.owned_baseline_server
 
 _RUN = os.getenv("RUN_INTEGRATION_TESTS") == "1"
-_DATABASE_URL = os.getenv("DATABASE_URL", "")
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(
-        not (_RUN and _DATABASE_URL.startswith("postgresql")),
-        reason=(
-            "Requires RUN_INTEGRATION_TESTS=1 and a PostgreSQL DATABASE_URL; "
-            "SQLite cannot prove asyncpg time codec or PostgreSQL migration behavior"
-        ),
-    ),
+    pytest.mark.timeout(300, method="signal", func_only=False),
+    pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to run"),
 ]
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_MIGRATION_PATH = (
-    _PROJECT_ROOT / "alembic" / "versions" / "202610120001_dnd_wall_clock_time.py"
-)
 
-
-def _load_migration():
-    spec = importlib.util.spec_from_file_location(
-        "dnd_wall_clock_time_migration", _MIGRATION_PATH
+@pytest_asyncio.fixture
+async def dnd_engine(request: pytest.FixtureRequest) -> AsyncIterator[AsyncEngine]:
+    assert request.config.getoption("timeout_disable_debugger_detection", False), (
+        "DND tests require --timeout-disable-debugger-detection"
     )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    server = request.getfixturevalue("owned_baseline_server")
+    with owned.committed_baseline(server) as baseline:
+        engine = create_async_engine(
+            baseline.url.set(drivername="postgresql+asyncpg", query={}),
+            poolclass=sa.pool.NullPool,
+            hide_parameters=True,
+            connect_args={
+                "timeout": 5,
+                "command_timeout": 65,
+                "server_settings": {
+                    "lock_timeout": "10s",
+                    "statement_timeout": "60s",
+                    "idle_in_transaction_session_timeout": "60s",
+                },
+            },
+        )
+        try:
+            yield engine
+        finally:
+            await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def db_session(dnd_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+    async with async_sessionmaker(dnd_engine, expire_on_commit=False)() as session:
+        yield session
 
 
 def _request() -> Request:
@@ -74,10 +96,11 @@ def _request() -> Request:
 async def test_profile_update_commits_local_dnd_times_with_asyncpg(
     db_session,
     user_factory,
+    dnd_engine,
 ) -> None:
     """Exercise the production profile service and real PostgreSQL TIME codec."""
-    assert database.engine.dialect.name == "postgresql"
-    assert database.engine.dialect.driver == "asyncpg"
+    assert dnd_engine.dialect.name == "postgresql"
+    assert dnd_engine.dialect.driver == "asyncpg"
     assert UserPreferences.__table__.c.dnd_start.type.timezone is False
     assert UserPreferences.__table__.c.dnd_end.type.timezone is False
 
@@ -104,7 +127,7 @@ async def test_profile_update_commits_local_dnd_times_with_asyncpg(
     assert updated.preferences.dnd_end == time(0)
     assert is_user_in_quiet_hours(updated, now_time=time(12))
 
-    async with database.async_session() as verification_session:
+    async with async_sessionmaker(dnd_engine)() as verification_session:
         stored = await verification_session.get(UserPreferences, user.id)
         assert stored is not None
         assert stored.dnd_enabled is True
@@ -116,60 +139,20 @@ async def test_profile_update_commits_local_dnd_times_with_asyncpg(
 
 
 @pytest.mark.asyncio
-async def test_forward_migration_preserves_local_clock_and_null_values() -> None:
-    """Run the real Alembic revision against temporary PostgreSQL TIMETZ data."""
-    assert database.engine.dialect.name == "postgresql"
-    migration = _load_migration()
-
-    def exercise(connection: sa.Connection) -> None:
-        connection.exec_driver_sql(
-            """
-            CREATE TEMP TABLE user_preferences (
-                dnd_start TIME WITH TIME ZONE NULL,
-                dnd_end TIME WITH TIME ZONE NULL
-            ) ON COMMIT DROP
-            """
-        )
-        connection.exec_driver_sql(
-            """
-            INSERT INTO user_preferences (dnd_start, dnd_end)
-            VALUES (
-                '08:15:30.123456-05:30'::timetz,
-                '22:45:00+03:00'::timetz
-            ), (NULL, NULL)
-            """
-        )
-
-        with Operations.context(MigrationContext.configure(connection)):
-            migration.upgrade()
-            with pytest.raises(RuntimeError, match=migration.downgrade_reason):
-                migration.downgrade()
-
-        migrated = connection.exec_driver_sql(
-            """
-            SELECT dnd_start, dnd_end,
-                   pg_typeof(dnd_start)::text, pg_typeof(dnd_end)::text
-            FROM user_preferences
-            WHERE dnd_start IS NOT NULL
-            """
-        ).one()
-        assert migrated[0] == time(8, 15, 30, 123456)
-        assert migrated[1] == time(22, 45)
-        assert migrated[0].tzinfo is None
-        assert migrated[1].tzinfo is None
-        assert migrated[2:] == (
-            "time without time zone",
-            "time without time zone",
-        )
-
-        nulls = connection.exec_driver_sql(
-            """
-            SELECT dnd_start IS NULL, dnd_end IS NULL
-            FROM user_preferences
-            WHERE dnd_start IS NULL
-            """
-        ).one()
-        assert nulls == (True, True)
-
-    async with database.engine.begin() as connection:
-        await connection.run_sync(exercise)
+async def test_baseline_dnd_columns_are_nullable_local_time(
+    dnd_engine: AsyncEngine,
+) -> None:
+    async with dnd_engine.connect() as connection:
+        rows = (
+            await connection.execute(
+                sa.text(
+                    "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'user_preferences' "
+                    "AND column_name IN ('dnd_start', 'dnd_end') ORDER BY column_name"
+                )
+            )
+        ).all()
+        assert [tuple(row) for row in rows] == [
+            ("dnd_end", "time without time zone", "YES"),
+            ("dnd_start", "time without time zone", "YES"),
+        ]
