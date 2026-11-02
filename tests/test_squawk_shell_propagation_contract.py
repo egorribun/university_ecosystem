@@ -11,6 +11,7 @@ import hashlib
 import os
 import re
 import shutil
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 pytest_plugins = ("pytester",)
+DIFF_FILTER = "--diff-filter=ACMR "
+MigrationGate = Callable[..., tuple[int, list[str]]]
 
 
 def _executable(path: Path, source: str) -> None:
@@ -43,13 +46,19 @@ def _bash_command(bash: str, script: Path) -> tuple[str, ...]:
     )
 
 
-@pytest.fixture
-def migration_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pytester):
+def _lint_step_script() -> str:
     job = yaml.safe_load(
         (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     )["jobs"]["alembic-migrations"]
     step = next(step for step in job["steps"] if step.get("id") == "migration-squawk")
-    script = step["run"]
+    return str(step["run"])
+
+
+@pytest.fixture
+def migration_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pytester: pytest.Pytester
+) -> MigrationGate:
+    script = _lint_step_script()
 
     binary_dir = tmp_path / "bin"
     runner_temp = tmp_path / "runner"
@@ -70,12 +79,25 @@ printf '%s\\n' "$name" >> "$TEST_SCAN_LOG"
 if [[ "$name" == "${TEST_SCANNER_FAIL:-}" ]]; then exit 23; fi
 """,
     )
+    # Models `git diff --name-only [--diff-filter=X] BASE...HEAD`: each status
+    # class is emitted only when the filter selects it, as real git does.
     _executable(
         binary_dir / "git",
         """#!/usr/bin/env bash
 set -eu
 [[ "$1" == diff && "$2" == --name-only ]] || exit 91
-printf '%s\\n' "$TEST_CHANGED_FILES"
+filter=""
+for argument in "$@"; do
+  case "$argument" in
+    --diff-filter=*) filter="${argument#--diff-filter=}" ;;
+  esac
+done
+if [[ -z "$filter" || "$filter" == *[ACMR]* ]]; then
+  if [[ -n "$TEST_CHANGED_FILES" ]]; then printf '%s\\n' "$TEST_CHANGED_FILES"; fi
+fi
+if [[ -z "$filter" || "$filter" == *D* ]]; then
+  if [[ -n "$TEST_DELETED_FILES" ]]; then printf '%s\\n' "$TEST_DELETED_FILES"; fi
+fi
 exit "${TEST_GIT_EXIT:-0}"
 """,
     )
@@ -87,6 +109,11 @@ if [[ "$1" == run && "$2" == python && "$3" == scripts/quality/read_alembic_revi
   migration="$4"
   name="${migration##*/}"
   revision="${name%.py}"
+  # A deleted revision has no file to read; the real reader exits 2 for it.
+  if [[ $'\\n'"$TEST_DELETED_FILES"$'\\n' == *$'\\n'"$migration"$'\\n'* ]]; then
+    echo "error: cannot read $migration" >&2
+    exit 2
+  fi
   if [[ "$migration" == "${TEST_METADATA_FAIL:-}" && "${TEST_METADATA_MODE:-}" == before ]]; then exit 19; fi
   printf '%s parent\\n' "$revision"
   if [[ "$migration" == "${TEST_METADATA_FAIL:-}" ]]; then exit 19; fi
@@ -130,12 +157,22 @@ fi
         "TEST_METADATA_FAIL",
         "TEST_METADATA_MODE",
         "TEST_RENDER_FAIL",
+        "TEST_DELETED_FILES",
     ):
         monkeypatch.delenv(name, raising=False)
 
-    def run(changed_files: list[str]):
+    def run(
+        changed_files: Sequence[str],
+        deleted_files: Sequence[str] = (),
+        *,
+        mutate: Callable[[str], str] | None = None,
+    ) -> tuple[int, list[str]]:
         monkeypatch.setenv("TEST_CHANGED_FILES", "\n".join(changed_files))
-        result = pytester.run(*_bash_command(bash, script_path), timeout=20)
+        monkeypatch.setenv("TEST_DELETED_FILES", "\n".join(deleted_files))
+        text = script if mutate is None else mutate(script)
+        step_path = tmp_path / "mutated-workflow-step.sh"
+        step_path.write_text(text, encoding="utf-8", newline="\n")
+        result = pytester.run(*_bash_command(bash, step_path), timeout=20)
         scans = (
             scan_log.read_text(encoding="utf-8").splitlines()
             if scan_log.exists()
@@ -148,18 +185,51 @@ fi
 
 FIRST = "alembic/versions/first.py"
 SECOND = "alembic/versions/second.py"
+DELETED = "alembic/versions/deleted.py"
 
 
 def test_lint_step_scans_every_changed_migration_when_all_succeed(
-    migration_gate,
+    migration_gate: MigrationGate,
 ) -> None:
     status, scans = migration_gate([FIRST, SECOND])
     assert status == 0
     assert scans == ["first.sql", "second.sql"]
 
 
+def test_lint_step_skips_deleted_revisions_and_still_lints_added_ones(
+    migration_gate: MigrationGate,
+) -> None:
+    status, scans = migration_gate([FIRST], deleted_files=[DELETED])
+    assert status == 0
+    assert scans == ["first.sql"]
+
+
+def test_lint_step_is_a_no_op_when_only_revisions_were_deleted(
+    migration_gate: MigrationGate,
+) -> None:
+    status, scans = migration_gate([], deleted_files=[DELETED])
+    assert status == 0
+    assert scans == []
+
+
+def test_deleted_revision_would_fail_the_lint_without_the_diff_filter(
+    migration_gate: MigrationGate,
+) -> None:
+    """Counterfactual: the filter, not luck, is what keeps deleted files out."""
+    script = _lint_step_script()
+    assert script.count(DIFF_FILTER) == 1
+
+    status, scans = migration_gate(
+        [FIRST],
+        deleted_files=[DELETED],
+        mutate=lambda text: text.replace(DIFF_FILTER, "", 1),
+    )
+    assert status == 2
+    assert "first.sql" in scans
+
+
 def test_lint_step_does_not_erase_an_earlier_scanner_failure(
-    migration_gate, monkeypatch: pytest.MonkeyPatch
+    migration_gate: MigrationGate, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("TEST_SCANNER_FAIL", "first.sql")
     status, scans = migration_gate([FIRST, SECOND])
@@ -168,7 +238,7 @@ def test_lint_step_does_not_erase_an_earlier_scanner_failure(
 
 
 def test_lint_step_stops_when_renderer_fails(
-    migration_gate, monkeypatch: pytest.MonkeyPatch
+    migration_gate: MigrationGate, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("TEST_RENDER_FAIL", SECOND)
     status, scans = migration_gate([FIRST, SECOND])
@@ -177,7 +247,7 @@ def test_lint_step_stops_when_renderer_fails(
 
 
 def test_lint_step_stops_when_git_emits_a_list_then_fails(
-    migration_gate, monkeypatch: pytest.MonkeyPatch
+    migration_gate: MigrationGate, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("TEST_GIT_EXIT", "17")
     status, scans = migration_gate([FIRST])
@@ -187,7 +257,7 @@ def test_lint_step_stops_when_git_emits_a_list_then_fails(
 
 @pytest.mark.parametrize("mode", ["before", "after"])
 def test_lint_step_stops_when_metadata_producer_fails(
-    migration_gate, monkeypatch: pytest.MonkeyPatch, mode: str
+    migration_gate: MigrationGate, monkeypatch: pytest.MonkeyPatch, mode: str
 ) -> None:
     monkeypatch.setenv("TEST_METADATA_FAIL", FIRST)
     monkeypatch.setenv("TEST_METADATA_MODE", mode)

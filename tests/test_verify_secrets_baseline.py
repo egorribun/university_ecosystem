@@ -9001,6 +9001,24 @@ def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
     unit_anchor = b"            - name: Run pytest\n"
     assert reviewed.count(unit_anchor) == 1
     reviewed = reviewed.replace(unit_anchor, unit_pull + unit_anchor)
+    # The integration baseline proof extracts the pinned pre-squash commit with
+    # git archive, which a shallow actions/checkout cannot resolve.
+    checkout_head = (
+        b'                    - "127.0.0.1:1025:1025"\n'
+        b"        steps:\n"
+        b"            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"
+        b"              with:\n"
+    )
+    checkout_anchor = checkout_head + b"                  persist-credentials: false\n"
+    checkout_comment = b"                  # The baseline proof reads the pinned pre-squash commit with git archive.\n"
+    assert reviewed.count(checkout_anchor) == 1, "reviewed integration checkout changed"
+    reviewed = reviewed.replace(
+        checkout_anchor,
+        checkout_head
+        + checkout_comment
+        + b"                  fetch-depth: 0\n"
+        + b"                  persist-credentials: false\n",
+    )
     unit_args = b"                  $pytestArgs = @($env:TEST_PATTERN)\n"
     assert reviewed.count(unit_args) == 1
     return reviewed.replace(
@@ -9054,6 +9072,38 @@ def test_live_mailpit_timeout_binding_refuses_other_changes(mutation: str) -> No
         invalid = expected.replace(option, option + option)
     else:
         invalid = expected + b"# unrelated Mailpit workflow change\n"
+    with pytest.raises(AssertionError, match="exact reviewed bytes"):
+        _assert_live_scanner_source_bytes(path, invalid)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["missing", "shallow", "duplicate", "unrelated-checkout"]
+)
+def test_live_integration_checkout_binding_refuses_other_changes(
+    mutation: str,
+) -> None:
+    path = ".github/workflows/reusable-backend-tests.yml"
+    original = _pre_squash_source_bytes(path)
+    expected = _reviewed_live_scanner_source_bytes(path)
+    # The unit job already fetches full history; bind only the integration block.
+    comment = b"                  # The baseline proof reads the pinned pre-squash commit with git archive.\n"
+    option = comment + b"                  fetch-depth: 0\n"
+    assert original.count(option) == 0
+    assert expected.count(option) == 1
+    _assert_live_scanner_source_bytes(path, expected)
+    if mutation == "missing":
+        invalid = expected.replace(option, comment)
+    elif mutation == "shallow":
+        invalid = expected.replace(
+            option, comment + b"                  fetch-depth: 1\n"
+        )
+    elif mutation == "duplicate":
+        invalid = expected.replace(option, option + option)
+    else:
+        invalid = expected.replace(
+            option,
+            option + b"                  clean: false\n",
+        )
     with pytest.raises(AssertionError, match="exact reviewed bytes"):
         _assert_live_scanner_source_bytes(path, invalid)
 

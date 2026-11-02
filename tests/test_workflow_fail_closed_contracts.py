@@ -1163,15 +1163,20 @@ foreach ($image in $images) {
         _assert_pinned(images[0], source="powershell-array-append-control")
 
 
-def test_reusable_backend_image_pull_loop_keeps_all_four_audited_pins() -> None:
-    workflow = _workflow(WORKFLOWS / "reusable-backend-tests.yml")
-    images = [
-        image
-        for scalar in _scalars(workflow)
-        for image in _powershell_cli_images(scalar)
-    ]
+def _pull_loop_images(job: dict[str, Any]) -> Counter[str]:
+    return Counter(
+        image for scalar in _scalars(job) for image in _powershell_cli_images(scalar)
+    )
 
-    assert Counter(images) == Counter(
+
+def test_reusable_backend_image_pull_loop_keeps_all_four_audited_pins() -> None:
+    jobs = _workflow(WORKFLOWS / "reusable-backend-tests.yml")["jobs"]
+    # Each job pre-pulls only the images it starts; the shared PostgreSQL pin is
+    # reused by both loops, never re-pinned to a new digest.
+    assert _pull_loop_images(jobs["unit-tests"]) == Counter(
+        {EXPECTED_EXTERNAL_IMAGES["pgvector/pgvector:pg17"]: 1}
+    )
+    assert _pull_loop_images(jobs["integration-tests"]) == Counter(
         EXPECTED_EXTERNAL_IMAGES[image]
         for image in (
             "nats:2.15.0-alpine",

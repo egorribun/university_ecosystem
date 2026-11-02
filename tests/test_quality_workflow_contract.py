@@ -136,6 +136,9 @@ SETUP_PYTHON_ACTION_PIN = (
 UPLOAD_ARTIFACT_ACTION_PIN = (
     "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 )
+CODEQL_UPLOAD_SARIF_ACTION_PIN = (
+    "github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370"
+)
 CAPTURE_ALLOWED_CONDITIONAL_ORS = (
     'if [[ "$BASE_SHA" == "$ZERO_SHA" || "$CANDIDATE_SHA" == "$ZERO_SHA" ]]; then',
     'if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then',
@@ -7386,10 +7389,7 @@ def _aud481_assert_matrix_contract(
     ]
     assert len(uploads) == 1
     upload = uploads[0]
-    assert (
-        upload["uses"]
-        == "github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370"
-    )
+    assert upload["uses"] == CODEQL_UPLOAD_SARIF_ACTION_PIN
     assert (
         upload["if"]
         == "always() && hashFiles(format('trivy-{0}.sarif', matrix.image_name)) != ''"
