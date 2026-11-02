@@ -158,7 +158,14 @@ def test_helm_hpas_target_matching_deployments_and_avoid_keda_conflicts() -> Non
 
 def test_backend_image_and_go_overlay_use_readiness_probes() -> None:
     dockerfile = (ROOT / "backend.Dockerfile").read_text(encoding="utf-8")
-    assert "127.0.0.1:8000/health/ready" in dockerfile
+    # The image probe is the strict SPIFFE/mTLS probe (ADR-052), which matches
+    # the Kubernetes readiness command; a plain loopback HTTP probe would fail
+    # closed on every request once the listener requires client certificates.
+    assert (
+        'CMD ["python", "-m", "app.server.internal_mtls", "probe", "/health/ready"]'
+        in dockerfile
+    )
+    assert "127.0.0.1:8000/health/ready" not in dockerfile
     assert "127.0.0.1:8000/healthz" not in dockerfile
 
     compose = yaml.safe_load(

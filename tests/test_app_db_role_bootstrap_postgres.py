@@ -358,7 +358,7 @@ def test_bootstrap_converges_existing_and_future_dml_without_bypass(
         "ALTER TABLE public.role_probe OWNER TO ue_app",
         "GRANT CREATE ON SCHEMA public TO PUBLIC",
         "GRANT TRUNCATE ON public.role_probe TO PUBLIC",
-        "GRANT REFERENCES (id) ON public.role_probe TO ue_app",
+        "GRANT REFERENCES (id) ON public.role_probe TO PUBLIC",
         "CREATE SEQUENCE public.role_sequence; "
         "GRANT UPDATE ON public.role_sequence TO PUBLIC",
         "ALTER DEFAULT PRIVILEGES FOR ROLE ue_migrator "
@@ -380,3 +380,23 @@ def test_bootstrap_refuses_unmanaged_authority_without_partial_changes(
     assert _bootstrap(role_server) != 0
     with _connect(role_server) as connection:
         assert _role_snapshot(connection) == before
+
+
+def test_bootstrap_converges_direct_runtime_column_grants(
+    role_server: OwnedPostgres,
+) -> None:
+    """A direct column grant to a managed runtime role is revoked, not refused.
+
+    The bootstrap revokes all table-level runtime privileges first, and
+    PostgreSQL clears column ACLs with that revoke. Only PUBLIC column grants,
+    which the bootstrap cannot revoke, reach the refusal guard.
+    """
+    assert _bootstrap(role_server) == 0
+    with _connect(role_server) as connection:
+        connection.execute("CREATE TABLE public.role_probe (id bigint)")
+        connection.execute("GRANT REFERENCES (id) ON public.role_probe TO ue_app")
+    assert _bootstrap(role_server) == 0
+    with _connect(role_server) as connection:
+        assert connection.execute(
+            "SELECT has_any_column_privilege('ue_app', 'public.role_probe', 'REFERENCES')"
+        ).fetchone() == (False,)

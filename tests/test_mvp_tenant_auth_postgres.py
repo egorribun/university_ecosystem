@@ -118,7 +118,9 @@ async def test_owned_registration_login_token_and_rls_isolation(
                     uow = uow_from_session(db)
                     audit = MagicMock()
                     compliance = UserComplianceService(uow=uow, audit=audit)
-                    password = f"{uuid4().hex}!{uuid4().hex}"
+                    # Satisfies the enforced policy: all four character classes
+                    # plus random entropy for zxcvbn (uuid4 hex alone is lowercase).
+                    password = f"Owned-{uuid4().hex}!7"
                     registered = await compliance.register_user(
                         UserCreate(email="owned@example.com", password=password)
                     )
@@ -149,6 +151,7 @@ async def test_owned_registration_login_token_and_rls_isolation(
                             "client": ("127.0.0.1", 1),
                             "method": "POST",
                             "path": "/login",
+                            "query_string": b"",
                         }
                     )
                     user = await validator.validate_credentials(

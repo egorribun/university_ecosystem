@@ -119,6 +119,19 @@ from app.services.file_scanner import (
 )
 
 
+@pytest.fixture(autouse=True)
+async def _isolate_clamav_breaker():
+    """The ClamAV breaker is a process-wide singleton; earlier failures must not leak.
+
+    Scanner-failure tests in this module record failures against the real
+    breaker. Without a reset, three of them open it for the recovery window and
+    later tests see "circuit breaker open" instead of their own assertion.
+    """
+    await _clamav_circuit_breaker.reset()
+    yield
+    await _clamav_circuit_breaker.reset()
+
+
 @pytest.mark.anyio
 async def test_scan_for_malware_disabled():
     with patch("app.services.file_scanner.settings") as mock_settings:

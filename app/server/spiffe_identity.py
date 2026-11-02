@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives.serialization import (
     PublicFormat,
 )
 from spiffe import X509Source
-from spiffe.spiffe_id.spiffe_id import SpiffeId
+from spiffe.spiffe_id.spiffe_id import SpiffeId, SpiffeIdError
 
 
 class WorkloadIdentityError(RuntimeError):
@@ -31,10 +31,19 @@ class WorkloadIdentityError(RuntimeError):
 
 
 def validate_workload_id(value: str) -> SpiffeId:
-    """Reject controls before the pinned SDK parser (fixed upstream in 0.4.0)."""
+    """Reject controls and SDK parse failures as WorkloadIdentityError.
+
+    The pinned SDK raises SpiffeIdError (not ArgumentError) for malformed input;
+    converting it here keeps every caller on the fail-closed domain error.
+    """
     if any(ord(character) <= 32 or ord(character) == 127 for character in value):
         raise WorkloadIdentityError("workload identity contains whitespace or controls")
-    identity = SpiffeId(value)
+    try:
+        identity = SpiffeId(value)
+    except SpiffeIdError as error:
+        raise WorkloadIdentityError(
+            "workload identity is not a valid SPIFFE ID"
+        ) from error
     if not identity.path:
         raise WorkloadIdentityError("workload identity must have a path")
     return identity

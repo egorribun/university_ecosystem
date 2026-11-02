@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import shlex
 import shutil
@@ -493,14 +494,41 @@ def test_backend_image_retries_transient_uv_registry_failures() -> None:
     assert "uv sync failed (network), retry $n/5 in 5s" in dockerfile
 
 
-def test_backend_disables_uvicorn_access_logging_with_query_strings() -> None:
-    """UvicornWorker emits the full ASGI target; keep access logging disabled."""
+def test_backend_disables_uvicorn_access_logging_with_query_strings(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The SPIFFE UvicornWorker emits the full ASGI target; keep access logs off."""
     dockerfile = _read("backend.Dockerfile")
     command = dockerfile[dockerfile.index('CMD ["gunicorn"') :]
 
-    assert '"--worker-class", "uvicorn.workers.UvicornWorker"' in command
+    assert '"--worker-class", "app.server.spiffe_worker.BackendWorker"' in command
     assert '"--access-logfile"' not in command
     assert '"--error-logfile", "-"' in command
+
+    # Behavioural proof: build the real worker from the gunicorn defaults the
+    # image uses (no access logfile) and check that uvicorn.access stays silent.
+    from gunicorn.config import Config
+    from gunicorn.glogging import Logger
+
+    from app.server.spiffe_worker import BackendWorker
+
+    access = logging.getLogger("uvicorn.access")
+    error = logging.getLogger("uvicorn.error")
+    for logger in (access, error):
+        monkeypatch.setattr(logger, "handlers", list(logger.handlers))
+        monkeypatch.setattr(logger, "propagate", logger.propagate)
+        monkeypatch.setattr(logger, "level", logger.level)
+
+    cfg = Config()
+    assert cfg.accesslog is None
+    worker = BackendWorker(0, 1, [], None, 30, cfg, Logger(cfg))
+    assert worker.log.access_log.handlers == []
+    assert access.handlers == []
+    assert access.propagate is False
+
+    access.info('127.0.0.1 - "GET /assets?token=do-not-log HTTP/1.1" 200')
+    captured = capsys.readouterr()
+    assert "do-not-log" not in captured.out + captured.err
 
 
 def test_launcher_validates_and_reconciles_existing_rsa_material() -> None:

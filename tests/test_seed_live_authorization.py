@@ -26,6 +26,7 @@ from scripts.seed_identity import owned_seed_tenant_id
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = "ue-live-0123456789abcdef"
+OTHER_OWNED_PROJECT = "ue-live-fedcba9876543210"
 
 
 class AuthorizationChannel:
@@ -407,7 +408,9 @@ def test_authorization_subprocess_failure_aborts_live_seed(
         )
 
 
-@pytest.mark.parametrize("configured", [None, owned_seed_tenant_id("other-project")])
+@pytest.mark.parametrize(
+    "configured", [None, owned_seed_tenant_id(OTHER_OWNED_PROJECT)]
+)
 async def test_tenant_configuration_fails_before_connections(
     seed_module, monkeypatch, configured
 ):
