@@ -1,12 +1,16 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
+from psycopg.conninfo import conninfo_to_dict
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.engine import URL
 from sqlalchemy.exc import SQLAlchemyError
 from typer.testing import CliRunner
 
 from app.cli import migrate_passwords
 from app.cli.migrate_passwords import _is_bcrypt, app
+from tests.integration.test_cli_migrate_passwords_postgres import _sync_conninfo
 
 runner = CliRunner()
 
@@ -323,3 +327,54 @@ def test_global_inventory_redacts_sample_query_failures(
     assert "Opaque ID sample" not in result.stdout
     assert len(statements) == 2
     assert migrate_passwords.bypass_rls_ctx.get() is False
+
+
+@pytest.mark.parametrize("rendered", [False, True], ids=["url-object", "rendered-url"])
+def test_preflight_conninfo_preserves_decoded_connection_fields(rendered):
+    generated_value = uuid4().hex + "+ space/@:%'\\"
+    options = (
+        "-c lock_timeout=10s -c statement_timeout=60s "
+        "-c idle_in_transaction_session_timeout=60s"
+    )
+    source = URL.create(
+        "postgresql+psycopg",
+        username="owned+reader",
+        password=generated_value,
+        host="127.0.0.1",
+        port=5432,
+        database="owned+preflight",
+        query={
+            "options": options,
+            "application_name": "owned preflight+probe",
+            "connect_timeout": "5",
+        },
+    )
+    actual = conninfo_to_dict(
+        _sync_conninfo(
+            source.render_as_string(hide_password=False) if rendered else source
+        )
+    )
+    expected = {
+        "user": source.username,
+        "password": generated_value,
+        "host": source.host,
+        "port": str(source.port),
+        "dbname": source.database,
+        **source.query,
+    }
+    # Keep generated authentication material out of assertion diagnostics.
+    fields_match = set(actual) == set(expected) and all(
+        actual[key] == value for key, value in expected.items()
+    )
+    assert fields_match, "Decoded preflight connection fields changed"
+
+
+def test_preflight_conninfo_rejects_repeated_query_values():
+    source = URL.create(
+        "postgresql+psycopg",
+        host="127.0.0.1",
+        database="owned_preflight",
+        query={"options": ("-c lock_timeout=10s", "-c statement_timeout=60s")},
+    )
+    with pytest.raises(ValueError, match="connection query values must be singular"):
+        _sync_conninfo(source)

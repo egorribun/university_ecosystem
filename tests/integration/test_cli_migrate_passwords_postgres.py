@@ -16,7 +16,8 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 from psycopg import sql
-from sqlalchemy.engine import make_url
+from psycopg.conninfo import make_conninfo
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 from typer.testing import CliRunner
@@ -68,9 +69,7 @@ def postgres_urls(
         owned.committed_baseline(server) as baseline,
     ):
         parsed = baseline.url
-        admin_url = parsed.set(drivername="postgresql").render_as_string(
-            hide_password=False
-        )
+        admin_url = _sync_conninfo(parsed)
         reader_password = uuid4().hex + uuid4().hex
         seeded = bool(request.param)
         with closing(psycopg.connect(admin_url, connect_timeout=5)) as connection:
@@ -161,10 +160,15 @@ def postgres_urls(
         yield admin_url, reader_urls[0], reader_urls[1], seeded
 
 
-def _sync_url(url: str) -> str:
-    return (
-        make_url(url).set(drivername="postgresql").render_as_string(hide_password=False)
-    )
+def _sync_conninfo(url: str | URL) -> str:
+    """Decode SQLAlchemy URL fields before libpq quotes connection parameters."""
+    parsed = make_url(url)
+    parameters = parsed.translate_connect_args(username="user", database="dbname")
+    for key, value in parsed.query.items():
+        if not isinstance(value, str):
+            raise ValueError("Preflight connection query values must be singular")
+        parameters[key] = value
+    return make_conninfo(**parameters)
 
 
 def _snapshot(admin_url: str) -> list[tuple[object, ...]]:
@@ -179,7 +183,7 @@ def _snapshot(admin_url: str) -> list[tuple[object, ...]]:
 
 def _assert_reader_is_select_only(reader_url: str) -> None:
     with closing(
-        psycopg.connect(_sync_url(reader_url), connect_timeout=5)
+        psycopg.connect(_sync_conninfo(reader_url), connect_timeout=5)
     ) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -277,7 +281,7 @@ def test_global_inventory_denies_empty_and_hidden_rows_without_role_membership(
     before = _snapshot(admin_url)
     _assert_reader_is_select_only(unapproved_url)
     with closing(
-        psycopg.connect(_sync_url(unapproved_url), connect_timeout=5)
+        psycopg.connect(_sync_conninfo(unapproved_url), connect_timeout=5)
     ) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
