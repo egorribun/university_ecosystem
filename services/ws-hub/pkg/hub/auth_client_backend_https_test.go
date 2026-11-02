@@ -47,3 +47,16 @@ func TestWithSPIFFEInstallsTLSOnHTTPSBackendURL(t *testing.T) {
 	require.True(t, ok)
 	assert.Same(t, configured, transport.TLSClientConfig)
 }
+
+func TestIsHTTPSBaseURL(t *testing.T) {
+	for _, raw := range []string{"", "/relative", "https://", "http://backend:8000", "https://%zz", "://broken"} {
+		t.Run(raw, func(t *testing.T) {
+			assert.False(t, isHTTPSBaseURL(raw))
+		})
+	}
+	for _, raw := range []string{"https://backend:8000", "HTTPS://backend.internal:8000"} {
+		t.Run(raw, func(t *testing.T) {
+			assert.True(t, isHTTPSBaseURL(raw))
+		})
+	}
+}

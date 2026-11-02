@@ -28,6 +28,9 @@ func TestJWKSHTTPClientUsesConfiguredBackendTLS(t *testing.T) {
 
 	resp, err := configured.newJWKSHTTPClient().Get(server.URL)
 	require.NoError(t, err)
+	if resp == nil {
+		t.Fatal("TLS request returned no response")
+	}
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

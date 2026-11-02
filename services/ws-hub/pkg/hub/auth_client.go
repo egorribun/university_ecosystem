@@ -175,7 +175,10 @@ func (c *InternalAPIAuthClient) WithSPIFFE(spiffeClient *spiffe.Client, backendS
 // isHTTPSBaseURL reports whether raw is an absolute https URL with a host.
 func isHTTPSBaseURL(raw string) bool {
 	parsed, err := url.Parse(raw)
-	return err == nil && parsed.Scheme == "https" && parsed.Host != ""
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "https" && parsed.Host != ""
 }
 
 // StartEviction is no longer needed since lru.Cache manages its own memory bound.
