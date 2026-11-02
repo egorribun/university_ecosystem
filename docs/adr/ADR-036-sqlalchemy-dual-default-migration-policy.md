@@ -463,6 +463,29 @@ source-derived expected inventory becomes 47 tables and 127 effective defaults
 declarations (86 both and 16 Python-only). These are source and model counts,
 not deployed PostgreSQL catalog evidence.
 
+## 2026-11-02: fresh-baseline notification claim inventory
+
+The owner approved only `notification_delivery_once.id` under the existing
+`inherited_uuid7_primary_key` classification, with owner `backend-platform`
+and the existing UUIDv7 reason. The identifier inherits
+`UUID7PrimaryKeyMixin.default=generate_uuid7`; no server-side fallback or
+new exception category is introduced. Exception records retain exactly
+`column`, `kind`, `owner` and `reason`; this inventory has no expiry field.
+
+The fresh-only migration head is `202611020000`. Source comparison adds
+one table, one dual-declared `created_at` default and one inherited
+Python-only identifier: the expected inventory is 48 tables and 129
+effective defaults (87 both, 42 Python-only, 0 server-only), with 103
+source-level default declarations (87 both, 16 Python-only). The 13
+`default=None` declarations and computed `events.search_vector` are unchanged.
+All 41 earlier exception records are preserved, giving exactly 42.
+
+These are source-supported expectations, not a new execution receipt.
+The current-SHA inventory and contract tests must verify the exact counts;
+no PostgreSQL schema-equivalence, migration, scanner, coverage or release
+success follows from this approval. Historical phase snapshots remain dated
+evidence, not a requirement to restore the retired migration chain.
+
 ## Related Decisions
 
 - [ADR-003: Background Jobs](ADR-003-background-jobs.md)

@@ -89,14 +89,10 @@ class FakeDocker:
                 "Privileged": False,
                 "Binds": None,
                 "NetworkMode": "default",
-                "PortBindings": {
-                    "5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": ""}]
-                },
+                "PortBindings": {"5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": ""}]},
             },
             "NetworkSettings": {
-                "Ports": {
-                    "5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": "15432"}]
-                }
+                "Ports": {"5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": "15432"}]}
             },
             "State": {"Running": False},
         }
@@ -492,9 +488,7 @@ def test_scratch_admission_rechecks_active_lease_not_operator_url(
         elif invalid == "nonce":
             server = replace(server, owner_nonce="not-acknowledged")
         else:
-            client.data["NetworkSettings"]["Ports"]["5432/tcp"][0][
-                "HostPort"
-            ] = "15433"
+            client.data["NetworkSettings"]["Ports"]["5432/tcp"][0]["HostPort"] = "15433"
         with pytest.raises(owned.OwnedPostgresError):
             with owned.committed_baseline(server):
                 pytest.fail("unowned scratch database admitted")

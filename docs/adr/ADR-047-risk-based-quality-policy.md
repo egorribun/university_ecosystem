@@ -53,22 +53,23 @@ the gate competes directly with product work.
 
 ## Decision
 
-1. **Tier 0 keeps 100 %, subject only to the finite migration decision below.**
+1. **Tier 0 keeps 100 % for every applicable metric.**
    Files matched by tier0_rules in quality/ownership-mapping.json (authentication,
    sessions, MFA, security, rate limiting, PII, cryptography, ReBAC, CSRF,
    migrations, native and WASM crates) keep 100 % line, statement, branch and
-   function coverage. The sole exception is the exact source-bound baseline
-   approved on 2026-10-14 for 131 unchanged legacy migration files, through
-   2026-11-13. New, modified or unmatched migrations and every other Tier 0 file
-   remain at 100 % for all metrics; see the later owner decision below.
+   function coverage. The owner retired the obsolete 131-file legacy migration
+   exception on 2026-11-02. The current baseline migration
+   `alembic/versions/202611020000_mvp_baseline.py`, all other migrations and
+   every other Tier 0 file remain at 100 % for all four metrics. No migration
+   coverage exception is active; the dated decisions below preserve its history.
 2. **Non-Tier 0 coverage becomes a ratchet.** Each component floor equals the
    value measured on the last certified `main` run, rounded down to one decimal,
    and may never decrease. Changed non-Tier 0 lines in a pull request need at
    least 90 % patch coverage. Until the first certified `main` baseline exists,
    the current floors stay in force and remain blocking in CI. Owner clarification
    on 2026-10-08 keeps these gates until Q3; if they block MVP, bringing Q3 forward
-   requires a separate decision. Other Tier 0 files remain strict; the only finite
-   migration exception is the source-bound 131-file baseline described below.
+   requires a separate decision. Every Tier 0 file remains strict; retiring the
+   historical migration exception does not advance Q3 or change other floors.
 3. **Mutation testing leaves the release gate.** `ci-success` stops depending
    on mutation jobs. Full mutmut and Stryker runs continue in
    `nightly-full-gate.yml` and `manual-mutation-evidence.yml`. After Q2 lands,
@@ -311,18 +312,62 @@ release readiness is implied.
 
 ## Owner-approved finite legacy migration baseline (2026-10-14 UTC)
 
+**Historical decision, retired by the owner on 2026-11-02 below.** The original
+scope, evidence and expiry are retained in an immutable test fixture, not an
+active exception in the current quality contract.
+
 On 2026-10-14 UTC, the owner approved a finite no-decrease baseline for exactly
 131 unchanged Alembic migration files under alembic/versions, source-bound to
 base commit ac74e915 and expiring 2026-11-13.
-The per-file native or derived metrics, source identity, and provenance remain
-in the quality contract and its bound evidence; this is not an aggregate-only
-exemption. The baseline applies only while each listed source file is
-unchanged. New, modified, or unmatched migrations, including PR-touched files,
+The per-file native or derived metrics, source identity, and provenance were
+recorded in the quality contract and its bound evidence; this was not an
+aggregate-only exemption. The baseline applied only while each listed source
+file was unchanged. New, modified, or unmatched migrations, including PR-touched files,
 remain subject to 100 % lines, statements, branches, and functions. All other
 Tier 0 files, current per-component floors, the 100 % patch floor, and the
 blocking validator remain unchanged. Q3 and its coverage ratchet remain v1.1;
 this approval does not advance Q3. Policy integration and final-source
 verification are separate from the owner decision.
+
+## Owner-approved retirement of obsolete migration coverage baseline (2026-11-02 UTC)
+
+On 2026-11-02 at 09:28 UTC, the owner approved removal of only
+`/tier0/legacy_migration_baselines` from `quality/quality-contract.json`,
+with corresponding ADR-047, contributor guidance and test updates. The retired
+object covered exactly 131 paths and 524 metric records, bound to
+`ac74e915ae539f098f0fa1e7c83b355703069984` with the original
+`2026-11-13` expiry date. Its canonical sorted-JSON SHA-256 is
+`b66b48835365bac8cf52df8c7925633e12009a0fb7eba33f3c6ac8fedd60d3fe`.
+At source `4cdc241f66bbbf4bc884215aa4d61dc3906f1c6e`, all 131 listed
+files are absent after migration consolidation; the current
+`alembic/versions/202611020000_mvp_baseline.py` was never in that list.
+
+The current baseline and all other Tier 0 migrations retain 100 % line,
+statement, branch and function coverage. No other threshold, exception list,
+coverage scope, 100 % patch floor, required context/app pair (all 78), blocking
+CodeQL check or hook is changed by this retirement. Q2/Q3 activation and the
+separate security and model-default decisions are outside this approval.
+
+A lossless representation of the retired object is retained in
+`tests/fixtures/quality/legacy-migration-baselines-ac74e915.json`.
+Only its 15 verified public Git and report-integrity fields use explicitly
+named `*_bytes` arrays. The test loader checks exact 20-byte or 32-byte widths
+and integer byte values, reconstructs only those fixed fields, and authenticates
+the complete original object against its independent canonical digest before
+use. This representation follows the existing public digest-byte convention;
+it adds no scanner filter, path exclusion or finding disposition.
+Historical source-binding tests restore bytes from the full pinned base commit
+into an isolated temporary fixture; they never execute those migrations.
+Missing history or source bytes fail the tests rather than being skipped.
+Existing mutation, expiry, changed-source, strict-metric and exact-residual
+negative controls remain. Malformed digest arrays, extra fields and changed
+paths, metrics or digest bytes are rejected; the current baseline also has four-metric
+100 % / 99 % controls. Production validation is not relaxed to ignore missing
+sources, and the historical fixture does not reactivate the exception.
+
+This policy retirement is not schema-equivalence proof, permission to activate
+an unproved successor workflow, a deployment approval or a passing CI result.
+Each resulting source revision still requires its own validation evidence.
 
 ## Owner-approved exact 18 detect-secrets dispositions (2026-10-16 Europe/Istanbul; 2026-10-15 UTC)
 
@@ -1438,3 +1483,29 @@ receipts remain dated evidence, not claims about the new baseline.
 The final published source still needs its own scan and required checks;
 retirement approval and a reconstructed postimage do not establish full CI,
 coverage, deployment readiness, or acceptance of another finding.
+
+
+## Owner decision 2026-11-02: two exact public integrity dispositions
+
+The owner approved exactly two append-only `public_integrity_digest`
+identities of detector type `Hex High Entropy String`: the public pre-squash
+commit in `tests/integration/test_mvp_baseline_schema_equivalence.py` and
+the official slsa-verifier v2.7.1 linux-amd64 attestation checksum in
+`tests/test_aud378_slsa_provenance_attestation.py`. The exact path/type/digest
+triples and provenance are authoritative in the two appended policy records.
+The unchanged 502-record prefix becomes 504 records; the cap remains 512.
+
+Owner `egorribun` approved this scope on 2026-11-02. Both new records use
+`expires_on: 2027-01-09`, because the existing schema includes that date:
+they are rejected on and after 2027-01-10. No older record is extended.
+The validator reserves these exact paths and digest bytes, checks the exact
+metadata and evidence, and retains fail-closed mutation and expiry tests.
+
+The baseline remains 304 identities. Only scanner-produced timestamp or
+line-number metadata may be refreshed; no identity, triage status, plugin,
+filter, pragma, wildcard, or category is added to the baseline. These two
+identities were derived using the pinned detect-secrets 1.5.0 SHA-1 algorithm,
+not exported from the scanner. The second value is the attestation checksum,
+not the verifier executable checksum. Gitleaks fingerprints and all other
+exceptions are separate. Approval and source review are not scanner success,
+audit acceptance, full CI, merge, deployment, or production-database authority.

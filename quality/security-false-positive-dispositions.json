@@ -15216,6 +15216,38 @@
       "reviewed_on": "2026-11-01",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/integration/test_mvp_baseline_schema_equivalence.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          223, 180, 227, 77, 196, 192, 57, 78, 207, 219,
+          31, 217, 77, 130, 107, 60, 67, 250, 21, 190
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public pre-squash repository commit; exact source reference tests/integration/test_mvp_baseline_schema_equivalence.py:35 field PRE_SQUASH_COMMIT. Identity derived using the pinned detect-secrets 1.5.0 SHA-1 algorithm; not scanner-exported and not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-02",
+      "expires_on": "2027-01-09",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_aud378_slsa_provenance_attestation.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          165, 69, 159, 227, 95, 134, 249, 202, 88, 75,
+          180, 150, 196, 54, 131, 86, 48, 20, 31, 42
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public official slsa-verifier v2.7.1 linux-amd64 attestation SHA-256; exact source reference tests/test_aud378_slsa_provenance_attestation.py:11 field PROVENANCE_SHA256; GitHub release asset 267893648. Identity derived using pinned detect-secrets 1.5.0 SHA-1; not scanner-exported and not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-02",
+      "expires_on": "2027-01-09",
+      "approval_status": "approved"
     }
   ]
 }

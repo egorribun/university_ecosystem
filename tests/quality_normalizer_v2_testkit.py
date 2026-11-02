@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -192,10 +193,110 @@ TOOL_VERSION_ARGUMENTS = (
 )
 
 
+def _restore_public_integrity_digest(
+    record: dict[str, object], field: str, width: int
+) -> None:
+    """Decode one explicitly named public Git or artifact digest, never arbitrary data."""
+    if not isinstance(record, dict) or field in record:
+        raise ValueError("historical fixture has an unexpected digest field")
+    encoded = record.pop(f"{field}_bytes", None)
+    if (
+        not isinstance(encoded, list)
+        or len(encoded) != width
+        or any(type(value) is not int or not 0 <= value <= 255 for value in encoded)
+    ):
+        raise ValueError("historical public digest requires fixed-width byte integers")
+    record[field] = bytes(encoded).hex()
+
+
+def restore_historical_legacy_migration_policy(
+    fixture: dict[str, object],
+) -> dict[str, object]:
+    """Reconstruct exactly the retired object from transparent public digest bytes."""
+    policy = deepcopy(fixture)
+    _restore_public_integrity_digest(policy, "base_sha", 20)
+    evidence = policy["evidence"]
+    _restore_public_integrity_digest(evidence, "tested_commit_sha", 20)
+    _restore_public_integrity_digest(evidence, "source_head_sha", 20)
+    shards = evidence["unit_shards"]
+    if not isinstance(shards, list) or len(shards) != 4:
+        raise ValueError("historical fixture requires exactly four evidence shards")
+    for shard in shards:
+        _restore_public_integrity_digest(shard, "coverage_sha256", 32)
+        _restore_public_integrity_digest(shard, "provenance_sha256", 32)
+    _restore_public_integrity_digest(evidence["migration"], "coverage_sha256", 32)
+    _restore_public_integrity_digest(evidence["migration"], "provenance_sha256", 32)
+    reports = evidence["reconstructed_reports"]
+    _restore_public_integrity_digest(reports, "json_sha256", 32)
+    _restore_public_integrity_digest(reports, "xml_sha256", 32)
+    serialized = json.dumps(
+        policy, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    # Original canonical policy SHA-256, represented as its 32 public digest bytes.
+    # This is an independent immutable pin, not a scanner filter or an exception.
+    expected_digest = bytes(
+        (
+            182,
+            107,
+            72,
+            131,
+            83,
+            101,
+            186,
+            200,
+            207,
+            82,
+            223,
+            140,
+            121,
+            37,
+            99,
+            62,
+            18,
+            0,
+            154,
+            15,
+            183,
+            235,
+            163,
+            63,
+            60,
+            106,
+            200,
+            254,
+            221,
+            96,
+            211,
+            254,
+        )
+    )
+    if hashlib.sha256(serialized.encode("utf-8")).digest() != expected_digest:
+        raise ValueError("historical fixture differs from the immutable policy digest")
+    return policy
+
+
+def with_historical_legacy_migration_policy(
+    contract: dict[str, object],
+) -> dict[str, object]:
+    """Attach the immutable retired policy only to an isolated test contract."""
+    fixture = (
+        Path(__file__).resolve().parent
+        / "fixtures"
+        / "quality"
+        / "legacy-migration-baselines-ac74e915.json"
+    )
+    policy = restore_historical_legacy_migration_policy(
+        json.loads(fixture.read_text(encoding="utf-8"))
+    )
+    historical = deepcopy(contract)
+    historical["tier0"]["legacy_migration_baselines"] = policy
+    return historical
+
+
 def make_all_strict_synthetic_contract(
     contract: dict[str, object],
 ) -> dict[str, object]:
-    """Copy a production contract without its repository-bound migration waiver."""
+    """Copy a contract without any historical repository-bound migration waiver."""
     synthetic = deepcopy(contract)
     tier0 = synthetic.get("tier0")
     if isinstance(tier0, dict):

@@ -739,7 +739,14 @@ def test_policy_static_defaults_remain_bound_to_effective_worker_sources() -> No
     assert "outbox-worker:\n    environment: *live-delivery" in live
     assert "COPY --chown=app:app app ./app" in dockerfile
     assert "COPY --chown=app:app .env" not in dockerfile
-    assert "ENV_FILE_PATH" in config_base
+    settings_sources = (repo / "app/core/settings_sources.py").read_text(
+        encoding="utf-8"
+    )
+    assert "from app.core.settings_sources import (" in config_base
+    assert "    resolve_env_file," in config_base
+    assert "return resolve_env_file(base_dir, logger=_logger)" in config_base
+    assert "_ENV_FILE = _resolve_env_file(_PROJECT_ROOT)" in config_base
+    assert 'env_override = os.environ.get("ENV_FILE_PATH")' in settings_sources
     assert "case_sensitive=False" in config_base
 
 

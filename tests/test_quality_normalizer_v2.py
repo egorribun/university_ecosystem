@@ -6,7 +6,6 @@ import os
 import shutil
 import subprocess
 import sys
-from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -15,6 +14,8 @@ from jsonschema import Draft202012Validator
 from tests.quality_normalizer_v2_testkit import (
     CANONICAL_REPORT_ARGUMENTS,
     TOOL_VERSION_ARGUMENTS,
+    make_all_strict_synthetic_contract,
+    with_historical_legacy_migration_policy,
     write_all_strict_synthetic_contract,
     write_complete_evidence,
 )
@@ -63,16 +64,26 @@ def test_evidence_repo_contract_is_all_strict_synthetic_copy(
             encoding="utf-8"
         )
     )
-    expected_contract = deepcopy(active_contract)
-    expected_contract["tier0"].pop("legacy_migration_baselines")
-
-    assert fixture_contract == expected_contract
-    assert "legacy_migration_baselines" in active_contract["tier0"]
+    assert fixture_contract == active_contract
+    assert "legacy_migration_baselines" not in active_contract["tier0"]
     assert "legacy_migration_baselines" not in fixture_contract["tier0"]
     assert fixture_contract["tier0"]["coverage"] == active_contract["tier0"]["coverage"]
     assert fixture_contract["coverage_scope"] == active_contract["coverage_scope"]
     assert fixture_contract["source_roots"] == active_contract["source_roots"]
     assert json.loads(CONTRACT_PATH.read_text(encoding="utf-8")) == active_contract
+
+
+def test_synthetic_contract_removes_only_the_immutable_historical_policy() -> None:
+    active_contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    historical = with_historical_legacy_migration_policy(active_contract)
+    historical_before = json.dumps(historical, sort_keys=True)
+
+    synthetic = make_all_strict_synthetic_contract(historical)
+
+    assert synthetic == active_contract
+    assert "legacy_migration_baselines" not in synthetic["tier0"]
+    assert len(historical["tier0"]["legacy_migration_baselines"]["files"]) == 131
+    assert json.dumps(historical, sort_keys=True) == historical_before
 
 
 def _commit_all(root: Path, message: str) -> None:

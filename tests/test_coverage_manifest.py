@@ -20,6 +20,7 @@ from jsonschema import Draft202012Validator, ValidationError
 from tests.quality_normalizer_v2_testkit import (
     TOOL_VERSION_ARGUMENTS,
     make_all_strict_synthetic_contract,
+    with_historical_legacy_migration_policy,
     write_all_strict_synthetic_contract,
     write_complete_evidence,
 )
@@ -668,7 +669,9 @@ def _normalizer_source_bound_aggregate_case(
     dict[str, object],
 ]:
     normalizer = _normalizer_module()
-    contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    contract = with_historical_legacy_migration_policy(
+        json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
+    )
     declared_records = normalizer._legacy_migration_records(contract)
     changed_path = "alembic/versions/148642dd1207_fix_missing_tables.py"
     assert len(declared_records) == 131

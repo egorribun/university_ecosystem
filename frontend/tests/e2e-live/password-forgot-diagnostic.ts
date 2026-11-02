@@ -3,16 +3,7 @@ import type { Frame, Page, Request, Response } from "@playwright/test"
 type Phase = "navigate" | "fill" | "click" | "success"
 type Count = "0" | "1" | "many"
 type Status =
-  | "none"
-  | "2xx"
-  | "401"
-  | "403"
-  | "429"
-  | "4xx"
-  | "5xx"
-  | "other"
-  | "mixed"
-  | "unavailable"
+  "none" | "2xx" | "401" | "403" | "429" | "4xx" | "5xx" | "other" | "mixed" | "unavailable"
 type ResponsePhase = "none" | "before-click" | "after-click" | "mixed"
 type Route = "auth" | "csrf" | "forgot"
 type Stat = {
@@ -227,10 +218,10 @@ function readForgotSnapshot() {
   const successBox = successMarker?.getBoundingClientRect()
   const successMarkerVisible = Boolean(
     successMarker &&
-      successBox &&
-      successBox.width > 0 &&
-      successBox.height > 0 &&
-      window.getComputedStyle(successMarker).visibility === "visible"
+    successBox &&
+    successBox.width > 0 &&
+    successBox.height > 0 &&
+    window.getComputedStyle(successMarker).visibility === "visible"
   )
   return {
     forgotRoute: window.location.pathname === "/forgot-password",

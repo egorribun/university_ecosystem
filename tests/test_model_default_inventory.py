@@ -168,3 +168,57 @@ def test_migration_head_parser_supports_merge_tuples_and_rejects_dynamic_values(
     )
     with pytest.raises(InventoryError, match="literal"):
         read_migration_head(versions)
+
+
+def test_notification_once_id_is_application_owned_uuid7_without_server_default() -> (
+    None
+):
+    inventory = cast(
+        dict[str, Any], build_inventory(REPO_ROOT, policy_path=POLICY_PATH)
+    )
+    columns = {item["column"]: item for item in inventory["columns"]}
+    column = columns["notification_delivery_once.id"]
+    assert column["classification"] == "python_only"
+    assert column["primary_key"] is True
+    assert column["python_default_present"] is True
+    assert column["server_default_present"] is False
+    assert column["exception_kind"] == "inherited_uuid7_primary_key"
+    assert column["exception_owner"] == "backend-platform"
+    policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    assert len(policy["exceptions"]) == 42
+    record = next(
+        item
+        for item in policy["exceptions"]
+        if item["column"] == "notification_delivery_once.id"
+    )
+    assert set(record) == {"column", "kind", "owner", "reason"}
+
+
+def test_notification_once_uuid7_exception_is_required(tmp_path: Path) -> None:
+    policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    policy["exceptions"] = [
+        item
+        for item in policy["exceptions"]
+        if item["column"] != "notification_delivery_once.id"
+    ]
+    candidate = tmp_path / "policy.json"
+    candidate.write_text(json.dumps(policy), encoding="utf-8")
+    with pytest.raises(InventoryError, match="unreviewed python_only"):
+        build_inventory(REPO_ROOT, policy_path=candidate)
+
+
+@pytest.mark.parametrize("field", ["expires_on", "extra"])
+def test_notification_once_exception_keeps_existing_closed_schema(
+    tmp_path: Path, field: str
+) -> None:
+    policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    record = next(
+        item
+        for item in policy["exceptions"]
+        if item["column"] == "notification_delivery_once.id"
+    )
+    record[field] = "2027-01-09"
+    candidate = tmp_path / "policy.json"
+    candidate.write_text(json.dumps(policy), encoding="utf-8")
+    with pytest.raises(InventoryError, match="unexpected fields"):
+        build_inventory(REPO_ROOT, policy_path=candidate)

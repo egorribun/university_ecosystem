@@ -1,28 +1,32 @@
-"""Regression contracts for the third BE-02 dual-default migration phase.
+"""BE-02 scalar defaults on the fresh-only, irreversible MVP baseline.
 
-Phase one (``202609150001``) converged the authentication booleans and is
-guarded by ``tests/test_be02_auth_defaults_migration.py``.  This phase takes
-ADR-036's next class -- literal, non-secret scalar defaults -- and needs the
-same two guarantees: the migration and the mapped columns agree on every
-literal, and the phased safety structure the ADR mandates is actually present
-in the migration body.
+ADR-051 retires the historical populated-database preflight and backfill.
+The retained lazy loaders below are still imported by the separately pending
+PostgreSQL integration retarget; unit contracts do not call them.
 """
 
 from __future__ import annotations
 
 import importlib.util
-import re
 import sys
+from collections import Counter
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
-from unittest.mock import Mock
+from types import ModuleType
 
 import pytest
+import sqlalchemy as sa
 import yaml
-from sqlalchemy.dialects import postgresql
 
 import app.models  # noqa: F401  # register all mapped metadata
 from app.core.database import Base
+from app.core.db.retained_table_metadata import build_migration_metadata
+from tests.fixtures.baseline_defaults import (
+    SCALAR_DEFAULTS,
+    ScalarDefault,
+    assert_default_columns,
+    replace_column,
+)
+from tests.fixtures.baseline_migration import capture_baseline
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSIONS = ROOT / "alembic" / "versions"
@@ -51,84 +55,101 @@ def _load_migration() -> ModuleType:
     return module
 
 
-def test_literal_scalar_phase_is_dual_declared() -> None:
-    """Every column this phase touches carries both defaults on the model.
-
-    A migration that installs a catalog default the model does not declare is
-    worse than no migration at all: autogenerate then reports drift on every
-    run and proposes dropping the default the phase just installed.
-    """
-
-    for spec in _live_specs():
-        column = Base.metadata.tables[spec.table].c[spec.column]
-        qualified = f"{spec.table}.{spec.column}"
-        assert column.default is not None, qualified
-        assert column.server_default is not None, qualified
-
-
-def test_declared_literals_match_the_python_defaults() -> None:
-    """The transcribed literal is the scalar the ORM already applies."""
-
-    for spec in _live_specs():
-        column = Base.metadata.tables[spec.table].c[spec.column]
-        qualified = f"{spec.table}.{spec.column}"
-        python_default = column.default.arg
-        assert not callable(python_default), qualified
-
-        # The migration writes PostgreSQL syntax ('pending', true, 0.0); the
-        # model carries the plain literal.  Compare them after stripping the
-        # SQL quoting the two spellings differ by.
-        migration_literal = spec.server_default.strip("'")
-        model_literal = str(column.server_default.arg)
-        assert model_literal == migration_literal, qualified
-
-        if spec.family == "boolean":
-            assert migration_literal == str(bool(python_default)).lower(), qualified
-        else:
-            assert migration_literal == str(python_default), qualified
-
-
-def test_every_spec_targets_a_reviewed_type_family() -> None:
-    migration = _load_migration()
-    families = {spec.family for spec in migration.DEFAULT_SPECS}
-
-    assert families <= set(migration._TYPE_FAMILIES)
-    assert len(migration.DEFAULT_SPECS) == len(
-        {(spec.table, spec.column) for spec in migration.DEFAULT_SPECS}
+def _runtime_specs() -> tuple[ScalarDefault, ...]:
+    return tuple(
+        spec
+        for spec in SCALAR_DEFAULTS
+        if spec.qualified.split(".", 1)[0] not in RETIRED_RUNTIME_TABLES
     )
 
 
-def test_migration_keeps_the_phased_safety_contract() -> None:
-    source = MIGRATION.read_text(encoding="utf-8").lower()
-    for required in (
-        "pg_get_expr",
-        "pg_attribute",
-        "statement_timeout",
-        "lock_timeout",
-        "not valid",
-        "validate constraint",
-        "set not null",
-        "backfill",
-        "requires online postgresql catalog preflight",
-    ):
-        assert required in source, required
+def test_literal_scalar_phase_is_dual_declared() -> None:
+    """The seventeen live scalar defaults still support both writer paths."""
+    specs = _runtime_specs()
+    assert len(specs) == 17
+    for spec in specs:
+        table, field = spec.qualified.split(".", 1)
+        column = Base.metadata.tables[table].c[field]
+        assert column.default is not None, spec.qualified
+        assert column.server_default is not None, spec.qualified
 
 
-def test_migration_revision_is_the_single_head() -> None:
-    migration = _load_migration()
+def test_declared_literals_match_the_python_defaults() -> None:
+    """Do not derive expected values from either model or baseline metadata."""
+    for spec in _runtime_specs():
+        table, field = spec.qualified.split(".", 1)
+        column = Base.metadata.tables[table].c[field]
+        assert column.default is not None, spec.qualified
+        assert column.server_default is not None, spec.qualified
+        value = column.default.arg
+        assert not callable(value), spec.qualified
+        assert type(value) is type(spec.value), spec.qualified
+        assert value == spec.value, spec.qualified
+        expected = (
+            str(spec.value).lower() if spec.family == "boolean" else str(spec.value)
+        )
+        assert str(column.server_default.arg) == expected, spec.qualified
 
-    assert migration.revision == "202609220001"
-    assert migration.down_revision == "202609150001"
 
-    # Phase four is the reviewed, single successor.  The policy moves its
-    # ``migration_head`` in the same change, preserving the inventory gate.
-    pattern = re.compile(r'^down_revision[^=]*=\s*"202609220001"', re.MULTILINE)
-    successors = [
-        path.name
-        for path in VERSIONS.glob("*.py")
-        if pattern.search(path.read_text(encoding="utf-8"))
+def test_every_spec_targets_a_reviewed_type_family() -> None:
+    metadata = build_migration_metadata(Base.metadata, dialect_name="postgresql")
+    types = {
+        "boolean": sa.Boolean,
+        "integer": sa.Integer,
+        "float": sa.Float,
+        "text": sa.String,
+    }
+    assert len(SCALAR_DEFAULTS) == 29
+    assert len({spec.qualified for spec in SCALAR_DEFAULTS}) == 29
+    assert Counter(spec.family for spec in SCALAR_DEFAULTS) == {
+        "boolean": 7,
+        "integer": 11,
+        "float": 5,
+        "text": 6,
+    }
+    for spec in SCALAR_DEFAULTS:
+        table, field = spec.qualified.split(".", 1)
+        column = metadata.tables[table].c[field]
+        assert isinstance(column.type, types[spec.family]), spec.qualified
+        assert column.nullable is False, spec.qualified
+        assert column.server_default is not None, spec.qualified
+        expected = (
+            str(spec.value).lower() if spec.family == "boolean" else str(spec.value)
+        )
+        assert str(column.server_default.arg) == expected, spec.qualified
+    assert RETIRED_RUNTIME_TABLES.isdisjoint(Base.metadata.tables)
+    assert (
+        sum(
+            spec.qualified.split(".", 1)[0] in RETIRED_RUNTIME_TABLES
+            for spec in SCALAR_DEFAULTS
+        )
+        == 12
+    )
+
+
+def test_baseline_scalar_defaults_use_bounded_fresh_schema_ddl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    assert_default_columns(
+        operations.statements,
+        {spec.qualified: spec.declaration for spec in SCALAR_DEFAULTS},
+    )
+    assert operations.statements[:2] == [
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
     ]
-    assert successors == ["202609250001_phase_semantic_defaults.py"]
+
+
+def test_migration_revision_is_the_single_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration, _ = capture_baseline(monkeypatch)
+    assert migration.revision == "202611020000"
+    assert migration.down_revision is None
+    assert sorted(path.name for path in VERSIONS.glob("*.py")) == [
+        "202611020000_mvp_baseline.py"
+    ]
 
 
 def test_postgresql_regressions_are_collected_by_the_enabled_integration_lane() -> None:
@@ -175,87 +196,244 @@ def test_postgresql_regressions_are_collected_by_the_enabled_integration_lane() 
         "'pending' || ''",
     ],
 )
-def test_conflicting_text_default_is_rejected(default_sql: str) -> None:
-    migration = _load_migration()
-    spec = migration.DefaultSpec("dead_letter_jobs", "status", "'pending'", "text")
-    state = migration.CatalogState("character varying(20)", True, default_sql)
-
-    with pytest.raises(RuntimeError, match="conflicting server default"):
-        migration._validate_existing_default(spec, state)
-
-
-@pytest.mark.parametrize(
-    ("family", "literal", "default_sql"),
-    [
-        ("text", "'pending'", "'pending'::character varying"),
-        ("text", "'pending'", " (( 'pending' ) :: CHARACTER VARYING) "),
-        ("text", "'pending'", "(('pending'::text)::character varying)"),
-        ("text", "'pending'", "((('pending')))"),
-        ("text", "'Pending now'", "('Pending now'::text)"),
-        ("text", "'pen''ding'", "('pen''ding'::text)"),
-        ("text", "'0.0'", "'0.0'::text"),
-        ("boolean", "true", "(TRUE::boolean)"),
-        ("boolean", "false", "false"),
-        ("integer", "3", "('3'::integer)"),
-        ("float", "0.0", "'0'::double precision"),
-        ("float", "0.0", "((0.0)::numeric)"),
-    ],
-)
-def test_equivalent_scalar_default_is_preserved(
-    family: str, literal: str, default_sql: str, monkeypatch: pytest.MonkeyPatch
+def test_conflicting_text_default_is_rejected(
+    default_sql: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    migration = _load_migration()
-    spec = migration.DefaultSpec("example", "value", literal, family)
-    state = migration.CatalogState("text", True, default_sql)
-    ddl = Mock()
-    monkeypatch.setattr(migration, "_execute_ddl", ddl)
+    _, operations = capture_baseline(monkeypatch)
+    expected = {
+        "dead_letter_jobs.status": (
+            "status character varying(20) DEFAULT 'pending'::character varying NOT NULL"
+        )
+    }
+    changed = replace_column(
+        operations.statements,
+        "dead_letter_jobs",
+        expected["dead_letter_jobs.status"],
+        f"status character varying(20) DEFAULT {default_sql} NOT NULL",
+    )
+    with pytest.raises(AssertionError):
+        assert_default_columns(changed, expected)
 
-    migration._validate_existing_default(spec, state)
-    migration._set_server_default(None, spec, state)
 
-    ddl.assert_not_called()
+@pytest.mark.parametrize("spec", SCALAR_DEFAULTS, ids=lambda spec: spec.qualified)
+def test_baseline_scalar_defaults_match_reviewed_physical_columns(
+    spec: ScalarDefault, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    assert_default_columns(operations.statements, {spec.qualified: spec.declaration})
 
 
 @pytest.mark.parametrize("default_sql", ["'0'::text", "'0.00'::text"])
-def test_numeric_text_literals_are_not_numeric_defaults(default_sql: str) -> None:
-    migration = _load_migration()
-    spec = migration.DefaultSpec("example", "value", "'0.0'", "text")
-    state = migration.CatalogState("text", True, default_sql)
-
-    with pytest.raises(RuntimeError, match="conflicting server default"):
-        migration._validate_existing_default(spec, state)
-
-
-@pytest.mark.parametrize("operation", ["upgrade", "downgrade"])
-@pytest.mark.parametrize("default_sql", ["'PENDING'::text", "'pen ding'::text"])
-def test_preflight_rejects_conflict_without_mutation(
-    operation: str, default_sql: str, monkeypatch: pytest.MonkeyPatch
+def test_numeric_text_literals_are_not_numeric_defaults(
+    default_sql: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    migration = _load_migration()
-    safe = migration.DefaultSpec("example", "count", "0", "integer")
-    conflicting = migration.DefaultSpec(
-        "dead_letter_jobs", "status", "'pending'", "text"
+    _, operations = capture_baseline(monkeypatch)
+    expected = {
+        "user_stats.attendance_percent": (
+            "attendance_percent double precision DEFAULT '0'::double precision NOT NULL"
+        )
+    }
+    changed = replace_column(
+        operations.statements,
+        "user_stats",
+        expected["user_stats.attendance_percent"],
+        f"attendance_percent text DEFAULT {default_sql} NOT NULL",
     )
-    monkeypatch.setattr(migration, "DEFAULT_SPECS", (safe, conflicting))
-    monkeypatch.setattr(
-        migration,
-        "_catalog_state",
-        lambda _bind, spec: migration.CatalogState(
-            "text", True, None if spec == safe else default_sql
+    with pytest.raises(AssertionError):
+        assert_default_columns(changed, expected)
+
+
+@pytest.mark.parametrize(
+    ("qualified", "before", "after"),
+    [
+        (
+            "events.is_active",
+            "is_active boolean DEFAULT true NOT NULL",
+            "is_active boolean DEFAULT false NOT NULL",
         ),
+        (
+            "dead_letter_jobs.max_retries",
+            "max_retries integer DEFAULT 3 NOT NULL",
+            "max_retries integer DEFAULT 4 NOT NULL",
+        ),
+        (
+            "user_stats.grades_average",
+            "grades_average double precision DEFAULT '0'::double precision NOT NULL",
+            "grades_average double precision DEFAULT '1'::double precision NOT NULL",
+        ),
+        (
+            "vector_chunks.is_active",
+            "is_active boolean DEFAULT true NOT NULL",
+            "is_active boolean DEFAULT true",
+        ),
+        (
+            "stored_events.version",
+            "version integer DEFAULT 1 NOT NULL",
+            "version integer NOT NULL",
+        ),
+    ],
+    ids=(
+        "boolean-value",
+        "counter-value",
+        "retained-float",
+        "retained-nullability",
+        "missing-default",
+    ),
+)
+def test_baseline_scalar_contract_rejects_changed_values_or_nullability(
+    qualified: str, before: str, after: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    changed = replace_column(
+        operations.statements, qualified.split(".", 1)[0], before, after
     )
-    bind = SimpleNamespace(dialect=postgresql.dialect())
-    monkeypatch.setattr(migration.op, "get_bind", lambda: bind)
-    monkeypatch.setattr(migration.context, "is_offline_mode", lambda: False)
-    monkeypatch.setattr(migration, "_lock_postgresql", lambda: None)
-    monkeypatch.setattr(migration, "_constraint_rows", lambda *_args: [])
-    backfill = Mock()
-    ddl = Mock()
-    monkeypatch.setattr(migration, "_backfill_nulls", backfill)
-    monkeypatch.setattr(migration, "_execute_ddl", ddl)
+    with pytest.raises(AssertionError):
+        assert_default_columns(changed, {qualified: before})
 
-    with pytest.raises(RuntimeError, match="conflicting server default"):
-        getattr(migration, operation)()
 
-    backfill.assert_not_called()
-    ddl.assert_not_called()
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "ALTER TABLE public.dead_letter_jobs ALTER COLUMN status SET DEFAULT 'PENDING'",
+        "ALTER TABLE dead_letter_jobs ALTER COLUMN status DROP DEFAULT",
+        'alter table "public"."dead_letter_jobs" alter column "status" drop not null',
+        "ALTER TABLE public.user_stats ALTER COLUMN attendance_percent SET DEFAULT 1",
+        "ALTER TABLE public.vector_chunks ALTER COLUMN is_active DROP DEFAULT",
+        "ALTER TABLE public.vector_chunks RENAME TO retired_chunks",
+        "ALTER TABLE public.dead_letter_jobs SET SCHEMA archive",
+    ],
+)
+def test_baseline_scalar_contract_rejects_later_overrides(
+    extra: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    expected = {spec.qualified: spec.declaration for spec in SCALAR_DEFAULTS}
+    with pytest.raises(AssertionError):
+        assert_default_columns([*operations.statements, extra], expected)
+
+
+@pytest.mark.parametrize(
+    "defect", ["missing-column", "duplicate-column", "missing-table", "duplicate-table"]
+)
+def test_baseline_scalar_contract_rejects_missing_or_duplicate_objects(
+    defect: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    expected = {"vector_chunks.chunk_index": "chunk_index integer DEFAULT 0 NOT NULL"}
+    declaration = expected["vector_chunks.chunk_index"]
+    if defect == "missing-column":
+        changed = replace_column(
+            operations.statements, "vector_chunks", declaration + ",\n", ""
+        )
+    elif defect == "duplicate-column":
+        changed = replace_column(
+            operations.statements,
+            "vector_chunks",
+            declaration,
+            declaration + ",\n    " + declaration,
+        )
+    else:
+        changed = list(operations.statements)
+        create = next(
+            sql
+            for sql in changed
+            if sql.startswith("CREATE TABLE public.vector_chunks (")
+        )
+        if defect == "missing-table":
+            changed.remove(create)
+        else:
+            changed.append(create)
+    with pytest.raises(AssertionError):
+        assert_default_columns(changed, expected)
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        "/*\n{declaration}\n*/",
+        "decoy text DEFAULT '\n{declaration}\n'",
+        "decoy text DEFAULT $payload$\n{declaration}\n$payload$",
+        '"\n{declaration}\n" integer',
+        "decoy text DEFAULT E'\\'\n{declaration}\n\\''",
+    ],
+    ids=(
+        "block-comment",
+        "multiline-string",
+        "dollar-quoted-string",
+        "multiline-identifier",
+        "escaped-multiline-string",
+    ),
+)
+def test_baseline_scalar_contract_rejects_hidden_column_payloads(
+    wrapper: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    declaration = "chunk_index integer DEFAULT 0 NOT NULL"
+    changed = replace_column(
+        operations.statements,
+        "vector_chunks",
+        declaration,
+        wrapper.format(declaration=declaration),
+    )
+    with pytest.raises(AssertionError):
+        assert_default_columns(changed, {"vector_chunks.chunk_index": declaration})
+
+
+@pytest.mark.parametrize("table", ["notifications", "notification_deliveries"])
+def test_baseline_scalar_contract_accepts_partitioned_parent_with_children(
+    table: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    children = [
+        sql
+        for sql in operations.statements
+        if sql.startswith(f"CREATE TABLE public.{table}_")
+        and f"PARTITION OF public.{table}" in sql
+    ]
+    assert children, f"The positive control must contain {table} partition children"
+    expected = {
+        spec.qualified: spec.declaration
+        for spec in SCALAR_DEFAULTS
+        if spec.qualified.split(".", 1)[0] == table
+    }
+    assert_default_columns(operations.statements, expected)
+
+
+@pytest.mark.parametrize("table", ["notifications", "notification_deliveries"])
+def test_baseline_scalar_contract_rejects_duplicate_partitioned_parent(
+    table: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    create = next(
+        sql
+        for sql in operations.statements
+        if sql.startswith(f"CREATE TABLE public.{table} (")
+    )
+    expected = {
+        spec.qualified: spec.declaration
+        for spec in SCALAR_DEFAULTS
+        if spec.qualified.split(".", 1)[0] == table
+    }
+    with pytest.raises(AssertionError):
+        assert_default_columns([*operations.statements, create], expected)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        r'ALTER TABLE public.events ALTER COLUMN U&"is_\0061ctive" '
+        "SET DEFAULT false",
+        r'ALTER TABLE public.U&"\0065vents" ALTER COLUMN is_active '
+        "SET DEFAULT false",
+        'ALTER TABLE public.U&"ev!0065nts" '
+        "UESCAPE '!' ALTER COLUMN is_active SET DEFAULT false",
+    ],
+    ids=("encoded-column", "encoded-table", "explicit-escape-character"),
+)
+def test_baseline_scalar_contract_rejects_encoded_identifier_overrides(
+    extra: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    expected = {"events.is_active": "is_active boolean DEFAULT true NOT NULL"}
+    with pytest.raises(AssertionError):
+        assert_default_columns([*operations.statements, extra], expected)

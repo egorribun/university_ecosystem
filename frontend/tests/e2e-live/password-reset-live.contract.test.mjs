@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer"
 import console from "node:console"
 import { readFileSync } from "node:fs"
 import { URL, fileURLToPath } from "node:url"
+import { performance } from "node:perf_hooks"
 import process from "node:process"
 import test from "node:test"
 import { runInNewContext } from "node:vm"
@@ -1021,119 +1022,116 @@ test("forgot sink emits at most one safe frame per project and attempt", async (
   }
 })
 
-test(
-  "forgot observer correlates exact transport events and preserves original failure",
-  async (t) => {
-    const { EventEmitter } = await import("node:events")
-    const { withPasswordForgotDiagnostics } = await loadForgotDiagnostic("events")
-    const output = []
-    t.mock.method(process.stdout, "write", (line) => {
-      output.push(line)
-      return true
-    })
-    const page = new EventEmitter()
-    let evaluations = 0
-    page.evaluate = async () => {
-      evaluations++
-      return forgotSnapshot()
-    }
-    const origin = "https://127.0.0.1:30443"
-    const mainFrame = { url: () => origin + "/forgot-password" }
-    page.mainFrame = () => mainFrame
-    let forbiddenReads = 0
-    const forbidden = () => {
-      forbiddenReads++
-      throw Error("private-canary")
-    }
-    const request = (path, method = "GET") => ({
-      url: () => origin + path,
-      method: () => method,
-      frame: () => mainFrame,
-      headers: forbidden,
-      postData: forbidden,
-      failure: forbidden,
-    })
-    const response = (req, status) => ({
-      request: () => req,
-      status: () => status,
-      headers: forbidden,
-      text: forbidden,
-      json: forbidden,
-      body: forbidden,
-    })
-    const failure = Error("private-canary")
-    await assert.rejects(
-      withPasswordForgotDiagnostics(
-        page,
-        {
-          project: "mobile",
-          attempt: 0,
-          ownedOrigin: origin,
-          deadlineAtMs: performance.now() + 5_000,
-        },
-        async (mark) => {
-          const previousDocument = request("/api/v1/users/me")
-          page.emit("request", previousDocument)
-          page.emit("framenavigated", mainFrame)
-          page.emit("response", response(previousDocument, 200))
-          const foreignFrame = { ...request("/api/v1/users/me"), frame: () => ({}) }
-          page.emit("request", foreignFrame)
-          page.emit("response", response(foreignFrame, 200))
-          const auth = request("/api/v1/users/me")
-          const csrf = request("/api/v1/auth/csrf-cookie")
-          page.emit("request", auth)
-          page.emit("response", response(auth, 401))
-          page.emit("requestfinished", auth)
-          page.emit("request", csrf)
-          for (const alias of [
-            "/api/v1/password/forgot?email=private-canary",
-            "/api/v1/x/../password/forgot",
-            "/api/v1/password/%66orgot",
-            "/api/v1/password/forgot#private-canary",
-          ]) {
-            page.emit("request", request(alias, "POST"))
-          }
-          mark("click")
-          page.emit("response", response(csrf, 204))
-          page.emit("requestfinished", csrf)
-          const first = request("/api/v1/password/forgot", "POST")
-          const second = request("/api/v1/password/forgot", "POST")
-          page.emit("request", first)
-          page.emit("response", response(first, 429))
-          page.emit("requestfinished", first)
-          page.emit("request", second)
-          page.emit("response", response(second, 200))
-          page.emit("requestfinished", second)
-          const failed = request("/api/v1/password/forgot", "POST")
-          page.emit("request", failed)
-          page.emit("requestfailed", failed)
-          mark("success")
-          throw failure
-        }
-      ),
-      (error) => error === failure
-    )
-    assert.equal(evaluations, 1)
-    assert.equal(forbiddenReads, 0)
-    assert.equal(output.length, 1)
-    const record = JSON.parse(output[0].slice("UE_LIVE_PASSWORD_FORGOT_V1 ".length))
-    assert.equal(record.scope, "main-frame-navigation-window")
-    assert.equal(record.auth.requests, "1")
-    assert.equal(record.auth.status, "401")
-    assert.equal(record.auth.responsePhase, "before-click")
-    assert.equal(record.csrf.responsePhase, "after-click")
-    assert.deepEqual(record.forgot, {
-      requests: "many",
-      responses: "many",
-      completed: "many",
-      failed: "1",
-      status: "mixed",
-      responsePhase: "after-click",
-    })
-    assert.equal(page.eventNames().length, 0)
-    assert.doesNotMatch(output.join(""), /private-canary|https?:|@/u)
+test("forgot observer correlates exact transport events and preserves original failure", async (t) => {
+  const { EventEmitter } = await import("node:events")
+  const { withPasswordForgotDiagnostics } = await loadForgotDiagnostic("events")
+  const output = []
+  t.mock.method(process.stdout, "write", (line) => {
+    output.push(line)
+    return true
+  })
+  const page = new EventEmitter()
+  let evaluations = 0
+  page.evaluate = async () => {
+    evaluations++
+    return forgotSnapshot()
   }
-)
+  const origin = "https://127.0.0.1:30443"
+  const mainFrame = { url: () => origin + "/forgot-password" }
+  page.mainFrame = () => mainFrame
+  let forbiddenReads = 0
+  const forbidden = () => {
+    forbiddenReads++
+    throw Error("private-canary")
+  }
+  const request = (path, method = "GET") => ({
+    url: () => origin + path,
+    method: () => method,
+    frame: () => mainFrame,
+    headers: forbidden,
+    postData: forbidden,
+    failure: forbidden,
+  })
+  const response = (req, status) => ({
+    request: () => req,
+    status: () => status,
+    headers: forbidden,
+    text: forbidden,
+    json: forbidden,
+    body: forbidden,
+  })
+  const failure = Error("private-canary")
+  await assert.rejects(
+    withPasswordForgotDiagnostics(
+      page,
+      {
+        project: "mobile",
+        attempt: 0,
+        ownedOrigin: origin,
+        deadlineAtMs: performance.now() + 5_000,
+      },
+      async (mark) => {
+        const previousDocument = request("/api/v1/users/me")
+        page.emit("request", previousDocument)
+        page.emit("framenavigated", mainFrame)
+        page.emit("response", response(previousDocument, 200))
+        const foreignFrame = { ...request("/api/v1/users/me"), frame: () => ({}) }
+        page.emit("request", foreignFrame)
+        page.emit("response", response(foreignFrame, 200))
+        const auth = request("/api/v1/users/me")
+        const csrf = request("/api/v1/auth/csrf-cookie")
+        page.emit("request", auth)
+        page.emit("response", response(auth, 401))
+        page.emit("requestfinished", auth)
+        page.emit("request", csrf)
+        for (const alias of [
+          "/api/v1/password/forgot?email=private-canary",
+          "/api/v1/x/../password/forgot",
+          "/api/v1/password/%66orgot",
+          "/api/v1/password/forgot#private-canary",
+        ]) {
+          page.emit("request", request(alias, "POST"))
+        }
+        mark("click")
+        page.emit("response", response(csrf, 204))
+        page.emit("requestfinished", csrf)
+        const first = request("/api/v1/password/forgot", "POST")
+        const second = request("/api/v1/password/forgot", "POST")
+        page.emit("request", first)
+        page.emit("response", response(first, 429))
+        page.emit("requestfinished", first)
+        page.emit("request", second)
+        page.emit("response", response(second, 200))
+        page.emit("requestfinished", second)
+        const failed = request("/api/v1/password/forgot", "POST")
+        page.emit("request", failed)
+        page.emit("requestfailed", failed)
+        mark("success")
+        throw failure
+      }
+    ),
+    (error) => error === failure
+  )
+  assert.equal(evaluations, 1)
+  assert.equal(forbiddenReads, 0)
+  assert.equal(output.length, 1)
+  const record = JSON.parse(output[0].slice("UE_LIVE_PASSWORD_FORGOT_V1 ".length))
+  assert.equal(record.scope, "main-frame-navigation-window")
+  assert.equal(record.auth.requests, "1")
+  assert.equal(record.auth.status, "401")
+  assert.equal(record.auth.responsePhase, "before-click")
+  assert.equal(record.csrf.responsePhase, "after-click")
+  assert.deepEqual(record.forgot, {
+    requests: "many",
+    responses: "many",
+    completed: "many",
+    failed: "1",
+    status: "mixed",
+    responsePhase: "after-click",
+  })
+  assert.equal(page.eventNames().length, 0)
+  assert.doesNotMatch(output.join(""), /private-canary|https?:|@/u)
+})
 
 test("forgot failure snapshot does not start after the existing deadline", async (t) => {
   const { EventEmitter } = await import("node:events")
@@ -1170,54 +1168,51 @@ test("forgot failure snapshot does not start after the existing deadline", async
   assert.equal(page.eventNames().length, 0)
 })
 
-test(
-  "forgot success and diagnostic failures cannot change action outcome or leave listeners",
-  async (t) => {
-    const { EventEmitter } = await import("node:events")
-    const { withPasswordForgotDiagnostics } = await loadForgotDiagnostic("outcome")
-    const page = new EventEmitter()
-    let calls = 0
-    let evaluations = 0
-    let writes = 0
-    page.evaluate = async () => {
-      evaluations++
-      throw Error("private-canary")
-    }
-    t.mock.method(process.stdout, "write", () => {
-      writes++
-      throw Error("sink-private-canary")
-    })
-    const options = {
-      project: "desktop",
-      attempt: 0,
-      ownedOrigin: "https://127.0.0.1:30443",
-      deadlineAtMs: performance.now() + 1000,
-    }
-    assert.equal(
-      await withPasswordForgotDiagnostics(page, options, async () => {
-        calls++
-        return 123
-      }),
-      123
-    )
-    assert.equal(calls, 1)
-    assert.equal(evaluations, 0)
-    assert.equal(writes, 0)
-    assert.equal(page.eventNames().length, 0)
-    const failure = Error("original")
-    await assert.rejects(
-      withPasswordForgotDiagnostics(page, options, async () => {
-        calls++
-        throw failure
-      }),
-      (error) => error === failure
-    )
-    assert.equal(calls, 2)
-    assert.equal(evaluations, 1)
-    assert.equal(writes, 1)
-    assert.equal(page.eventNames().length, 0)
+test("forgot success and diagnostic failures cannot change action outcome or leave listeners", async (t) => {
+  const { EventEmitter } = await import("node:events")
+  const { withPasswordForgotDiagnostics } = await loadForgotDiagnostic("outcome")
+  const page = new EventEmitter()
+  let calls = 0
+  let evaluations = 0
+  let writes = 0
+  page.evaluate = async () => {
+    evaluations++
+    throw Error("private-canary")
   }
-)
+  t.mock.method(process.stdout, "write", () => {
+    writes++
+    throw Error("sink-private-canary")
+  })
+  const options = {
+    project: "desktop",
+    attempt: 0,
+    ownedOrigin: "https://127.0.0.1:30443",
+    deadlineAtMs: performance.now() + 1000,
+  }
+  assert.equal(
+    await withPasswordForgotDiagnostics(page, options, async () => {
+      calls++
+      return 123
+    }),
+    123
+  )
+  assert.equal(calls, 1)
+  assert.equal(evaluations, 0)
+  assert.equal(writes, 0)
+  assert.equal(page.eventNames().length, 0)
+  const failure = Error("original")
+  await assert.rejects(
+    withPasswordForgotDiagnostics(page, options, async () => {
+      calls++
+      throw failure
+    }),
+    (error) => error === failure
+  )
+  assert.equal(calls, 2)
+  assert.equal(evaluations, 1)
+  assert.equal(writes, 1)
+  assert.equal(page.eventNames().length, 0)
+})
 
 test("forgot snapshot rechecks the deadline immediately before starting evaluation", async (t) => {
   const { EventEmitter } = await import("node:events")
@@ -1347,84 +1342,81 @@ test("forgot partial listener setup still invokes the original action exactly on
   assert.equal(page.eventNames().length, 0)
 })
 
-test(
-  "forgot actual browser read returns only booleans and never reads private DOM or storage",
-  async (t) => {
-    const { EventEmitter } = await import("node:events")
-    const { withPasswordForgotDiagnostics } = await loadForgotDiagnostic("dom-read")
-    const page = new EventEmitter()
-    const output = []
-    let privateReads = 0
-    const privateRead = () => {
-      privateReads++
-      throw Error("private-canary")
-    }
-    const form = {
-      matches: (selector) => selector === ":invalid",
-      querySelector: (selector) => (selector === '[role="alert"]' ? {} : null),
-    }
-    class Button {}
-    const submit = Object.assign(new Button(), {
-      disabled: true,
-      closest: () => form,
-      getAttribute: (name) => (name === "aria-busy" ? "true" : null),
-    })
-    const marker = { getBoundingClientRect: () => ({ width: 12, height: 12 }) }
-    const document = {
-      getElementById: (id) =>
-        id === "forgot-submit-btn" ? submit : id === "forgot-back-to-login" ? marker : null,
-    }
-    const window = {
-      __APP_HYDRATED: true,
-      location: { pathname: "/forgot-password" },
-      getComputedStyle: () => ({ visibility: "visible" }),
-    }
-    for (const target of [document, form, submit, marker]) {
-      for (const key of ["textContent", "innerHTML", "outerHTML", "value", "cookie"])
-        Object.defineProperty(target, key, { get: privateRead })
-    }
-    for (const key of ["localStorage", "sessionStorage"])
-      Object.defineProperty(window, key, { get: privateRead })
-    page.evaluate = async (read) =>
-      JSON.parse(
-        JSON.stringify(
-          runInNewContext(
-            "(" + Function.prototype.toString.call(read) + ")()",
-            { document, window, HTMLButtonElement: Button },
-            { timeout: 1000 }
-          )
+test("forgot actual browser read returns only booleans and never reads private DOM or storage", async (t) => {
+  const { EventEmitter } = await import("node:events")
+  const { withPasswordForgotDiagnostics } = await loadForgotDiagnostic("dom-read")
+  const page = new EventEmitter()
+  const output = []
+  let privateReads = 0
+  const privateRead = () => {
+    privateReads++
+    throw Error("private-canary")
+  }
+  const form = {
+    matches: (selector) => selector === ":invalid",
+    querySelector: (selector) => (selector === '[role="alert"]' ? {} : null),
+  }
+  class Button {}
+  const submit = Object.assign(new Button(), {
+    disabled: true,
+    closest: () => form,
+    getAttribute: (name) => (name === "aria-busy" ? "true" : null),
+  })
+  const marker = { getBoundingClientRect: () => ({ width: 12, height: 12 }) }
+  const document = {
+    getElementById: (id) =>
+      id === "forgot-submit-btn" ? submit : id === "forgot-back-to-login" ? marker : null,
+  }
+  const window = {
+    __APP_HYDRATED: true,
+    location: { pathname: "/forgot-password" },
+    getComputedStyle: () => ({ visibility: "visible" }),
+  }
+  for (const target of [document, form, submit, marker]) {
+    for (const key of ["textContent", "innerHTML", "outerHTML", "value", "cookie"])
+      Object.defineProperty(target, key, { get: privateRead })
+  }
+  for (const key of ["localStorage", "sessionStorage"])
+    Object.defineProperty(window, key, { get: privateRead })
+  page.evaluate = async (read) =>
+    JSON.parse(
+      JSON.stringify(
+        runInNewContext(
+          "(" + Function.prototype.toString.call(read) + ")()",
+          { document, window, HTMLButtonElement: Button },
+          { timeout: 1000 }
         )
       )
-    t.mock.method(process.stdout, "write", (line) => {
-      output.push(line)
-      return true
-    })
-    const failure = Error("original")
-    await assert.rejects(
-      withPasswordForgotDiagnostics(
-        page,
-        {
-          project: "desktop",
-          attempt: 0,
-          ownedOrigin: "https://127.0.0.1:30443",
-          deadlineAtMs: performance.now() + 5000,
-        },
-        async () => {
-          throw failure
-        }
-      ),
-      (error) => error === failure
     )
-    const snapshot = JSON.parse(output[0].slice("UE_LIVE_PASSWORD_FORGOT_V1 ".length)).snapshot
-    assert.deepEqual(Object.keys(snapshot), Object.keys(forgotSnapshot()))
-    assert.ok(Object.values(snapshot).every((value) => typeof value === "boolean"))
-    assert.equal(snapshot.hydrated, true)
-    assert.equal(snapshot.formInvalid, true)
-    assert.equal(snapshot.submitBusy, true)
-    assert.equal(snapshot.successMarkerVisible, true)
-    assert.equal(privateReads, 0)
-  }
-)
+  t.mock.method(process.stdout, "write", (line) => {
+    output.push(line)
+    return true
+  })
+  const failure = Error("original")
+  await assert.rejects(
+    withPasswordForgotDiagnostics(
+      page,
+      {
+        project: "desktop",
+        attempt: 0,
+        ownedOrigin: "https://127.0.0.1:30443",
+        deadlineAtMs: performance.now() + 5000,
+      },
+      async () => {
+        throw failure
+      }
+    ),
+    (error) => error === failure
+  )
+  const snapshot = JSON.parse(output[0].slice("UE_LIVE_PASSWORD_FORGOT_V1 ".length)).snapshot
+  assert.deepEqual(Object.keys(snapshot), Object.keys(forgotSnapshot()))
+  assert.ok(Object.values(snapshot).every((value) => typeof value === "boolean"))
+  assert.equal(snapshot.hydrated, true)
+  assert.equal(snapshot.formInvalid, true)
+  assert.equal(snapshot.submitBusy, true)
+  assert.equal(snapshot.successMarkerVisible, true)
+  assert.equal(privateReads, 0)
+})
 
 test("forgot unavailable frame observations remain finite and all listeners detach", async (t) => {
   const { EventEmitter } = await import("node:events")
@@ -1474,49 +1466,46 @@ test("forgot unavailable frame observations remain finite and all listeners deta
   assert.doesNotMatch(output.join(""), /private-canary/u)
 })
 
-test(
-  "forgot a request with unavailable frame is not attributed to the observed page",
-  async (t) => {
-    const { EventEmitter } = await import("node:events")
-    const { withPasswordForgotDiagnostics } = await loadForgotDiagnostic("request-frame")
-    const page = new EventEmitter()
-    const output = []
-    const origin = "https://127.0.0.1:30443"
-    const mainFrame = { url: () => origin + "/forgot-password" }
-    page.mainFrame = () => mainFrame
-    page.evaluate = async () => forgotSnapshot()
-    t.mock.method(process.stdout, "write", (line) => {
-      output.push(line)
-      return true
-    })
-    const failure = Error("original")
-    await assert.rejects(
-      withPasswordForgotDiagnostics(
-        page,
-        {
-          project: "mobile",
-          attempt: 0,
-          ownedOrigin: origin,
-          deadlineAtMs: performance.now() + 1000,
-        },
-        async () => {
-          page.emit("framenavigated", mainFrame)
-          page.emit("request", {
-            url: () => origin + "/api/v1/password/forgot",
-            method: () => "POST",
-            frame: () => {
-              throw Error("request-frame-private-canary")
-            },
-          })
-          throw failure
-        }
-      ),
-      (error) => error === failure
-    )
-    const record = JSON.parse(output[0].slice("UE_LIVE_PASSWORD_FORGOT_V1 ".length))
-    assert.equal(record.scope, "main-frame-navigation-window")
-    for (const route of ["auth", "csrf", "forgot"]) assert.deepEqual(record[route], forgotStat())
-    assert.equal(page.eventNames().length, 0)
-    assert.doesNotMatch(output.join(""), /private-canary/u)
-  }
-)
+test("forgot a request with unavailable frame is not attributed to the observed page", async (t) => {
+  const { EventEmitter } = await import("node:events")
+  const { withPasswordForgotDiagnostics } = await loadForgotDiagnostic("request-frame")
+  const page = new EventEmitter()
+  const output = []
+  const origin = "https://127.0.0.1:30443"
+  const mainFrame = { url: () => origin + "/forgot-password" }
+  page.mainFrame = () => mainFrame
+  page.evaluate = async () => forgotSnapshot()
+  t.mock.method(process.stdout, "write", (line) => {
+    output.push(line)
+    return true
+  })
+  const failure = Error("original")
+  await assert.rejects(
+    withPasswordForgotDiagnostics(
+      page,
+      {
+        project: "mobile",
+        attempt: 0,
+        ownedOrigin: origin,
+        deadlineAtMs: performance.now() + 1000,
+      },
+      async () => {
+        page.emit("framenavigated", mainFrame)
+        page.emit("request", {
+          url: () => origin + "/api/v1/password/forgot",
+          method: () => "POST",
+          frame: () => {
+            throw Error("request-frame-private-canary")
+          },
+        })
+        throw failure
+      }
+    ),
+    (error) => error === failure
+  )
+  const record = JSON.parse(output[0].slice("UE_LIVE_PASSWORD_FORGOT_V1 ".length))
+  assert.equal(record.scope, "main-frame-navigation-window")
+  for (const route of ["auth", "csrf", "forgot"]) assert.deepEqual(record[route], forgotStat())
+  assert.equal(page.eventNames().length, 0)
+  assert.doesNotMatch(output.join(""), /private-canary/u)
+})

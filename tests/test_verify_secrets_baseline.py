@@ -37,6 +37,495 @@ _FINDING_TYPE = "Secret" + " Keyword"
 _HASHED_FIELD = "hash" + "ed_" + "se" + "cret"
 
 
+# The owner-approved fresh-only squash removed these source fixtures. These
+# contracts prove historical approval provenance, not current migration behavior.
+# Read only this finite set at the immutable pre-squash commit; never use a
+# missing-file fallback, checkout, import, execute, or fetch historical code.
+# Byte pins are provenance, not new scanner exceptions or approval identities.
+_PRE_SQUASH_SOURCE_COMMIT = bytes(
+    (
+        63,
+        245,
+        55,
+        95,
+        186,
+        1,
+        182,
+        255,
+        111,
+        43,
+        193,
+        138,
+        175,
+        45,
+        107,
+        43,
+        161,
+        142,
+        25,
+        201,
+    )
+).hex()
+_PRE_SQUASH_SOURCE_BLOBS = {
+    "tests/integration/test_aud350_stored_event_timestamp_migration.py": (
+        20,
+        181,
+        97,
+        47,
+        71,
+        233,
+        198,
+        172,
+        8,
+        127,
+        98,
+        218,
+        38,
+        228,
+        221,
+        71,
+        162,
+        110,
+        160,
+        90,
+    ),
+    "tests/fixtures/migrations/aud350/202603280001_reconcile_post_uuid_migration_drift_baseline.py.txt": (
+        22,
+        79,
+        99,
+        203,
+        115,
+        148,
+        113,
+        97,
+        190,
+        255,
+        134,
+        113,
+        169,
+        191,
+        85,
+        79,
+        138,
+        182,
+        109,
+        245,
+    ),
+    "tests/helpers/migration_148642dd1207_trace.py": (
+        225,
+        151,
+        101,
+        27,
+        148,
+        68,
+        19,
+        226,
+        175,
+        1,
+        168,
+        178,
+        169,
+        42,
+        8,
+        111,
+        0,
+        48,
+        65,
+        85,
+    ),
+    "alembic/versions/148642dd1207_fix_missing_tables.py": (
+        215,
+        98,
+        196,
+        92,
+        146,
+        72,
+        193,
+        78,
+        204,
+        245,
+        122,
+        200,
+        233,
+        226,
+        218,
+        232,
+        134,
+        119,
+        119,
+        193,
+    ),
+    "tests/test_migration_148642dd1207_orchestrator.py": (
+        41,
+        246,
+        169,
+        186,
+        103,
+        216,
+        241,
+        10,
+        9,
+        176,
+        84,
+        36,
+        42,
+        125,
+        174,
+        204,
+        253,
+        123,
+        10,
+        123,
+    ),
+    "tests/integration/test_migration_148642dd1207.py": (
+        232,
+        90,
+        106,
+        196,
+        232,
+        18,
+        243,
+        115,
+        227,
+        83,
+        90,
+        117,
+        202,
+        131,
+        68,
+        122,
+        32,
+        7,
+        230,
+        227,
+    ),
+    "alembic/versions/2956fd6376cc_fix_groups_id_sequence.py": (
+        80,
+        217,
+        251,
+        250,
+        230,
+        232,
+        227,
+        62,
+        132,
+        200,
+        246,
+        145,
+        66,
+        159,
+        215,
+        85,
+        73,
+        112,
+        57,
+        186,
+    ),
+    "quality/historical148-squawk-policy.json": (
+        222,
+        152,
+        133,
+        78,
+        74,
+        178,
+        198,
+        60,
+        214,
+        145,
+        169,
+        115,
+        246,
+        215,
+        246,
+        29,
+        188,
+        22,
+        145,
+        221,
+    ),
+    "scripts/quality/validate_historical148_squawk.py": (
+        45,
+        217,
+        156,
+        183,
+        44,
+        228,
+        110,
+        133,
+        36,
+        227,
+        68,
+        169,
+        20,
+        77,
+        138,
+        176,
+        211,
+        61,
+        180,
+        155,
+    ),
+    "tests/fixtures/historical148-squawk-capture-15eaaa.json": (
+        251,
+        252,
+        68,
+        231,
+        189,
+        221,
+        124,
+        226,
+        103,
+        74,
+        101,
+        221,
+        196,
+        242,
+        213,
+        72,
+        59,
+        207,
+        188,
+        167,
+    ),
+    "tests/fixtures/historical148-squawk-capture-35aeedeb.json": (
+        255,
+        236,
+        125,
+        81,
+        253,
+        238,
+        124,
+        131,
+        249,
+        109,
+        170,
+        19,
+        149,
+        84,
+        162,
+        104,
+        202,
+        198,
+        31,
+        141,
+    ),
+    "tests/fixtures/historical148-squawk-capture-36f70a0f.json": (
+        160,
+        155,
+        225,
+        106,
+        122,
+        30,
+        220,
+        98,
+        12,
+        22,
+        245,
+        103,
+        211,
+        183,
+        49,
+        29,
+        72,
+        18,
+        139,
+        5,
+    ),
+    "tests/fixtures/historical148-squawk-capture-3d83fb27.json": (
+        255,
+        212,
+        82,
+        19,
+        180,
+        53,
+        170,
+        240,
+        217,
+        22,
+        143,
+        73,
+        55,
+        15,
+        100,
+        0,
+        177,
+        205,
+        94,
+        145,
+    ),
+    "scripts/quality/run_owned_redis_contracts.py": (
+        50,
+        216,
+        60,
+        47,
+        71,
+        41,
+        78,
+        112,
+        144,
+        127,
+        150,
+        101,
+        110,
+        183,
+        96,
+        153,
+        137,
+        206,
+        128,
+        224,
+    ),
+    "tests/test_aud427_428_contract_quality.py": (
+        4,
+        85,
+        104,
+        38,
+        96,
+        193,
+        158,
+        83,
+        34,
+        78,
+        128,
+        27,
+        98,
+        48,
+        202,
+        93,
+        159,
+        245,
+        244,
+        211,
+    ),
+    "tests/integration/test_aud447_dlq_auth_scrub_postgres.py": (
+        202,
+        56,
+        166,
+        60,
+        157,
+        7,
+        182,
+        147,
+        135,
+        144,
+        206,
+        148,
+        144,
+        15,
+        223,
+        151,
+        240,
+        121,
+        81,
+        68,
+    ),
+    "tests/test_aud447_dlq_auth_scrub_migration.py": (
+        140,
+        32,
+        111,
+        199,
+        16,
+        61,
+        143,
+        40,
+        48,
+        56,
+        145,
+        174,
+        92,
+        144,
+        235,
+        99,
+        221,
+        244,
+        155,
+        100,
+    ),
+    "tests/test_quality_workflow_contract.py": (
+        72,
+        101,
+        68,
+        149,
+        56,
+        202,
+        53,
+        85,
+        203,
+        160,
+        195,
+        84,
+        6,
+        40,
+        251,
+        150,
+        156,
+        173,
+        51,
+        37,
+    ),
+    ".github/workflows/reusable-backend-tests.yml": (
+        182,
+        8,
+        204,
+        206,
+        132,
+        248,
+        14,
+        203,
+        123,
+        200,
+        25,
+        46,
+        214,
+        225,
+        241,
+        112,
+        67,
+        154,
+        110,
+        118,
+    ),
+}
+
+
+def _pre_squash_source_bytes(
+    path: str, *, repository_root: Path | None = None
+) -> bytes:
+    assert path in _PRE_SQUASH_SOURCE_BLOBS, "unreviewed historical source path"
+    root = repository_root or Path(__file__).resolve().parents[1]
+    git_executable = _git_executable()
+    try:
+        # Fixed commit and finite reviewed paths; read-only Git, without a shell.
+        result = subprocess.run(  # noqa: S603
+            [
+                git_executable,
+                "--no-replace-objects",
+                "cat-file",
+                "blob",
+                f"{_PRE_SQUASH_SOURCE_COMMIT}:{path}",
+            ],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise AssertionError(
+            "historical scanner fixtures require the immutable pre-squash Git "
+            "history; use a full-history checkout (fetch-depth: 0)"
+        ) from None
+    data = result.stdout
+    framed = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+    assert hashlib.sha1(framed, usedforsecurity=False).digest() == bytes(
+        _PRE_SQUASH_SOURCE_BLOBS[path]
+    ), "historical scanner source blob changed"
+    return data
+
+
+def _pre_squash_source_text(path: str) -> str:
+    return _pre_squash_source_bytes(path).decode("utf-8")
+
+
 def _document(*findings: Finding) -> dict[str, Any]:
     results: dict[str, list[dict[str, Any]]] = {}
     for path, finding_type, digest, line_number in findings:
@@ -2091,7 +2580,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     records = [
         record
         for record in policy["records"]
@@ -3087,7 +3576,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         )
     )
     records = policy["records"]
-    assert len(records) == 502
+    assert len(records) == 504
     prefix = records[:315]
     encoded_prefix = json.dumps(
         prefix, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -3493,14 +3982,13 @@ def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
         _AUD495_IMMUTABLE_315_PREFIX_SHA256
     )
     assert records[315:318] == _OCT24_ORIGINAL_SUFFIX
-    assert len(records) == 502
+    assert len(records) == 504
     assert records[318:321] == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS
 
 
 def test_oct24_public_digest_identities_are_bound_to_unchanged_source() -> None:
-    root = Path(__file__).resolve().parents[1]
     migration_path = _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[0]["identity"]["path"]
-    migration_source = ast.parse((root / migration_path).read_text(encoding="utf-8"))
+    migration_source = ast.parse(_pre_squash_source_text(migration_path))
     checksum_nodes = [
         node
         for node in migration_source.body
@@ -3513,12 +4001,11 @@ def test_oct24_public_digest_identities_are_bound_to_unchanged_source() -> None:
     assert len(checksum_nodes) == 1
     checksum = ast.literal_eval(checksum_nodes[0].value)
     assert isinstance(checksum, str)
-    frozen_fixture = (
-        root
-        / "tests/fixtures/migrations/aud350"
-        / "202603280001_reconcile_post_uuid_migration_drift_baseline.py.txt"
+    frozen_fixture = _pre_squash_source_bytes(
+        "tests/fixtures/migrations/aud350/"
+        "202603280001_reconcile_post_uuid_migration_drift_baseline.py.txt"
     )
-    assert hashlib.sha256(frozen_fixture.read_bytes()).hexdigest() == checksum
+    assert hashlib.sha256(frozen_fixture).hexdigest() == checksum
     assert (
         list(hashlib.sha1(checksum.encode("ascii"), usedforsecurity=False).digest())
         == _OCT24_APPROVED_PUBLIC_DIGEST_RECORDS[0]["identity"]["hashed_secret_bytes"]
@@ -3683,7 +4170,7 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
     )
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     assert policy["records"][321:323] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[:2]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS) == 10
 
@@ -3754,16 +4241,18 @@ def test_public_git_blob_current_pin_has_an_exact_approved_identity(
     record: dict[str, Any], assignment_name: str, source_path: str
 ) -> None:
     root = Path(__file__).resolve().parents[1]
-    consumer = root / record["identity"]["path"]
-    if not consumer.exists():
-        # Removed consumers may leave valid historical records, as with baseline.
-        return
-    # The fixture row supplies only the stable consumer path here: the current
-    # literal may match any separately approved historical or rebound identity.
+    consumer_path = record["identity"]["path"]
+    if consumer_path == "tests/helpers/migration_148642dd1207_trace.py":
+        # This consumer was deleted by the fresh-only squash.
+        consumer = _pre_squash_source_text(consumer_path)
+    else:
+        # This consumer is still live: never substitute its historical bytes.
+        assert consumer_path == "tests/test_mfa_webauthn_tombstone.py"
+        consumer = (root / consumer_path).read_text(encoding="utf-8")
     digest = _public_git_blob_source_identity(
-        consumer.read_text(encoding="utf-8"),
+        consumer,
         assignment_name,
-        (root / source_path).read_bytes(),
+        _pre_squash_source_bytes(source_path),
     )
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_text(
@@ -4031,7 +4520,7 @@ def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> No
         )
     )
     test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
     assert len(_OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS) == 2
 
@@ -4282,7 +4771,7 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
         )
     )
     test_observed_public_metadata_policy_preserves_all_325_prior_records()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4]
@@ -4303,7 +4792,7 @@ def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> Non
         )
     )
     test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     assert policy["records"][328:329] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5]
@@ -4397,12 +4886,10 @@ def _assert_public_revision_source_binding(
     assert digest == tuple(
         _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["hashed_secret_bytes"]
     )
-    root = Path(__file__).resolve().parents[1]
-    definitions = list((root / "alembic/versions").glob(f"{target}_*.py"))
-    assert len(definitions) == 1
-    assert definitions[0].name.endswith("_fix_groups_id_sequence.py")
+    definition = f"alembic/versions/{target}_fix_groups_id_sequence.py"
+    assert definition in _PRE_SQUASH_SOURCE_BLOBS
     metadata = _revision_assignments(
-        definitions[0].read_text(encoding="utf-8")
+        _pre_squash_source_text(definition)
         if revision_source is None
         else revision_source
     )
@@ -4414,7 +4901,7 @@ def _assert_public_revision_source_binding(
 def test_public_alembic_revision_current_source_has_exact_policy_identity() -> None:
     root = Path(__file__).resolve().parents[1]
     record = _PUBLIC_ALEMBIC_REVISION_RECORD
-    source = (root / record["identity"]["path"]).read_text(encoding="utf-8")
+    source = _pre_squash_source_text(record["identity"]["path"])
     _assert_public_revision_source_binding(source)
     policy = json.loads(
         (root / "quality/security-false-positive-dispositions.json").read_text(
@@ -4432,7 +4919,7 @@ def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> Non
         )
     )
     test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     assert policy["records"][329:330] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
 
 
@@ -4543,9 +5030,9 @@ def test_public_alembic_revision_rejects_expiry_duplicate_and_extra_identity() -
 def test_public_alembic_revision_source_binding_rejects_changed_consumer(
     mutation: str,
 ) -> None:
-    root = Path(__file__).resolve().parents[1]
-    path = root / _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["path"]
-    source = path.read_text(encoding="utf-8")
+    source = _pre_squash_source_text(
+        _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["path"]
+    )
     _assert_public_revision_source_binding(source)
     tree = ast.parse(source)
     function = next(
@@ -4604,14 +5091,15 @@ def test_public_alembic_revision_source_binding_rejects_changed_consumer(
 def test_public_alembic_revision_source_binding_rejects_changed_definition(
     field: str,
 ) -> None:
-    root = Path(__file__).resolve().parents[1]
-    consumer = root / _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["path"]
-    source = consumer.read_text(encoding="utf-8")
+    source = _pre_squash_source_text(
+        _PUBLIC_ALEMBIC_REVISION_RECORD["identity"]["path"]
+    )
     _assert_public_revision_source_binding(source)
     _, calls = _public_revision_calls(source)
     target = calls[2].args[1].value
-    path = next((root / "alembic/versions").glob(f"{target}_*.py"))
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    tree = ast.parse(
+        _pre_squash_source_text(f"alembic/versions/{target}_fix_groups_id_sequence.py")
+    )
     changed = 0
     for node in tree.body:
         if not isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -4637,7 +5125,7 @@ def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
         )
     )
     test_public_alembic_revision_policy_preserves_all_329_prior_records()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     assert policy["records"][330:331] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6]
@@ -4658,7 +5146,7 @@ def test_public_git_blob_index_assertion_preserves_all_331_prior_records() -> No
         )
     )
     test_public_git_blob_index_rebind_preserves_all_330_prior_records()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     assert policy["records"][331:332] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]) == 1
     rebound = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7]
@@ -4757,7 +5245,7 @@ def test_public_compiler_golden_policy_preserves_all_332_prior_records() -> None
         )
     )
     test_public_git_blob_index_assertion_preserves_all_331_prior_records()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     assert policy["records"][332:336] == _PUBLIC_COMPILER_GOLDEN_RECORDS
 
 
@@ -5160,7 +5648,7 @@ def test_node_compiler_policy_appends_seven_and_preserves_337_prefix() -> None:
         )
     )
     records = policy["records"]
-    assert len(records) == 502
+    assert len(records) == 504
     prefix = json.dumps(
         records[:337], sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
@@ -5403,7 +5891,7 @@ def test_live_private_field_policy_preserves_all_336_prior_records() -> None:
         )
     )
     test_public_compiler_golden_policy_preserves_all_332_prior_records()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     assert policy["records"][336:337] == [_LIVE_PRIVATE_FIELD_RECORD]
 
 
@@ -5580,7 +6068,7 @@ def test_public_git_blob_sourcebinding_rebind_appends_one_exact_identity() -> No
         )
     )
     test_live_private_field_policy_preserves_all_336_prior_records()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     record = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[8]
     assert policy["records"][337:338] == [record]
     assert record["identity"]["path"] == (
@@ -5594,9 +6082,9 @@ def test_public_git_blob_sourcebinding_rebind_appends_one_exact_identity() -> No
         tuple(record["identity"]["hashed_secret_bytes"]),
     ) == verifier._PUBLIC_GIT_BLOB_SOURCEBINDING_REBIND_IDENTITY
     digest = _public_git_blob_source_identity(
-        (root / record["identity"]["path"]).read_text(encoding="utf-8"),
+        _pre_squash_source_text(record["identity"]["path"]),
         "SOURCE_GIT_BLOB",
-        (root / "alembic/versions/148642dd1207_fix_missing_tables.py").read_bytes(),
+        _pre_squash_source_bytes("alembic/versions/148642dd1207_fix_missing_tables.py"),
     )
     assert digest == tuple(record["identity"]["hashed_secret_bytes"])
 
@@ -5769,6 +6257,9 @@ _OWNER_ACTIVATED_ENV_SOURCE_BLOB = (
 )
 
 # Exact source binding for the 58 owner-approved historical-148 identities.
+# Existing test node IDs are retained for callers. In these historical contracts,
+# "current" means the later pre-squash recapture, not a live migration source.
+# Separate still-live-source checks below prevent the frozen inputs hiding drift.
 _HISTORICAL148_SOURCE_PINS_AND_LINES = {
     "quality/historical148-squawk-policy.json": (
         (
@@ -6176,7 +6667,7 @@ def test_historical148_integrity_adds_only_58_and_preserves_347_prefix() -> None
             encoding="utf-8"
         )
     )
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     encoded_prefix = json.dumps(
         policy["records"][:347],
         sort_keys=True,
@@ -6349,14 +6840,16 @@ def test_historical148_validator_pins_are_public_canonical_fingerprints() -> Non
 
 
 def _historical148_current_inputs() -> tuple[bytes, bytes, bytes, bytes]:
-    root = Path(__file__).resolve().parents[1]
+    """Latest pre-squash capture inputs, not current migration execution inputs."""
     return (
-        (root / "quality/historical148-squawk-policy.json").read_bytes(),
-        (root / "scripts/quality/validate_historical148_squawk.py").read_bytes(),
-        (root / "tests/fixtures/historical148-squawk-capture-15eaaa.json").read_bytes(),
-        (
-            root / "tests/fixtures/historical148-squawk-capture-3d83fb27.json"
-        ).read_bytes(),
+        _pre_squash_source_bytes("quality/historical148-squawk-policy.json"),
+        _pre_squash_source_bytes("scripts/quality/validate_historical148_squawk.py"),
+        _pre_squash_source_bytes(
+            "tests/fixtures/historical148-squawk-capture-15eaaa.json"
+        ),
+        _pre_squash_source_bytes(
+            "tests/fixtures/historical148-squawk-capture-3d83fb27.json"
+        ),
     )
 
 
@@ -6520,11 +7013,10 @@ def test_historical148_reconstruction_rejects_each_historical_input_change(
 
 
 def test_historical148_changed_current_literals_remain_unapproved() -> None:
-    root = Path(__file__).resolve().parents[1]
     changed_paths: set[str] = set()
     records = iter(_historical148_source_records())
     for path, (_, lines) in _HISTORICAL148_SOURCE_PINS_AND_LINES.items():
-        source_lines = (root / path).read_text(encoding="utf-8").splitlines()
+        source_lines = _pre_squash_source_text(path).splitlines()
         for line in lines:
             historical = next(records)
             values = re.findall(
@@ -6562,10 +7054,9 @@ def test_historical148_changed_current_literals_remain_unapproved() -> None:
 def test_historical148_current_capture_cannot_inherit_old_path_approvals(
     capture_path: str,
 ) -> None:
-    root = Path(__file__).resolve().parents[1]
     values = re.findall(
         r'"([0-9a-f]{40}|[0-9a-f]{64})"',
-        (root / capture_path).read_text(encoding="utf-8"),
+        _pre_squash_source_text(capture_path),
     )
     current_digests = {
         tuple(hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest())
@@ -6777,10 +7268,9 @@ def _oct30_assert_source_blob(path: str, data: bytes) -> None:
 
 
 def _oct30_source_records() -> list[dict[str, Any]]:
-    root = Path(__file__).resolve().parents[1]
     records: list[dict[str, Any]] = []
     for path, (_, line_numbers) in _OCT30_SOURCE_PINS_AND_LINES.items():
-        data = (root / path).read_bytes()
+        data = _pre_squash_source_bytes(path)
         _oct30_assert_source_blob(path, data)
         lines = data.decode("utf-8").splitlines()
         for line_number in line_numbers:
@@ -6825,7 +7315,7 @@ def _oct30_policy() -> dict[str, Any]:
 def _oct30_assert_population(
     policy: dict[str, Any], expected: list[dict[str, Any]]
 ) -> None:
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     encoded_prefix = json.dumps(
         policy["records"][:405],
         sort_keys=True,
@@ -6896,10 +7386,9 @@ def test_oct30_population_rejects_missing_extra_reordered_or_changed_prior() -> 
 
 
 def test_oct30_source_pins_reject_changed_bytes_and_transplanted_sources() -> None:
-    root = Path(__file__).resolve().parents[1]
     paths = list(_OCT30_SOURCE_PINS_AND_LINES)
     for index, path in enumerate(paths):
-        original = (root / path).read_bytes()
+        original = _pre_squash_source_bytes(path)
         _oct30_assert_source_blob(path, original)
         with pytest.raises(AssertionError):
             _oct30_assert_source_blob(path, original + b"\n")
@@ -7154,8 +7643,7 @@ def _aud447_assert_source_blob(path: str, data: bytes) -> None:
 
 
 def _aud447_allocation_source_records() -> list[dict[str, Any]]:
-    root = Path(__file__).resolve().parents[1]
-    sources = {path: (root / path).read_bytes() for path in _AUD447_SOURCE_BLOBS}
+    sources = {path: _pre_squash_source_bytes(path) for path in _AUD447_SOURCE_BLOBS}
     for path, data in sources.items():
         _aud447_assert_source_blob(path, data)
     for spec in _AUD447_CI_ALLOCATION_SPEC:
@@ -7179,7 +7667,7 @@ def _aud447_assert_population(
     policy: dict[str, Any], expected: list[dict[str, Any]]
 ) -> None:
     assert len(expected) == 5
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     encoded_prefix = json.dumps(
         policy["records"][:494],
         sort_keys=True,
@@ -7387,10 +7875,9 @@ def test_aud447_allocation_population_is_append_only(mutation: str) -> None:
 
 
 def test_aud447_allocation_source_pins_refuse_changes_and_transplants() -> None:
-    root = Path(__file__).resolve().parents[1]
     paths = list(_AUD447_SOURCE_BLOBS)
     for index, path in enumerate(paths):
-        source = (root / path).read_bytes()
+        source = _pre_squash_source_bytes(path)
         _aud447_assert_source_blob(path, source)
         with pytest.raises(AssertionError):
             _aud447_assert_source_blob(path, source + b"\n")
@@ -7724,17 +8211,17 @@ def _nov1_v4_assert_append_only_population(policy: dict[str, Any]) -> None:
     expected = [_nov1_v4_binding_record(index) for index in range(3)]
     assert len(expected) == 3
     _aud447_assert_population(policy, _aud447_allocation_records())
-    assert policy["records"][499:] == expected
+    assert policy["records"][499:502] == expected
 
 
 def test_nov1_v4_policy_appends_only_three_to_the_unchanged_499_prefix() -> None:
     policy = _oct30_policy()
     _nov1_v4_assert_append_only_population(policy)
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 504
     validated = verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 11, 1)
+        policy, today=verifier.date(2026, 11, 2)
     )
-    assert len(validated) == 502
+    assert len(validated) == 504
 
 
 def test_nov1_v4_guard_reserves_exact_fixture_categories_and_only_new_digests() -> None:
@@ -7903,3 +8390,387 @@ def test_nov1_v4_trusted_loader_keeps_candidate_only_approval_separate(
         verifier.load_owner_authored_candidate_false_positive_dispositions(
             repository_root=repository, today=today
         )
+
+
+# Exact append-only approval; digest bytes avoid introducing scanner literals.
+def _nov2_integrity_records() -> list[dict[str, Any]]:
+    cases = [
+        (
+            "tests/integration/test_mvp_baseline_schema_equivalence.py",
+            (
+                *(223, 180, 227, 77, 196, 192, 57, 78, 207, 219),
+                *(31, 217, 77, 130, 107, 60, 67, 250, 21, 190),
+            ),
+            (
+                "Public pre-squash repository commit; exact source reference "
+                "tests/integration/test_mvp_baseline_schema_equivalence.py:35 field "
+                "PRE_SQUASH_COMMIT. Identity derived using the pinned "
+                "detect-secrets 1.5.0 SHA-1 algorithm; not scanner-exported and not "
+                "credential material."
+            ),
+        ),
+        (
+            "tests/test_aud378_slsa_provenance_attestation.py",
+            (
+                *(165, 69, 159, 227, 95, 134, 249, 202, 88, 75),
+                *(180, 150, 196, 54, 131, 86, 48, 20, 31, 42),
+            ),
+            (
+                "Public official slsa-verifier v2.7.1 linux-amd64 attestation "
+                "SHA-256; exact source reference "
+                "tests/test_aud378_slsa_provenance_attestation.py:11 field "
+                "PROVENANCE_SHA256; GitHub release asset 267893648. Identity "
+                "derived using pinned detect-secrets 1.5.0 SHA-1; not "
+                "scanner-exported and not credential material."
+            ),
+        ),
+    ]
+    return [
+        {
+            "identity": {
+                "path": path,
+                "type": "Hex High Entropy String",
+                "hashed_secret_bytes": list(digest),
+            },
+            "category": "public_integrity_digest",
+            "evidence": evidence,
+            "owner": "egorribun",
+            "reviewed_on": "2026-11-02",
+            "expires_on": "2027-01-09",
+            "approval_status": "approved",
+        }
+        for path, digest, evidence in cases
+    ]
+
+
+def test_nov2_integrity_policy_preserves_502_and_adds_only_two() -> None:
+    policy = _oct30_policy()
+    assert len(policy["records"]) == 504
+    prefix = json.dumps(
+        policy["records"][:502],
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    assert hashlib.sha1(prefix, usedforsecurity=False).digest() == bytes(
+        (
+            206,
+            112,
+            236,
+            181,
+            230,
+            167,
+            199,
+            124,
+            213,
+            194,
+            2,
+            33,
+            166,
+            30,
+            74,
+            76,
+            55,
+            90,
+            200,
+            219,
+        )
+    )
+    assert policy["records"][502:] == _nov2_integrity_records()
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                policy, today=verifier.date(2026, 11, 2)
+            )
+        )
+        == 504
+    )
+    assert verifier._FALSE_POSITIVE_RECORD_LIMIT == 512
+
+
+@pytest.mark.parametrize("index", range(2))
+def test_nov2_integrity_identity_matches_its_public_source(index: int) -> None:
+    root = Path(__file__).resolve().parents[1]
+    record = _nov2_integrity_records()[index]
+    identity = record["identity"]
+    field = ("PRE_SQUASH_COMMIT", "PROVENANCE_SHA256")[index]
+    source = ast.parse((root / identity["path"]).read_text(encoding="utf-8"))
+    values = [
+        ast.literal_eval(node.value)
+        for node in source.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == field
+            for target in node.targets
+        )
+    ]
+    assert len(values) == 1
+    assert isinstance(values[0], str)
+    assert hashlib.sha1(
+        values[0].encode("utf-8"), usedforsecurity=False
+    ).digest() == bytes(identity["hashed_secret_bytes"])
+
+
+@pytest.mark.parametrize("index", range(2))
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "type",
+        "digest",
+        "category",
+        "evidence",
+        "owner",
+        "reviewed_on",
+        "expires_on",
+        "approval_status",
+        "wildcard",
+    ],
+)
+def test_nov2_integrity_rejects_any_approval_scope_drift(
+    index: int, mutation: str
+) -> None:
+    record = _nov2_integrity_records()[index]
+    if mutation == "path":
+        record["identity"]["path"] += ".other"
+    elif mutation == "type":
+        record["identity"]["type"] = "Base64 High Entropy String"
+    elif mutation == "digest":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "wildcard":
+        record["identity"]["path"] = "tests/*"
+    elif mutation == "category":
+        record["category"] = "documented_crypto_test_vector"
+    elif mutation == "evidence":
+        record["evidence"] += " broadened"
+    elif mutation == "owner":
+        record["owner"] = "other-owner"
+    elif mutation == "reviewed_on":
+        record["reviewed_on"] = "2026-11-01"
+    elif mutation == "expires_on":
+        record["expires_on"] = "2027-01-10"
+    else:
+        record["approval_status"] = "pending"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 11, 2)
+        )
+
+
+@pytest.mark.parametrize("index", range(2))
+@pytest.mark.parametrize(
+    ("today", "accepted"),
+    [
+        (verifier.date(2026, 11, 1), False),
+        (verifier.date(2026, 11, 2), True),
+        (verifier.date(2027, 1, 9), True),
+        (verifier.date(2027, 1, 10), False),
+    ],
+)
+def test_nov2_integrity_expires_before_january_ten(
+    index: int, today: verifier.date, accepted: bool
+) -> None:
+    document = _disposition_document(_nov2_integrity_records()[index])
+    if accepted:
+        assert (
+            len(verifier.validate_false_positive_dispositions(document, today=today))
+            == 1
+        )
+    else:
+        with pytest.raises(verifier.BaselineArtifactError):
+            verifier.validate_false_positive_dispositions(document, today=today)
+
+
+@pytest.mark.parametrize("path", tuple(_PRE_SQUASH_SOURCE_BLOBS))
+def test_pre_squash_scanner_source_is_available_and_exact(path: str) -> None:
+    assert _pre_squash_source_bytes(path)
+
+
+@pytest.mark.parametrize("path", tuple(_PRE_SQUASH_SOURCE_BLOBS))
+@pytest.mark.parametrize("mutation", ["changed", "empty", "transplanted"])
+def test_pre_squash_scanner_source_rejects_changed_or_transplanted_bytes(
+    path: str, mutation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = _pre_squash_source_bytes(path)
+    if mutation == "changed":
+        data = original + b"\n"
+    elif mutation == "empty":
+        data = b""
+    else:
+        paths = list(_PRE_SQUASH_SOURCE_BLOBS)
+        other = paths[(paths.index(path) + 1) % len(paths)]
+        data = _pre_squash_source_bytes(other)
+
+    def changed_result(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess:
+        return subprocess.CompletedProcess(args[0], 0, stdout=data, stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", changed_result)
+    with pytest.raises(AssertionError, match="source blob changed"):
+        _pre_squash_source_bytes(path)
+
+
+@pytest.mark.parametrize("failure", ["exec-missing", "object-missing", "timeout"])
+def test_pre_squash_scanner_source_fails_closed_without_history(
+    failure: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def failed_result(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess:
+        if failure == "exec-missing":
+            raise FileNotFoundError("untrusted Git diagnostic")
+        if failure == "object-missing":
+            raise subprocess.CalledProcessError(
+                128, args[0], stderr=b"untrusted Git diagnostic"
+            )
+        raise subprocess.TimeoutExpired(args[0], 30)
+
+    monkeypatch.setattr(subprocess, "run", failed_result)
+    path = next(iter(_PRE_SQUASH_SOURCE_BLOBS))
+    with pytest.raises(AssertionError, match="full-history checkout") as caught:
+        _pre_squash_source_bytes(path)
+    assert "untrusted" not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "../outside.py",
+        "tests/unreviewed.py",
+        "./quality/historical148-squawk-policy.json",
+    ],
+)
+def test_pre_squash_scanner_source_refuses_unreviewed_paths_before_git(
+    path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("Git must not run for an unreviewed path")
+
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    with pytest.raises(AssertionError, match="unreviewed historical source path"):
+        _pre_squash_source_bytes(path)
+
+
+def test_pre_squash_scanner_source_uses_only_pinned_git_bytes_not_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = next(iter(_PRE_SQUASH_SOURCE_BLOBS))
+    original = _pre_squash_source_bytes(path)
+    impostor = tmp_path / path
+    impostor.parent.mkdir(parents=True)
+    impostor.write_bytes(b"unreviewed current content")
+    calls = []
+
+    def pinned_result(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, stdout=original, stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", pinned_result)
+    assert _pre_squash_source_bytes(path, repository_root=tmp_path) == original
+    assert calls == [
+        (
+            [
+                _git_executable(),
+                "--no-replace-objects",
+                "cat-file",
+                "blob",
+                f"{_PRE_SQUASH_SOURCE_COMMIT}:{path}",
+            ],
+            dict(cwd=tmp_path, check=True, capture_output=True, timeout=30),
+        )
+    ]
+    assert impostor.read_bytes() == b"unreviewed current content"
+
+
+def test_scanner_history_contract_checkout_is_not_shallow() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    job = source.split("  contract-tests:\n", 1)[1]
+    job = re.split(r"\n  [a-zA-Z0-9_-]+:\n", job, maxsplit=1)[0]
+    checkout = re.search(
+        r"(?m)^        uses: actions/checkout@[^\n]+\n"
+        r"        with:\n((?:          [^\n]+\n)+)",
+        job,
+    )
+    assert checkout is not None
+    assert "          fetch-depth: 0\n" in checkout[1]
+    assert "          persist-credentials: false\n" in checkout[1]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "quality/historical148-squawk-policy.json",
+        "scripts/quality/validate_historical148_squawk.py",
+        "scripts/quality/run_owned_redis_contracts.py",
+        "tests/test_aud427_428_contract_quality.py",
+        ".github/workflows/reusable-backend-tests.yml",
+    ],
+)
+def test_still_live_scanner_sources_keep_their_exact_reviewed_bytes(path: str) -> None:
+    # Frozen provenance must not conceal a change to a still-live source.
+    root = Path(__file__).resolve().parents[1]
+    assert (root / path).read_bytes() == _pre_squash_source_bytes(path)
+
+
+def _assert_live_aud447_allocation_source(source: str) -> None:
+    path = "tests/test_quality_workflow_contract.py"
+    name = "_assert_aud447_owned_postgres_allocation"
+    historical = ast.parse(_pre_squash_source_text(path))
+    current = ast.parse(source)
+    expected = [
+        node
+        for node in historical.body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    ]
+    actual = [
+        node
+        for node in current.body
+        if isinstance(node, ast.FunctionDef) and node.name == name
+    ]
+    assert len(expected) == len(actual) == 1
+    assert ast.dump(actual[0]) == ast.dump(expected[0])
+
+
+def test_live_aud447_allocation_source_keeps_exact_reviewed_scope() -> None:
+    # Other workflow contracts evolved; the approved live sentinel's complete
+    # allocation function must remain unchanged, not merely its literal value.
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "tests/test_quality_workflow_contract.py").read_text(
+        encoding="utf-8"
+    )
+    _assert_live_aud447_allocation_source(source)
+
+
+@pytest.mark.parametrize("mutation", ["renamed", "duplicate", "changed", "removed"])
+def test_live_aud447_allocation_binding_refuses_changed_scope(mutation: str) -> None:
+    source = _pre_squash_source_text("tests/test_quality_workflow_contract.py")
+    tree = ast.parse(source)
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_assert_aud447_owned_postgres_allocation"
+    )
+    if mutation == "renamed":
+        function.name = "unreviewed_allocation"
+    elif mutation == "duplicate":
+        tree.body.append(copy.deepcopy(function))
+    elif mutation == "changed":
+        function.body.append(ast.Pass())
+    else:
+        tree.body.remove(function)
+    with pytest.raises(AssertionError):
+        _assert_live_aud447_allocation_source(
+            ast.unparse(ast.fix_missing_locations(tree))
+        )
+
+
+def test_pre_squash_scanner_source_requires_installed_git(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("Subprocess must not run without Git")
+
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    with pytest.raises(pytest.fail.Exception, match="Git executable is required"):
+        _pre_squash_source_bytes(next(iter(_PRE_SQUASH_SOURCE_BLOBS)))

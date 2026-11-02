@@ -164,9 +164,12 @@ async def _identity(state: SimpleNamespace, user_id: UUID | str) -> None:
         )
     )
     assert bypass is False
-    assert await connection.scalar(
-        sa.text("SELECT pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER')")
-    ) is False
+    assert (
+        await connection.scalar(
+            sa.text("SELECT pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER')")
+        )
+        is False
+    )
     await connection.execute(
         sa.text("SELECT set_config('app.current_tenant', :tenant, true)"),
         {"tenant": str(state.tenant)},
@@ -306,15 +309,21 @@ async def test_receipt_upgrade_creates_exact_catalog_and_forces_owner_rls(
     assert flags.one() == (False, False, False)
     await connection.execute(sa.text(f'SET LOCAL ROLE "{state.member}"'))
     assert await connection.scalar(sa.text("SELECT current_user")) == state.member
-    assert await connection.scalar(
-        sa.text(
-            "SELECT rolsuper OR rolbypassrls FROM pg_roles "
-            "WHERE rolname = current_user"
+    assert (
+        await connection.scalar(
+            sa.text(
+                "SELECT rolsuper OR rolbypassrls FROM pg_roles "
+                "WHERE rolname = current_user"
+            )
         )
-    ) is False
-    assert await connection.scalar(
-        sa.text("SELECT pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER')")
-    ) is True
+        is False
+    )
+    assert (
+        await connection.scalar(
+            sa.text("SELECT pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER')")
+        )
+        is True
+    )
     await connection.execute(
         sa.text("SELECT set_config('app.current_user_id', :user, true)"),
         {"user": str(state.owner)},
@@ -371,9 +380,12 @@ async def test_receipt_rls_inherits_parent_chat_tenant_visibility(
     receipt_schema: SimpleNamespace,
 ) -> None:
     state = receipt_schema
-    assert await state.connection.scalar(
-        sa.text("SELECT count(*) FROM chats WHERE tenant_id IS NULL")
-    ) == 0
+    assert (
+        await state.connection.scalar(
+            sa.text("SELECT count(*) FROM chats WHERE tenant_id IS NULL")
+        )
+        == 0
+    )
     await _identity(state, state.owner)
     await state.connection.execute(
         sa.text("SELECT set_config('app.current_tenant', :tenant, true)"),

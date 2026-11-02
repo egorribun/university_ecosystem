@@ -6342,7 +6342,8 @@ def _validated_password_forgot_stat(value: object) -> dict[str, object] | None:
         type(value["status"]) is not str
         or value["status"] not in _PASSWORD_FORGOT_STATUSES
         or type(value["responsePhase"]) is not str
-        or value["responsePhase"] not in {
+        or value["responsePhase"]
+        not in {
             "none",
             "before-click",
             "after-click",

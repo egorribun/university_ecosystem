@@ -5,11 +5,15 @@ import copy
 import hashlib
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from scripts import verify_secrets_baseline as verifier
+from tests.quality_normalizer_v2_testkit import with_historical_legacy_migration_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_ROOTS = (ROOT / "app",)
@@ -328,7 +332,9 @@ def test_active_quality_contracts_have_no_retired_factor_references() -> None:
 
 
 def test_quality_contract_masks_only_exact_historical_migration_path_values() -> None:
-    contract = json.loads(QUALITY_CONTRACT.read_text(encoding="utf-8"))
+    contract = with_historical_legacy_migration_policy(
+        json.loads(QUALITY_CONTRACT.read_text(encoding="utf-8"))
+    )
     tier0 = contract["tier0"]
     baselines = tier0["legacy_migration_baselines"]
     files = baselines["files"]
@@ -371,9 +377,97 @@ def test_backend_tests_have_no_retired_factor_references() -> None:
     assert findings == []
 
 
+# Immutable evidence for the owner-approved fresh-only migration squash.
+# This independent public byte pin does not add a scanner approval identity.
+# Read Git objects only: never restore, import, or execute historical source.
+_HISTORICAL_SOURCE_COMMIT = bytes(
+    (
+        63,
+        245,
+        55,
+        95,
+        186,
+        1,
+        182,
+        255,
+        111,
+        43,
+        193,
+        138,
+        175,
+        45,
+        107,
+        43,
+        161,
+        142,
+        25,
+        201,
+    )
+).hex()
+_HISTORICAL_SOURCE_BLOB = bytes(
+    (
+        41,
+        246,
+        169,
+        186,
+        103,
+        216,
+        241,
+        10,
+        9,
+        176,
+        84,
+        36,
+        42,
+        125,
+        174,
+        204,
+        253,
+        123,
+        10,
+        123,
+    )
+)
+
+
+def _read_historical_orchestrator_source() -> bytes:
+    assert HISTORICAL_ORCHESTRATOR_TEST == Path(
+        "tests/test_migration_148642dd1207_orchestrator.py"
+    ), "unreviewed historical source path"
+    executable = shutil.which("git")
+    assert executable is not None, "historical MFA evidence requires a Git executable"
+    try:
+        executable = str(Path(executable).resolve(strict=True))
+        # Fixed read-only object lookup: no shell or user-controlled arguments.
+        result = subprocess.run(  # noqa: S603
+            [
+                executable,
+                "--no-replace-objects",
+                "cat-file",
+                "blob",
+                f"{_HISTORICAL_SOURCE_COMMIT}:{HISTORICAL_ORCHESTRATOR_TEST.as_posix()}",
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        raise AssertionError(
+            "historical MFA evidence requires immutable pre-squash Git history; "
+            "use a full-history checkout (fetch-depth: 0)"
+        ) from None
+    source = result.stdout
+    header = f"blob {len(source)}\0".encode("ascii")
+    assert hashlib.sha1(header + source, usedforsecurity=False).digest() == (
+        _HISTORICAL_SOURCE_BLOB
+    ), "historical MFA source blob changed"
+    return source
+
+
 @pytest.fixture
 def historical_orchestrator_source() -> bytes:
-    return (ROOT / HISTORICAL_ORCHESTRATOR_TEST).read_bytes()
+    return _read_historical_orchestrator_source()
 
 
 def test_backend_guard_accepts_only_the_source_bound_historical_literals(
@@ -549,7 +643,7 @@ def _historical_orchestrator_pin_digest() -> tuple[int, ...]:
     assert len(assignments) == 1
     value = ast.literal_eval(assignments[0].value)
     assert isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value)
-    source = (ROOT / HISTORICAL_ORCHESTRATOR_TEST).read_bytes()
+    source = _read_historical_orchestrator_source()
     header = f"blob {len(source)}\0".encode("ascii")
     assert value == hashlib.sha1(header + source, usedforsecurity=False).hexdigest()
     return tuple(hashlib.sha1(value.encode("ascii"), usedforsecurity=False).digest())
@@ -684,3 +778,128 @@ def test_runtime_guard_still_rejects_an_active_retired_factor(
     monkeypatch.setitem(globals(), "RUNTIME_ROOTS", (runtime,))
     with pytest.raises(AssertionError):
         test_runtime_has_no_webauthn_references_or_models()
+
+
+@pytest.mark.parametrize("mutation", ["changed", "empty", "transplanted"])
+def test_historical_mfa_source_rejects_unreviewed_bytes_independently_of_consumer_pin(
+    mutation: str,
+    historical_orchestrator_source: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if mutation == "changed":
+        source = historical_orchestrator_source + b"\n"
+    elif mutation == "empty":
+        source = b""
+    else:
+        source = Path(__file__).read_bytes()
+    header = f"blob {len(source)}\0".encode("ascii")
+    monkeypatch.setitem(
+        globals(),
+        "HISTORICAL_ORCHESTRATOR_BLOB",
+        hashlib.sha1(header + source, usedforsecurity=False).hexdigest(),
+    )
+
+    def changed_result(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        return subprocess.CompletedProcess(args, 0, stdout=source, stderr=b"")
+
+    monkeypatch.setattr(subprocess, "run", changed_result)
+    with pytest.raises(AssertionError, match="historical MFA source blob changed"):
+        _read_historical_orchestrator_source()
+
+
+@pytest.mark.parametrize("failure", ["git-missing", "object-missing", "timeout"])
+def test_historical_mfa_source_fails_closed_without_history(
+    failure: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "git"
+    executable.touch()
+    monkeypatch.setattr(shutil, "which", lambda _name: str(executable))
+
+    def failed_result(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        if failure == "git-missing":
+            raise FileNotFoundError("untrusted Git diagnostic")
+        if failure == "object-missing":
+            raise subprocess.CalledProcessError(
+                128, args, stderr=b"untrusted Git diagnostic"
+            )
+        raise subprocess.TimeoutExpired(args, 30)
+
+    monkeypatch.setattr(subprocess, "run", failed_result)
+    with pytest.raises(AssertionError, match="full-history checkout") as caught:
+        _read_historical_orchestrator_source()
+    assert "untrusted" not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "../outside.py",
+        "tests/unreviewed.py",
+        "tests/new/test_migration_148642dd1207_orchestrator.py",
+    ],
+)
+def test_historical_mfa_source_rejects_unreviewed_path_before_git(
+    path: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("Git must not run for an unreviewed path")
+
+    monkeypatch.setitem(globals(), "HISTORICAL_ORCHESTRATOR_TEST", Path(path))
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    with pytest.raises(AssertionError, match="unreviewed historical source path"):
+        _read_historical_orchestrator_source()
+
+
+def test_historical_mfa_source_uses_owned_git_history_not_mutable_root(
+    tmp_path: Path,
+    historical_orchestrator_source: bytes,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impostor = tmp_path / HISTORICAL_ORCHESTRATOR_TEST
+    impostor.parent.mkdir()
+    impostor.write_bytes(b"unreviewed current source")
+    monkeypatch.setitem(globals(), "ROOT", tmp_path)
+    calls = []
+
+    def pinned_result(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(
+            args, 0, stdout=historical_orchestrator_source, stderr=b""
+        )
+
+    executable = tmp_path / "git"
+    executable.touch()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(shutil, "which", lambda _name: "git")
+    monkeypatch.setattr(subprocess, "run", pinned_result)
+    assert _read_historical_orchestrator_source() == historical_orchestrator_source
+    assert calls == [
+        (
+            [
+                str(executable.resolve(strict=True)),
+                "--no-replace-objects",
+                "cat-file",
+                "blob",
+                f"{_HISTORICAL_SOURCE_COMMIT}:{HISTORICAL_ORCHESTRATOR_TEST.as_posix()}",
+            ],
+            dict(
+                cwd=Path(__file__).resolve().parents[1],
+                check=True,
+                capture_output=True,
+                timeout=30,
+            ),
+        )
+    ]
+    assert impostor.read_bytes() == b"unreviewed current source"
+
+
+def test_historical_mfa_source_fails_closed_without_git_executable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("Git must not run without a resolved executable")
+
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    with pytest.raises(AssertionError, match="requires a Git executable"):
+        _read_historical_orchestrator_source()

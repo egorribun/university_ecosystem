@@ -5132,6 +5132,47 @@ _AUD447_PRIOR_QUALITY_IDENTITIES = frozenset(
 )
 
 
+# Two owner-approved public integrity identities, reviewed on November 2.
+# The existing date schema is inclusive; January 9 expires before January 10.
+_NOV2_PUBLIC_INTEGRITY_EVIDENCE = {
+    (
+        "tests/integration/test_mvp_baseline_schema_equivalence.py",
+        "Hex High Entropy String",
+        (
+            *(223, 180, 227, 77, 196, 192, 57, 78, 207, 219),
+            *(31, 217, 77, 130, 107, 60, 67, 250, 21, 190),
+        ),
+    ): (
+        "Public pre-squash repository commit; exact source reference "
+        "tests/integration/test_mvp_baseline_schema_equivalence.py:35 field "
+        "PRE_SQUASH_COMMIT. Identity derived using the pinned detect-secrets "
+        "1.5.0 SHA-1 algorithm; not scanner-exported and not credential "
+        "material."
+    ),
+    (
+        "tests/test_aud378_slsa_provenance_attestation.py",
+        "Hex High Entropy String",
+        (
+            *(165, 69, 159, 227, 95, 134, 249, 202, 88, 75),
+            *(180, 150, 196, 54, 131, 86, 48, 20, 31, 42),
+        ),
+    ): (
+        "Public official slsa-verifier v2.7.1 linux-amd64 attestation SHA-256; "
+        "exact source reference "
+        "tests/test_aud378_slsa_provenance_attestation.py:11 field "
+        "PROVENANCE_SHA256; GitHub release asset 267893648. Identity derived "
+        "using pinned detect-secrets 1.5.0 SHA-1; not scanner-exported and not "
+        "credential material."
+    ),
+}
+_NOV2_PUBLIC_INTEGRITY_PATHS = frozenset(
+    identity[0] for identity in _NOV2_PUBLIC_INTEGRITY_EVIDENCE
+)
+_NOV2_PUBLIC_INTEGRITY_DIGESTS = frozenset(
+    identity[2] for identity in _NOV2_PUBLIC_INTEGRITY_EVIDENCE
+)
+
+
 _FALSE_POSITIVE_DOCUMENT_FIELDS = frozenset({"schema_version", "records"})
 _FALSE_POSITIVE_POLICY_PATH = "quality/security-false-positive-dispositions.json"
 _FALSE_POSITIVE_RECORD_LIMIT = 512
@@ -5612,6 +5653,21 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        nov2_evidence = _NOV2_PUBLIC_INTEGRITY_EVIDENCE.get(exact_source_identity)
+        if (
+            path in _NOV2_PUBLIC_INTEGRITY_PATHS
+            or tuple(raw_digest_bytes) in _NOV2_PUBLIC_INTEGRITY_DIGESTS
+        ) and (
+            nov2_evidence is None
+            or category != "public_integrity_digest"
+            or record.get("evidence") != nov2_evidence
+            or record.get("owner") != "egorribun"
+            or record.get("reviewed_on") != "2026-11-02"
+            or record.get("expires_on") != "2027-01-09"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: November-2 integrity identity or approval changed"
+            )
         v4_category = _V4_FIXTURE_CATEGORY_BY_IDENTITY.get(exact_source_identity)
         if (
             path == _V4_FIXTURE_PATH

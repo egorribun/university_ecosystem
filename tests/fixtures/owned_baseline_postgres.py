@@ -39,9 +39,7 @@ from sqlalchemy.engine import make_url
 
 from scripts.quality.render_live_alembic_sql import _owned_scratch_database
 
-_POSTGRES_IMAGE = (
-    "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
-)
+_POSTGRES_IMAGE = "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
 _IMAGE_DIGEST = _POSTGRES_IMAGE.split("@", 1)[1]
 _OWNER_LABEL = "university-ecosystem.owned-baseline-test"
 _DOCKER_SOCKET = "unix:///var/run/docker.sock"
@@ -101,9 +99,7 @@ def _new_docker_client() -> docker.APIClient:
     # of mutating it. SDK construction may already normalize the freshly loaded
     # per-client mapping; no config file or process environment is modified.
     client._general_configs = {
-        key: value
-        for key, value in configuration.items()
-        if key != "HttpHeaders"
+        key: value for key, value in configuration.items() if key != "HttpHeaders"
     }
     return client
 
@@ -241,14 +237,11 @@ class _ContainerLease:
         ):
             raise OwnedPostgresError("Owned PostgreSQL lease is not active")
         data = _docker_call(self._identity, "database-admission identity inspection")
-        if (
-            data.get("State", {}).get("Running") is not True
-            or data.get("NetworkSettings", {}).get("Ports") != {
-                "5432/tcp": [
-                    {"HostIp": "127.0.0.1", "HostPort": str(server.url.port)}
-                ]
-            }
-        ):
+        if data.get("State", {}).get("Running") is not True or data.get(
+            "NetworkSettings", {}
+        ).get("Ports") != {
+            "5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": str(server.url.port)}]
+        }:
             raise OwnedPostgresError("Owned PostgreSQL active binding changed")
 
     def close(self) -> None:
