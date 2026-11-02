@@ -23,7 +23,7 @@ function assertProfileAboutStorageBound(source) {
   // The frozen revision emits adjacent Python string literals. Decode only that
   // literal subset, then inspect the named table rather than a whole-file match.
   const blocks = source.matchAll(
-    /^    \(\n((?:        (?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\n)+)    \),$/gmu
+    /^ {4}\(\n((?: {8}(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\n)+) {4}\),$/gmu
   )
   const statements = [...blocks].map((match) =>
     match[1]

@@ -375,10 +375,7 @@ def test_schema_statement_proof_accepts_the_exact_finite_positive(
         (
             "wrong-partition-attachment",
             "after",
-            (
-                "ATTACH PARTITION "
-                "public.notifications_2026_05_user_id_created_at_idx1"
-            ),
+            ("ATTACH PARTITION public.notifications_2026_05_user_id_created_at_idx1"),
             "ATTACH PARTITION public.unrelated_index",
         ),
         (

@@ -599,9 +599,7 @@ git() {
         leaked = marker in result.stdout.str() + result.stderr.str()
         assert not leaked, "The writer exposed its synthetic credential"
         events = (
-            journal.read_text(encoding="utf-8").splitlines()
-            if journal.exists()
-            else []
+            journal.read_text(encoding="utf-8").splitlines() if journal.exists() else []
         )
         return result.ret, events
 
@@ -627,16 +625,16 @@ def test_weekly_duration_writer_authenticates_only_the_guarded_push(
     mutations = ["switch", "config-name", "config-email", "add", "commit"]
     if case == "changed":
         assert status == 0
-        assert events == mutations + ["authenticated-push", "pr"]
+        assert events == [*mutations, "authenticated-push", "pr"]
     elif case == "unchanged":
         assert status == 0
         assert events == []
     elif case == "push-failed":
         assert status == 77
-        assert events == mutations + ["authenticated-push"]
+        assert events == [*mutations, "authenticated-push"]
     elif case == "pr-failed":
         assert status == 78
-        assert events == mutations + ["authenticated-push", "pr"]
+        assert events == [*mutations, "authenticated-push", "pr"]
     else:
         assert status != 0
         assert events == []
