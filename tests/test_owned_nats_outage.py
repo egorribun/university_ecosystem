@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+from scripts import live_stand
 from scripts.owned_nats_outage import (
     ContainerSnapshot,
     InventoryVerdict,
@@ -27,6 +28,9 @@ def _with_record(
 
 
 def test_inventory_accepts_exact_core_projection_and_completed_initializers() -> None:
+    assert len(CORE_SERVICES) == 24
+    assert len(CORE_INITIALIZERS) == 5
+    assert CORE_SERVICES == live_stand.LIVE_CORE_EXPECTED_SERVICES
     verdict = validate_inventory(CORE_SERVICES, core_container_snapshots())
     assert verdict is InventoryVerdict.VALID
 
@@ -144,10 +148,20 @@ def test_inventory_rejects_unhealthy_other_healthchecked_services(health: str) -
 
 
 @pytest.mark.parametrize("service", sorted(CORE_INITIALIZERS))
-def test_inventory_rejects_failed_initializer(service: str) -> None:
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"exit_code": 1},
+        {"running": True, "status": "running"},
+        {"running": True},
+        {"status": "created"},
+        {"oom_killed": True},
+    ],
+)
+def test_inventory_rejects_failed_initializer(service: str, changes: dict) -> None:
     records = core_container_snapshots()
     original = next(record for record in records if record.service == service)
-    records = _with_record(records, replace(original, exit_code=1))
+    records = _with_record(records, replace(original, **changes))
 
     verdict = validate_inventory(CORE_SERVICES, records)
     assert verdict is InventoryVerdict.INVALID_RUNTIME

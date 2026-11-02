@@ -16,7 +16,13 @@ from uuid import UUID
 
 _REQUIRED_HEALTHY = frozenset({"backend", "outbox-worker", "postgres", "minio", "nats"})
 _INITIALIZERS = frozenset(
-    {"migrations", "minio-init", "postgres-databases-init", "spicedb-migrate"}
+    {
+        "migrations",
+        "minio-init",
+        "postgres-databases-init",
+        "postgres-roles-init",
+        "spicedb-migrate",
+    }
 )
 _IDENTITY = re.compile(r"[0-9a-f]{64}")
 
