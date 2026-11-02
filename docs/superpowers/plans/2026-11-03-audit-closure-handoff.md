@@ -59,7 +59,7 @@ It records no new audit acceptance: the accepted lower bound stays as stated in
   merge PR #1343 before every required check is green on the exact SHA. Do not
   tag v1.0.0, publish to GHCR or deploy: those need the owner.
 - Never weaken a gate, threshold, required check or coverage floor. Do not add
-  `pragma: allowlist secret`, `type: ignore`, `nosemgrep`, skip or xfail. A
+  inline secret-allowlist suppressions, `type: ignore`, `nosemgrep`, skip or xfail. A
   `# noqa: S603  # <reason>` on a fixed-argv subprocess call is the accepted
   convention.
 - Security inventories: 1:1 rebinds of existing identities (same path and type)
