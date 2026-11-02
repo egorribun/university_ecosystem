@@ -1,9 +1,11 @@
 import { createHmac, randomUUID } from "node:crypto"
 import { Browser, BrowserContext, Page, Request, Response, TestInfo } from "@playwright/test"
+import * as v from "valibot"
 import {
   withLiveRegistrationAdmission,
   expect,
   freshPassword,
+  ownedSessionOrigin,
   loginAs,
   stubBreachedPasswordLookup,
   submitLogin,
@@ -15,6 +17,13 @@ import {
   reportAuthRegistrationFailure,
   reportAuthUiFailure,
 } from "./auth-notification-diagnostic"
+
+import {
+  createOwnedResetAccount,
+  findOwnedResetUserId,
+  readOwnedResetUserId,
+  type OwnedResetAccount,
+} from "./password-reset-account-identity"
 
 const TOTP_PERIOD_MS = 30_000
 const TOTP_DIGITS = 6
@@ -271,7 +280,11 @@ async function verifyRecoveryCodeOnLogin(
   return response
 }
 
-async function deleteOwnedAccount(browser: Browser, userId: string) {
+async function deleteOwnedAccount(
+  browser: Browser,
+  account: OwnedResetAccount,
+  knownUserId: string | null
+) {
   const context = await browser.newContext({
     baseURL: process.env.LIVE_BASE_URL,
     ignoreHTTPSErrors: true,
@@ -280,6 +293,11 @@ async function deleteOwnedAccount(browser: Browser, userId: string) {
   try {
     const page = await context.newPage()
     await loginAs(page, "admin")
+    // Resolve only this run's exact synthetic identity, including after a failed login.
+    const userId = await findOwnedResetUserId(page.request, ownedSessionOrigin(), account, 5_000)
+    if (knownUserId !== null && userId !== knownUserId) {
+      throw new Error("Owned MFA cleanup identity changed")
+    }
     const status = await page.evaluate(async (createdId) => {
       const csrfCookie = document.cookie
         .split(";")
@@ -309,11 +327,13 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
   page,
 }, testInfo) => {
   test.setTimeout(180_000)
-  const identity = randomUUID()
-  const email = `live-totp-${identity}@university.dev`
+  // Reuse the established owned-account identity and cleanup contract.
+  const account = createOwnedResetAccount(testInfo.project.name, randomUUID())
+  const { email, fullName } = account
   const password = freshPassword()
-  const fullName = `Live TOTP recovery acceptance ${testInfo.project.name} ${identity}`
   let createdUserId: string | null = null
+  let testFailed = false
+  let testFailure: unknown
   let registrationAttempted = false
   let registrationCompleted = false
   let registrationFormValid = false
@@ -368,15 +388,16 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
     registrationPhase = "response-received"
     reportAuthHttpStatus(testInfo.project.name, "totp_register", registered.status())
     expect(registered.ok()).toBe(true)
-    const registrationBody = (await registered.json()) as { id?: unknown }
-    if (typeof registrationBody.id !== "string" || registrationBody.id.length === 0) {
-      throw new Error("Synthetic account registration returned no account id")
+    const registrationBody: unknown = await registered.json()
+    const RegistrationReceipt = v.strictObject({ status: v.literal("ok") })
+    if (!v.safeParse(RegistrationReceipt, registrationBody).success) {
+      throw new Error("Synthetic account registration returned an invalid receipt")
     }
-    createdUserId = registrationBody.id
     registrationCompleted = true
 
     await submitLogin(page, email, password)
     await expect(page).toHaveURL(/\/dashboard$/u)
+    createdUserId = await readOwnedResetUserId(page.request, ownedSessionOrigin(), account, 5_000)
 
     await page.goto("/settings?tab=2")
     await expectOwnedProfileIdentityReady(
@@ -504,20 +525,50 @@ test("TOTP enrollment enables login and recovery codes are single-use", async ({
     await verifyTotpOnLogin(postReplayTotpLogin.page, postReplayTotp.code)
     checkPostReplayTotpLoginPageErrors()
   } catch (error) {
+    testFailed = true
+    testFailure = error
     if (registrationAttempted && !registrationCompleted) {
-      reportAuthRegistrationFailure(diagnosticProject(testInfo.project.name), "totp", {
-        phase: registrationPhase,
-        formValid: registrationFormValid,
-        submitEnabled: registrationSubmitEnabled,
-        requestObserved: registrationRequestObserved,
-        status: registrationStatus,
-      })
+      try {
+        reportAuthRegistrationFailure(diagnosticProject(testInfo.project.name), "totp", {
+          phase: registrationPhase,
+          formValid: registrationFormValid,
+          submitEnabled: registrationSubmitEnabled,
+          requestObserved: registrationRequestObserved,
+          status: registrationStatus,
+        })
+      } catch {
+        // Diagnostics must not replace the primary failure or prevent owned cleanup.
+      }
     }
-    throw error
-  } finally {
+  }
+
+  let cleanupFailed = false
+  try {
     page.off("request", observeRegistrationRequest)
     page.off("response", observeRegistrationResponse)
-    for (const context of ownedContexts) await context.close()
-    if (createdUserId) await deleteOwnedAccount(browser, createdUserId)
+  } catch {
+    cleanupFailed = true
   }
+  for (const context of ownedContexts) {
+    try {
+      await context.close()
+    } catch {
+      cleanupFailed = true
+    }
+  }
+  if (registrationAttempted) {
+    try {
+      await deleteOwnedAccount(browser, account, createdUserId)
+    } catch {
+      cleanupFailed = true
+    }
+  }
+  if (cleanupFailed) {
+    testInfo.annotations.push({
+      type: "cleanup-failed",
+      description: "Owned TOTP browser or account cleanup did not complete",
+    })
+  }
+  if (testFailed) throw testFailure
+  if (cleanupFailed) throw new Error("Owned TOTP test cleanup did not complete")
 })
