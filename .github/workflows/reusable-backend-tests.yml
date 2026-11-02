@@ -540,6 +540,7 @@ jobs:
               run: |
                   set -euo pipefail
                   uv run pytest -q -p no:cacheprovider \
+                    --timeout-disable-debugger-detection \
                     tests/integration/test_mfa_mailpit_outbox.py \
                     --junitxml=mfa-mailpit-report.xml
                   python3 - <<'PY'

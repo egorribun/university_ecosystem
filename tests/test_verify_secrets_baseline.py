@@ -8864,8 +8864,8 @@ def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
     original = _pre_squash_source_bytes(path)
     if path != ".github/workflows/reusable-backend-tests.yml":
         return original
-    # Retain the immutable setup-python review, allowing only this supported
-    # pytest-timeout caller option and its explanation at the unique call site.
+    # Retain the immutable setup-python review, allowing only the supported
+    # pytest-timeout caller option at the two exact integration entry points.
     anchor = (
         b"                  $pytestArgs = @(\n"
         b"                    $env:INTEGRATION_TEST_PATTERN,"
@@ -8878,7 +8878,18 @@ def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
         b"                    $env:INTEGRATION_TEST_PATTERN,"
     )
     assert original.count(anchor) == 1, "reviewed timeout call site changed"
-    return original.replace(anchor, replacement)
+    reviewed = original.replace(anchor, replacement)
+    mailpit_anchor = (
+        b"                  uv run pytest -q -p no:cacheprovider \\\n"
+        b"                    tests/integration/test_mfa_mailpit_outbox.py \\\n"
+    )
+    mailpit_replacement = (
+        b"                  uv run pytest -q -p no:cacheprovider \\\n"
+        b"                    --timeout-disable-debugger-detection \\\n"
+        b"                    tests/integration/test_mfa_mailpit_outbox.py \\\n"
+    )
+    assert reviewed.count(mailpit_anchor) == 1, "reviewed Mailpit call site changed"
+    return reviewed.replace(mailpit_anchor, mailpit_replacement)
 
 
 def _assert_live_scanner_source_bytes(path: str, actual: bytes) -> None:
@@ -8904,6 +8915,27 @@ def test_live_backend_timeout_binding_refuses_other_changes(mutation: str) -> No
         invalid = expected.replace(option, option + option)
     else:
         invalid = expected + b"# unrelated workflow change\n"
+    with pytest.raises(AssertionError, match="exact reviewed bytes"):
+        _assert_live_scanner_source_bytes(path, invalid)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "changed", "duplicate", "unrelated"])
+def test_live_mailpit_timeout_binding_refuses_other_changes(mutation: str) -> None:
+    path = ".github/workflows/reusable-backend-tests.yml"
+    original = _pre_squash_source_bytes(path)
+    expected = _reviewed_live_scanner_source_bytes(path)
+    option = b"                    --timeout-disable-debugger-detection \\\n"
+    assert original.count(option) == 0
+    assert expected.count(option) == 1
+    _assert_live_scanner_source_bytes(path, expected)
+    if mutation == "missing":
+        invalid = expected.replace(option, b"")
+    elif mutation == "changed":
+        invalid = expected.replace(option, option.replace(b"disable", b"enable"))
+    elif mutation == "duplicate":
+        invalid = expected.replace(option, option + option)
+    else:
+        invalid = expected + b"# unrelated Mailpit workflow change\n"
     with pytest.raises(AssertionError, match="exact reviewed bytes"):
         _assert_live_scanner_source_bytes(path, invalid)
 
