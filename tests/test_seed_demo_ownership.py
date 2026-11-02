@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 from datetime import UTC, datetime
-from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -33,13 +31,11 @@ from app.schemas.users import (
     UserPublicOut,
 )
 from scripts import seed_demo_data
-
-ROOT = Path(__file__).resolve().parents[1]
-MIGRATION_PATH = (
-    ROOT / "alembic" / "versions" / "202609300001_add_chat_demo_seed_key.py"
-)
-GROUP_MIGRATION_PATH = (
-    ROOT / "alembic" / "versions" / "202609300002_add_group_demo_seed_key.py"
+from tests.fixtures.baseline_migration import (
+    assert_downgrade_refuses,
+    assert_exact_statements,
+    bind_baseline,
+    capture_baseline,
 )
 
 
@@ -201,26 +197,6 @@ async def test_seed_group_marks_new_group_and_reuses_it_after_user_edits() -> No
     assert reused.faculty == "User-edited faculty"
     assert database.added == [group]
     assert database.flush_count == 1
-
-
-def _load_migration() -> ModuleType:
-    spec = importlib.util.spec_from_file_location(
-        "add_chat_demo_seed_key", MIGRATION_PATH
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _load_group_migration() -> ModuleType:
-    spec = importlib.util.spec_from_file_location(
-        "add_group_demo_seed_key", GROUP_MIGRATION_PATH
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def test_chat_seed_key_is_nullable_unique_and_internal() -> None:
@@ -588,132 +564,92 @@ async def test_demo_group_without_key_fails_closed_on_partial_seed_peer_membersh
     }
 
 
-def test_seed_key_migration_is_additive_nullable_unique_and_reversible_by_metadata_only(
+def _assert_seed_key_baseline(statements: list[str]) -> None:
+    tables = ("users", "chats", "groups")
+    creates: list[str] = []
+    for table in tables:
+        matches = [
+            sql
+            for sql in statements
+            if sql.startswith(f"CREATE TABLE public.{table} (")
+        ]
+        assert len(matches) == 1
+        creates.extend(matches)
+        assert [
+            line.rstrip(",")
+            for line in matches[0].splitlines()
+            if "demo_seed_key" in line
+        ] == ["    demo_seed_key character varying(96)"]
+    # Exact declarations prohibit NOT NULL/default ownership or automatic adoption.
+    constraints = [
+        f"ALTER TABLE ONLY public.{table}\n"
+        f"    ADD CONSTRAINT uq_{table}_demo_seed_key UNIQUE (demo_seed_key)"
+        for table in tables
+    ]
+    assert_exact_statements(
+        (sql for sql in statements if "demo_seed_key" in sql and sql not in creates),
+        constraints,
+    )
+    for create, constraint in zip(creates, constraints, strict=True):
+        assert statements.index(create) < statements.index(constraint)
+    assert not any(
+        sql.upper().startswith(("UPDATE ", "INSERT ", "DELETE ", "DROP "))
+        for sql in statements
+    )
+
+
+def test_seed_key_baseline_is_nullable_unique_and_does_not_adopt_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    migration = _load_migration()
-    operations: list[tuple[object, ...]] = []
-
-    class FakeOperations:
-        def execute(self, statement: object) -> None:
-            operations.append(("execute", str(statement)))
-
-        def add_column(self, table_name: str, column: object) -> None:
-            operations.append(("add_column", table_name, column))
-
-        def drop_constraint(self, name: str, table_name: str, type_: str) -> None:
-            operations.append(("drop_constraint", name, table_name, type_))
-
-        def drop_column(self, table_name: str, column_name: str) -> None:
-            operations.append(("drop_column", table_name, column_name))
-
-    monkeypatch.setattr(migration, "op", FakeOperations())
-
-    migration.upgrade()
-
-    timeout_operations = [
-        ("execute", "SET LOCAL lock_timeout = '10s'"),
-        ("execute", "SET LOCAL statement_timeout = '60s'"),
-    ]
-    assert operations[:2] == timeout_operations
-    upgrade_ddl = operations[2:]
-
-    add_user_column = upgrade_ddl[0]
-    assert add_user_column[0:2] == ("add_column", "users")
-    user_column = add_user_column[2]
-    assert user_column.name == "demo_seed_key"
-    assert isinstance(user_column.type, String)
-    assert user_column.type.length == 96
-    assert user_column.nullable is True
-    assert upgrade_ddl[1] == (
-        "execute",
-        "-- UNIQUE cannot be added NOT VALID in PostgreSQL; existing rows stay "
-        "unmarked and this timeout-bounded revision validates atomically.\n"
-        "-- squawk-ignore constraint-missing-not-valid\n"
-        "ALTER TABLE users ADD CONSTRAINT uq_users_demo_seed_key "
-        "UNIQUE (demo_seed_key)",
-    )
-    add_chat_column = upgrade_ddl[2]
-    assert add_chat_column[0:2] == ("add_column", "chats")
-    chat_column = add_chat_column[2]
-    assert chat_column.name == "demo_seed_key"
-    assert isinstance(chat_column.type, String)
-    assert chat_column.type.length == 96
-    assert chat_column.nullable is True
-    assert upgrade_ddl[3] == (
-        "execute",
-        "-- UNIQUE cannot be added NOT VALID in PostgreSQL; existing rows stay "
-        "unmarked and this timeout-bounded revision validates atomically.\n"
-        "-- squawk-ignore constraint-missing-not-valid\n"
-        "ALTER TABLE chats ADD CONSTRAINT uq_chats_demo_seed_key "
-        "UNIQUE (demo_seed_key)",
-    )
-
-    operations.clear()
-    migration.downgrade()
-
-    assert operations == [
-        *timeout_operations,
-        ("drop_constraint", "uq_chats_demo_seed_key", "chats", "unique"),
-        ("drop_column", "chats", "demo_seed_key"),
-        ("drop_constraint", "uq_users_demo_seed_key", "users", "unique"),
-        ("drop_column", "users", "demo_seed_key"),
-    ]
-    assert all("drop_table" not in str(operation) for operation in operations)
+    _, operations = capture_baseline(monkeypatch)
+    _assert_seed_key_baseline(operations.statements)
 
 
-def test_group_seed_key_migration_is_additive_and_does_not_adopt_existing_groups(
+def test_seed_key_baseline_downgrade_refuses_before_changing_ownership(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    migration = _load_group_migration()
-    assert migration.revision == "202609300002"
-    assert migration.down_revision == "202609300001"
-    operations: list[tuple[object, ...]] = []
+    migration, operations = bind_baseline(monkeypatch)
+    assert_downgrade_refuses(migration, operations)
 
-    class FakeOperations:
-        def execute(self, statement: object) -> None:
-            operations.append(("execute", str(statement)))
 
-        def add_column(self, table_name: str, column: object) -> None:
-            operations.append(("add_column", table_name, column))
-
-        def drop_constraint(self, name: str, table_name: str, type_: str) -> None:
-            operations.append(("drop_constraint", name, table_name, type_))
-
-        def drop_column(self, table_name: str, column_name: str) -> None:
-            operations.append(("drop_column", table_name, column_name))
-
-    monkeypatch.setattr(migration, "op", FakeOperations())
-
-    migration.upgrade()
-
-    timeout_operations = [
-        ("execute", "SET LOCAL lock_timeout = '10s'"),
-        ("execute", "SET LOCAL statement_timeout = '60s'"),
-    ]
-    assert operations[:2] == timeout_operations
-    assert len(operations) == 4
-    add_column = operations[2]
-    assert add_column[:2] == ("add_column", "groups")
-    column = add_column[2]
-    assert column.name == "demo_seed_key"
-    assert isinstance(column.type, String)
-    assert column.type.length == 96
-    assert column.nullable is True
-    assert operations[3] == (
-        "execute",
-        "-- UNIQUE cannot be added NOT VALID in PostgreSQL; existing rows stay "
-        "unmarked and this timeout-bounded revision validates atomically.\n"
-        "-- squawk-ignore constraint-missing-not-valid\n"
-        "ALTER TABLE groups ADD CONSTRAINT uq_groups_demo_seed_key "
-        "UNIQUE (demo_seed_key)",
+@pytest.mark.parametrize("table", ["users", "chats", "groups"])
+@pytest.mark.parametrize(
+    "mutation", ["missing", "duplicate", "not_null", "default", "non_unique", "adopt"]
+)
+def test_seed_key_baseline_contract_rejects_ownership_drift(
+    monkeypatch: pytest.MonkeyPatch, table: str, mutation: str
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    changed = list(operations.statements)
+    create = next(
+        sql for sql in changed if sql.startswith(f"CREATE TABLE public.{table} (")
     )
-
-    operations.clear()
-    migration.downgrade()
-
-    assert operations == [
-        *timeout_operations,
-        ("drop_constraint", "uq_groups_demo_seed_key", "groups", "unique"),
-        ("drop_column", "groups", "demo_seed_key"),
-    ]
+    constraint = (
+        f"ALTER TABLE ONLY public.{table}\n"
+        f"    ADD CONSTRAINT uq_{table}_demo_seed_key UNIQUE (demo_seed_key)"
+    )
+    if mutation == "missing":
+        changed.remove(constraint)
+    elif mutation == "duplicate":
+        changed.append(constraint)
+    elif mutation in {"not_null", "default"}:
+        suffix = " NOT NULL" if mutation == "not_null" else " DEFAULT 'synthetic-owner'"
+        changed[changed.index(create)] = create.replace(
+            "demo_seed_key character varying(96)",
+            "demo_seed_key character varying(96)" + suffix,
+        )
+    elif mutation == "non_unique":
+        changed[changed.index(constraint)] = constraint.replace(
+            "UNIQUE (demo_seed_key)", "CHECK (demo_seed_key IS NOT NULL)"
+        )
+    else:
+        changed.append(
+            {
+                "users": "UPDATE users SET demo_seed_key = 'synthetic-owner'",
+                "chats": "UPDATE chats SET demo_seed_key = 'synthetic-owner'",
+                "groups": "UPDATE groups SET demo_seed_key = 'synthetic-owner'",
+            }[table]
+        )
+    assert changed != operations.statements
+    with pytest.raises(AssertionError):
+        _assert_seed_key_baseline(changed)

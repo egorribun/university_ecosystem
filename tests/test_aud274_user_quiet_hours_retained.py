@@ -1,169 +1,113 @@
-"""AUD-274: quiet-hour and timezone columns survive revision 202511240001.
+"""AUD-274: the fresh-only baseline retains quiet hours in user_preferences.
 
-The old upgrade dropped ``users.dnd_*`` and ``users.timezone`` before revision
-148642dd1207 created ``user_preferences`` and copied those values into it. These
-tests keep the historical upgrade free of DDL and pin the later backfill contract.
+The squashed baseline creates the final schema, not the removed legacy users
+backfill. These recorded-call contracts do not claim PostgreSQL execution.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import re
-from pathlib import Path
-from types import ModuleType, SimpleNamespace
-from typing import Any
 
 import pytest
-import sqlalchemy as sa
 
-VERSIONS = Path(__file__).resolve().parents[1] / "alembic" / "versions"
-MIGRATION = VERSIONS / "202511240001_drop_legacy_user_columns.py"
-BACKFILL_SOURCE = VERSIONS / "148642dd1207_fix_missing_tables.py"
-QUIET_HOUR_COLUMNS = ("dnd_enabled", "dnd_start", "dnd_end", "timezone")
+from tests.fixtures.baseline_migration import (
+    assert_downgrade_refuses,
+    assert_exact_statements,
+    bind_baseline,
+    capture_baseline,
+    table_statements,
+)
 
-
-def _load_migration() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("aud274_drop_user_cols", MIGRATION)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-class _Operations:
-    """Records every schema operation; upgrade must not issue any."""
-
-    def __init__(self, dialect: str = "postgresql") -> None:
-        self.dialect = dialect
-        self.calls: list[tuple[str, tuple[Any, ...]]] = []
-
-    def get_bind(self) -> Any:
-        self.calls.append(("get_bind", ()))
-        return SimpleNamespace(dialect=SimpleNamespace(name=self.dialect))
-
-    def drop_column(self, table: str, column: str) -> None:
-        self.calls.append(("drop_column", (table, column)))
-
-    def add_column(self, table: str, column: sa.Column[Any]) -> None:
-        self.calls.append(("add_column", (table, column.name)))
-
-    def execute(self, statement: Any) -> None:
-        self.calls.append(("execute", (str(statement),)))
+_PREFERENCES_DDL = (
+    "CREATE TABLE public.user_preferences (\n"
+    "    dnd_enabled boolean DEFAULT false NOT NULL,\n"
+    "    dnd_start time without time zone,\n"
+    "    dnd_end time without time zone,\n"
+    "    timezone character varying(64),\n"
+    "    user_id uuid NOT NULL\n"
+    ")",
+    "ALTER TABLE ONLY public.user_preferences\n"
+    "    ADD CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id)",
+    "ALTER TABLE ONLY public.user_preferences\n"
+    "    ADD CONSTRAINT fk_user_preferences_user_id FOREIGN KEY (user_id) "
+    "REFERENCES public.users(id) ON DELETE CASCADE",
+)
 
 
-class _Inspector:
-    def __init__(self, tables: set[str], user_columns: set[str]) -> None:
-        self.tables = tables
-        self.user_columns = user_columns
-
-    def get_table_names(self) -> list[str]:
-        return sorted(self.tables)
-
-    def get_columns(self, table: str) -> list[dict[str, str]]:
-        assert table == "users"
-        return [{"name": name} for name in sorted(self.user_columns)]
-
-
-def _prepare(
-    monkeypatch: pytest.MonkeyPatch,
-    operations: _Operations,
-    inspector: _Inspector,
-) -> ModuleType:
-    migration = _load_migration()
-    monkeypatch.setattr(migration, "op", operations)
-    monkeypatch.setattr(sa, "inspect", lambda _bind: inspector)
-    return migration
+def _assert_quiet_hours(statements: list[str]) -> None:
+    assert_exact_statements(
+        table_statements(statements, "user_preferences"), _PREFERENCES_DDL
+    )
+    users = [sql for sql in statements if sql.startswith("CREATE TABLE public.users (")]
+    assert len(users) == 1
+    assert (
+        re.search(r"\b(?:dnd_enabled|dnd_start|dnd_end|timezone)\b", users[0]) is None
+    )
+    # No legacy copying, destructive DDL, or preference writes are supported.
+    assert not any(
+        sql.upper().startswith(("UPDATE ", "INSERT ", "DELETE ", "DROP "))
+        for sql in statements
+    )
 
 
-@pytest.mark.parametrize("dialect", ["postgresql", "sqlite"])
-def test_upgrade_keeps_quiet_hour_columns_for_later_backfill(
-    monkeypatch: pytest.MonkeyPatch, dialect: str
-) -> None:
-    operations = _Operations(dialect)
-    inspector = _Inspector({"users"}, set(QUIET_HOUR_COLUMNS) | {"id"})
-    migration = _prepare(monkeypatch, operations, inspector)
-
-    migration.upgrade()
-
-    # Revision 148642dd1207 owns the copy and the eventual drop, so this
-    # revision neither reads nor drops the user preference values.
-    assert operations.calls == []
-
-
-def test_upgrade_is_noop_without_users_table(monkeypatch: pytest.MonkeyPatch) -> None:
-    operations = _Operations()
-    migration = _prepare(monkeypatch, operations, _Inspector(set(), set()))
-
-    migration.upgrade()
-
-    assert operations.calls == []
-
-
-def test_downgrade_restores_only_missing_quiet_hour_columns(
+def test_baseline_creates_final_quiet_hours_schema(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    operations = _Operations()
-    inspector = _Inspector({"users"}, {"id", "dnd_enabled"})
-    migration = _prepare(monkeypatch, operations, inspector)
-
-    migration.downgrade()
-
-    added = [args for kind, args in operations.calls if kind == "add_column"]
-    assert added == [
-        ("users", "timezone"),
-        ("users", "dnd_end"),
-        ("users", "dnd_start"),
-    ]
-
-
-def test_downgrade_restores_all_columns_when_none_are_present(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    operations = _Operations()
-    inspector = _Inspector({"users"}, {"id"})
-    migration = _prepare(monkeypatch, operations, inspector)
-
-    migration.downgrade()
-
-    added = [args[1] for kind, args in operations.calls if kind == "add_column"]
-    assert added == ["timezone", "dnd_end", "dnd_start", "dnd_enabled"]
+    _, operations = capture_baseline(monkeypatch)
+    _assert_quiet_hours(operations.statements)
 
 
 @pytest.mark.parametrize(
-    ("tables", "dialect"),
-    [(set(), "postgresql"), ({"users"}, "sqlite")],
+    ("before", "after"),
+    [
+        ("dnd_enabled boolean DEFAULT false NOT NULL", "dnd_enabled boolean"),
+        ("dnd_start time without time zone", "dnd_start time with time zone"),
+        ("dnd_end time without time zone", "dnd_end time with time zone"),
+        ("timezone character varying(64)", "timezone character varying(32)"),
+        ("ON DELETE CASCADE", "ON DELETE SET NULL"),
+    ],
 )
-def test_downgrade_skips_missing_users_table_and_sqlite(
-    monkeypatch: pytest.MonkeyPatch, tables: set[str], dialect: str
+def test_quiet_hours_contract_rejects_schema_drift(
+    monkeypatch: pytest.MonkeyPatch, before: str, after: str
 ) -> None:
-    operations = _Operations(dialect)
-    migration = _prepare(monkeypatch, operations, _Inspector(tables, set()))
-
-    migration.downgrade()
-
-    assert operations.calls == [("get_bind", ())]
-
-
-def test_later_backfill_copies_every_quiet_hour_column_before_users_drop() -> None:
-    # The preservation contract lives in 148642dd1207. Pin its field list and its
-    # position before the users DROP COLUMN block so this revision stays safe.
-    source = BACKFILL_SOURCE.read_text(encoding="utf-8")
-    match = re.search(r"fields = \(([^)]*)\)", source)
-    assert match is not None
-    fields = tuple(re.findall(r'"(\w+)"', match.group(1)))
-    assert fields == QUIET_HOUR_COLUMNS
-    backfill_call = source.index("    _backfill_user_preferences()\n")
-    users_drop = source.index('if "dnd_end" in existing_users_columns:')
-    assert backfill_call < users_drop
+    _, operations = capture_baseline(monkeypatch)
+    changed = [sql.replace(before, after) for sql in operations.statements]
+    assert changed != operations.statements
+    with pytest.raises(AssertionError):
+        _assert_quiet_hours(changed)
 
 
-def test_downgrade_adds_nothing_when_quiet_hour_columns_exist(
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "legacy", "drop"])
+def test_quiet_hours_contract_rejects_missing_duplicate_and_legacy_operations(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    changed = list(operations.statements)
+    if mutation == "missing":
+        changed.remove(_PREFERENCES_DDL[0])
+    elif mutation == "duplicate":
+        changed.append(_PREFERENCES_DDL[0])
+    elif mutation == "legacy":
+        changed.append("UPDATE users SET dnd_enabled = false")
+    else:
+        changed.append("ALTER TABLE public.user_preferences DROP COLUMN dnd_start")
+    with pytest.raises(AssertionError):
+        _assert_quiet_hours(changed)
+
+
+def test_baseline_downgrade_refuses_before_touching_preferences(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    operations = _Operations()
-    inspector = _Inspector({"users"}, set(QUIET_HOUR_COLUMNS) | {"id"})
-    migration = _prepare(monkeypatch, operations, inspector)
+    migration, operations = bind_baseline(monkeypatch)
+    assert_downgrade_refuses(migration, operations)
 
-    migration.downgrade()
 
-    assert [kind for kind, _ in operations.calls] == ["get_bind"]
+def test_baseline_rejects_sqlite_before_touching_preferences(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    migration, operations = bind_baseline(monkeypatch, dialect="sqlite")
+    with pytest.raises(RuntimeError, match="requires PostgreSQL"):
+        migration.upgrade()
+    assert operations.bind_requests == 1
+    assert operations.bind.reads == []
+    assert operations.statements == []

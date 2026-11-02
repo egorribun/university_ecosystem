@@ -1,109 +1,87 @@
-"""AUD-278: the event full-text GIN index survives revision db31ef5d7ea4.
+"""AUD-278: the fresh-only baseline includes the event search GIN index.
 
-Revision db31ef5d7ea4 used to drop ``ix_events_search_vector`` in its upgrade and
-only recreated it in downgrade, so event search lost its index at head. These
-tests render the real upgrade and check that the index is kept when present and
-restored concurrently when absent.
+There is no existing index to repair concurrently on an empty schema. Assert
+the actual recorded baseline DDL rather than loading a deleted upgrade.
 """
 
 from __future__ import annotations
 
-import importlib.util
-import io
-from pathlib import Path
-from types import ModuleType
-from typing import Any
-
 import pytest
-import sqlalchemy as sa
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
 
-MIGRATION = (
-    Path(__file__).resolve().parents[1]
-    / "alembic"
-    / "versions"
-    / "db31ef5d7ea4_add_trusted_devices.py"
+from tests.fixtures.baseline_migration import (
+    assert_exact_statements,
+    capture_baseline,
 )
+
 GIN_INDEX_SQL = (
-    "CREATE INDEX CONCURRENTLY ix_events_search_vector ON events "
-    "USING gin (search_vector)"
+    "CREATE INDEX ix_events_search_vector ON public.events USING gin (search_vector)"
 )
-REQUIRED_TABLES = {
-    "event_attendance",
-    "notification_deliveries",
-    "notifications",
-    "push_subscriptions",
-    "user_push_topics",
-    "users",
-    "events",
-}
+_SEARCH_VECTOR = (
+    "    search_vector tsvector GENERATED ALWAYS AS "
+    "(to_tsvector('simple'::regconfig, (((((((((((((((COALESCE(title, "
+    "''::character varying))::text || ' '::text) || COALESCE(description, "
+    "''::text)) || ' '::text) || (COALESCE(location, ''::character "
+    "varying))::text) || ' '::text) || (COALESCE(title_en, ''::character "
+    "varying))::text) || ' '::text) || COALESCE(description_en, ''::text)) || ' "
+    "'::text) || (COALESCE(location_en, ''::character varying))::text) || ' "
+    "'::text) || COALESCE(about, ''::text)) || ' '::text) || COALESCE(about_en, "
+    "''::text)))) STORED,"
+)
 
 
-class _Inspector:
-    """Reports the required tables and a chosen set of events indexes only."""
-
-    def __init__(self, event_indexes: set[str]) -> None:
-        self.event_indexes = event_indexes
-
-    def get_table_names(self) -> list[str]:
-        return sorted(REQUIRED_TABLES)
-
-    def has_table(self, table: str) -> bool:
-        return table in REQUIRED_TABLES
-
-    def get_indexes(self, table: str) -> list[dict[str, Any]]:
-        if table == "events":
-            return [{"name": name} for name in sorted(self.event_indexes)]
-        return []
-
-    def get_columns(self, table: str) -> list[dict[str, Any]]:
-        return []
-
-    def get_foreign_keys(self, table: str) -> list[dict[str, Any]]:
-        return []
-
-    def get_unique_constraints(self, table: str) -> list[dict[str, Any]]:
-        return []
-
-    def get_check_constraints(self, table: str) -> list[dict[str, Any]]:
-        return []
-
-    def get_pk_constraint(self, table: str) -> dict[str, Any]:
-        return {"constrained_columns": []}
-
-
-def _render_upgrade(monkeypatch: pytest.MonkeyPatch, event_indexes: set[str]) -> str:
-    spec = importlib.util.spec_from_file_location("aud278_trusted", MIGRATION)
-    assert spec is not None and spec.loader is not None
-    module: ModuleType = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    output = io.StringIO()
-    context = MigrationContext.configure(
-        dialect_name="postgresql",
-        opts={"as_sql": True, "output_buffer": output},
+def _assert_search_index(statements: list[str]) -> None:
+    tables = [
+        sql for sql in statements if sql.startswith("CREATE TABLE public.events (")
+    ]
+    assert len(tables) == 1
+    assert [line for line in tables[0].splitlines() if "search_vector" in line] == [
+        _SEARCH_VECTOR
+    ]
+    assert_exact_statements(
+        (sql for sql in statements if "search_vector" in sql and sql != tables[0]),
+        [GIN_INDEX_SQL],
     )
-    monkeypatch.setattr(module, "op", Operations(context))
-    monkeypatch.setattr(sa, "inspect", lambda _bind: _Inspector(event_indexes))
-    module.upgrade()
-    return output.getvalue()
+    assert statements.index(tables[0]) < statements.index(GIN_INDEX_SQL)
+    assert not any(
+        sql.upper().startswith(("DROP ", "UPDATE ", "DELETE ")) for sql in statements
+    )
 
 
-def test_upgrade_keeps_existing_event_search_index(
+def test_baseline_creates_exactly_one_gin_after_generated_search_column(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    sql = _render_upgrade(monkeypatch, {"ix_events_search_vector"})
+    _, operations = capture_baseline(monkeypatch)
+    _assert_search_index(operations.statements)
 
-    assert "ix_events_search_vector" not in sql
 
-
-def test_upgrade_restores_missing_event_search_index_concurrently(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing", "duplicate", "btree", "wrong_column", "expression", "drop", "order"],
+)
+def test_search_index_contract_rejects_missing_or_changed_search_ddl(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
 ) -> None:
-    sql = _render_upgrade(monkeypatch, set())
-
-    normalized = " ".join(sql.split())
-    assert GIN_INDEX_SQL in normalized
-    # The concurrent build must run outside the migration transaction.
-    assert normalized.index("COMMIT;") < normalized.index(GIN_INDEX_SQL)
-    assert "DROP INDEX" not in normalized
+    _, operations = capture_baseline(monkeypatch)
+    changed = list(operations.statements)
+    if mutation == "missing":
+        changed.remove(GIN_INDEX_SQL)
+    elif mutation == "duplicate":
+        changed.append(GIN_INDEX_SQL)
+    elif mutation == "btree":
+        changed[changed.index(GIN_INDEX_SQL)] = GIN_INDEX_SQL.replace("gin", "btree")
+    elif mutation == "wrong_column":
+        changed[changed.index(GIN_INDEX_SQL)] = GIN_INDEX_SQL.replace(
+            "(search_vector)", "(title)"
+        )
+    elif mutation == "expression":
+        changed = [
+            sql.replace("COALESCE(about_en,", "COALESCE(about,") for sql in changed
+        ]
+    elif mutation == "drop":
+        changed.append("DROP INDEX ix_events_search_vector")
+    else:
+        changed.remove(GIN_INDEX_SQL)
+        changed.insert(0, GIN_INDEX_SQL)
+    assert changed != operations.statements
+    with pytest.raises(AssertionError):
+        _assert_search_index(changed)
