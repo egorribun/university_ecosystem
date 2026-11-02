@@ -7,9 +7,11 @@ from uuid import uuid4
 
 import pytest
 
+from app.models.tenant import Tenant
 from app.schemas.dtos.audit import DataAccessLogDTO
 from app.services import audit_service
 from scripts import seed_admin_data
+from scripts.seed_identity import owned_seed_tenant_id
 
 
 class SyntheticAuditStore:
@@ -441,6 +443,7 @@ async def test_aud418_main_rolls_back_its_seed_transaction_after_signing_failure
             await connection.exec_driver_sql(
                 "INSERT INTO users (id) VALUES (?)", (actor_id.hex,)
             )
+            await connection.run_sync(Tenant.__table__.create)
             await connection.run_sync(DataAccessLog.__table__.create)
             await connection.exec_driver_sql(
                 "CREATE TABLE seed_markers (id INTEGER PRIMARY KEY)"
@@ -472,12 +475,14 @@ async def test_aud418_main_rolls_back_its_seed_transaction_after_signing_failure
             audit_count = await db.scalar(
                 select(func.count()).select_from(DataAccessLog)
             )
+            tenant_count = await db.scalar(select(func.count()).select_from(Tenant))
             markers = (
                 (await db.execute(text("SELECT id FROM seed_markers ORDER BY id")))
                 .scalars()
                 .all()
             )
 
+        assert tenant_count == 0
         assert audit_count == 0
         assert markers == [1]
     finally:
@@ -502,7 +507,21 @@ async def test_aud418_main_does_not_claim_skipped_audit_logs_were_signed(
     monkeypatch.setattr(seed_admin_data, "_required_test_password", lambda: "in-memory")
     monkeypatch.setattr(seed_admin_data, "init_database", lambda: None)
 
+    tenant = Tenant(
+        id=owned_seed_tenant_id(seed_admin_data.ADMIN_SMOKE_PROJECT),
+        name=f"Owned seed tenant: {seed_admin_data.ADMIN_SMOKE_PROJECT}",
+        slug=seed_admin_data.ADMIN_SMOKE_PROJECT,
+        domain=None,
+        is_active=True,
+    )
+    tenant_queries = []
+
     class Session:
+        async def scalar(self, query):
+            assert query.column_descriptions[0]["entity"] is Tenant
+            tenant_queries.append(query)
+            return tenant
+
         async def __aenter__(self):
             return self
 
@@ -532,6 +551,7 @@ async def test_aud418_main_does_not_claim_skipped_audit_logs_were_signed(
 
     await seed_admin_data.main()
 
+    assert len(tenant_queries) == 1
     output = capsys.readouterr().out
     assert "skipping audit log seed" in output
     assert "signed logs" not in output

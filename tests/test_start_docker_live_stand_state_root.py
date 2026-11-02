@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.seed_identity import owned_seed_tenant_id
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -205,6 +207,8 @@ def _live_environment(
     # -NoProfile still uses the .NET startup cache on Unix.
     env["XDG_CACHE_HOME"] = str(temp_root / ".powershell-cache")
     env["COMPOSE_PROJECT_NAME"] = "ue-live-36854541120abcd1"
+    # Bind this fixture project, not an unrelated ambient CI/developer tenant.
+    env["MVP_TENANT_ID"] = str(owned_seed_tenant_id(env["COMPOSE_PROJECT_NAME"]))
     port_names = CURRENT_PORT_NAMES if current_schema else PORT_NAMES
     ports = {name: 32000 + index for index, name in enumerate(port_names)}
     env["LIVE_BASE_URL"] = f"http://localhost:{ports['CADDY_HTTP']}"
@@ -217,6 +221,26 @@ def _live_environment(
         else:
             env[f"LIVE_HOST_PORT_{name}"] = str(port)
     return env
+
+
+@pytest.mark.parametrize("ambient_project", [None, "ci-admin-smoke"])
+def test_live_environment_binds_fixture_tenant_without_mutating_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ambient_project: str | None
+) -> None:
+    if ambient_project is None:
+        monkeypatch.delenv("MVP_TENANT_ID", raising=False)
+    else:
+        monkeypatch.setenv("MVP_TENANT_ID", str(owned_seed_tenant_id(ambient_project)))
+    parent_environment = os.environ.copy()
+    state_root = tmp_path / "temp" / "ue-live-acceptance" / "run-36854541120"
+
+    environment = _live_environment(state_root, "public", "private")
+
+    assert environment["MVP_TENANT_ID"] == str(
+        owned_seed_tenant_id(environment["COMPOSE_PROJECT_NAME"])
+    )
+    assert environment["MVP_TENANT_ID"] != parent_environment.get("MVP_TENANT_ID")
+    assert os.environ == parent_environment
 
 
 def _run_prepare(

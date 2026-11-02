@@ -48,6 +48,7 @@ corresponding plaintext variable.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `MVP_TENANT_ID` | Optional operator-configured UUID of the existing active organization for single-organization MVP routing. It does not authenticate users, create a tenant, or grant an RLS bypass; missing or inactive configured tenants fail closed. When unset, no default tenant is selected and existing fail-closed RLS behavior remains. | Unset (`None`) |
 | `SECRET_KEY` | Primary JWT signing secret | Required |
 | `ALGORITHM` | JWT algorithm; `HS256` is permitted only for local development/testing | `RS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Token TTL; ws-hub's `WS_REVOCATION_REPLAY_WINDOW_SECONDS` must be at least this many seconds | `60` |
