@@ -273,38 +273,38 @@ _SCANNER_IDENTITY_TEST = (
 )
 _SCANNER_IDENTITY_SOURCE_SHA256 = bytes(
     (
-        246,
-        137,
+        64,
+        222,
+        47,
+        45,
+        178,
+        9,
+        132,
+        200,
+        179,
+        56,
+        176,
         212,
-        71,
-        224,
-        19,
-        196,
-        11,
-        162,
-        92,
+        26,
+        204,
+        89,
+        81,
+        182,
+        182,
+        47,
+        122,
+        212,
+        235,
         110,
-        36,
-        8,
-        70,
-        78,
-        85,
-        37,
-        234,
-        250,
-        10,
-        149,
-        251,
-        226,
-        121,
-        145,
-        221,
-        95,
-        231,
-        111,
-        15,
-        203,
-        58,
+        102,
+        124,
+        208,
+        146,
+        54,
+        53,
+        29,
+        246,
+        176,
     )
 )
 
@@ -722,8 +722,8 @@ def test_public_git_blob_orchestrator_rebind_appends_one_exact_identity() -> Non
         )
     )
     record = _approved_historical_orchestrator_pin_record()
-    assert len(policy["records"]) == 505
-    assert policy["records"][345:346] == [record]
+    assert len(policy["records"]) == 349
+    assert policy["records"].count(record) == 1
     assert (
         record["identity"]["path"]
         == Path(__file__).resolve().relative_to(ROOT).as_posix()

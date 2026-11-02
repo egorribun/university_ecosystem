@@ -1551,10 +1551,54 @@ approval is inactive from `2027-01-10`. There is no expiry extension, wildcard,
 inline pragma, category change or automatic approval.
 
 The original 504 records remain unchanged and in order; this appends one record
-for a current total of **505** under the unchanged cap **512**. Baseline **304**,
+for an approval-checkpoint total of **505** under the unchanged cap **512**. Baseline **304**,
 Gitleaks **27**, all 78 required CI context/app pairs and all quality thresholds
 are unchanged. The three older dispositions on the same test path retain their
 own identities, categories, evidence and expiry dates. Exact prefix, source-value,
 scope-mutation and expiry-boundary controls cover this addition. These source
 contracts do not claim a hosted scan or required-check pass and add no accepted
 audit finding.
+
+
+## Retired migration-source dispositions after ADR-051 (2026-11-02)
+
+The owner authorized removal of dispositions whose source files were removed by
+ADR-051. The live policy now contains **349** exact identities: **505 − 156**.
+The separately approved workflow commit identity remains present. Every surviving
+record, including its category, evidence, owner and expiry, retains its original
+value and relative order. Baseline **304**, Gitleaks **27**, the **78** required
+context/app pairs, the cap **512**, hooks and coverage floors are unchanged.
+
+The retirement is finite and source-specific:
+
+| Removed source path                                                          | Records |
+| ---------------------------------------------------------------------------- | ------: |
+| `quality/historical148-squawk-policy.json`                                   |      33 |
+| `scripts/quality/validate_historical148_squawk.py`                           |       4 |
+| `tests/fixtures/historical148-squawk-capture-15eaaa.json`                    |      27 |
+| `tests/fixtures/historical148-squawk-capture-35aeedeb.json`                  |      27 |
+| `tests/fixtures/historical148-squawk-capture-36f70a0f.json`                  |      27 |
+| `tests/fixtures/historical148-squawk-capture-3d83fb27.json`                  |      27 |
+| `tests/helpers/migration_148642dd1207_trace.py`                              |       5 |
+| `tests/integration/test_aud350_stored_event_timestamp_migration.py`          |       1 |
+| `tests/integration/test_aud447_dlq_auth_scrub_postgres.py`                   |       1 |
+| `tests/integration/test_historical_attendance_sender_migrations_postgres.py` |       1 |
+| `tests/integration/test_migration_148642dd1207.py`                           |       1 |
+| `tests/test_aud447_dlq_auth_scrub_migration.py`                              |       2 |
+
+The old Squawk policy, recognizer and admission wrapper are removed; the earlier
+148 admission and its November 13 expiry are historical evidence, not an active
+exception. Current raw Squawk failures remain blocking, with the same pinned
+scanner and seven ordered exclusions. Recreating any retired path does not
+reactivate its approval. Candidate policy loading rejects all twelve retired
+paths; trusted pre-retirement policies are fully validated before those exact
+paths are omitted from the active matching set. No missing-file wildcard or
+filesystem-driven exemption is introduced.
+
+Historical prefix/approval regressions read the immutable 504-record Git blob
+and the independently pinned subsequent one-record approval. Separate live
+inventory and loader regressions reject a restored retired record, altered or
+missing survivors, unrelated paths, changed expiry and reordered rows. Historical
+records remain provenance, not scanner matching authority. Source/data review
+alone is not hosted validation, schema-equivalence proof, or audit acceptance;
+final-source scanner, coverage and required-check evidence remains necessary.

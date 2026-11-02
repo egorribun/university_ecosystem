@@ -67,11 +67,58 @@ _PRE_SQUASH_SOURCE_COMMIT = bytes(
     )
 ).hex()
 # The reviewed Dependabot bump of this one workflow (setup-python 5fda3b95 -> 6d4fd22b) lives in its
-# own commit; every other path stays on the pre-squash commit.
+# own commit. The approval-policy checkpoint has its own immutable commit;
+# remaining historical paths stay on the pre-squash commit.
 _REVIEWED_SOURCE_COMMIT_OVERRIDES = {
+    "quality/security-false-positive-dispositions.json": bytes(
+        (
+            230,
+            187,
+            187,
+            91,
+            79,
+            122,
+            147,
+            64,
+            173,
+            68,
+            82,
+            82,
+            146,
+            98,
+            50,
+            221,
+            46,
+            234,
+            126,
+            120,
+        )
+    ).hex(),
     ".github/workflows/reusable-backend-tests.yml": "e77defff9ddf944793bc7107fa6b5df9e2f7903a",
 }
 _PRE_SQUASH_SOURCE_BLOBS = {
+    "quality/security-false-positive-dispositions.json": (
+        35,
+        111,
+        147,
+        182,
+        156,
+        230,
+        109,
+        236,
+        29,
+        95,
+        233,
+        247,
+        167,
+        2,
+        173,
+        48,
+        252,
+        195,
+        187,
+        91,
+    ),
     "tests/integration/test_aud350_stored_event_timestamp_migration.py": (
         20,
         181,
@@ -529,6 +576,114 @@ def _pre_squash_source_bytes(
 
 def _pre_squash_source_text(path: str) -> str:
     return _pre_squash_source_bytes(path).decode("utf-8")
+
+
+def _reviewed_pre_retirement_dispositions() -> dict[str, Any]:
+    """Immutable approval history; never an active scanner matching policy."""
+    data = _pre_squash_source_bytes("quality/security-false-positive-dispositions.json")
+    assert len(data) <= 512 * 1024
+    policy = json.loads(data)
+    assert len(policy["records"]) == 504
+    # Exact subsequent one-record approval, independently bound below.
+    return {**policy, "records": [*policy["records"], _nov2_workflow_binding_record()]}
+
+
+_RETIRED_DISPOSITION_PATHS = frozenset(
+    (
+        "quality/historical148-squawk-policy.json",
+        "scripts/quality/validate_historical148_squawk.py",
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        "tests/helpers/migration_148642dd1207_trace.py",
+        "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+        "tests/integration/test_aud447_dlq_auth_scrub_postgres.py",
+        "tests/integration/test_historical_attendance_sender_migrations_postgres.py",
+        "tests/integration/test_migration_148642dd1207.py",
+        "tests/test_aud447_dlq_auth_scrub_migration.py",
+    )
+)
+
+
+def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
+    historical = _reviewed_pre_retirement_dispositions()
+    retired = [
+        row
+        for row in historical["records"]
+        if row["identity"]["path"] in _RETIRED_DISPOSITION_PATHS
+    ]
+    survivors = [
+        row
+        for row in historical["records"]
+        if row["identity"]["path"] not in _RETIRED_DISPOSITION_PATHS
+    ]
+    assert len(retired) == 156
+    assert len(survivors) == 349
+    assert policy == {**historical, "records": survivors}, (
+        "live disposition inventory changed"
+    )
+
+
+def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    _assert_live_disposition_retirement(policy)
+    assert _RETIRED_DISPOSITION_PATHS == verifier._RETIRED_DISPOSITION_SOURCE_PATHS
+    for path in _RETIRED_DISPOSITION_PATHS:
+        assert not (root / path).exists(), "retired approval source is live again"
+    validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
+        repository_root=root, today=verifier.date(2026, 11, 2)
+    )
+    assert len(validated) == 349
+    assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["reintroduced", "changed", "missing", "unrelated", "expiry", "reordered"],
+)
+def test_live_disposition_retirement_refuses_other_inventory_changes(
+    mutation: str,
+) -> None:
+    historical = _reviewed_pre_retirement_dispositions()
+    live = {
+        **historical,
+        "records": [
+            row
+            for row in historical["records"]
+            if row["identity"]["path"] not in _RETIRED_DISPOSITION_PATHS
+        ],
+    }
+    _assert_live_disposition_retirement(live)
+    changed = copy.deepcopy(live)
+    if mutation == "reintroduced":
+        changed["records"].append(
+            next(
+                row
+                for row in historical["records"]
+                if row["identity"]["path"] in _RETIRED_DISPOSITION_PATHS
+            )
+        )
+    elif mutation == "changed":
+        changed["records"][0]["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "missing":
+        changed["records"].pop()
+    elif mutation == "unrelated":
+        changed["records"][0]["identity"]["path"] = "tests/unreviewed_removed_source.py"
+    elif mutation == "expiry":
+        changed["records"][0]["expires_on"] = "2027-01-11"
+    else:
+        changed["records"][0], changed["records"][1] = (
+            changed["records"][1],
+            changed["records"][0],
+        )
+    with pytest.raises(AssertionError, match="live disposition inventory changed"):
+        _assert_live_disposition_retirement(changed)
 
 
 def _document(*findings: Finding) -> dict[str, Any]:
@@ -2580,11 +2735,7 @@ def test_approved_benchmark_helper_pins_bind_ten_exact_public_identities() -> No
         ),
     }
     assert len(expected_digests) == 5
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     assert len(policy["records"]) == 505
     records = [
         record
@@ -2752,11 +2903,7 @@ def test_achievement_url_fixture_expires_after_owner_approved_date() -> None:
 def test_achievement_url_fixture_binds_the_actual_source_and_policy() -> None:
     root = Path(__file__).resolve().parents[1]
     record = _achievement_url_fixture_record()
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     matching = [
         entry
         for entry in policy["records"]
@@ -2863,12 +3010,7 @@ _AUTH_VALIDATION_UI_COPY_DIGEST_BYTES = (
 
 
 def _auth_validation_candidate_policy() -> dict[str, Any]:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     policy["records"] = policy["records"][:315]
     return policy
 
@@ -3035,12 +3177,7 @@ _AUTHORIZED_310_RECORDS_SHA256_BYTES = (
 
 
 def _owner_review_candidate_policy() -> dict[str, Any]:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     policy["records"] = policy["records"][:315]
     return policy
 
@@ -3574,12 +3711,7 @@ _AUD495_TEST_ONLY_EVIDENCE_MARKER = "HYPOTHETICAL_TEST_FIXTURE_ONLY_NOT_OWNER_AP
 
 
 def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     records = policy["records"]
     assert len(records) == 505
     prefix = records[:315]
@@ -3973,12 +4105,7 @@ _OCT24_ORIGINAL_SUFFIX = [
 
 
 def test_oct24_public_digest_policy_preserves_all_318_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     records = policy["records"]
     encoded_prefix = json.dumps(
         records[:315], sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -4167,12 +4294,7 @@ _PUBLIC_GIT_BLOB_APPROVED_RECORDS = json.loads(
 
 
 def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     # These existing independent guards compose the immutable 321-record prefix.
     test_oct24_public_digest_policy_preserves_all_318_prior_records()
     assert len(policy["records"]) == 505
@@ -4181,12 +4303,7 @@ def test_public_git_blob_policy_preserves_all_321_prior_records() -> None:
 
 
 def test_public_git_blob_rebind_policy_preserves_all_323_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     test_public_git_blob_policy_preserves_all_321_prior_records()
     assert policy["records"][323:325] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:4]
     assert len(_PUBLIC_GIT_BLOB_APPROVED_RECORDS[2:4]) == 2
@@ -4259,11 +4376,7 @@ def test_public_git_blob_current_pin_has_an_exact_approved_identity(
         assignment_name,
         _pre_squash_source_bytes(source_path),
     )
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     assert any(
         row["identity"]
         == {
@@ -4518,12 +4631,7 @@ _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS = [
 
 
 def test_observed_public_metadata_policy_preserves_all_325_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     test_public_git_blob_rebind_policy_preserves_all_323_prior_records()
     assert len(policy["records"]) == 505
     assert policy["records"][325:327] == _OBSERVED_PUBLIC_SOURCE_METADATA_RECORDS
@@ -4614,11 +4722,7 @@ def test_observed_public_metadata_current_source_has_an_exact_approved_identity(
         # Historical dispositions may become stale when a consumer is removed.
         return
     digest = fingerprint(path.read_text(encoding="utf-8"))
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     assert any(
         row["identity"]
         == {
@@ -4769,12 +4873,7 @@ def test_observed_public_metadata_rejects_expiry_duplicate_and_extra_identity(
 
 
 def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     test_observed_public_metadata_policy_preserves_all_325_prior_records()
     assert len(policy["records"]) == 505
     assert policy["records"][327:328] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[4:5]
@@ -4790,12 +4889,7 @@ def test_public_git_blob_catalog_proof_preserves_all_327_prior_records() -> None
 
 
 def test_public_git_blob_fixture_rebind_preserves_all_328_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     test_public_git_blob_catalog_proof_preserves_all_327_prior_records()
     assert len(policy["records"]) == 505
     assert policy["records"][328:329] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[5:6]
@@ -4904,25 +4998,15 @@ def _assert_public_revision_source_binding(
 
 
 def test_public_alembic_revision_current_source_has_exact_policy_identity() -> None:
-    root = Path(__file__).resolve().parents[1]
     record = _PUBLIC_ALEMBIC_REVISION_RECORD
     source = _pre_squash_source_text(record["identity"]["path"])
     _assert_public_revision_source_binding(source)
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     assert record in policy["records"]
 
 
 def test_public_alembic_revision_policy_preserves_all_329_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     test_public_git_blob_fixture_rebind_preserves_all_328_prior_records()
     assert len(policy["records"]) == 505
     assert policy["records"][329:330] == [_PUBLIC_ALEMBIC_REVISION_RECORD]
@@ -5123,12 +5207,7 @@ def test_public_alembic_revision_source_binding_rejects_changed_definition(
 
 
 def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     test_public_alembic_revision_policy_preserves_all_329_prior_records()
     assert len(policy["records"]) == 505
     assert policy["records"][330:331] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[6:7]
@@ -5144,12 +5223,7 @@ def test_public_git_blob_index_rebind_preserves_all_330_prior_records() -> None:
 
 
 def test_public_git_blob_index_assertion_preserves_all_331_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     test_public_git_blob_index_rebind_preserves_all_330_prior_records()
     assert len(policy["records"]) == 505
     assert policy["records"][331:332] == _PUBLIC_GIT_BLOB_APPROVED_RECORDS[7:8]
@@ -5232,23 +5306,13 @@ def _public_compiler_golden_source() -> tuple[dict[str, Any], dict[str, Any]]:
 def test_public_compiler_golden_current_source_has_exact_policy_identities() -> None:
     golden, lock = _public_compiler_golden_source()
     _assert_public_compiler_golden_source_binding(golden, lock)
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     for record in _PUBLIC_COMPILER_GOLDEN_RECORDS:
         assert record in policy["records"]
 
 
 def test_public_compiler_golden_policy_preserves_all_332_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     test_public_git_blob_index_assertion_preserves_all_331_prior_records()
     assert len(policy["records"]) == 505
     assert policy["records"][332:336] == _PUBLIC_COMPILER_GOLDEN_RECORDS
@@ -5647,11 +5711,7 @@ def test_node_react_compiler_public_metadata_is_source_bound_and_exact() -> None
 # Conditional integration guard for the post-owner-approval policy state.
 def test_node_compiler_policy_appends_seven_and_preserves_337_prefix() -> None:
     root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     records = policy["records"]
     assert len(records) == 505
     prefix = json.dumps(
@@ -5880,21 +5940,12 @@ def test_live_private_field_current_source_has_exact_policy_identity() -> None:
     record = _LIVE_PRIVATE_FIELD_RECORD
     source = (root / record["identity"]["path"]).read_text(encoding="utf-8")
     _live_private_field_fixture_nodes(source)
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     assert record in policy["records"]
 
 
 def test_live_private_field_policy_preserves_all_336_prior_records() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     test_public_compiler_golden_policy_preserves_all_332_prior_records()
     assert len(policy["records"]) == 505
     assert policy["records"][336:337] == [_LIVE_PRIVATE_FIELD_RECORD]
@@ -6066,12 +6117,7 @@ def test_live_private_field_source_binding_rejects_changed_usage(
 
 
 def test_public_git_blob_sourcebinding_rebind_appends_one_exact_identity() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     test_live_private_field_policy_preserves_all_336_prior_records()
     assert len(policy["records"]) == 505
     record = _PUBLIC_GIT_BLOB_APPROVED_RECORDS[8]
@@ -6095,12 +6141,7 @@ def test_public_git_blob_sourcebinding_rebind_appends_one_exact_identity() -> No
 
 
 def _aud247_squawk_public_checksum_record() -> dict[str, Any]:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     identity = verifier._AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
     matches = [
         record
@@ -6205,12 +6246,7 @@ def test_aud247_squawk_public_checksum_rejects_expiry_and_duplicate() -> None:
 
 
 def test_aud247_guard_preserves_existing_same_path_type_identities() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     identity = verifier._AUD247_SQUAWK_PUBLIC_CHECKSUM_IDENTITY
     same_path_type = [
         record
@@ -6666,12 +6702,7 @@ def _historical148_source_records() -> list[dict[str, Any]]:
 
 
 def test_historical148_integrity_adds_only_58_and_preserves_347_prefix() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     assert len(policy["records"]) == 505
     encoded_prefix = json.dumps(
         policy["records"][:347],
@@ -6768,12 +6799,7 @@ def test_historical148_integrity_rejects_duplicates_and_unapproved_dates() -> No
 
 
 def test_historical148_integrity_preserves_only_two_preexisting_collisions() -> None:
-    root = Path(__file__).resolve().parents[1]
-    policy = json.loads(
-        (root / "quality/security-false-positive-dispositions.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    policy = _reviewed_pre_retirement_dispositions()
     source_digests = {
         tuple(row["identity"]["hashed_secret_bytes"])
         for row in _historical148_source_records()
@@ -7311,10 +7337,7 @@ def _oct30_source_records() -> list[dict[str, Any]]:
 
 
 def _oct30_policy() -> dict[str, Any]:
-    root = Path(__file__).resolve().parents[1]
-    path = root / "quality/security-false-positive-dispositions.json"
-    assert path.stat().st_size <= 512 * 1024
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _reviewed_pre_retirement_dispositions()
 
 
 def _oct30_assert_population(
@@ -7471,36 +7494,28 @@ def test_oct30_review_metadata_and_expiry_remain_exact_for_each_source_path() ->
             )
 
 
-def test_oct30_trusted_loader_does_not_inherit_candidate_only_approval(
+def test_oct30_retired_approvals_never_reactivate_from_base_or_candidate(
     tmp_path: Path,
 ) -> None:
     records = _oct30_source_records()
-    repository, prior_sha = _new_git_fixture(tmp_path)
-    policy_path = repository / "quality/security-false-positive-dispositions.json"
-    policy_path.parent.mkdir(parents=True)
-    policy_path.write_text(
-        json.dumps(_disposition_document(*records)), encoding="utf-8"
-    )
-    today = verifier.date(2026, 10, 30)
-    trusted_before = verifier.load_trusted_base_false_positive_dispositions(
-        prior_sha, repository_root=repository, today=today
-    )
-    assert trusted_before == set()
-    approved = verifier.load_owner_authored_candidate_false_positive_dispositions(
-        repository_root=repository, today=today
-    )
-    assert len(approved) == 89
+    repository, _ = _new_git_fixture(tmp_path)
     accepted_sha = _commit_dispositions(repository, records)
-    changed = copy.deepcopy(records)
-    changed[0]["approval_status"] = "pending"
-    policy_path.write_text(
-        json.dumps(_disposition_document(*changed)), encoding="utf-8"
+    today = verifier.date(2026, 10, 30)
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(*records), today=today
+            )
+        )
+        == 89
     )
-    trusted_after = verifier.load_trusted_base_false_positive_dispositions(
-        accepted_sha, repository_root=repository, today=today
+    assert (
+        verifier.load_trusted_base_false_positive_dispositions(
+            accepted_sha, repository_root=repository, today=today
+        )
+        == set()
     )
-    assert trusted_after == approved
-    with pytest.raises(verifier.BaselineArtifactError):
+    with pytest.raises(verifier.BaselineArtifactError, match="retired source"):
         verifier.load_owner_authored_candidate_false_positive_dispositions(
             repository_root=repository, today=today
         )
@@ -7893,7 +7908,11 @@ def test_aud447_allocation_source_pins_refuse_changes_and_transplants() -> None:
 def test_aud447_allocation_trusted_loader_refuses_candidate_only_expansion(
     tmp_path: Path,
 ) -> None:
-    records = _aud447_allocation_records()
+    records = [
+        row
+        for row in _aud447_allocation_records()
+        if row["identity"]["path"] not in _RETIRED_DISPOSITION_PATHS
+    ]
     repository, prior_sha = _new_git_fixture(tmp_path)
     policy_path = repository / "quality/security-false-positive-dispositions.json"
     policy_path.parent.mkdir(parents=True)
@@ -7910,7 +7929,7 @@ def test_aud447_allocation_trusted_loader_refuses_candidate_only_expansion(
     approved = verifier.load_owner_authored_candidate_false_positive_dispositions(
         repository_root=repository, today=today
     )
-    assert len(approved) == 5
+    assert len(approved) == 2
     accepted_sha = _commit_dispositions(repository, records)
     changed = copy.deepcopy(records)
     extra = copy.deepcopy(records[0])
@@ -8653,10 +8672,16 @@ def test_pre_squash_scanner_source_refuses_unreviewed_paths_before_git(
         _pre_squash_source_bytes(path)
 
 
+@pytest.mark.parametrize(
+    "path",
+    (
+        "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+        "quality/security-false-positive-dispositions.json",
+    ),
+)
 def test_pre_squash_scanner_source_uses_only_pinned_git_bytes_not_worktree(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str
 ) -> None:
-    path = next(iter(_PRE_SQUASH_SOURCE_BLOBS))
     original = _pre_squash_source_bytes(path)
     impostor = tmp_path / path
     impostor.parent.mkdir(parents=True)
@@ -8676,7 +8701,7 @@ def test_pre_squash_scanner_source_uses_only_pinned_git_bytes_not_worktree(
                 "--no-replace-objects",
                 "cat-file",
                 "blob",
-                f"{_PRE_SQUASH_SOURCE_COMMIT}:{path}",
+                f"{_REVIEWED_SOURCE_COMMIT_OVERRIDES.get(path, _PRE_SQUASH_SOURCE_COMMIT)}:{path}",
             ],
             dict(cwd=tmp_path, check=True, capture_output=True, timeout=30),
         )
@@ -8750,8 +8775,6 @@ def test_live_backend_timeout_binding_refuses_other_changes(mutation: str) -> No
 @pytest.mark.parametrize(
     "path",
     [
-        "quality/historical148-squawk-policy.json",
-        "scripts/quality/validate_historical148_squawk.py",
         "scripts/quality/run_owned_redis_contracts.py",
         "tests/test_aud427_428_contract_quality.py",
         ".github/workflows/reusable-backend-tests.yml",
@@ -9005,3 +9028,67 @@ def test_nov2_workflow_binding_keeps_existing_exclusive_expiry(
     else:
         with pytest.raises(verifier.BaselineArtifactError):
             verifier.validate_false_positive_dispositions(policy, today=today)
+
+
+@pytest.mark.parametrize("retired_path", sorted(_RETIRED_DISPOSITION_PATHS))
+def test_candidate_loader_never_reactivates_a_retired_source(
+    tmp_path: Path, retired_path: str
+) -> None:
+    historical = _reviewed_pre_retirement_dispositions()
+    rows = [
+        row for row in historical["records"] if row["identity"]["path"] == retired_path
+    ]
+    assert rows
+    today = verifier.date(2026, 11, 2)
+    # Historical metadata remains independently valid; activation is denied.
+    assert len(
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(*rows), today=today
+        )
+    ) == len(rows)
+    policy_path = tmp_path / "quality/security-false-positive-dispositions.json"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(json.dumps(_disposition_document(*rows)), encoding="utf-8")
+    with pytest.raises(verifier.BaselineArtifactError, match="retired source"):
+        verifier.load_owner_authored_candidate_false_positive_dispositions(
+            repository_root=tmp_path, today=today
+        )
+    # Recreating a removed path never expands the finite authorization set.
+    source = tmp_path / retired_path
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("recreated source", encoding="utf-8")
+    with pytest.raises(verifier.BaselineArtifactError, match="retired source"):
+        verifier.load_owner_authored_candidate_false_positive_dispositions(
+            repository_root=tmp_path, today=today
+        )
+
+
+def test_trusted_pre_retirement_policy_keeps_only_exact_live_survivors(
+    tmp_path: Path,
+) -> None:
+    policy = _reviewed_pre_retirement_dispositions()
+    repository, _ = _new_git_fixture(tmp_path)
+    accepted_sha = _commit_dispositions(repository, policy["records"])
+    today = verifier.date(2026, 11, 2)
+    expected = verifier.validate_false_positive_dispositions(
+        _disposition_document(
+            *[
+                row
+                for row in policy["records"]
+                if row["identity"]["path"] not in _RETIRED_DISPOSITION_PATHS
+            ]
+        ),
+        today=today,
+    )
+    assert len(expected) == 349
+    assert (
+        verifier.load_trusted_base_false_positive_dispositions(
+            accepted_sha, repository_root=repository, today=today
+        )
+        == expected
+    )
+    # Retired records are validated before filtering, never silently forgiven.
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.load_trusted_base_false_positive_dispositions(
+            accepted_sha, repository_root=repository, today=verifier.date(2027, 1, 11)
+        )

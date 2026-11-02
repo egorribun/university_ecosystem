@@ -6251,6 +6251,26 @@ def validate_false_positive_dispositions(
     return findings
 
 
+# ADR-051 retires these exact source paths. Historical metadata remains
+# verifiable, but no loader may activate an approval for these removed sources.
+_RETIRED_DISPOSITION_SOURCE_PATHS = frozenset(
+    (
+        "quality/historical148-squawk-policy.json",
+        "scripts/quality/validate_historical148_squawk.py",
+        "tests/fixtures/historical148-squawk-capture-15eaaa.json",
+        "tests/fixtures/historical148-squawk-capture-35aeedeb.json",
+        "tests/fixtures/historical148-squawk-capture-36f70a0f.json",
+        "tests/fixtures/historical148-squawk-capture-3d83fb27.json",
+        "tests/helpers/migration_148642dd1207_trace.py",
+        "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+        "tests/integration/test_aud447_dlq_auth_scrub_postgres.py",
+        "tests/integration/test_historical_attendance_sender_migrations_postgres.py",
+        "tests/integration/test_migration_148642dd1207.py",
+        "tests/test_aud447_dlq_auth_scrub_migration.py",
+    )
+)
+
+
 def load_trusted_base_false_positive_dispositions(
     trusted_base_sha: str,
     *,
@@ -6346,7 +6366,14 @@ def load_trusted_base_false_positive_dispositions(
         raise BaselineArtifactError(
             "false-positive disposition artifact is invalid"
         ) from error
-    return validate_false_positive_dispositions(document, today=today)
+    validated = validate_false_positive_dispositions(document, today=today)
+    # The trusted PR base may precede retirement. Retired identities never enter
+    # the active matching set, even if a removed source path is recreated.
+    return {
+        finding
+        for finding in validated
+        if finding.path not in _RETIRED_DISPOSITION_SOURCE_PATHS
+    }
 
 
 def load_owner_authored_candidate_false_positive_dispositions(
@@ -6380,7 +6407,10 @@ def load_owner_authored_candidate_false_positive_dispositions(
         raise BaselineArtifactError(
             "candidate disposition artifact is invalid"
         ) from error
-    return validate_false_positive_dispositions(document, today=today)
+    validated = validate_false_positive_dispositions(document, today=today)
+    if any(finding.path in _RETIRED_DISPOSITION_SOURCE_PATHS for finding in validated):
+        raise BaselineArtifactError("candidate dispositions contain a retired source")
+    return validated
 
 
 def _describe_findings(findings: set[FindingIdentity]) -> str:

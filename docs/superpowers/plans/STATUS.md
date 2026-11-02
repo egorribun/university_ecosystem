@@ -5,7 +5,7 @@
 
 ## Текущие инвентари сканеров — 2026-11-02
 
-Baseline **304**, отдельная policy **505**, Gitleaks **27** точных исторических
+Baseline **304**, отдельная policy **349**, Gitleaks **27** точных исторических
 fingerprints. Ровно одно [разрешение владельца](../../adr/ADR-047-risk-based-quality-policy.md#one-exact-historical-public-test-password-hash-fingerprint-2026-11-01)
 добавляет fingerprint публичного test-password hash; прежние 26 сохранены.
 Это не новая приёмка: реестр **449 / 512 приняты, 63 открыты** не меняется.
