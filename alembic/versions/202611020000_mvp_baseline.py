@@ -140,8 +140,8 @@ _TABLES: tuple[str, ...] = (
         "    id uuid NOT NULL,\n"
         "    user_id uuid NOT NULL,\n"
         "    mfa_epoch integer DEFAULT 0 NOT NULL,\n"
-        "    CONSTRAINT ck_active_sessions_signing_key_not_null CHECK ((signing_key "
-        "IS NOT NULL))\n"
+        "    CONSTRAINT ck_active_sessions_signing_key_not_null CHECK ((signing_key IS NOT NULL)),\n"
+        "    CONSTRAINT active_sessions_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -152,13 +152,15 @@ _TABLES: tuple[str, ...] = (
         "    size integer NOT NULL,\n"
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    id uuid NOT NULL,\n"
-        "    message_id uuid NOT NULL\n"
+        "    message_id uuid NOT NULL,\n"
+        "    CONSTRAINT attachments_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
         "CREATE TABLE public.chat_participants (\n"
         "    user_id uuid NOT NULL,\n"
-        "    chat_id uuid NOT NULL\n"
+        "    chat_id uuid NOT NULL,\n"
+        "    CONSTRAINT chat_participants_pkey PRIMARY KEY (chat_id, user_id)\n"
         ")"
     ),
     (
@@ -166,7 +168,8 @@ _TABLES: tuple[str, ...] = (
         "    id uuid NOT NULL,\n"
         "    chat_id uuid NOT NULL,\n"
         "    user_id uuid NOT NULL,\n"
-        "    last_read_at timestamp with time zone NOT NULL\n"
+        "    last_read_at timestamp with time zone NOT NULL,\n"
+        "    CONSTRAINT chat_read_receipts_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -177,7 +180,8 @@ _TABLES: tuple[str, ...] = (
         "    key_digest character varying(64) NOT NULL,\n"
         "    message_id uuid,\n"
         "    completed_at timestamp with time zone NOT NULL,\n"
-        "    expires_at timestamp with time zone NOT NULL\n"
+        "    expires_at timestamp with time zone NOT NULL,\n"
+        "    CONSTRAINT chat_send_receipts_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -185,13 +189,13 @@ _TABLES: tuple[str, ...] = (
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    updated_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    id uuid NOT NULL,\n"
-        "    chat_type character varying(20) DEFAULT 'dm'::character varying NOT "
-        "NULL,\n"
+        "    chat_type character varying(20) DEFAULT 'dm'::character varying NOT NULL,\n"
         "    name character varying(128),\n"
         "    created_by uuid,\n"
         "    tenant_id uuid,\n"
         "    demo_seed_key character varying(96),\n"
-        "    CONSTRAINT ck_chats_chat_type CHECK (chat_type IN ('dm', 'group'))\n"
+        "    CONSTRAINT ck_chats_chat_type CHECK (chat_type IN ('dm', 'group')),\n"
+        "    CONSTRAINT chats_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -214,12 +218,10 @@ _TABLES: tuple[str, ...] = (
         "    deployment_run_attempt integer NOT NULL,\n"
         "    envelope_nonce character varying(128) NOT NULL,\n"
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
-        "    CONSTRAINT ck_cwv_device_class CHECK (device_class IN "
-        "('mobile','desktop')),\n"
-        "    CONSTRAINT ck_cwv_observation_metric CHECK (metric IN "
-        "('LCP','INP','CLS')),\n"
-        "    CONSTRAINT ck_cwv_value_nonnegative CHECK ((value >= (0)::double "
-        "precision))\n"
+        "    CONSTRAINT ck_cwv_device_class CHECK (device_class IN ('mobile','desktop')),\n"
+        "    CONSTRAINT ck_cwv_observation_metric CHECK (metric IN ('LCP','INP','CLS')),\n"
+        "    CONSTRAINT ck_cwv_value_nonnegative CHECK ((value >= (0)::double precision)),\n"
+        "    CONSTRAINT cwv_observations_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -234,7 +236,8 @@ _TABLES: tuple[str, ...] = (
         "    signature character varying(512),\n"
         "    id uuid NOT NULL,\n"
         "    actor_user_id uuid,\n"
-        "    subject_user_id uuid\n"
+        "    subject_user_id uuid,\n"
+        "    CONSTRAINT data_access_logs_pkey PRIMARY KEY (id, created_at)\n"
         ")\n"
         "PARTITION BY RANGE (created_at)"
     ),
@@ -247,11 +250,11 @@ _TABLES: tuple[str, ...] = (
         "    error_message text,\n"
         "    retry_count integer DEFAULT 0 NOT NULL,\n"
         "    max_retries integer DEFAULT 3 NOT NULL,\n"
-        "    status character varying(20) DEFAULT 'pending'::character varying NOT "
-        "NULL,\n"
+        "    status character varying(20) DEFAULT 'pending'::character varying NOT NULL,\n"
         "    next_retry_at timestamp with time zone,\n"
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
-        "    updated_at timestamp with time zone DEFAULT now() NOT NULL\n"
+        "    updated_at timestamp with time zone DEFAULT now() NOT NULL,\n"
+        "    CONSTRAINT dead_letter_jobs_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -262,18 +265,19 @@ _TABLES: tuple[str, ...] = (
         "    used boolean DEFAULT false NOT NULL,\n"
         "    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,\n"
         "    id uuid NOT NULL,\n"
-        "    user_id uuid NOT NULL\n"
+        "    user_id uuid NOT NULL,\n"
+        "    CONSTRAINT email_change_tokens_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
         "CREATE TABLE public.event_attendance (\n"
-        "    registered_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT "
-        "NULL,\n"
+        "    registered_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,\n"
         "    qr_secret character varying NOT NULL,\n"
         "    qr_hmac character varying NOT NULL,\n"
         "    id uuid NOT NULL,\n"
         "    user_id uuid NOT NULL,\n"
-        "    event_id uuid NOT NULL\n"
+        "    event_id uuid NOT NULL,\n"
+        "    CONSTRAINT event_attendance_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -281,7 +285,8 @@ _TABLES: tuple[str, ...] = (
         "    file_url character varying NOT NULL,\n"
         "    description character varying,\n"
         "    id uuid NOT NULL,\n"
-        "    event_id uuid NOT NULL\n"
+        "    event_id uuid NOT NULL,\n"
+        "    CONSTRAINT event_files_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -296,15 +301,7 @@ _TABLES: tuple[str, ...] = (
         "    event_type_en character varying,\n"
         "    starts_at timestamp with time zone NOT NULL,\n"
         "    ends_at timestamp with time zone NOT NULL,\n"
-        "    search_vector tsvector GENERATED ALWAYS AS "
-        "(to_tsvector('simple'::regconfig, (((((((((((((((COALESCE(title, "
-        "''::character varying))::text || ' '::text) || COALESCE(description, "
-        "''::text)) || ' '::text) || (COALESCE(location, ''::character "
-        "varying))::text) || ' '::text) || (COALESCE(title_en, ''::character "
-        "varying))::text) || ' '::text) || COALESCE(description_en, ''::text)) || ' "
-        "'::text) || (COALESCE(location_en, ''::character varying))::text) || ' "
-        "'::text) || COALESCE(about, ''::text)) || ' '::text) || COALESCE(about_en, "
-        "''::text)))) STORED,\n"
+        "    search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple'::regconfig, (((((((((((((((COALESCE(title, ''::character varying))::text || ' '::text) || COALESCE(description, ''::text)) || ' '::text) || (COALESCE(location, ''::character varying))::text) || ' '::text) || (COALESCE(title_en, ''::character varying))::text) || ' '::text) || COALESCE(description_en, ''::text)) || ' '::text) || (COALESCE(location_en, ''::character varying))::text) || ' '::text) || COALESCE(about, ''::text)) || ' '::text) || COALESCE(about_en, ''::text)))) STORED,\n"
         "    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,\n"
         "    is_active boolean DEFAULT true NOT NULL,\n"
         "    speaker character varying,\n"
@@ -315,7 +312,8 @@ _TABLES: tuple[str, ...] = (
         "    id uuid NOT NULL,\n"
         "    created_by uuid,\n"
         "    tenant_id uuid,\n"
-        "    CONSTRAINT ck_event_time_order CHECK ((ends_at > starts_at))\n"
+        "    CONSTRAINT ck_event_time_order CHECK ((ends_at > starts_at)),\n"
+        "    CONSTRAINT events_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -325,7 +323,8 @@ _TABLES: tuple[str, ...] = (
         "    id uuid NOT NULL,\n"
         "    user_id uuid,\n"
         "    ip_address character varying(45),\n"
-        "    user_agent character varying(512)\n"
+        "    user_agent character varying(512),\n"
+        "    CONSTRAINT failed_login_attempts_pkey PRIMARY KEY (id, attempted_at)\n"
         ")\n"
         "PARTITION BY RANGE (attempted_at)"
     ),
@@ -341,7 +340,8 @@ _TABLES: tuple[str, ...] = (
         "    retry_count integer DEFAULT 0 NOT NULL,\n"
         "    failed_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    resolved_at timestamp with time zone,\n"
-        "    resolution_note text\n"
+        "    resolution_note text,\n"
+        "    CONSTRAINT failed_outbox_events_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -349,12 +349,12 @@ _TABLES: tuple[str, ...] = (
         "    student_id uuid NOT NULL,\n"
         "    subject character varying(100) NOT NULL,\n"
         "    score double precision NOT NULL,\n"
-        "    assessment_type character varying(50) DEFAULT 'exam'::character varying "
-        "NOT NULL,\n"
+        "    assessment_type character varying(50) DEFAULT 'exam'::character varying NOT NULL,\n"
         "    assigned_by uuid,\n"
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    updated_at timestamp with time zone DEFAULT now() NOT NULL,\n"
-        "    id uuid NOT NULL\n"
+        "    id uuid NOT NULL,\n"
+        "    CONSTRAINT grades_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -364,7 +364,8 @@ _TABLES: tuple[str, ...] = (
         "    faculty character varying,\n"
         "    id uuid NOT NULL,\n"
         "    tenant_id uuid,\n"
-        "    demo_seed_key character varying(96)\n"
+        "    demo_seed_key character varying(96),\n"
+        "    CONSTRAINT groups_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -376,8 +377,8 @@ _TABLES: tuple[str, ...] = (
         "    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,\n"
         "    id uuid NOT NULL,\n"
         "    used_by_user_id uuid,\n"
-        "    CONSTRAINT ck_invite_codes_role_valid CHECK (role IN ('student', "
-        "'teacher', 'admin'))\n"
+        "    CONSTRAINT ck_invite_codes_role_valid CHECK (role IN ('student', 'teacher', 'admin')),\n"
+        "    CONSTRAINT invite_codes_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -392,7 +393,8 @@ _TABLES: tuple[str, ...] = (
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    is_suspicious boolean DEFAULT false NOT NULL,\n"
         "    id uuid NOT NULL,\n"
-        "    user_id uuid NOT NULL\n"
+        "    user_id uuid NOT NULL,\n"
+        "    CONSTRAINT login_history_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -401,7 +403,8 @@ _TABLES: tuple[str, ...] = (
         "    message_id uuid NOT NULL,\n"
         "    user_id uuid NOT NULL,\n"
         "    emoji character varying(16) NOT NULL,\n"
-        "    created_at timestamp with time zone DEFAULT now() NOT NULL\n"
+        "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
+        "    CONSTRAINT message_reactions_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -419,7 +422,8 @@ _TABLES: tuple[str, ...] = (
         "    forwarded_from_name character varying(128),\n"
         "    forwarded_from_chat_id uuid,\n"
         "    forwarded_from_message_id uuid,\n"
-        "    tenant_id uuid\n"
+        "    tenant_id uuid,\n"
+        "    CONSTRAINT messages_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -434,8 +438,7 @@ _TABLES: tuple[str, ...] = (
         "    user_id uuid NOT NULL,\n"
         "    session_id uuid,\n"
         "    locked_at timestamp with time zone,\n"
-        "    state public.challenge_state_enum DEFAULT "
-        "'pending'::public.challenge_state_enum NOT NULL,\n"
+        "    state public.challenge_state_enum DEFAULT 'pending'::public.challenge_state_enum NOT NULL,\n"
         "    flow character varying(32),\n"
         "    session_identifier character varying(128),\n"
         "    client_fingerprint character varying(64),\n"
@@ -448,22 +451,15 @@ _TABLES: tuple[str, ...] = (
         "    otp_digest character varying(64),\n"
         "    otp_key_id character varying(64),\n"
         "    resend_available_at timestamp with time zone,\n"
-        "    CONSTRAINT ck_mfa_challenges_client_fingerprint_not_null CHECK "
-        "((client_fingerprint IS NOT NULL)),\n"
-        "    CONSTRAINT ck_mfa_challenges_email_recipient_digest CHECK "
-        "((((method)::text <> 'email_otp'::text) OR (recipient_digest IS NOT "
-        "NULL))),\n"
+        "    CONSTRAINT ck_mfa_challenges_client_fingerprint_not_null CHECK ((client_fingerprint IS NOT NULL)),\n"
+        "    CONSTRAINT ck_mfa_challenges_email_recipient_digest CHECK ((((method)::text <> 'email_otp'::text) OR (recipient_digest IS NOT NULL))),\n"
         "    CONSTRAINT ck_mfa_challenges_flow_not_null CHECK ((flow IS NOT NULL)),\n"
-        "    CONSTRAINT ck_mfa_challenges_method_not_null CHECK ((method IS NOT "
-        "NULL)),\n"
-        "    CONSTRAINT ck_mfa_challenges_revision_not_null CHECK ((revision IS NOT "
-        "NULL)),\n"
-        "    CONSTRAINT ck_mfa_challenges_session_identifier_not_null CHECK "
-        "((session_identifier IS NOT NULL)),\n"
-        "    CONSTRAINT ck_mfa_challenges_token_digest_not_null CHECK ((token_digest "
-        "IS NOT NULL)),\n"
-        "    CONSTRAINT ck_mfa_challenges_token_key_id_not_null CHECK ((token_key_id "
-        "IS NOT NULL))\n"
+        "    CONSTRAINT ck_mfa_challenges_method_not_null CHECK ((method IS NOT NULL)),\n"
+        "    CONSTRAINT ck_mfa_challenges_revision_not_null CHECK ((revision IS NOT NULL)),\n"
+        "    CONSTRAINT ck_mfa_challenges_session_identifier_not_null CHECK ((session_identifier IS NOT NULL)),\n"
+        "    CONSTRAINT ck_mfa_challenges_token_digest_not_null CHECK ((token_digest IS NOT NULL)),\n"
+        "    CONSTRAINT ck_mfa_challenges_token_key_id_not_null CHECK ((token_key_id IS NOT NULL)),\n"
+        "    CONSTRAINT mfa_challenges_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -479,23 +475,17 @@ _TABLES: tuple[str, ...] = (
         "    envelope_ciphertext bytea,\n"
         "    wrap_nonce bytea,\n"
         "    wrapped_dek bytea,\n"
-        "    status character varying(16) DEFAULT 'pending'::character varying NOT "
-        "NULL,\n"
+        "    status character varying(16) DEFAULT 'pending'::character varying NOT NULL,\n"
         "    attempt_count integer DEFAULT 0 NOT NULL,\n"
         "    lease_token character varying(64),\n"
         "    lease_expires_at timestamp with time zone,\n"
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    sent_at timestamp with time zone,\n"
         "    shredded_at timestamp with time zone,\n"
-        "    CONSTRAINT ck_mfa_email_delivery_envelope_lifecycle CHECK ((status IN "
-        "('pending','sending') AND envelope_nonce IS NOT NULL AND "
-        "envelope_ciphertext IS NOT NULL AND wrap_nonce IS NOT NULL AND wrapped_dek "
-        "IS NOT NULL AND shredded_at IS NULL) OR (status IN ('sent','cancelled') AND "
-        "envelope_nonce IS NULL AND envelope_ciphertext IS NULL AND wrap_nonce IS "
-        "NULL AND wrapped_dek IS NULL AND shredded_at IS NOT NULL)),\n"
+        "    CONSTRAINT ck_mfa_email_delivery_envelope_lifecycle CHECK ((status IN ('pending','sending') AND envelope_nonce IS NOT NULL AND envelope_ciphertext IS NOT NULL AND wrap_nonce IS NOT NULL AND wrapped_dek IS NOT NULL AND shredded_at IS NULL) OR (status IN ('sent','cancelled') AND envelope_nonce IS NULL AND envelope_ciphertext IS NULL AND wrap_nonce IS NULL AND wrapped_dek IS NULL AND shredded_at IS NOT NULL)),\n"
         "    CONSTRAINT ck_mfa_email_delivery_locale CHECK (locale IN ('en','ru')),\n"
-        "    CONSTRAINT ck_mfa_email_delivery_status CHECK (status IN "
-        "('pending','sending','sent','cancelled'))\n"
+        "    CONSTRAINT ck_mfa_email_delivery_status CHECK (status IN ('pending','sending','sent','cancelled')),\n"
+        "    CONSTRAINT mfa_email_deliveries_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -510,7 +500,8 @@ _TABLES: tuple[str, ...] = (
         "    user_id uuid NOT NULL,\n"
         "    last_used_code_hash character varying(64),\n"
         "    last_used_at timestamp with time zone,\n"
-        "    last_used_timecode bigint\n"
+        "    last_used_timecode bigint,\n"
+        "    CONSTRAINT mfa_totp_enrollments_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -524,7 +515,8 @@ _TABLES: tuple[str, ...] = (
         "    embedding public.vector(1536),\n"
         "    id uuid NOT NULL,\n"
         "    author_id uuid,\n"
-        "    tenant_id uuid\n"
+        "    tenant_id uuid,\n"
+        "    CONSTRAINT news_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -533,7 +525,8 @@ _TABLES: tuple[str, ...] = (
         "    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,\n"
         "    id uuid NOT NULL,\n"
         "    user_id uuid NOT NULL,\n"
-        "    news_id uuid NOT NULL\n"
+        "    news_id uuid NOT NULL,\n"
+        "    CONSTRAINT news_comments_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -541,7 +534,8 @@ _TABLES: tuple[str, ...] = (
         "    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,\n"
         "    id uuid NOT NULL,\n"
         "    user_id uuid NOT NULL,\n"
-        "    news_id uuid NOT NULL\n"
+        "    news_id uuid NOT NULL,\n"
+        "    CONSTRAINT news_likes_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -550,23 +544,23 @@ _TABLES: tuple[str, ...] = (
         "    storage_url character varying(2048) NOT NULL,\n"
         "    owner_user_id uuid,\n"
         "    news_id uuid,\n"
-        "    created_at timestamp with time zone DEFAULT now() NOT NULL\n"
+        "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
+        "    CONSTRAINT news_media_assets_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
         "CREATE TABLE public.notification_deliveries (\n"
         "    notification_created_at timestamp with time zone NOT NULL,\n"
         "    channel character varying DEFAULT 'inapp'::character varying NOT NULL,\n"
-        "    status character varying DEFAULT 'delivered'::character varying NOT "
-        "NULL,\n"
-        "    attempted_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT "
-        "NULL,\n"
+        "    status character varying DEFAULT 'delivered'::character varying NOT NULL,\n"
+        "    attempted_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,\n"
         "    delivered_at timestamp with time zone,\n"
         "    status_code integer,\n"
         "    detail text,\n"
         "    id uuid NOT NULL,\n"
         "    notification_id uuid NOT NULL,\n"
-        "    subscription_id uuid\n"
+        "    subscription_id uuid,\n"
+        "    CONSTRAINT notification_deliveries_pkey PRIMARY KEY (id, attempted_at)\n"
         ")\n"
         "PARTITION BY RANGE (attempted_at)"
     ),
@@ -582,9 +576,8 @@ _TABLES: tuple[str, ...] = (
         "    next_retry_at timestamp with time zone,\n"
         "    dead_lettered boolean DEFAULT false NOT NULL,\n"
         "    id uuid NOT NULL,\n"
-        "    CONSTRAINT ck_notification_queue_jobs_kind CHECK (((kind)::text = ANY "
-        "(ARRAY[('event'::character varying)::text, ('news'::character "
-        "varying)::text])))\n"
+        "    CONSTRAINT ck_notification_queue_jobs_kind CHECK (((kind)::text = ANY (ARRAY[('event'::character varying)::text, ('news'::character varying)::text]))),\n"
+        "    CONSTRAINT notification_queue_jobs_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -601,7 +594,8 @@ _TABLES: tuple[str, ...] = (
         "    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,\n"
         "    id uuid NOT NULL,\n"
         "    user_id uuid NOT NULL,\n"
-        "    tenant_id uuid\n"
+        "    tenant_id uuid,\n"
+        "    CONSTRAINT notifications_pkey PRIMARY KEY (id, created_at)\n"
         ")\n"
         "PARTITION BY RANGE (created_at)"
     ),
@@ -612,7 +606,8 @@ _TABLES: tuple[str, ...] = (
         "    used boolean DEFAULT false NOT NULL,\n"
         "    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,\n"
         "    id uuid NOT NULL,\n"
-        "    user_id uuid NOT NULL\n"
+        "    user_id uuid NOT NULL,\n"
+        "    CONSTRAINT password_reset_tokens_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -625,7 +620,8 @@ _TABLES: tuple[str, ...] = (
         "    last_seen_at timestamp with time zone,\n"
         "    topics json DEFAULT '[]'::json NOT NULL,\n"
         "    id uuid NOT NULL,\n"
-        "    user_id uuid NOT NULL\n"
+        "    user_id uuid NOT NULL,\n"
+        "    CONSTRAINT push_subscriptions_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -634,13 +630,12 @@ _TABLES: tuple[str, ...] = (
         "    scope_id character varying(64) NOT NULL,\n"
         "    object_key character varying(2048) NOT NULL,\n"
         "    size_bytes bigint NOT NULL,\n"
-        "    status character varying(16) DEFAULT 'pending'::character varying NOT "
-        "NULL,\n"
+        "    status character varying(16) DEFAULT 'pending'::character varying NOT NULL,\n"
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    expires_at timestamp with time zone,\n"
         "    CONSTRAINT ck_quarantine_reservation_size CHECK ((size_bytes >= 0)),\n"
-        "    CONSTRAINT ck_quarantine_reservation_status CHECK (status IN "
-        "('pending', 'stored', 'deleting'))\n"
+        "    CONSTRAINT ck_quarantine_reservation_status CHECK (status IN ('pending', 'stored', 'deleting')),\n"
+        "    CONSTRAINT quarantine_reservations_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -648,7 +643,8 @@ _TABLES: tuple[str, ...] = (
         "    scope_id character varying(64) NOT NULL,\n"
         "    inventory_complete boolean DEFAULT false NOT NULL,\n"
         "    inventory_cursor text,\n"
-        "    created_at timestamp with time zone DEFAULT now() NOT NULL\n"
+        "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
+        "    CONSTRAINT quarantine_storage_scopes_pkey PRIMARY KEY (scope_id)\n"
         ")"
     ),
     (
@@ -658,7 +654,8 @@ _TABLES: tuple[str, ...] = (
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    used_at timestamp with time zone,\n"
         "    id uuid NOT NULL,\n"
-        "    user_id uuid NOT NULL\n"
+        "    user_id uuid NOT NULL,\n"
+        "    CONSTRAINT recovery_codes_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -675,7 +672,8 @@ _TABLES: tuple[str, ...] = (
         "    group_id uuid NOT NULL,\n"
         "    creator_id uuid,\n"
         "    tenant_id uuid,\n"
-        "    CONSTRAINT ck_schedule_time_order CHECK ((end_time > start_time))\n"
+        "    CONSTRAINT ck_schedule_time_order CHECK ((end_time > start_time)),\n"
+        "    CONSTRAINT schedule_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -695,7 +693,8 @@ _TABLES: tuple[str, ...] = (
         "    last_album_name character varying,\n"
         "    last_track_url character varying,\n"
         "    last_album_image_url character varying,\n"
-        "    user_id uuid NOT NULL\n"
+        "    user_id uuid NOT NULL,\n"
+        "    CONSTRAINT spotify_integrations_pkey PRIMARY KEY (user_id)\n"
         ")"
     ),
     (
@@ -712,13 +711,13 @@ _TABLES: tuple[str, ...] = (
         "    last_error character varying,\n"
         "    id uuid NOT NULL,\n"
         "    subject character varying(255),\n"
-        "    status character varying(20) DEFAULT 'pending'::character varying NOT "
-        "NULL,\n"
+        "    status character varying(20) DEFAULT 'pending'::character varying NOT NULL,\n"
         "    trace_context json,\n"
         "    aggregate_id_uuid uuid,\n"
         "    sequence_number bigint,\n"
         "    prev_hash character varying(64),\n"
-        "    hash character varying(64)\n"
+        "    hash character varying(64),\n"
+        "    CONSTRAINT stored_events_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -735,7 +734,8 @@ _TABLES: tuple[str, ...] = (
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    id uuid NOT NULL,\n"
         "    created_by uuid,\n"
-        "    tenant_id uuid\n"
+        "    tenant_id uuid,\n"
+        "    CONSTRAINT stories_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -745,7 +745,8 @@ _TABLES: tuple[str, ...] = (
         "    slug character varying(64) NOT NULL,\n"
         "    domain character varying(256),\n"
         "    is_active boolean DEFAULT true NOT NULL,\n"
-        "    created_at timestamp with time zone DEFAULT now() NOT NULL\n"
+        "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
+        "    CONSTRAINT tenants_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -763,10 +764,9 @@ _TABLES: tuple[str, ...] = (
         "    mfa_epoch integer DEFAULT 0 NOT NULL,\n"
         "    token_key_id character varying(64),\n"
         "    binding_digest character varying(64),\n"
-        "    CONSTRAINT ck_trusted_devices_binding_digest_not_null CHECK "
-        "((binding_digest IS NOT NULL)),\n"
-        "    CONSTRAINT ck_trusted_devices_token_key_id_not_null CHECK "
-        "((token_key_id IS NOT NULL))\n"
+        "    CONSTRAINT ck_trusted_devices_binding_digest_not_null CHECK ((binding_digest IS NOT NULL)),\n"
+        "    CONSTRAINT ck_trusted_devices_token_key_id_not_null CHECK ((token_key_id IS NOT NULL)),\n"
+        "    CONSTRAINT trusted_devices_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -777,7 +777,8 @@ _TABLES: tuple[str, ...] = (
         "    track character varying(256),\n"
         "    program character varying(512),\n"
         "    record_book_number character varying(64),\n"
-        "    user_id uuid NOT NULL\n"
+        "    user_id uuid NOT NULL,\n"
+        "    CONSTRAINT user_education_paths_pkey PRIMARY KEY (user_id)\n"
         ")"
     ),
     (
@@ -786,7 +787,8 @@ _TABLES: tuple[str, ...] = (
         "    dnd_start time without time zone,\n"
         "    dnd_end time without time zone,\n"
         "    timezone character varying(64),\n"
-        "    user_id uuid NOT NULL\n"
+        "    user_id uuid NOT NULL,\n"
+        "    CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id)\n"
         ")"
     ),
     (
@@ -800,33 +802,33 @@ _TABLES: tuple[str, ...] = (
         "    user_id uuid NOT NULL,\n"
         "    full_name character varying(256),\n"
         "    avatar_url character varying(2048),\n"
-        "    cover_url character varying(2048)\n"
+        "    cover_url character varying(2048),\n"
+        "    CONSTRAINT user_profile_details_pkey PRIMARY KEY (user_id)\n"
         ")"
     ),
     (
         "CREATE TABLE public.user_push_topics (\n"
         "    topics json NOT NULL,\n"
         "    updated_at timestamp with time zone DEFAULT now() NOT NULL,\n"
-        "    user_id uuid NOT NULL\n"
+        "    user_id uuid NOT NULL,\n"
+        "    CONSTRAINT user_push_topics_pkey PRIMARY KEY (user_id)\n"
         ")"
     ),
     (
         "CREATE TABLE public.user_stats (\n"
         "    user_id uuid NOT NULL,\n"
-        "    attendance_percent double precision DEFAULT '0'::double precision NOT "
-        "NULL,\n"
+        "    attendance_percent double precision DEFAULT '0'::double precision NOT NULL,\n"
         "    attendance_present integer DEFAULT 0 NOT NULL,\n"
         "    attendance_total integer DEFAULT 0 NOT NULL,\n"
-        "    attendance_trend double precision DEFAULT '0'::double precision NOT "
-        "NULL,\n"
+        "    attendance_trend double precision DEFAULT '0'::double precision NOT NULL,\n"
         "    grades_average double precision DEFAULT '0'::double precision NOT NULL,\n"
         "    grades_trend double precision DEFAULT '0'::double precision NOT NULL,\n"
         "    participation_events integer DEFAULT 0 NOT NULL,\n"
-        "    participation_hours double precision DEFAULT '0'::double precision NOT "
-        "NULL,\n"
+        "    participation_hours double precision DEFAULT '0'::double precision NOT NULL,\n"
         "    participation_groups integer DEFAULT 0 NOT NULL,\n"
         "    participation_trend integer DEFAULT 0 NOT NULL,\n"
-        "    last_computed_at timestamp with time zone DEFAULT now() NOT NULL\n"
+        "    last_computed_at timestamp with time zone DEFAULT now() NOT NULL,\n"
+        "    CONSTRAINT user_stats_pkey PRIMARY KEY (user_id)\n"
         ")"
     ),
     (
@@ -846,7 +848,8 @@ _TABLES: tuple[str, ...] = (
         "    email_verified_at timestamp with time zone,\n"
         "    email_mfa_enabled_at timestamp with time zone,\n"
         "    mfa_epoch integer DEFAULT 0 NOT NULL,\n"
-        "    demo_seed_key character varying(96)\n"
+        "    demo_seed_key character varying(96),\n"
+        "    CONSTRAINT users_pkey PRIMARY KEY (id)\n"
         ")"
     ),
     (
@@ -861,7 +864,8 @@ _TABLES: tuple[str, ...] = (
         "    is_active boolean DEFAULT true NOT NULL,\n"
         "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
         "    updated_at timestamp with time zone,\n"
-        "    id uuid NOT NULL\n"
+        "    id uuid NOT NULL,\n"
+        "    CONSTRAINT vector_chunks_pkey PRIMARY KEY (id)\n"
         ")"
     ),
 )
@@ -875,7 +879,8 @@ _DELIVERY_ONCE_TABLE: tuple[str, ...] = (
         "    notification_id uuid NOT NULL,\n"
         "    subscription_id uuid,\n"
         "    channel character varying(50) NOT NULL,\n"
-        "    created_at timestamp with time zone DEFAULT now() NOT NULL\n"
+        "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
+        "    CONSTRAINT notification_delivery_once_pkey PRIMARY KEY (id)\n"
         ")"
     ),
 )
@@ -891,177 +896,25 @@ _SEQUENCE_DEFAULTS: tuple[str, ...] = (
     ),
 )
 
+# Primary keys are declared in CREATE TABLE, before any table can hold rows.
+# Other constraints retain their original dependency order and definitions.
 _CONSTRAINTS: tuple[str, ...] = (
-    (
-        "ALTER TABLE ONLY public.active_sessions\n"
-        "    ADD CONSTRAINT active_sessions_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.attachments\n"
-        "    ADD CONSTRAINT attachments_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.chat_participants\n"
-        "    ADD CONSTRAINT chat_participants_pkey PRIMARY KEY (chat_id, user_id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.chat_read_receipts\n"
-        "    ADD CONSTRAINT chat_read_receipts_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.chat_send_receipts\n"
-        "    ADD CONSTRAINT chat_send_receipts_pkey PRIMARY KEY (id)"
-    ),
-    ("ALTER TABLE ONLY public.chats\n    ADD CONSTRAINT chats_pkey PRIMARY KEY (id)"),
     (
         "ALTER TABLE ONLY public.cwv_observations\n"
         "    ADD CONSTRAINT cwv_observations_metric_id_key UNIQUE (metric_id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.cwv_observations\n"
-        "    ADD CONSTRAINT cwv_observations_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.data_access_logs\n"
-        "    ADD CONSTRAINT data_access_logs_pkey PRIMARY KEY (id, created_at)"
     ),
     (
         "ALTER TABLE ONLY public.dead_letter_jobs\n"
         "    ADD CONSTRAINT dead_letter_jobs_job_hash_key UNIQUE (job_hash)"
     ),
     (
-        "ALTER TABLE ONLY public.dead_letter_jobs\n"
-        "    ADD CONSTRAINT dead_letter_jobs_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.email_change_tokens\n"
-        "    ADD CONSTRAINT email_change_tokens_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.event_attendance\n"
-        "    ADD CONSTRAINT event_attendance_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.event_files\n"
-        "    ADD CONSTRAINT event_files_pkey PRIMARY KEY (id)"
-    ),
-    ("ALTER TABLE ONLY public.events\n    ADD CONSTRAINT events_pkey PRIMARY KEY (id)"),
-    (
-        "ALTER TABLE ONLY public.failed_login_attempts\n"
-        "    ADD CONSTRAINT failed_login_attempts_pkey PRIMARY KEY (id, attempted_at)"
-    ),
-    (
-        "ALTER TABLE ONLY public.failed_outbox_events\n"
-        "    ADD CONSTRAINT failed_outbox_events_pkey PRIMARY KEY (id)"
-    ),
-    ("ALTER TABLE ONLY public.grades\n    ADD CONSTRAINT grades_pkey PRIMARY KEY (id)"),
-    ("ALTER TABLE ONLY public.groups\n    ADD CONSTRAINT groups_pkey PRIMARY KEY (id)"),
-    (
-        "ALTER TABLE ONLY public.invite_codes\n"
-        "    ADD CONSTRAINT invite_codes_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.login_history\n"
-        "    ADD CONSTRAINT login_history_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.message_reactions\n"
-        "    ADD CONSTRAINT message_reactions_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.messages\n"
-        "    ADD CONSTRAINT messages_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.mfa_challenges\n"
-        "    ADD CONSTRAINT mfa_challenges_pkey PRIMARY KEY (id)"
-    ),
-    (
         "ALTER TABLE ONLY public.mfa_email_deliveries\n"
         "    ADD CONSTRAINT mfa_email_deliveries_message_id_key UNIQUE (message_id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.mfa_email_deliveries\n"
-        "    ADD CONSTRAINT mfa_email_deliveries_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.mfa_totp_enrollments\n"
-        "    ADD CONSTRAINT mfa_totp_enrollments_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.news_comments\n"
-        "    ADD CONSTRAINT news_comments_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.news_likes\n"
-        "    ADD CONSTRAINT news_likes_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.news_media_assets\n"
-        "    ADD CONSTRAINT news_media_assets_pkey PRIMARY KEY (id)"
-    ),
-    ("ALTER TABLE ONLY public.news\n    ADD CONSTRAINT news_pkey PRIMARY KEY (id)"),
-    (
-        "ALTER TABLE ONLY public.notification_deliveries\n"
-        "    ADD CONSTRAINT notification_deliveries_pkey PRIMARY KEY (id, "
-        "attempted_at)"
     ),
     (
         "ALTER TABLE ONLY public.notification_deliveries\n"
         "    ADD CONSTRAINT uq_notification_delivery_once UNIQUE (notification_id, "
         "channel, subscription_id, attempted_at)"
-    ),
-    (
-        "ALTER TABLE ONLY public.notification_queue_jobs\n"
-        "    ADD CONSTRAINT notification_queue_jobs_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.notifications\n"
-        "    ADD CONSTRAINT notifications_pkey PRIMARY KEY (id, created_at)"
-    ),
-    (
-        "ALTER TABLE ONLY public.password_reset_tokens\n"
-        "    ADD CONSTRAINT password_reset_tokens_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.push_subscriptions\n"
-        "    ADD CONSTRAINT push_subscriptions_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.quarantine_reservations\n"
-        "    ADD CONSTRAINT quarantine_reservations_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.quarantine_storage_scopes\n"
-        "    ADD CONSTRAINT quarantine_storage_scopes_pkey PRIMARY KEY (scope_id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.recovery_codes\n"
-        "    ADD CONSTRAINT recovery_codes_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.schedule\n"
-        "    ADD CONSTRAINT schedule_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.spotify_integrations\n"
-        "    ADD CONSTRAINT spotify_integrations_pkey PRIMARY KEY (user_id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.stored_events\n"
-        "    ADD CONSTRAINT stored_events_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.stories\n"
-        "    ADD CONSTRAINT stories_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.tenants\n"
-        "    ADD CONSTRAINT tenants_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.trusted_devices\n"
-        "    ADD CONSTRAINT trusted_devices_pkey PRIMARY KEY (id)"
     ),
     (
         "ALTER TABLE ONLY public.chat_read_receipts\n"
@@ -1135,38 +988,9 @@ _CONSTRAINTS: tuple[str, ...] = (
         "    ADD CONSTRAINT uq_users_demo_seed_key UNIQUE (demo_seed_key)"
     ),
     ("ALTER TABLE ONLY public.users\n    ADD CONSTRAINT uq_users_email UNIQUE (email)"),
-    (
-        "ALTER TABLE ONLY public.user_education_paths\n"
-        "    ADD CONSTRAINT user_education_paths_pkey PRIMARY KEY (user_id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.user_preferences\n"
-        "    ADD CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.user_profiles\n"
-        "    ADD CONSTRAINT user_profile_details_pkey PRIMARY KEY (user_id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.user_push_topics\n"
-        "    ADD CONSTRAINT user_push_topics_pkey PRIMARY KEY (user_id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.user_stats\n"
-        "    ADD CONSTRAINT user_stats_pkey PRIMARY KEY (user_id)"
-    ),
-    ("ALTER TABLE ONLY public.users\n    ADD CONSTRAINT users_pkey PRIMARY KEY (id)"),
-    (
-        "ALTER TABLE ONLY public.vector_chunks\n"
-        "    ADD CONSTRAINT vector_chunks_pkey PRIMARY KEY (id)"
-    ),
 )
 
 _DELIVERY_ONCE_CONSTRAINTS: tuple[str, ...] = (
-    (
-        "ALTER TABLE ONLY public.notification_delivery_once ADD CONSTRAINT "
-        "notification_delivery_once_pkey PRIMARY KEY (id)"
-    ),
     (
         "ALTER TABLE ONLY public.notification_delivery_once ADD CONSTRAINT "
         "uq_notification_delivery_once_claim UNIQUE NULLS NOT DISTINCT "

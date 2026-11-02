@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import importlib.util
+import re
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -135,6 +136,124 @@ def test_upgrade_schedules_pg_cron_jobs_only_when_the_extension_is_available(
     assert op.executed[-4:] == list(module._PG_CRON_STATEMENTS)
     assert op.executed[-4] == "CREATE EXTENSION IF NOT EXISTS pg_cron"
     assert sum("cron.schedule" in s for s in op.executed) == 3
+
+
+# Independent inventory of the fifty named keys carried by the pre-refactor
+# baseline. The runtime CREATE statements must preserve names and ordered columns.
+_EXPECTED_INLINE_PRIMARY_KEYS = {
+    "active_sessions": ("active_sessions_pkey", "id"),
+    "attachments": ("attachments_pkey", "id"),
+    "chat_participants": ("chat_participants_pkey", "chat_id, user_id"),
+    "chat_read_receipts": ("chat_read_receipts_pkey", "id"),
+    "chat_send_receipts": ("chat_send_receipts_pkey", "id"),
+    "chats": ("chats_pkey", "id"),
+    "cwv_observations": ("cwv_observations_pkey", "id"),
+    "data_access_logs": ("data_access_logs_pkey", "id, created_at"),
+    "dead_letter_jobs": ("dead_letter_jobs_pkey", "id"),
+    "email_change_tokens": ("email_change_tokens_pkey", "id"),
+    "event_attendance": ("event_attendance_pkey", "id"),
+    "event_files": ("event_files_pkey", "id"),
+    "events": ("events_pkey", "id"),
+    "failed_login_attempts": ("failed_login_attempts_pkey", "id, attempted_at"),
+    "failed_outbox_events": ("failed_outbox_events_pkey", "id"),
+    "grades": ("grades_pkey", "id"),
+    "groups": ("groups_pkey", "id"),
+    "invite_codes": ("invite_codes_pkey", "id"),
+    "login_history": ("login_history_pkey", "id"),
+    "message_reactions": ("message_reactions_pkey", "id"),
+    "messages": ("messages_pkey", "id"),
+    "mfa_challenges": ("mfa_challenges_pkey", "id"),
+    "mfa_email_deliveries": ("mfa_email_deliveries_pkey", "id"),
+    "mfa_totp_enrollments": ("mfa_totp_enrollments_pkey", "id"),
+    "news_comments": ("news_comments_pkey", "id"),
+    "news_likes": ("news_likes_pkey", "id"),
+    "news_media_assets": ("news_media_assets_pkey", "id"),
+    "news": ("news_pkey", "id"),
+    "notification_deliveries": ("notification_deliveries_pkey", "id, attempted_at"),
+    "notification_queue_jobs": ("notification_queue_jobs_pkey", "id"),
+    "notifications": ("notifications_pkey", "id, created_at"),
+    "password_reset_tokens": ("password_reset_tokens_pkey", "id"),
+    "push_subscriptions": ("push_subscriptions_pkey", "id"),
+    "quarantine_reservations": ("quarantine_reservations_pkey", "id"),
+    "quarantine_storage_scopes": ("quarantine_storage_scopes_pkey", "scope_id"),
+    "recovery_codes": ("recovery_codes_pkey", "id"),
+    "schedule": ("schedule_pkey", "id"),
+    "spotify_integrations": ("spotify_integrations_pkey", "user_id"),
+    "stored_events": ("stored_events_pkey", "id"),
+    "stories": ("stories_pkey", "id"),
+    "tenants": ("tenants_pkey", "id"),
+    "trusted_devices": ("trusted_devices_pkey", "id"),
+    "user_education_paths": ("user_education_paths_pkey", "user_id"),
+    "user_preferences": ("user_preferences_pkey", "user_id"),
+    "user_profiles": ("user_profile_details_pkey", "user_id"),
+    "user_push_topics": ("user_push_topics_pkey", "user_id"),
+    "user_stats": ("user_stats_pkey", "user_id"),
+    "users": ("users_pkey", "id"),
+    "vector_chunks": ("vector_chunks_pkey", "id"),
+    "notification_delivery_once": ("notification_delivery_once_pkey", "id"),
+}
+
+
+def _assert_inline_primary_keys(statements: list[str]) -> None:
+    found: dict[str, tuple[str, str]] = {}
+    for statement in statements:
+        assert not re.search(r"ALTER TABLE.*PRIMARY KEY", statement, re.DOTALL)
+        table = re.match(r"CREATE TABLE public\.(\w+) \(", statement)
+        keys = re.findall(r"CONSTRAINT (\w+) PRIMARY KEY \(([^)]+)\)", statement)
+        if not keys:
+            continue
+        assert table is not None
+        assert len(keys) == 1
+        assert table[1] not in found
+        found[table[1]] = keys[0]
+    assert found == _EXPECTED_INLINE_PRIMARY_KEYS
+
+
+def test_baseline_creates_named_primary_keys_with_their_empty_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_baseline()
+    op = _Op(_Bind("postgresql", pg_cron_available=False))
+    monkeypatch.setattr(module, "op", op)
+    module.upgrade()
+    _assert_inline_primary_keys(op.executed)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["missing", "name", "columns", "deferred", "duplicate"]
+)
+def test_inline_primary_key_contract_rejects_schema_and_timing_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    module = _load_baseline()
+    op = _Op(_Bind("postgresql", pg_cron_available=False))
+    monkeypatch.setattr(module, "op", op)
+    module.upgrade()
+    statements = list(op.executed)
+    index = next(
+        i
+        for i, statement in enumerate(statements)
+        if statement.startswith("CREATE TABLE public.data_access_logs (")
+    )
+    key = "CONSTRAINT data_access_logs_pkey PRIMARY KEY (id, created_at)"
+    assert statements[index].count(key) == 1
+    if mutation in {"missing", "deferred"}:
+        statements[index] = statements[index].replace(",\n    " + key, "")
+        if mutation == "deferred":
+            statements.append("ALTER TABLE ONLY public.data_access_logs ADD " + key)
+    elif mutation == "name":
+        statements[index] = statements[index].replace(
+            key, key.replace("_pkey", "_wrong")
+        )
+    elif mutation == "columns":
+        statements[index] = statements[index].replace(
+            "PRIMARY KEY (id, created_at)", "PRIMARY KEY (created_at, id)"
+        )
+    else:
+        statements.append(statements[index])
+    with pytest.raises(AssertionError):
+        _assert_inline_primary_keys(statements)
 
 
 # These controls exercise the real proof functions with synthetic dump/catalog
