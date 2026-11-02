@@ -37,6 +37,7 @@ CORE_SERVICES = (
     "outbox-worker",
     "postgres",
     "postgres-databases-init",
+    "postgres-roles-init",
     "redis",
     "revocation-redis",
     "spicedb",
@@ -629,12 +630,13 @@ def test_live_readiness_loop_uses_core_and_preserves_full_inventories(
     core = result["core"]
     assert isinstance(core, dict)
     assert sorted(set(core["services"])) == list(CORE_SERVICES)
-    assert core["probeCount"] == 24
+    assert core["probeCount"] == 25
     assert core["services"].count("caddy") == 2
     assert sorted(core["jobs"]) == [
         "migrations",
         "minio-init",
         "postgres-databases-init",
+        "postgres-roles-init",
         "spicedb-migrate",
     ]
     assert result["mailpitUrl"] == "http://127.0.0.1:43123/api/v1/info"

@@ -89,6 +89,7 @@ $script:LiveAcceptanceCoreClosure = [string[]]@(
     "outbox-worker",
     "postgres",
     "postgres-databases-init",
+    "postgres-roles-init",
     "redis",
     "revocation-redis",
     "spicedb",
@@ -3121,6 +3122,7 @@ function Get-LiveAcceptanceCoreReadinessInventory {
         outbox = @{ type = "docker"; service = "outbox-worker"; ready = $false }
         postgres = @{ type = "docker"; service = "postgres"; ready = $false }
         postgresInit = @{ type = "job"; service = "postgres-databases-init"; ready = $false }
+        postgresRolesInit = @{ type = "job"; service = "postgres-roles-init"; ready = $false }
         redis = @{ type = "docker"; service = "redis"; ready = $false }
         revocationRedis = @{ type = "docker"; service = "revocation-redis"; ready = $false }
         spicedb = @{ type = "docker"; service = "spicedb"; ready = $false }
