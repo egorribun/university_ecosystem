@@ -126,6 +126,19 @@ checked-in lock gate correctly refused it. The reviewed generated diff is
 integrated by the follow-up, which removes the temporary generator. This
 records generation provenance, not a passing final-source security gate.
 
+Closure, 2026-11-02: this exception is closed. It expired at 2026-10-27 02:24:17 UTC.
+The temporary exact pin and its package cutoff were removed, and the durable
+security floor is `certifi>=2026.10.19` in `pyproject.toml`. A targeted refresh with
+`uv lock --upgrade-package certifi` under pinned uv 0.12.23 resolves `certifi`
+2026.10.23. Its wheel (uploaded 2026-10-23 11:36:14 UTC, digest prefix `e9b54de7`)
+and sdist (uploaded 2026-10-23 11:36:16 UTC, digest prefix `a9895e6e`) were both
+uploaded more than seven days before 2026-11-02, so the routine policy admits them
+without an exception. `security/detect-secrets-requirements.txt` carries the same
+version and digests, and its contract test reads the wheel digest from `uv.lock`.
+No advisory waiver, scanner disposition, baseline edit or merge is part of this
+closure. The ordinary lock, test and vulnerability gates remain required on the
+final source.
+
 ## Owner-approved Pillow exception, 2026-10-20
 
 At 21:57 UTC the owner separately approved Pillow `13.0.0`, the direct major

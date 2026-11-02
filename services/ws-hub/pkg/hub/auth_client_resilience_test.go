@@ -49,7 +49,7 @@ func TestInternalAPIAuthClient_DoRequestResponseGuards(t *testing.T) {
 }
 
 func TestInternalAPIAuthClient_WithSPIFFEConfiguresTransport(t *testing.T) {
-	client := NewInternalAPIAuthClientWithToken("http://auth.test", "", nil)
+	client := NewInternalAPIAuthClientWithToken("https://auth.test", "", nil)
 	previous := authClientTLSConfigFunc
 	t.Cleanup(func() { authClientTLSConfigFunc = previous })
 	configured := &tls.Config{MinVersion: tls.VersionTLS13}

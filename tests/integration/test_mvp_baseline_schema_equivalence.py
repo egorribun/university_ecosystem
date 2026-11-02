@@ -1,16 +1,15 @@
 """Prove the MVP baseline reproduces the pre-squash PostgreSQL schema.
 
 The pre-squash chain (``alembic/`` and ``app/`` at commit 3ff5375fb, extracted with
-``git archive`` and never checked out) runs against one PostgreSQL database. The
-baseline revision runs against a second database. Only the AUD-269 and AUD-272
-additions may differ, plus the one owner-decided removal of the duplicate unique
-``lower(email)`` index ``ix_users_email_lower``, which ``ux_users_lower_email``
-replaces. Statement-level ``pg_dump --schema-only`` must show no other removed
-statement and only additions that name those objects, and the catalog facts that
-``pg_dump`` omits (roles, policies, triggers, functions, sequences, partitions, ACLs,
-extensions) must be identical outside those objects. ``alembic_version`` is the only
-other allowed difference. Both databases are then checked against the models, and the
-baseline must refuse its downgrade without changing the schema.
+``git archive`` and never checked out) and the baseline revision run against two
+PostgreSQL databases. Only the statements and catalog rows listed below may differ,
+compared exactly: the AUD-269 restored indexes, the AUD-272 claim ledger, the partition
+children of the restored index, and the owner-decided removal of ``ix_users_email_lower``.
+Statements are compared after collapsing whitespace, since ``pg_dump`` wraps long
+statements. Other catalog facts that ``pg_dump`` omits must be identical, and
+``alembic_version`` is the only other allowed difference. Both databases are then
+checked against the models, and the baseline must refuse its downgrade without changing
+the schema.
 """
 
 from __future__ import annotations
@@ -18,14 +17,15 @@ from __future__ import annotations
 import asyncio
 import io
 import os
-import re
+import secrets
 import shutil
 import sys
 import tarfile
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 import pytest
 import sqlalchemy as sa
@@ -36,7 +36,7 @@ PRE_SQUASH_COMMIT = "3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9"
 PRE_SQUASH_HEAD = "202610310001"
 BASELINE_REVISION = "202611020000"
 BASELINE_FILE = f"{BASELINE_REVISION}_mvp_baseline.py"
-PG_IMAGE = "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"  # pragma: allowlist secret
+PG_IMAGE = "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
 
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 
@@ -45,24 +45,162 @@ pytestmark = [
     pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to run"),
 ]
 
-# Every object the baseline adds on purpose: the AUD-269 restored indexes, the AUD-272
-# claim ledger, and the partition children that PostgreSQL creates for the restored
-# notifications index. A statement outside this pattern is a schema drift.
-ADDITION_PATTERN = re.compile(
-    r"notification_delivery_once|uq_notification_delivery_once_claim"
-    r"|ux_users_lower_email|ix_user_profiles_full_name_lower|ix_user_profiles_full_name_trgm"
-    r"|idx_messages_chat_created|idx_notifications_user_unread_created"
-    r"|ix_stored_events_pending\b|idx_active_sessions_user_valid"
-    r"|ix_active_sessions_user_active_created"
-    r"|notifications_(?:\d{4}_\d{2}|default)_user_id_created_at_idx1"
+# Bounded wall-clock budgets for every child process. A timed-out child is killed and
+# reaped before its TimeoutError escapes, so no harness step can wait forever.
+_CHILD_TIMEOUT_SECONDS: Final = 240.0
+_CHILD_REAP_SECONDS: Final = 30.0
+
+# Environment names that can select another database or an env file in a child process.
+# Windows folds environment names to upper case and POSIX keeps them distinct, so every
+# spelling is matched case-insensitively and removed before the owned URL is installed.
+_SHADOWED_ENVIRONMENT_NAMES: Final = frozenset(
+    {"database_url", "database_url_file", "env_file_path"}
 )
-# 3 delivery-once statements, 1 unique restored index, 7 restored non-unique parents,
-# 26 notifications partition indexes and their 26 ATTACH statements.
-EXPECTED_ADDED_STATEMENTS = 63
+
+_RESOLVED_URL_SCRIPT: Final = (
+    "from app.core.migration_settings import load_migration_settings, "
+    "resolve_migration_url\n"
+    "print('RESOLVED_URL=' + resolve_migration_url(load_migration_settings(), "
+    "ini_url=None))\n"
+)
+
+# The 3 claim-ledger statements, the 8 restored AUD-269 parent indexes and the 26
+# partition children (index and ATTACH) are the only statements the baseline adds.
+_DELIVERY_ONCE_STATEMENTS: Final = (
+    (
+        "CREATE TABLE public.notification_delivery_once (\n"
+        "    id uuid NOT NULL,\n"
+        "    notification_id uuid NOT NULL,\n"
+        "    subscription_id uuid,\n"
+        "    channel character varying(50) NOT NULL,\n"
+        "    created_at timestamp with time zone DEFAULT now() NOT NULL\n"
+        ")"
+    ),
+    (
+        "ALTER TABLE ONLY public.notification_delivery_once ADD CONSTRAINT "
+        "notification_delivery_once_pkey PRIMARY KEY (id)"
+    ),
+    (
+        "ALTER TABLE ONLY public.notification_delivery_once ADD CONSTRAINT "
+        "uq_notification_delivery_once_claim UNIQUE NULLS NOT DISTINCT "
+        "(notification_id, subscription_id, channel)"
+    ),
+)
+_RESTORED_PARENT_INDEXES: Final = (
+    "CREATE UNIQUE INDEX ux_users_lower_email ON public.users USING btree "
+    "(lower((email)::text))",
+    "CREATE INDEX ix_user_profiles_full_name_lower ON public.user_profiles USING "
+    "btree (lower((full_name)::text) text_pattern_ops) WHERE (full_name IS NOT NULL)",
+    "CREATE INDEX ix_user_profiles_full_name_trgm ON public.user_profiles USING "
+    "gin (full_name public.gin_trgm_ops) WHERE (full_name IS NOT NULL)",
+    "CREATE INDEX idx_notifications_user_unread_created ON ONLY public.notifications "
+    "USING btree (user_id, created_at DESC) WHERE (read = false)",
+    "CREATE INDEX idx_messages_chat_created ON public.messages USING btree "
+    "(chat_id, created_at DESC)",
+    "CREATE INDEX ix_stored_events_pending ON public.stored_events USING btree "
+    "(status, created_at)",
+    "CREATE INDEX idx_active_sessions_user_valid ON public.active_sessions USING "
+    "btree (user_id, revoked_at) WHERE (revoked_at IS NULL)",
+    "CREATE INDEX ix_active_sessions_user_active_created ON public.active_sessions "
+    "USING btree (user_id, created_at) WHERE (revoked_at IS NULL)",
+)
+_PARTITION_SUFFIXES: Final = (
+    "2026_05",
+    "2026_06",
+    "2026_07",
+    "2026_08",
+    "2026_09",
+    "2026_10",
+    "2026_11",
+    "2026_12",
+    "2027_01",
+    "2027_02",
+    "2027_03",
+    "2027_04",
+    "2027_05",
+    "2027_06",
+    "2027_07",
+    "2027_08",
+    "2027_09",
+    "2027_10",
+    "2027_11",
+    "2027_12",
+    "2028_01",
+    "2028_02",
+    "2028_03",
+    "2028_04",
+    "2028_05",
+    "default",
+)
+APPROVED_ADDED_STATEMENTS: Final = (
+    *_DELIVERY_ONCE_STATEMENTS,
+    *_RESTORED_PARENT_INDEXES,
+    *(
+        statement
+        for suffix in _PARTITION_SUFFIXES
+        for statement in (
+            f"CREATE INDEX notifications_{suffix}_user_id_created_at_idx1 ON "
+            f"public.notifications_{suffix} USING btree (user_id, created_at DESC) "
+            "WHERE (read = false)",
+            "ALTER INDEX public.idx_notifications_user_unread_created ATTACH PARTITION "
+            f"public.notifications_{suffix}_user_id_created_at_idx1",
+        )
+    ),
+)
 # Owner decision: keep exactly one unique lower(email) index. The pre-squash
 # ix_users_email_lower is dropped; the restored ux_users_lower_email replaces it.
-REMOVED_PATTERN = re.compile(r"CREATE UNIQUE INDEX ix_users_email_lower\b")
-EXPECTED_REMOVED_STATEMENTS = 1
+APPROVED_REMOVED_STATEMENTS: Final = (
+    "CREATE UNIQUE INDEX ix_users_email_lower ON public.users USING btree "
+    "(lower((email)::text))",
+)
+
+_DELIVERY_ONCE_RELATION: Final = (
+    "notification_delivery_once",
+    "r",
+    False,
+    False,
+    False,
+    "p",
+    "d",
+    "",
+)
+_DELIVERY_ONCE_COLUMNS: Final = (
+    ("id", None, "NO", "uuid", None),
+    ("notification_id", None, "NO", "uuid", None),
+    ("subscription_id", None, "YES", "uuid", None),
+    ("channel", None, "NO", "character varying", 50),
+    ("created_at", "now()", "NO", "timestamp with time zone", None),
+)
+# Catalog rows the baseline adds on purpose, in the repr form produced by _probe.
+APPROVED_CATALOG_ADDITIONS: Final[Mapping[str, tuple[str, ...]]] = {
+    "relations": (repr(_DELIVERY_ONCE_RELATION),),
+    "columns": tuple(
+        repr(
+            (
+                "notification_delivery_once",
+                name,
+                default,
+                nullable,
+                data_type,
+                length,
+                None,
+                None,
+            )
+        )
+        for name, default, nullable, data_type, length in _DELIVERY_ONCE_COLUMNS
+    ),
+    # Index inheritance appears in pg_inherits with no table partition bound.
+    "partition_bounds": tuple(
+        repr(
+            (
+                f"notifications_{suffix}_user_id_created_at_idx1",
+                "idx_notifications_user_unread_created",
+                None,
+            )
+        )
+        for suffix in _PARTITION_SUFFIXES
+    ),
+}
 
 CATALOG_PROBES: dict[str, str] = {
     "roles": (
@@ -175,7 +313,7 @@ class _Completed:
 async def _run_fixed_argv(
     argv: list[str], cwd: Path, env: dict[str, str] | None = None
 ) -> tuple[int, bytes, bytes]:
-    """Run a fixed argv without a shell; no argument is derived from untrusted input."""
+    """Run a fixed argv without a shell and bound its wall-clock time."""
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=cwd,
@@ -183,8 +321,32 @@ async def _run_fixed_argv(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await process.communicate()
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(), timeout=_CHILD_TIMEOUT_SECONDS
+        )
+    except TimeoutError:
+        process.kill()
+        await asyncio.wait_for(process.wait(), timeout=_CHILD_REAP_SECONDS)
+        raise
     return process.returncode or 0, stdout, stderr
+
+
+def _child_environment(url: str) -> dict[str, str]:
+    """Return the child environment in which the owned URL is the only database source."""
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name.casefold() not in _SHADOWED_ENVIRONMENT_NAMES
+    }
+    environment.pop("PYTHONPATH", None)
+    environment.update(
+        DATABASE_URL=url,
+        ENV_FILE_PATH="",
+        SECRET_KEY=secrets.token_urlsafe(48),
+        ENVIRONMENT="testing",
+    )
+    return environment
 
 
 def _extract_pre_squash_tree(target: Path) -> None:
@@ -224,21 +386,40 @@ def _extract_baseline_tree(target: Path) -> None:
 
 def _alembic(tree: Path, url: str, *args: str) -> _Completed:
     """Run the tree's own Alembic CLI so its ``app`` package is the one imported."""
-    env = {
-        **os.environ,
-        "DATABASE_URL": url,
-        "SECRET_KEY": "mvp-baseline-equivalence-dummy-secret-key-0123456789",  # pragma: allowlist secret
-        "ENVIRONMENT": "testing",
-    }
-    env.pop("PYTHONPATH", None)
     returncode, stdout, stderr = asyncio.run(
-        _run_fixed_argv([sys.executable, "-m", "alembic", *args], tree, env)
+        _run_fixed_argv(
+            [sys.executable, "-m", "alembic", *args], tree, _child_environment(url)
+        )
     )
     return _Completed(
         returncode,
         stdout.decode("utf-8", errors="replace"),
         stderr.decode("utf-8", errors="replace"),
     )
+
+
+def _assert_owned_url_is_authoritative(tree: Path, url: str) -> None:
+    """Fail before any DDL unless the child resolves exactly the owned database URL."""
+    returncode, stdout, stderr = asyncio.run(
+        _run_fixed_argv(
+            [sys.executable, "-c", _RESOLVED_URL_SCRIPT],
+            tree,
+            _child_environment(url),
+        )
+    )
+    diagnostic = stderr.decode("utf-8", errors="replace")[-4000:]
+    assert returncode == 0, diagnostic
+    resolved = [
+        line.removeprefix("RESOLVED_URL=")
+        for line in stdout.decode("utf-8", errors="replace").splitlines()
+        if line.startswith("RESOLVED_URL=")
+    ]
+    assert resolved == [url], diagnostic
+
+
+def _canonical(statement: str) -> str:
+    """Collapse layout only: pg_dump wraps statements without changing their SQL."""
+    return " ".join(statement.split())
 
 
 def _split_sql(text: str) -> list[str]:
@@ -273,7 +454,7 @@ def _schema_statements(dump: str) -> Counter[str]:
         for line in dump.splitlines()
         if not line.startswith(("--", "\\", "SET ", "SELECT pg_catalog.set_config"))
     ]
-    return Counter(_split_sql("\n".join(kept)))
+    return Counter(_canonical(statement) for statement in _split_sql("\n".join(kept)))
 
 
 def _dump(database: _Database) -> str:
@@ -338,6 +519,11 @@ def built(tmp_path_factory: pytest.TempPathFactory) -> Iterator[_Built]:
             baseline_container, _loopback_url(baseline_container, "asyncpg")
         )
 
+        # The baseline must resolve the owned URL before its first DDL statement runs. The
+        # pre-squash oracle predates app.core.migration_settings; its env.py returns the
+        # DATABASE_URL environment value first, which _child_environment supplies.
+        _assert_owned_url_is_authoritative(baseline_tree, base.url)
+
         upgraded_pre = _alembic(pre_squash_tree, pre.url, "upgrade", "head")
         assert upgraded_pre.returncode == 0, upgraded_pre.stderr[-4000:]
         upgraded_base = _alembic(baseline_tree, base.url, "upgrade", "head")
@@ -357,33 +543,23 @@ def test_statement_level_schema_differs_only_by_the_audited_additions(
     before = _schema_statements(_dump(built.pre_squash))
     after = _schema_statements(_dump(built.baseline))
 
-    removed = before - after
-    added = after - before
-
-    unexpected_removals = [
-        statement for statement in removed if not REMOVED_PATTERN.search(statement)
-    ]
-    assert not unexpected_removals, unexpected_removals[:5]
-    assert sum(removed.values()) == EXPECTED_REMOVED_STATEMENTS
-    unexpected = [
-        statement for statement in added if not ADDITION_PATTERN.search(statement)
-    ]
-    assert not unexpected, unexpected[:5]
-    assert sum(added.values()) == EXPECTED_ADDED_STATEMENTS
+    assert before - after == Counter(
+        _canonical(statement) for statement in APPROVED_REMOVED_STATEMENTS
+    )
+    assert after - before == Counter(
+        _canonical(statement) for statement in APPROVED_ADDED_STATEMENTS
+    )
 
 
 def test_catalog_facts_outside_the_additions_are_identical(built: _Built) -> None:
     before = _probe(built.pre_squash)
     after = _probe(built.baseline)
 
-    assert before.keys() == after.keys()
+    assert before.keys() == after.keys() == CATALOG_PROBES.keys()
     for name in CATALOG_PROBES:
-        left = [row for row in before[name] if not ADDITION_PATTERN.search(row)]
-        right = [row for row in after[name] if not ADDITION_PATTERN.search(row)]
-        assert left == right, name
-    # The additions must be present in the baseline and absent from the old chain.
-    assert any("notification_delivery_once" in row for row in after["relations"])
-    assert not any("notification_delivery_once" in row for row in before["relations"])
+        assert not Counter(before[name]) - Counter(after[name]), name
+        added = Counter(after[name]) - Counter(before[name])
+        assert added == Counter(APPROVED_CATALOG_ADDITIONS.get(name, ())), name
 
 
 def test_baseline_database_matches_the_current_models(built: _Built) -> None:

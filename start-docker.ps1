@@ -1328,6 +1328,26 @@ function Ensure-ApplicationSecrets {
     }
 }
 
+function Ensure-DatabaseRolePasswords {
+    # Login passwords for the roles created by
+    # infrastructure/postgres-roles/bootstrap-app-roles.sql. Each value is embedded
+    # in DATABASE_URL, so an existing value must be URL-safe; placeholders and any
+    # other shape are regenerated. Every value is mirrored into .env for Compose
+    # interpolation and into .env.docker for the containers.
+    foreach ($key in @("UE_MIGRATOR_DB_PASSWORD", "UE_APP_DB_PASSWORD", "UE_WORKER_DB_PASSWORD")) {
+        $value = Get-EnvEntry -Path $EnvFile -Key $key
+        if (-not $value -or $value -match "CHANGE_ME" -or $value -notmatch '^[A-Za-z0-9]{32,}$') {
+            $value = New-Secret -Length 48
+            Write-Ok "Generated $key"
+        }
+        foreach ($path in @($EnvFile, $EnvCompose)) {
+            if ((Get-EnvEntry -Path $path -Key $key) -ne $value) {
+                Set-EnvEntry -Path $path -Key $key -Value $value
+            }
+        }
+    }
+}
+
 function New-MfaEmailKeyRingEntry {
     param(
         [Parameter(Mandatory=$true)][string]$KeyId,
@@ -1522,6 +1542,9 @@ function Write-WorkerEnvironmentFile {
     # Workers need the delivery KEK to decrypt queued email payloads, but not
     # OTP digest keys, active-key selectors, or revocation credentials. Keep a
     # dedicated env_file so API-only key material is not exposed to workers.
+    # Workers also never receive the bootstrap superuser password or a database
+    # login password: Compose interpolates their DATABASE_URL, so the container
+    # does not need the separate variables.
     $sourcePath = Resolve-StatePath -Path $EnvFile
     if (-not (Test-Path -LiteralPath $sourcePath)) {
         throw "Cannot create ${WorkerEnvFile}: ${EnvFile} is missing."
@@ -1530,7 +1553,9 @@ function Write-WorkerEnvironmentFile {
     $redactedPattern = (
         '^\s*(?:REVOCATION_REDIS_(?:URL|PASSWORD)|' +
         'MFA_EMAIL_OTP_(?:HMAC_KEYS|ACTIVE_HMAC_KEY_ID)|' +
-        'MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID)='
+        'MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID|' +
+        'POSTGRES_(?:USER|PASSWORD)|' +
+        'UE_(?:MIGRATOR|APP|WORKER)_DB_PASSWORD)='
     )
     $workerLines = @(
         Get-Content -LiteralPath $sourcePath | Where-Object {
@@ -2801,11 +2826,21 @@ if ($needsEnvDocker -and $needsEnvCompose) {
     $spotifyTokenSecret = New-FernetKey
     $spotifyOauthStateSecret = New-Secret -Length 48
 
+    # Login passwords for the database roles created by
+    # infrastructure/postgres-roles/bootstrap-app-roles.sql. New-Secret emits only
+    # ASCII letters and digits, so each value is safe inside DATABASE_URL.
+    $ueMigratorDbPassword = New-Secret -Length 48
+    $ueAppDbPassword      = New-Secret -Length 48
+    $ueWorkerDbPassword   = New-Secret -Length 48
+
     # -- .env.docker (container env_file) ---------------------------------
     $dockerEnv = @"
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
+UE_MIGRATOR_DB_PASSWORD=$ueMigratorDbPassword
+UE_APP_DB_PASSWORD=$ueAppDbPassword
+UE_WORKER_DB_PASSWORD=$ueWorkerDbPassword
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
 JWT_AUDIENCE=university-ecosystem-api
@@ -2851,6 +2886,9 @@ SPOTIFY_OAUTH_STATE_SECRET=$spotifyOauthStateSecret
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
+UE_MIGRATOR_DB_PASSWORD=$ueMigratorDbPassword
+UE_APP_DB_PASSWORD=$ueAppDbPassword
+UE_WORKER_DB_PASSWORD=$ueWorkerDbPassword
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
 JWT_AUDIENCE=university-ecosystem-api
@@ -2912,6 +2950,7 @@ Ensure-MetricsEnvironment
 
 # Give each application security domain an independent launcher-managed key.
 Ensure-ApplicationSecrets
+Ensure-DatabaseRolePasswords
 Ensure-MfaEmailKeyRings
 
 # Fail closed if an existing local configuration reuses the cache password for
@@ -2953,7 +2992,10 @@ if (-not $generated) {
         "INTERNAL_HMAC_SECRET",
         "METRICS_BASIC_AUTH_PASSWORD",
         "IMGPROXY_KEY",
-        "IMGPROXY_SALT"
+        "IMGPROXY_SALT",
+        "UE_MIGRATOR_DB_PASSWORD",
+        "UE_APP_DB_PASSWORD",
+        "UE_WORKER_DB_PASSWORD"
     )
     $missingDockerKeys = @()
     $synchronizedKeys = @()

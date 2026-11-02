@@ -13,6 +13,10 @@ SCRIPT_PATH = ROOT / "scripts" / "quality" / "migration_downgrade_policy.py"
 MIGRATIONS_DIR = ROOT / "alembic" / "versions"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "ci.yml"
 BACKEND_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
+BASELINE_BOUNDARY_REASON = (
+    "The MVP baseline cannot be downgraded: reaching base or any earlier schema "
+    "is not a supported recovery path. Restore a consistent backup set instead."
+)
 
 
 def _load_policy_module() -> ModuleType:
@@ -112,28 +116,36 @@ def test_plan_rejects_ambiguous_or_unsafe_irreversible_contracts(
         policy.build_downgrade_plan(tmp_path)
 
 
-def test_policy_accepts_only_the_reviewed_catalog_preflight_migration() -> None:
+def test_repository_baseline_is_the_single_irreversible_boundary() -> None:
     policy = _load_policy_module()
-    migration = MIGRATIONS_DIR / "202609250001_phase_semantic_defaults.py"
 
-    metadata = policy._parse_migration(migration)
+    metadata = policy._parse_migration(MIGRATIONS_DIR / "202611020000_mvp_baseline.py")
 
-    assert metadata.revision == "202609250001"
-    assert metadata.irreversible_reason is None
+    assert metadata.revision == "202611020000"
+    assert metadata.parents == ()
+    assert metadata.irreversible_reason == BASELINE_BOUNDARY_REASON
 
 
-def test_policy_rejects_one_token_change_to_reviewed_migration(tmp_path: Path) -> None:
+def test_retired_reviewed_preflight_name_is_not_a_reviewed_exception(
+    tmp_path: Path,
+) -> None:
     policy = _load_policy_module()
-    source = MIGRATIONS_DIR / "202609250001_phase_semantic_defaults.py"
-    candidate = tmp_path / source.name
-    text = source.read_text(encoding="utf-8")
-    candidate.write_text(
-        text.replace("Retain semantic defaults", "Preserve semantic defaults", 1),
-        encoding="utf-8",
+    _write_migration(
+        tmp_path,
+        revision="202609250001",
+        down_revision=None,
+        downgrade_body=(
+            "if state.default_sql is None:\n"
+            '        raise RuntimeError("missing required default")'
+        ),
+        policy=(
+            'downgrade_policy = "guarded_preflight"\n'
+            'downgrade_preflight_reason = "catalog preflight"'
+        ),
     )
 
     with pytest.raises(policy.PolicyError, match="unreviewed guarded preflight"):
-        policy._parse_migration(candidate)
+        policy._parse_migration(tmp_path / "202609250001.py")
 
 
 def test_plan_requires_an_explicit_policy_for_guarded_preflight_raises(
@@ -422,31 +434,15 @@ def test_repository_migrations_have_a_valid_fail_closed_downgrade_plan() -> None
     policy = _load_policy_module()
 
     plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
-    expected_reason = (
-        "Dropping chat send receipts can discard committed idempotency history "
-        "and permit duplicate messages"
-    )
 
-    assert plan.head_revision == "202610310001"
-    assert plan.safe_target == "202610250001"
-    assert plan.boundary_revision == "202610250001"
-    assert plan.boundary_parent == "202610200001"
-    assert plan.boundary_reason == expected_reason
-    # The AUD-447 scrub above the boundary is an explicit reversible no-op.
-    scrub = policy._parse_migration(
-        MIGRATIONS_DIR / "202610310001_scrub_plaintext_auth_tokens_from_dlq.py"
-    )
-    assert scrub.irreversible_reason is None
-    assert scrub.parents == ("202610250001",)
-
-    quarantine = policy._parse_migration(
-        MIGRATIONS_DIR / "202610200001_add_quarantine_storage_ledger.py"
-    )
-    assert quarantine.parents == ("202610120002",)
-    assert quarantine.irreversible_reason == (
-        "Quarantine reservation ledger is irreversible: dropping it would release "
-        "quota charges for objects that may still exist"
-    )
+    assert sorted(path.name for path in MIGRATIONS_DIR.glob("*.py")) == [
+        "202611020000_mvp_baseline.py"
+    ]
+    assert plan.head_revision == "202611020000"
+    assert plan.safe_target == "202611020000"
+    assert plan.boundary_revision == "202611020000"
+    assert plan.boundary_parent == "base"
+    assert plan.boundary_reason == BASELINE_BOUNDARY_REASON
 
 
 def test_all_postgres_gates_exercise_safe_range_and_declared_boundary() -> None:
@@ -538,7 +534,7 @@ def test_postgres_migration_gates_pin_python_before_uv() -> None:
         assert len(python_steps) == len(uv_steps) == 1, job_name
         python_index, python_step = python_steps[0]
         assert python_step["uses"] == (
-            "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+            "actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0"
         ), job_name
         assert python_step["with"]["python-version"] == "3.14", job_name
         assert python_index < uv_steps[0], job_name
@@ -655,60 +651,17 @@ def test_adr_rollback_scope_maps_eight_unsupported_historical_findings() -> None
         assert boundary in normalized, boundary
 
 
-def test_historical_rollback_scope_is_below_mfa_barriers_in_source_graph() -> None:
-    """Prove graph relationships without migration imports, SQL or DB connections."""
+def test_baseline_is_the_only_rollback_barrier_in_the_squashed_graph() -> None:
+    """Prove the single-revision graph without migration imports, SQL or DB connections."""
     policy = _load_policy_module()
     plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
-    paths = sorted(MIGRATIONS_DIR.glob("*.py"))
-    metadata = [policy._parse_migration(path) for path in paths]
-    revisions = {migration.revision: migration for migration in metadata}
-    assert len(revisions) == len(metadata)
+    metadata = [
+        policy._parse_migration(path) for path in sorted(MIGRATIONS_DIR.glob("*.py"))
+    ]
 
-    def ancestors(revision: str) -> set[str]:
-        pending = list(revisions[revision].parents)
-        visited: set[str] = set()
-        while pending:
-            parent = pending.pop()
-            if parent in visited:
-                continue
-            visited.add(parent)
-            pending.extend(revisions[parent].parents)
-        return visited
-
-    historical_revisions = {
-        "202607020001",
-        "202607230001",
-        "202503150001",
-        "202607280001",
-        "202605070001",
-        "148642dd1207",
-        "7ad848733a4b",
-    }
-    expansion = revisions["202608250001"]
-    retirement = revisions["202608250002"]
-    assert expansion.parents == ("202607280001",)
-    assert retirement.parents == (expansion.revision,)
-    for barrier in (expansion, retirement):
-        assert barrier.irreversible_reason is not None
-        assert historical_revisions <= ancestors(barrier.revision)
-
-    head_history = ancestors(plan.head_revision) | {plan.head_revision}
-    for revision in (
-        "202608250001",
-        "202608250002",
-        "202610120001",
-        "202610200001",
-    ):
-        assert revision in head_history
-        assert revisions[revision].irreversible_reason is not None
-    # Every revision above the newest barrier must be reversible: here, only head.
-    above_boundary = head_history - ancestors(plan.boundary_revision)
-    above_boundary.discard(plan.boundary_revision)
-    assert above_boundary == {plan.head_revision}
-    assert revisions[plan.head_revision].irreversible_reason is None
-    assert revisions[plan.boundary_revision].parents == (plan.boundary_parent,)
-    assert revisions[plan.boundary_revision].irreversible_reason == plan.boundary_reason
-
-    merge = revisions["7ad848733a4b"]
-    assert len(merge.parents) == len(set(merge.parents)) == 2
-    # This is metadata evidence, not execution of Alembic's ambiguous -1 walk.
+    assert [migration.revision for migration in metadata] == ["202611020000"]
+    baseline = metadata[0]
+    assert baseline.parents == ()
+    assert baseline.irreversible_reason == BASELINE_BOUNDARY_REASON
+    assert plan.head_revision == plan.boundary_revision == baseline.revision
+    assert plan.boundary_parent == "base"

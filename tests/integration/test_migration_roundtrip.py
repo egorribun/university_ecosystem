@@ -1,4 +1,4 @@
-"""Exercise a reversible migration roundtrip and the declared downgrade boundary."""
+"""Exercise the MVP baseline from an empty database and its declared downgrade boundary."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from tests.integration.owned_postgres import _LoopbackMigrationPostgres
 from tests.test_helm_staging_contract import _render_staging
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+BASELINE_REVISION = "202611020000"
 
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 
@@ -45,117 +46,71 @@ def migration_postgres():
         yield postgres
 
 
-def test_migration_supported_roundtrip_and_irreversible_boundary(
+def test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade(
     migration_postgres,
 ) -> None:
-    """Round-trip a reversible migration and verify the PostgreSQL boundary."""
+    """The MVP baseline is the only revision. Its declared downgrade refuses before any DDL."""
     url_sync = migration_postgres.get_connection_url(driver="psycopg")
     url_asyncpg = migration_postgres.get_connection_url(driver="asyncpg")
 
     orig_db_url = os.environ.get("DATABASE_URL")
     os.environ["DATABASE_URL"] = url_asyncpg
-
+    inspection_engine = sa.create_engine(url_sync)
     try:
-        # Initialize Alembic Config pointing to the isolated testcontainer.
         config = Config(str(PROJECT_ROOT / "alembic.ini"))
         config.set_main_option("script_location", str(PROJECT_ROOT / "alembic"))
         config.set_main_option("sqlalchemy.url", url_asyncpg)
         plan = migration_downgrade_policy.build_downgrade_plan(
             PROJECT_ROOT / "alembic" / "versions"
         )
-        assert plan.boundary_revision is not None
-        assert plan.boundary_parent is not None
+        assert plan.head_revision == BASELINE_REVISION
+        assert plan.boundary_revision == BASELINE_REVISION
+        assert plan.boundary_parent == "base"
         assert plan.safe_target == plan.boundary_revision
 
-        # Round-trip the schema-changing groups demo-key revision. It is before
-        # the latest boundary and its parent, so this never crosses a barrier.
-        command.upgrade(config, "202609300002")
-        command.downgrade(config, "202609300001")
-        command.upgrade(config, "202609300002")
+        # The baseline is applied to an empty database; no earlier revision exists to replay.
+        command.upgrade(config, "head")
+        with inspection_engine.connect() as connection:
+            assert (
+                MigrationContext.configure(connection).get_current_revision()
+                == BASELINE_REVISION
+            )
 
-        # Follow the policy's safe path through the boundary to the current head.
-        command.upgrade(config, plan.boundary_parent)
-        command.upgrade(config, "head")
-        command.downgrade(config, plan.safe_target)
-        command.upgrade(config, "head")
-        inspection_engine = sa.create_engine(url_sync)
+        # Commit a marker before the probe so a refused downgrade must leave it intact.
         sentinel_id = uuid4()
         sentinel_url = f"https://example.invalid/migration-roundtrip/{sentinel_id}"
+        with inspection_engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO news_media_assets (id, storage_url)
+                    VALUES (:id, :storage_url)
+                    """
+                ).bindparams(sa.bindparam("id", type_=sa.Uuid())),
+                {"id": sentinel_id, "storage_url": sentinel_url},
+            )
+
+        boundary_connection = inspection_engine.connect()
+        boundary_transaction = None
         try:
-            # Commit a marker before the probe so transaction rollback must retain it.
-            with inspection_engine.begin() as connection:
-                connection.execute(
-                    sa.text(
-                        """
-                        INSERT INTO news_media_assets (id, storage_url)
-                        VALUES (:id, :storage_url)
-                        """
-                    ).bindparams(sa.bindparam("id", type_=sa.Uuid())),
-                    {"id": sentinel_id, "storage_url": sentinel_url},
+            boundary_transaction = boundary_connection.begin()
+            config.attributes["connection"] = boundary_connection
+            try:
+                migration_downgrade_policy.assert_declared_boundary(
+                    plan, lambda target: command.downgrade(config, target)
                 )
 
-            boundary_connection = inspection_engine.connect()
-            boundary_transaction = None
-            try:
-                boundary_transaction = boundary_connection.begin()
-                config.attributes["connection"] = boundary_connection
-                try:
-                    migration_downgrade_policy.assert_declared_boundary(
-                        plan, lambda target: command.downgrade(config, target)
-                    )
-
-                    # 002 is a no-op downgrade, but Alembic still stamps 001 before
-                    # the irreversible 001 downgrade raises. Prove that this partial
-                    # stamp and the protected data/schema are visible inside the
-                    # outer transaction before rolling the diagnostic back.
-                    assert (
-                        MigrationContext.configure(
-                            boundary_connection
-                        ).get_current_revision()
-                        == plan.safe_target
-                    )
-                    assert (
-                        boundary_connection.execute(
-                            sa.text(
-                                "SELECT storage_url FROM news_media_assets WHERE id = :id"
-                            ).bindparams(sa.bindparam("id", type_=sa.Uuid())),
-                            {"id": sentinel_id},
-                        ).scalar_one()
-                        == sentinel_url
-                    )
-                    dnd_types = boundary_connection.execute(
-                        sa.text(
-                            """
-                            SELECT column_name, data_type
-                              FROM information_schema.columns
-                             WHERE table_schema = current_schema()
-                               AND table_name = 'user_preferences'
-                               AND column_name IN ('dnd_start', 'dnd_end')
-                            """
-                        )
-                    ).mappings()
-                    assert {
-                        row["column_name"]: row["data_type"] for row in dnd_types
-                    } == {
-                        "dnd_start": "time without time zone",
-                        "dnd_end": "time without time zone",
-                    }
-                finally:
-                    config.attributes.pop("connection", None)
-                    if boundary_transaction.is_active:
-                        boundary_transaction.rollback()
-            finally:
-                boundary_connection.close()
-
-            # The head revision, data marker, and irreversible schema
-            # survive the failed probe after its external transaction is rolled back.
-            with inspection_engine.connect() as connection:
+                # The baseline downgrade raises before its first statement, so the
+                # stamp, the protected row and the irreversible schema are unchanged
+                # inside the outer transaction that is rolled back below.
                 assert (
-                    MigrationContext.configure(connection).get_current_revision()
+                    MigrationContext.configure(
+                        boundary_connection
+                    ).get_current_revision()
                     == plan.head_revision
                 )
                 assert (
-                    connection.execute(
+                    boundary_connection.execute(
                         sa.text(
                             "SELECT storage_url FROM news_media_assets WHERE id = :id"
                         ).bindparams(sa.bindparam("id", type_=sa.Uuid())),
@@ -163,7 +118,7 @@ def test_migration_supported_roundtrip_and_irreversible_boundary(
                     ).scalar_one()
                     == sentinel_url
                 )
-                dnd_types = connection.execute(
+                dnd_types = boundary_connection.execute(
                     sa.text(
                         """
                         SELECT column_name, data_type
@@ -178,11 +133,30 @@ def test_migration_supported_roundtrip_and_irreversible_boundary(
                     "dnd_start": "time without time zone",
                     "dnd_end": "time without time zone",
                 }
+            finally:
+                config.attributes.pop("connection", None)
+                if boundary_transaction.is_active:
+                    boundary_transaction.rollback()
         finally:
-            config.attributes.pop("connection", None)
-            inspection_engine.dispose()
+            boundary_connection.close()
 
+        # After the diagnostic rolls back, the head, the marker and the schema persist.
+        with inspection_engine.connect() as connection:
+            assert (
+                MigrationContext.configure(connection).get_current_revision()
+                == plan.head_revision
+            )
+            assert (
+                connection.execute(
+                    sa.text(
+                        "SELECT storage_url FROM news_media_assets WHERE id = :id"
+                    ).bindparams(sa.bindparam("id", type_=sa.Uuid())),
+                    {"id": sentinel_id},
+                ).scalar_one()
+                == sentinel_url
+            )
     finally:
+        inspection_engine.dispose()
         if orig_db_url is not None:
             os.environ["DATABASE_URL"] = orig_db_url
         else:

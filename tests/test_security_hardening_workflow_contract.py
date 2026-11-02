@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -421,11 +422,24 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
         "detect-secrets==1.5.0": "e24e7b9b5a35048c313e983f76c4bd09dad89f045ff059e354f9943bf45aa060",  # pragma: allowlist secret -- wheel checksum
         "PyYAML==6.0.3": "c458b6d084f9b935061bc36216e8a69a7e293a2f1e68bf956dcd9e6cbcd143f5",  # pragma: allowlist secret -- wheel checksum
         "requests==2.34.2": "2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0",  # pragma: allowlist secret -- wheel checksum
-        "certifi==2026.10.19": "42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b",
         "charset-normalizer==3.5.2": "34276fd796040bf0993ab33a369aa572e6979c7aab225a88893667ad8eac8f7a",
         "idna==3.20": "a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44",  # pragma: allowlist secret -- wheel checksum
         "urllib3==2.8.0": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",  # pragma: allowlist secret -- wheel checksum
     }
+    # certifi is checked against its uv.lock wheel record rather than a literal:
+    # the runner must name the locked version and the locked wheel digest.
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    certifi = next(
+        package for package in lock["package"] if package["name"] == "certifi"
+    )
+    certifi_wheel = next(
+        wheel
+        for wheel in certifi["wheels"]
+        if wheel["url"].endswith("-py3-none-any.whl")
+    )
+    expected[f"certifi=={certifi['version']}"] = certifi_wheel["hash"].removeprefix(
+        "sha256:"
+    )
     requirement_lines = {
         line.split(maxsplit=1)[0]: line
         for line in requirements.splitlines()

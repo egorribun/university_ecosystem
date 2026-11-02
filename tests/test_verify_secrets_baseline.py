@@ -66,6 +66,11 @@ _PRE_SQUASH_SOURCE_COMMIT = bytes(
         201,
     )
 ).hex()
+# The reviewed Dependabot bump of this one workflow (setup-python 5fda3b95 -> 6d4fd22b) lives in its
+# own commit; every other path stays on the pre-squash commit.
+_REVIEWED_SOURCE_COMMIT_OVERRIDES = {
+    ".github/workflows/reusable-backend-tests.yml": "e77defff9ddf944793bc7107fa6b5df9e2f7903a",
+}
 _PRE_SQUASH_SOURCE_BLOBS = {
     "tests/integration/test_aud350_stored_event_timestamp_migration.py": (
         20,
@@ -464,26 +469,26 @@ _PRE_SQUASH_SOURCE_BLOBS = {
         37,
     ),
     ".github/workflows/reusable-backend-tests.yml": (
-        182,
-        8,
-        204,
-        206,
-        132,
-        248,
+        237,
+        164,
+        16,
+        40,
+        91,
+        48,
+        242,
         14,
-        203,
-        123,
-        200,
-        25,
-        46,
-        214,
-        225,
-        241,
-        112,
-        67,
-        154,
-        110,
-        118,
+        234,
+        29,
+        233,
+        143,
+        237,
+        41,
+        191,
+        143,
+        132,
+        2,
+        251,
+        240,
     ),
 }
 
@@ -502,7 +507,7 @@ def _pre_squash_source_bytes(
                 "--no-replace-objects",
                 "cat-file",
                 "blob",
-                f"{_PRE_SQUASH_SOURCE_COMMIT}:{path}",
+                f"{_REVIEWED_SOURCE_COMMIT_OVERRIDES.get(path, _PRE_SQUASH_SOURCE_COMMIT)}:{path}",
             ],
             cwd=root,
             check=True,
@@ -7604,8 +7609,8 @@ _AUD447_SOURCE_BLOBS = {
         *(195, 84, 6, 40, 251, 150, 156, 173, 51, 37),
     ),
     ".github/workflows/reusable-backend-tests.yml": (
-        *(182, 8, 204, 206, 132, 248, 14, 203, 123, 200),
-        *(25, 46, 214, 225, 241, 112, 67, 154, 110, 118),
+        *(237, 164, 16, 40, 91, 48, 242, 14, 234, 29),
+        *(233, 143, 237, 41, 191, 143, 132, 2, 251, 240),
     ),
 }
 _AUD447_PRIOR_494_SHA256 = (

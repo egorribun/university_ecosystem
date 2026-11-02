@@ -154,8 +154,13 @@ func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *re
 }
 
 // WithSPIFFE configures the client's HTTP transport to use SPIFFE mTLS when communicating with the backend.
+// AUD-373: the backend hop carries the internal token and identity, and an http
+// base URL would silently discard the TLS config, so the base URL must be https.
 func (c *InternalAPIAuthClient) WithSPIFFE(spiffeClient *spiffe.Client, backendSpiffeID string) *InternalAPIAuthClient {
 	if spiffeClient != nil && backendSpiffeID != "" {
+		if !isHTTPSBaseURL(c.baseURL) {
+			panic(fmt.Sprintf("auth client base URL %q must use https when SPIFFE mTLS is configured", c.baseURL))
+		}
 		tlsCfg, err := authClientTLSConfigFunc(spiffeClient, backendSpiffeID)
 		if err != nil {
 			panic(fmt.Sprintf("failed to create SPIFFE client TLS config for auth client: %v", err))
@@ -165,6 +170,12 @@ func (c *InternalAPIAuthClient) WithSPIFFE(spiffeClient *spiffe.Client, backendS
 		}
 	}
 	return c
+}
+
+// isHTTPSBaseURL reports whether raw is an absolute https URL with a host.
+func isHTTPSBaseURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	return err == nil && parsed.Scheme == "https" && parsed.Host != ""
 }
 
 // StartEviction is no longer needed since lru.Cache manages its own memory bound.

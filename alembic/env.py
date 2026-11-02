@@ -171,8 +171,22 @@ def get_url() -> str:
     )
 
 
+def _invoked_command_name() -> str:
+    """Return the Alembic CLI command that loaded this environment, or "" if none did."""
+    command_spec = getattr(config.cmd_opts, "cmd", None)
+    if not command_spec:
+        return ""
+    return str(getattr(command_spec[0], "__name__", ""))
+
+
 def _development_fallback_skip_allowed() -> bool:
-    """Allow a skip only for the documented local SQLite default in development."""
+    """Allow a skip only for CLI ``upgrade`` with the local SQLite default in development.
+
+    ``check``, ``current``, ``downgrade`` and programmatic callers never skip: each would
+    exit 0 without examining the schema it was asked about.
+    """
+    if _invoked_command_name() != "upgrade":
+        return False
     return should_skip_development_migration(
         development_fallback_fields=_settings().development_fallback_fields,
         environment=os.getenv("ENVIRONMENT") or "",
@@ -184,6 +198,15 @@ def _development_fallback_skip_allowed() -> bool:
 
 
 def run_migrations_offline() -> None:
+    # Without an explicit URL, get_url() would render SQL for the local SQLite default,
+    # which is not a PostgreSQL migration artifact. Refuse instead of rendering it.
+    if _migration_settings().has_development_fallbacks and not config.get_main_option(
+        "sqlalchemy.url"
+    ):
+        raise RuntimeError(
+            "Refusing to render Alembic SQL: development fallbacks are active for "
+            "database_url. Set DATABASE_URL explicitly."
+        )
     url: str = get_url()
     context.configure(
         url=url,

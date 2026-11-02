@@ -57,7 +57,8 @@ services:
       - path: .env
         required: false
     environment:
-      # Database connection - MUST be set in .env file
+      # Runtime connection as ue_app (NOSUPERUSER NOBYPASSRLS, DML only). Set the
+      # ue_app URL in .env; see .env.example and CONFIGURATION.md.
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:8081}
       FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:8081,http://localhost:8080}
@@ -214,7 +215,8 @@ services:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
+      # ue_worker is a ue_rls_bypass member: the schedule-reminder scan spans tenants.
+      DATABASE_URL: ${NOTIFICATIONS_DATABASE_URL:?NOTIFICATIONS_DATABASE_URL is required - set in .env file}
       # Docker must reach the listener through the container interface. The
       # published host socket remains loopback-only below.
       NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
@@ -395,6 +397,52 @@ services:
           cpus: "0.10"
           memory: 64M
 
+  # Reconcile the login roles that split the runtime from migrations and RLS
+  # bypass on every start, before Alembic runs. ue_migrator owns the schema;
+  # ue_app and ue_worker receive DML only. See
+  # infrastructure/postgres-roles/bootstrap-app-roles.sql.
+  postgres-roles-init:
+    image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: "${POSTGRES_USER:-postgres}"
+      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}"
+      POSTGRES_DB: "${POSTGRES_DB:-university}"
+      UE_MIGRATOR_DB_PASSWORD: "${UE_MIGRATOR_DB_PASSWORD:?UE_MIGRATOR_DB_PASSWORD is required - set in .env file}"
+      UE_APP_DB_PASSWORD: "${UE_APP_DB_PASSWORD:?UE_APP_DB_PASSWORD is required - set in .env file}"
+      UE_WORKER_DB_PASSWORD: "${UE_WORKER_DB_PASSWORD:?UE_WORKER_DB_PASSWORD is required - set in .env file}"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        psql -d postgres -v ON_ERROR_STOP=1 \
+          -v db="$$POSTGRES_DB" \
+          -v migrator_password="$$UE_MIGRATOR_DB_PASSWORD" \
+          -v app_password="$$UE_APP_DB_PASSWORD" \
+          -v worker_password="$$UE_WORKER_DB_PASSWORD" \
+          -f /bootstrap/bootstrap-app-roles.sql
+        echo "[postgres-roles-init] Reconciled ue_migrator, ue_app and ue_worker."
+    volumes:
+      - ./infrastructure/postgres-roles:/bootstrap:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - db_net
+    read_only: true
+    tmpfs:
+      - /tmp
+      # pgvector declares this image VOLUME; keep the data directory disposable.
+      - /var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
+
   valkey:
     ports:
       - "127.0.0.1:16379:6379"
@@ -542,7 +590,8 @@ services:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
+      # ue_migrator owns the schema and runs Alembic only; no runtime service uses it.
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?MIGRATION_DATABASE_URL is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
       # The irreversible WebAuthn retirement migration tombstones active JTIs
       # before changing their database rows. Keep this on security-state Valkey.
@@ -554,6 +603,8 @@ services:
         condition: service_healthy
       revocation-valkey:
         condition: service_healthy
+      postgres-roles-init:
+        condition: service_completed_successfully
     restart: on-failure
     networks:
       - db_net

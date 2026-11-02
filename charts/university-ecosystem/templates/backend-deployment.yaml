@@ -225,29 +225,61 @@ spec:
               value: {{ .Values.otel.sampler | quote }}
             - name: OTEL_TRACES_SAMPLER_ARG
               value: {{ .Values.otel.samplerArg | quote }}
+            {{- if .Values.internalHttpMTLS.enabled }}
+            # AUD-373: the listener serves TLS and requires client certificates.
+            # app.server.gunicorn_conf loads the mounted SVID and trust bundle at worker start.
+            - name: INTERNAL_HTTP_MTLS_ENABLED
+              value: "true"
+            - name: INTERNAL_HTTP_MTLS_CERT_FILE
+              value: /run/secrets/internal-http-mtls/tls.crt
+            - name: INTERNAL_HTTP_MTLS_KEY_FILE
+              value: /run/secrets/internal-http-mtls/tls.key
+            - name: INTERNAL_HTTP_MTLS_CA_FILE
+              value: /run/secrets/internal-http-mtls/ca.crt
+            - name: GUNICORN_CMD_ARGS
+              value: "--config=python:app.server.gunicorn_conf"
+            {{- end }}
           # TD-04 (audit Wave 12): explicit probe timing prevents premature liveness kills
           # on slow startup. startupProbe gives up to 150s (30×5s) before handing off.
+          # With mTLS the kubelet cannot present a client certificate, so probes run inside
+          # the pod with the pod's own SVID against the same health paths.
           startupProbe:
+            {{- if .Values.internalHttpMTLS.enabled }}
+            exec:
+              command: ["python", "-m", "app.server.internal_mtls", "probe", "/health/ready", "--port", "{{ .Values.backend.service.port }}"]
+            timeoutSeconds: 5
+            {{- else }}
             httpGet:
               path: /health/ready
               port: http
+            {{- end }}
             failureThreshold: 30
             periodSeconds: 5
           livenessProbe:
+            {{- if .Values.internalHttpMTLS.enabled }}
+            exec:
+              command: ["python", "-m", "app.server.internal_mtls", "probe", "/health/live", "--port", "{{ .Values.backend.service.port }}"]
+            {{- else }}
             httpGet:
               path: /health/live
               port: http
+            {{- end }}
             initialDelaySeconds: 10
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
+            {{- if .Values.internalHttpMTLS.enabled }}
+            exec:
+              command: ["python", "-m", "app.server.internal_mtls", "probe", "/health/ready", "--port", "{{ .Values.backend.service.port }}"]
+            {{- else }}
             httpGet:
               path: /health/ready
               port: http
+            {{- end }}
             initialDelaySeconds: 5
             periodSeconds: 10
-            timeoutSeconds: 3
+            timeoutSeconds: {{ ternary 5 3 .Values.internalHttpMTLS.enabled }}
             failureThreshold: 3
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
@@ -260,6 +292,11 @@ spec:
             - name: app-cache
               mountPath: /app/cache
             {{- include "university-ecosystem.secretVolumeMounts" (dict "secrets" (list (dict "id" "connections" "secretName" $connectionSecret "keys" $connectionSecretKeys) (dict "id" "application" "secretName" $applicationSecret "keys" $applicationSecretKeys))) | nindent 12 }}
+            {{- if .Values.internalHttpMTLS.enabled }}
+            - name: internal-http-mtls
+              mountPath: /run/secrets/internal-http-mtls
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir:
@@ -269,3 +306,16 @@ spec:
           emptyDir:
             sizeLimit: 256Mi
         {{- include "university-ecosystem.secretVolumes" (dict "secrets" (list (dict "id" "connections" "secretName" $connectionSecret "keys" $connectionSecretKeys) (dict "id" "application" "secretName" $applicationSecret "keys" $applicationSecretKeys))) | nindent 8 }}
+        {{- if .Values.internalHttpMTLS.enabled }}
+        - name: internal-http-mtls
+          secret:
+            secretName: {{ .Values.internalHttpMTLS.backendServer.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.internalHttpMTLS.backendServer.certKey | quote }}
+                path: tls.crt
+              - key: {{ .Values.internalHttpMTLS.backendServer.privateKeyKey | quote }}
+                path: tls.key
+              - key: {{ .Values.internalHttpMTLS.backendServer.caKey | quote }}
+                path: ca.crt
+        {{- end }}

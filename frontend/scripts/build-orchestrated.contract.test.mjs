@@ -201,6 +201,32 @@ test("production Vite build keeps Rolldown lazy barrel optimization enabled", ()
   assert.equal(loadedViteConfig?.config?.build?.rolldownOptions?.experimental?.lazyBarrel, true)
 })
 
+for (const [label, inheritedThreads, expectedThreads] of [
+  ["unset", undefined, "2"],
+  ["operator value", " 3 ", "3"],
+  ["blank value", "   ", "2"],
+]) {
+  test(`build orchestrator bounds Rayon workers independently of host CPUs: ${label}`, async (t) => {
+    const previousRayonThreads = process.env.RAYON_NUM_THREADS
+    t.after(() => {
+      if (previousRayonThreads === undefined) delete process.env.RAYON_NUM_THREADS
+      else process.env.RAYON_NUM_THREADS = previousRayonThreads
+    })
+    if (inheritedThreads === undefined) delete process.env.RAYON_NUM_THREADS
+    else process.env.RAYON_NUM_THREADS = inheritedThreads
+    const boundary = fakeViteBoundary(t)
+    const outcome = step3_viteBuild().then(
+      () => null,
+      (error) => error
+    )
+    const viteSpawn = boundary.spawnOptions.find(({ command }) => command === "node")
+    boundary.child.emit("close", 1, null)
+    await outcome
+
+    assert.equal(viteSpawn.options.env.RAYON_NUM_THREADS, expectedThreads)
+  })
+}
+
 test("build orchestrator bounds the Vite young generation unless NODE_OPTIONS already sets one", async (t) => {
   const previousNodeOptions = process.env.NODE_OPTIONS
   t.after(() => {

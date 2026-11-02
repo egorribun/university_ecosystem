@@ -345,17 +345,17 @@ func run() error {
 
 	// 4.5 Initialize SPIFFE Workload API Client
 	spiffeClient, err := callNewSpiffeClient(ctx, spiffe.Config{
-		Enabled:     cfg.SpiffeEnabled,
+		Enabled:     cfg.BackendMTLSEnabled(),
 		SocketPath:  cfg.SpiffeEndpointSocket,
 		TrustDomain: cfg.SpiffeTrustDomain,
 		MySpiffeID:  cfg.SpiffeMyID,
 	}, logger)
 	if err != nil {
 		logger.ErrorContext(ctx, "SPIFFE initialization failed", "err", err)
-		if cfg.SpiffeEnabled {
+		if cfg.BackendMTLSEnabled() {
 			return err
 		}
-	} else if cfg.SpiffeEnabled && spiffeClient == nil {
+	} else if cfg.BackendMTLSEnabled() && spiffeClient == nil {
 		logger.ErrorContext(ctx, "SPIFFE is enabled but client initialization returned nil")
 		return errors.New("SPIFFE is enabled but client initialization returned nil")
 	} else if spiffeClient != nil {
@@ -544,6 +544,30 @@ func isPublicPasswordRecoveryRoute(subPath, method string) bool {
 	}
 }
 
+// configureJWKSBackendTLS presents the SPIFFE client identity only when the JWKS
+// endpoint is the internal backend origin. Public JWKS URLs keep ordinary
+// certificate verification because the internal trust bundle does not sign them.
+func configureJWKSBackendTLS(m *middleware.JWTMiddleware, cfg *config.Config, backendTLS *tls.Config) {
+	if backendTLS == nil || !sameOrigin(cfg.JWKSEndpoint, cfg.BackendURL) {
+		return
+	}
+	m.SetJWKSTLSConfig(backendTLS)
+}
+
+// sameOrigin compares the scheme and host, the origin components that decide
+// where a SPIFFE client certificate may be presented.
+func sameOrigin(endpoint, backend string) bool {
+	left, err := url.Parse(endpoint)
+	if err != nil || left.Host == "" {
+		return false
+	}
+	right, err := url.Parse(backend)
+	if err != nil || right.Host == "" {
+		return false
+	}
+	return strings.EqualFold(left.Scheme, right.Scheme) && strings.EqualFold(left.Host, right.Host)
+}
+
 //nolint:gocognit,cyclop
 func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, opts ...any) (*gin.Engine, error) {
 	ctx := context.Background()
@@ -633,7 +657,9 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		MaxIdleConnsPerHost:   50,
 		TLSHandshakeTimeout:   10 * time.Second,
 	}
-	if cfg.SpiffeEnabled {
+	// backendMTLSTLS is reused by the JWKS refresher for the same internal origin.
+	var backendMTLSTLS *tls.Config
+	if cfg.BackendMTLSEnabled() {
 		if spiffeClient == nil {
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
 			return nil, http.ErrServerClosed
@@ -644,6 +670,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 			return nil, err
 		}
 		proxyTransport.TLSClientConfig = tlsCfg
+		backendMTLSTLS = tlsCfg
 	}
 	proxy.Transport = proxyTransport
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -735,6 +762,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	jwtMiddleware.WarmL1Cache(ctx)
 	jwtMiddleware.ListenForRevocations(ctx)
 	// MOD-W17-03: Start JWKS hot-reload if endpoint is configured.
+	configureJWKSBackendTLS(jwtMiddleware, cfg, backendMTLSTLS)
 	if cfg.JWKSEndpoint != "" {
 		interval := time.Duration(cfg.JWKSRefreshInterval) * time.Second
 		jwtMiddleware.StartJWKSRefresher(ctx, cfg.JWKSEndpoint, interval, logger)

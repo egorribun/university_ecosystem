@@ -44,6 +44,20 @@ cwv:
     workflowRef: REQUIRED_WORKFLOW_REF
     subject: REQUIRED_OIDC_SUBJECT
 
+# AUD-373: enable only after the public /static and /.well-known ingress routes
+# stop terminating on the plaintext backend Service (see the helm render guard).
+internalHttpMTLS:
+  enabled: false
+  trustDomain: university.ecosystem
+  backendSpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/app
+  gatewaySpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway
+  wsHubSpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/ws-hub
+  backendServer:
+    existingSecret: university-internal-http-backend-server # pragma: allowlist secret
+    certKey: tls.crt
+    privateKeyKey: tls.key # pragma: allowlist secret
+    caKey: ca.crt
+
 internalGrpcMTLS:
   enabled: true
   serverName: university-ecosystem-file-processor.university-ecosystem.svc

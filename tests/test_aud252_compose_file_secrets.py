@@ -19,6 +19,8 @@ _PRODUCTION_COMPOSE_FILES = ("docker-compose.yml", "docker-compose.prod.yml")
 _SECRET_NAMES = (
     "secret_key",
     "database_url",
+    "migration_database_url",
+    "notifications_database_url",
     "nats_auth_token",
     "cache_redis_url",
     "rate_limit_storage_uri",
@@ -66,7 +68,7 @@ _PRODUCTION_SERVICE_SECRETS = {
     },
     "notifications-worker": {
         "secret_key",
-        "database_url",
+        "notifications_database_url",
         "nats_auth_token",
         "cache_redis_url",
         "rate_limit_storage_uri",
@@ -98,7 +100,7 @@ _PRODUCTION_SERVICE_SECRETS = {
     },
     "migrations": {
         "secret_key",
-        "database_url",
+        "migration_database_url",
         "nats_auth_token",
         "cache_redis_url",
         "revocation_redis_url",
@@ -140,7 +142,7 @@ _SERVICE_FILE_ENVIRONMENT = {
     },
     "notifications-worker": {
         "SECRET_KEY_FILE": "/run/secrets/secret_key",
-        "DATABASE_URL_FILE": "/run/secrets/database_url",
+        "DATABASE_URL_FILE": "/run/secrets/notifications_database_url",
         "NATS_AUTH_TOKEN_FILE": "/run/secrets/nats_auth_token",
         "CACHE_REDIS_URL_FILE": "/run/secrets/cache_redis_url",
         "RATE_LIMIT_STORAGE_URI_FILE": "/run/secrets/rate_limit_storage_uri",
@@ -172,7 +174,7 @@ _SERVICE_FILE_ENVIRONMENT = {
     },
     "migrations": {
         "SECRET_KEY_FILE": "/run/secrets/secret_key",
-        "DATABASE_URL_FILE": "/run/secrets/database_url",
+        "DATABASE_URL_FILE": "/run/secrets/migration_database_url",
         "NATS_AUTH_TOKEN_FILE": "/run/secrets/nats_auth_token",
         "CACHE_REDIS_URL_FILE": "/run/secrets/cache_redis_url",
         "REVOCATION_REDIS_URL_FILE": "/run/secrets/revocation_redis_url",

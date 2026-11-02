@@ -4,6 +4,7 @@ import (
 	"context"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -133,6 +134,9 @@ type JWTMiddleware struct {
 	jwksConfigured atomic.Bool
 	// jwksFreshnessLimit bounds last-known-good key trust during endpoint outages.
 	jwksFreshnessLimit atomic.Int64
+	// jwksTLSConfig carries the SPIFFE client identity for same-origin internal
+	// JWKS fetches (AUD-373). It is installed before the refresher goroutine starts.
+	jwksTLSConfig *tls.Config
 	// jwksSnapshot is the authoritative, coherent keys-plus-freshness publication.
 	jwksSnapshot atomic.Pointer[rsaKeySnapshot]
 	// rsaKeys is a compatibility mirror for existing observability/test callers.
@@ -385,6 +389,32 @@ var (
 	jwksMetricsOnce sync.Once
 )
 
+// SetJWKSTLSConfig installs the client TLS configuration used when fetching
+// JWKS from the internal backend origin. Call it before StartJWKSRefresher.
+func (m *JWTMiddleware) SetJWKSTLSConfig(tlsConfig *tls.Config) {
+	m.jwksTLSConfig = tlsConfig
+}
+
+// JWKSTLSConfig returns the client TLS configuration used for JWKS fetches, or nil
+// when ordinary certificate verification applies.
+func (m *JWTMiddleware) JWKSTLSConfig() *tls.Config {
+	return m.jwksTLSConfig
+}
+
+// newJWKSHTTPClient returns the client for JWKS refreshes. Only the configured
+// SPIFFE client TLS config changes the transport; public endpoints keep defaults.
+func (m *JWTMiddleware) newJWKSHTTPClient() *http.Client {
+	client := &http.Client{Timeout: 10 * time.Second}
+	if m.jwksTLSConfig != nil {
+		client.Transport = &http.Transport{
+			TLSClientConfig:     m.jwksTLSConfig,
+			TLSHandshakeTimeout: 5 * time.Second,
+			IdleConnTimeout:     90 * time.Second,
+		}
+	}
+	return client
+}
+
 // StartJWKSRefresher starts a background goroutine that periodically fetches
 // the JWKS from endpoint and atomically publishes its keys and freshness time.
 // The caller must cancel ctx to stop the goroutine on shutdown.
@@ -402,7 +432,7 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 		prometheus.MustRegister(jwksRefreshes, jwksRefreshErrors, jwksKeyRotations)
 	})
 
-	httpClient := &http.Client{Timeout: 10 * time.Second}
+	httpClient := m.newJWKSHTTPClient()
 
 	minRetryInterval := 2 * time.Second
 	if interval < minRetryInterval {

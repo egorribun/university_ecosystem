@@ -508,6 +508,9 @@
         "databaseURLKey": {
           "$ref": "#/definitions/secretDataKey"
         },
+        "migrationDatabaseURLKey": {
+          "$ref": "#/definitions/secretDataKey"
+        },
         "redisBackendURLKey": {
           "$ref": "#/definitions/secretDataKey"
         },
@@ -729,6 +732,66 @@
         },
         "fileProcessorServer": {
           "$ref": "#/definitions/internalGrpcPeer"
+        }
+      }
+    },
+    "internalHttpMTLS": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "trustDomain",
+        "backendSpiffeID",
+        "gatewaySpiffeID",
+        "wsHubSpiffeID",
+        "backendServer",
+        "workloadAPI"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "trustDomain": {
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^(|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)$"
+        },
+        "backendSpiffeID": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(|spiffe://[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?:/[A-Za-z0-9._~-]+)+)$"
+        },
+        "gatewaySpiffeID": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(|spiffe://[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?:/[A-Za-z0-9._~-]+)+)$"
+        },
+        "wsHubSpiffeID": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(|spiffe://[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?:/[A-Za-z0-9._~-]+)+)$"
+        },
+        "backendServer": {
+          "$ref": "#/definitions/internalGrpcPeer"
+        },
+        "workloadAPI": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "csiDriver",
+            "mountPath"
+          ],
+          "properties": {
+            "csiDriver": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253
+            },
+            "mountPath": {
+              "type": "string",
+              "pattern": "^/[A-Za-z0-9._/-]{1,200}$"
+            }
+          }
         }
       }
     },

@@ -26,7 +26,10 @@ corresponding plaintext variable.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | `postgresql+asyncpg://user:pass@host/db` | Required |
+| `DATABASE_URL` | `postgresql+asyncpg://ue_app:pass@host/db`: runtime login for the backend and outbox worker. Use a `NOSUPERUSER NOBYPASSRLS` role with DML grants only and no `ue_rls_bypass` membership, so the tenant policies apply to every request. Never use the bootstrap superuser or `ue_migrator`. | Required |
+| `NOTIFICATIONS_DATABASE_URL` | Compose stacks only: `ue_worker` login for the notifications worker. Membership in `ue_rls_bypass` lets its schedule-reminder scan read every tenant. The application does not read this name. | Required by `docker-compose.yml` |
+| `MIGRATION_DATABASE_URL` | Compose stacks only: `ue_migrator` login for the `migrations` service (`alembic upgrade head`). It owns the schema and is the only superuser login outside bootstrap. The application does not read this name. | Required by `docker-compose.yml` |
+| `UE_APP_DB_PASSWORD`, `UE_WORKER_DB_PASSWORD`, `UE_MIGRATOR_DB_PASSWORD` | Compose and bootstrap inputs: passwords for the `ue_app`, `ue_worker` and `ue_migrator` logins. `start-docker.ps1` generates them as alphanumeric values; `postgres-roles-init` applies them on every start. | Generated |
 | `DATABASE_POOL_SIZE` | Base SQLAlchemy pool size; defaults to `2 * cgroup-aware CPU count + 1` (CPU quota capped at 32) | Formula |
 | `DATABASE_MAX_OVERFLOW` | Additional connections above the base pool; defaults to `4 * cgroup-aware CPU count` | Formula |
 | `DATABASE_POOL_TIMEOUT` | Connection timeout (seconds) | `30.0` |
@@ -36,6 +39,8 @@ corresponding plaintext variable.
 | `SLOW_QUERY_LOGGING_ENABLED` | Enable slow query logging | `true` |
 | `SLOW_QUERY_THRESHOLD_MS` | Threshold for slow query alerts | `500.0` |
 | `SLOW_QUERY_EXPLAIN_ENABLED` | Include `EXPLAIN` details for slow queries | `false` |
+
+**Database login roles.** `infrastructure/postgres-roles/bootstrap-app-roles.sql` provisions the Compose roles on every start, before migrations. `ue_app` (backend, outbox worker) and `ue_worker` (notifications worker) are `NOSUPERUSER NOBYPASSRLS` with DML grants only. `ue_migrator` owns the schema and runs Alembic only; it is a superuser because the baseline creates the non-trusted pgvector extension and comments on it. Membership in `ue_rls_bypass` is the only grant that lifts the tenant policies for query access, and a session GUC never lifts them. Maintenance jobs need different authority: `pg_dump` runs with `row_security=off`, so a dump login needs the `BYPASSRLS` attribute, because membership does not satisfy it. Provision a SELECT-only `BYPASSRLS` login for `backup-database-url`. The `migrate_passwords` inventory fails closed unless its login is a `ue_rls_bypass` member.
 
 ---
 

@@ -370,10 +370,30 @@ class BaselineDatabase:
 def committed_baseline(server: OwnedPostgres) -> Iterator[BaselineDatabase]:
     """CREATE receipt/OID checks and DROP are retained in the existing helper."""
     server._lease.verify(server)
-    with _owned_scratch_database(
+    # Only this newly created server permits committing cluster-global
+    # baseline roles/jobs. No caller-supplied/operator URL is accepted.
+    with _upgraded_scratch_baseline(
         server.url.render_as_string(hide_password=False)
-    ) as scratch_url:
-        url = make_url(scratch_url)
+    ) as baseline:
+        yield baseline
+
+
+@contextmanager
+def scratch_baseline(database_url: str) -> Iterator[BaselineDatabase]:
+    """Upgrade the shipped baseline into a scratch database on an explicit service.
+
+    Only for a module that has checked its own explicit opt-in and runs against a
+    disposable PostgreSQL service (the CI integration job). The scratch database
+    is dropped on exit; cluster-global baseline roles are created when absent.
+    """
+    with _upgraded_scratch_baseline(database_url) as baseline:
+        yield baseline
+
+
+@contextmanager
+def _upgraded_scratch_baseline(database_url: str) -> Iterator[BaselineDatabase]:
+    with _owned_scratch_database(database_url) as scratch_url:
+        url = make_url(scratch_url).set(drivername="postgresql+psycopg")
         engine = sa.create_engine(
             url,
             poolclass=sa.pool.NullPool,
@@ -389,8 +409,6 @@ def committed_baseline(server: OwnedPostgres) -> Iterator[BaselineDatabase]:
                     connection.scalar(sa.text("SHOW lock_timeout")),
                     connection.scalar(sa.text("SHOW statement_timeout")),
                 )
-            # Only this newly created server permits committing cluster-global
-            # baseline roles/jobs. No caller-supplied/operator URL is accepted.
             yield BaselineDatabase(url, migration, timeouts)
         finally:
             engine.dispose()

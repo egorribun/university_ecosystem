@@ -106,7 +106,7 @@ _PRODUCTION_FILE_SECRETS = {
         "REVOCATION_REDIS_URL": "/run/secrets/revocation_redis_url",
     },
     "notifications-worker": {
-        "DATABASE_URL": "/run/secrets/database_url",
+        "DATABASE_URL": "/run/secrets/notifications_database_url",
         "SECRET_KEY": "/run/secrets/secret_key",
         "NATS_AUTH_TOKEN": "/run/secrets/nats_auth_token",
     },
@@ -116,7 +116,7 @@ _PRODUCTION_FILE_SECRETS = {
         "NATS_AUTH_TOKEN": "/run/secrets/nats_auth_token",
     },
     "migrations": {
-        "DATABASE_URL": "/run/secrets/database_url",
+        "DATABASE_URL": "/run/secrets/migration_database_url",
         "SECRET_KEY": "/run/secrets/secret_key",
     },
 }

@@ -335,6 +335,10 @@ export async function step3_viteBuild(configuredMaxWaitMs = process.env.BUILD_MA
   // override here).
   const isReactDevMode = process.env.FRONTEND_REACT_DEV_MODE === "true"
   const rolldownWorkerThreads = process.env.ROLLDOWN_WORKER_THREADS?.trim() || "4"
+  // Rayon's global pool otherwise sizes itself to the host's logical CPU count,
+  // so the client render's working-set peak followed the machine rather than the
+  // build. Bound it like the Tokio pool; an operator value still wins.
+  const rayonWorkerThreads = process.env.RAYON_NUM_THREADS?.trim() || "2"
 
   // Preserve malformed quoting byte-for-byte so Node rejects it; appending
   // defaults or the trace agent must not accidentally repair an invalid escape.
@@ -361,8 +365,9 @@ export async function step3_viteBuild(configuredMaxWaitMs = process.env.BUILD_MA
       FRONTEND_BUILD_UNMINIFIED: isUnminified ? "true" : "",
       // See isReactDevMode above.
       FRONTEND_REACT_DEV_MODE: isReactDevMode ? "true" : "",
-      // Bound Rolldown's native Tokio pool independently of the host CPU count.
+      // Bound Rolldown's native Tokio and Rayon pools independently of the host CPU count.
       ROLLDOWN_WORKER_THREADS: rolldownWorkerThreads,
+      RAYON_NUM_THREADS: rayonWorkerThreads,
       NODE_OPTIONS: nodeOptions,
     }
 

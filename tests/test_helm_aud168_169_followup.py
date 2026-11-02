@@ -166,8 +166,10 @@ def test_migration_settings_use_release_environment_and_required_secrets(
         assert "valueFrom" not in file_env
         assert environment_name not in environment
 
+    # The migration Job runs as the schema owner. It must project only the owner
+    # URL, never the runtime database-url key that the backend and outbox worker use.
     connection_secret_keys = {
-        "DATABASE_URL": values["connections"]["databaseURLKey"],
+        "DATABASE_URL": values["connections"]["migrationDatabaseURLKey"],
         "CACHE_REDIS_URL": values["connections"]["redisBackendURLKey"],
         "RATE_LIMIT_STORAGE_URI": values["connections"]["rateLimitStorageURIKey"],
         "REVOCATION_REDIS_URL": values["connections"]["redisRevocationURLKey"],

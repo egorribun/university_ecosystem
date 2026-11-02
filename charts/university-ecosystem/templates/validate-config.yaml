@@ -2,6 +2,32 @@
 {{- if not (has $environment (list "development" "staging" "production")) -}}
   {{- fail "global.environment must be one of: development, staging, production" -}}
 {{- end -}}
+{{- /* The migration Job runs DDL as the schema owner; runtime workloads must never receive that URL. */ -}}
+{{- if eq (toString .Values.connections.databaseURLKey) (toString .Values.connections.migrationDatabaseURLKey) -}}
+  {{- fail "connections.migrationDatabaseURLKey must differ from connections.databaseURLKey" -}}
+{{- end -}}
+{{- /* AUD-373: the backend listener requires client certificates, so every backend client must present an SVID.
+       A public ingress path that still targets the backend Service would reach it without one and fail. */ -}}
+{{- if .Values.internalHttpMTLS.enabled -}}
+  {{- if not .Values.internalHttpMTLS.trustDomain -}}
+    {{- fail "internalHttpMTLS.trustDomain is required when internalHttpMTLS.enabled=true" -}}
+  {{- end -}}
+  {{- range $name, $spiffeID := dict "backendSpiffeID" .Values.internalHttpMTLS.backendSpiffeID "gatewaySpiffeID" .Values.internalHttpMTLS.gatewaySpiffeID "wsHubSpiffeID" .Values.internalHttpMTLS.wsHubSpiffeID -}}
+    {{- if not (regexMatch "^spiffe://[a-z0-9][a-z0-9.-]*(/[A-Za-z0-9._~-]+)+$" (toString $spiffeID)) -}}
+      {{- fail (printf "internalHttpMTLS.%s must be a canonical SPIFFE ID when internalHttpMTLS.enabled=true" $name) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if not .Values.internalHttpMTLS.backendServer.existingSecret -}}
+    {{- fail "internalHttpMTLS.backendServer.existingSecret is required when internalHttpMTLS.enabled=true" -}}
+  {{- end -}}
+  {{- range $host := .Values.ingress.hosts -}}
+    {{- range $path := $host.paths -}}
+      {{- if eq $path.service "backend" -}}
+        {{- fail (printf "ingress path %s on host %s targets the backend Service; route it through the gateway before enabling internalHttpMTLS" $path.path $host.host) -}}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
 {{- /* A late-starting ws-hub replica must replay every revocation that a still-valid access token could carry. */ -}}
 {{- if .Values.wsHub.enabled -}}
   {{- $replayWindowSeconds := int .Values.wsHub.config.revocationReplayWindowSeconds -}}

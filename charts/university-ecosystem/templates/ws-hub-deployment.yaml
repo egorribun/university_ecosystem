@@ -55,6 +55,12 @@ spec:
       terminationGracePeriodSeconds: 30
       volumes:
         {{- include "university-ecosystem.secretVolumes" (dict "secrets" $wsHubSecrets) | nindent 8 }}
+        {{- if .Values.internalHttpMTLS.enabled }}
+        - name: spiffe-workload-api
+          csi:
+            driver: {{ .Values.internalHttpMTLS.workloadAPI.csiDriver | quote }}
+            readOnly: true
+        {{- end }}
       containers:
         - name: ws-hub
           image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.wsHub.image) | quote }}
@@ -91,9 +97,23 @@ spec:
             - name: REVOCATION_REDIS_URL_FILE
               value: {{ printf "/run/secrets/%s/%s" $connectionsSecretName (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey) | quote }}
             - name: BACKEND_INTERNAL_URL
-              value: {{ printf "http://%s:%v" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port | quote }}
+              value: {{ printf "%s://%s:%v" (ternary "https" "http" .Values.internalHttpMTLS.enabled) (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port | quote }}
             - name: JWKS_URL
-              value: {{ printf "http://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port | quote }}
+              value: {{ printf "%s://%s:%v/.well-known/jwks.json" (ternary "https" "http" .Values.internalHttpMTLS.enabled) (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port | quote }}
+            {{- if .Values.internalHttpMTLS.enabled }}
+            # AUD-373: ws-hub authenticates to the backend with its SVID; SPIFFE_ENABLED here
+            # only switches the backend auth client (ws-hub has no file-processor gRPC).
+            - name: SPIFFE_ENABLED
+              value: "true"
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: {{ printf "unix://%s/agent.sock" .Values.internalHttpMTLS.workloadAPI.mountPath | quote }}
+            - name: SPIFFE_TRUST_DOMAIN
+              value: {{ .Values.internalHttpMTLS.trustDomain | quote }}
+            - name: SPIFFE_MY_ID
+              value: {{ .Values.internalHttpMTLS.wsHubSpiffeID | quote }}
+            - name: BACKEND_SPIFFE_ID
+              value: {{ .Values.internalHttpMTLS.backendSpiffeID | quote }}
+            {{- end }}
             - name: ALLOWED_ORIGINS
               value: {{ join "," .Values.wsHub.config.allowedOrigins | quote }}
             - name: WS_ALLOWED_ORIGINS
@@ -154,4 +174,9 @@ spec:
             {{- toYaml .Values.wsHub.resources | nindent 12 }}
           volumeMounts:
             {{- include "university-ecosystem.secretVolumeMounts" (dict "secrets" $wsHubSecrets) | nindent 12 }}
+            {{- if .Values.internalHttpMTLS.enabled }}
+            - name: spiffe-workload-api
+              mountPath: {{ .Values.internalHttpMTLS.workloadAPI.mountPath | quote }}
+              readOnly: true
+            {{- end }}
 {{- end }}

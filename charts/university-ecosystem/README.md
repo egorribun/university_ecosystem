@@ -159,9 +159,16 @@ contract.
 - `cwv-manual-tester-user-ids`, `minio-access-key`, `minio-secret-key`, and
   `temporal-api-key`.
 
-`university-connections` must contain `database-url`, `redis-backend-url`,
-`redis-gateway-url`, `rate-limit-storage-uri`, `redis-revocation-url`, `nats-url`, and
-`nats-auth-token`. `redis-credentials` must contain `redis-password`.
+`university-connections` must contain `database-url`, `migration-database-url`,
+`redis-backend-url`, `redis-gateway-url`, `rate-limit-storage-uri`, `redis-revocation-url`,
+`nats-url`, and `nats-auth-token`. `redis-credentials` must contain `redis-password`.
+
+`database-url` is the runtime `ue_app` login (`NOSUPERUSER NOBYPASSRLS`, DML grants
+only, no `ue_rls_bypass` membership) used by the backend and outbox worker, so the
+tenant row-level-security policies apply to every request. `migration-database-url`
+is the schema-owner `ue_migrator` login. Only the migration Job projects it, and the
+chart fails rendering when the two keys are equal. The chart does not create these
+roles; provision them with the same grants as `infrastructure/postgres-roles/`.
 
 The backend rate limiter is explicitly configured to use Redis through the
 `rate-limit-storage-uri` key (or the key selected by

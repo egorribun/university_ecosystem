@@ -15,7 +15,10 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      # Runtime role ue_app: NOSUPERUSER NOBYPASSRLS, DML only, no bypass membership.
+      # Schema changes run only as ue_migrator; see
+      # infrastructure/postgres-roles/bootstrap-app-roles.sql.
+      DATABASE_URL: "postgresql+asyncpg://ue_app:${UE_APP_DB_PASSWORD:?UE_APP_DB_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       FRONTEND_ORIGIN: http://localhost:8081
       FRONTEND_ORIGINS: http://localhost:8081,http://localhost:8080
       # Wave 137 SW4: TrustedHostMiddleware allowlist. Default in dev is
@@ -307,7 +310,9 @@ services:
       # revocation-state URL and password. Workers do not own auth state.
       - .env.docker.workers
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      # ue_worker is the only runtime role that is a ue_rls_bypass member: the
+      # schedule-reminder scan reads every tenant's schedule and notifications.
+      DATABASE_URL: "postgresql+asyncpg://ue_worker:${UE_WORKER_DB_PASSWORD:?UE_WORKER_DB_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
       APP_PROCESS_ROLE: notifications-worker
@@ -358,7 +363,9 @@ services:
       # leak a revocation credential merely through a broad env_file.
       - .env.docker.workers
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      # Per-event tenant scope only (app/workers/outbox.py clears bypass), so the
+      # outbox worker runs as ue_app without bypass membership.
+      DATABASE_URL: "postgresql+asyncpg://ue_app:${UE_APP_DB_PASSWORD:?UE_APP_DB_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
       APP_PROCESS_ROLE: outbox-worker
@@ -471,6 +478,53 @@ services:
     # Replace the base stack's one-item sequence instead of appending the
     # same option during an overlay merge (Compose rejects duplicate entries).
     security_opt: !override
+      - no-new-privileges:true
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
+
+  # Reconcile the login roles that split the runtime from migrations and RLS
+  # bypass. Runs before every migration so fresh and pre-existing volumes
+  # converge. ue_migrator owns the schema; ue_app and ue_worker receive DML only.
+  # See infrastructure/postgres-roles/bootstrap-app-roles.sql.
+  postgres-roles-init:
+    image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: "${POSTGRES_USER:-postgres}"
+      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+      POSTGRES_DB: "${POSTGRES_DB:-university}"
+      UE_MIGRATOR_DB_PASSWORD: "${UE_MIGRATOR_DB_PASSWORD:?UE_MIGRATOR_DB_PASSWORD is required - run start-docker.ps1}"
+      UE_APP_DB_PASSWORD: "${UE_APP_DB_PASSWORD:?UE_APP_DB_PASSWORD is required - run start-docker.ps1}"
+      UE_WORKER_DB_PASSWORD: "${UE_WORKER_DB_PASSWORD:?UE_WORKER_DB_PASSWORD is required - run start-docker.ps1}"
+    entrypoint: [ "/bin/sh", "-ec" ]
+    command:
+      - |
+        psql -d postgres -v ON_ERROR_STOP=1 \
+          -v db="$$POSTGRES_DB" \
+          -v migrator_password="$$UE_MIGRATOR_DB_PASSWORD" \
+          -v app_password="$$UE_APP_DB_PASSWORD" \
+          -v worker_password="$$UE_WORKER_DB_PASSWORD" \
+          -f /bootstrap/bootstrap-app-roles.sql
+        echo "[postgres-roles-init] Reconciled ue_migrator, ue_app and ue_worker."
+    volumes:
+      - ./infrastructure/postgres-roles:/bootstrap:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp
+      # pgvector declares this image VOLUME even though this one-shot client
+      # only runs psql. Keep the implicit mount disposable and Compose-owned.
+      - /var/lib/postgresql/data
+    security_opt:
       - no-new-privileges:true
     restart: "no"
     deploy:
@@ -664,7 +718,9 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      # Owner role for Alembic only. It is the sole superuser login in the stack
+      # because the baseline creates the non-trusted pgvector extension.
+      DATABASE_URL: "postgresql+asyncpg://ue_migrator:${UE_MIGRATOR_DB_PASSWORD:?UE_MIGRATOR_DB_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       # The irreversible WebAuthn retirement migration tombstones active JTIs
       # before it changes database state; it must use durable security Valkey.
       REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
@@ -673,6 +729,8 @@ services:
         condition: service_healthy
       revocation-redis:
         condition: service_healthy
+      postgres-roles-init:
+        condition: service_completed_successfully
     networks:
       - internal
       - revocation_net

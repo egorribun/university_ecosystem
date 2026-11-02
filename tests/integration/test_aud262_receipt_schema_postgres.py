@@ -33,9 +33,7 @@ _TABLE = "chat_send_receipts"
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.asyncio,
-    pytest.mark.timeout(
-        300, method="signal", func_only=False, disable_debugger_detection=True
-    ),
+    pytest.mark.timeout(300, method="signal", func_only=False),
     pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to run"),
 ]
 
@@ -554,8 +552,4 @@ async def test_receipt_owned_fixture_never_uses_default_database(
     watchdog = request.node.get_closest_marker("timeout")
     assert watchdog is not None
     assert watchdog.args == (300,)
-    assert watchdog.kwargs == {
-        "method": "signal",
-        "func_only": False,
-        "disable_debugger_detection": True,
-    }
+    assert watchdog.kwargs == {"method": "signal", "func_only": False}

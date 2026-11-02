@@ -15,7 +15,10 @@ global:
 # Existing Secret containing complete, URL-encoded connection strings. Keeping
 # credentials out of values.yaml avoids leaking them through Helm release state.
 # Required keys by default:
-#   database-url: postgresql+asyncpg://...
+#   database-url: postgresql+asyncpg://ue_app:... (runtime login: NOSUPERUSER
+#     NOBYPASSRLS, DML only, no ue_rls_bypass membership; backend and outbox worker)
+#   migration-database-url: postgresql+asyncpg://ue_migrator:... (schema owner;
+#     mounted only into the migration Job; must differ from database-url)
 #   redis-backend-url: redis://:PASSWORD@<release>-redis-master:6379/0
 #   redis-gateway-url: redis://:PASSWORD@<release>-redis-master:6379/3
 #   rate-limit-storage-uri: redis://:PASSWORD@<release>-redis-master:6379/1
@@ -28,6 +31,7 @@ global:
 connections:
   existingSecret: "university-connections"
   databaseURLKey: "database-url"
+  migrationDatabaseURLKey: "migration-database-url"
   redisBackendURLKey: "redis-backend-url"
   redisGatewayURLKey: "redis-gateway-url"
   # Python rate-limit state uses a distinct Secret key and Redis DB/ACL.
@@ -115,9 +119,35 @@ internalGrpcMTLS:
     privateKeyKey: "tls.key" # pragma: allowlist secret
     clientCAKey: "ca.crt"
 
+# SPIFFE mTLS for token-bearing backend HTTP hops (AUD-373). When enabled, the
+# backend Gunicorn listener serves TLS and requires a client certificate chained
+# to backendServer.caKey. backendServer.existingSecret must hold the backend's
+# X.509 SVID (tls.crt/tls.key, with client-auth and server-auth EKU) and the
+# trust bundle. Gateway and ws-hub present SVIDs from the SPIRE Workload API socket
+# that workloadAPI mounts and verify backendSpiffeID. Kubelet probes cannot present
+# a client certificate, so backend probes run inside the pod with that SVID. Off by
+# default; overlays enable it only after every backend client accepts mTLS.
+internalHttpMTLS:
+  enabled: false
+  trustDomain: ""
+  backendSpiffeID: ""
+  gatewaySpiffeID: ""
+  wsHubSpiffeID: ""
+  backendServer:
+    existingSecret: ""
+    certKey: "tls.crt"
+    privateKeyKey: "tls.key" # pragma: allowlist secret
+    caKey: "ca.crt"
+  workloadAPI:
+    csiDriver: "csi.spiffe.io"
+    mountPath: "/spiffe-workload-api"
+
 # Database backup is opt-in because it requires reachable PostgreSQL and MinIO
 # services plus the Secret keys documented above. The init container produces a
 # consistent custom-format pg_dump; the main container uploads it to MinIO.
+# backup-database-url must be a SELECT-only login with the BYPASSRLS attribute,
+# not a ue_rls_bypass member: pg_dump runs with row_security off, and PostgreSQL
+# rejects any policy-subject role that dumps an RLS table, membership or not.
 backup:
   enabled: false
   schedule: "0 2 * * *"

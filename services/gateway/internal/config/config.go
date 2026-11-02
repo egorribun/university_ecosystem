@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -95,6 +96,10 @@ type Config struct {
 	SpiffeMyID            string
 	FileProcessorSpiffeID string
 	BackendSpiffeID       string
+	// InternalHTTPMTLSEnabled (INTERNAL_HTTP_MTLS_ENABLED) turns on SPIFFE mTLS for
+	// the token-bearing backend HTTP hops (AUD-373). It is deliberately separate
+	// from SPIFFE_ENABLED, which also switches the file-processor gRPC transport.
+	InternalHTTPMTLSEnabled bool
 	// HTTP/3 QUIC & WebTransport Ingress Configuration
 	H3Enabled      bool   // GATEWAY_H3_ENABLED (default: true)
 	H3Port         string // GATEWAY_H3_PORT (default: "8443")
@@ -160,6 +165,11 @@ func loadFromEnvironmentChecked() (*Config, error) {
 			jwtIssuer = defaultJWTIssuer
 		}
 	}
+	internalHTTPMTLSEnabled, err := parseInternalHTTPMTLSEnabled(os.Getenv("INTERNAL_HTTP_MTLS_ENABLED"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
 		Port:               getEnv("GATEWAY_PORT", "8080"),
 		BackendURL:         getEnv("BACKEND_URL", "http://backend:8000"),
@@ -195,19 +205,20 @@ func loadFromEnvironmentChecked() (*Config, error) {
 		JWKSRefreshInterval: getEnvInt("JWKS_REFRESH_INTERVAL", 300),
 		// RZ-33-02: Configurable Sentry sample rate. Default 1.0 for dev;
 		// recommend 0.1 for production (set SENTRY_TRACES_SAMPLE_RATE=0.1).
-		SentryTracesSampleRate: getEnvFloat64("SENTRY_TRACES_SAMPLE_RATE", 1.0),
-		SpiffeEnabled:          os.Getenv("SPIFFE_ENABLED") == "true",
-		SpiffeEndpointSocket:   getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
-		SpiffeTrustDomain:      getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
-		SpiffeMyID:             getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/gateway"),
-		FileProcessorSpiffeID:  getEnv("FILE_PROCESSOR_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/file-processor"),
-		BackendSpiffeID:        getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
-		H3Enabled:              getEnvBool("GATEWAY_H3_ENABLED", true),
-		H3Port:                 getEnv("GATEWAY_H3_PORT", "8443"),
-		H3AltSvcMaxAge:         getEnvInt("GATEWAY_H3_ALT_SVC_MAX_AGE", 2592000),
-		TLSCertFile:            os.Getenv("TLS_CERT_FILE"),
-		TLSKeyFile:             os.Getenv("TLS_KEY_FILE"),
-		WsHubURL:               getEnv("WSHUB_URL", "http://ws-hub:8081"),
+		SentryTracesSampleRate:  getEnvFloat64("SENTRY_TRACES_SAMPLE_RATE", 1.0),
+		SpiffeEnabled:           os.Getenv("SPIFFE_ENABLED") == "true",
+		SpiffeEndpointSocket:    getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
+		SpiffeTrustDomain:       getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),
+		SpiffeMyID:              getEnv("SPIFFE_MY_ID", "spiffe://university.ecosystem/ns/default/sa/gateway"),
+		FileProcessorSpiffeID:   getEnv("FILE_PROCESSOR_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/file-processor"),
+		BackendSpiffeID:         getEnv("BACKEND_SPIFFE_ID", "spiffe://university.ecosystem/ns/default/sa/app"),
+		InternalHTTPMTLSEnabled: internalHTTPMTLSEnabled,
+		H3Enabled:               getEnvBool("GATEWAY_H3_ENABLED", true),
+		H3Port:                  getEnv("GATEWAY_H3_PORT", "8443"),
+		H3AltSvcMaxAge:          getEnvInt("GATEWAY_H3_ALT_SVC_MAX_AGE", 2592000),
+		TLSCertFile:             os.Getenv("TLS_CERT_FILE"),
+		TLSKeyFile:              os.Getenv("TLS_KEY_FILE"),
+		WsHubURL:                getEnv("WSHUB_URL", "http://ws-hub:8081"),
 	}, nil
 }
 
@@ -219,6 +230,9 @@ func validateConfig(cfg *Config) error {
 		cfg.JWTIssuer = defaultJWTIssuer
 	}
 	if err := validateRequestSettings(cfg); err != nil {
+		return err
+	}
+	if err := validateBackendTransport(cfg); err != nil {
 		return err
 	}
 	if isRelease {
@@ -406,6 +420,42 @@ func ValidateGRPCClientIdentityURI(value string) error {
 	identity, err := spiffeid.FromString(value)
 	if err != nil || identity.String() != value {
 		return fmt.Errorf("GRPC_CLIENT_IDENTITY_URI must be one canonical SPIFFE URI")
+	}
+	return nil
+}
+
+// parseInternalHTTPMTLSEnabled accepts the standard boolean spellings and rejects
+// anything else, so a typo can never silently leave backend traffic in plaintext.
+func parseInternalHTTPMTLSEnabled(raw string) (bool, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return false, nil
+	}
+	enabled, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("INTERNAL_HTTP_MTLS_ENABLED must be a boolean, got %q", value)
+	}
+	return enabled, nil
+}
+
+// BackendMTLSEnabled reports whether token-bearing backend HTTP hops must use
+// SPIFFE mTLS. The gateway proxy and the JWKS fetch depend on it.
+func (c *Config) BackendMTLSEnabled() bool {
+	return c.SpiffeEnabled || c.InternalHTTPMTLSEnabled
+}
+
+// validateBackendTransport fails closed when internal backend mTLS is requested
+// but the backend URL would carry token-bearing requests in plaintext (AUD-373).
+func validateBackendTransport(cfg *Config) error {
+	if !cfg.InternalHTTPMTLSEnabled {
+		return nil
+	}
+	backend, err := url.Parse(cfg.BackendURL)
+	if err != nil || backend.Scheme != "https" || backend.Host == "" {
+		return fmt.Errorf("BACKEND_URL must be an https URL when INTERNAL_HTTP_MTLS_ENABLED=true")
+	}
+	if _, err := spiffeid.FromString(cfg.BackendSpiffeID); err != nil {
+		return fmt.Errorf("BACKEND_SPIFFE_ID must be a canonical SPIFFE ID when INTERNAL_HTTP_MTLS_ENABLED=true: %w", err)
 	}
 	return nil
 }

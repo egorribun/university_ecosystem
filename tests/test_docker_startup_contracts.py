@@ -1991,7 +1991,8 @@ BACKEND_APPLICATION_SECRET_KEYS = {
     "mfa-trusted-device-active-hmac-key-id",
 }
 MIGRATION_CONNECTION_SECRET_KEYS = {
-    "database-url",
+    # Owner login only: the runtime database-url key is never projected here.
+    "migration-database-url",
     "redis-revocation-url",
     "redis-backend-url",
     "rate-limit-storage-uri",
@@ -2241,7 +2242,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         migration_env,
         connections_secret,
         {
-            "DATABASE_URL": "database-url",
+            "DATABASE_URL": "migration-database-url",
             "RATE_LIMIT_STORAGE_URI": "rate-limit-storage-uri",
             "REVOCATION_REDIS_URL": "redis-revocation-url",
         },

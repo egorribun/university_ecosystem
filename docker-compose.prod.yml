@@ -5,6 +5,8 @@
 # Required source paths before rendering or starting the `prod` profile:
 #   SECRET_KEY_SOURCE_FILE=/etc/university/secrets/secret_key
 #   DATABASE_URL_SOURCE_FILE=/etc/university/secrets/database_url
+#   MIGRATION_DATABASE_URL_SOURCE_FILE=/etc/university/secrets/migration_database_url
+#   NOTIFICATIONS_DATABASE_URL_SOURCE_FILE=/etc/university/secrets/notifications_database_url
 #   NATS_AUTH_TOKEN_SOURCE_FILE=/etc/university/secrets/nats_auth_token
 #   CACHE_REDIS_URL_SOURCE_FILE=/etc/university/secrets/cache_redis_url
 #   RATE_LIMIT_STORAGE_URI_SOURCE_FILE=/etc/university/secrets/rate_limit_storage_uri
@@ -55,6 +57,14 @@
 # identity (for example, `test -r /run/secrets/secret_key` in a Python container,
 # and checks as `--user 999:999` for postgres and `--user 70:70` for pgbouncer).
 # Check exit status only; never print or read secret contents in diagnostics.
+# Database logins are separate: DATABASE_URL_SOURCE_FILE is the ue_app login used by
+# the backend and outbox worker; NOTIFICATIONS_DATABASE_URL_SOURCE_FILE is ue_worker,
+# the only ue_rls_bypass member among runtime services; MIGRATION_DATABASE_URL_SOURCE_FILE
+# is ue_migrator, mounted only into the migrations service. Provision all three with
+# infrastructure/postgres-roles/bootstrap-app-roles.sql. None may be the bootstrap
+# superuser. The pgbouncer service below authenticates only POSTGRES_USER; it must also
+# accept these three logins (auth_query or userlist) before this profile can connect as
+# them. That routing is not verified by this change.
 # Source values for NATS, Redis, PostgreSQL, and SpiceDB must match the credentials
 # configured for those existing services. The TOTP active key ID is nonsecret and
 # must be supplied directly as MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID. File-backed
@@ -64,6 +74,10 @@ secrets:
     file: ${SECRET_KEY_SOURCE_FILE:?Set SECRET_KEY_SOURCE_FILE for production}
   database_url:
     file: ${DATABASE_URL_SOURCE_FILE:?Set DATABASE_URL_SOURCE_FILE for production}
+  migration_database_url:
+    file: ${MIGRATION_DATABASE_URL_SOURCE_FILE:?Set MIGRATION_DATABASE_URL_SOURCE_FILE for production}
+  notifications_database_url:
+    file: ${NOTIFICATIONS_DATABASE_URL_SOURCE_FILE:?Set NOTIFICATIONS_DATABASE_URL_SOURCE_FILE for production}
   nats_auth_token:
     file: ${NATS_AUTH_TOKEN_SOURCE_FILE:?Set NATS_AUTH_TOKEN_SOURCE_FILE for production}
   # AUD-191: both Redis URLs embed the Redis password, so they are file-backed.
@@ -221,7 +235,7 @@ services:
     env_file: !reset []
     secrets:
       - secret_key
-      - database_url
+      - notifications_database_url
       - nats_auth_token
       - cache_redis_url
       - rate_limit_storage_uri
@@ -250,7 +264,7 @@ services:
       MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE: !reset null
       SPICEDB_INSECURE: !reset null
       SECRET_KEY_FILE: /run/secrets/secret_key
-      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_URL_FILE: /run/secrets/notifications_database_url
       NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
       VAPID_PRIVATE_KEY_FILE: /run/secrets/vapid_private_key
       SPOTIFY_TOKEN_SECRET_FILE: /run/secrets/spotify_token_secret
@@ -396,7 +410,7 @@ services:
     env_file: !reset []
     secrets:
       - secret_key
-      - database_url
+      - migration_database_url
       - nats_auth_token
       - cache_redis_url
       - revocation_redis_url
@@ -420,7 +434,7 @@ services:
       MFA_TOTP_ENCRYPTION_KEYS_FILE: /run/secrets/mfa_totp_encryption_keys
       MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID_FILE: !reset null
       SECRET_KEY_FILE: /run/secrets/secret_key
-      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_URL_FILE: /run/secrets/migration_database_url
       SPOTIFY_TOKEN_SECRET_FILE: /run/secrets/spotify_token_secret
       MINIO_SECURE: "true"
       ELASTICSEARCH_URL: ${ELASTICSEARCH_URL:?Set HTTPS ELASTICSEARCH_URL for production}

@@ -3,7 +3,7 @@
 {{- $rateLimitURIKey := required "connections.rateLimitStorageURIKey must be set" .Values.connections.rateLimitStorageURIKey -}}
 {{- $applicationSecret := include "university-ecosystem.applicationSecretName" . -}}
 {{- $connectionSecretKeys := list
-  (required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey)
+  (required "connections.migrationDatabaseURLKey must be set" .Values.connections.migrationDatabaseURLKey)
   (required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey)
   (required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey)
   $rateLimitURIKey
@@ -70,8 +70,9 @@ spec:
               value: "redis"
             - name: RATE_LIMIT_STORAGE_URI_FILE
               value: {{ printf "/run/secrets/%s/%s" $connectionSecret $rateLimitURIKey | quote }}
+            # Schema owner login. The runtime database-url key is never projected here.
             - name: DATABASE_URL_FILE
-              value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey) | quote }}
+              value: {{ printf "/run/secrets/%s/%s" $connectionSecret (required "connections.migrationDatabaseURLKey must be set" .Values.connections.migrationDatabaseURLKey) | quote }}
             # Contract retirement may revoke already-issued bearer JTIs before
             # altering their database rows. This must target the dedicated,
             # persistent noeviction datastore, never the cache Redis instance.

@@ -96,11 +96,11 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     assert uv.get("exclude-newer") == "7 days"
     assert uv.get("exclude-newer-package") == {
         "brotli": "2026-10-22T14:00:13Z",
-        "certifi": "2026-10-20T02:24:17Z",
         "pillow": "2026-10-16T22:18:10Z",
         "virtualenv": "2026-10-17T16:09:43Z",
     }
-    assert "certifi==2026.10.19" in uv["constraint-dependencies"]
+    assert "certifi>=2026.10.19" in uv["constraint-dependencies"]
+    assert "certifi==2026.10.19" not in uv["constraint-dependencies"]
     assert "pillow==13.0.0" in uv["constraint-dependencies"]
     assert "virtualenv==21.14.9" in uv["constraint-dependencies"]
     assert "brotli==1.2.1" in uv["constraint-dependencies"]
@@ -277,15 +277,14 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     assert lock_options["exclude-newer-span"] == "P7D"
     assert lock_options.get("exclude-newer-package") == {
         "brotli": "2026-10-22T14:00:13Z",
-        "certifi": "2026-10-20T02:24:17Z",
         "pillow": "2026-10-16T22:18:10Z",
         "virtualenv": "2026-10-17T16:09:43Z",
     }
     lock = _read_toml("uv.lock")
     packages = [package for package in lock["package"] if package["name"] == "certifi"]
     assert len(packages) == 1
-    assert packages[0]["version"] == "2026.10.19"
-    assert {"name": "certifi", "specifier": "==2026.10.19"} in lock["manifest"][
+    assert packages[0]["version"] == "2026.10.23"
+    assert {"name": "certifi", "specifier": ">=2026.10.19"} in lock["manifest"][
         "constraints"
     ]
 
@@ -401,3 +400,46 @@ def test_sqlalchemy_20_uses_inline_typing_without_removed_mypy_plugin() -> None:
     plugins = mypy["plugins"]
     assert isinstance(plugins, list)
     assert "sqlalchemy.ext.mypy.plugin" not in plugins
+
+
+# Newest experimental releases that still depend on the 2.12 SDK generation.
+OPENTELEMETRY_EXPERIMENTAL_VERSIONS = {
+    "exporter-trace-otlp-http": "0.223.0",
+    "instrumentation": "0.223.0",
+    "instrumentation-fetch": "0.223.0",
+    "instrumentation-user-interaction": "0.67.0",
+    "instrumentation-xml-http-request": "0.223.0",
+}
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def _opentelemetry_lock_problems(lock_text: str) -> list[str]:
+    """Report OpenTelemetry records that mix API or SDK generations.
+
+    The 2.12 SDK packages peer with @opentelemetry/api below 1.10.0, so every
+    installed API record must stay on 1.9.x. The experimental instrumentation
+    packages must stay on the releases pinned above.
+    """
+    packages = json.loads(lock_text)["packages"]
+    problems: list[str] = []
+    for path, record in packages.items():
+        if "node_modules/@opentelemetry/" not in path:
+            continue
+        version = record["version"]
+        name = path.rsplit("node_modules/@opentelemetry/", 1)[1]
+        if name == "api" and _version_tuple(version) >= (1, 10, 0):
+            problems.append(f"{path} {version} exceeds the 2.12 SDK api peer")
+        if _version_tuple(version)[0] >= 3:
+            problems.append(f"{path} {version} is a newer SDK generation")
+    for name, expected in OPENTELEMETRY_EXPERIMENTAL_VERSIONS.items():
+        record = packages.get(f"node_modules/@opentelemetry/{name}")
+        if record is None or record["version"] != expected:
+            problems.append(f"{name} must be {expected} with the 2.12 SDK")
+    return problems
+
+
+def test_opentelemetry_lock_keeps_one_sdk_generation_on_api_1_9() -> None:
+    assert _opentelemetry_lock_problems(_read_text("frontend/package-lock.json")) == []
