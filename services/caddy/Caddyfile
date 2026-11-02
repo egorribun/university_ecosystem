@@ -5,7 +5,8 @@
 # The Python backend stays on plain HTTP/1.1 internally — QUIC terminates here.
 #
 # For local development (self-signed / no domain), set the environment variable:
-#   ACME_EMAIL=      (empty or omitted → Caddy uses self-signed locally)
+#   PUBLIC_HOSTNAME=localhost  (local hostname uses Caddy's local CA)
+#   ACME_EMAIL=                (optional for local certificates)
 # For production, set:
 #   ACME_EMAIL=you@example.com
 #   PUBLIC_HOSTNAME=your.domain.tld
@@ -16,9 +17,9 @@
 		protocols h1 h2 h3
 	}
 
-	# Auto-HTTPS certificate management email (required for ACME production).
-	# In dev environments without a real domain, Caddy falls back to self-signed.
-	email {$ACME_EMAIL}
+	# ACME contact email. Keep an empty value as one token for local development;
+	# certificate selection depends on the hostname, not on whether email is set.
+	email "{$ACME_EMAIL}"
 
 	# Runtime errors can include the original URI. Redact password and bearer values
 	# while retaining useful request details; access logs have their own filter.

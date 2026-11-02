@@ -4,7 +4,7 @@ Each configuration runs in its own container from an already built edge image,
 receives credential-shaped requests, and must emit access-log lines that carry
 the redaction markers without any raw credential value. The proof is local: it
 runs only with RUN_DOCKER_PROOFS=1 and CADDY_PROOF_IMAGE naming a built Caddy
-edge image, because CI does not provide Docker to this suite.
+edge image. The ordinary backend suite does not run Docker proofs.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import secrets
 import shutil
 import ssl
 import subprocess
-import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -50,7 +49,7 @@ def _docker_executable() -> str:
     return executable
 
 
-def _docker(*arguments: str) -> str:
+def _docker(*arguments: str, timeout: float = 120) -> str:
     completed = subprocess.run(  # noqa: S603 - resolved docker CLI with fixed argv, no shell
         [_docker_executable(), *arguments],
         check=True,
@@ -58,7 +57,7 @@ def _docker(*arguments: str) -> str:
         text=True,
         encoding="utf-8",
         errors="replace",
-        timeout=120,
+        timeout=timeout,
     )
     return completed.stdout
 
@@ -83,30 +82,30 @@ def _edge_container(
     image: str, caddyfile: Path, container_port: int, environment: list[str]
 ) -> Iterator[tuple[str, int]]:
     name = f"ue-agent-deploy3-caddy-{secrets.token_hex(4)}"
+    # Create first: only a returned, validated ID authorizes start and cleanup.
+    # A name collision must never remove somebody else's existing container.
+    container = _docker(
+        "create",
+        "--name",
+        name,
+        "--cap-add",
+        "NET_BIND_SERVICE",
+        "--publish",
+        f"127.0.0.1::{container_port}",
+        "--volume",
+        f"{caddyfile}:/etc/caddy/Caddyfile:ro",
+        *environment,
+        image,
+    ).strip()
+    assert len(container) == 64 and all(
+        character in "0123456789abcdef" for character in container
+    ), "Docker did not acknowledge a valid owned container ID"
     try:
-        _docker(
-            "run",
-            "--detach",
-            "--name",
-            name,
-            "--cap-add",
-            "NET_BIND_SERVICE",
-            "--publish",
-            f"127.0.0.1::{container_port}",
-            "--volume",
-            f"{caddyfile}:/etc/caddy/Caddyfile:ro",
-            *environment,
-            image,
-        )
-        published = _docker("port", name, f"{container_port}/tcp").splitlines()
-        yield name, int(published[0].rsplit(":", 1)[1])
+        _docker("start", container)
+        published = _docker("port", container, f"{container_port}/tcp").splitlines()
+        yield container, int(published[0].rsplit(":", 1)[1])
     finally:
-        subprocess.run(  # noqa: S603 - resolved docker CLI with fixed argv, no shell
-            [_docker_executable(), "rm", "-f", "-v", name],
-            check=False,
-            capture_output=True,
-            timeout=120,
-        )
+        _docker("rm", "-f", "-v", container)
 
 
 def _request(
@@ -130,17 +129,40 @@ def _request(
         connection.close()
 
 
-def _wait_until_serving(scheme: str, port: int) -> None:
-    deadline = time.monotonic() + 90
-    while True:
-        try:
-            if _request(scheme, port, "/healthz") == 200:
-                return
-        except OSError:
-            pass
-        if time.monotonic() > deadline:
-            raise AssertionError("the Caddy edge did not serve /healthz in time")
-        time.sleep(0.5)
+def _wait_until_serving(scheme: str, container: str) -> None:
+    # Use the image's curl to poll the real handler, not a fixed Python sleep.
+    # Curl bounds each transfer to 5s and starts retries for at most 80s. The
+    # outer 90s subprocess timeout kills and reaps the Docker CLI on expiry;
+    # _edge_container's finally removes the owned container and its curl child.
+    # This bounds the readiness command, not container setup/cleanup or the
+    # subsequent host-published requests that prove actual emitted-log redaction.
+    status = _docker(
+        "exec",
+        container,
+        "curl",
+        "--insecure",
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--output",
+        "/dev/null",
+        "--write-out",
+        "%{http_code}",
+        "--retry",
+        "90",
+        "--retry-all-errors",
+        "--retry-delay",
+        "1",
+        "--retry-max-time",
+        "80",
+        "--connect-timeout",
+        "3",
+        "--max-time",
+        "5",
+        f"{scheme}://localhost/healthz",
+        timeout=90,
+    )
+    assert status.strip() == "200", "the Caddy edge did not serve /healthz"
 
 
 def _marker(label: str) -> str:
@@ -186,24 +208,24 @@ def _probe_edge(
     return logs
 
 
-def test_tls_edge_production_config_redacts_emitted_access_logs() -> None:
+@pytest.mark.parametrize("acme_email", [None, "", "ops@example.invalid"])
+def test_tls_edge_production_config_redacts_emitted_access_logs(
+    acme_email: str | None,
+) -> None:
     image = os.environ["CADDY_PROOF_IMAGE"]
-    environment = [
-        "--env",
-        "PUBLIC_HOSTNAME=localhost",
-        "--env",
-        "ACME_EMAIL=ops@example.invalid",
-    ]
+    environment = ["--env", "PUBLIC_HOSTNAME=localhost"]
+    if acme_email is not None:
+        environment.extend(["--env", f"ACME_EMAIL={acme_email}"])
     with _edge_container(image, TLS_EDGE_CADDYFILE, 443, environment) as (
         container,
         port,
     ):
-        _wait_until_serving("https", port)
+        _wait_until_serving("https", container)
         _probe_edge("https", port, container)
 
 
 def test_plain_edge_development_config_redacts_emitted_access_logs() -> None:
     image = os.environ["CADDY_PROOF_IMAGE"]
     with _edge_container(image, PLAIN_EDGE_CADDYFILE, 80, []) as (container, port):
-        _wait_until_serving("http", port)
+        _wait_until_serving("http", container)
         _probe_edge("http", port, container)

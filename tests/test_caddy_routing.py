@@ -27,7 +27,13 @@ public JWKS discovery whenever Caddy route ordering changes.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+from tests import test_caddy_emitted_log_redaction_docker as proof
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CADDYFILE = REPO_ROOT / "infrastructure" / "Caddyfile"
@@ -465,3 +471,178 @@ def test_temporal_jwks_listener_is_internal_tls_and_serves_only_jwks() -> None:
             "handle { respond 404 } }"
         ) in squashed, f"{relative_path} must expose only the JWKS over internal TLS"
         assert "http://backend:8000/.well-known" not in squashed
+
+
+def test_tls_edge_keeps_optional_acme_email_as_one_caddyfile_token() -> None:
+    """An unset or empty ACME contact must not remove the email argument."""
+    content = (REPO_ROOT / "services/caddy/Caddyfile").read_text(encoding="utf-8")
+    global_options, separator, _sites = content.partition("\n}\n")
+    assert separator
+    email_lines = [
+        line.strip()
+        for line in global_options.splitlines()
+        if line.strip().startswith("email ")
+    ]
+    assert email_lines == ['email "{$ACME_EMAIL}"']
+
+
+@pytest.mark.parametrize("scheme", ["http", "https"])
+def test_readiness_polls_the_real_handler_with_bounded_curl(
+    monkeypatch: pytest.MonkeyPatch, scheme: str
+) -> None:
+    run = MagicMock(return_value=subprocess.CompletedProcess([], 0, "200", ""))
+    monkeypatch.setattr(proof.subprocess, "run", run)
+    monkeypatch.setattr(proof, "_docker_executable", lambda: "docker")
+
+    proof._wait_until_serving(scheme, "owned-edge")
+
+    run.assert_called_once_with(
+        [
+            "docker",
+            "exec",
+            "owned-edge",
+            "curl",
+            "--insecure",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--output",
+            "/dev/null",
+            "--write-out",
+            "%{http_code}",
+            "--retry",
+            "90",
+            "--retry-all-errors",
+            "--retry-delay",
+            "1",
+            "--retry-max-time",
+            "80",
+            "--connect-timeout",
+            "3",
+            "--max-time",
+            "5",
+            f"{scheme}://localhost/healthz",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=90,
+    )
+
+
+@pytest.mark.parametrize("status", ["204", "301", "500", "", "200200"])
+def test_readiness_rejects_non_200_or_malformed_status(
+    monkeypatch: pytest.MonkeyPatch, status: str
+) -> None:
+    monkeypatch.setattr(proof, "_docker", MagicMock(return_value=status))
+    with pytest.raises(AssertionError, match="did not serve /healthz"):
+        proof._wait_until_serving("https", "owned-edge")
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        subprocess.TimeoutExpired("docker", 90),
+        subprocess.CalledProcessError(7, "docker"),
+    ],
+)
+def test_readiness_failure_propagates_and_removes_owned_container(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: subprocess.TimeoutExpired | subprocess.CalledProcessError,
+) -> None:
+    run = MagicMock(
+        side_effect=[
+            subprocess.CompletedProcess([], 0, "a" * 64, ""),
+            subprocess.CompletedProcess([], 0, "a" * 64, ""),
+            subprocess.CompletedProcess([], 0, "127.0.0.1:49152\n", ""),
+            failure,
+            subprocess.CompletedProcess([], 0, "", ""),
+        ]
+    )
+    monkeypatch.setattr(proof.subprocess, "run", run)
+    monkeypatch.setattr(proof, "_docker_executable", lambda: "docker")
+    monkeypatch.setattr(proof.secrets, "token_hex", lambda _: "a1b2c3d4")
+
+    with pytest.raises(type(failure)) as caught:
+        with proof._edge_container("edge:test", Path("Caddyfile"), 443, []) as (
+            container,
+            port,
+        ):
+            assert port == 49152
+            proof._wait_until_serving("https", container)
+
+    assert caught.value is failure
+    assert run.call_count == 5
+    assert run.call_args_list[1].args[0] == ["docker", "start", "a" * 64]
+    assert run.call_args_list[2].args[0] == ["docker", "port", "a" * 64, "443/tcp"]
+    assert run.call_args_list[3].args[0][:3] == ["docker", "exec", "a" * 64]
+    cleanup = run.call_args_list[-1]
+    assert cleanup.args[0] == [
+        "docker",
+        "rm",
+        "-f",
+        "-v",
+        "a" * 64,
+    ]
+    assert cleanup.kwargs["timeout"] == 120
+    assert cleanup.kwargs["check"] is True
+
+
+def test_edge_image_ships_the_readiness_probe() -> None:
+    dockerfile = proof.ROOT / "services" / "caddy" / "Dockerfile"
+    assert "curl=8.23.0-r0" in dockerfile.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("identity", ["", "owned-edge", "a" * 63, "g" * 64])
+def test_unacknowledged_container_is_never_removed(
+    monkeypatch: pytest.MonkeyPatch, identity: str
+) -> None:
+    docker = MagicMock(return_value=identity)
+    monkeypatch.setattr(proof, "_docker", docker)
+    with pytest.raises(AssertionError, match="valid owned container ID"):
+        with proof._edge_container("edge:test", Path("Caddyfile"), 443, []):
+            pytest.fail("invalid ownership must not yield a container")
+    assert docker.call_count == 1
+    assert docker.call_args.args[0] == "create"
+
+
+def test_name_collision_never_triggers_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
+    failure = subprocess.CalledProcessError(1, "docker create")
+    docker = MagicMock(side_effect=failure)
+    monkeypatch.setattr(proof, "_docker", docker)
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        with proof._edge_container("edge:test", Path("Caddyfile"), 443, []):
+            pytest.fail("failed creation must not yield a container")
+    assert caught.value is failure
+    assert docker.call_count == 1
+
+
+@pytest.mark.parametrize("stage", ["start", "port"])
+def test_acknowledged_container_is_removed_on_setup_timeout(
+    monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    identity = "b" * 64
+    failure = subprocess.TimeoutExpired(f"docker {stage}", 120)
+    responses = [identity]
+    if stage == "port":
+        responses.append(identity)
+    docker = MagicMock(side_effect=[*responses, failure, ""])
+    monkeypatch.setattr(proof, "_docker", docker)
+    with pytest.raises(subprocess.TimeoutExpired) as caught:
+        with proof._edge_container("edge:test", Path("Caddyfile"), 443, []):
+            pytest.fail("failed setup must not yield a container")
+    assert caught.value is failure
+    assert docker.call_args.args == ("rm", "-f", "-v", identity)
+
+
+def test_cleanup_failure_is_not_silenced(monkeypatch: pytest.MonkeyPatch) -> None:
+    failure = subprocess.CalledProcessError(1, "docker rm")
+    docker = MagicMock(side_effect=["c" * 64, "", "127.0.0.1:49152", failure])
+    monkeypatch.setattr(proof, "_docker", docker)
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        with proof._edge_container("edge:test", Path("Caddyfile"), 443, []):
+            pass
+    assert caught.value is failure
+    assert docker.call_args.args == ("rm", "-f", "-v", "c" * 64)

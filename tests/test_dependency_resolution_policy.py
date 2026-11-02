@@ -259,7 +259,7 @@ def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
         in workflow_renovate
     )
     assert (
-        "uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+        "uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0"
         in workflow_renovate
     )
 
@@ -443,3 +443,51 @@ def _opentelemetry_lock_problems(lock_text: str) -> list[str]:
 
 def test_opentelemetry_lock_keeps_one_sdk_generation_on_api_1_9() -> None:
     assert _opentelemetry_lock_problems(_read_text("frontend/package-lock.json")) == []
+
+
+def test_opentelemetry_lock_rejects_api_sdk_and_experimental_drift() -> None:
+    baseline = _read_text("frontend/package-lock.json")
+    cases = (
+        ("node_modules/@opentelemetry/api", "1.10.0"),
+        ("node_modules/consumer/node_modules/@opentelemetry/api", "1.10.0"),
+        ("node_modules/@opentelemetry/resources", "3.0.0"),
+        ("node_modules/consumer/node_modules/@opentelemetry/sdk-trace", "3.0.0"),
+        ("node_modules/@opentelemetry/instrumentation", "0.300.0"),
+    )
+    for path, version in cases:
+        lock = json.loads(baseline)
+        lock["packages"][path] = {"version": version}
+        assert _opentelemetry_lock_problems(json.dumps(lock)), path
+
+    for name in OPENTELEMETRY_EXPERIMENTAL_VERSIONS:
+        lock = json.loads(baseline)
+        del lock["packages"][f"node_modules/@opentelemetry/{name}"]
+        assert _opentelemetry_lock_problems(json.dumps(lock)), name
+
+
+def test_opentelemetry_manifest_and_dependabot_preserve_reviewed_generation() -> None:
+    manifest = json.loads(_read_text("frontend/package.json"))
+    lock = json.loads(_read_text("frontend/package-lock.json"))
+    for section in ("dependencies", "devDependencies"):
+        assert lock["packages"][""][section] == manifest[section]
+    assert manifest["dependencies"]["@opentelemetry/api"] == "~1.9.1"
+    for name, version in OPENTELEMETRY_EXPERIMENTAL_VERSIONS.items():
+        section = "devDependencies" if name == "instrumentation" else "dependencies"
+        assert manifest[section][f"@opentelemetry/{name}"] == f"^{version}"
+
+    dependabot = yaml.safe_load(_read_text(".github/dependabot.yml"))
+    npm_updates = [
+        update
+        for update in dependabot["updates"]
+        if update["package-ecosystem"] == "npm"
+        and "/frontend" in update.get("directories", [])
+    ]
+    assert len(npm_updates) == 1
+    update = npm_updates[0]
+    assert update["cooldown"]["default-days"] == 7
+    ignored = {
+        item["dependency-name"]: item["update-types"] for item in update["ignore"]
+    }
+    assert ignored["@opentelemetry/*"] == ["version-update:semver-major"]
+    for name in ("api", *OPENTELEMETRY_EXPERIMENTAL_VERSIONS):
+        assert ignored[f"@opentelemetry/{name}"] == ["version-update:semver-minor"]
