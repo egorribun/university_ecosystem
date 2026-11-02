@@ -258,7 +258,7 @@ def _write_rendered_secret_files(
 
 
 def _run_online_upgrade(
-    environment: dict[str, str],
+    environment: dict[str, str], *, timeout: int = 600
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 - current interpreter and fixed local Alembic argv; no shell
         [
@@ -276,7 +276,7 @@ def _run_online_upgrade(
         capture_output=True,
         text=True,
         encoding="utf-8",
-        timeout=600,
+        timeout=timeout,
     )
 
 
@@ -293,7 +293,7 @@ def _safe_process_diagnostic(
 def test_staging_online_alembic_uses_rendered_file_secrets_and_advances_head(
     migration_postgres, tmp_path: Path
 ) -> None:
-    """A rendered staging role must not silently return on fallback settings."""
+    """Rendered database files fail closed; unrelated app keys cannot block DDL."""
     base_url = sa.engine.make_url(
         migration_postgres.get_connection_url(driver="psycopg")
     )
@@ -324,38 +324,41 @@ def test_staging_online_alembic_uses_rendered_file_secrets_and_advances_head(
             target_async_url,
         )
 
-        # A configured but missing key must fail closed before Alembic creates
-        # its version table; it may not generate a development signing key.
-        invalid_environment = dict(staging_environment)
-        missing_key_path = tmp_path / "missing-application-key"
-        invalid_environment["SECRET_KEY_FILE"] = str(missing_key_path)
-        invalid = _run_online_upgrade(invalid_environment)
-        assert invalid.returncode != 0
-        with inspection_engine.connect() as connection:
-            assert (
-                connection.scalar(
-                    sa.text("SELECT to_regclass('public.alembic_version')")
-                )
-                is None
-            )
+        # Invalid database files must fail before DDL, even when a valid plain
+        # URL is available: the configured FILE source has strict precedence.
+        invalid_url_path = tmp_path / "invalid-database-url"
+        invalid_url_path.write_text("not-a-database-url", encoding="utf-8")
+        empty_url_path = tmp_path / "empty-database-url"
+        empty_url_path.write_text("", encoding="utf-8")
+        for database_file in (
+            tmp_path / "missing-database-url",
+            invalid_url_path,
+            empty_url_path,
+        ):
+            invalid_environment = dict(staging_environment)
+            invalid_environment["DATABASE_URL"] = target_async_url
+            invalid_environment["DATABASE_URL_FILE"] = str(database_file)
+            invalid = _run_online_upgrade(invalid_environment, timeout=60)
+            assert invalid.returncode != 0
+            with inspection_engine.connect() as connection:
+                assert sa.inspect(connection).get_table_names(schema="public") == []
 
-        # The documented local fallback remains available only in explicit
-        # development mode and skips before opening even its fallback SQLite URL.
+        # Development metadata defaults never authorize migration execution.
         development_environment = _migration_cli_base_environment()
         development_environment["ENVIRONMENT"] = "development"
-        development = _run_online_upgrade(development_environment)
-        assert development.returncode == 0
-        assert "Skipping Alembic migrations: has_development_fallbacks is True." in (
+        development = _run_online_upgrade(development_environment, timeout=60)
+        assert development.returncode != 0
+        assert "Database URL is not configured for Alembic" in (
             development.stdout + development.stderr
         )
         with inspection_engine.connect() as connection:
-            assert (
-                connection.scalar(
-                    sa.text("SELECT to_regclass('public.alembic_version')")
-                )
-                is None
-            )
+            assert sa.inspect(connection).get_table_names(schema="public") == []
 
+        # Alembic consumes only database configuration. A missing application
+        # signing-key file must not block this real PostgreSQL baseline upgrade.
+        staging_environment["SECRET_KEY_FILE"] = str(
+            tmp_path / "missing-application-key"
+        )
         completed = _run_online_upgrade(staging_environment)
         assert completed.returncode == 0, _safe_process_diagnostic(
             completed, secret_values
