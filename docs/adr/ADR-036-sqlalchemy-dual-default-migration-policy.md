@@ -370,6 +370,32 @@ coverage exclusion.
 
 ## Deployed-Catalog Preflight Command
 
+### 2026-11-02 usage update: historical phase CLI retired
+
+[ADR-051](ADR-051-mvp-migration-baseline-squash.md) replaced the historical
+phase revisions with the fresh-only baseline `202611020000`. The phase
+commands below are retained as historical documentation, **not current
+operating instructions**. The retained `scripts/be02_catalog_preflight.py`
+entrypoint now refuses the default phase and `--phase 1`, `--phase 3` and
+`--phase 4` with exit code 2 before loading a migration or reading database
+configuration. It does not connect to PostgreSQL or certify a catalog.
+
+For current source inventory, use `scripts/quality/audit_model_defaults.py`
+and the existing inventory and Alembic schema-drift gates. Source inventory is
+**not deployed-catalog proof**. Current-baseline PostgreSQL catalog evidence
+remains required and unmet by this retirement; BE-02 remains **OPEN**. The
+historical phase-based integration tests are retired with their deleted
+migration validators. A current-baseline catalog verifier and its PostgreSQL
+integration evidence are still required; retained generic read-only helper
+contracts are not a substitute.
+There is no pre-squash database upgrade path; follow ADR-051 rather than
+stamping or replaying retired revisions.
+
+This usage note does not amend the historical rollback-boundary section of
+this ADR or resolve the separate policy amendments identified by ADR-051.
+
+### Historical phase command usage
+
 Run the read-only preflight against the target PostgreSQL database before and
 after each DDL phase. Set `DATABASE_URL` through the approved secret
 environment, then run:

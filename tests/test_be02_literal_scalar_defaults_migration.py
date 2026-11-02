@@ -1,21 +1,17 @@
 """BE-02 scalar defaults on the fresh-only, irreversible MVP baseline.
 
 ADR-051 retires the historical populated-database preflight and backfill.
-The retained lazy loaders below are still imported by the separately pending
-PostgreSQL integration retarget; unit contracts do not call them.
+Historical phase-only PostgreSQL tests and their lazy loaders are retired;
+these contracts retain current baseline defaults and independent drift guards.
 """
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from collections import Counter
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 import sqlalchemy as sa
-import yaml
 
 import app.models  # noqa: F401  # register all mapped metadata
 from app.core.database import Base
@@ -30,29 +26,10 @@ from tests.fixtures.baseline_migration import capture_baseline
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSIONS = ROOT / "alembic" / "versions"
-MIGRATION = VERSIONS / "202609220001_phase_literal_scalar_defaults.py"
 
 
-# Revision 202610010001 retired these runtime models; the historical phase still lists
-# their columns, which no longer exist on the models.
+# Retired runtime models remain physical baseline tables with reviewed defaults.
 RETIRED_RUNTIME_TABLES = frozenset({"user_stats", "vector_chunks"})
-
-
-def _live_specs() -> list:
-    return [
-        spec
-        for spec in _load_migration().DEFAULT_SPECS
-        if spec.table not in RETIRED_RUNTIME_TABLES
-    ]
-
-
-def _load_migration() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("be02_literal_scalars", MIGRATION)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _runtime_specs() -> tuple[ScalarDefault, ...]:
@@ -150,30 +127,6 @@ def test_migration_revision_is_the_single_head(
     assert sorted(path.name for path in VERSIONS.glob("*.py")) == [
         "202611020000_mvp_baseline.py"
     ]
-
-
-def test_postgresql_regressions_are_collected_by_the_enabled_integration_lane() -> None:
-    integration_test = ROOT / "tests/integration/test_be02_literal_defaults_postgres.py"
-    assert integration_test.is_file()
-    workflow = yaml.safe_load(
-        (ROOT / ".github/workflows/reusable-backend-tests.yml").read_text(
-            encoding="utf-8"
-        )
-    )
-    triggers = workflow.get("on", workflow.get(True))
-    pattern = triggers["workflow_call"]["inputs"]["integration-test-pattern"]["default"]
-    assert integration_test.is_relative_to(ROOT / pattern)
-    job = workflow["jobs"]["integration-tests"]
-    assert job["env"]["RUN_INTEGRATION_TESTS"] == "1"
-    assert job["env"]["DATABASE_URL"].startswith("postgresql+asyncpg://")
-    step = next(
-        step for step in job["steps"] if step.get("name") == "Run integration tests"
-    )
-    assert (
-        step["env"]["INTEGRATION_TEST_PATTERN"]
-        == "${{ inputs.integration-test-pattern }}"
-    )
-    assert "$env:INTEGRATION_TEST_PATTERN" in step["run"]
 
 
 @pytest.mark.parametrize(

@@ -1,18 +1,15 @@
 """BE-02 timestamp and role defaults on the fresh-only MVP baseline.
 
-The historical loader remains lazy for its existing integration importer.
-Catalog preflight and contract-preserving downgrade belong to the deleted
-migration; these unit tests exercise the actual baseline's emitted schema.
+Catalog preflight and contract-preserving downgrade belonged to the deleted
+phase migration. Its integration tests and loader are retired by ADR-051;
+these unit tests exercise the actual baseline's emitted schema.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 import sqlalchemy as sa
@@ -45,21 +42,6 @@ TIMESTAMP_COLUMNS = (
     "messages.created_at",
     "stored_events.created_at",
 )
-MIGRATION_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "alembic/versions/202609250001_phase_semantic_defaults.py"
-)
-
-
-def _migration() -> ModuleType:
-    spec = importlib.util.spec_from_file_location(
-        "be02_semantic_defaults", MIGRATION_PATH
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def test_remaining_timestamp_candidates_are_dual_declared() -> None:

@@ -553,50 +553,40 @@ def _mvp_rollback_adr_section() -> str:
     return section
 
 
-def test_adr_rollback_boundary_matches_source_derived_plan() -> None:
-    """Read source metadata only; never import or execute a migration."""
+def test_baseline_adr_matches_current_plan_without_rewriting_historical_scope() -> None:
+    """ADR-051 governs the fresh baseline; ADR-036 remains a historical record."""
     policy = _load_policy_module()
     plan = policy.build_downgrade_plan(MIGRATIONS_DIR)
-    section = " ".join(_mvp_rollback_adr_section().split())
+    baseline_adr = (
+        ROOT / "docs" / "adr" / "ADR-051-mvp-migration-baseline-squash.md"
+    ).read_text(encoding="utf-8")
+    normalized = " ".join(baseline_adr.split())
 
+    assert f"one baseline revision, `{plan.head_revision}`" in normalized
+    assert "`down_revision = None`" in normalized
+    assert '`downgrade_policy = "irreversible"`' in normalized
+    assert "Its `downgrade()` raises before it changes any schema." in normalized
+    assert "There is no upgrade path from a pre-squash database." in normalized
+    assert "a downgrade to base is refused." in normalized
+    assert plan.safe_target == plan.head_revision == plan.boundary_revision
+    assert plan.boundary_parent == "base"
+    assert plan.boundary_reason == BASELINE_BOUNDARY_REASON
     assert (
-        f"The newest irreversible revision is {plan.boundary_revision}, "
-        f"whose parent is {plan.boundary_parent}."
-    ) in section
+        "The rollback-boundary section of ADR-036 and the Tier 0 exception text of "
+        "ADR-047 need their own amendments through their ADR processes."
+    ) in normalized
+
+    historical = " ".join(_mvp_rollback_adr_section().split())
     assert (
-        "The existing migration_downgrade_policy.py planner selects "
-        f"{plan.safe_target} as the safe target."
-    ) in section
-    # The safe target sits below head only because the single revision above it
-    # is a reviewed reversible no-op; no irreversible barrier lies above it.
-    assert plan.safe_target == plan.boundary_revision
-    head_metadata = policy._parse_migration(
-        MIGRATIONS_DIR / "202610310001_scrub_plaintext_auth_tokens_from_dlq.py"
-    )
-    assert head_metadata.revision == plan.head_revision
-    assert head_metadata.irreversible_reason is None
-    assert head_metadata.parents == (plan.boundary_revision,)
-    assert (
-        f"The only revision above that target is {plan.head_revision}, the AUD-447 "
-        "auth-token scrub, whose downgrade is an explicit no-op; the safe-range "
-        "downgrade is therefore a no-op;"
-    ) in section
-    assert (
-        "the separate boundary probe must reject crossing to "
-        f"{plan.boundary_parent} with the declared chat-receipt reason"
-    ) in section
-    assert plan.boundary_reason is not None
-    assert plan.boundary_reason in section
+        "The newest irreversible revision is 202610250001, "
+        "whose parent is 202610200001."
+    ) in historical
     assert (
         "A verified refusal is not a successful rollback across the boundary."
-    ) in section
-    assert (
-        "The chat-receipt boundary is a new design constraint for AUD-262, "
-        "not an extension of the eight historical owner-approved dispositions below."
-    ) in section
+    ) in historical
     assert (
         "The original owner decision does not make later data-loss barriers reversible."
-    ) in section
+    ) in historical
 
 
 def test_adr_rollback_scope_maps_eight_unsupported_historical_findings() -> None:

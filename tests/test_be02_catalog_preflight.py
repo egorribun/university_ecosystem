@@ -1,8 +1,8 @@
-"""Offline contracts for the read-only BE-02 catalog preflight command."""
+"""Retirement contracts and retained read-only BE-02 helper behavior."""
 
 from __future__ import annotations
 
-import json
+import os
 from types import SimpleNamespace
 from typing import Any
 
@@ -11,18 +11,25 @@ import pytest
 import scripts.be02_catalog_preflight as preflight
 
 
-def test_loads_the_reviewed_migration_specs() -> None:
-    migration = preflight.load_migration()
+def test_default_phase_refuses_with_an_actionable_message() -> None:
+    with pytest.raises(RuntimeError) as failure:
+        preflight.load_migration()
 
-    assert migration.revision == "202609250001"
-    assert len(migration.DEFAULT_SPECS) == 12
+    message = str(failure.value)
+    assert "retired by ADR-051" in message
+    assert "docs/adr/ADR-051-mvp-migration-baseline-squash.md" in message
+    assert "scripts/quality/audit_model_defaults.py" in message
+    assert "not deployed-catalog proof" in message
+    assert "BE-02 remains open" in message
 
 
-def test_rejects_a_missing_migration_file(tmp_path, monkeypatch) -> None:
-    monkeypatch.setitem(preflight.MIGRATION_PATHS, 4, tmp_path / "missing.py")
-
-    with pytest.raises(FileNotFoundError):
-        preflight.load_migration(4)
+@pytest.mark.parametrize("phase", [True, False, 0, 2, 5])
+def test_invalid_phase_remains_rejected(phase: int) -> None:
+    with pytest.raises(ValueError, match="phase 2 is Python-only") as failure:
+        preflight.load_migration(phase)
+    assert "Historical BE-02 DDL phases were 1, 3, and 4 (now retired)" in str(
+        failure.value
+    )
 
 
 def test_uses_the_synchronous_driver_for_async_urls() -> None:
@@ -84,35 +91,36 @@ def test_classifies_pending_converged_and_blocked_columns() -> None:
     ]
 
 
-def test_main_requires_a_database_url(monkeypatch, capsys) -> None:
-    monkeypatch.delenv("BE02_TARGET_URL", raising=False)
+@pytest.mark.parametrize("configured", [False, True])
+def test_main_refuses_before_reading_database_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    configured: bool,
+) -> None:
+    if configured:
+        monkeypatch.setenv(
+            "BE02_TARGET_URL", "postgresql+psycopg://localhost/synthetic"
+        )
+    else:
+        monkeypatch.delenv("BE02_TARGET_URL", raising=False)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("retired CLI read database configuration or called a DB helper")
+
+    environment_get = type(os.environ).__getitem__
+
+    def guarded_environment_get(environment: object, key: str) -> str:
+        if key in {"DATABASE_URL", "BE02_TARGET_URL"}:
+            pytest.fail("retired CLI read database configuration")
+        return environment_get(environment, key)
+
+    monkeypatch.setattr(type(os.environ), "__getitem__", guarded_environment_get)
+    monkeypatch.setattr(preflight, "run", forbidden)
+    monkeypatch.setattr(preflight, "load_migration", forbidden)
 
     assert preflight.main(["--database-url-env", "BE02_TARGET_URL"]) == 2
-    assert "BE02_TARGET_URL is not set" in capsys.readouterr().err
-
-
-@pytest.mark.parametrize(
-    ("statuses", "exit_code"),
-    [(["pending", "converged"], 0), (["pending", "blocked"], 1)],
-)
-def test_main_reports_json_and_fails_closed_on_drift(
-    monkeypatch, capsys, statuses: list[str], exit_code: int
-) -> None:
-    results = [
-        preflight.ColumnResult(f"app.t.c{index}", status, "detail")
-        for index, status in enumerate(statuses)
-    ]
-    seen: list[str] = []
-
-    def fake_run(url: str, migration: object) -> list[preflight.ColumnResult]:
-        seen.append(url)
-        return results
-
-    monkeypatch.setenv("DATABASE_URL", " postgresql+asyncpg://u@h/db ")
-    monkeypatch.setattr(preflight, "run", fake_run)
-    monkeypatch.setattr(preflight, "load_migration", lambda _phase=4: object())
-
-    assert preflight.main([]) == exit_code
-    assert seen == ["postgresql+asyncpg://u@h/db"]
-    report = json.loads(capsys.readouterr().out)
-    assert [row["status"] for row in report] == statuses
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "retired by ADR-051" in output.err
+    assert "not deployed-catalog proof" in output.err
+    assert "BE-02 remains open" in output.err
