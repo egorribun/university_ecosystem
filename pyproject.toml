@@ -77,6 +77,8 @@ dependencies = [
   "rich>=15.0.0,<16",                                  # app/cli renders tables directly
   "redis>=7.4.0,<9",  # FIX-41-03: redis 5.x recursion bug w/ Py3.14 (>=7.4.0). W210: cap <9 (resolved stays 7.4.0; aligns MOD-W5-03 gate across uv edges)
   "sentry-sdk[opentelemetry]>=2.57.0,<3",
+  "spiffe==0.3.2",  # ADR-052: real Workload API SDK; eligible seven-day cooldown
+  "uvicorn-worker==0.4.0",  # Nondeprecated Gunicorn ASGI worker adapter
   "sqlalchemy[asyncio]>=2.0.54,<2.1",
   "starlette>=1.0.0,<2.0",                             # MOD-W10-01: upper bound
   "strawberry-graphql[fastapi]>=0.314.3,<0.328.0",    # FIX-41-02: Python 3.14 compat; Renovate opens PR to advance
@@ -132,6 +134,12 @@ exclude = [
 # TD-W15-01 (audit 2026-03-23 Wave 15): Strict mypy for app/repositories/.
 # This is the DB boundary — most critical layer for type safety.
 # Start with full strict; disable_error_code list should only shrink over time.
+# The worker package has annotations but no py.typed marker. Analyze those
+# exact upstream modules instead of ignoring their imports or subclassing Any.
+[[tool.mypy.overrides]]
+module = ["uvicorn_worker", "uvicorn_worker._workers"]
+follow_untyped_imports = true
+
 [[tool.mypy.overrides]]
 module = "app.repositories.*"
 disallow_untyped_defs = true
@@ -778,3 +786,4 @@ pytest_add_cli_args = [
     # Lifespan tests check database readiness using alembic.ini which mutmut doesn't copy.
     "--ignore=tests/test_lifespan.py",
 ]
+

@@ -708,7 +708,7 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 	h.closeJWKSCacheLocked(ctx)
 
 	jwksCtx, cancel := context.WithCancel(ctx)
-	jwksHTTPClient := jwk.WrapHTTPClientDefaults(&http.Client{Timeout: jwksRefreshTimeout})
+	jwksHTTPClient := jwk.WrapHTTPClientDefaults(h.newJWKSHTTPClient(jwksURL))
 	cache, err := newJWKSCacheFunc(
 		jwksCtx,
 		httprc.NewClient(

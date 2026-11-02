@@ -37,7 +37,7 @@ def test_secrets_baseline_count_matches_the_committed_file() -> None:
 
 
 def test_disposition_policy_count_matches_the_committed_file() -> None:
-    assert _disposition_records() == 352
+    assert _disposition_records() == 351
 
 
 def test_docs_index_states_the_committed_baseline_and_disposition_counts() -> None:

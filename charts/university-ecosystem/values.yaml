@@ -120,24 +120,18 @@ internalGrpcMTLS:
     clientCAKey: "ca.crt"
 
 # SPIFFE mTLS for token-bearing backend HTTP hops (AUD-373). When enabled, the
-# backend Gunicorn listener serves TLS and requires a client certificate chained
-# to backendServer.caKey. backendServer.existingSecret must hold the backend's
-# X.509 SVID (tls.crt/tls.key, with client-auth and server-auth EKU) and the
-# trust bundle. Gateway and ws-hub present SVIDs from the SPIRE Workload API socket
-# that workloadAPI mounts and verify backendSpiffeID. Kubelet probes cannot present
-# a client certificate, so backend probes run inside the pod with that SVID. Off by
-# default; overlays enable it only after every backend client accepts mTLS.
+# backend Gunicorn listener uses SDK-issued identities and rotating trust
+# bundles from the SPIRE Workload API and requires a verified client certificate.
+# Every backend client verifies backendSpiffeID; the backend authorizes exact
+# client IDs at the TLS/HTTP boundary. Probes use the backend's issued identity.
+# Off until ADR-052 issuance/rotation proof and complete-chain checks pass.
 internalHttpMTLS:
   enabled: false
   trustDomain: ""
   backendSpiffeID: ""
   gatewaySpiffeID: ""
   wsHubSpiffeID: ""
-  backendServer:
-    existingSecret: ""
-    certKey: "tls.crt"
-    privateKeyKey: "tls.key"
-    caKey: "ca.crt"
+  fileProcessorSpiffeID: ""
   workloadAPI:
     csiDriver: "csi.spiffe.io"
     mountPath: "/spiffe-workload-api"

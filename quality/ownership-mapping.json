@@ -48,6 +48,7 @@
     "**/ticketing/**",
     "alembic/versions/**",
     "app/core/feature_flags.py",
+    "app/server/**",
     "native/rust_ext/**",
     "frontend/rust-crypto/**",
     "frontend/wasm-sanitizer/**",

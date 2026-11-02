@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import io
 import json
 import shutil
@@ -1282,3 +1283,37 @@ def test_rejects_expiry_more_than_30_days_after_creation(tmp_path: Path) -> None
         "exclusions[0].expires_on must be at most 30 days after created_on"
         in result.stderr
     )
+
+
+def test_all_backend_server_sources_are_classified_tier_zero() -> None:
+    ownership = json.loads(
+        (REPOSITORY_ROOT / "quality/ownership-mapping.json").read_text(encoding="utf-8")
+    )
+    assert "app/server/**" in ownership["tier0_rules"]
+    sources = {
+        path.relative_to(REPOSITORY_ROOT).as_posix()
+        for path in (REPOSITORY_ROOT / "app/server").rglob("*.py")
+    }
+    assert {
+        "app/server/internal_mtls.py",
+        "app/server/spiffe_identity.py",
+        "app/server/spiffe_transport.py",
+        "app/server/spiffe_worker.py",
+    } <= sources
+    assert all(fnmatch.fnmatchcase(path, "app/server/**") for path in sources)
+
+
+def test_transport_classification_does_not_lower_any_tier_zero_floor() -> None:
+    contract = json.loads(
+        (REPOSITORY_ROOT / "quality/quality-contract.json").read_text(encoding="utf-8")
+    )
+    assert contract["tier0"] == {
+        "coverage": {
+            "lines": 100,
+            "statements": 100,
+            "branches": 100,
+            "functions": 100,
+        }
+    }
+    assert contract["policy"]["patch_coverage"] == 100
+    assert contract["policy"]["required_pr_matrix"] is True

@@ -74,6 +74,7 @@ const (
 )
 
 var (
+	newJWKSHTTPClientFunc     = newJWKSHTTPClient
 	dialTemporalFunc          = client.Dial
 	newWorkerFunc             = worker.New
 	buildMinIOClientFunc      = workflow.BuildMinIOClient
@@ -152,6 +153,8 @@ func main() {
 }
 
 func runMain(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	logger := initLogger()
 	// Keep fallback slog.Default call sites (for example gRPC setup) behind the
 	// same recursive redaction boundary as the explicitly injected logger.
@@ -168,7 +171,17 @@ func runMain(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	keySet, err := initializeJWKSKeySet(ctx, cfg, rsaPublicKey, logger)
+	jwksClient, closeJWKS, err := newJWKSHTTPClientFunc(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cancel()
+		if err := closeJWKS(); err != nil {
+			logger.WarnContext(ctx, "Failed to close JWKS SPIFFE source", "err", err)
+		}
+	}()
+	keySet, err := initializeJWKSKeySet(ctx, cfg, rsaPublicKey, logger, jwksClient)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to initialize JWKS verification", "err", err)
 		return err

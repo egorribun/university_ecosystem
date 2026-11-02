@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import subprocess
 from typing import Any
+from uuid import UUID
 
 import pytest
 
+from scripts.plan_spire_registration import build_plan
 from tests.test_helm_staging_contract import (
     CHART,
     STAGING_VALUES,
@@ -108,40 +110,36 @@ def test_flag_on_is_refused_while_public_routes_target_the_plaintext_backend() -
 def test_flag_on_wires_backend_listener_probes_and_spiffe_clients() -> None:
     resources = _render_staging(*_enabled_args())
     staging = _values(STAGING_VALUES)["internalHttpMTLS"]
+    for suffix in ("-backend", "-gateway", "-ws-hub", "-file-processor"):
+        assert _deployment(resources, suffix)["metadata"]["namespace"] == (
+            "university-ecosystem"
+        )
 
     backend = _deployment(resources, "-backend")
     backend_container = _main_container(backend)
     backend_env = _env(backend_container)
     assert backend_env["INTERNAL_HTTP_MTLS_ENABLED"] == "true"
     assert (
-        backend_env["INTERNAL_HTTP_MTLS_CERT_FILE"]
-        == "/run/secrets/internal-http-mtls/tls.crt"
+        backend_env["INTERNAL_HTTP_MTLS_SERVER_SPIFFE_ID"] == staging["backendSpiffeID"]
     )
-    assert (
-        backend_env["INTERNAL_HTTP_MTLS_KEY_FILE"]
-        == "/run/secrets/internal-http-mtls/tls.key"
-    )
-    assert (
-        backend_env["INTERNAL_HTTP_MTLS_CA_FILE"]
-        == "/run/secrets/internal-http-mtls/ca.crt"
-    )
-    assert (
-        backend_env["GUNICORN_CMD_ARGS"] == "--config=python:app.server.gunicorn_conf"
-    )
-    mounts = {
-        item["name"]: item["mountPath"] for item in backend_container["volumeMounts"]
+    assert set(
+        backend_env["INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS"].split(",")
+    ) == {
+        staging["backendSpiffeID"],
+        staging["gatewaySpiffeID"],
+        staging["wsHubSpiffeID"],
+        staging["fileProcessorSpiffeID"],
     }
-    assert mounts["internal-http-mtls"] == "/run/secrets/internal-http-mtls"
-    secret_volume = _volume(backend, "internal-http-mtls")
-    assert secret_volume is not None
-    assert (
-        secret_volume["secret"]["secretName"]
-        == staging["backendServer"]["existingSecret"]
-    )
-    assert {item["path"] for item in secret_volume["secret"]["items"]} == {
-        "tls.crt",
-        "tls.key",
-        "ca.crt",
+    assert backend_env["SPIFFE_ENDPOINT_SOCKET"] == SPIFFE_SOCKET
+    assert "INTERNAL_HTTP_MTLS_CERT_FILE" not in backend_env
+    assert "GUNICORN_CMD_ARGS" not in backend_env
+    mounts = {item["name"]: item for item in backend_container["volumeMounts"]}
+    assert mounts["spiffe-workload-api"]["mountPath"] == "/spiffe-workload-api"
+    assert mounts["spiffe-workload-api"]["readOnly"] is True
+    assert _volume(backend, "internal-http-mtls") is None
+    assert _volume(backend, "spiffe-workload-api") == {
+        "name": "spiffe-workload-api",
+        "csi": {"driver": "csi.spiffe.io", "readOnly": True},
     }
     for probe_name in ("startupProbe", "livenessProbe", "readinessProbe"):
         probe = backend_container[probe_name]
@@ -193,7 +191,141 @@ def test_flag_on_wires_backend_listener_probes_and_spiffe_clients() -> None:
     assert _volume(ws_hub, "spiffe-workload-api") is not None
 
     file_processor = _deployment(resources, "-file-processor")
-    assert _env(_main_container(file_processor))["FP_JWKS_URL"].startswith("https://")
+    fp_container = _main_container(file_processor)
+    fp_env = _env(fp_container)
+    assert fp_env["FP_JWKS_URL"].startswith("https://")
+    assert fp_env["FP_INTERNAL_HTTP_MTLS_ENABLED"] == "true"
+    assert fp_env["FP_BACKEND_SPIFFE_ID"] == staging["backendSpiffeID"]
+    assert fp_env["FP_SPIFFE_MY_ID"] == staging["fileProcessorSpiffeID"]
+    assert fp_env["FP_SPIFFE_ENDPOINT_SOCKET"] == SPIFFE_SOCKET
+    assert "FP_SPIFFE_ENABLED" not in fp_env
+    assert _volume(file_processor, "spiffe-workload-api") == socket_volume
+    for name in ("startupProbe", "livenessProbe", "readinessProbe"):
+        assert fp_container[name]["tcpSocket"] == {"port": "grpc"}
+
+
+def test_public_jwks_override_does_not_receive_internal_workload_identity() -> None:
+    endpoint = "https://issuer.example/.well-known/jwks.json"
+    resources = _render_staging(
+        *_enabled_args("--set", f"fileProcessor.config.jwksURL={endpoint}")
+    )
+    processor = _deployment(resources, "-file-processor")
+    environ = _env(_main_container(processor))
+    assert environ["FP_JWKS_URL"] == endpoint
+    assert "FP_INTERNAL_HTTP_MTLS_ENABLED" not in environ
+    assert "FP_SPIFFE_ENABLED" not in environ
+    assert _volume(processor, "spiffe-workload-api") is None
+    backend = _deployment(resources, "-backend")
+    allowed = _env(_main_container(backend))[
+        "INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS"
+    ].split(",")
+    staging = _values(STAGING_VALUES)["internalHttpMTLS"]
+    assert set(allowed) == {
+        staging["backendSpiffeID"],
+        staging["gatewaySpiffeID"],
+        staging["wsHubSpiffeID"],
+    }
+
+
+def test_explicit_internal_jwks_preserves_exact_tcp_network_policy() -> None:
+    endpoint = "https://university-ecosystem-backend:8000/.well-known/jwks.json"
+    resources = _render_staging(
+        *_enabled_args("--set", f"fileProcessor.config.jwksURL={endpoint}"),
+        release_name="university-ecosystem",
+    )
+    processor = _deployment(resources, "-file-processor")
+    assert _env(_main_container(processor))["FP_INTERNAL_HTTP_MTLS_ENABLED"] == "true"
+    policies = {
+        resource["metadata"]["name"]: resource["spec"]
+        for resource in resources
+        if resource["kind"] == "NetworkPolicy"
+    }
+    rules = policies["university-ecosystem-file-processor-policy"]["egress"]
+    backend_rules = [
+        rule
+        for rule in rules
+        if any(
+            peer.get("podSelector", {})
+            .get("matchLabels", {})
+            .get("app.kubernetes.io/component")
+            == "backend"
+            for peer in rule.get("to", [])
+        )
+    ]
+    assert len(backend_rules) == 1
+    assert backend_rules[0]["ports"] == [{"protocol": "TCP", "port": 8000}]
+    assert (
+        backend_rules[0]["to"][0]["podSelector"]["matchLabels"][
+            "app.kubernetes.io/instance"
+        ]
+        == "university-ecosystem"
+    )
+
+
+def test_disabled_optional_workloads_receive_no_backend_identity_authority() -> None:
+    resources = _render_staging(
+        *_enabled_args(
+            "--set",
+            "global.environment=development",
+            "--set",
+            "wsHub.enabled=false",
+            "--set",
+            "fileProcessor.enabled=false",
+        )
+    )
+    backend = _deployment(resources, "-backend")
+    allowed = _env(_main_container(backend))[
+        "INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS"
+    ].split(",")
+    staging = _values(STAGING_VALUES)["internalHttpMTLS"]
+    assert set(allowed) == {
+        staging["backendSpiffeID"],
+        staging["gatewaySpiffeID"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("overrides", "components"),
+    [
+        ((), {"backend", "gateway", "ws-hub", "file-processor"}),
+        (
+            ("--set", "fileProcessor.config.jwksURL=https://issuer.example/jwks"),
+            {"backend", "gateway", "ws-hub"},
+        ),
+        (
+            (
+                "--set",
+                "global.environment=development",
+                "--set",
+                "wsHub.enabled=false",
+                "--set",
+                "fileProcessor.enabled=false",
+            ),
+            {"backend", "gateway"},
+        ),
+    ],
+)
+def test_rendered_workloads_produce_only_exact_active_registration_entries(
+    overrides: tuple[str, ...], components: set[str]
+) -> None:
+    resources = _render_staging(*_enabled_args(*overrides))
+    parent = (
+        "spiffe://university.ecosystem/spire/agent/k8s_psat/"
+        f"university-cluster/{UUID(int=1)}"
+    )
+    plan = build_plan(
+        resources,
+        namespace="university-ecosystem",
+        release="staging-contract",
+        parent_id=parent,
+    )
+    assert plan["mode"] == "plan-only"
+    assert {entry["component"] for entry in plan["entries"]} == components
+    for entry in plan["entries"]:
+        workload = _deployment(resources, f"-{entry['component']}")
+        assert entry["service_account"] == _pod_spec(workload)["serviceAccountName"]
+        assert entry["namespace"] == workload["metadata"]["namespace"]
+        assert entry["argv"][3:5] == ["-parentID", parent]
 
 
 @pytest.mark.parametrize(
@@ -210,13 +342,17 @@ def test_flag_on_wires_backend_listener_probes_and_spiffe_clients() -> None:
             "/internalHttpMTLS/backendSpiffeID",
         ),
         (
-            "internalHttpMTLS.backendServer.existingSecret=",
-            "internalHttpMTLS.backendServer.existingSecret is required",
+            "internalHttpMTLS.workloadAPI.csiDriver=",
+            "/internalHttpMTLS/workloadAPI/csiDriver",
         ),
         ("internalHttpMTLS.trustDomain=", "internalHttpMTLS.trustDomain is required"),
+        (
+            "internalHttpMTLS.fileProcessorSpiffeID=",
+            "internalHttpMTLS.fileProcessorSpiffeID must be a canonical SPIFFE ID",
+        ),
     ],
 )
-def test_flag_on_requires_identities_and_backend_secret(
+def test_flag_on_requires_identities_and_workload_api(
     override: str, message: str
 ) -> None:
     with pytest.raises(subprocess.CalledProcessError) as error:

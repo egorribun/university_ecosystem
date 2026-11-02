@@ -1,150 +1,157 @@
-"""Mutual TLS for internal HTTP hops into the backend (AUD-373).
-
-When ``INTERNAL_HTTP_MTLS_ENABLED`` is true, the backend Gunicorn worker serves
-TLS and requires a client certificate that chains to the internal trust bundle.
-Certificate material is read from mounted files when the worker starts, which
-matches the gRPC mTLS contract in ``charts/university-ecosystem``: rotation
-needs CA overlap and a controlled rollout restart.
-
-The module is stdlib-only and reads its own environment on purpose. The
-Gunicorn configuration and the exec readiness probe run outside the application
-settings lifecycle, so they must not import application settings.
-"""
+"""Strict SPIFFE transport configuration and exact-identity health probe."""
 
 from __future__ import annotations
 
 import argparse
 import http.client
 import os
-import ssl
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Final
 
-ENABLED_ENV: Final = "INTERNAL_HTTP_MTLS_ENABLED"
-CERT_FILE_ENV: Final = "INTERNAL_HTTP_MTLS_CERT_FILE"
-KEY_FILE_ENV: Final = "INTERNAL_HTTP_MTLS_KEY_FILE"
-CA_FILE_ENV: Final = "INTERNAL_HTTP_MTLS_CA_FILE"
+from cryptography import x509
+from spiffe.errors import ArgumentError
+from spiffe.workloadapi.errors import X509SourceError
 
+from app.server.spiffe_identity import (
+    WorkloadContexts,
+    WorkloadIdentityError,
+    authorize_verified_leaf,
+    chain_deadline,
+    validate_workload_id,
+)
+
+ENABLED_ENV: Final = "INTERNAL_HTTP_MTLS_ENABLED"
+SERVER_ID_ENV: Final = "INTERNAL_HTTP_MTLS_SERVER_SPIFFE_ID"
+CLIENT_IDS_ENV: Final = "INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS"
+SOCKET_ENV: Final = "SPIFFE_ENDPOINT_SOCKET"
 PROBE_PATHS: Final = ("/health/live", "/health/ready")
 PROBE_HOST: Final = "127.0.0.1"
-PROBE_TIMEOUT_SECONDS: Final = 4
-
 _DISABLED_VALUES: Final = frozenset({"", "0", "false", "no", "off"})
 _ENABLED_VALUES: Final = frozenset({"1", "true", "yes", "on"})
 
 
-class InternalHTTPMTLSConfigError(RuntimeError):
-    """Raised when mTLS is requested but cannot be honored.
-
-    The listener must never fall back to plaintext after the flag is set, so
-    every failure in this module is raised rather than logged and ignored.
-    """
+class InternalHTTPMTLSConfigError(WorkloadIdentityError):
+    """Configuration cannot honor the requested secure transport."""
 
 
 @dataclass(frozen=True, slots=True)
-class InternalHTTPMTLSMaterial:
-    """Validated file paths for the backend server certificate and trust bundle."""
-
-    certfile: str
-    keyfile: str
-    ca_certs: str
+class InternalHTTPMTLSConfig:
+    socket_path: str
+    server_identity: str
+    allowed_clients: frozenset[str]
 
 
 def load_internal_http_mtls(
     environ: Mapping[str, str],
-) -> InternalHTTPMTLSMaterial | None:
-    """Return validated TLS material when enabled, or ``None`` when disabled.
-
-    Unknown flag values fail closed so a typo can never silently downgrade the
-    listener to plaintext.
-    """
+) -> InternalHTTPMTLSConfig | None:
     flag = environ.get(ENABLED_ENV, "").strip().lower()
     if flag in _DISABLED_VALUES:
         return None
     if flag not in _ENABLED_VALUES:
         raise InternalHTTPMTLSConfigError(f"{ENABLED_ENV} must be 'true' or 'false'")
-
-    certfile = _required_file(environ, CERT_FILE_ENV)
-    keyfile = _required_file(environ, KEY_FILE_ENV)
-    ca_certs = _required_file(environ, CA_FILE_ENV)
-    _validate_material(certfile=certfile, keyfile=keyfile, ca_certs=ca_certs)
-    return InternalHTTPMTLSMaterial(
-        certfile=certfile, keyfile=keyfile, ca_certs=ca_certs
-    )
-
-
-def _required_file(environ: Mapping[str, str], name: str) -> str:
-    value = environ.get(name, "").strip()
-    if not value:
+    identity = environ.get(SERVER_ID_ENV, "")
+    raw_clients = environ.get(CLIENT_IDS_ENV, "")
+    if any(
+        ord(character) < 32 or ord(character) == 127
+        for character in identity + raw_clients
+    ):
+        raise InternalHTTPMTLSConfigError("identity configuration contains controls")
+    identity = identity.strip()
+    clients = raw_clients.split(",")
+    clients = [client.strip() for client in clients]
+    socket = environ.get(SOCKET_ENV, "").strip()
+    if not socket.startswith("unix:/") or "\x00" in socket:
         raise InternalHTTPMTLSConfigError(
-            f"{name} is required when {ENABLED_ENV} is true"
+            "an absolute Unix Workload API endpoint is required"
         )
-    if not os.path.isfile(value) or not os.access(value, os.R_OK):
-        raise InternalHTTPMTLSConfigError(f"{name} must reference a readable file")
-    return value
-
-
-def _validate_material(*, certfile: str, keyfile: str, ca_certs: str) -> None:
-    """Load the material exactly as the listener will, failing on any mismatch."""
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.verify_mode = ssl.CERT_REQUIRED
-    try:
-        context.load_cert_chain(certfile, keyfile)
-        context.load_verify_locations(ca_certs)
-    except (OSError, ssl.SSLError) as err:  # RZ-20-04: narrowed TLS material domain
+    if not all(clients) or len(set(clients)) != len(clients):
         raise InternalHTTPMTLSConfigError(
-            "internal mTLS certificate, key or CA material is invalid"
-        ) from err
+            "client identities must be nonempty and unique"
+        )
+    try:
+        server = validate_workload_id(identity)
+        peers = [validate_workload_id(client) for client in clients]
+    except (ArgumentError, WorkloadIdentityError) as error:
+        raise InternalHTTPMTLSConfigError(
+            "invalid SPIFFE identity configuration"
+        ) from error
+    if any(peer.trust_domain != server.trust_domain for peer in peers):
+        raise InternalHTTPMTLSConfigError(
+            "client identities must use the local trust domain"
+        )
+    if identity not in clients:
+        raise InternalHTTPMTLSConfigError(
+            "the local probe identity must be explicitly allowed"
+        )
+    return InternalHTTPMTLSConfig(socket, identity, frozenset(clients))
 
 
 def probe(path: str, port: int, environ: Mapping[str, str]) -> bool:
-    """Return whether a health endpoint answers 200 over the mTLS listener.
-
-    The kubelet cannot present a client certificate, so the probe runs inside
-    the pod and presents the pod's own certificate. The server accepts any chain
-    to the internal CA, and the probe checks the chain without hostname matching
-    because it targets loopback and SPIFFE IDs are URIs, not DNS names.
-    """
-    material = load_internal_http_mtls(environ)
-    if material is None:
-        raise InternalHTTPMTLSConfigError(f"probe requires {ENABLED_ENV}=true")
-
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_REQUIRED
-    context.load_verify_locations(material.ca_certs)
-    context.load_cert_chain(material.certfile, material.keyfile)
-
-    connection = http.client.HTTPSConnection(
-        PROBE_HOST, port, timeout=PROBE_TIMEOUT_SECONDS, context=context
+    """Authenticate the backend before sending any HTTP bytes, even on loopback."""
+    if path not in PROBE_PATHS or not 1 <= port <= 65535:
+        raise InternalHTTPMTLSConfigError("invalid health probe target")
+    config = load_internal_http_mtls(environ)
+    if config is None:
+        connection = http.client.HTTPConnection(PROBE_HOST, port, timeout=1)
+        try:
+            connection.request("GET", path)
+            return connection.getresponse().status == HTTPStatus.OK
+        except (OSError, http.client.HTTPException):
+            return False
+        finally:
+            connection.close()
+    source = WorkloadContexts.connect(
+        config.socket_path, config.server_identity, server=False, timeout=1.0
     )
     try:
-        connection.request("GET", path)
-        response = connection.getresponse()
-        return response.status == HTTPStatus.OK
-    except (OSError, http.client.HTTPException):
-        return False
+        generation = source.current()
+        secure_connection = http.client.HTTPSConnection(
+            PROBE_HOST, port, timeout=1, context=generation.context
+        )
+        try:
+            secure_connection.connect()
+            if secure_connection.sock is None:
+                return False
+            der = secure_connection.sock.getpeercert(binary_form=True)
+            if not der:
+                return False
+            now = datetime.now(UTC)
+            verified_chain = secure_connection.sock.get_verified_chain()
+            if not verified_chain or verified_chain[0] != der:
+                return False
+            chain_deadline(
+                [x509.load_der_x509_certificate(item) for item in verified_chain], now
+            )
+            authorize_verified_leaf(
+                x509.load_der_x509_certificate(der),
+                frozenset({config.server_identity}),
+                now,
+            )
+            secure_connection.request("GET", path)
+            return secure_connection.getresponse().status == HTTPStatus.OK
+        except (OSError, ValueError, WorkloadIdentityError, http.client.HTTPException):
+            return False
+        finally:
+            secure_connection.close()
     finally:
-        connection.close()
+        source.close()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.server.internal_mtls")
     commands = parser.add_subparsers(dest="command", required=True)
-    probe_parser = commands.add_parser(
-        "probe", help="check a health endpoint over mTLS"
-    )
+    probe_parser = commands.add_parser("probe")
     probe_parser.add_argument("path", choices=PROBE_PATHS)
     probe_parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
-
     try:
         healthy = probe(args.path, args.port, os.environ)
-    except InternalHTTPMTLSConfigError as err:
-        sys.stderr.write(f"internal mTLS probe misconfigured: {err}\n")
+    except (WorkloadIdentityError, X509SourceError, ArgumentError, OSError) as error:
+        sys.stderr.write(f"internal health probe unavailable: {type(error).__name__}\n")
         return 2
     return 0 if healthy else 1
 

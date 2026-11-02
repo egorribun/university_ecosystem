@@ -12,13 +12,27 @@
   {{- if not .Values.internalHttpMTLS.trustDomain -}}
     {{- fail "internalHttpMTLS.trustDomain is required when internalHttpMTLS.enabled=true" -}}
   {{- end -}}
-  {{- range $name, $spiffeID := dict "backendSpiffeID" .Values.internalHttpMTLS.backendSpiffeID "gatewaySpiffeID" .Values.internalHttpMTLS.gatewaySpiffeID "wsHubSpiffeID" .Values.internalHttpMTLS.wsHubSpiffeID -}}
+  {{- $workloadIdentities := dict "backendSpiffeID" .Values.internalHttpMTLS.backendSpiffeID "gatewaySpiffeID" .Values.internalHttpMTLS.gatewaySpiffeID -}}
+  {{- if .Values.wsHub.enabled -}}
+    {{- $_ := set $workloadIdentities "wsHubSpiffeID" .Values.internalHttpMTLS.wsHubSpiffeID -}}
+  {{- end -}}
+  {{- $internalJWKSURL := printf "https://%s:%v/.well-known/jwks.json" (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port -}}
+  {{- if and .Values.fileProcessor.enabled (or (not .Values.fileProcessor.config.jwksURL) (eq .Values.fileProcessor.config.jwksURL $internalJWKSURL)) -}}
+    {{- $_ := set $workloadIdentities "fileProcessorSpiffeID" .Values.internalHttpMTLS.fileProcessorSpiffeID -}}
+  {{- end -}}
+  {{- range $name, $spiffeID := $workloadIdentities -}}
     {{- if not (regexMatch "^spiffe://[a-z0-9][a-z0-9.-]*(/[A-Za-z0-9._~-]+)+$" (toString $spiffeID)) -}}
       {{- fail (printf "internalHttpMTLS.%s must be a canonical SPIFFE ID when internalHttpMTLS.enabled=true" $name) -}}
     {{- end -}}
   {{- end -}}
-  {{- if not .Values.internalHttpMTLS.backendServer.existingSecret -}}
-    {{- fail "internalHttpMTLS.backendServer.existingSecret is required when internalHttpMTLS.enabled=true" -}}
+  {{- $identities := values $workloadIdentities -}}
+  {{- if ne (len $identities) (len (uniq $identities)) -}}
+    {{- fail "internalHttpMTLS workload identities must be distinct" -}}
+  {{- end -}}
+  {{- range $identity := $identities -}}
+    {{- if not (hasPrefix (printf "spiffe://%s/" $.Values.internalHttpMTLS.trustDomain) $identity) -}}
+      {{- fail "internalHttpMTLS workload identities must belong to trustDomain" -}}
+    {{- end -}}
   {{- end -}}
   {{- range $host := .Values.ingress.hosts -}}
     {{- range $path := $host.paths -}}

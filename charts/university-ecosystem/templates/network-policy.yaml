@@ -1,4 +1,6 @@
 # RZ-04 (audit Wave 12): NetworkPolicy — default-deny + per-component allow-lists.
+{{- $internalJWKSURL := printf "%s://%s:%v/.well-known/jwks.json" (ternary "https" "http" .Values.internalHttpMTLS.enabled) (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port -}}
+{{- $fileProcessorUsesBackendJWKS := and .Values.fileProcessor.enabled (or (not .Values.fileProcessor.config.jwksURL) (eq .Values.fileProcessor.config.jwksURL $internalJWKSURL)) -}}
 #
 # Design rationale:
 #   1. A namespace-wide default-deny blocks ALL ingress and egress for every pod
@@ -457,7 +459,7 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
-    {{- if and .Values.fileProcessor.enabled (not .Values.fileProcessor.config.jwksURL) }}
+    {{- if $fileProcessorUsesBackendJWKS }}
     # The default file-processor JWKS URL targets this release's backend service.
     - from:
         - podSelector:
@@ -624,7 +626,7 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
-    {{- if and .Values.fileProcessor.enabled (not .Values.fileProcessor.config.jwksURL) }}
+    {{- if $fileProcessorUsesBackendJWKS }}
     # The default JWKS endpoint is the same release backend over its service port.
     - to:
         - podSelector:

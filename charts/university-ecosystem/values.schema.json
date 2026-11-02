@@ -28,7 +28,11 @@
     "internalGrpcPeer": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["existingSecret", "certKey", "privateKeyKey"],
+      "required": [
+        "existingSecret",
+        "certKey",
+        "privateKeyKey"
+      ],
       "properties": {
         "existingSecret": {
           "$ref": "#/definitions/optionalSecretResourceName"
@@ -50,7 +54,13 @@
     "dependencyImage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["registry", "repository", "tag", "digest", "pullPolicy"],
+      "required": [
+        "registry",
+        "repository",
+        "tag",
+        "digest",
+        "pullPolicy"
+      ],
       "properties": {
         "registry": {
           "type": "string",
@@ -73,8 +83,14 @@
           "const": "Always"
         },
         "fullImageName": {
-          "type": ["string", "null"],
-          "enum": ["", null]
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "",
+            null
+          ]
         }
       }
     },
@@ -91,7 +107,11 @@
         },
         "pullPolicy": {
           "type": "string",
-          "enum": ["Always", "IfNotPresent", "Never"]
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
         },
         "digest": {
           "type": "string",
@@ -114,20 +134,32 @@
     "resourcePair": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["cpu", "memory"],
+      "required": [
+        "cpu",
+        "memory"
+      ],
       "properties": {
         "cpu": {
-          "type": ["string", "number"]
+          "type": [
+            "string",
+            "number"
+          ]
         },
         "memory": {
-          "type": ["string", "number"]
+          "type": [
+            "string",
+            "number"
+          ]
         }
       }
     },
     "resources": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["requests", "limits"],
+      "required": [
+        "requests",
+        "limits"
+      ],
       "properties": {
         "requests": {
           "$ref": "#/definitions/resourcePair"
@@ -140,11 +172,18 @@
     "service": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "port"],
+      "required": [
+        "type",
+        "port"
+      ],
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+          "enum": [
+            "ClusterIP",
+            "NodePort",
+            "LoadBalancer"
+          ]
         },
         "port": {
           "type": "integer",
@@ -161,7 +200,11 @@
     "autoscaling": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "minReplicas", "maxReplicas"],
+      "required": [
+        "enabled",
+        "minReplicas",
+        "maxReplicas"
+      ],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -211,11 +254,17 @@
     "seccompProfile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["RuntimeDefault", "Localhost", "Unconfined"]
+          "enum": [
+            "RuntimeDefault",
+            "Localhost",
+            "Unconfined"
+          ]
         }
       }
     },
@@ -335,7 +384,11 @@
         "networkPolicy": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "allowExternal", "allowExternalEgress"],
+          "required": [
+            "enabled",
+            "allowExternal",
+            "allowExternalEgress"
+          ],
           "properties": {
             "enabled": {
               "const": true
@@ -396,7 +449,10 @@
             "persistence": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["enabled", "size"],
+              "required": [
+                "enabled",
+                "size"
+              ],
               "properties": {
                 "enabled": {
                   "const": true
@@ -454,11 +510,17 @@
     "global": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["environment"],
+      "required": [
+        "environment"
+      ],
       "properties": {
         "environment": {
           "type": "string",
-          "enum": ["development", "staging", "production"]
+          "enum": [
+            "development",
+            "staging",
+            "production"
+          ]
         },
         "jwtIssuer": {
           "type": "string",
@@ -500,7 +562,10 @@
     "connections": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["existingSecret", "rateLimitStorageURIKey"],
+      "required": [
+        "existingSecret",
+        "rateLimitStorageURIKey"
+      ],
       "properties": {
         "existingSecret": {
           "$ref": "#/definitions/secretResourceName"
@@ -540,7 +605,10 @@
     "applicationSecrets": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["existingSecret", "keys"],
+      "required": [
+        "existingSecret",
+        "keys"
+      ],
       "properties": {
         "existingSecret": {
           "$ref": "#/definitions/optionalSecretResourceName"
@@ -611,7 +679,9 @@
     "deploymentContract": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled"],
+      "required": [
+        "enabled"
+      ],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -672,7 +742,12 @@
         "exportOIDC": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "repository", "workflowRef", "subject"],
+          "required": [
+            "enabled",
+            "repository",
+            "workflowRef",
+            "subject"
+          ],
           "properties": {
             "enabled": {
               "type": "boolean"
@@ -744,7 +819,7 @@
         "backendSpiffeID",
         "gatewaySpiffeID",
         "wsHubSpiffeID",
-        "backendServer",
+        "fileProcessorSpiffeID",
         "workloadAPI"
       ],
       "properties": {
@@ -771,8 +846,10 @@
           "maxLength": 2048,
           "pattern": "^(|spiffe://[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?:/[A-Za-z0-9._~-]+)+)$"
         },
-        "backendServer": {
-          "$ref": "#/definitions/internalGrpcPeer"
+        "fileProcessorSpiffeID": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(|spiffe://[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?:/[A-Za-z0-9._~-]+)+)$"
         },
         "workloadAPI": {
           "type": "object",
@@ -906,7 +983,11 @@
         "env": {
           "type": "object",
           "additionalProperties": {
-            "type": ["string", "number", "boolean"]
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
           }
         },
         "config": {
@@ -984,7 +1065,11 @@
             },
             "storageBackend": {
               "type": "string",
-              "enum": ["static", "s3", "minio"]
+              "enum": [
+                "static",
+                "s3",
+                "minio"
+              ]
             },
             "storageS3Bucket": {
               "type": "string"
@@ -1346,7 +1431,11 @@
         "env": {
           "type": "object",
           "additionalProperties": {
-            "type": ["string", "number", "boolean"]
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
           }
         }
       }
@@ -1378,11 +1467,17 @@
         "issuer": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["kind", "name"],
+          "required": [
+            "kind",
+            "name"
+          ],
           "properties": {
             "kind": {
               "type": "string",
-              "enum": ["Issuer", "ClusterIssuer"]
+              "enum": [
+                "Issuer",
+                "ClusterIssuer"
+              ]
             },
             "name": {
               "$ref": "#/definitions/secretResourceName"
@@ -1394,7 +1489,10 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["host", "paths"],
+            "required": [
+              "host",
+              "paths"
+            ],
             "properties": {
               "host": {
                 "type": "string",
@@ -1406,18 +1504,31 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["path", "pathType", "service"],
+                  "required": [
+                    "path",
+                    "pathType",
+                    "service"
+                  ],
                   "properties": {
                     "path": {
                       "type": "string"
                     },
                     "pathType": {
                       "type": "string",
-                      "enum": ["Exact", "Prefix", "ImplementationSpecific"]
+                      "enum": [
+                        "Exact",
+                        "Prefix",
+                        "ImplementationSpecific"
+                      ]
                     },
                     "service": {
                       "type": "string",
-                      "enum": ["backend", "frontend", "gateway", "ws-hub"]
+                      "enum": [
+                        "backend",
+                        "frontend",
+                        "gateway",
+                        "ws-hub"
+                      ]
                     }
                   }
                 }
@@ -1430,7 +1541,10 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["secretName", "hosts"],
+            "required": [
+              "secretName",
+              "hosts"
+            ],
             "properties": {
               "secretName": {
                 "$ref": "#/definitions/secretResourceName"
@@ -1497,10 +1611,14 @@
               },
               "oneOf": [
                 {
-                  "required": ["numTrustedHops"]
+                  "required": [
+                    "numTrustedHops"
+                  ]
                 },
                 {
-                  "required": ["trustedCIDRs"]
+                  "required": [
+                    "trustedCIDRs"
+                  ]
                 }
               ]
             }
@@ -1509,15 +1627,22 @@
         "rateLimit": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["requests", "unit"],
+          "required": [
+            "requests",
+            "unit"
+          ],
           "properties": {
             "requests": {
               "type": "integer",
-              "enum": [50]
+              "enum": [
+                50
+              ]
             },
             "unit": {
               "type": "string",
-              "enum": ["Second"]
+              "enum": [
+                "Second"
+              ]
             }
           },
           "description": "Fixed partial local per-source-IP limit retained from ingress; no burst parameter is exposed by the pinned Envoy Gateway policy API."
@@ -1525,11 +1650,15 @@
         "requestBuffer": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["limit"],
+          "required": [
+            "limit"
+          ],
           "properties": {
             "limit": {
               "type": "string",
-              "enum": ["50Mi"],
+              "enum": [
+                "50Mi"
+              ],
               "description": "Maximum request body size for the isolated API HTTPRoute; fixed to the retained 50 MiB ingress contract."
             }
           }
@@ -1537,7 +1666,10 @@
         "networkPolicy": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["namespaceSelector", "podSelector"],
+          "required": [
+            "namespaceSelector",
+            "podSelector"
+          ],
           "properties": {
             "namespaceSelector": {
               "type": "object",
@@ -1563,7 +1695,10 @@
           "type": "string"
         },
         "samplerArg": {
-          "type": ["string", "number"]
+          "type": [
+            "string",
+            "number"
+          ]
         }
       }
     },
@@ -1574,7 +1709,10 @@
         "dns": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["namespaceSelector", "podSelector"],
+          "required": [
+            "namespaceSelector",
+            "podSelector"
+          ],
           "properties": {
             "namespaceSelector": {
               "type": "object",
@@ -1595,7 +1733,9 @@
         "gatewayJWKS": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["egressCIDRs"],
+          "required": [
+            "egressCIDRs"
+          ],
           "properties": {
             "egressCIDRs": {
               "type": "array",
@@ -1616,7 +1756,11 @@
         "httpsEgress": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["privateCIDRs", "exceptIPv4CIDRs", "exceptIPv6CIDRs"],
+          "required": [
+            "privateCIDRs",
+            "exceptIPv4CIDRs",
+            "exceptIPv6CIDRs"
+          ],
           "properties": {
             "privateCIDRs": {
               "type": "array",
@@ -1678,7 +1822,11 @@
         "networkPolicy": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "allowExternal", "allowExternalEgress"],
+          "required": [
+            "enabled",
+            "allowExternal",
+            "allowExternalEgress"
+          ],
           "properties": {
             "enabled": {
               "const": true
@@ -1805,15 +1953,25 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["op", "path", "value"],
+                "required": [
+                  "op",
+                  "path",
+                  "value"
+                ],
                 "properties": {
                   "op": {
                     "type": "string",
-                    "enum": ["add", "replace"]
+                    "enum": [
+                      "add",
+                      "replace"
+                    ]
                   },
                   "path": {
                     "type": "string",
-                    "enum": ["/args", "/volumeMounts/-"]
+                    "enum": [
+                      "/args",
+                      "/volumeMounts/-"
+                    ]
                   },
                   "value": {}
                 }
@@ -1909,7 +2067,9 @@
                       "const": "/data/jetstream"
                     }
                   },
-                  "required": ["store_dir"]
+                  "required": [
+                    "store_dir"
+                  ]
                 }
               }
             },
@@ -2072,7 +2232,11 @@
               "items": {
                 "type": "object",
                 "additionalProperties": true,
-                "required": ["op", "path", "value"],
+                "required": [
+                  "op",
+                  "path",
+                  "value"
+                ],
                 "properties": {
                   "op": {
                     "const": "add"
@@ -2154,7 +2318,11 @@
           "properties": {
             "environment": {
               "type": "string",
-              "enum": ["development", "staging", "production"]
+              "enum": [
+                "development",
+                "staging",
+                "production"
+              ]
             },
             "jwtIssuer": {
               "type": "string",
@@ -2196,11 +2364,23 @@
               "additionalProperties": false,
               "properties": {
                 "registry": {
-                  "type": ["string", "null"]
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "pullPolicy": {
-                  "type": ["string", "null"],
-                  "enum": ["", null, "Always", "IfNotPresent", "Never"]
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "",
+                    null,
+                    "Always",
+                    "IfNotPresent",
+                    "Never"
+                  ]
                 },
                 "pullSecretNames": {
                   "type": "array",

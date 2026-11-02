@@ -119,12 +119,15 @@ func jwksSnapshotMaxAge(refreshInterval time.Duration) time.Duration {
 // fallback, performs one bounded synchronous JWKS fetch when configured, then
 // starts a cancellable background refresher.  A configured endpoint with no
 // usable static key fails closed if the initial fetch cannot produce a key.
-func initializeJWKSKeySet(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, logger *slog.Logger) (*rsaKeySetStore, error) {
+func initializeJWKSKeySet(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, logger *slog.Logger, clients ...*http.Client) (*rsaKeySetStore, error) {
 	if cfg == nil {
 		return nil, errors.New("file-processor JWKS configuration is nil")
 	}
 	if ctx == nil {
 		return nil, errors.New("file-processor JWKS context is nil")
+	}
+	if err := config.ValidateInternalHTTPMTLS(cfg); err != nil {
+		return nil, err
 	}
 	// Keep the raw configured value for validation.  Trimming here would turn
 	// an invalid deployment value into a different, silently accepted endpoint
@@ -156,7 +159,10 @@ func initializeJWKSKeySet(ctx context.Context, cfg *config.Config, rsaPub *rsa.P
 		return nil, err
 	}
 
-	client := &http.Client{Timeout: jwksRequestTimeout}
+	client, err := selectJWKSHTTPClient(cfg, clients)
+	if err != nil {
+		return nil, err
+	}
 	keys, err := fetchJWKSKeySet(ctx, client, endpoint)
 	if err != nil {
 		if store.Len() == 0 {
@@ -169,7 +175,7 @@ func initializeJWKSKeySet(ctx context.Context, cfg *config.Config, rsaPub *rsa.P
 		store.Store(keys)
 	}
 
-	startJWKSRefresher(ctx, endpoint, time.Duration(cfg.JWKSRefreshInterval)*time.Second, store, logger)
+	startJWKSRefresher(ctx, endpoint, time.Duration(cfg.JWKSRefreshInterval)*time.Second, store, logger, client)
 	return store, nil
 }
 
@@ -177,7 +183,7 @@ func initializeJWKSKeySet(ctx context.Context, cfg *config.Config, rsaPub *rsa.P
 // Failed refreshes leave the prior immutable snapshot untouched (LKG).  The
 // context belongs to runMain and therefore terminates the goroutine during a
 // graceful process shutdown.
-func startJWKSRefresher(ctx context.Context, endpoint string, interval time.Duration, store *rsaKeySetStore, logger *slog.Logger) {
+func startJWKSRefresher(ctx context.Context, endpoint string, interval time.Duration, store *rsaKeySetStore, logger *slog.Logger, clients ...*http.Client) {
 	if ctx == nil || store == nil || strings.TrimSpace(endpoint) == "" {
 		return
 	}
@@ -185,7 +191,7 @@ func startJWKSRefresher(ctx context.Context, endpoint string, interval time.Dura
 		logger = slog.Default()
 	}
 	interval = boundedJWKSRefreshInterval(interval)
-	client := &http.Client{Timeout: jwksRequestTimeout}
+	client := defaultJWKSHTTPClient(clients)
 
 	go func() {
 		ticker := time.NewTicker(interval)

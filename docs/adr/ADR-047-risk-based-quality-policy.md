@@ -1615,7 +1615,7 @@ object/key references, not credential material: the staging backend Secret
 object name and the `tls.key` key name in each file. Matching uses each exact
 path, type and digest; this description grants no filename wildcard exemption.
 The existing `external_kubernetes_secret_reference` category is retained.
-The policy contains **352** identities: the unchanged, ordered **349** survivors
+At that approval checkpoint the policy contained **352** identities: the unchanged, ordered **349** survivors
 plus exactly these **3** records. Their owner is `egorribun`, reviewed on
 2026-11-02, with inclusive `expires_on: 2027-01-09`, so they cannot match on
 or after 2027-01-10. No earlier record is reclassified or extended.
@@ -1698,10 +1698,33 @@ entry. New or changed findings remain blocking under the existing verifier.
 | `alembic/versions/fix_sender_id_type.py` | 1 |
 | `tests/test_logging_utils.py` | 1 |
 
-The separate disposition policy stays **352**, Gitleaks stays **27**, the audit
+At that deleted-source checkpoint the separate disposition policy stayed **352**, Gitleaks stays **27**, the audit
 ledger stays **449 accepted / 63 open**, and all **78** required context/app pairs,
 hooks, coverage floors and expiry dates remain unchanged. No new baseline
 identity, disposition, inline suppression or exception is added. Dated304,
 305,315 and319 receipts above remain historical evidence rather than current
 inventory claims. Final-source scanner and hosted checks remain required; this
 retirement does not add audit acceptance or establish a passing scan.
+
+
+## SPIFFE backend reference retirement (2026-11-02)
+
+The owner approved the exact single-record retirement at 17:59:51 UTC, replying
+to the 17:02:30 UTC question about removing the unused staging backend Secret
+reference with the SPIFFE transition. This approval does not authorize additional
+records, runtime execution, deployment, bypasses or changed scanner scope.
+
+Together with removal of `university-internal-http-backend-server` from
+`charts/university-ecosystem/values-staging.yaml`, retire its one exact Secret
+Keyword disposition, whose exact identity bytes remain in the rejection test.
+The current policy contains **351** identities. All remaining records retain
+their exact contents and relative order, owners, categories and expiry dates.
+Both `tls.key` approvals remain: each chart values file still contains the key
+reference for the gateway client and file-processor server gRPC consumers.
+The original three-record approval above is historical, not an active grant
+for the removed backend field. Reintroduction requires fresh owner approval.
+
+Baseline **242**, Gitleaks **27**, audit **449/512** with **63** open, all **78**
+required context/app pairs, hooks and coverage floors remain unchanged. This
+retirement must not be integrated independently of the source-field removal.
+Static source/data checks are not runtime validation or hosted-check acceptance.

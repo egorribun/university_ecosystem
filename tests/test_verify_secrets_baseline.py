@@ -612,40 +612,6 @@ _NOV2_CHART_REFERENCE_RECORDS = [
             "path": "charts/university-ecosystem/values-staging.yaml",
             "type": "Secret Keyword",
             "hashed_secret_bytes": [
-                137,
-                48,
-                149,
-                253,
-                216,
-                125,
-                70,
-                132,
-                49,
-                17,
-                188,
-                104,
-                56,
-                234,
-                54,
-                223,
-                41,
-                47,
-                61,
-                125,
-            ],
-        },
-        "category": "external_kubernetes_secret_reference",
-        "evidence": "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS existingSecret reference at charts/university-ecosystem/values-staging.yaml:56; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
-        "owner": "egorribun",
-        "reviewed_on": "2026-11-02",
-        "expires_on": "2027-01-09",
-        "approval_status": "approved",
-    },
-    {
-        "identity": {
-            "path": "charts/university-ecosystem/values-staging.yaml",
-            "type": "Secret Keyword",
-            "hashed_secret_bytes": [
                 186,
                 196,
                 166,
@@ -750,7 +716,7 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
         repository_root=root, today=verifier.date(2026, 11, 2)
     )
-    assert len(validated) == 352
+    assert len(validated) == 351
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
 
 
@@ -9355,14 +9321,14 @@ def test_trusted_pre_retirement_policy_keeps_only_exact_live_survivors(
 
 @pytest.mark.parametrize("record", _nov2_chart_reference_records())
 def test_nov2_chart_reference_exact_scope(record: dict[str, Any]) -> None:
-    assert len(verifier._NOV2_CHART_REFERENCE_EVIDENCE) == 3
+    assert len(verifier._NOV2_CHART_REFERENCE_EVIDENCE) == 2
     assert (
         len(
             verifier._FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES[
                 "external_kubernetes_secret_reference"
             ]
         )
-        == 30
+        == 29
     )
     accepted = verifier.validate_false_positive_dispositions(
         _disposition_document(record), today=verifier.date(2027, 1, 9)
@@ -9408,33 +9374,6 @@ def test_nov2_chart_reference_rejects_mutation(
 @pytest.mark.parametrize(
     ("filename", "field", "value", "digest_bytes"),
     [
-        (
-            "values-staging.yaml",
-            "existingSecret",
-            "university-internal-http-backend-server",
-            (
-                137,
-                48,
-                149,
-                253,
-                216,
-                125,
-                70,
-                132,
-                49,
-                17,
-                188,
-                104,
-                56,
-                234,
-                54,
-                223,
-                41,
-                47,
-                61,
-                125,
-            ),
-        ),
         (
             "values-staging.yaml",
             "privateKeyKey",
@@ -9499,7 +9438,12 @@ def test_nov2_chart_reference_source_values(
     root = Path(__file__).resolve().parents[1]
     path = f"charts/university-ecosystem/{filename}"
     document = yaml.safe_load((root / path).read_text(encoding="utf-8"))
-    assert document["internalHttpMTLS"]["backendServer"][field] == value
+    assert "backendServer" not in document["internalHttpMTLS"]
+    assert "university-internal-http-backend-server" not in (root / path).read_text(
+        encoding="utf-8"
+    )
+    for consumer in ("gatewayClient", "fileProcessorServer"):
+        assert document["internalGrpcMTLS"][consumer][field] == value
     assert (
         tuple(hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest())
         == digest_bytes
@@ -9509,3 +9453,44 @@ def test_nov2_chart_reference_source_values(
         "Secret Keyword",
         digest_bytes,
     ) in verifier._NOV2_CHART_REFERENCE_EVIDENCE
+
+
+def test_nov2_removed_backend_secret_reference_is_not_approved() -> None:
+    record = {
+        "identity": {
+            "path": "charts/university-ecosystem/values-staging.yaml",
+            "type": "Secret Keyword",
+            "hashed_secret_bytes": [
+                137,
+                48,
+                149,
+                253,
+                216,
+                125,
+                70,
+                132,
+                49,
+                17,
+                188,
+                104,
+                56,
+                234,
+                54,
+                223,
+                41,
+                47,
+                61,
+                125,
+            ],
+        },
+        "category": "external_kubernetes_secret_reference",
+        "evidence": "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS existingSecret reference at charts/university-ecosystem/values-staging.yaml:56; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-02",
+        "expires_on": "2027-01-09",
+        "approval_status": "approved",
+    }
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 11, 2)
+        )

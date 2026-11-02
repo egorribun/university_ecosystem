@@ -52,11 +52,7 @@ internalHttpMTLS:
   backendSpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/app
   gatewaySpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway
   wsHubSpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/ws-hub
-  backendServer:
-    existingSecret: university-internal-http-backend-server
-    certKey: tls.crt
-    privateKeyKey: tls.key
-    caKey: ca.crt
+  fileProcessorSpiffeID: spiffe://university.ecosystem/ns/university-ecosystem/sa/file-processor
 
 internalGrpcMTLS:
   enabled: true

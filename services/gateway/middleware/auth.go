@@ -406,10 +406,19 @@ func (m *JWTMiddleware) JWKSTLSConfig() *tls.Config {
 func (m *JWTMiddleware) newJWKSHTTPClient() *http.Client {
 	client := &http.Client{Timeout: 10 * time.Second}
 	if m.jwksTLSConfig != nil {
+		// JWKS is low-volume: reauthenticate every refresh against the live
+		// SPIFFE bundle instead of retaining a connection or resumed session.
+		clientTLS := m.jwksTLSConfig.Clone()
+		clientTLS.ClientSessionCache = nil
 		client.Transport = &http.Transport{
-			TLSClientConfig:     m.jwksTLSConfig,
+			TLSClientConfig:     clientTLS,
 			TLSHandshakeTimeout: 5 * time.Second,
-			IdleConnTimeout:     90 * time.Second,
+			DisableKeepAlives:   true,
+		}
+		// Never redirect an internal trust-root fetch to another origin or
+		// downgrade it to plaintext, even if the backend returns a redirect.
+		client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
 		}
 	}
 	return client
