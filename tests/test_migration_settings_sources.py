@@ -195,30 +195,6 @@ def test_no_effective_target_fails_without_inventing_a_default(url):
         migration.resolve_migration_url(source, ini_url=None)
 
 
-@pytest.mark.parametrize(
-    ("environment", "ini_url", "connection", "expected"),
-    [
-        ("development", None, None, True),
-        ("staging", None, None, False),
-        ("production", None, None, False),
-        ("development", "sqlite:///explicit.db", None, False),
-        ("development", None, object(), False),
-    ],
-)
-def test_only_the_existing_no_target_development_case_can_skip(
-    environment, ini_url, connection, expected
-):
-    source = migration.MigrationSettings("sqlite:///dev.db", "development-default")
-    assert (
-        migration.should_skip_development_migration(
-            development_fallback_fields=source.development_fallback_fields,
-            environment=environment,
-            explicit_target=bool(ini_url) or connection is not None,
-        )
-        is expected
-    )
-
-
 def test_database_source_repr_does_not_echo_credentials():
     token = secrets.token_urlsafe(32)
     source = migration.MigrationSettings(
@@ -262,16 +238,9 @@ def test_database_file_prepare_leaves_non_mapping_input_unchanged() -> None:
 
 def test_development_source_without_explicit_ini_retains_its_provenance() -> None:
     source = migration.MigrationSettings("sqlite:///dev.db", "development-default")
-    assert migration.resolve_migration_url(source, ini_url=None) == "sqlite:///dev.db"
+    with pytest.raises(RuntimeError, match="Database URL is not configured"):
+        migration.resolve_migration_url(source, ini_url=None)
     assert source.source == "development-default"
-
-
-def test_non_database_fallback_cannot_authorize_the_local_skip() -> None:
-    assert not migration.should_skip_development_migration(
-        development_fallback_fields=("secret_key",),
-        environment="development",
-        explicit_target=False,
-    )
 
 
 @pytest.mark.parametrize("source_kind", ["plain", "file", "ini", "model"])

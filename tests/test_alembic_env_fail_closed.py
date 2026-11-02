@@ -1,9 +1,8 @@
 """Alembic must fail closed when no database URL is configured.
 
-The development skip is a local convenience for ``upgrade`` only. Every other command,
-including ``check`` (a verification that must never exit 0 without verifying anything),
-refuses before it opens a database. These probes need no database: each refusal happens
-before any connection is attempted.
+Every command refuses before it opens a database when neither an explicit URL
+nor an injected connection is supplied. Development defaults describe metadata,
+not permission to migrate or report success without checking anything.
 """
 
 from __future__ import annotations
@@ -14,6 +13,8 @@ import sys
 from pathlib import Path
 
 import pytest
+
+from app.core.migration_settings import MigrationSettings, resolve_migration_url
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # Every name that could supply a database, secret, environment selector, CI exemption
@@ -69,7 +70,7 @@ def test_check_refuses_the_development_skip_without_a_database_url(
     output = result.stdout + result.stderr
 
     assert result.returncode != 0, output
-    assert "Refusing to skip Alembic migrations" in output
+    assert "Database URL is not configured for Alembic" in output
     assert "Skipping Alembic migrations" not in output
 
 
@@ -78,7 +79,7 @@ def test_current_refuses_the_development_skip_without_a_database_url() -> None:
     output = result.stdout + result.stderr
 
     assert result.returncode != 0, output
-    assert "Refusing to skip Alembic migrations" in output
+    assert "Database URL is not configured for Alembic" in output
     assert "Skipping Alembic migrations" not in output
 
 
@@ -91,7 +92,7 @@ def test_offline_sql_refuses_the_development_fallback_without_a_database_url() -
     output = result.stdout + result.stderr
 
     assert result.returncode != 0, output
-    assert "Refusing to render Alembic SQL" in output
+    assert "Database URL is not configured for Alembic" in output
     assert "CREATE TABLE" not in result.stdout
 
 
@@ -101,3 +102,36 @@ def test_production_without_a_database_url_fails_closed_for_check() -> None:
 
     assert result.returncode != 0, output
     assert "Skipping Alembic migrations" not in output
+
+
+@pytest.mark.parametrize(
+    "environment_name", ["development", "testing", "staging", "production"]
+)
+@pytest.mark.parametrize(
+    "command", [["upgrade", "head"], ["downgrade", "base"], ["check"], ["current"]]
+)
+def test_commands_without_explicit_target_never_succeed(
+    command: list[str], environment_name: str
+) -> None:
+    result = _run_alembic(command, _alembic_environment(ENVIRONMENT=environment_name))
+    output = result.stdout + result.stderr
+    assert result.returncode != 0, output
+    assert "Database URL is not configured for Alembic" in output
+    assert "Skipping Alembic migrations" not in output
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        MigrationSettings(None, "missing"),
+        MigrationSettings("sqlite:///metadata-only.db", "development-default"),
+    ],
+)
+def test_database_source_without_explicit_authority_refuses(
+    source: MigrationSettings,
+) -> None:
+    """The resolver behind env.py rejects both absent and metadata-only targets."""
+    with pytest.raises(
+        RuntimeError, match=r"^Database URL is not configured for Alembic$"
+    ):
+        resolve_migration_url(source, ini_url=None)

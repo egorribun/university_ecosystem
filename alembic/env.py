@@ -5,7 +5,7 @@ import functools
 import os
 import sys
 from logging.config import fileConfig
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import engine_from_config, pool
@@ -25,32 +25,15 @@ from app.core.migration_settings import (
     MigrationSettings,
     load_migration_settings,
     resolve_migration_url,
-    should_skip_development_migration,
 )
 import app.models as models
 from app.core.db.retained_table_metadata import build_migration_metadata
-
-
-if TYPE_CHECKING:
-    from app.core.config import Settings
 
 
 @functools.cache
 def _migration_settings() -> MigrationSettings:
     """Resolve the DB-only view once for this Alembic environment run."""
     return load_migration_settings()
-
-
-@functools.cache
-def _settings() -> Settings:
-    """Return migration-tolerant settings, built only when a run needs them.
-
-    Offline SQL generation with DATABASE_URL configured needs no runtime secrets,
-    so validation must not happen while Alembic loads this module.
-    """
-    from app.core.config import Settings
-
-    return Settings(_allow_missing=True)
 
 
 config: Config = context.config
@@ -171,42 +154,7 @@ def get_url() -> str:
     )
 
 
-def _invoked_command_name() -> str:
-    """Return the Alembic CLI command that loaded this environment, or "" if none did."""
-    command_spec = getattr(config.cmd_opts, "cmd", None)
-    if not command_spec:
-        return ""
-    return str(getattr(command_spec[0], "__name__", ""))
-
-
-def _development_fallback_skip_allowed() -> bool:
-    """Allow a skip only for CLI ``upgrade`` with the local SQLite default in development.
-
-    ``check``, ``current``, ``downgrade`` and programmatic callers never skip: each would
-    exit 0 without examining the schema it was asked about.
-    """
-    if _invoked_command_name() != "upgrade":
-        return False
-    return should_skip_development_migration(
-        development_fallback_fields=_settings().development_fallback_fields,
-        environment=os.getenv("ENVIRONMENT") or "",
-        explicit_target=(
-            bool(config.get_main_option("sqlalchemy.url"))
-            or config.attributes.get("connection") is not None
-        ),
-    )
-
-
 def run_migrations_offline() -> None:
-    # Without an explicit URL, get_url() would render SQL for the local SQLite default,
-    # which is not a PostgreSQL migration artifact. Refuse instead of rendering it.
-    if _migration_settings().has_development_fallbacks and not config.get_main_option(
-        "sqlalchemy.url"
-    ):
-        raise RuntimeError(
-            "Refusing to render Alembic SQL: development fallbacks are active for "
-            "database_url. Set DATABASE_URL explicitly."
-        )
     url: str = get_url()
     context.configure(
         url=url,
@@ -254,44 +202,23 @@ def _configure_context(connection: SyncConnection) -> None:
 
 
 def run_migrations_online() -> None:
-    url: str = get_url()
-    config_options: dict[str, Any] = {"sqlalchemy.url": url}
-    url_obj = make_url(url)
-
-    # RZ-W18-06 (audit 2026-03-23 Wave 18): emit a proper Python warning instead
-    # of a bare print(). Previously the silent skip was easily missed in logs,
-    # leading developers to unknowingly accumulate schema drift.
-    # AUD-168 (audit 2026-10): only the documented local SQLite default may skip,
-    # and only in a development environment. Every other development fallback
-    # fails closed, because exit 0 without migrating looks like a successful deploy.
-    if _settings().has_development_fallbacks:
-        if not _development_fallback_skip_allowed():
-            fallback_fields = ", ".join(_settings().development_fallback_fields)
-            raise RuntimeError(
-                "Refusing to skip Alembic migrations: development fallbacks are "
-                f"active for {fallback_fields}. Set DATABASE_URL and every "
-                "required secret explicitly."
-            )
-        import warnings
-
-        warnings.warn(
-            "Skipping Alembic migrations: has_development_fallbacks is True. "
-            "Schema drift may cause runtime errors. "
-            "Set DATABASE_URL and SECRET_KEY explicitly to run migrations.",
-            stacklevel=2,
-        )
-        return
-
     def run_sync_migrations(connection: SyncConnection) -> None:
         _configure_context(connection)
         with context.begin_transaction():
             context.run_migrations()
 
     connection: Any = config.attributes.get("connection")
-    if connection:
+    if connection is not None:
+        # Validate any configured FILE/plain source without requiring an unrelated
+        # URL or runtime secret for an explicitly injected connection.
+        _migration_settings()
         # Connection injected externally (e.g., from a test fixture).
         run_sync_migrations(connection)
         return
+
+    url = get_url()
+    config_options: dict[str, Any] = {"sqlalchemy.url": url}
+    url_obj = make_url(url)
 
     connectable: Engine | AsyncEngine
     if url_obj.get_dialect().is_async:

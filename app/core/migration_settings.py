@@ -19,7 +19,6 @@ from sqlalchemy.exc import ArgumentError
 
 from app.core.logging import get_logger
 from app.core.settings_sources import (
-    _DEVELOPMENT_ENVIRONMENTS,
     _DEVELOPMENT_FALLBACKS,
     _load_file_secret,
     resolve_env_file,
@@ -97,31 +96,14 @@ def load_migration_settings() -> MigrationSettings:
 
 
 def resolve_migration_url(source: MigrationSettings, *, ini_url: str | None) -> str:
-    """Select an explicit source before the provenance-marked local default."""
+    """Require an explicit execution target; metadata defaults are not authority."""
     if source.database_url and not source.has_development_fallbacks:
         _parse_database_url(source.database_url)
         return source.database_url
     if ini_url:
         _parse_database_url(ini_url)
         return ini_url
-    if source.database_url:
-        _parse_database_url(source.database_url)
-        return source.database_url
     raise RuntimeError("Database URL is not configured for Alembic")
-
-
-def should_skip_development_migration(
-    *,
-    development_fallback_fields: tuple[str, ...],
-    environment: str,
-    explicit_target: bool,
-) -> bool:
-    """Retain only the documented no-target local development skip."""
-    return (
-        "database_url" in development_fallback_fields
-        and environment.strip().lower() in _DEVELOPMENT_ENVIRONMENTS
-        and not explicit_target
-    )
 
 
 def database_dialect_for_models() -> str:
