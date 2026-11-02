@@ -877,12 +877,12 @@ test("pins the checker dependency and records the TypeScript alias and runtime s
   const { createRequire } = await import("node:module")
   const typescriptRuntime = createRequire(import.meta.url)("typescript")
 
-  assert.equal(packageManifest.devDependencies["@stryker-mutator/typescript-checker"], "10.0.0")
+  assert.equal(packageManifest.devDependencies["@stryker-mutator/typescript-checker"], "10.1.1")
   assert.equal(
     packageLock.packages[""].devDependencies["@stryker-mutator/typescript-checker"],
-    "10.0.0"
+    "10.1.1"
   )
-  assert.equal(checkerLock.version, "10.0.0")
+  assert.equal(checkerLock.version, "10.1.1")
   assert.match(checkerLock.integrity, /^sha512-[A-Za-z0-9+/]+=*$/u)
   assert.equal(packageManifest.devDependencies.typescript, "npm:@typescript/typescript6@^6.0.2")
   assert.equal(
@@ -1103,19 +1103,27 @@ test("Stryker diagnostic adapter rejects source and package drift", async () => 
   const { rewriteStrykerErrorFormatter } = await import(adapterUrl)
   const source = await readFile(new URL(errorUrl), "utf8")
   assert.throws(
-    () => rewriteStrykerErrorFormatter(source, { name: "wrong", version: "10.0.0" }),
+    () => rewriteStrykerErrorFormatter(source, { name: "wrong", version: "10.1.1" }),
     /requires/
   )
-  assert.throws(
-    () =>
-      rewriteStrykerErrorFormatter(source, { name: "@stryker-mutator/util", version: "10.0.1" }),
-    /requires/
-  )
+  const rewritten = rewriteStrykerErrorFormatter(source, {
+    name: "@stryker-mutator/util",
+    version: "10.1.1",
+  })
+  assert.equal(source.split("return String(error);").length - 1, 1)
+  assert.equal(rewritten.includes("return String(error);"), false)
+  assert.equal(rewritten.includes("return formatStrykerErrorValue(error);"), true)
+  for (const version of ["10.0.0", "10.0.1", "10.1.0", "10.1.2", "11.0.0"]) {
+    assert.throws(
+      () => rewriteStrykerErrorFormatter(source, { name: "@stryker-mutator/util", version }),
+      /requires/
+    )
+  }
   assert.throws(
     () =>
       rewriteStrykerErrorFormatter(`${source}\n`, {
         name: "@stryker-mutator/util",
-        version: "10.0.0",
+        version: "10.1.1",
       }),
     /source changed/
   )

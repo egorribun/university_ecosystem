@@ -96,15 +96,15 @@ func TestLoadRejectsInvalidInternalHTTPMTLSFlag(t *testing.T) {
 
 func TestValidateConfigPropagatesBackendTransportRefusal(t *testing.T) {
 	cfg := &Config{
-		Environment:            "development",
-		JWTSecret:              randomStrongTestValue(t),
-		JWTAudience:            "university-ecosystem-api",
-		RevocationRedisURL:     "redis://redis:6379/0",
-		RateLimitRPS:           100,
-		RateLimitBurst:         200,
+		Environment:             "development",
+		JWTSecret:               randomStrongTestValue(t),
+		JWTAudience:             "university-ecosystem-api",
+		RevocationRedisURL:      "redis://redis:6379/0",
+		RateLimitRPS:            100,
+		RateLimitBurst:          200,
 		InternalHTTPMTLSEnabled: true,
-		BackendURL:             "http://backend:8000",
-		BackendSpiffeID:        "spiffe://university.ecosystem/ns/default/sa/app",
+		BackendURL:              "http://backend:8000",
+		BackendSpiffeID:         "spiffe://university.ecosystem/ns/default/sa/app",
 	}
 
 	require.ErrorContains(t, validateConfig(cfg), "BACKEND_URL must be an https URL")
