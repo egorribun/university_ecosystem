@@ -46,6 +46,10 @@ handoffs are intentionally not part of the canonical index.
 - [ADR-051: MVP migration baseline squash](adr/ADR-051-mvp-migration-baseline-squash.md)
   — the 143 historical Alembic revisions are replaced by one irreversible
   baseline, accepted 2026-11-02; pre-squash databases must be recreated.
+- [ADR-052: Backend SPIFFE identity at the HTTP transport boundary](adr/ADR-052-backend-spiffe-transport.md)
+  — proposed, not enabled; not evidence of closure of AUD-373.
+- [ADR-053: Operator-scoped single-organization MVP authentication](adr/ADR-053-operator-scoped-mvp-authentication.md)
+  — scope accepted 2026-11-02; implementation and hosted acceptance pending.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)

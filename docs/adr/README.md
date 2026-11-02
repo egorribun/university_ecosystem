@@ -51,3 +51,5 @@ This directory contains architectural decision records (ADRs) for the University
 49. [ADR-049: Version-bound MapLibre Lazy-chunk Budget](ADR-049-maplibre-lazy-chunk-budget.md)
 50. [ADR-050: Two Exact Security-Release Cooldown Exceptions](ADR-050-security-release-cooldown-exceptions.md)
 51. [ADR-051: MVP Migration Baseline Squash](ADR-051-mvp-migration-baseline-squash.md)
+52. [ADR-052: Backend SPIFFE Identity at the HTTP Transport Boundary](ADR-052-backend-spiffe-transport.md)
+53. [ADR-053: Operator-Scoped Single-Organization MVP Authentication](ADR-053-operator-scoped-mvp-authentication.md)

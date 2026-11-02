@@ -140,7 +140,6 @@
   ],
   "allowed_orphans": [
     "services/file-processor/internal/contract/process_file_provider_test.go",
-    "tests/test_core_container_closure.py",
     "tests/test_csp_report_closure.py",
     "tests/test_quality_certification_dashboard.py",
     "tests/test_repository_base_closure.py",

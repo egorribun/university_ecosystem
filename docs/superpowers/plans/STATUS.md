@@ -1,6 +1,6 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-11-01 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-11-03 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 
 ## Текущие инвентари сканеров — 2026-11-02
@@ -1600,7 +1600,7 @@ uses the actual 36f70a0f Alembic receipt after Pool privacy validation.
 The 17,031-byte ordinary and 18,373-byte expanded SQL remain byte-identical;
 13+24 warnings, raw exits 1/1 and empty reporter stderr are preserved.
 The old 15eaaa/35aeedeb fixtures remain historical. The
-[proposal](2026-10-27-historical-148-squawk-proposal.md#pool-safe-renderer-recapture-on-source-36f70a0f-2026-10-29)
+proposal (plan file removed 2026-11-03; see git history)
 and ADR-047 record the same inactive boundary. No migration-gate consumer,
 admission activation or new secret disposition is included.
 
@@ -3419,8 +3419,8 @@ No global all-four-metric compliance is inferred from unit/aggregate success.
    expiry. Activation needs its exact reviewed diff and genuine producer/run
    provenance, not a supplied “equivalent” boolean or a test-controlled clock.
 
-The [original historical148 proposal](2026-10-27-historical-148-squawk-proposal.md)
-is retained as dated evidence; its original broader maintenance/populated
+The original historical148 proposal (plan file removed 2026-11-03; see git history)
+was retained as dated evidence until its removal; its original broader maintenance/populated
 discussion is **not** authorized by the later greenfield-only approval.
 Fresh hosted JSON is still missing. The ordinary SQL capture is 17,031 bytes,
 SHA-256 `7e27d9cfec48afbe26d8efeb03cf27ff9140982507af0652960e512a34f39305`;
@@ -3780,8 +3780,8 @@ acceptance and full release verification.
   [matrix CI](https://github.com/egorribun/university_ecosystem/actions/runs/40596755158)
   and [Core acceptance](https://github.com/egorribun/university_ecosystem/actions/runs/40596754947)
   remain pending at this checkpoint. No b6 result is inherited as a new-SHA PASS.
-- The [historical148 Squawk proposal](2026-10-27-historical-148-squawk-proposal.md)
-  records 37 occurrences, 24 rule/statement groups and 20 SQL statements. It is
+- The historical148 Squawk proposal (plan file removed 2026-11-03; see git history)
+  recorded 37 occurrences, 24 rule/statement groups and 20 SQL statements. It is
   **not approved or active**. Complete ordinary capture and the exact future
   validator/tests/consumer diff remain prerequisites. Historical migration bytes,
   raw gates and transaction boundaries are unchanged.

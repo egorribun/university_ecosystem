@@ -1106,7 +1106,7 @@ false warnings or elimination of blocking-lock/rewrite/drop risks. Populated
 database execution, deployment and an unrestricted scanner waiver were not
 authorized.
 
-The [historical148 preparation](../superpowers/plans/2026-10-27-historical-148-squawk-proposal.md)
+The historical148 preparation (plan file removed 2026-11-03; see git history)
 records complete ordinary and expanded SQL plus JSON evidence. Stage A contains
 an exact `prepared-inactive` inventory and a
 [pure historical recognizer](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/scripts/quality/validate_historical148_squawk.py)
@@ -1160,7 +1160,7 @@ source-bound tests do not substitute for final-source scans or hosted checks.
 
 ## Historical-148 recapture without a new disposition (2026-10-29)
 
-The [35aeedeb recapture](../superpowers/plans/2026-10-27-historical-148-squawk-proposal.md#renderer-correction-and-exact-source-recapture-2026-10-29)
+The 35aeedeb recapture (plan section removed 2026-11-03; see git history)
 binds the inactive recognizer to actual SQL/JSON after the reviewed renderer
 correction. Both SQL inputs and all 37 warning objects, apart from actual
 temporary paths, remain unchanged. The migration, atomicity, raw exits and
@@ -1178,7 +1178,7 @@ source-binding mismatches remain blocking. No audit acceptance increases.
 
 ## Pool-safe historical-148 recapture without activation (2026-10-29)
 
-The [36f70a0f recapture](../superpowers/plans/2026-10-27-historical-148-squawk-proposal.md#pool-safe-renderer-recapture-on-source-36f70a0f-2026-10-29)
+The 36f70a0f recapture (plan section removed 2026-11-03; see git history)
 updates the inactive evidence after the renderer's owned-pool privacy correction.
 Its exact-source 41 lifecycle and seven PostgreSQL controls pass; the three
 Pool regressions pass by whole-file/cohort evidence, not printed named results.
@@ -1706,6 +1706,7 @@ identity, disposition, inline suppression or exception is added. Dated304,
 inventory claims. Final-source scanner and hosted checks remain required; this
 retirement does not add audit acceptance or establish a passing scan.
 
+**Coordinate refresh (2026-11-02).** Commit `b8c94de9c` refreshes five detect-secrets `line_number` coordinates in three paths: `.github/workflows/reusable-backend-tests.yml` (398 to 437 and 408 to 447), `charts/university-ecosystem/values.yaml` (619 to 613 and 620 to 614) and `tests/test_middleware_setup_contract_closure.py` (106 to 107). It also sets `generated_at` to `2026-11-02T19:44:09Z`. The 242 path/type/digest identities and their verified flags are unchanged, checked record by record against the parent commit. This is a coordinate refresh, not an identity change; it adds no baseline identity or disposition.
 
 ## SPIFFE backend reference retirement (2026-11-02)
 
