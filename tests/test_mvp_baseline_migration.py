@@ -259,11 +259,15 @@ def _proof_statement_inputs() -> tuple[list[str], list[str]]:
 def _run_statement_proof(
     monkeypatch: pytest.MonkeyPatch, before: list[str], after: list[str]
 ) -> None:
-    pre = object()
-    baseline = object()
-    built = SimpleNamespace(pre_squash=pre, baseline=baseline)
-    dumps = {pre: ";\n".join(before) + ";", baseline: ";\n".join(after) + ";"}
-    monkeypatch.setattr(schema_proof, "_dump", dumps.__getitem__)
+    built = SimpleNamespace(
+        pre_squash_capture=schema_proof._Captured(";\n".join(before) + ";", (), ()),
+        baseline_capture=schema_proof._Captured(";\n".join(after) + ";", (), ()),
+    )
+
+    def reject_recapture(database: object) -> str:
+        pytest.fail("statement comparison must use already captured evidence")
+
+    monkeypatch.setattr(schema_proof, "_dump", reject_recapture)
     schema_proof.test_statement_level_schema_differs_only_by_the_audited_additions(
         built
     )
@@ -486,11 +490,19 @@ def _run_catalog_proof(
     before: dict[str, list[str]],
     after: dict[str, list[str]],
 ) -> None:
-    pre = object()
-    baseline = object()
-    built = SimpleNamespace(pre_squash=pre, baseline=baseline)
-    facts = {pre: before, baseline: after}
-    monkeypatch.setattr(schema_proof, "_probe", facts.__getitem__)
+    built = SimpleNamespace(
+        pre_squash_capture=schema_proof._Captured(
+            "", tuple((name, tuple(rows)) for name, rows in before.items()), ()
+        ),
+        baseline_capture=schema_proof._Captured(
+            "", tuple((name, tuple(rows)) for name, rows in after.items()), ()
+        ),
+    )
+
+    def reject_recapture(database: object) -> dict[str, list[str]]:
+        pytest.fail("catalog comparison must use already captured evidence")
+
+    monkeypatch.setattr(schema_proof, "_probe", reject_recapture)
     schema_proof.test_catalog_facts_outside_the_additions_are_identical(built)
 
 
@@ -624,32 +636,75 @@ def test_schema_proof_child_keeps_the_owned_database_url_authoritative(
     }
 
 
-@pytest.mark.parametrize("outcome", [0, 7, "timeout"])
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        0,
+        7,
+        "timeout",
+        "communication-timeout",
+        "communication-error",
+        "cancel",
+        "reap-timeout",
+    ],
+)
 def test_schema_proof_child_is_bounded_and_reaped_without_changing_its_result(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, outcome: int | str
 ) -> None:
     spawned: list[tuple[tuple[str, ...], dict[str, Any]]] = []
     deadlines: list[float] = []
-    failure = TimeoutError("controlled schema-proof child deadline")
+    failure: BaseException
+    if outcome == "communication-error":
+        failure = OSError("controlled schema-proof pipe failure")
+    elif outcome == "cancel":
+        failure = asyncio.CancelledError("controlled schema-proof cancellation")
+    else:
+        failure = TimeoutError("controlled schema-proof child deadline")
 
     class Process:
         def __init__(self) -> None:
             self.returncode: int | None = None
             self.killed = False
             self.reaped = False
+            self.started = asyncio.Event()
+            self.terminated = asyncio.Event()
+            self.communication_finished = False
+            self.wait_calls = 0
+            self.wait_started = asyncio.Event()
+            self.wait_cancelled = False
 
         async def communicate(self) -> tuple[bytes, bytes]:
-            if outcome == "timeout" and not self.killed:
+            self.started.set()
+            if outcome in {"communication-timeout", "communication-error"}:
+                self.communication_finished = True
                 raise failure
+            if outcome == "reap-timeout":
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    self.communication_finished = True
+            if outcome in {"timeout", "cancel"}:
+                await self.terminated.wait()
             self.returncode = -9 if self.killed else int(outcome)
+            self.communication_finished = True
             self.reaped = True
             return b"controlled-stdout", b"controlled-stderr"
 
         def kill(self) -> None:
             self.killed = True
             self.returncode = -9
+            self.terminated.set()
 
         async def wait(self) -> int:
+            self.wait_calls += 1
+            self.wait_started.set()
+            if outcome == "reap-timeout":
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    self.wait_cancelled = True
+                    raise
+            await self.terminated.wait()
             self.reaped = True
             assert self.returncode is not None
             return self.returncode
@@ -665,6 +720,13 @@ def test_schema_proof_child_is_bounded_and_reaped_without_changing_its_result(
         assert isinstance(timeout, (int, float))
         assert 0 < timeout <= 300
         deadlines.append(timeout)
+        if len(deadlines) == 1 and outcome in {"timeout", "cancel", "reap-timeout"}:
+            await process.started.wait()
+            assert not process.communication_finished
+            raise failure
+        if len(deadlines) == 2 and outcome == "reap-timeout":
+            await process.wait_started.wait()
+            raise TimeoutError("controlled cleanup deadline")
         return await awaitable
 
     monkeypatch.setattr(schema_proof.asyncio, "create_subprocess_exec", create)
@@ -672,19 +734,28 @@ def test_schema_proof_child_is_bounded_and_reaped_without_changing_its_result(
     argv = ["controlled-python", "-m", "alembic", "check"]
     operation = schema_proof._run_fixed_argv(argv, tmp_path, {"CONTROL": "1"})
 
-    if outcome == "timeout":
-        with pytest.raises(TimeoutError) as caught:
+    if isinstance(outcome, str):
+        with pytest.raises(type(failure)) as caught:
             asyncio.run(operation)
         assert caught.value is failure
         assert process.killed
-        assert process.reaped
+        assert process.wait_calls == 1
+        if outcome == "reap-timeout":
+            assert not process.reaped
+            assert process.wait_cancelled
+            assert failure.__notes__ == [
+                "schema-proof direct-child cleanup exceeded its deadline"
+            ]
+        else:
+            assert process.reaped
     else:
         result = asyncio.run(operation)
         assert result == (outcome, b"controlled-stdout", b"controlled-stderr")
         assert process.reaped
         assert not process.killed
 
-    assert len(deadlines) == (2 if outcome == "timeout" else 1)
+    assert process.communication_finished
+    assert len(deadlines) == (2 if isinstance(outcome, str) else 1)
     assert spawned == [
         (
             tuple(argv),

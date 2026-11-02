@@ -343,20 +343,24 @@ async def _run_fixed_argv(
         stdout, stderr = await asyncio.wait_for(
             asyncio.shield(communication), timeout=_CHILD_TIMEOUT_SECONDS
         )
-    except BaseException:  # Cleanup must also run when the caller is cancelled.
+    except BaseException as failure:  # Cleanup must also run on caller cancellation.
         if process.returncode is None:
             try:
                 process.kill()
             except ProcessLookupError:
                 # The direct child may have exited between the returncode check and kill.
                 pass
+        # A failed communicate task cannot reap the child on a second await.
+        # Drain pending pipes and explicitly wait for the direct child together.
+        cleanup = asyncio.gather(process.wait(), communication, return_exceptions=True)
         try:
-            await asyncio.wait_for(
-                asyncio.shield(communication), timeout=_CHILD_REAP_SECONDS
-            )
+            await asyncio.wait_for(cleanup, timeout=_CHILD_REAP_SECONDS)
+        except TimeoutError:
+            failure.add_note("schema-proof direct-child cleanup exceeded its deadline")
         finally:
-            if not communication.done():
-                communication.cancel()
+            if not cleanup.done():
+                cleanup.cancel()
+            await asyncio.gather(cleanup, return_exceptions=True)
         raise
     return process.returncode or 0, stdout, stderr
 
