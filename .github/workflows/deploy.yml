@@ -194,17 +194,55 @@ jobs:
           printf '::add-mask::%s\n' "$secret"
           printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
-      - name: Verify migrations can downgrade
-        # RZ-W8-07: Use PostgreSQL (not SQLite) — pgvector, JSONB, partial indexes
-        # and FOR UPDATE locking don't exist in SQLite; a passing SQLite migration
-        # can silently fail in production.
+      - name: Verify MVP migration boundary
+        timeout-minutes: 10
+         # RZ-W8-07: Use PostgreSQL (not SQLite) — pgvector, JSONB, partial indexes
+         # and FOR UPDATE locking don't exist in SQLite; a passing SQLite migration
+         # can silently fail in production.
         env:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_deploy  # pragma: allowlist secret
           ENVIRONMENT: testing
         run: |
-          uv run alembic upgrade head
-          uv run alembic downgrade -1
-          uv run alembic upgrade head
+          set -euo pipefail
+          # Read the applied revision, then verify upgrade-to-head is idempotent.
+          uv run --frozen --no-sync alembic upgrade head
+          uv run --frozen --no-sync alembic current --check-heads
+          uv run --frozen --no-sync alembic upgrade head
+          uv run --frozen --no-sync alembic current --check-heads
+          receipt_root="$(mktemp -d)"
+          trap 'rm -rf -- "$receipt_root"' EXIT
+          # The refusal/data-preservation probe owns a separate ephemeral PG17.
+          # Never point its downgrade callback at a deployed database.
+          DATABASE_URL=sqlite+aiosqlite:///:memory: \
+          MIGRATION_ROUNDTRIP_DATABASE_URL= RUN_INTEGRATION_TESTS=1 \
+          timeout --signal=TERM --kill-after=10s 480s \
+            uv run --frozen --no-sync pytest -n 0 -q --tb=short --timeout=420 \
+            --junitxml="$receipt_root/junit.xml" \
+            tests/integration/test_migration_roundtrip.py::test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade
+          uv run --frozen --no-sync python - "$receipt_root/junit.xml" <<'PY_BOUNDARY_RECEIPT'
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          if not path.is_file() or path.stat().st_size > 1_048_576:
+              raise SystemExit("Baseline boundary receipt missing or oversized")
+          root = ET.fromstring(path.read_bytes())
+          suites = list(root.iter("testsuite"))
+          cases = list(root.iter("testcase"))
+          expected = "test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade"
+          if (
+              len(suites) != 1
+              or suites[0].get("tests") != "1"
+              or any(suites[0].get(key) != "0" for key in ("failures", "errors", "skipped"))
+              or len(cases) != 1
+              or cases[0].get("classname") != "tests.integration.test_migration_roundtrip"
+              or cases[0].get("name") != expected
+              or any(list(root.iter(tag)) for tag in ("failure", "error", "skipped"))
+          ):
+              raise SystemExit("Baseline boundary receipt incomplete or unsuccessful")
+          print("MVP_BASELINE_BOUNDARY_VERIFIED_PASS 1")
+          PY_BOUNDARY_RECEIPT
 
   prepare:
     name: Prepare release metadata
@@ -1894,18 +1932,54 @@ jobs:
           printf '::add-mask::%s\n' "$secret"
           printf 'SECRET_KEY=%s\n' "$secret" >> "$GITHUB_ENV"
 
-      - name: Test database rollback
-        # RZ-W8-07: Use PostgreSQL for rollback test — same dialect as production.
+      - name: Verify MVP migration boundary
+        timeout-minutes: 10
+        # ADR-051: the baseline is irreversible; this job uses its own PostgreSQL,
+        # not the staging database. Keep the historical job context stable.
         env:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_rollback  # pragma: allowlist secret
           ENVIRONMENT: testing
         run: |
-          echo "Testing migration rollback capability..."
-          uv run alembic upgrade head
-          uv run alembic downgrade -1
-          echo "✅ Rollback successful"
-          uv run alembic upgrade head
-          echo "✅ Re-upgrade successful"
+          set -euo pipefail
+          # Read the applied revision, then verify upgrade-to-head is idempotent.
+          uv run --frozen --no-sync alembic upgrade head
+          uv run --frozen --no-sync alembic current --check-heads
+          uv run --frozen --no-sync alembic upgrade head
+          uv run --frozen --no-sync alembic current --check-heads
+          receipt_root="$(mktemp -d)"
+          trap 'rm -rf -- "$receipt_root"' EXIT
+          # The refusal/data-preservation probe owns a separate ephemeral PG17.
+          # Never point its downgrade callback at a deployed database.
+          DATABASE_URL=sqlite+aiosqlite:///:memory: \
+          MIGRATION_ROUNDTRIP_DATABASE_URL= RUN_INTEGRATION_TESTS=1 \
+          timeout --signal=TERM --kill-after=10s 480s \
+            uv run --frozen --no-sync pytest -n 0 -q --tb=short --timeout=420 \
+            --junitxml="$receipt_root/junit.xml" \
+            tests/integration/test_migration_roundtrip.py::test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade
+          uv run --frozen --no-sync python - "$receipt_root/junit.xml" <<'PY_BOUNDARY_RECEIPT'
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          if not path.is_file() or path.stat().st_size > 1_048_576:
+              raise SystemExit("Baseline boundary receipt missing or oversized")
+          root = ET.fromstring(path.read_bytes())
+          suites = list(root.iter("testsuite"))
+          cases = list(root.iter("testcase"))
+          expected = "test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade"
+          if (
+              len(suites) != 1
+              or suites[0].get("tests") != "1"
+              or any(suites[0].get(key) != "0" for key in ("failures", "errors", "skipped"))
+              or len(cases) != 1
+              or cases[0].get("classname") != "tests.integration.test_migration_roundtrip"
+              or cases[0].get("name") != expected
+              or any(list(root.iter(tag)) for tag in ("failure", "error", "skipped"))
+          ):
+              raise SystemExit("Baseline boundary receipt incomplete or unsuccessful")
+          print("MVP_BASELINE_BOUNDARY_VERIFIED_PASS 1")
+          PY_BOUNDARY_RECEIPT
 
   notify:
     name: Notify deployment status
@@ -1929,6 +2003,6 @@ jobs:
             printf "| Environment | \`%s\` |\n" "${DEPLOY_ENVIRONMENT}"
             printf "| Version | \`%s\` |\n" "${DEPLOY_VERSION}"
             printf "| Deploy Status | \`%s\` |\n" "${DEPLOY_STATUS}"
-            printf "| Rollback Test | \`%s\` |\n\n" "${ROLLBACK_STATUS}"
+            printf "| Baseline boundary proof (ephemeral PostgreSQL) | \`%s\` |\n\n" "${ROLLBACK_STATUS}"
             printf "**Triggered by:** @%s\n" "${TRIGGER_ACTOR}"
           } >> "$GITHUB_STEP_SUMMARY"
