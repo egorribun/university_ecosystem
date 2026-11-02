@@ -266,8 +266,74 @@ def test_active_scanner_policy_masks_new_pin_only_for_exact_identity() -> None:
         assert "webauthn" in visible
 
 
+# Only this source-bound assertion names a still-live retirement contract as
+# public-integrity evidence. Other text in the scanner test remains active.
+_SCANNER_IDENTITY_TEST = (
+    "test_public_git_blob_current_pin_has_an_exact_approved_identity"
+)
+_SCANNER_IDENTITY_SOURCE_SHA256 = bytes(
+    (
+        246,
+        137,
+        212,
+        71,
+        224,
+        19,
+        196,
+        11,
+        162,
+        92,
+        110,
+        36,
+        8,
+        70,
+        78,
+        85,
+        37,
+        234,
+        250,
+        10,
+        149,
+        251,
+        226,
+        121,
+        145,
+        221,
+        95,
+        231,
+        111,
+        15,
+        203,
+        58,
+    )
+)
+
+
+def _active_scanner_test_content(content: str) -> str:
+    functions = [
+        node
+        for node in ast.parse(content).body
+        if isinstance(node, ast.FunctionDef) and node.name == _SCANNER_IDENTITY_TEST
+    ]
+    if len(functions) != 1:
+        return content
+    source = ast.get_source_segment(content, functions[0])
+    assert source is not None
+    if (
+        hashlib.sha256(source.encode("utf-8")).digest()
+        != _SCANNER_IDENTITY_SOURCE_SHA256
+    ):
+        return content
+    literal = '"tests/test_mfa_webauthn_tombstone.py"'
+    assert source.count(literal) == 1
+    masked = source.replace(literal, '"<source-bound retirement contract>"', 1)
+    return content.replace(source, masked, 1)
+
+
 def _active_backend_test_content(path: Path, raw_content: bytes) -> str:
     content = raw_content.decode("utf-8")
+    if path == ROOT / "tests/test_verify_secrets_baseline.py":
+        return _active_scanner_test_content(content).lower()
     if path != ROOT / HISTORICAL_ORCHESTRATOR_TEST:
         return content.lower()
 
@@ -656,7 +722,7 @@ def test_public_git_blob_orchestrator_rebind_appends_one_exact_identity() -> Non
         )
     )
     record = _approved_historical_orchestrator_pin_record()
-    assert len(policy["records"]) == 502
+    assert len(policy["records"]) == 505
     assert policy["records"][345:346] == [record]
     assert (
         record["identity"]["path"]
@@ -903,3 +969,45 @@ def test_historical_mfa_source_fails_closed_without_git_executable(
     monkeypatch.setattr(subprocess, "run", forbidden)
     with pytest.raises(AssertionError, match="requires a Git executable"):
         _read_historical_orchestrator_source()
+
+
+def test_backend_guard_masks_only_the_reviewed_scanner_identity_assertion() -> None:
+    path = ROOT / "tests/test_verify_secrets_baseline.py"
+    raw = path.read_bytes()
+    masked = _active_backend_test_content(path, raw)
+    assert "webauthn" not in masked
+    assert "passkey" not in masked
+    assert "<source-bound retirement contract>" in masked
+    assert "webauthn" in _active_backend_test_content(path.with_suffix(".other"), raw)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "literal",
+        "assertion",
+        "duplicate-function",
+        "outside-webauthn",
+        "outside-passkey",
+    ),
+)
+def test_backend_guard_keeps_unreviewed_scanner_references_visible(
+    mutation: str,
+) -> None:
+    path = ROOT / "tests/test_verify_secrets_baseline.py"
+    content = path.read_text(encoding="utf-8")
+    if mutation == "literal":
+        content = content.replace(
+            "test_mfa_webauthn_tombstone.py", "test_mfa_webauthn_other.py"
+        )
+    elif mutation == "assertion":
+        content = content.replace(
+            'assert consumer_path == "tests/test_mfa_webauthn_tombstone.py"',
+            'assert consumer_path != "tests/test_mfa_webauthn_tombstone.py"',
+        )
+    elif mutation == "duplicate-function":
+        content += f"\n\ndef {_SCANNER_IDENTITY_TEST}():\n    pass\n"
+    else:
+        content += f"\n# unreviewed {mutation.removeprefix('outside-')} support\n"
+    visible = _active_backend_test_content(path, content.encode("utf-8"))
+    assert "webauthn" in visible or "passkey" in visible

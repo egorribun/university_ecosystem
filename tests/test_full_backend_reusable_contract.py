@@ -22,6 +22,46 @@ BASELINE = ROOT / "tests" / "fixtures" / "full-backend-reusable-baseline.v4.yaml
 REQUIRED_CONTEXTS = {"CI Success", "Coverage & Quality Policy Gate"}
 
 
+# The reviewed Dependabot changes are limited to these exact action references
+# and their version comments. Keep the v4 fixture immutable and compare every
+# remaining byte and parsed job against it.
+_REVIEWED_WORKFLOW_PIN_COUNTS = {
+    "nightly-full-gate.yml": (7, 4),
+    "manual-mutation-evidence.yml": (5, 2),
+    "reusable-full-backend-mutation.yml": (5, 5),
+}
+_REVIEWED_WORKFLOW_PIN_REPLACEMENTS = (
+    (
+        b"actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0",
+        b"actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0",
+    ),
+    (
+        b"astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2",
+        b"astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0",
+    ),
+)
+
+
+def _normalize_reviewed_workflow_pins(name: str, source: bytes) -> bytes:
+    counts = _REVIEWED_WORKFLOW_PIN_COUNTS[name]
+    for (current, frozen), count in zip(
+        _REVIEWED_WORKFLOW_PIN_REPLACEMENTS, counts, strict=True
+    ):
+        assert source.count(current) == count, "reviewed action pin population changed"
+        assert frozen not in source, "frozen action pin was reintroduced"
+        source = source.replace(current, frozen)
+    return source
+
+
+def _reviewed_workflow_bytes(path: Path) -> bytes:
+    source = path.read_bytes()
+    # Synthetic diagnostic inputs remain raw; only the three immutable
+    # repository workflow identities receive the finite reviewed transformation.
+    if path in {WORKFLOWS / name for name in _REVIEWED_WORKFLOW_PIN_COUNTS}:
+        return _normalize_reviewed_workflow_pins(path.name, source)
+    return source
+
+
 def _baseline() -> dict[str, object]:
     value = yaml.safe_load(BASELINE.read_text(encoding="utf-8"))
     expected_source_keys = {
@@ -55,10 +95,10 @@ def _baseline() -> dict[str, object]:
         for digest in value["source_files"].values()
     )
     actual_source_files = {
-        "nightly": hashlib.sha256(NIGHTLY.read_bytes()).hexdigest(),
-        "manual": hashlib.sha256(MANUAL.read_bytes()).hexdigest(),
+        "nightly": hashlib.sha256(_reviewed_workflow_bytes(NIGHTLY)).hexdigest(),
+        "manual": hashlib.sha256(_reviewed_workflow_bytes(MANUAL)).hexdigest(),
         "reusable_full_backend_mutation": hashlib.sha256(
-            FULL_BACKEND.read_bytes()
+            _reviewed_workflow_bytes(FULL_BACKEND)
         ).hexdigest(),
     }
     try:
@@ -77,7 +117,7 @@ def _digest(value: object) -> str:
 
 
 def _load(path: Path) -> dict[str, object]:
-    value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    value = yaml.safe_load(_reviewed_workflow_bytes(path).decode("utf-8"))
     assert isinstance(value, dict)
     return value
 
@@ -1419,10 +1459,10 @@ def test_binding_diagnostic_does_not_run_outside_the_source_mismatch(
 ) -> None:
     value = yaml.safe_load(BASELINE.read_text(encoding="utf-8"))
     value["source_files"] = {
-        "nightly": hashlib.sha256(NIGHTLY.read_bytes()).hexdigest(),
-        "manual": hashlib.sha256(MANUAL.read_bytes()).hexdigest(),
+        "nightly": hashlib.sha256(_reviewed_workflow_bytes(NIGHTLY)).hexdigest(),
+        "manual": hashlib.sha256(_reviewed_workflow_bytes(MANUAL)).hexdigest(),
         "reusable_full_backend_mutation": hashlib.sha256(
-            FULL_BACKEND.read_bytes()
+            _reviewed_workflow_bytes(FULL_BACKEND)
         ).hexdigest(),
     }
     if case == "invalid-origin":
@@ -1475,3 +1515,43 @@ if __name__ == "__main__":
     import pytest
 
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+@pytest.mark.parametrize(
+    "name, identity",
+    [
+        ("nightly-full-gate.yml", "nightly"),
+        ("manual-mutation-evidence.yml", "manual"),
+        ("reusable-full-backend-mutation.yml", "reusable_full_backend_mutation"),
+    ],
+)
+@pytest.mark.parametrize(
+    "mutation", ["missing", "duplicate", "unapproved", "frozen", "unrelated", "comment"]
+)
+def test_reviewed_action_pin_refresh_accepts_no_other_source_change(
+    name: str, identity: str, mutation: str
+) -> None:
+    source = (WORKFLOWS / name).read_bytes()
+    expected = yaml.safe_load(BASELINE.read_text(encoding="utf-8"))["source_files"][
+        identity
+    ]
+    assert (
+        hashlib.sha256(_normalize_reviewed_workflow_pins(name, source)).hexdigest()
+        == expected
+    )
+    current, frozen = _REVIEWED_WORKFLOW_PIN_REPLACEMENTS[0]
+    if mutation == "missing":
+        changed = source.replace(current, b"", 1)
+    elif mutation == "duplicate":
+        changed = source + b"\n# " + current + b"\n"
+    elif mutation == "unapproved":
+        changed = source.replace(current, current.replace(b"@6", b"@7", 1), 1)
+    elif mutation == "frozen":
+        changed = source.replace(current, frozen, 1)
+    elif mutation == "comment":
+        changed = source.replace(current, current.replace(b"v7.1.0", b"v7.1.1"), 1)
+    else:
+        changed = source + b"\npermissions: write-all\n"
+    with pytest.raises(AssertionError):
+        normalized = _normalize_reviewed_workflow_pins(name, changed)
+        assert hashlib.sha256(normalized).hexdigest() == expected

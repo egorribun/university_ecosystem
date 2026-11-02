@@ -56,11 +56,6 @@ SQUAWK_EXCLUSIONS = (
     "disallowed-unique-constraint",
     "require-enum-value-ordering",
 )
-SQUAWK_AUD148_CONDITION = (
-    "${{ !cancelled() &&\n"
-    "    (steps.migration-squawk.outcome == 'success' ||\n"
-    "     steps.migration-squawk.outcome == 'failure') }}"
-)
 TRIVY_SHA256 = "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
 CRD_CATALOG_COMMIT = "866b2653a5334db9aed20ad74701e20fd464471b"  # pragma: allowlist secret -- immutable schema revision
 
@@ -129,10 +124,9 @@ def _has_pinned_squawk_integrity_contract(job: Any) -> bool:
     verifier = named_step("Download and verify Squawk Linter")
     setup_python = named_step("Set up Python")
     lint = named_step("Lint Postgres Migrations (Squawk)")
-    diagnostic = named_step("Collect bounded 148642dd1207 DDL evidence")
-    if any(step is None for step in (verifier, setup_python, lint, diagnostic)):
+    if any(step is None for step in (verifier, setup_python, lint)):
         return False
-    assert verifier is not None and lint is not None and diagnostic is not None
+    assert verifier is not None and lint is not None
     if not (
         names.index("Download and verify Squawk Linter")
         < names.index("Set up Python")
@@ -144,19 +138,18 @@ def _has_pinned_squawk_integrity_contract(job: Any) -> bool:
             return False
     if "uses" in verifier or verifier.get("shell") != SQUAWK_VERIFY_SHELL:
         return False
-    if lint.get("id") != "migration-squawk" or "continue-on-error" in diagnostic:
+    if lint.get("id") != "migration-squawk":
         return False
-    if diagnostic.get("if") != SQUAWK_AUD148_CONDITION:
+    # ADR-051 retires the old revision-specific diagnostic, not the live gate.
+    if "Collect bounded 148642dd1207 DDL evidence" in names:
         return False
 
     verify_run = verifier.get("run")
     lint_run = lint.get("run")
-    diagnostic_run = diagnostic.get("run")
-    if not all(isinstance(run, str) for run in (verify_run, lint_run, diagnostic_run)):
+    if not all(isinstance(run, str) for run in (verify_run, lint_run)):
         return False
     assert isinstance(verify_run, str)
     assert isinstance(lint_run, str)
-    assert isinstance(diagnostic_run, str)
 
     expected_sha = f'expected_sha256="{SQUAWK_SHA256}"'
     asset_url = f'asset_url="{SQUAWK_RELEASE_URL}"'
@@ -248,53 +241,6 @@ def _has_pinned_squawk_integrity_contract(job: Any) -> bool:
     ):
         return False
 
-    diag_version = 'AUD148_SQUAWK_VERSION="$("$squawk_binary_path" --version)"'
-    diag_hash = (
-        'AUD148_SQUAWK_BINARY_SHA256="$(/usr/bin/sha256sum -- '
-        '"$squawk_binary_path" | /usr/bin/cut'
-    )
-    if not all(
-        fragment in diagnostic_run
-        for fragment in (binary_assignment, expected_sha, diag_version, diag_hash)
-    ):
-        return False
-    diag_call_index = diagnostic_run.find(lint_invocation)
-    version_input_index = diagnostic_run.find(checksum_input + " |")
-    version_checker_index = diagnostic_run.find(
-        "/usr/bin/sha256sum --check --strict", version_input_index
-    )
-    version_hash_index = diagnostic_run.find(diag_hash)
-    version_index = diagnostic_run.find(diag_version)
-    diag_input_index = diagnostic_run.rfind(checksum_input + " |", 0, diag_call_index)
-    diag_checker_index = diagnostic_run.find(
-        "/usr/bin/sha256sum --check --strict", diag_input_index
-    )
-    diagnostic_lint_log_index = diagnostic_run.find('lint_log="$(mktemp)"')
-    if (
-        "set -euo pipefail" not in diagnostic_run
-        or not (
-            0
-            <= version_input_index
-            < version_checker_index
-            < version_hash_index
-            < version_index
-        )
-        or not (
-            0
-            <= diagnostic_lint_log_index
-            < diag_input_index
-            < diag_checker_index
-            < diag_call_index
-        )
-        or diagnostic_run.count("/usr/bin/sha256sum --check --strict") < 2
-        or diagnostic_run.count(checksum_input) < 2
-        or not _has_standalone_squawk_checks(diagnostic_run, "squawk_binary_path", 2)
-        or lint_invocation not in diagnostic_run
-        or _squawk_exclusions(diagnostic_run) != SQUAWK_EXCLUSIONS
-        or "command -v squawk" in diagnostic_run
-        or 'squawk "${squawk_args[@]}"' in diagnostic_run
-    ):
-        return False
     return True
 
 
@@ -861,50 +807,6 @@ def test_squawk_integrity_contract_rejects_weakening_controls() -> None:
             },
         )
     )
-    diagnostic = _step(job, "Collect bounded 148642dd1207 DDL evidence")
-    assert not _has_pinned_squawk_integrity_contract(
-        _job_with_step_update(
-            job,
-            "Collect bounded 148642dd1207 DDL evidence",
-            {"run": diagnostic["run"].replace(SQUAWK_SHA256, "0" * 64, 1)},
-        )
-    )
-    assert not _has_pinned_squawk_integrity_contract(
-        _job_with_step_update(
-            job,
-            "Collect bounded 148642dd1207 DDL evidence",
-            {"run": diagnostic["run"].replace("/usr/bin/sha256sum", "sha256sum", 1)},
-        )
-    )
-    assert not _has_pinned_squawk_integrity_contract(
-        _job_with_step_update(
-            job,
-            "Collect bounded 148642dd1207 DDL evidence",
-            {
-                "run": diagnostic["run"].replace(
-                    'squawk_binary_path="${RUNNER_TEMP:?RUNNER_TEMP is required}/'
-                    + SQUAWK_BINARY_SUFFIX
-                    + '"',
-                    'squawk_binary_path="$(command -v squawk)"',
-                    1,
-                )
-            },
-        )
-    )
-    assert not _has_pinned_squawk_integrity_contract(
-        _job_with_step_update(
-            job,
-            "Collect bounded 148642dd1207 DDL evidence",
-            {"if": diagnostic["if"] + " && false"},
-        )
-    )
-    assert not _has_pinned_squawk_integrity_contract(
-        _job_with_step_update(
-            job,
-            "Collect bounded 148642dd1207 DDL evidence",
-            {"if": "false"},
-        )
-    )
     assert not _has_pinned_squawk_integrity_contract(
         _job_with_step_update(
             job,
@@ -948,20 +850,17 @@ def test_squawk_integrity_contract_rejects_weakening_controls() -> None:
             {"run": _suppress_squawk_checksum(lint["run"], 1)},
         )
     )
-    assert not _has_pinned_squawk_integrity_contract(
-        _job_with_step_update(
-            job,
-            "Collect bounded 148642dd1207 DDL evidence",
-            {"run": _suppress_squawk_checksum(diagnostic["run"], 1)},
-        )
-    )
     assert not _has_pinned_squawk_integrity_contract({**job, "continue-on-error": True})
+    # Removing historical machinery cannot silently bring it back under the
+    # current baseline's integrity contract.
     assert not _has_pinned_squawk_integrity_contract(
-        _job_with_step_update(
-            job,
-            "Collect bounded 148642dd1207 DDL evidence",
-            {"continue-on-error": True},
-        )
+        {
+            **job,
+            "steps": [
+                *job["steps"],
+                {"name": "Collect bounded 148642dd1207 DDL evidence", "run": "true"},
+            ],
+        }
     )
     assert not _has_pinned_squawk_integrity_contract({**job, "runs-on": "macos-15"})
     assert not _has_pinned_squawk_integrity_contract(

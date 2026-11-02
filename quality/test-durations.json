@@ -846,7 +846,6 @@
     "tests/test_utils_uuid_v7.py": 7.164,
     "tests/test_uuid7.py": 0.389,
     "tests/test_uuid7_and_geolocation.py": 12.997,
-    "tests/test_uuid_cutover_partition_contract.py": 0.777,
     "tests/test_uvloop_setup_mutmut_contract.py": 0.515,
     "tests/test_vector_service_coverage.py": 11.572,
     "tests/test_verify_secrets_baseline.py": 13.429,
