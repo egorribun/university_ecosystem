@@ -1470,6 +1470,8 @@ test("invalid MapLibre evidence cannot grant a lazy budget allowance", async () 
     "wrong-checkout": "checkout-git-identity",
     "wrong-tree": "checkout-git-identity",
     "wrong-version": "package-validation",
+    "stale-parser-version": "toolchain-claim",
+    "unreviewed-parser-version": "toolchain-claim",
     "LHCI-profile": "package-validation",
     "unresolved-static-import": "graph-static-complete",
     "wrong-integrity": "package-validation",
@@ -1539,6 +1541,19 @@ test("invalid MapLibre evidence cannot grant a lazy budget allowance", async () 
         fixture.evidence.treeSha = "0".repeat(40)
       },
     ],
+    ...[
+      ["stale-parser-version", "8.0.7"],
+      ["unreviewed-parser-version", "8.0.9"],
+    ].map(([name, version]) => [
+      name,
+      async (fixture) => {
+        const report = JSON.parse(await readFile(fixture.evidence.htmlReportPath, "utf8"))
+        report.toolchain.babelParser = version
+        const bytes = Buffer.from(JSON.stringify(report))
+        await writeFile(fixture.evidence.htmlReportPath, bytes)
+        fixture.evidence.htmlReportSha256 = sha256(bytes)
+      },
+    ]),
     [
       "wrong-version",
       changedMetadata((metadata) => {

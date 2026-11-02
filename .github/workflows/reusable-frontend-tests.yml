@@ -1384,7 +1384,7 @@ jobs:
             const toolchain = {}
             for (const [name, label, version] of [
               ["jsdom", "jsdom", "30.1.3"],
-              ["@babel/parser", "babelParser", "8.0.7"],
+              ["@babel/parser", "babelParser", "8.0.8"],
             ]) {
               const packageFile = require.resolve(name + "/package.json")
               const installed = JSON.parse((await boundedFile(packageFile)).toString("utf8"))
