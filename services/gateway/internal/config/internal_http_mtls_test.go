@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -78,4 +79,35 @@ func TestBackendMTLSEnabledCombinesSpiffeAndInternalFlag(t *testing.T) {
 	assert.False(t, (&Config{}).BackendMTLSEnabled())
 	assert.True(t, (&Config{SpiffeEnabled: true}).BackendMTLSEnabled())
 	assert.True(t, (&Config{InternalHTTPMTLSEnabled: true}).BackendMTLSEnabled())
+}
+
+func TestLoadRejectsInvalidInternalHTTPMTLSFlag(t *testing.T) {
+	for _, key := range []string{"REVOCATION_REDIS_URL", "JWT_SECRET", "REDIS_URL", "INTERNAL_HMAC_SECRET", "FILE_PROCESSING_CAPABILITY_SECRET"} {
+		t.Setenv(key+"_FILE", "")
+		require.NoError(t, os.Unsetenv(key+"_FILE"))
+	}
+	t.Setenv("INTERNAL_HTTP_MTLS_ENABLED", "not-a-boolean")
+
+	cfg, err := loadFromEnvironmentChecked()
+
+	require.ErrorContains(t, err, "INTERNAL_HTTP_MTLS_ENABLED must be a boolean")
+	assert.Nil(t, cfg)
+}
+
+func TestValidateConfigPropagatesBackendTransportRefusal(t *testing.T) {
+	cfg := &Config{
+		Environment:            "development",
+		JWTSecret:              randomStrongTestValue(t),
+		JWTAudience:            "university-ecosystem-api",
+		RevocationRedisURL:     "redis://redis:6379/0",
+		RateLimitRPS:           100,
+		RateLimitBurst:         200,
+		InternalHTTPMTLSEnabled: true,
+		BackendURL:             "http://backend:8000",
+		BackendSpiffeID:        "spiffe://university.ecosystem/ns/default/sa/app",
+	}
+
+	require.ErrorContains(t, validateConfig(cfg), "BACKEND_URL must be an https URL")
+	cfg.BackendURL = "https://backend:8000"
+	require.NoError(t, validateConfig(cfg))
 }

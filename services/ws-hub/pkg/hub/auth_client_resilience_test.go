@@ -62,3 +62,20 @@ func TestInternalAPIAuthClient_WithSPIFFEConfiguresTransport(t *testing.T) {
 	require.True(t, ok)
 	assert.Same(t, configured, transport.TLSClientConfig)
 }
+
+func TestInternalAPIAuthClient_WithSPIFFERejectsTLSConfigurationFailure(t *testing.T) {
+	client := NewInternalAPIAuthClientWithToken("https://auth.test", "", nil)
+	previous := authClientTLSConfigFunc
+	t.Cleanup(func() { authClientTLSConfigFunc = previous })
+	authClientTLSConfigFunc = func(*spiffe.Client, string) (*tls.Config, error) {
+		return nil, errors.New("workload identity unavailable")
+	}
+
+	require.PanicsWithValue(t,
+		"failed to create SPIFFE client TLS config for auth client: workload identity unavailable",
+		func() { client.WithSPIFFE(&spiffe.Client{}, "spiffe://backend") },
+	)
+	transport, ok := client.httpClient.Transport.(*http.Transport)
+	require.True(t, ok)
+	assert.Nil(t, transport.TLSClientConfig)
+}

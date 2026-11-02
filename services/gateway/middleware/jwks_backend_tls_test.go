@@ -37,6 +37,9 @@ func TestJWKSHTTPClientUsesConfiguredBackendTLS(t *testing.T) {
 	var defaults JWTMiddleware
 	assert.Nil(t, defaults.JWKSTLSConfig())
 	assert.Nil(t, defaults.newJWKSHTTPClient().Transport)
-	_, err = defaults.newJWKSHTTPClient().Get(server.URL)
+	rejected, err := defaults.newJWKSHTTPClient().Get(server.URL)
+	if rejected != nil {
+		require.NoError(t, rejected.Body.Close())
+	}
 	require.Error(t, err, "default verification must reject a certificate outside the system roots")
 }
