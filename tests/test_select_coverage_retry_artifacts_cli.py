@@ -249,7 +249,15 @@ def test_checked_in_layout_exactly_matches_the_quality_contract() -> None:
 
     assert len(slots) == 1
     assert slots[0].logical_artifact == "coverage-evidence"
-    assert len(slots[0].reports) == 14
+    assert len(slots[0].reports) == 16
+    assert {
+        (report.component, report.path)
+        for report in slots[0].reports
+        if report.component == "node-actions"
+    } == {
+        ("node-actions", "artifacts/coverage/node-actions/lcov.info"),
+        ("node-actions", "artifacts/coverage/node-actions/coverage-final.json"),
+    }
 
 
 def _run_entrypoint(

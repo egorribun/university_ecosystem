@@ -75,6 +75,16 @@
           "component": "rust-crypto",
           "format": "llvm-cov-branch-json",
           "path": "artifacts/coverage/rust/rust-crypto/branch-llvm.json"
+        },
+        {
+          "component": "node-actions",
+          "format": "lcov",
+          "path": "artifacts/coverage/node-actions/lcov.info"
+        },
+        {
+          "component": "node-actions",
+          "format": "istanbul-json",
+          "path": "artifacts/coverage/node-actions/coverage-final.json"
         }
       ]
     }
