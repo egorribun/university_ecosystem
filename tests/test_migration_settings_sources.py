@@ -153,7 +153,7 @@ def test_malformed_plain_url_cannot_redirect_to_a_default(
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("DATABASE_URL", value)
-    with pytest.raises(ValueError, match="^Invalid database URL configuration$"):
+    with pytest.raises(ValueError, match=r"^Invalid database URL configuration$"):
         migration.load_migration_settings()
 
 
@@ -289,7 +289,7 @@ def test_malformed_port_diagnostics_never_echo_credential_canaries(
         monkeypatch.setenv("DATABASE_URL", malformed)
 
     with pytest.raises(
-        ValueError, match="^Invalid database URL configuration$"
+        ValueError, match=r"^Invalid database URL configuration$"
     ) as caught:
         if source_kind == "ini":
             migration.resolve_migration_url(

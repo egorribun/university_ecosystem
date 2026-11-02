@@ -7,6 +7,8 @@ autogenerate drift checks; application metadata must not reclaim them implicitly
 
 from __future__ import annotations
 
+from typing import cast
+
 import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects import postgresql
@@ -181,9 +183,11 @@ def _project_data_access_log_primary_key(
     nullable = {column.name: column.nullable for column in table.c}
     for column in table.c:
         column.primary_key = column.name in target
+    # The inherited Constraint API accepts a deferred-name sentinel, but the
+    # PrimaryKeyConstraint annotation is narrower than its runtime contract.
     replacement = sa.PrimaryKeyConstraint(
         *(table.c[name] for name in target),
-        name=previous.name,
+        name=cast(str | None, previous.name),
         deferrable=previous.deferrable,
         initially=previous.initially,
         info=dict(previous.info),

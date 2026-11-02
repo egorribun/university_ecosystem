@@ -8,6 +8,8 @@ from uuid import uuid4
 
 import pytest
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.sql.base import _NONE_NAME
 
 from app.core.db.retained_table_metadata import build_migration_metadata
 
@@ -273,3 +275,31 @@ def test_builder_preserves_propagated_primary_key_ddl_listeners(
     ]
     assert runtime.tables["data_access_logs"].primary_key is original_key
     assert tuple(original_key.columns.keys()) == source_key
+
+
+@pytest.mark.parametrize("source_key", [("id",), ("created_at", "id")])
+@pytest.mark.parametrize("target_dialect", ["sqlite", "postgresql"])
+def test_deferred_primary_key_name_preserves_identity_and_naming_semantics(
+    source_key, target_dialect
+) -> None:
+    runtime = _runtime_metadata(source_key)
+    runtime.naming_convention = {"pk": "pk_%(table_name)s_%(column_0_name)s"}
+    original = runtime.tables["data_access_logs"]
+    original_key = original.primary_key
+    original_columns = tuple(original_key.columns)
+    original_key.name = _NONE_NAME
+
+    target = build_migration_metadata(runtime, dialect_name=target_dialect)
+    copied = target.tables["data_access_logs"]
+    assert copied.primary_key.name is _NONE_NAME
+    assert original.primary_key is original_key
+    assert original_key.name is _NONE_NAME
+    assert tuple(original_key.columns) == original_columns
+
+    dialect = sqlite.dialect() if target_dialect == "sqlite" else postgresql.dialect()
+    copied_ddl = str(sa.schema.CreateTable(copied).compile(dialect=dialect))
+    original_ddl = str(sa.schema.CreateTable(original).compile(dialect=dialect))
+    assert "CONSTRAINT pk_data_access_logs_id PRIMARY KEY" in copied_ddl
+    assert f"CONSTRAINT pk_data_access_logs_{source_key[0]} PRIMARY KEY" in original_ddl
+    assert copied.primary_key.name is _NONE_NAME
+    assert original_key.name is _NONE_NAME
