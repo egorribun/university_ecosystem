@@ -113,3 +113,16 @@ Audit findings
   change's hosted checks.
 - The rollback-boundary section of ADR-036 and the Tier 0 exception text of
   ADR-047 need their own amendments through their ADR processes.
+
+
+## Delivery claim lifetime
+
+The AUD-272 ledger identifies a notification/subscription/channel pair without
+an attempt timestamp. Successful results commit before subscription side effects.
+The provider call and database commit cannot be atomic, so a crash between them
+still permits at-least-once delivery; this is not an exactly-once transport claim.
+Notification retention removes old ledger entries only after the corresponding
+notification is absent. In particular, an old unread notification retains its
+claim, even after its delivery-attempt history expires, and cannot be replayed
+just because cleanup ran. Cleanup uses the existing retention window and bounded
+batch size; no new retention setting or schema object is introduced.

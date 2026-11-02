@@ -46,8 +46,8 @@ async def _add_subscription(db: AsyncSession, user_id: uuid.UUID) -> PushSubscri
     subscription = PushSubscription(
         user_id=user_id,
         endpoint=f"https://push.example.com/{uuid.uuid4().hex}",
-        p256dh="p256dh-key",  # pragma: allowlist secret
-        auth="auth-key",  # pragma: allowlist secret
+        p256dh=uuid.uuid4().hex,
+        auth=uuid.uuid4().hex,
         created_at=datetime.now(UTC),
         topics=[],
     )
@@ -82,7 +82,8 @@ async def _claim_count(db: AsyncSession) -> int:
 
 
 def _stub_sender(
-    monkeypatch: pytest.MonkeyPatch, statuses: list[str]
+    monkeypatch: pytest.MonkeyPatch,
+    statuses: list[typing.Literal["sent", "gone", "error"]],
 ) -> list[uuid.UUID]:
     """Record each send attempt and answer with the next scripted status."""
 
@@ -95,7 +96,7 @@ def _stub_sender(
             subscription_id=sub.id,
             endpoint=sub.endpoint,
             user_id=sub.user_id,
-            status=status,  # type: ignore[arg-type]
+            status=status,
             status_code=201 if status == "sent" else 503,
         )
 
@@ -228,3 +229,137 @@ async def test_claim_helper_fails_closed_on_unsupported_dialect():
         await notifications_delivery._claim_web_push_deliveries(
             db, [(uuid.uuid4(), uuid.uuid4())]
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["sent", "error"])
+async def test_postprocessing_failure_cannot_roll_back_delivery_progress(
+    db_session,
+    user_factory,
+    push_configured,
+    monkeypatch,
+    status,
+):
+    user = await user_factory()
+    await _add_subscription(db_session, user.id)
+    notification = await _add_notification(db_session, user.id)
+    notification_id = notification.id
+    await db_session.commit()
+    attempts = _stub_sender(monkeypatch, [status, "sent"])
+    processor = AsyncMock(side_effect=RuntimeError("post-processing unavailable"))
+    monkeypatch.setattr(webpush_module, "process_push_results", processor)
+
+    with pytest.raises(RuntimeError, match="post-processing unavailable"):
+        await notifications_delivery.redeliver_notifications(
+            db_session, notification_ids=[notification_id]
+        )
+    # Match the caller's failure cleanup: it must not erase a successful claim.
+    await db_session.rollback()
+    assert await _claim_count(db_session) == (1 if status == "sent" else 0)
+    processor.assert_awaited_once()
+    monkeypatch.setattr(webpush_module, "process_push_results", AsyncMock())
+
+    replay = await notifications_delivery.redeliver_notifications(
+        db_session, notification_ids=[notification_id]
+    )
+
+    assert len(attempts) == (1 if status == "sent" else 2)
+    assert replay.already_delivered == (1 if status == "sent" else 0)
+    assert replay.sent == (0 if status == "sent" else 1)
+    assert await _claim_count(db_session) == 1
+
+
+@pytest.mark.asyncio
+async def test_retention_keeps_replayable_claims_and_expires_only_old_orphans(
+    db_session, user_factory, monkeypatch
+):
+    from datetime import timedelta
+
+    from app.services.notifications.cleanup import cleanup_stale_notifications
+
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(days=30)
+    old = cutoff - timedelta(seconds=1)
+    user = await user_factory()
+    notification = await _add_notification(db_session, user.id)
+    notification.created_at = old
+    notification_id = notification.id
+    orphan_old, orphan_boundary, orphan_fresh, retained = [
+        uuid.uuid4() for _ in range(4)
+    ]
+    claims = [
+        (orphan_old, uuid.uuid4(), old),
+        (orphan_boundary, uuid.uuid4(), cutoff),
+        (orphan_fresh, uuid.uuid4(), now),
+        (retained, notification_id, old),
+    ]
+    await db_session.execute(
+        insert(NotificationDeliveryOnce),
+        [
+            {
+                "id": claim_id,
+                "notification_id": notice_id,
+                "subscription_id": uuid.uuid4(),
+                "channel": "webpush",
+                "created_at": created,
+            }
+            for claim_id, notice_id, created in claims
+        ],
+    )
+    await db_session.commit()
+    monkeypatch.setattr(settings, "notifications_retention_batch_size", 1)
+
+    result = await cleanup_stale_notifications(
+        db=db_session, retention_days=30, now=now
+    )
+    remaining = set(
+        (await db_session.scalars(select(NotificationDeliveryOnce.id))).all()
+    )
+
+    assert result == (0, 0)
+    assert remaining == {orphan_boundary, orphan_fresh, retained}
+    assert (
+        await db_session.scalar(
+            select(Notification.id).where(Notification.id == notification_id)
+        )
+        == notification_id
+    )
+    notification.read = True
+    await db_session.commit()
+
+    result = await cleanup_stale_notifications(
+        db=db_session, retention_days=30, now=now
+    )
+    remaining = set(
+        (await db_session.scalars(select(NotificationDeliveryOnce.id))).all()
+    )
+
+    assert result == (1, 0)
+    assert remaining == {orphan_boundary, orphan_fresh}
+
+
+@pytest.mark.asyncio
+async def test_delivery_commit_failure_never_runs_subscription_postprocessing(
+    db_session, user_factory, push_configured, monkeypatch
+):
+    user = await user_factory()
+    await _add_subscription(db_session, user.id)
+    notification = await _add_notification(db_session, user.id)
+    notification_id = notification.id
+    await db_session.commit()
+    attempts = _stub_sender(monkeypatch, ["sent"])
+    processor = AsyncMock()
+    monkeypatch.setattr(webpush_module, "process_push_results", processor)
+    monkeypatch.setattr(
+        db_session, "commit", AsyncMock(side_effect=RuntimeError("commit unavailable"))
+    )
+
+    with pytest.raises(RuntimeError, match="commit unavailable"):
+        await notifications_delivery.redeliver_notifications(
+            db_session, notification_ids=[notification_id]
+        )
+
+    assert len(attempts) == 1
+    processor.assert_not_awaited()
+    await db_session.rollback()
+    assert await _claim_count(db_session) == 0

@@ -54,6 +54,8 @@ from app.services.webpush import WebPushResult
 from app.utils.uuid_v7 import generate_uuid7
 
 if TYPE_CHECKING:
+    from sqlalchemy.dialects.postgresql import Insert as PostgreSQLInsert
+    from sqlalchemy.dialects.sqlite import Insert as SQLiteInsert
     from sqlalchemy.sql import Select
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
@@ -207,7 +209,7 @@ async def _claim_web_push_deliveries(
         for notification_id, subscription_id in pairs
     ]
     dialect = db.get_bind().dialect.name
-    claim: Any
+    claim: PostgreSQLInsert | SQLiteInsert
     if dialect == "postgresql":
         claim = postgresql_insert(NotificationDeliveryOnce).values(rows)
     elif dialect == "sqlite":
@@ -259,10 +261,12 @@ async def redeliver_notifications(
 ) -> NotificationRedeliveryOutcome:
     """Deliver stored notifications and persist an idempotency journal.
 
-    Successful ``(notification, subscription)`` pairs are never sent again.
-    Notification row locks serialize overlapping outbox events on PostgreSQL;
-    retryable provider failures are recorded so the caller can commit partial
-    progress before asking the outbox worker to retry the event.
+    Delivery is at-least-once: a crash after provider acceptance but before the
+    journal commits can repeat a push. Committed successful pairs are not sent
+    again. PostgreSQL row locks serialize overlapping events, and successful
+    claims plus failed-attempt evidence commit before subscription post-processing
+    so a cleanup error cannot erase delivery progress. The caller supplies a
+    dedicated delivery session; this function commits that session.
     """
 
     if channel != "push":
@@ -473,6 +477,9 @@ async def redeliver_notifications(
     if delivery_rows:
         await db.execute(insert(NotificationDelivery).values(delivery_rows))
     await db.flush()
+    # Provider side effects cannot be atomic with PostgreSQL. Persist the known
+    # result before another session performs subscription cleanup/last-seen work.
+    await db.commit()
     if push_results:
         await _process_canonical_push_results(push_results)
 

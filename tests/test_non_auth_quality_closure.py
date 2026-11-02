@@ -819,6 +819,7 @@ def _session(side_effect: object) -> MagicMock:
     return MagicMock(
         execute=AsyncMock(side_effect=side_effect),
         flush=AsyncMock(),
+        commit=AsyncMock(),
         get_bind=MagicMock(return_value=bind),
     )
 
@@ -850,6 +851,7 @@ async def test_notification_redelivery_handles_users_without_subscriptions(
             side_effect=[_scalar_rows([_notification(user_id)]), _scalar_rows([])]
         ),
         flush=AsyncMock(),
+        commit=AsyncMock(),
     )
     assert (
         await delivery.redeliver_notifications(db, notification_ids=[uuid4()])
@@ -876,6 +878,7 @@ async def test_notification_redelivery_skips_null_journal_and_unsupported_topic(
             ]
         ),
         flush=AsyncMock(),
+        commit=AsyncMock(),
     )
     monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
     monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: False)

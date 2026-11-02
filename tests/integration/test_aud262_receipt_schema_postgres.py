@@ -563,3 +563,69 @@ async def test_receipt_owned_fixture_never_uses_default_database(
     assert watchdog is not None
     assert watchdog.args == (300,)
     assert watchdog.kwargs == {"method": "signal", "func_only": False}
+
+
+async def test_notification_pair_claims_commit_conflict_and_rollback_on_owned_postgres(
+    request: pytest.FixtureRequest,
+) -> None:
+    """Exercise the shipped ledger and real INSERT conflict semantics, not a SQL mock."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from app.models import NotificationDeliveryOnce
+    from app.services.notifications.delivery import _claim_web_push_deliveries
+
+    server = request.getfixturevalue("owned_baseline_server")
+    first_pair = (uuid4(), uuid4())
+    second_pair = (first_pair[0], uuid4())
+    with owned.committed_baseline(server) as baseline:
+        engine = create_async_engine(
+            baseline.url.set(drivername="postgresql+asyncpg", query={}),
+            poolclass=sa.pool.NullPool,
+            connect_args={
+                "timeout": 5,
+                "command_timeout": 65,
+                "server_settings": {
+                    "lock_timeout": "10s",
+                    "statement_timeout": "60s",
+                    "idle_in_transaction_session_timeout": "60s",
+                },
+            },
+        )
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with sessions() as first:
+                assert await _claim_web_push_deliveries(first, [first_pair]) == {
+                    first_pair
+                }
+                await first.commit()
+            async with sessions() as second:
+                assert await _claim_web_push_deliveries(second, [first_pair]) == set()
+                assert await _claim_web_push_deliveries(second, [second_pair]) == {
+                    second_pair
+                }
+                await second.rollback()
+            async with sessions() as observer:
+                assert (
+                    await observer.scalar(
+                        sa.select(sa.func.count()).select_from(NotificationDeliveryOnce)
+                    )
+                    == 1
+                )
+                assert await _claim_web_push_deliveries(observer, [second_pair]) == {
+                    second_pair
+                }
+                await observer.commit()
+            async with sessions() as observer:
+                rows = await observer.execute(
+                    sa.select(
+                        NotificationDeliveryOnce.notification_id,
+                        NotificationDeliveryOnce.subscription_id,
+                        NotificationDeliveryOnce.channel,
+                    )
+                )
+                assert set(rows.all()) == {
+                    (*first_pair, "webpush"),
+                    (*second_pair, "webpush"),
+                }
+        finally:
+            await engine.dispose()

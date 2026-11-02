@@ -108,16 +108,17 @@ async def test_cleanup_stale_notifications_refined(monkeypatch):
     )
     monkeypatch.setattr("app.services.notifications.cleanup.settings", mock_settings)
 
-    # cleanup_stale_notifications has two separate while-True loops:
+    # cleanup_stale_notifications has three bounded cleanup loops:
     #   loop 1 (deliveries): scalars → [1], then scalars → [] → break
     #   loop 2 (notifications): scalars → [1], then scalars → [] → break
     # db.scalars is awaited, so it must be an AsyncMock whose return value
-    # exposes .all().  We sequence four results via side_effect on the AsyncMock.
+    # exposes .all(). The final empty result is the orphan-claim lookup.
     scalars_results = [
         MagicMock(**{"all.return_value": [1]}),  # delivery loop iteration 1
         MagicMock(**{"all.return_value": []}),  # delivery loop → break
         MagicMock(**{"all.return_value": [1]}),  # notification loop iteration 1
         MagicMock(**{"all.return_value": []}),  # notification loop → break
+        MagicMock(**{"all.return_value": []}),  # orphan claims → break
     ]
     db.scalars = AsyncMock(side_effect=scalars_results)
 

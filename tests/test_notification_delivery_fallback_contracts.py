@@ -33,6 +33,7 @@ def _session(side_effect: object) -> MagicMock:
     return MagicMock(
         execute=AsyncMock(side_effect=side_effect),
         flush=AsyncMock(),
+        commit=AsyncMock(),
         get_bind=MagicMock(return_value=bind),
     )
 
@@ -854,6 +855,7 @@ async def test_redelivery_accumulates_already_delivered_pairs(
             ]
         ),
         flush=AsyncMock(),
+        commit=AsyncMock(),
     )
 
     outcome = await delivery.redeliver_notifications(
