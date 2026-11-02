@@ -1,7 +1,7 @@
 import json
 import re
 import tomllib
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -97,8 +97,11 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     assert uv.get("exclude-newer-package") == {
         "brotli": "2026-10-22T14:00:13Z",
         "pillow": "2026-10-16T22:18:10Z",
+        "pyasn1": "2026-10-27T06:32:50Z",
         "virtualenv": "2026-10-17T16:09:43Z",
     }
+    assert "pyasn1==0.6.5" in uv["constraint-dependencies"]
+    assert "pyasn1>=0.6.5,<0.7" in uv["constraint-dependencies"]
     assert "certifi>=2026.10.19" in uv["constraint-dependencies"]
     assert "certifi==2026.10.19" not in uv["constraint-dependencies"]
     assert "pillow==13.0.0" in uv["constraint-dependencies"]
@@ -278,9 +281,19 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     assert lock_options.get("exclude-newer-package") == {
         "brotli": "2026-10-22T14:00:13Z",
         "pillow": "2026-10-16T22:18:10Z",
+        "pyasn1": "2026-10-27T06:32:50Z",
         "virtualenv": "2026-10-17T16:09:43Z",
     }
     lock = _read_toml("uv.lock")
+    pyasn1_packages = [
+        package for package in lock["package"] if package["name"] == "pyasn1"
+    ]
+    assert len(pyasn1_packages) == 1
+    assert pyasn1_packages[0]["version"] == "0.6.5"
+    assert {"name": "pyasn1", "specifier": "==0.6.5"} in lock["manifest"]["constraints"]
+    assert {"name": "pyasn1", "specifier": ">=0.6.5,<0.7"} in lock["manifest"][
+        "constraints"
+    ]
     packages = [package for package in lock["package"] if package["name"] == "certifi"]
     assert len(packages) == 1
     assert packages[0]["version"] == "2026.10.23"
@@ -491,3 +504,18 @@ def test_opentelemetry_manifest_and_dependabot_preserve_reviewed_generation() ->
     assert ignored["@opentelemetry/*"] == ["version-update:semver-major"]
     for name in ("api", *OPENTELEMETRY_EXPERIMENTAL_VERSIONS):
         assert ignored[f"@opentelemetry/{name}"] == ["version-update:semver-minor"]
+
+
+def test_pyasn1_fixed_cutoff_stops_widening_at_owner_boundary() -> None:
+    """The exact early-release allowance never admits later uploads."""
+    uv = _read_toml("pyproject.toml")["tool"]["uv"]
+    cutoff = datetime.fromisoformat(uv["exclude-newer-package"]["pyasn1"])
+    boundary = datetime(2026, 11, 3, 6, 32, 50, tzinfo=UTC)
+    cooldown = timedelta(days=7)
+    assert cutoff + cooldown == boundary
+    assert cutoff > boundary - timedelta(microseconds=1) - cooldown
+    assert cutoff == boundary - cooldown
+    assert cutoff < boundary + timedelta(microseconds=1) - cooldown
+    constraints = uv["constraint-dependencies"]
+    assert "pyasn1==0.6.5" in constraints
+    assert "pyasn1>=0.6.5,<0.7" in constraints

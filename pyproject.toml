@@ -77,8 +77,8 @@ dependencies = [
   "rich>=15.0.0,<16",                                  # app/cli renders tables directly
   "redis>=7.4.0,<9",  # FIX-41-03: redis 5.x recursion bug w/ Py3.14 (>=7.4.0). W210: cap <9 (resolved stays 7.4.0; aligns MOD-W5-03 gate across uv edges)
   "sentry-sdk[opentelemetry]>=2.57.0,<3",
-  "spiffe==0.3.2",  # ADR-052: real Workload API SDK; eligible seven-day cooldown
-  "uvicorn-worker==0.4.0",  # Nondeprecated Gunicorn ASGI worker adapter
+  "spiffe==0.3.2,<0.4",  # ADR-052: real Workload API SDK; eligible seven-day cooldown
+  "uvicorn-worker==0.4.0,<0.5",  # Nondeprecated Gunicorn ASGI worker adapter
   "sqlalchemy[asyncio]>=2.0.54,<2.1",
   "starlette>=1.0.0,<2.0",                             # MOD-W10-01: upper bound
   "strawberry-graphql[fastapi]>=0.314.3,<0.328.0",    # FIX-41-02: Python 3.14 compat; Renovate opens PR to advance
@@ -374,6 +374,7 @@ ci-precommit-runner = [
   "pre-commit==4.6.2",
 ]
 dev = [
+  "types-gunicorn==26.2.0.20261008,<27",  # Typed custom Gunicorn worker base
   "asgi-lifespan>=2.1.0",
   "fakeredis>=2.35.1",
   # Starlette 1.x moved TestClient to the httpx2 API.  Keeping this explicit
@@ -458,7 +459,10 @@ exclude-newer = "7 days"
 # Remove Pillow after 2026-10-23T22:18:10Z.
 # Remove virtualenv after 2026-10-24T16:09:43Z.
 # Remove Brotli after 2026-10-29T14:00:13Z.
-exclude-newer-package = { brotli = "2026-10-22T14:00:13Z", pillow = "2026-10-16T22:18:10Z", virtualenv = "2026-10-17T16:09:43Z" }
+# Owner egorribun approved pyasn1 0.6.5 only (2026-11-02). Fixed cutoff
+# stops widening the rolling age rule at 2026-11-03T06:32:50Z; remove it
+# and the temporary exact pin after that boundary, retaining the security floor.
+exclude-newer-package = { brotli = "2026-10-22T14:00:13Z", pillow = "2026-10-16T22:18:10Z", pyasn1 = "2026-10-27T06:32:50Z", virtualenv = "2026-10-17T16:09:43Z" }
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
@@ -467,6 +471,8 @@ environments = [
 # Security floors and exact owner-approved emergency constraints:
 # transitive entries bound resolution without pretending app code imports them.
 constraint-dependencies = [
+    "pyasn1==0.6.5",  # Temporary exact approved cooldown release; remove after boundary
+    "pyasn1>=0.6.5,<0.7",  # CVE-2026-119194/-119195/-119196/-119197 security floor
     "certifi>=2026.10.19",  # GHSA-6q48-6c7w-9gw2; durable security floor
     "pillow==13.0.0",  # Nine October advisories; bounded emergency release
     "virtualenv==21.14.9",  # GHSA-c978-59m8-c77v; bounded emergency release

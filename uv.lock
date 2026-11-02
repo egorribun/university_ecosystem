@@ -25,6 +25,7 @@ exclude-newer-span = "P7D"
 [options.exclude-newer-package]
 brotli = "2026-10-22T14:00:13Z"
 pillow = "2026-10-16T22:18:10Z"
+pyasn1 = "2026-10-27T06:32:50Z"
 virtualenv = "2026-10-17T16:09:43Z"
 
 [manifest]
@@ -38,6 +39,8 @@ constraints = [
     { name = "certifi", specifier = ">=2026.10.19" },
     { name = "h2", specifier = ">=4.4.1,<5" },
     { name = "pillow", specifier = "==13.0.0" },
+    { name = "pyasn1", specifier = "==0.6.5" },
+    { name = "pyasn1", specifier = ">=0.6.5,<0.7" },
     { name = "urllib3", specifier = ">=2.8.0,<2.9" },
     { name = "virtualenv", specifier = "==21.14.9" },
 ]
@@ -3407,11 +3410,11 @@ wheels = [
 
 [[package]]
 name = "pyasn1"
-version = "0.6.4"
+version = "0.6.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a4/9a/23310166d960def5897e91fe20e5b724601b02a22e84ba1f94232c0b7f67/pyasn1-0.6.4.tar.gz", hash = "sha256:9c447d8431c947fe4c8febc4ed9e760bc29011a5b01e5c74b67025bd9fb8ce81", size = 151262, upload-time = "2026-07-09T01:12:33.988Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/88/7e/3c0da41061a2021cac7cd524fd57092adbe5b515e8bf9005702e366802e2/pyasn1-0.6.5.tar.gz", hash = "sha256:6b11616a6bcf3a40e635f082bb232fa57b5e0dd7f517bd7ddd69ec3794508a47", size = 155152, upload-time = "2026-10-27T06:32:49.125Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/3b/6163796d69c3977d1e4287bea4a6979161cbbdd170ebb430511e8e1999ce/pyasn1-0.6.4-py3-none-any.whl", hash = "sha256:deda9277cfd454080ec40b207fb6df82206a3a2688735233cdcd8d3d565f088b", size = 84410, upload-time = "2026-07-09T01:12:32.92Z" },
+    { url = "https://files.pythonhosted.org/packages/19/1f/3eefd5c84c35cae44549ce1c7f7e58f7945b34f5a6bce07a135438522073/pyasn1-0.6.5-py3-none-any.whl", hash = "sha256:4017b0fce125096b8573b39c989fdb1a4b19cf761e683398184550fea0e66587", size = 84807, upload-time = "2026-10-27T06:32:48.045Z" },
 ]
 
 [[package]]
@@ -4458,6 +4461,15 @@ wheels = [
 ]
 
 [[package]]
+name = "types-gunicorn"
+version = "26.2.0.20261008"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ef/f6/6a7e21a80514e7ea5a1b218cfdcf4088a292a9a2d52a7ae92c2973064cbc/types_gunicorn-26.2.0.20261008.tar.gz", hash = "sha256:8472f71129be5b90527b948cfbff643a6e8f887ea5b5dffacc446df0ba664ccb", size = 36182, upload-time = "2026-10-08T08:06:26.782Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/14/78e2b07d1e30402f355e90f92c1d704212a76c08b6e372bf1b36a37075e4/types_gunicorn-26.2.0.20261008-py3-none-any.whl", hash = "sha256:88f43f742983c259ad0be5505f8c2778feaeae25a4824efc9069b83fc056f672", size = 54422, upload-time = "2026-10-08T08:06:25.857Z" },
+]
+
+[[package]]
 name = "types-jsonschema"
 version = "4.25.1.20251008"
 source = { registry = "https://pypi.org/simple" }
@@ -4664,6 +4676,7 @@ dev = [
     { name = "schemathesis" },
     { name = "testcontainers" },
     { name = "types-aiofiles" },
+    { name = "types-gunicorn" },
     { name = "types-jsonschema" },
     { name = "types-pyyaml" },
     { name = "types-redis" },
@@ -4741,14 +4754,14 @@ requires-dist = [
     { name = "rich", specifier = ">=15.0.0,<16" },
     { name = "rust-ext", editable = "native/rust_ext" },
     { name = "sentry-sdk", extras = ["opentelemetry"], specifier = ">=2.57.0,<3" },
-    { name = "spiffe", specifier = "==0.3.2" },
+    { name = "spiffe", specifier = "==0.3.2,<0.4" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.54,<2.1" },
     { name = "starlette", specifier = ">=1.0.0,<2.0" },
     { name = "strawberry-graphql", extras = ["fastapi"], specifier = ">=0.314.3,<0.328.0" },
     { name = "structlog", specifier = ">=26.1.0,<27" },
     { name = "typer", specifier = ">=0.24.1,<1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.44.0,<1" },
-    { name = "uvicorn-worker", specifier = "==0.4.0" },
+    { name = "uvicorn-worker", specifier = "==0.4.0,<0.5" },
     { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.22.1,<1" },
     { name = "zxcvbn", specifier = ">=4.5.0,<5" },
 ]
@@ -4782,6 +4795,7 @@ dev = [
     { name = "schemathesis", specifier = ">=4.0.0,<5" },
     { name = "testcontainers", specifier = ">=4.14.2" },
     { name = "types-aiofiles", specifier = ">=25.1.0.20260409" },
+    { name = "types-gunicorn", specifier = "==26.2.0.20261008,<27" },
     { name = "types-jsonschema", specifier = "==4.25.1.20251008" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260408" },
     { name = "types-redis", specifier = ">=4.6.0.20241004" },
