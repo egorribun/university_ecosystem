@@ -260,7 +260,7 @@ async def test_unique_email_race_is_private_and_does_not_consume_invite(
 @pytest.mark.parametrize(
     ("sqlstate", "constraint", "table", "expected_status"),
     [
-        ("23505", "ix_users_email_lower", "users", 200),
+        ("23505", "ix_users_email_lower", "users", 400),
         ("23505", "ux_users_lower_email", "users", 200),
         ("23505", "uq_users_email", "users", 200),
         ("23505", "users_email_key", "users", 200),
@@ -340,7 +340,7 @@ async def test_driver_cause_and_pgcode_identify_postgres_email_constraint(
 
     original = DriverError("synthetic driver cause")
     original.pgcode = "23505"
-    original.constraint_name = "ix_users_email_lower"
+    original.constraint_name = "ux_users_lower_email"
     wrapped = DriverError("synthetic adapter error")
     wrapped.__cause__ = original
     error = IntegrityError("INSERT", {}, wrapped)

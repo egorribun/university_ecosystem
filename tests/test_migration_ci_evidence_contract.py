@@ -26,9 +26,7 @@ def test_tenant_context_diagnostic_is_separate_bounded_and_fail_closed() -> None
     job = workflow["jobs"]["alembic-migrations"]
     steps = job["steps"]
     tenant = next(step for step in steps if step.get("id") == "tenant-context-evidence")
-    migration = next(
-        step for step in steps if step.get("id") == "migration-ddl-evidence"
-    )
+    migration = next(step for step in steps if step.get("id") == "migration-squawk")
     assert steps.index(migration) < steps.index(tenant)
     assert job["timeout-minutes"] == 15
     assert tenant["timeout-minutes"] == 3

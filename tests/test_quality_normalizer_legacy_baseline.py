@@ -11,6 +11,8 @@ from typing import Any
 
 import pytest
 
+from tests.quality_normalizer_v2_testkit import with_historical_legacy_migration_policy
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "quality" / "quality-contract.json"
 CONTRACT_GENERATED_AT = "2026-10-31T00:00:00Z"
@@ -19,7 +21,9 @@ CONTRACT_GENERATED_AT = "2026-10-31T00:00:00Z"
 @pytest.fixture
 def normalizer(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     monkeypatch.syspath_prepend(str(ROOT / "scripts" / "quality"))
-    return importlib.import_module("normalize_coverage_reports")
+    module = importlib.import_module("normalize_coverage_reports")
+    monkeypatch.setattr(module, "_utc_today", lambda: date(2026, 10, 31))
+    return module
 
 
 def _load_mutated_contract(
@@ -27,7 +31,9 @@ def _load_mutated_contract(
     tmp_path: Path,
     mutate: Callable[[dict[str, Any]], None],
 ) -> object:
-    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    contract = with_historical_legacy_migration_policy(
+        json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    )
     mutate(contract)
     path = tmp_path / "quality-contract.json"
     path.write_text(json.dumps(contract), encoding="utf-8")
@@ -36,31 +42,42 @@ def _load_mutated_contract(
     )
 
 
-def test_checked_in_contract_loads_before_legacy_expiry(
+def test_checked_in_contract_has_no_legacy_exemption_after_retirement(
     normalizer: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(normalizer, "_utc_today", lambda: date(2026, 10, 31))
+    monkeypatch.setattr(normalizer, "_utc_today", lambda: date(2026, 11, 14))
+    contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    assert "legacy_migration_baselines" not in contract["tier0"]
+    for metric in ("lines", "statements", "branches", "functions"):
+        assert contract["coverage_minimums"][metric] == 100
 
     normalizer._load_contract(
         CONTRACT_PATH, normalizer._parse_generated_at(CONTRACT_GENERATED_AT)
     )
 
 
+def test_historical_fixture_loads_before_legacy_expiry(
+    normalizer: ModuleType,
+    tmp_path: Path,
+) -> None:
+    _load_mutated_contract(normalizer, tmp_path, lambda _contract: None)
+
+
 def test_stale_generated_at_cannot_keep_expired_legacy_exemption(
     normalizer: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     # The real UTC day is past the 2026-11-13 expiry; the caller-supplied
     # generated-at is deliberately older and must not extend the exemption.
     monkeypatch.setattr(normalizer, "_utc_today", lambda: date(2026, 11, 14))
-    stale = normalizer._parse_generated_at("2026-10-31T00:00:00Z")
 
     with pytest.raises(
         normalizer._InputError,
         match="migration exemption is no longer valid",
     ):
-        normalizer._load_contract(CONTRACT_PATH, stale)
+        _load_mutated_contract(normalizer, tmp_path, lambda _contract: None)
 
 
 def test_legacy_baseline_must_name_exactly_131_paths(

@@ -1888,6 +1888,7 @@ from pathlib import Path
 import runpy
 import subprocess
 import sys
+from types import SimpleNamespace
 
 from coverage import Coverage
 
@@ -1900,7 +1901,41 @@ def _emit(record: dict[str, object]) -> None:
     print(json.dumps(record, allow_nan=False, sort_keys=True, separators=(",", ":")))
 
 
-def _measure(source_path: Path, call_functions: bool) -> dict[str, object]:
+def _exercise_baseline(namespace: dict[str, object]) -> dict[str, object]:
+    if namespace["revision"] != "202611020000" or namespace["down_revision"] is not None:
+        raise RuntimeError("expected the sole MVP baseline")
+    statements: list[str] = []
+    queries: list[str] = []
+
+    def execute(statement: object) -> SimpleNamespace:
+        queries.append(str(statement))
+        return SimpleNamespace(fetchone=lambda: None)
+
+    bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"), execute=execute)
+    operations = SimpleNamespace(get_bind=lambda: bind, execute=statements.append)
+    namespace["upgrade"].__globals__["op"] = operations
+    result = namespace["upgrade"]()
+    before_downgrade = list(statements)
+    try:
+        namespace["downgrade"]()
+    except RuntimeError as error:
+        downgrade_error = str(error)
+        if downgrade_error != namespace["downgrade_reason"]:
+            raise
+    else:
+        raise RuntimeError("baseline downgrade unexpectedly succeeded")
+    if statements != before_downgrade:
+        raise RuntimeError("baseline downgrade changed recorded SQL")
+    if not statements or queries != [
+        "SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron'"
+    ]:
+        raise RuntimeError("baseline upgrade did not execute its recorded SQL path")
+    return {"upgrade_result": result, "downgrade_error": downgrade_error}
+
+
+def _measure(
+    source_path: Path, call_functions: bool, *, baseline: bool = False
+) -> dict[str, object]:
     coverage = Coverage(
         data_file=None, include=[str(source_path)], config_file=False
     )
@@ -1909,7 +1944,9 @@ def _measure(source_path: Path, call_functions: bool) -> dict[str, object]:
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             namespace = runpy.run_path(str(source_path))
-            if call_functions:
+            if call_functions and baseline:
+                function_results = _exercise_baseline(namespace)
+            elif call_functions:
                 function_results = {
                     "upgrade_result": namespace["upgrade"](),
                     "downgrade_result": namespace["downgrade"](),
@@ -1992,8 +2029,11 @@ def _outer_control(
     }
 
 
-if sys.argv[1] == "measure":
-    _emit(_measure(Path(sys.argv[2]), sys.argv[3] == "1"))
+if sys.argv[1] in {"measure", "measure-baseline"}:
+    _emit(_measure(
+        Path(sys.argv[2]), sys.argv[3] == "1",
+        baseline=sys.argv[1] == "measure-baseline",
+    ))
 else:
     _emit(_outer_control(Path(sys.argv[2]), sys.argv[3], sys.argv[-1]))
 """
@@ -2096,32 +2136,32 @@ def test_python_function_derivation_keeps_docstring_only_denominator(
     )
 
 
-def test_merge_migration_noop_functions_are_exercised_by_coverage_suite(
+def test_current_baseline_functions_are_exercised_by_coverage_suite(
     tmp_path: Path,
 ) -> None:
     normalizer = _normalizer_module()
     migration_path = (
-        REPOSITORY_ROOT
-        / "alembic"
-        / "versions"
-        / "202509010001_merge_push_topics_and_email_heads.py"
+        REPOSITORY_ROOT / "alembic" / "versions" / "202611020000_mvp_baseline.py"
     )
 
     def measured_metric(*, call_functions: bool) -> dict[str, object]:
         measurement = _run_coverage_worker(
             tmp_path,
             "coverage-measurement-v1",
-            "measure",
+            "measure-baseline",
             str(migration_path),
             "1" if call_functions else "0",
         )
         if call_functions:
             assert measurement["upgrade_result"] is None
-            assert measurement["downgrade_result"] is None
+            assert measurement["downgrade_error"] == (
+                "The MVP baseline cannot be downgraded: reaching base or any earlier schema "
+                "is not a supported recovery path. Restore a consistent backup set instead."
+            )
         executed = measurement["executed_lines"]
         assert executed is not None
         metric = normalizer._derive_python_function_metric(
-            "alembic/versions/202509010001_merge_push_topics_and_email_heads.py",
+            "alembic/versions/202611020000_mvp_baseline.py",
             {line: True for line in executed},
         )
         assert metric is not None
@@ -2131,12 +2171,12 @@ def test_merge_migration_noop_functions_are_exercised_by_coverage_suite(
     called = measured_metric(call_functions=True)
     assert (uncalled["covered"], uncalled["total"], uncalled["percent"]) == (
         0,
-        2,
+        4,
         0.0,
     )
     assert (called["covered"], called["total"], called["percent"]) == (
-        2,
-        2,
+        4,
+        4,
         100.0,
     )
 

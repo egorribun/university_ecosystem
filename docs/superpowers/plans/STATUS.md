@@ -1594,7 +1594,7 @@ raw Alembic/Squawk, backend shards 0/1, Bundle Size and derived CI Success
 
 ### Prepared inactive recapture and ordered continuation
 
-The [new source-bound fixture](../../../tests/fixtures/historical148-squawk-capture-36f70a0f.json)
+The [new source-bound fixture](https://github.com/egorribun/university_ecosystem/blob/3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9/tests/fixtures/historical148-squawk-capture-36f70a0f.json)
 uses the actual 36f70a0f Alembic receipt after Pool privacy validation.
 The 17,031-byte ordinary and 18,373-byte expanded SQL remain byte-identical;
 13+24 warnings, raw exits 1/1 and empty reporter stderr are preserved.

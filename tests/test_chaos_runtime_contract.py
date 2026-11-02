@@ -23,7 +23,7 @@ from scripts.chaos import run_chaos_loadtest as chaos
 WORKFLOW = (
     Path(__file__).resolve().parents[1] / ".github/workflows/nightly-full-gate.yml"
 )
-SETUP_PYTHON = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+SETUP_PYTHON = "actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0"
 
 
 def _job() -> dict[str, Any]:
