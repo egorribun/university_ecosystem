@@ -409,19 +409,10 @@ services:
       PGUSER: "${POSTGRES_USER:-postgres}"
       PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}"
       POSTGRES_DB: "${POSTGRES_DB:-university}"
-      UE_MIGRATOR_DB_PASSWORD: "${UE_MIGRATOR_DB_PASSWORD:?UE_MIGRATOR_DB_PASSWORD is required - set in .env file}"
-      UE_APP_DB_PASSWORD: "${UE_APP_DB_PASSWORD:?UE_APP_DB_PASSWORD is required - set in .env file}"
-      UE_WORKER_DB_PASSWORD: "${UE_WORKER_DB_PASSWORD:?UE_WORKER_DB_PASSWORD is required - set in .env file}"
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        psql -d postgres -v ON_ERROR_STOP=1 \
-          -v db="$$POSTGRES_DB" \
-          -v migrator_password="$$UE_MIGRATOR_DB_PASSWORD" \
-          -v app_password="$$UE_APP_DB_PASSWORD" \
-          -v worker_password="$$UE_WORKER_DB_PASSWORD" \
-          -f /bootstrap/bootstrap-app-roles.sql
-        echo "[postgres-roles-init] Reconciled ue_migrator, ue_app and ue_worker."
+      UE_MIGRATOR_DB_PASSWORD: "${UE_MIGRATOR_DB_PASSWORD:-}"
+      UE_APP_DB_PASSWORD: "${UE_APP_DB_PASSWORD:-}"
+      UE_WORKER_DB_PASSWORD: "${UE_WORKER_DB_PASSWORD:-}"
+    entrypoint: ["/bin/sh", "/bootstrap/run-bootstrap.sh"]
     volumes:
       - ./infrastructure/postgres-roles:/bootstrap:ro
     depends_on:
@@ -1118,3 +1109,4 @@ volumes:
   valkey_data:
   revocation_valkey_data:
   nats-data:
+

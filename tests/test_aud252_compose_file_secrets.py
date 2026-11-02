@@ -26,6 +26,9 @@ _SECRET_NAMES = (
     "rate_limit_storage_uri",
     "revocation_redis_url",
     "postgres_password",
+    "ue_app_db_password",
+    "ue_worker_db_password",
+    "ue_migrator_db_password",
     "mfa_totp_encryption_keys",
     "vapid_private_key",
     "spotify_client_secret",
@@ -116,7 +119,13 @@ _PRODUCTION_SERVICE_SECRETS = {
         "ws_hub_internal_secret",
     },
     "postgres": {"postgres_password"},
-    "pgbouncer": {"postgres_password"},
+    "pgbouncer": {"ue_app_db_password", "ue_worker_db_password"},
+    "postgres-roles-init": {
+        "postgres_password",
+        "ue_app_db_password",
+        "ue_worker_db_password",
+        "ue_migrator_db_password",
+    },
 }
 _SERVICE_FILE_ENVIRONMENT = {
     "backend": {

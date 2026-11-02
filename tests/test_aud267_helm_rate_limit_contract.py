@@ -267,8 +267,14 @@ def test_shared_settings_workloads_project_dedicated_rate_limit_secret(
         if volume.get("secret", {}).get("secretName") == "university-connections"
     )
     projected_keys = {item["key"] for item in connection_volume["secret"]["items"]}
+    database_key = (
+        "migration-database-url" if workload == "migration" else "database-url"
+    )
+    assert env["DATABASE_URL_FILE"]["value"] == (
+        f"/run/secrets/university-connections/{database_key}"
+    )
     expected_keys = {
-        "database-url",
+        database_key,
         "redis-backend-url",
         "nats-auth-token",
         key_name,

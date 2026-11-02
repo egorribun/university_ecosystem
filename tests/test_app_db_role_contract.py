@@ -3,9 +3,9 @@
 Row-level security isolates tenant rows only while the connecting role is neither a
 superuser nor BYPASSRLS. These contracts keep every deployment surface on that model:
 the Compose files, the Helm chart, the environment examples, the role bootstrap and
-the launcher that generates its passwords. The database behaviour itself (isolation,
-DML-only grants, convergence on reruns) was proven against a live PostgreSQL 17 when
-the bootstrap was introduced; this module guards the wiring that keeps it true.
+the launcher that generates its passwords. Owned PostgreSQL regressions live in
+``test_app_db_role_bootstrap_postgres.py``; these source contracts do not substitute
+for running those database-behaviour checks against the final source.
 """
 
 from __future__ import annotations
@@ -133,12 +133,12 @@ def test_bootstrap_grants_are_dml_only_and_bypass_only_for_the_worker() -> None:
 
     # Membership in ue_rls_bypass is the only query-level authority; the worker is its
     # only grantee, and any drifted membership on the runtime login is revoked.
-    assert re.findall(r"GRANT ue_rls_bypass TO (\w+);", sql) == ["ue_worker"]
+    assert re.findall(r"GRANT ue_rls_bypass TO (\w+) WITH", sql) == ["ue_worker"]
     assert "REVOKE ue_rls_bypass FROM ue_app" in sql
 
     privilege_lines = [
         line
-        for line in sql.splitlines()
+        for line in (line.strip() for line in sql.splitlines())
         if line.startswith(("GRANT ", "ALTER DEFAULT PRIVILEGES"))
         and "ue_rls_bypass" not in line
         and "CONNECT" not in line
@@ -151,7 +151,7 @@ def test_bootstrap_grants_are_dml_only_and_bypass_only_for_the_worker() -> None:
         assert not forbidden.search(line), line
     assert any("ON TABLES" in line and "DELETE" in line for line in privilege_lines)
     assert any("ON SEQUENCES" in line for line in privilege_lines)
-    assert "REVOKE CREATE ON SCHEMA public FROM ue_app, ue_worker;" in sql
+    assert "REVOKE ALL ON SCHEMA public FROM ue_app, ue_worker;" in sql
 
 
 def test_role_bootstrap_runs_only_through_the_roles_job() -> None:
@@ -249,3 +249,51 @@ def test_configuration_reference_documents_each_login_role() -> None:
         "BYPASSRLS",
     ):
         assert token in document, token
+
+
+def test_bootstrap_connects_before_one_bounded_atomic_transaction() -> None:
+    sql = BOOTSTRAP_SQL.read_text(encoding="utf-8")
+    assert sql.count('\\c :"db"') == 1
+    assert sql.index('\\c :"db"') < sql.index("BEGIN;") < sql.index("CREATE ROLE")
+    assert sql.count("BEGIN;") == sql.count("COMMIT;") == 1
+    assert sql.rstrip().endswith("COMMIT;")
+    assert sql.index("SET LOCAL statement_timeout") < sql.index("pg_advisory_xact_lock")
+    assert "SET LOCAL lock_timeout = '10s';" in sql
+    assert "SET LOCAL statement_timeout = '60s';" in sql
+
+
+def test_bootstrap_rejects_unmanaged_role_edges_and_ownership() -> None:
+    sql = BOOTSTRAP_SQL.read_text(encoding="utf-8")
+    assert (
+        "ALTER ROLE ue_rls_bypass WITH NOLOGIN NOSUPERUSER NOCREATEDB "
+        "NOCREATEROLE NOREPLICATION NOBYPASSRLS;"
+    ) in sql
+    assert (
+        "GRANT ue_rls_bypass TO ue_worker WITH ADMIN FALSE, INHERIT TRUE, SET FALSE;"
+    ) in sql
+    assert "FROM pg_auth_members" in sql
+    assert "AND NOT admin_option AND inherit_option AND NOT set_option" in sql
+    assert "FROM pg_shdepend" in sql
+    assert "AND deptype = 'o'" in sql
+    assert "Unexpected runtime role membership; operator review required" in sql
+    assert "Runtime roles must not own database objects" in sql
+
+
+@pytest.mark.parametrize("objects", ["TABLES", "SEQUENCES"])
+def test_bootstrap_resets_global_and_schema_defaults_before_granting(
+    objects: str,
+) -> None:
+    sql = BOOTSTRAP_SQL.read_text(encoding="utf-8")
+    for scope in ("", " IN SCHEMA public"):
+        revoke = (
+            f"ALTER DEFAULT PRIVILEGES FOR ROLE ue_migrator{scope}\n"
+            f"    REVOKE ALL ON {objects} FROM ue_app, ue_worker;"
+        )
+        assert revoke in sql
+        assert sql.index(revoke) < sql.index(
+            "ALTER DEFAULT PRIVILEGES FOR ROLE ue_migrator IN SCHEMA public\n    GRANT"
+        )
+    assert "CROSS JOIN LATERAL aclexplode(defaults.defaclacl)" in sql
+    assert "privilege.grantee IN (0, 'ue_rls_bypass'::regrole)" in sql
+    assert "has_any_column_privilege" in sql
+    assert "has_sequence_privilege" in sql

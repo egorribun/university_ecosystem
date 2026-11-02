@@ -11,6 +11,9 @@
 #   CACHE_REDIS_URL_SOURCE_FILE=/etc/university/secrets/cache_redis_url
 #   RATE_LIMIT_STORAGE_URI_SOURCE_FILE=/etc/university/secrets/rate_limit_storage_uri
 #   REVOCATION_REDIS_URL_SOURCE_FILE=/etc/university/secrets/revocation_redis_url
+#   UE_APP_DB_PASSWORD_SOURCE_FILE=/etc/university/secrets/ue_app_db_password
+#   UE_WORKER_DB_PASSWORD_SOURCE_FILE=/etc/university/secrets/ue_worker_db_password
+#   UE_MIGRATOR_DB_PASSWORD_SOURCE_FILE=/etc/university/secrets/ue_migrator_db_password
 #   POSTGRES_PASSWORD_SOURCE_FILE=/etc/university/secrets/postgres_password
 #   MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE=/etc/university/secrets/mfa_totp_encryption_keys
 #   VAPID_PRIVATE_KEY_SOURCE_FILE=/etc/university/secrets/vapid_private_key
@@ -47,8 +50,10 @@
 # of 0400 suffices only when the exact host-mapped UID 10001 owns it; otherwise
 # grant a read ACL to that mapped UID (and traverse ACLs on parent directories).
 # PgBouncer's pinned image runs as Alpine postgres UID:GID 70:70; pgvector uses
-# Debian postgres UID:GID 999:999. This overlay mounts the same postgres_password
-# source into both, so grant read ACLs to both mapped identities. A service-specific
+# Debian postgres UID:GID 999:999. The pooler reads only app/worker
+# password files; roles-init reads all three role passwords and the bootstrap
+# password as UID 999. Grant role-file read ACLs to the required mapped identities.
+# A service-specific
 # Compose override can use separate source files if distinct ACLs are required. With
 # rootless Docker or user namespace remapping, grant access to the corresponding
 # host-mapped numeric IDs; deployment-owner 0400 alone is not sufficient.
@@ -62,9 +67,11 @@
 # the only ue_rls_bypass member among runtime services; MIGRATION_DATABASE_URL_SOURCE_FILE
 # is ue_migrator, mounted only into the migrations service. Provision all three with
 # infrastructure/postgres-roles/bootstrap-app-roles.sql. None may be the bootstrap
-# superuser. The pgbouncer service below authenticates only POSTGRES_USER; it must also
-# accept these three logins (auth_query or userlist) before this profile can connect as
-# them. That routing is not verified by this change.
+# superuser. Runtime URL files must use pgbouncer:5432; the migration URL must
+# use postgres:5432 directly, never the transaction pooler. Role-password files
+# must match their corresponding URL credentials (URL-encode passwords there).
+# PgBouncer receives only app/worker passwords and preserves each client identity.
+# Runtime connectivity and role isolation still require deployment-owner proof.
 # Source values for NATS, Redis, PostgreSQL, and SpiceDB must match the credentials
 # configured for those existing services. The TOTP active key ID is nonsecret and
 # must be supplied directly as MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID. File-backed
@@ -85,6 +92,12 @@ secrets:
     file: ${CACHE_REDIS_URL_SOURCE_FILE:?Set CACHE_REDIS_URL_SOURCE_FILE for production}
   revocation_redis_url:
     file: ${REVOCATION_REDIS_URL_SOURCE_FILE:?Set REVOCATION_REDIS_URL_SOURCE_FILE for production}
+  ue_app_db_password:
+    file: ${UE_APP_DB_PASSWORD_SOURCE_FILE:?Set UE_APP_DB_PASSWORD_SOURCE_FILE for production}
+  ue_worker_db_password:
+    file: ${UE_WORKER_DB_PASSWORD_SOURCE_FILE:?Set UE_WORKER_DB_PASSWORD_SOURCE_FILE for production}
+  ue_migrator_db_password:
+    file: ${UE_MIGRATOR_DB_PASSWORD_SOURCE_FILE:?Set UE_MIGRATOR_DB_PASSWORD_SOURCE_FILE for production}
   postgres_password:
     file: ${POSTGRES_PASSWORD_SOURCE_FILE:?Set POSTGRES_PASSWORD_SOURCE_FILE for production}
   mfa_totp_encryption_keys:
@@ -126,7 +139,7 @@ services:
     # in `docker inspect` or the process environment.
     # MOD-14-06: DATABASE_URL_FILE must contain a URL with host=pgbouncer (not
     # postgres) so connections go through PgBouncer in transaction pooling mode.
-    # Example: postgresql+asyncpg://university:<pass>@pgbouncer:5432/university
+    # Example: postgresql+asyncpg://ue_app:<pass>@pgbouncer:5432/university
     secrets:
       - secret_key
       - database_url
@@ -473,8 +486,10 @@ services:
       SPOTIFY_OAUTH_STATE_SECRET_FILE: !reset null
       SPOTIFY_CLIENT_ID: !reset null
     depends_on:
-      pgbouncer:
+      postgres:
         condition: service_healthy
+      postgres-roles-init:
+        condition: service_completed_successfully
     # Migrations need write access for Alembic temp files; no read_only here.
     security_opt:
       - no-new-privileges:true
@@ -503,38 +518,43 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets:
       - postgres_password
+  postgres-roles-init:
+    profiles: ["prod"]
+    user: "999:999"
+    environment:
+      PGUSER: "${POSTGRES_USER:-university}"
+      PGPASSWORD: !reset null
+      PGPASSWORD_FILE: /run/secrets/postgres_password
+      UE_MIGRATOR_DB_PASSWORD: !reset null
+      UE_MIGRATOR_DB_PASSWORD_FILE: /run/secrets/ue_migrator_db_password
+      UE_APP_DB_PASSWORD: !reset null
+      UE_APP_DB_PASSWORD_FILE: /run/secrets/ue_app_db_password
+      UE_WORKER_DB_PASSWORD: !reset null
+      UE_WORKER_DB_PASSWORD_FILE: /run/secrets/ue_worker_db_password
+    secrets:
+      - postgres_password
+      - ue_migrator_db_password
+      - ue_app_db_password
+      - ue_worker_db_password
 
-  # MOD-14-06 (audit 2026-03-18): PgBouncer connection pooler in transaction mode.
-  # The maintained edoburu image generates its config and SCRAM userlist at
-  # startup. The wrapper reads the database password from the mounted secret so
-  # it never appears in Compose environment metadata.
+  # Preserve client login identity: no forced user, auth_user or bootstrap secret.
   pgbouncer:
     image: edoburu/pgbouncer:v1.26.0-p0@sha256:b17551c776ef7e5769ef80b956d20f85e2fd25dd8912d31d58f782aad495b711
     profiles: ["prod"]
     restart: unless-stopped
     secrets:
-      - postgres_password
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        export DB_PASSWORD="$$(cat /run/secrets/postgres_password)"
-        exec /entrypoint.sh /usr/bin/pgbouncer /etc/pgbouncer/pgbouncer.ini
+      - ue_app_db_password
+      - ue_worker_db_password
+    entrypoint: ["/bin/sh", "/pooler/start.sh"]
+    volumes:
+      - ./infrastructure/pgbouncer:/pooler:ro
     environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: "${POSTGRES_DB:-university}"
-      DB_USER: "${POSTGRES_USER:-university}"
-      AUTH_TYPE: scram-sha-256
-      POOL_MODE: transaction
-      MAX_CLIENT_CONN: "1000"
-      DEFAULT_POOL_SIZE: "25"
-      # The Compose-managed PostgreSQL service has no server certificate.
-      # `prefer` still negotiates TLS when an external TLS-enabled DB is used.
-      SERVER_TLS_SSLMODE: prefer
-      ADMIN_USERS: "${POSTGRES_USER:-university}"
+      POSTGRES_DB: "${POSTGRES_DB:-university}"
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-roles-init:
+        condition: service_completed_successfully
     networks:
       - db_net
     read_only: true
@@ -554,7 +574,8 @@ services:
           cpus: '0.25'
           memory: 128M
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U \"$$DB_USER\""]
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "ue_app"]
       interval: 10s
       timeout: 5s
       retries: 5
+

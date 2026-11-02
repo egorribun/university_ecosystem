@@ -1825,15 +1825,17 @@ def test_production_pgbouncer_uses_a_supported_image_and_file_secret() -> None:
     assert compose["secrets"]["postgres_password"]["file"].startswith(
         "${POSTGRES_PASSWORD_SOURCE_FILE:"
     )
-    assert "postgres_password" in pgbouncer["secrets"]
+    assert set(pgbouncer["secrets"]) == {"ue_app_db_password", "ue_worker_db_password"}
     assert "postgres_password" in postgres["secrets"]
     assert postgres["environment"]["POSTGRES_PASSWORD_FILE"] == (
         "/run/secrets/postgres_password"
     )
-    assert pgbouncer["environment"]["POOL_MODE"] == "transaction"
-    assert pgbouncer["environment"]["SERVER_TLS_SSLMODE"] == "prefer"
+    pooler_start = _read("infrastructure/pgbouncer/start.sh")
+    assert "pool_mode = transaction" in pooler_start
+    assert "server_tls_sslmode = prefer" in pooler_start
     assert "5432" in " ".join(pgbouncer["healthcheck"]["test"])
-    assert services["migrations"]["depends_on"]["pgbouncer"]["condition"] == (
+    assert "pgbouncer" not in services["migrations"]["depends_on"]
+    assert services["migrations"]["depends_on"]["postgres"]["condition"] == (
         "service_healthy"
     )
 
