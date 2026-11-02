@@ -11,23 +11,24 @@ import (
 func TestWithSPIFFESilentFallbackOnNilClient(t *testing.T) {
 	client := NewInternalAPIAuthClientWithToken("http://localhost:8000", "", nil)
 
-	// Call WithSPIFFE with a nil spiffe.Client
-	client.WithSPIFFE(nil, "spiffe://university.ecosystem/ns/default/sa/app")
+	// A nil spiffe.Client is not a configuration error: the transport stays plaintext.
+	require.NoError(t, client.WithSPIFFE(nil, "spiffe://university.ecosystem/ns/default/sa/app"))
 
-	// Verify that transport TLSClientConfig remains nil (plaintext HTTP)
-	if tr, ok := client.httpClient.Transport.(*http.Transport); ok {
-		if tr.TLSClientConfig != nil {
-			t.Fatalf("expected TLSClientConfig to be nil when spiffeClient is nil")
-		}
-	}
+	transport, ok := client.httpClient.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.Nil(t, transport.TLSClientConfig)
 }
 
 func TestWithSPIFFEInvalidClientFailsClosed(t *testing.T) {
 	client := NewInternalAPIAuthClientWithToken("http://localhost:8000", "", nil)
 
-	require.Panics(t, func() {
-		client.WithSPIFFE(&spiffe.Client{}, "spiffe://university.ecosystem/ns/default/sa/app")
-	})
+	// The refusal is returned, not panicked, so startup reports it through main().
+	require.ErrorContains(t, client.WithSPIFFE(&spiffe.Client{}, "spiffe://university.ecosystem/ns/default/sa/app"),
+		"must use https when SPIFFE mTLS is configured")
+
+	transport, ok := client.httpClient.Transport.(*http.Transport)
+	require.True(t, ok)
+	require.Nil(t, transport.TLSClientConfig)
 }
 
 func TestWithSPIFFEEmptyBackendIDSkipsConfiguration(t *testing.T) {
@@ -35,7 +36,7 @@ func TestWithSPIFFEEmptyBackendIDSkipsConfiguration(t *testing.T) {
 
 	// An enabled SPIFFE client without a backend identity is deliberately a
 	// no-op: there is no peer identity to validate and no TLS config to install.
-	client.WithSPIFFE(&spiffe.Client{}, "")
+	require.NoError(t, client.WithSPIFFE(&spiffe.Client{}, ""))
 
 	transport, ok := client.httpClient.Transport.(*http.Transport)
 	require.True(t, ok)

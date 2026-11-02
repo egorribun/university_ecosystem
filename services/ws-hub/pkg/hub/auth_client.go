@@ -156,20 +156,23 @@ func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *re
 // WithSPIFFE configures the client's HTTP transport to use SPIFFE mTLS when communicating with the backend.
 // AUD-373: the backend hop carries the internal token and identity, and an http
 // base URL would silently discard the TLS config, so the base URL must be https.
-func (c *InternalAPIAuthClient) WithSPIFFE(spiffeClient *spiffe.Client, backendSpiffeID string) *InternalAPIAuthClient {
-	if spiffeClient != nil && backendSpiffeID != "" {
-		if !isHTTPSBaseURL(c.baseURL) {
-			panic(fmt.Sprintf("auth client base URL %q must use https when SPIFFE mTLS is configured", c.baseURL))
-		}
-		tlsCfg, err := authClientTLSConfigFunc(spiffeClient, backendSpiffeID)
-		if err != nil {
-			panic(fmt.Sprintf("failed to create SPIFFE client TLS config for auth client: %v", err))
-		}
-		if tr, ok := c.httpClient.Transport.(*http.Transport); ok {
-			tr.TLSClientConfig = tlsCfg
-		}
+// Refusals are returned rather than panicking so that main() can report them
+// through the startup error path (AGENTS.md 2.1). On error the transport is untouched.
+func (c *InternalAPIAuthClient) WithSPIFFE(spiffeClient *spiffe.Client, backendSpiffeID string) error {
+	if spiffeClient == nil || backendSpiffeID == "" {
+		return nil
 	}
-	return c
+	if !isHTTPSBaseURL(c.baseURL) {
+		return fmt.Errorf("auth client base URL %q must use https when SPIFFE mTLS is configured", c.baseURL)
+	}
+	tlsCfg, err := authClientTLSConfigFunc(spiffeClient, backendSpiffeID)
+	if err != nil {
+		return fmt.Errorf("failed to create SPIFFE client TLS config for auth client: %w", err)
+	}
+	if tr, ok := c.httpClient.Transport.(*http.Transport); ok {
+		tr.TLSClientConfig = tlsCfg
+	}
+	return nil
 }
 
 // isHTTPSBaseURL reports whether raw is an absolute https URL with a host.

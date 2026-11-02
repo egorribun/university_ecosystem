@@ -444,18 +444,20 @@ func (c *Config) BackendMTLSEnabled() bool {
 	return c.SpiffeEnabled || c.InternalHTTPMTLSEnabled
 }
 
-// validateBackendTransport fails closed when internal backend mTLS is requested
-// but the backend URL would carry token-bearing requests in plaintext (AUD-373).
+// validateBackendTransport fails closed when backend mTLS is requested but the
+// backend URL would carry token-bearing requests in plaintext (AUD-373). Both
+// SPIFFE_ENABLED and INTERNAL_HTTP_MTLS_ENABLED install the backend TLS config,
+// which a plaintext transport silently ignores, so both require https.
 func validateBackendTransport(cfg *Config) error {
-	if !cfg.InternalHTTPMTLSEnabled {
+	if !cfg.BackendMTLSEnabled() {
 		return nil
 	}
 	backend, err := url.Parse(cfg.BackendURL)
 	if err != nil || backend.Scheme != "https" || backend.Host == "" {
-		return fmt.Errorf("BACKEND_URL must be an https URL when INTERNAL_HTTP_MTLS_ENABLED=true")
+		return fmt.Errorf("BACKEND_URL must be an https URL when backend mTLS is enabled (SPIFFE_ENABLED or INTERNAL_HTTP_MTLS_ENABLED=true)")
 	}
 	if _, err := spiffeid.FromString(cfg.BackendSpiffeID); err != nil {
-		return fmt.Errorf("BACKEND_SPIFFE_ID must be a canonical SPIFFE ID when INTERNAL_HTTP_MTLS_ENABLED=true: %w", err)
+		return fmt.Errorf("BACKEND_SPIFFE_ID must be a canonical SPIFFE ID when backend mTLS is enabled: %w", err)
 	}
 	return nil
 }

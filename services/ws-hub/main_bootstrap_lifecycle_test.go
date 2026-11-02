@@ -249,10 +249,11 @@ func TestSetupHub_ConfiguresSPIFFEAuthClient(t *testing.T) {
 	resetBootstrapSeams(t)
 	// Exercise the production default wrapper with a disabled SPIFFE client
 	// before replacing it with the deterministic success seam below.
-	configureAuthSPIFFEFunc(hub.NewInternalAPIAuthClientWithToken("http://auth.test", "", nil), nil, "")
+	require.NoError(t, configureAuthSPIFFEFunc(hub.NewInternalAPIAuthClientWithToken("http://auth.test", "", nil), nil, ""))
 	configured := false
-	configureAuthSPIFFEFunc = func(*hub.InternalAPIAuthClient, *spiffe.Client, string) {
+	configureAuthSPIFFEFunc = func(*hub.InternalAPIAuthClient, *spiffe.Client, string) error {
 		configured = true
+		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -261,6 +262,29 @@ func TestSetupHub_ConfiguresSPIFFEAuthClient(t *testing.T) {
 	require.NotNil(t, h)
 	h.Stop()
 	assert.True(t, configured)
+}
+
+// A refused SPIFFE configuration must reach the startup error path rather than
+// panic: the production seam rejects a plaintext backend URL.
+func TestSetupHub_ReturnsSPIFFEAuthConfigurationRefusal(t *testing.T) {
+	resetBootstrapSeams(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := &config.Config{SpiffeEnabled: true, BackendURL: "http://auth.test", BackendSpiffeID: "spiffe://backend"}
+	h, err := setupHubWithRevocation(ctx, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, &spiffe.Client{})
+	require.ErrorContains(t, err, "configure backend auth SPIFFE mTLS")
+	require.ErrorContains(t, err, "must use https when SPIFFE mTLS is configured")
+	assert.Nil(t, h)
+}
+
+func TestSetupHub_PropagatesInjectedSPIFFEConfigurationError(t *testing.T) {
+	resetBootstrapSeams(t)
+	configureAuthSPIFFEFunc = func(*hub.InternalAPIAuthClient, *spiffe.Client, string) error {
+		return errors.New("synthetic SPIFFE configuration failure")
+	}
+	h, err := setupHubWithRevocation(context.Background(), &config.Config{SpiffeEnabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil, nil, &spiffe.Client{})
+	require.ErrorContains(t, err, "synthetic SPIFFE configuration failure")
+	assert.Nil(t, h)
 }
 
 func TestRunServer_UsesDefaultWebTransportPortAndReportsHTTPShutdownError(t *testing.T) {

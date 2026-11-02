@@ -111,26 +111,25 @@ func TestSetupJWKSUsesBackendClientCertificate(t *testing.T) {
 
 	client := h.newJWKSHTTPClient(server.URL)
 	transport, ok := client.Transport.(*http.Transport)
-	if !ok || transport == nil || transport.TLSClientConfig == nil {
-		t.Fatal("internal JWKS client has no TLS transport")
-	}
+	require.True(t, ok, "internal JWKS client must carry a custom transport")
+	require.NotNil(t, transport.TLSClientConfig, "internal JWKS client has no TLS configuration")
 	assert.NotSame(t, configured, transport.TLSClientConfig)
 	assert.True(t, transport.DisableKeepAlives)
+	// Parity with the file-processor JWKS transport: both the handshake and the
+	// response headers share the refresh deadline, so a stalled backend cannot
+	// hold a refresh past its bound.
+	assert.Equal(t, jwksRefreshTimeout, transport.TLSHandshakeTimeout)
+	assert.Equal(t, jwksRefreshTimeout, transport.ResponseHeaderTimeout)
 	assert.Nil(t, transport.TLSClientConfig.ClientSessionCache)
 	assert.NotNil(t, configured.ClientSessionCache)
 	require.NoError(t, h.SetupJWKS(context.Background(), server.URL))
 	require.NoError(t, h.refreshJWKS(context.Background()))
 	assert.Positive(t, authenticatedRequests.Load())
 	require.NotNil(t, client.CheckRedirect)
-	if client.CheckRedirect == nil {
-		t.Fatal("missing internal JWKS redirect guard")
-	}
 	assert.ErrorIs(t, client.CheckRedirect(nil, nil), http.ErrUseLastResponse)
 	response, err := client.Get(server.URL + "/redirect")
 	require.NoError(t, err)
-	if response == nil {
-		t.Fatal("redirect request returned no response")
-	}
+	require.NotNil(t, response)
 	assert.Equal(t, http.StatusFound, response.StatusCode)
 	require.NoError(t, response.Body.Close())
 	assert.Zero(t, redirectedRequests.Load(), "redirect must not reach another origin")

@@ -35,38 +35,28 @@ func TestJWKSHTTPClientUsesConfiguredBackendTLS(t *testing.T) {
 
 	var configured JWTMiddleware
 	configured.SetJWKSTLSConfig(&tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12, ClientSessionCache: tls.NewLRUClientSessionCache(1)})
-	require.NotNil(t, configured.JWKSTLSConfig())
+	original := configured.JWKSTLSConfig()
+	require.NotNil(t, original)
 
 	client := configured.newJWKSHTTPClient()
 	transport, ok := client.Transport.(*http.Transport)
-	if !ok || transport == nil || transport.TLSClientConfig == nil {
-		t.Fatal("missing internal JWKS TLS transport")
-	}
+	require.True(t, ok, "internal JWKS client must carry a custom transport")
+	require.NotNil(t, transport.TLSClientConfig, "internal JWKS client must carry the backend TLS configuration")
 	assert.True(t, transport.DisableKeepAlives)
 	assert.Nil(t, transport.TLSClientConfig.ClientSessionCache)
-	original := configured.JWKSTLSConfig()
-	if original == nil {
-		t.Fatal("missing original TLS configuration")
-	}
 	assert.NotNil(t, original.ClientSessionCache)
 	assert.NotSame(t, original, transport.TLSClientConfig)
 
 	resp, err := client.Get(server.URL)
 	require.NoError(t, err)
-	if resp == nil {
-		t.Fatal("TLS request returned no response")
-	}
+	require.NotNil(t, resp)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	if client.CheckRedirect == nil {
-		t.Fatal("missing internal JWKS redirect guard")
-	}
+	require.NotNil(t, client.CheckRedirect, "internal JWKS client must install the redirect guard")
 	assert.ErrorIs(t, client.CheckRedirect(nil, nil), http.ErrUseLastResponse)
 	redirectResponse, err := client.Get(server.URL + "/redirect")
 	require.NoError(t, err)
-	if redirectResponse == nil {
-		t.Fatal("redirect returned no response")
-	}
+	require.NotNil(t, redirectResponse)
 	assert.Equal(t, http.StatusFound, redirectResponse.StatusCode)
 	require.NoError(t, redirectResponse.Body.Close())
 	assert.Zero(t, redirected.Load(), "internal JWKS must not downgrade or follow another origin")
@@ -76,6 +66,8 @@ func TestJWKSHTTPClientUsesConfiguredBackendTLS(t *testing.T) {
 	assert.Nil(t, defaults.newJWKSHTTPClient().Transport)
 	rejected, err := defaults.newJWKSHTTPClient().Get(server.URL)
 	if rejected != nil {
+		// http.Client returns a response only alongside a nil error, so this close
+		// is not expected to run; it keeps the body-close contract explicit for bodyclose.
 		require.NoError(t, rejected.Body.Close())
 	}
 	require.Error(t, err, "default verification must reject a certificate outside the system roots")

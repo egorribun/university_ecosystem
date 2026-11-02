@@ -316,7 +316,7 @@ func TestInitTracer_TLS(t *testing.T) {
 func TestRun_SpiffeInitializationFailureReturnsError(t *testing.T) {
 	t.Setenv("GATEWAY_PORT", "0")
 	t.Setenv("JWT_SECRET", "test-secret-at-least-32-characters-long")
-	t.Setenv("BACKEND_URL", "http://localhost:8080")
+	t.Setenv("BACKEND_URL", "https://localhost:8080")
 	t.Setenv("REDIS_URL", "")
 	t.Setenv("GRPC_USE_TLS", "false")
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
@@ -362,6 +362,7 @@ func TestRun_TracerFailureStillPropagatesGRPCFailure(t *testing.T) {
 
 func TestRun_EnabledSPIFFEWithNilClientFailsClosed(t *testing.T) {
 	setValidRunEnvironment(t)
+	t.Setenv("BACKEND_URL", "https://localhost:8080")
 	t.Setenv("SPIFFE_ENABLED", "true")
 	oldClient := newSpiffeClientFunc
 	t.Cleanup(func() { newSpiffeClientFunc = oldClient })
@@ -375,6 +376,7 @@ func TestRun_EnabledSPIFFEWithNilClientFailsClosed(t *testing.T) {
 
 func TestRun_SpiffeCloseErrorDoesNotMaskStartupFailure(t *testing.T) {
 	setValidRunEnvironment(t)
+	t.Setenv("BACKEND_URL", "https://localhost:8080")
 	t.Setenv("SPIFFE_ENABLED", "true")
 	oldClient := newSpiffeClientFunc
 	oldClose := closeSpiffeClientFunc

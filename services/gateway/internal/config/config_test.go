@@ -707,6 +707,8 @@ func TestValidateConfigRequiresStrongInternalHMACSecretInRelease(t *testing.T) {
 		Environment:                    "production",
 		GrpcUseTLS:                     true,
 		SpiffeEnabled:                  true,
+		BackendURL:                     "https://backend:8000",
+		BackendSpiffeID:                "spiffe://university.ecosystem/ns/default/sa/app",
 		FileProcessingCapabilitySecret: randomStrongTestValue(t),
 	}
 
@@ -754,6 +756,8 @@ func TestValidateConfigRequiresFileProcessingCapabilitySecretInRelease(t *testin
 		Environment:                    "production",
 		GrpcUseTLS:                     true,
 		SpiffeEnabled:                  true,
+		BackendURL:                     "https://backend:8000",
+		BackendSpiffeID:                "spiffe://university.ecosystem/ns/default/sa/app",
 		InternalHMACSecret:             randomStrongTestValue(t),
 		FileProcessingCapabilitySecret: "", // deliberately missing
 	}

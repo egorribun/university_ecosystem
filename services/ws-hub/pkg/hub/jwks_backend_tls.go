@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 )
 
 // newJWKSHTTPClient reuses the authenticated backend's TLS identity only for
@@ -28,10 +27,13 @@ func (h *Hub) newJWKSHTTPClient(endpoint string) *http.Client {
 		return client
 	}
 	clientTLS.ClientSessionCache = nil
+	// Handshake and response-header waits share the refresh deadline, matching the
+	// file-processor JWKS transport: a stalled backend cannot hold a refresh past it.
 	client.Transport = &http.Transport{
-		TLSClientConfig:     clientTLS,
-		TLSHandshakeTimeout: 5 * time.Second,
-		DisableKeepAlives:   true,
+		TLSClientConfig:       clientTLS,
+		TLSHandshakeTimeout:   jwksRefreshTimeout,
+		ResponseHeaderTimeout: jwksRefreshTimeout,
+		DisableKeepAlives:     true,
 	}
 	// A redirect must never send the workload identity to a different origin.
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {

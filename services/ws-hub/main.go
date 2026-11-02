@@ -45,8 +45,8 @@ var (
 	closeSpiffeClientFunc   = func(client *spiffe.Client) error { return client.Close() }
 	setupJWKSFunc           = func(h *hub.Hub, ctx context.Context, url string) error { return h.SetupJWKS(ctx, url) }
 	subscribeNATSFunc       = func(h *hub.Hub, ctx context.Context) error { return h.SubscribeToNATS(ctx) }
-	configureAuthSPIFFEFunc = func(client *hub.InternalAPIAuthClient, spiffeClient *spiffe.Client, serverID string) {
-		client.WithSPIFFE(spiffeClient, serverID)
+	configureAuthSPIFFEFunc = func(client *hub.InternalAPIAuthClient, spiffeClient *spiffe.Client, serverID string) error {
+		return client.WithSPIFFE(spiffeClient, serverID)
 	}
 	healthNATSConnectedFunc   = func(conn *nats.Conn) bool { return conn != nil && conn.IsConnected() }
 	healthRedisConfiguredFunc = func(client *redis.Client) bool { return client != nil }
@@ -362,7 +362,10 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
 			return nil, http.ErrServerClosed
 		}
-		configureAuthSPIFFEFunc(authClient, spiffeClient, cfg.BackendSpiffeID)
+		if err := configureAuthSPIFFEFunc(authClient, spiffeClient, cfg.BackendSpiffeID); err != nil {
+			logger.ErrorContext(ctx, "Failed to configure SPIFFE mTLS for backend auth client", "err", err)
+			return nil, fmt.Errorf("configure backend auth SPIFFE mTLS: %w", err)
+		}
 	}
 	authClient.StartEviction(ctx)
 	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
