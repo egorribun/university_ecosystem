@@ -503,6 +503,39 @@ def test_artifact_and_runbook_metadata_are_mandatory() -> None:
     assert any("runbook does not exist" in error for error in errors)
 
 
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "lcov.info",
+        "coverage-final.json",
+        "coverage-provenance.json",
+        "coverage-source-snapshot.json",
+    ],
+)
+def test_node_actions_coverage_artifact_omission_fails_closed(filename: str) -> None:
+    value = _catalog()
+    ci = next(
+        entry
+        for entry in value["workflows"]
+        if entry["path"] == ".github/workflows/ci.yml"
+    )
+    artifact = next(
+        entry
+        for entry in ci["jobs"]["coverage-policy-gate"]["artifacts"]
+        if entry["name_pattern"].startswith("quality-evidence-")
+    )
+    path = f"artifacts/coverage/node-actions/{filename}"
+    paths = artifact["path_pattern"].splitlines(keepends=True)
+    assert paths.count(f"{path}\n") == 1
+    artifact["path_pattern"] = "".join(line for line in paths if line != f"{path}\n")
+
+    errors = _errors(value)
+    assert any(
+        "coverage-policy-gate" in error and "artifact metadata does not match" in error
+        for error in errors
+    ), errors
+
+
 def test_schema_rejects_unknown_profile_fields() -> None:
     value = _catalog()
     profiles = value["profiles"]
