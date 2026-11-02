@@ -24,12 +24,17 @@ def test_roles_init_uses_secret_files_without_password_arguments() -> None:
         assert environment[f"{name}_FILE"].startswith("/run/secrets/")
     assert base["entrypoint"] == ["/bin/sh", "/bootstrap/run-bootstrap.sh"]
     assert "command" not in base
+    full = _compose("docker-compose.full.yml")["services"]["postgres-roles-init"]
+    assert full["entrypoint"] == base["entrypoint"]
+    assert "command" not in full
     wrapper = (ROOT / "infrastructure/postgres-roles/run-bootstrap.sh").read_text()
     assert "psql -X --no-password" in wrapper
     assert "-v migrator_password" not in wrapper
     assert "-v app_password" not in wrapper
     assert "-v worker_password" not in wrapper
-    assert ">/dev/null 2>&1" in wrapper
+    assert "2>&1 >/dev/null" in wrapper
+    assert "| collect_outcome" in wrapper
+    assert "-v VERBOSITY=sqlstate -v SHOW_CONTEXT=never" in wrapper
     for setting in (
         "log_statement=none",
         "log_min_error_statement=panic",

@@ -4523,6 +4523,159 @@ def _assert_no_ignored_in_place_build_sources() -> None:
         )
 
 
+_LIVE_BOOTSTRAP_DIAGNOSTIC_MAX_BYTES = 4096
+_LIVE_BOOTSTRAP_INSPECT_FORMAT = (
+    '{"Id":{{json .Id}},"Name":{{json .Name}},"Image":{{json .Image}},'
+    '"Config":{"Image":{{json .Config.Image}},"Labels":{{json .Config.Labels}}},'
+    '"State":{"Running":{{json .State.Running}},"Status":{{json .State.Status}},'
+    '"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}}},'
+    '"Mounts":{{json .Mounts}}}'
+)
+
+
+def _parse_bootstrap_diagnostic(stdout: bytes, stderr: bytes) -> tuple[int, str]:
+    """Discard log content; accept one complete, finite wrapper metadata record."""
+    if (
+        not isinstance(stdout, bytes)
+        or not isinstance(stderr, bytes)
+        or len(stdout) + len(stderr) > _LIVE_BOOTSTRAP_DIAGNOSTIC_MAX_BYTES
+        or any(stream and not stream.endswith(b"\n") for stream in (stdout, stderr))
+    ):
+        raise StandError("bootstrap diagnostic framing is unavailable")
+    rows: list[tuple[int, str]] = []
+    for stream in (stdout, stderr):
+        for line in stream.split(b"\n"):
+            match = re.fullmatch(
+                rb"\[postgres-roles-init\] phase=reconcile exit=([1-9][0-9]{0,2}) "
+                rb"sqlstate=([0-9A-Z]{5}|UNKNOWN)",
+                line,
+            )
+            if match is not None and int(match[1]) <= 255:
+                rows.append((int(match[1]), match[2].decode("ascii")))
+    if len(rows) != 1:
+        raise StandError("bootstrap diagnostic record is unavailable")
+    return rows[0]
+
+
+def _bootstrap_container_pin(
+    owner: StandOwner,
+    evidence: ComposeResourceEvidence,
+    *,
+    deadline: float,
+    context: _LiveDockerReadContext,
+) -> tuple[str, str, int]:
+    output = _docker_output(
+        [
+            "ps",
+            "--all",
+            "--quiet",
+            "--no-trunc",
+            "--filter",
+            f"label=com.docker.compose.project={owner.project_name}",
+            "--filter",
+            "label=com.docker.compose.service=postgres-roles-init",
+        ],
+        "bootstrap container selection is unavailable",
+        deadline=deadline,
+        docker_context=context,
+    )
+    ids = output.splitlines()
+    if len(ids) != 1 or re.fullmatch(r"[0-9a-f]{64}", ids[0]) is None:
+        raise StandError("bootstrap container selection is ambiguous")
+    raw = _docker_output(
+        [
+            "inspect",
+            "--type",
+            "container",
+            "--format",
+            _LIVE_BOOTSTRAP_INSPECT_FORMAT,
+            ids[0],
+        ],
+        "bootstrap container identity is unavailable",
+        deadline=deadline,
+        docker_context=context,
+    )
+    try:
+        record = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_docker_json_keys,
+            parse_constant=_reject_nonstandard_docker_json_constant,
+        )
+    except (json.JSONDecodeError, _DockerProjectionError):
+        raise StandError("bootstrap container identity is malformed") from None
+    if not isinstance(record, dict):
+        raise StandError("bootstrap container identity is malformed")
+    inspected = _core_container_record_from_inspect(ids[0], owner, evidence, record)
+    state = record.get("State")
+    config = record.get("Config")
+    labels = config.get("Labels") if isinstance(config, dict) else None
+    exit_code = state.get("ExitCode") if isinstance(state, dict) else None
+    if (
+        inspected.service != "postgres-roles-init"
+        or inspected.running
+        or inspected.status != "exited"
+        or not isinstance(state, dict)
+        or state.get("OOMKilled") is not False
+        or not isinstance(labels, dict)
+        or labels.get("com.docker.compose.oneoff") != "False"
+        or type(exit_code) is not int
+        or not 1 <= exit_code <= 255
+    ):
+        raise StandError("bootstrap container has no verified failed exit")
+    return ids[0], inspected.identity, exit_code
+
+
+def _capture_owned_bootstrap_diagnostic(owner: StandOwner) -> str:
+    """Read only one signed initializer, pinning identity around a bounded read."""
+    deadline = time.monotonic() + 10.0
+    context = _new_live_docker_read_context()
+    _assert_core_owner_unchanged(owner, deadline=deadline, docker_context=context)
+    evidence = _verify_stand_owner_compose_resources(
+        WORKTREE, owner, deadline=deadline, docker_context=context
+    )
+    if "postgres-roles-init" not in evidence.managed_services:
+        raise StandError("bootstrap service is outside the signed closure")
+    pin = _bootstrap_container_pin(owner, evidence, deadline=deadline, context=context)
+    completed = _run_live_bounded_read(
+        ["docker", "logs", "--tail", "32", pin[0]],
+        context=context,
+        deadline=deadline,
+        maximum_bytes=_LIVE_BOOTSTRAP_DIAGNOSTIC_MAX_BYTES,
+        command_timeout_seconds=3.0,
+    )
+    if completed.returncode != 0:
+        raise StandError("bootstrap diagnostic read failed")
+    exit_code, sqlstate = _parse_bootstrap_diagnostic(
+        completed.stdout, completed.stderr
+    )
+    _assert_core_owner_unchanged(owner, deadline=deadline, docker_context=context)
+    if evidence != _verify_stand_owner_compose_resources(
+        WORKTREE, owner, deadline=deadline, docker_context=context
+    ) or pin != _bootstrap_container_pin(
+        owner, evidence, deadline=deadline, context=context
+    ):
+        raise StandError("bootstrap ownership or identity changed during capture")
+    _assert_live_docker_read_context(context)
+    _live_probe_remaining(deadline)
+    if exit_code != pin[2]:
+        raise StandError("bootstrap diagnostic does not match the verified exit")
+    return f"[postgres-roles-init] phase=reconcile exit={exit_code} sqlstate={sqlstate}"
+
+
+def _run_owned_start_command(
+    command: Sequence[str], owner: StandOwner, environment: dict[str, str]
+) -> None:
+    try:
+        _run(command, cwd=WORKTREE, env=environment)
+    except subprocess.CalledProcessError as error:
+        try:
+            print(_capture_owned_bootstrap_diagnostic(owner))
+        finally:
+            # Diagnostic failures, including output errors, never replace startup.
+            # Suppress their context so no private read/error content is rendered.
+            raise error from None
+
+
 def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
     global SOURCE_SHA
     if not IN_PLACE_MODE:
@@ -4743,7 +4896,7 @@ def _up_locked(ref: str, stack: str = LIVE_STACK_FULL) -> None:
         )
     if allow_existing_owned_volumes:
         start_command.append("-AllowExistingOwnedVolumes")
-    _run(start_command, cwd=WORKTREE, env=env)
+    _run_owned_start_command(start_command, owner, env)
     _configure_live_trusted_proxy_peers(
         owner, env, _verify_stand_owner_compose_resources(WORKTREE, owner)
     )
