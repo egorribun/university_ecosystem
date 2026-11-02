@@ -1623,3 +1623,85 @@ Baseline **304**, Gitleaks **27**, the **449/512** audit ledger, all **78** requ
 context/app pairs, hooks and coverage floors remain unchanged. No inline
 allowlist comment is added. Source/data review is not a passing hosted scan,
 test execution, audit acceptance or release approval.
+
+
+## Deleted-source baseline retirement (2026-11-02)
+
+Under the owner's existing permission to remove entries whose source file was
+deleted, the baseline retires exactly **62 identities across 47 deleted paths**
+from the 304-identity checkpoint, leaving **242**. This is deletion-only:
+all retained records, relative ordering, line numbers, classifications, detector
+settings, filters, version and generated timestamp are unchanged. The timestamp
+remains the previous scanner timestamp; this edit is not a fresh scan result.
+
+The exact deletion commits are:
+
+- [Skill-mirror removal](https://github.com/egorribun/university_ecosystem/commit/a4d5ad402e4e9509a2812edafc868f988403fba0): 19 identities across 13 paths.
+- [Dead logging-test removal](https://github.com/egorribun/university_ecosystem/commit/b16a40c2b316522841108615d602573b854d1008): one identity in one path.
+- [ADR-051 migration squash](https://github.com/egorribun/university_ecosystem/commit/2eb51a77e683896f6138c1fd237370c7edd434ab): 42 identities across 33 paths.
+
+For every path, its blob exists in the deletion commit's parent tree, is absent
+from that commit's tree, and remains absent at the cdc64d3 checkpoint. These are
+repository deletions, not assumptions about ignored or local-only files.
+The earlier decision retaining 20 older stale entries remains historical; this
+separate review now establishes their deletion together with the 42 migration
+entries. Restoration of a source file is not covered by its retired baseline
+entry. New or changed findings remain blocking under the existing verifier.
+
+| Deleted source path | Retired identities |
+| --- | ---: |
+| `.opencode/skills/api-design-principles/references/rest-best-practices.md` | 1 |
+| `.opencode/skills/api-endpoint-builder/SKILL.md` | 2 |
+| `.opencode/skills/api-security-best-practices/SKILL.md` | 1 |
+| `.opencode/skills/fastapi-templates/resources/implementation-playbook.md` | 1 |
+| `.opencode/skills/javascript-testing-patterns/resources/implementation-playbook.md` | 3 |
+| `.opencode/skills/k6-load-testing/SKILL.md` | 1 |
+| `.opencode/skills/pci-compliance/SKILL.md` | 1 |
+| `.opencode/skills/playwright-skill/API_REFERENCE.md` | 2 |
+| `.opencode/skills/postgres-best-practices/rules/security-privileges.md` | 1 |
+| `.opencode/skills/python-testing-patterns/resources/implementation-playbook.md` | 2 |
+| `.opencode/skills/secrets-management/SKILL.md` | 1 |
+| `.opencode/skills/security-scanning-security-sast/SKILL.md` | 1 |
+| `.opencode/skills/sql-injection-testing/SKILL.md` | 2 |
+| `alembic/versions/1b15294cc8d7_add_pgvector_embeddings.py` | 2 |
+| `alembic/versions/202501200001_add_english_fields_to_events.py` | 1 |
+| `alembic/versions/202601130001_add_performance_indexes.py` | 1 |
+| `alembic/versions/202601260001_add_outbox_columns_to_stored_events.py` | 1 |
+| `alembic/versions/202602270001_merge_heads.py` | 1 |
+| `alembic/versions/2956fd6376cc_fix_groups_id_sequence.py` | 1 |
+| `alembic/versions/2bc18c38157c_add_department_and_position_to_user.py` | 1 |
+| `alembic/versions/2e93eecad1e0_add_role_constraints.py` | 1 |
+| `alembic/versions/306c0a36d925_merge_heads.py` | 2 |
+| `alembic/versions/3081a2b724cc_create_dead_letter_jobs_table.py` | 2 |
+| `alembic/versions/30fa2627aa5e_add_lesson_type_to_schedule.py` | 1 |
+| `alembic/versions/31e81f57c53d_add_signature_to_data_access_logs.py` | 2 |
+| `alembic/versions/3f1cf9168805_decompose_user_model.py` | 1 |
+| `alembic/versions/4e39503c07cd_add_outbox_notification_trigger.py` | 2 |
+| `alembic/versions/57bdf5bf9375_resolve_role_case_mismatch_and_drop_.py` | 1 |
+| `alembic/versions/65319a2b1d7f_add_english_fields_to_news.py` | 1 |
+| `alembic/versions/6a898bba5589_implement_partitioning.py` | 1 |
+| `alembic/versions/6bdc356a128b_add_is_used_to_invite_codes.py` | 2 |
+| `alembic/versions/7db0b7a03e37_add_speaker_and_photo_url_to_events.py` | 1 |
+| `alembic/versions/933372f5da9a_init_schema.py` | 1 |
+| `alembic/versions/96809b6dc35d_add_chat_models.py` | 2 |
+| `alembic/versions/a4bfc1ba3076_add_invite_codes_table.py` | 1 |
+| `alembic/versions/ab93b27831f3_add_webauthn_support_v2.py` | 1 |
+| `alembic/versions/b85f4f3edc89_add_attachments.py` | 1 |
+| `alembic/versions/bd67902ca2cd_emove_author_from_news_add_image_url.py` | 1 |
+| `alembic/versions/c8d0b5515f2d_add_schedule_and_news_indexes.py` | 1 |
+| `alembic/versions/d0b0cb4c1910_merge_data_access_logs_head.py` | 1 |
+| `alembic/versions/db31ef5d7ea4_add_trusted_devices.py` | 1 |
+| `alembic/versions/ede66395ff71_merge_chat_message_index_and_.py` | 1 |
+| `alembic/versions/f2d2414a6b67_add_functional_email_index.py` | 1 |
+| `alembic/versions/f9d2b1f5e2d0_create_push_subscriptions_table.py` | 2 |
+| `alembic/versions/ffe470bc9ca2_merge_quiet_hours_push_subscriptions.py` | 2 |
+| `alembic/versions/fix_sender_id_type.py` | 1 |
+| `tests/test_logging_utils.py` | 1 |
+
+The separate disposition policy stays **352**, Gitleaks stays **27**, the audit
+ledger stays **449 accepted / 63 open**, and all **78** required context/app pairs,
+hooks, coverage floors and expiry dates remain unchanged. No new baseline
+identity, disposition, inline suppression or exception is added. Dated304,
+305,315 and319 receipts above remain historical evidence rather than current
+inventory claims. Final-source scanner and hosted checks remain required; this
+retirement does not add audit acceptance or establish a passing scan.
