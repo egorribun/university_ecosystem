@@ -32,6 +32,7 @@ class _FakeUoW:
 
     def __init__(self, repo: AsyncMock) -> None:
         self.users = repo
+        self.session = repo.db
         self.commit = AsyncMock()
         self.rollback = AsyncMock()
 
