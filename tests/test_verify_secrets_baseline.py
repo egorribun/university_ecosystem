@@ -8865,7 +8865,7 @@ def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
     if path != ".github/workflows/reusable-backend-tests.yml":
         return original
     # Retain the immutable setup-python review, allowing only the supported
-    # pytest-timeout caller option at the two exact integration entry points.
+    # pytest-timeout caller options and the owned PostgreSQL unit prerequisite.
     anchor = (
         b"                  $pytestArgs = @(\n"
         b"                    $env:INTEGRATION_TEST_PATTERN,"
@@ -8889,7 +8889,47 @@ def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
         b"                    tests/integration/test_mfa_mailpit_outbox.py \\\n"
     )
     assert reviewed.count(mailpit_anchor) == 1, "reviewed Mailpit call site changed"
-    return reviewed.replace(mailpit_anchor, mailpit_replacement)
+    reviewed = reviewed.replace(mailpit_anchor, mailpit_replacement)
+    # Reuse the immutable reviewed image and retry implementation, not a new
+    # digest/approval identity. Only the owned PostgreSQL image is needed here.
+    pull_anchor = (
+        b"            - name: Pre-pull testcontainer images with bounded retries\n"
+    )
+    integration_anchor = b"            - name: Run integration tests\n"
+    assert original.count(pull_anchor) == original.count(integration_anchor) == 1
+    pull_step = original.split(pull_anchor, 1)[1].split(integration_anchor, 1)[0]
+    array_anchor = b"                  $images = @(\n"
+    array_end = b"                  )\n"
+    assert pull_step.count(array_anchor) == pull_step.count(array_end) == 1
+    images, retry = pull_step.split(array_anchor, 1)[1].split(array_end, 1)
+    postgres_lines = [
+        line
+        for line in images.splitlines(keepends=True)
+        if line.startswith(b'                    "pgvector/pgvector:')
+    ]
+    assert len(postgres_lines) == 1
+    assert b"@sha256:" in postgres_lines[0]
+    unit_pull = (
+        b"            - name: Pre-pull owned PostgreSQL image with bounded retries\n"
+        b"              timeout-minutes: 5\n"
+        b"              shell: pwsh\n"
+        b"              run: |\n"
+        b"                  # Root-level owned PostgreSQL proofs run in the full unit shard.\n"
+        + array_anchor
+        + postgres_lines[0]
+        + array_end
+        + retry
+    )
+    unit_anchor = b"            - name: Run pytest\n"
+    assert reviewed.count(unit_anchor) == 1
+    reviewed = reviewed.replace(unit_anchor, unit_pull + unit_anchor)
+    unit_args = b"                  $pytestArgs = @($env:TEST_PATTERN)\n"
+    assert reviewed.count(unit_args) == 1
+    return reviewed.replace(
+        unit_args,
+        unit_args
+        + b'                  $pytestArgs += "--timeout-disable-debugger-detection"\n',
+    )
 
 
 def _assert_live_scanner_source_bytes(path: str, actual: bytes) -> None:
@@ -8936,6 +8976,57 @@ def test_live_mailpit_timeout_binding_refuses_other_changes(mutation: str) -> No
         invalid = expected.replace(option, option + option)
     else:
         invalid = expected + b"# unrelated Mailpit workflow change\n"
+    with pytest.raises(AssertionError, match="exact reviewed bytes"):
+        _assert_live_scanner_source_bytes(path, invalid)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing-pull",
+        "missing-pull-timeout",
+        "changed-pull-timeout",
+        "duplicate-pull",
+        "unpinned-image",
+        "missing-option",
+        "changed-option",
+    ],
+)
+def test_live_unit_postgres_prerequisite_binding_refuses_other_changes(
+    mutation: str,
+) -> None:
+    path = ".github/workflows/reusable-backend-tests.yml"
+    expected = _reviewed_live_scanner_source_bytes(path)
+    start = expected.index(
+        b"            - name: Pre-pull owned PostgreSQL image with bounded retries\n"
+    )
+    end = expected.index(b"            - name: Run pytest\n", start)
+    pull = expected[start:end]
+    option = (
+        b'                  $pytestArgs += "--timeout-disable-debugger-detection"\n'
+    )
+    assert expected.count(pull) == expected.count(option) == 1
+    pull_timeout = b"              timeout-minutes: 5\n"
+    assert pull.count(pull_timeout) == 1
+    _assert_live_scanner_source_bytes(path, expected)
+    if mutation == "missing-pull":
+        invalid = expected.replace(pull, b"")
+    elif mutation == "missing-pull-timeout":
+        invalid = expected.replace(pull, pull.replace(pull_timeout, b""))
+    elif mutation == "changed-pull-timeout":
+        invalid = expected.replace(
+            pull, pull.replace(pull_timeout, pull_timeout.replace(b"5", b"6"))
+        )
+    elif mutation == "duplicate-pull":
+        invalid = expected.replace(pull, pull + pull)
+    elif mutation == "unpinned-image":
+        changed = re.sub(rb"@sha256:[0-9a-f]{64}", b"", pull)
+        assert changed != pull
+        invalid = expected.replace(pull, changed)
+    elif mutation == "missing-option":
+        invalid = expected.replace(option, b"")
+    else:
+        invalid = expected.replace(option, option.replace(b"disable", b"enable"))
     with pytest.raises(AssertionError, match="exact reviewed bytes"):
         _assert_live_scanner_source_bytes(path, invalid)
 
