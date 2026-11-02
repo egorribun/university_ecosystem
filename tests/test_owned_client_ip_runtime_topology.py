@@ -91,6 +91,7 @@ def _inspect_fixture():
         "outbox-worker": ("internal",),
         "postgres": ("internal", "published_ports"),
         "postgres-databases-init": ("internal",),
+        "postgres-roles-init": ("internal",),
         "redis": ("internal",),
         "revocation-redis": ("revocation_net",),
         "spicedb": ("internal",),
