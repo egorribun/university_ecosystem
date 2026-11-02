@@ -241,6 +241,9 @@ def _compose_config_result(
     docker = _docker_compose()
     for path in _root_compose_files():
         shutil.copyfile(path, tmp_path / path.name)
+    # Runtime env_file allowlists are repository files that Compose resolves beside the project.
+    for path in sorted(ROOT.glob("docker-compose*.allowlist")):
+        shutil.copyfile(path, tmp_path / path.name)
     for env_file in (".env.docker", ".env.docker.workers"):
         (tmp_path / env_file).write_text("", encoding="utf-8")
     env = {

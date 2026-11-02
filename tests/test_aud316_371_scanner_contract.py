@@ -208,12 +208,10 @@ def test_env_example_identifies_actual_spicedb_and_profiling_consumers(
 
 
 @pytest.mark.parametrize(
-    ("compose_name", "env_file_name"),
-    [("docker-compose.yml", ".env"), ("docker-compose.full.yml", ".env.docker")],
+    "compose_name",
+    ["docker-compose.yml", "docker-compose.full.yml"],
 )
-def test_compose_backend_passes_its_env_file_to_profiler(
-    compose_name: str, env_file_name: str
-) -> None:
+def test_compose_backend_passes_its_env_file_to_profiler(compose_name: str) -> None:
     source = (ROOT / compose_name).read_text(encoding="utf-8")
     compose = yaml.safe_load(source.replace("!override", "").replace("!reset", ""))
     backend = compose["services"]["backend"]
@@ -221,7 +219,14 @@ def test_compose_backend_passes_its_env_file_to_profiler(
         item["path"] if isinstance(item, dict) else item for item in backend["env_file"]
     ]
 
-    assert env_file_name in env_files
+    # The backend receives the names-only app allowlist; the profiler names must be on it.
+    assert env_files == ["docker-compose.runtime-app.allowlist"]
+    allowlist = {
+        line.strip()
+        for line in (ROOT / env_files[0]).read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    assert {"ENABLE_PROFILING", "PYROSCOPE_SERVER_ADDRESS"} <= allowlist
     assert not {"ENABLE_PROFILING", "PYROSCOPE_SERVER_ADDRESS"} & set(
         backend.get("environment", {})
     )

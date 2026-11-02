@@ -13,7 +13,8 @@ services:
       dockerfile: backend.Dockerfile
       target: runtime
     env_file:
-      - .env.docker
+      # Names only, resolved from --env-file .env.docker (see the allowlist).
+      - docker-compose.runtime-app.allowlist
     environment:
       # Runtime role ue_app: NOSUPERUSER NOBYPASSRLS, DML only, no bypass membership.
       # Schema changes run only as ue_migrator; see
@@ -707,7 +708,7 @@ services:
     healthcheck:
       disable: true
     env_file:
-      - .env.docker
+      - docker-compose.runtime-app.allowlist
     environment:
       # Owner role for Alembic only. It is the sole superuser login in the stack
       # because the baseline creates the non-trusted pgvector extension.

@@ -54,8 +54,8 @@ services:
       dockerfile: backend.Dockerfile
       target: runtime
     env_file:
-      - path: .env
-        required: false
+      # Names only: no DB role passwords or superuser secret (see the allowlist).
+      - docker-compose.runtime-app.allowlist
     environment:
       # Runtime connection as ue_app (NOSUPERUSER NOBYPASSRLS, DML only). Set the
       # ue_app URL in .env; see .env.example and CONFIGURATION.md.
@@ -212,8 +212,8 @@ services:
       target: runtime
     command: python -m app.workers.notifications
     env_file:
-      - path: .env
-        required: false
+      # Names only: workers never receive revocation or OTP credentials.
+      - docker-compose.runtime-worker.allowlist
     environment:
       # ue_worker is a ue_rls_bypass member: the schedule-reminder scan spans tenants.
       DATABASE_URL: ${NOTIFICATIONS_DATABASE_URL:?NOTIFICATIONS_DATABASE_URL is required - set in .env file}
@@ -282,8 +282,7 @@ services:
       target: runtime
     command: python -m app.workers.outbox
     env_file:
-      - path: .env
-        required: false
+      - docker-compose.runtime-worker.allowlist
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       CACHE_ENABLED: "true"
@@ -578,8 +577,7 @@ services:
     healthcheck:
       disable: true
     env_file:
-      - path: .env
-        required: false
+      - docker-compose.runtime-app.allowlist
     environment:
       # ue_migrator owns the schema and runs Alembic only; no runtime service uses it.
       DATABASE_URL: ${MIGRATION_DATABASE_URL:?MIGRATION_DATABASE_URL is required - set in .env file}

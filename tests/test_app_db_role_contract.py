@@ -243,7 +243,11 @@ def test_launcher_generates_and_mirrors_the_database_role_passwords() -> None:
     assert "function Ensure-DatabaseRolePasswords" in script
     assert "\nEnsure-DatabaseRolePasswords\n" in script
     assert "'POSTGRES_(?:USER|PASSWORD)|'" in script
-    assert "'UE_(?:MIGRATOR|APP|WORKER)_DB_PASSWORD)='" in script
+    assert "'UE_(?:MIGRATOR|APP|WORKER)_DB_PASSWORD|' +" in script
+    assert (
+        "'DATABASE_URL|DATABASE_URL_SYNC|NOTIFICATIONS_DATABASE_URL|MIGRATION_DATABASE_URL)='"
+        in script
+    )
 
 
 def test_env_examples_name_each_runtime_login() -> None:

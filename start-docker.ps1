@@ -1388,7 +1388,8 @@ function Ensure-DatabaseRolePasswords {
     # infrastructure/postgres-roles/bootstrap-app-roles.sql. Each value is embedded
     # in DATABASE_URL, so an existing value must be URL-safe; placeholders and any
     # other shape are regenerated. Every value is mirrored into .env for Compose
-    # interpolation and into .env.docker for the containers.
+    # interpolation and into .env.docker, the launcher's canonical interpolation file.
+    # Runtime containers receive only the names in docker-compose.runtime-app.allowlist.
     foreach ($key in @("UE_MIGRATOR_DB_PASSWORD", "UE_APP_DB_PASSWORD", "UE_WORKER_DB_PASSWORD")) {
         $value = Get-EnvEntry -Path $EnvFile -Key $key
         if (-not $value -or $value -match "CHANGE_ME" -or $value -notmatch '^[A-Za-z0-9]{32,}$') {
@@ -1597,8 +1598,9 @@ function Write-WorkerEnvironmentFile {
     # Workers need the delivery KEK to decrypt queued email payloads, but not
     # OTP digest keys, active-key selectors, or revocation credentials. Keep a
     # dedicated env_file so API-only key material is not exposed to workers.
-    # Workers also never receive the bootstrap superuser password or a database
-    # login password: Compose interpolates their DATABASE_URL, so the container
+    # Workers also never receive the bootstrap superuser password, a database
+    # login password or a URL that embeds one: Compose interpolates their DATABASE_URL
+    # from the role-specific secret, so the container
     # does not need the separate variables.
     $sourcePath = Resolve-StatePath -Path $EnvFile
     if (-not (Test-Path -LiteralPath $sourcePath)) {
@@ -1610,7 +1612,8 @@ function Write-WorkerEnvironmentFile {
         'MFA_EMAIL_OTP_(?:HMAC_KEYS|ACTIVE_HMAC_KEY_ID)|' +
         'MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID|' +
         'POSTGRES_(?:USER|PASSWORD)|' +
-        'UE_(?:MIGRATOR|APP|WORKER)_DB_PASSWORD)='
+        'UE_(?:MIGRATOR|APP|WORKER)_DB_PASSWORD|' +
+        'DATABASE_URL|DATABASE_URL_SYNC|NOTIFICATIONS_DATABASE_URL|MIGRATION_DATABASE_URL)='
     )
     $workerLines = @(
         Get-Content -LiteralPath $sourcePath | Where-Object {
@@ -2888,7 +2891,7 @@ if ($needsEnvDocker -and $needsEnvCompose) {
     $ueAppDbPassword      = New-Secret -Length 48
     $ueWorkerDbPassword   = New-Secret -Length 48
 
-    # -- .env.docker (container env_file) ---------------------------------
+    # -- .env.docker (launcher interpolation file; see docker-compose.runtime-app.allowlist) --
     $dockerEnv = @"
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=$postgresPassword
@@ -3026,7 +3029,7 @@ Ensure-DockerConfigRevision
 Write-WorkerEnvironmentFile
 
 # -- Sync check: keep Compose interpolation in lockstep with .env.docker ------
-# Compose reads these values from .env while containers read .env.docker. A
+# Compose reads these values from .env while the launcher's commands read .env.docker. A
 # partially populated or stale .env therefore fails before the backend starts
 # (or, worse, starts services with credentials that do not match). Treat the
 # docker env file as the canonical source for every required interpolation key,
@@ -3102,7 +3105,7 @@ Set-LiveStandRuntimeSecretFileMode -Path (Resolve-StatePath ".secrets/temporal_a
 
 # -- Wave 137 SW2: SECRET_KEY drift detection .env <-> .env.docker ---------------
 # Closes W136 polish-v2 finding: gateway's JWT_SECRET env reads from .env via
-# compose's ${SECRET_KEY} substitution, while backend's env_file reads .env.docker.
+# compose's ${SECRET_KEY} substitution, while backend's allowlisted env reads .env.docker.
 # If .env's SECRET_KEY drifts (e.g. stale Pydantic placeholder), gateway HS256
 # fallback path validates against the wrong secret -> 401 on every request.
 # Less critical post-W137 SW1 RS256 (gateway uses JWKS path) but kept for
