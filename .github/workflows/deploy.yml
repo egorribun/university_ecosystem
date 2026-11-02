@@ -214,7 +214,7 @@ jobs:
           # The refusal/data-preservation probe owns a separate ephemeral PG17.
           # Never point its downgrade callback at a deployed database.
           DATABASE_URL=sqlite+aiosqlite:///:memory: \
-          MIGRATION_ROUNDTRIP_DATABASE_URL= RUN_INTEGRATION_TESTS=1 \
+          MIGRATION_ROUNDTRIP_DATABASE_URL='' RUN_INTEGRATION_TESTS=1 \
           timeout --signal=TERM --kill-after=10s 480s \
             uv run --frozen --no-sync pytest -n 0 -q --tb=short --timeout=420 \
             --junitxml="$receipt_root/junit.xml" \
@@ -1951,7 +1951,7 @@ jobs:
           # The refusal/data-preservation probe owns a separate ephemeral PG17.
           # Never point its downgrade callback at a deployed database.
           DATABASE_URL=sqlite+aiosqlite:///:memory: \
-          MIGRATION_ROUNDTRIP_DATABASE_URL= RUN_INTEGRATION_TESTS=1 \
+          MIGRATION_ROUNDTRIP_DATABASE_URL='' RUN_INTEGRATION_TESTS=1 \
           timeout --signal=TERM --kill-after=10s 480s \
             uv run --frozen --no-sync pytest -n 0 -q --tb=short --timeout=420 \
             --junitxml="$receipt_root/junit.xml" \

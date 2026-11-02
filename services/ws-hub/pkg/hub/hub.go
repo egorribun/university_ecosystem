@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"

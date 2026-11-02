@@ -44,7 +44,7 @@ def _assert_boundary_job(job):
     assert run.count("alembic current --check-heads") == 2
     assert run.count(SELECTOR) == 1
     assert "DATABASE_URL=sqlite+aiosqlite:///:memory:" in run
-    assert "MIGRATION_ROUNDTRIP_DATABASE_URL= RUN_INTEGRATION_TESTS=1" in run
+    assert "MIGRATION_ROUNDTRIP_DATABASE_URL='' RUN_INTEGRATION_TESTS=1" in run
     assert "timeout --signal=TERM --kill-after=10s 480s" in run
     assert "pytest -n 0 -q --tb=short --timeout=420" in run
     assert '--junitxml="$receipt_root/junit.xml"' in run
@@ -79,7 +79,7 @@ def test_boundary_dispatch_rejects_bypasses(defect):
     elif defect == "unbounded":
         del step["timeout-minutes"]
     else:
-        step["run"] = step["run"].replace("MIGRATION_ROUNDTRIP_DATABASE_URL= ", "")
+        step["run"] = step["run"].replace("MIGRATION_ROUNDTRIP_DATABASE_URL='' ", "")
     with pytest.raises((AssertionError, KeyError)):
         _assert_boundary_job(job)
 
