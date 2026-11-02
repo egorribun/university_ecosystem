@@ -1,151 +1,66 @@
+"""Current-baseline MFA atomicity on acknowledged disposable PostgreSQL."""
+
 from __future__ import annotations
 
 import asyncio
 import os
-import re
-from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Coroutine
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
-import psycopg
 import pyotp
 import pytest
-from alembic.config import Config
 from fastapi import HTTPException
-from psycopg import sql
-from sqlalchemy import MetaData, Table, create_engine, insert, inspect, select, text
-from sqlalchemy.engine import Engine, make_url
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy import create_engine, event, inspect, select, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
-from alembic import command
 from app.auth import mfa
 from app.auth.mfa.email_otp import EmailOtpService, MfaOtpRejected
+from app.core.db.listeners import set_pg_tenant_context
+from app.core.tenant import bypass_rls_ctx, tenant_id_ctx
 from app.models import User
+from tests.fixtures import owned_baseline_postgres as owned
 
-
-def _acceptance_requested() -> bool:
-    return bool(os.getenv("MFA_TEST_POSTGRES_DSN")) or (
-        os.getenv("RUN_INTEGRATION_TESTS") == "1"
-    )
-
+initialize_database_for_tests = owned.initialize_database_for_tests
+prepare_database = owned.prepare_database
+clean_database = owned.clean_database
+default_database_guard = owned.default_database_guard
+owned_baseline_server = owned.owned_baseline_server
 
 pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.timeout(300, method="signal", func_only=False),
     pytest.mark.skipif(
-        "not _acceptance_requested()",
-        reason="requires PostgreSQL integration lane or dedicated MFA test DSN",
+        os.getenv("RUN_INTEGRATION_TESTS") != "1",
+        reason="requires the owned PostgreSQL integration lane",
     ),
     pytest.mark.filterwarnings("error:.*autoincrement.*only make sense for MySQL.*"),
 ]
-ROOT = Path(__file__).resolve().parents[2]
 USER_ID = uuid4()
 FINGERPRINT = "f" * 64
 SESSION_ID = "postgres-two-connection-session"
 NOW = datetime(2026, 8, 25, 10, 0, tzinfo=UTC)
-LEGACY_CREDENTIAL_ID = UUID("00000000-0000-4000-8000-000000000002")
+
+
+@pytest.fixture(autouse=True)
+def mfa_watchdog(request: pytest.FixtureRequest) -> None:
+    assert request.config.getoption("timeout_disable_debugger_detection", False), (
+        "MFA tests require --timeout-disable-debugger-detection"
+    )
 
 
 class _Limiter:
     async def enforce(self, *, action: str, identifier: str) -> None:
         return None
-
-
-def _urls(dsn: str) -> tuple[str, str]:
-    if not dsn:
-        raise ValueError("PostgreSQL acceptance requires an explicit test database URL")
-    parsed = make_url(dsn)
-    if (
-        parsed.get_backend_name() != "postgresql"
-        or not parsed.host
-        or not parsed.username
-    ):
-        raise ValueError("PostgreSQL acceptance requires explicit host and user")
-    if not re.search(r"(?:^test|[-_]test(?:[-_]|$))", parsed.database or "", re.I):
-        raise ValueError("PostgreSQL acceptance must name a dedicated test database")
-    return (
-        parsed.set(drivername="postgresql+asyncpg").render_as_string(
-            hide_password=False
-        ),
-        parsed.set(drivername="postgresql+psycopg").render_as_string(
-            hide_password=False
-        ),
-    )
-
-
-@contextmanager
-def _postgres_acceptance_urls() -> Iterator[tuple[str, str]]:
-    """Own only a newly created database, never the suite or manual database."""
-    manual_dsn = os.getenv("MFA_TEST_POSTGRES_DSN")
-    if manual_dsn:
-        yield _urls(manual_dsn)
-        return
-    if os.getenv("RUN_INTEGRATION_TESTS") != "1":
-        raise RuntimeError("PostgreSQL acceptance requires the integration opt-in")
-    if os.getenv("ENVIRONMENT") != "testing":
-        raise RuntimeError("PostgreSQL acceptance provisioning requires testing")
-    if os.getenv("UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET") != "1":
-        raise RuntimeError("PostgreSQL acceptance provisioning requires reset opt-in")
-
-    source_async, _ = _urls(os.getenv("DATABASE_URL", ""))
-    source = make_url(source_async)
-    database_name = f"test_mfa_{uuid4().hex}"
-    if database_name == source.database:
-        raise RuntimeError("owned acceptance target must differ from source database")
-    target_urls = _urls(
-        source.set(database=database_name).render_as_string(hide_password=False)
-    )
-    maintenance_dsn = source.set(
-        drivername="postgresql", database="postgres"
-    ).render_as_string(hide_password=False)
-    with psycopg.connect(
-        maintenance_dsn,
-        autocommit=True,
-        connect_timeout=10,
-        options="-c lock_timeout=10000 -c statement_timeout=30000",
-    ) as admin:
-        # A failed CREATE (including a name collision) confers no ownership.
-        # Never use DROP IF EXISTS or retry by deleting another run's database.
-        admin.execute(
-            sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name))
-        )
-        try:
-            yield target_urls
-        finally:
-            # FORCE closes remaining connections only to this owned disposable
-            # database if an assertion interrupted normal session disposal.
-            admin.execute(
-                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(
-                    sql.Identifier(database_name)
-                )
-            )
-
-
-@pytest.fixture
-def mfa_postgres_urls() -> Iterator[tuple[str, str]]:
-    with _postgres_acceptance_urls() as urls:
-        yield urls
-
-
-def _upgrade(sync_url: str, revision: str) -> None:
-    previous = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = sync_url
-    try:
-        config = Config(str(ROOT / "alembic.ini"))
-        config.set_main_option("sqlalchemy.url", sync_url.replace("%", "%%"))
-        command.upgrade(config, revision)
-    finally:
-        if previous is None:
-            os.environ.pop("DATABASE_URL", None)
-        else:
-            os.environ["DATABASE_URL"] = previous
 
 
 def _service() -> EmailOtpService:
@@ -158,180 +73,178 @@ def _service() -> EmailOtpService:
     )
 
 
-def _assert_contract_abort_and_lock(sync_url: str) -> None:
-    engine = create_engine(sync_url)
-    try:
-        _assert_contract_on_engine(sync_url, engine)
-    finally:
-        engine.dispose()
-
-
-def _assert_contract_on_engine(sync_url: str, engine: Engine) -> None:
-    with engine.connect() as connection:
-        if inspect(connection).has_table("alembic_version"):
-            pytest.fail("dedicated PostgreSQL acceptance database must start empty")
-    _upgrade(sync_url, "202607280001")
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                "INSERT INTO users "
-                "(id,email,hashed_password,role,is_active,mfa_required,mfa_default_method) "
-                "VALUES (:id,:email,:password,'student',true,true,'webauthn')"
-            ),
-            {
-                "id": USER_ID,
-                "email": "mfa-pg@example.test",
-                "password": "not-used-in-acceptance",  # pragma: allowlist secret
-            },
+@asynccontextmanager
+async def _mfa_database(
+    request: pytest.FixtureRequest,
+    *,
+    user_id: UUID,
+    email: str,
+    verified: bool,
+) -> AsyncIterator[tuple[AsyncEngine, async_sessionmaker[AsyncSession]]]:
+    """Provision privileged DDL only on an active lease; exercise MFA without bypass."""
+    server = request.getfixturevalue("owned_baseline_server")
+    with owned.committed_baseline(server) as baseline:
+        tenant = uuid4()
+        role = f"mfa_reader_writer_{uuid4().hex}"
+        admin = create_engine(
+            baseline.url, poolclass=NullPool, connect_args={"connect_timeout": 5}
         )
-    _upgrade(sync_url, "202608250001")
-    digest_challenge_id = uuid4()
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                "INSERT INTO mfa_challenges "
-                "(id,user_id,challenge_type,expires_at,flow,session_identifier,"
-                "client_fingerprint,method,token_digest,token_key_id,recipient_digest) "
-                "VALUES (:id,:user_id,'email_otp',:expires_at,'login',:session_id,"
-                ":fingerprint,'email_otp',:token_digest,:token_key_id,:recipient_digest)"
-            ),
-            {
-                "id": digest_challenge_id,
-                "user_id": USER_ID,
-                "expires_at": NOW,
-                "session_id": f"digest-{SESSION_ID}",
-                "fingerprint": FINGERPRINT,
-                "token_digest": "a" * 64,
-                "token_key_id": "pg-hmac",
-                "recipient_digest": "e" * 64,
-            },
-        )
-        digest_row = connection.execute(
-            text("SELECT token,payload FROM mfa_challenges WHERE id=:id"),
-            {"id": digest_challenge_id},
-        ).one()
-        assert digest_row.token.startswith("__mfa_digest_only__:")
-        assert digest_row.payload is None
-    with pytest.raises(RuntimeError, match="Unsafe MFA retirement"):
-        _upgrade(sync_url, "202608250002")
-    with engine.connect() as connection:
-        legacy_tables = [
-            name
-            for name in ("webauthn_credentials", "mfa_webauthn_credentials")
-            if inspect(connection).has_table(name)
-        ]
-        assert legacy_tables
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "202608250001"
-        )
-        assert connection.execute(
-            text("SELECT mfa_default_method,email_verified_at FROM users WHERE id=:id"),
-            {"id": USER_ID},
-        ).one() == ("webauthn", None)
-        assert "token" in {
-            column["name"]
-            for column in inspect(connection).get_columns("mfa_challenges")
-        }
-
-    legacy_name = legacy_tables[0]
-    credential_table = Table(legacy_name, MetaData(), autoload_with=engine)
-    values = {
-        key: value
-        for key, value in {
-            "id": LEGACY_CREDENTIAL_ID,
-            "user_id": USER_ID,
-            "credential_id": f"acceptance-{uuid4()}",
-            "public_key": "acceptance-public-key",
-            "sign_count": 0,
-            "backed_up": False,
-            "clone_warning": False,
-            "is_active": True,
-        }.items()
-        if key in credential_table.c
-    }
-
-    def contended_insert() -> str | None:
         try:
-            with engine.begin() as connection:
-                connection.exec_driver_sql("SET LOCAL statement_timeout = '500ms'")
-                connection.execute(insert(credential_table).values(**values))
-        except DBAPIError as exc:
-            return getattr(exc.orig, "sqlstate", None)
-        return "inserted"
+            with admin.begin() as connection:
+                connection.execute(
+                    text(f'CREATE ROLE "{role}" NOLOGIN NOSUPERUSER NOBYPASSRLS')
+                )
+                connection.execute(text(f'GRANT USAGE ON SCHEMA public TO "{role}"'))
+                connection.execute(
+                    text(
+                        "GRANT SELECT, INSERT, UPDATE, DELETE ON "
+                        "public.users, public.mfa_challenges, public.mfa_email_deliveries, "
+                        "public.mfa_totp_enrollments, public.recovery_codes, public.trusted_devices, "
+                        "public.active_sessions, public.stored_events "
+                        f'TO "{role}"'
+                    )
+                )
+                connection.execute(
+                    text("INSERT INTO tenants (id,name,slug) VALUES (:id,:name,:slug)"),
+                    {"id": tenant, "name": "MFA integration", "slug": uuid4().hex},
+                )
+                connection.execute(
+                    text(
+                        "INSERT INTO users (id,email,hashed_password,tenant_id,role,is_active,"
+                        "email_verified_at,email_mfa_enabled_at,mfa_default_method) "
+                        "VALUES (:id,:email,:credential,:tenant,'student',true,:verified,:verified,'email_otp')"
+                    ),
+                    {
+                        "id": user_id,
+                        "email": email,
+                        "credential": f"!{uuid4()}",
+                        "tenant": tenant,
+                        "verified": NOW if verified else None,
+                    },
+                )
+                inspector = inspect(connection)
+                assert "token" not in {
+                    item["name"] for item in inspector.get_columns("mfa_challenges")
+                }
+                assert not {"webauthn_credentials", "mfa_webauthn_credentials"} & set(
+                    inspector.get_table_names()
+                )
+        finally:
+            admin.dispose()
 
-    locker = engine.connect()
-    transaction = locker.begin()
-    try:
-        locker.execute(
-            text("SELECT pg_advisory_xact_lock(:lock_id)"),
-            {"lock_id": 824_250_002},
-        )
-        quoted = locker.dialect.identifier_preparer.quote(legacy_name)
-        locker.exec_driver_sql(f"LOCK TABLE users, {quoted} IN ACCESS EXCLUSIVE MODE")
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            assert pool.submit(contended_insert).result(timeout=5) == "57014"
-    finally:
-        transaction.rollback()
-        locker.close()
+        # A private Session subclass scopes the hook to this factory. Every
+        # transaction derives tenant authority from the production ContextVars,
+        # including the empty scope restored by legacy outbox deliveries.
+        # No global listener is installed or removed.
+        class TenantSession(Session):
+            pass
 
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                "UPDATE users SET email_verified_at=:now, "
-                "email_mfa_enabled_at=:now WHERE id=:id"
-            ),
-            {"now": NOW, "id": USER_ID},
-        )
-    _upgrade(sync_url, "202608250002")
-    with engine.connect() as connection:
-        assert not any(inspect(connection).has_table(name) for name in legacy_tables)
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "202608250002"
-        )
-        assert "token" not in {
-            column["name"]
-            for column in inspect(connection).get_columns("mfa_challenges")
-        }
-        assert (
+        @event.listens_for(TenantSession, "after_begin")
+        def identity(_session, _transaction, connection) -> None:
+            connection.execute(text(f'SET LOCAL ROLE "{role}"'))
+            # Invoke after SET ROLE; even if the inherited Session listener ran
+            # first, both read the same current task context, never a captured ID.
+            set_pg_tenant_context(_session, _transaction, connection)
             connection.execute(
-                text("SELECT token_digest FROM mfa_challenges WHERE id=:id"),
-                {"id": digest_challenge_id},
-            ).scalar_one()
-            == "a" * 64
-        )
+                text("SELECT set_config('app.current_user_id', :user, true)"),
+                {"user": str(user_id)},
+            )
+            assert connection.execute(
+                text(
+                    "SELECT current_user, rolsuper, rolbypassrls, "
+                    "pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER') "
+                    "FROM pg_roles WHERE rolname = current_user"
+                )
+            ).one() == (role, False, False, False)
 
-    # Keep the migration-contract assertions above pinned to the historical
-    # retirement revision, then bring the owned database to the current ORM
-    # schema before the concurrency scenario loads User with every mapped
-    # column. New additive migrations may extend User after the revision under
-    # test (for example, the private demo-seed ownership marker).
-    _upgrade(sync_url, "head")
-    with engine.connect() as connection:
-        user_columns = {
-            column["name"] for column in inspect(connection).get_columns("users")
-        }
-        assert "demo_seed_key" in user_columns
+        engine = create_async_engine(
+            baseline.url.set(drivername="postgresql+asyncpg", query={}),
+            poolclass=NullPool,
+            hide_parameters=True,
+            connect_args={
+                "timeout": 5,
+                "command_timeout": 65,
+                "server_settings": {
+                    "lock_timeout": "10s",
+                    "statement_timeout": "60s",
+                    "idle_in_transaction_session_timeout": "60s",
+                },
+            },
+        )
+        sessions = async_sessionmaker(
+            engine, expire_on_commit=False, sync_session_class=TenantSession
+        )
+        tenant_token = tenant_id_ctx.set(str(tenant))
+        bypass_token = bypass_rls_ctx.set(False)
+        try:
+            yield engine, sessions
+        finally:
+            try:
+                await engine.dispose()
+            finally:
+                bypass_rls_ctx.reset(bypass_token)
+                tenant_id_ctx.reset(tenant_token)
 
 
 @pytest.mark.asyncio
-async def test_postgres_migration_and_two_connection_security_races(
-    mfa_postgres_urls: tuple[str, str],
+async def test_postgres_baseline_two_connection_security_races(
+    request: pytest.FixtureRequest,
 ) -> None:
-    async_url, sync_url = mfa_postgres_urls
-    _assert_contract_abort_and_lock(sync_url)
-    engine = create_async_engine(async_url)
-    try:
-        await _assert_security_races(engine)
-    finally:
-        await engine.dispose()
+    async with _mfa_database(
+        request, user_id=USER_ID, email="mfa-pg@example.test", verified=True
+    ) as (_, sessions):
+        await _assert_security_races(sessions)
+    assert request.getfixturevalue("default_database_guard") == []
 
 
-async def _assert_security_races(engine: AsyncEngine) -> None:
-    sessions = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+async def _race(*operations: Coroutine[Any, Any, bool]) -> list[bool]:
+    # TaskGroup cancels and joins every sibling on unexpected failure before
+    # the caller can dispose the engine or drop its owned database. SQL/client
+    # deadlines and the module signal watchdog also cover cancellation cleanup.
+    async with asyncio.timeout(75):
+        async with asyncio.TaskGroup() as group:
+            tasks = [group.create_task(operation) for operation in operations]
+    return [task.result() for task in tasks]
+
+
+async def _assert_security_races(sessions: async_sessionmaker[AsyncSession]) -> None:
     service = _service()
+    barrier = asyncio.Barrier(2)
+    backend_ids: set[int] = set()
+
+    async def rendezvous(db: AsyncSession) -> None:
+        backend_id = await db.scalar(text("SELECT pg_backend_pid()"))
+        assert isinstance(backend_id, int)
+        backend_ids.add(backend_id)
+        await asyncio.wait_for(barrier.wait(), timeout=5)
+        assert len(backend_ids) == 2
+
+    async with sessions() as observer:
+        assert await observer.get(User, USER_ID) is not None
+        await observer.execute(
+            text(
+                "SELECT set_config('app.current_tenant', :tenant, true), "
+                "set_config('app.bypass_rls', 'on', true)"
+            ),
+            {"tenant": str(uuid4())},
+        )
+        assert await observer.scalar(select(User.id).where(User.id == USER_ID)) is None
+        await observer.rollback()
+        assert (
+            await observer.scalar(select(User.id).where(User.id == USER_ID)) == USER_ID
+        )
+
+    wrong_tenant_token = tenant_id_ctx.set(str(uuid4()))
+    try:
+        async with sessions() as observer:
+            assert (
+                await observer.scalar(select(User.id).where(User.id == USER_ID)) is None
+            )
+    finally:
+        tenant_id_ctx.reset(wrong_tenant_token)
 
     async with sessions() as setup:
-        # Retirement rotates the account epoch; model a fresh authenticated login.
+        # Use the current account epoch from the committed baseline fixture.
         user = await setup.get(User, USER_ID)
         assert user is not None
         issued = await service.issue(
@@ -349,6 +262,7 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
 
     async def verify_email() -> bool:
         async with sessions() as db:
+            await rendezvous(db)
             try:
                 await service.verify(
                     db,
@@ -367,7 +281,7 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
                 await db.rollback()
                 return False
 
-    assert sum(await asyncio.gather(verify_email(), verify_email())) == 1
+    assert sum(await _race(verify_email(), verify_email())) == 1
 
     async with sessions() as setup:
         user = await setup.get(User, USER_ID)
@@ -385,8 +299,11 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
         )
         await setup.commit()
 
+    backend_ids.clear()
+
     async def verify_or_resend(operation: str) -> bool:
         async with sessions() as db:
+            await rendezvous(db)
             try:
                 if operation == "verify":
                     await service.verify(
@@ -418,12 +335,7 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
                 await db.rollback()
                 return False
 
-    assert (
-        sum(
-            await asyncio.gather(verify_or_resend("verify"), verify_or_resend("resend"))
-        )
-        == 1
-    )
+    assert sum(await _race(verify_or_resend("verify"), verify_or_resend("resend"))) == 1
 
     async with sessions() as setup:
         user = await setup.get(User, USER_ID)
@@ -455,8 +367,14 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
         )[0]
         await setup.commit()
 
-    async def consume_totp(token: str, session_identifier: str) -> bool:
+    backend_ids.clear()
+
+    async def consume_totp(
+        token: str, session_identifier: str, *, race: bool = True
+    ) -> bool:
         async with sessions() as db:
+            if race:
+                await rendezvous(db)
             user = await db.get(User, USER_ID)
             assert user is not None
             try:
@@ -474,30 +392,33 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
                 await db.rollback()
                 return False
 
+    # Both requests consume exactly the same challenge and OTP, not two
+    # independent challenges that could each succeed legitimately.
     assert (
         sum(
-            await asyncio.gather(
-                *(
-                    consume_totp(
-                        challenge.challenge_token,
-                        f"{SESSION_ID}-totp-{index}",
-                    )
-                    for index, challenge in enumerate(challenges)
-                )
+            await _race(
+                consume_totp(challenges[0].challenge_token, f"{SESSION_ID}-totp-0"),
+                consume_totp(challenges[0].challenge_token, f"{SESSION_ID}-totp-0"),
             )
         )
         == 1
     )
+    # Reusing the consumed timecode through another live challenge is also denied.
+    assert not await consume_totp(
+        challenges[1].challenge_token, f"{SESSION_ID}-totp-1", race=False
+    )
+    backend_ids.clear()
 
     async def consume_recovery() -> bool:
         async with sessions() as db:
+            await rendezvous(db)
             user = await db.get(User, USER_ID)
             assert user is not None
             accepted = await mfa.verify_recovery_code(db, user=user, code=recovery_code)
             await db.commit()
             return accepted
 
-    assert sum(await asyncio.gather(consume_recovery(), consume_recovery())) == 1
+    assert sum(await _race(consume_recovery(), consume_recovery())) == 1
 
     trusted_ip = "203.0.113.44"
     trusted_ua = "mfa-postgres-concurrency-test"
@@ -535,11 +456,12 @@ async def _assert_security_races(engine: AsyncEngine) -> None:
         await factor_db.execute(
             select(User).where(User.id == USER_ID).with_for_update(nowait=False)
         )
-        trusted_task = asyncio.create_task(trusted_login())
-        await trusted_started.wait()
-        await asyncio.sleep(0.1)
-        assert not trusted_task.done()
-        await mfa.reset_user_mfa(factor_db, user=factor_user)
-        await factor_db.commit()
-
-    assert await asyncio.wait_for(trusted_task, timeout=5) is None
+        async with asyncio.timeout(75):
+            async with asyncio.TaskGroup() as group:
+                trusted_task = group.create_task(trusted_login())
+                await asyncio.wait_for(trusted_started.wait(), timeout=5)
+                await asyncio.sleep(0.1)
+                assert not trusted_task.done()
+                await mfa.reset_user_mfa(factor_db, user=factor_user)
+                await factor_db.commit()
+                assert await asyncio.wait_for(trusted_task, timeout=5) is None
