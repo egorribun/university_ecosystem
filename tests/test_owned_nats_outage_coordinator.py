@@ -329,8 +329,12 @@ def test_public_result_and_logs_contain_only_closed_labels(capsys) -> None:
         "checkpoint",
         "runtime_diagnostic",
         "broker_diagnostic",
+        "send_phase",
+        "send_http_status",
     }
-    assert result.checkpoint is None
+    assert result.checkpoint is OutageCheckpoint.SEND_MESSAGE
+    assert result.send_phase is SendPhase.NOT_READY
+    assert result.send_http_status is None
     assert result.runtime_diagnostic is None
     output = repr(result) + captured.out + captured.err
     for forbidden in (private, MESSAGE, CONTENT, "password=", "cookie=", "token="):

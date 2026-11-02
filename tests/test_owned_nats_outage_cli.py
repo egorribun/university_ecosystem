@@ -1112,6 +1112,8 @@ def test_broker_diagnostic_field_is_private_and_not_semantic():
         "checkpoint",
         "runtime_diagnostic",
         "broker_diagnostic",
+        "send_phase",
+        "send_http_status",
     }
     assert result.broker_diagnostic is None
     assert schema["broker_diagnostic"].compare is False
@@ -1162,6 +1164,8 @@ def test_runtime_diagnostic_field_is_private_and_not_semantic():
         "checkpoint",
         "runtime_diagnostic",
         "broker_diagnostic",
+        "send_phase",
+        "send_http_status",
     }
     assert result.runtime_diagnostic is None
     assert schema["runtime_diagnostic"].compare is False
@@ -1169,3 +1173,110 @@ def test_runtime_diagnostic_field_is_private_and_not_semantic():
     annotated = replace(result, runtime_diagnostic=RuntimeObservationPhase.DAEMON)
     assert annotated == result
     assert repr(annotated) == repr(result)
+
+
+@pytest.mark.parametrize(
+    ("phase_name", "status", "token"),
+    [
+        ("TIMEOUT", None, "timeout"),
+        ("CONNECT_ERROR", None, "connect_error"),
+        ("BODY_MISMATCH", None, "body_mismatch"),
+        ("NOT_READY", None, "not_ready"),
+        (None, 401, "http_status=401"),
+        (None, 503, "http_status=503"),
+    ],
+)
+def test_main_formats_only_closed_send_phase(
+    monkeypatch, capsys, phase_name, status, token
+):
+    from scripts.owned_nats_coordinator import OutageCheckpoint, SendPhase
+
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.SEND,
+        OutageCheckpoint.SEND_MESSAGE,
+        send_phase=None if phase_name is None else SendPhase[phase_name],
+        send_http_status=status,
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: result)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "live_stand: owned NATS acceptance failed outcome=failed stage=send "
+        f"checkpoint=send_message phase={token}\n"
+    )
+
+
+def test_send_diagnostic_fields_are_private_and_not_semantic():
+    from dataclasses import fields
+
+    from scripts.owned_nats_coordinator import OutageCheckpoint, SendPhase
+
+    result = OutageResult(
+        OutageOutcome.FAILED, OutageStage.SEND, OutageCheckpoint.SEND_MESSAGE
+    )
+    schema = {item.name: item for item in fields(result)}
+    for name, value in (("send_phase", SendPhase.TIMEOUT), ("send_http_status", 503)):
+        assert getattr(result, name) is None
+        assert schema[name].compare is False
+        assert schema[name].repr is False
+        annotated = replace(result, **{name: value})
+        assert annotated == result
+        assert repr(annotated) == repr(result)
+
+
+def test_main_rejects_invalid_or_misplaced_send_diagnostics(monkeypatch, capsys):
+    from scripts.owned_nats_coordinator import OutageCheckpoint, SendPhase
+
+    result = OutageResult(
+        OutageOutcome.FAILED, OutageStage.SEND, OutageCheckpoint.SEND_MESSAGE
+    )
+
+    class OtherPhase(StrEnum):
+        TIMEOUT = "timeout"
+
+    invalid_results = [
+        replace(result, send_phase=value)
+        for value in ("timeout", OtherPhase.TIMEOUT, 3, True, _PrivateOutageValue())
+    ]
+    invalid_results.extend(
+        replace(result, send_http_status=value)
+        for value in (99, 600, 200, True, "503", _PrivateOutageValue())
+    )
+    for diagnostic in (
+        {"send_phase": SendPhase.TIMEOUT},
+        {"send_http_status": 503},
+    ):
+        annotated = replace(result, **diagnostic)
+        invalid_results.extend(
+            (
+                replace(annotated, outcome=OutageOutcome.ACCEPTED),
+                replace(annotated, stage=OutageStage.RESTORE),
+                replace(annotated, checkpoint=None),
+                replace(annotated, checkpoint=OutageCheckpoint.READ_DM),
+            )
+        )
+    invalid_results.append(
+        replace(result, send_phase=SendPhase.TIMEOUT, send_http_status=503)
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    for malformed in invalid_results:
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=malformed, **_k: _r
+        )
+        assert (
+            live_stand.main(
+                ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+            )
+            == 2
+        )
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )
