@@ -232,6 +232,35 @@ def _role_snapshot(connection: psycopg.Connection) -> str:
     return hashlib.sha256(repr(rows).encode("utf-8")).hexdigest()
 
 
+def test_bootstrap_scans_mixed_relation_kinds_without_wrong_object_type(
+    role_server: OwnedPostgres,
+) -> None:
+    with _connect(role_server) as connection:
+        connection.execute("CREATE TABLE public.kind_table (id bigint PRIMARY KEY)")
+        connection.execute("CREATE SEQUENCE public.kind_sequence")
+        connection.execute("CREATE VIEW public.kind_view AS SELECT 1 AS id")
+        connection.execute(
+            "CREATE MATERIALIZED VIEW public.kind_materialized AS SELECT 1 AS id"
+        )
+        connection.execute(
+            "CREATE TABLE public.kind_partitioned (id bigint) PARTITION BY RANGE (id)"
+        )
+        connection.execute("CREATE TYPE public.kind_composite AS (id bigint)")
+        kinds = connection.execute(
+            "SELECT DISTINCT relkind FROM pg_class "
+            "WHERE relnamespace = 'public'::regnamespace AND relname LIKE 'kind_%'"
+        ).fetchall()
+        assert {kind for (kind,) in kinds} == {"r", "i", "S", "v", "m", "p", "c"}
+        # Establish the exact PG17 error class the sequence predicate must avoid.
+        with pytest.raises(psycopg.errors.WrongObjectType):
+            connection.execute(
+                "SELECT has_sequence_privilege(current_user, "
+                "'public.kind_table'::regclass, 'UPDATE')"
+            )
+    assert _bootstrap(role_server) == 0
+    assert _bootstrap(role_server) == 0
+
+
 def test_bootstrap_converges_existing_and_future_dml_without_bypass(
     role_server: OwnedPostgres,
 ) -> None:
@@ -330,6 +359,8 @@ def test_bootstrap_converges_existing_and_future_dml_without_bypass(
         "GRANT CREATE ON SCHEMA public TO PUBLIC",
         "GRANT TRUNCATE ON public.role_probe TO PUBLIC",
         "GRANT REFERENCES (id) ON public.role_probe TO ue_app",
+        "CREATE SEQUENCE public.role_sequence; "
+        "GRANT UPDATE ON public.role_sequence TO PUBLIC",
         "ALTER DEFAULT PRIVILEGES FOR ROLE ue_migrator "
         "GRANT TRUNCATE ON TABLES TO PUBLIC",
         "ALTER DEFAULT PRIVILEGES FOR ROLE ue_migrator IN SCHEMA public "

@@ -127,6 +127,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE ue_migrator IN SCHEMA public
 
 -- Direct revocation cannot remove PUBLIC or bypass-group privileges. Reject
 -- those unexpected effective grants rather than changing unrelated principals.
+-- CASE guards the ACL calls by relation kind: WHERE conjuncts may be reordered,
+-- and has_sequence_privilege raises wrong_object_type for a non-sequence OID.
 DO $guard$
 DECLARE
     runtime_role text;
@@ -138,17 +140,18 @@ BEGIN
                SELECT 1 FROM pg_class AS relation
                JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
                WHERE namespace.nspname = 'public'
-                 AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
-                 AND (
+                 AND CASE WHEN relation.relkind IN ('r', 'p', 'v', 'm', 'f') THEN (
                      has_table_privilege(runtime_role, relation.oid, 'TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')
                      OR has_table_privilege(runtime_role, relation.oid, 'SELECT WITH GRANT OPTION,INSERT WITH GRANT OPTION,UPDATE WITH GRANT OPTION,DELETE WITH GRANT OPTION')
                      OR has_any_column_privilege(runtime_role, relation.oid, 'REFERENCES,SELECT WITH GRANT OPTION,INSERT WITH GRANT OPTION,UPDATE WITH GRANT OPTION')
-                 )
+                 ) ELSE false END
            ) OR EXISTS (
                SELECT 1 FROM pg_class AS relation
                JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-               WHERE namespace.nspname = 'public' AND relation.relkind = 'S'
-                 AND has_sequence_privilege(runtime_role, relation.oid, 'UPDATE,USAGE WITH GRANT OPTION,SELECT WITH GRANT OPTION')
+               WHERE namespace.nspname = 'public'
+                 AND CASE WHEN relation.relkind = 'S' THEN
+                     has_sequence_privilege(runtime_role, relation.oid, 'UPDATE,USAGE WITH GRANT OPTION,SELECT WITH GRANT OPTION')
+                 ELSE false END
            ) THEN
             RAISE EXCEPTION 'Unexpected effective DDL or delegation privilege for %', runtime_role;
         END IF;

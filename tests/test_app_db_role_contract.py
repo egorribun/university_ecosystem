@@ -123,6 +123,30 @@ def test_production_database_secrets_are_split_by_service() -> None:
         assert "database_url" not in prod["services"][service_name]["secrets"]
 
 
+def test_bootstrap_type_specific_acl_calls_are_case_gated() -> None:
+    sql = BOOTSTRAP_SQL.read_text(encoding="utf-8")
+    normalized = " ".join(sql.split())
+    assert (
+        "CASE WHEN relation.relkind = 'S' THEN "
+        "has_sequence_privilege(runtime_role, relation.oid, "
+        "'UPDATE,USAGE WITH GRANT OPTION,SELECT WITH GRANT OPTION') "
+        "ELSE false END"
+    ) in normalized
+    assert (
+        "CASE WHEN relation.relkind IN ('r', 'p', 'v', 'm', 'f') THEN ( "
+        "has_table_privilege(runtime_role, relation.oid, "
+        "'TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') "
+        "OR has_table_privilege(runtime_role, relation.oid, "
+        "'SELECT WITH GRANT OPTION,INSERT WITH GRANT OPTION,"
+        "UPDATE WITH GRANT OPTION,DELETE WITH GRANT OPTION') "
+        "OR has_any_column_privilege(runtime_role, relation.oid, "
+        "'REFERENCES,SELECT WITH GRANT OPTION,INSERT WITH GRANT OPTION,"
+        "UPDATE WITH GRANT OPTION') ) ELSE false END"
+    ) in normalized
+    assert normalized.count("has_sequence_privilege(runtime_role,") == 1
+    assert normalized.count("has_any_column_privilege(runtime_role,") == 1
+
+
 def test_bootstrap_grants_are_dml_only_and_bypass_only_for_the_worker() -> None:
     sql = BOOTSTRAP_SQL.read_text(encoding="utf-8")
     assert re.search(r"ALTER ROLE ue_app WITH LOGIN NOSUPERUSER [^;]*NOBYPASSRLS", sql)
