@@ -7244,14 +7244,9 @@ def _aud481_assert_matrix_contract(
         )
         in build_args
     )
-    assert (
-        build["with"]["cache-from"]
-        == f"type=gha,scope=university-{_aud481_gh('matrix.image_name')}"
-    )
-    assert (
-        build["with"]["cache-to"]
-        == f"type=gha,scope=university-{_aud481_gh('matrix.image_name')},mode=max"
-    )
+    assert ci_workflow.get("cache-mode") == "none", "AUD-481 shared-cache policy"
+    assert "cache-from" not in build["with"], "AUD-481 shared-cache policy"
+    assert "cache-to" not in build["with"], "AUD-481 shared-cache policy"
     assert build["with"]["provenance"] is False
     assert build["with"]["sbom"] is False
 
@@ -7360,6 +7355,8 @@ def test_aud481_counterfactuals_reject_missing_image_and_nonblocking_scan() -> N
             _aud481_assert_matrix_contract(ci_workflow, release_workflow, catalog)
         return
 
+    _aud481_assert_matrix_contract(ci_workflow, release_workflow, catalog)
+
     missing_image = deepcopy(ci_workflow)
     include = missing_image["jobs"]["docker-security-scan-additional"]["strategy"][
         "matrix"
@@ -7377,6 +7374,29 @@ def test_aud481_counterfactuals_reject_missing_image_and_nonblocking_scan() -> N
     scanner["with"]["exit-code"] = "0"
     with pytest.raises(AssertionError):
         _aud481_assert_matrix_contract(nonblocking_scan, release_workflow, catalog)
+
+    for mutation in (
+        "missing-cache-mode",
+        "enabled-cache-mode",
+        "cache-from",
+        "cache-to",
+    ):
+        shared_cache = deepcopy(ci_workflow)
+        if mutation == "missing-cache-mode":
+            shared_cache.pop("cache-mode")
+        elif mutation == "enabled-cache-mode":
+            shared_cache["cache-mode"] = "read-write"
+        else:
+            build = next(
+                step
+                for step in shared_cache["jobs"]["docker-security-scan-additional"][
+                    "steps"
+                ]
+                if step.get("name") == "Build local runtime image for scanning"
+            )
+            build["with"][mutation] = "type=gha"
+        with pytest.raises(AssertionError, match="AUD-481 shared-cache policy"):
+            _aud481_assert_matrix_contract(shared_cache, release_workflow, catalog)
 
 
 def test_aud350_postgresql_counterfactual_uses_existing_migration_gate() -> None:

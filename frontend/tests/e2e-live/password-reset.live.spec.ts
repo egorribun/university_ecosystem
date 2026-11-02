@@ -29,6 +29,7 @@ import {
   withPasswordResetUrlDiagnostic,
   type ResetUrlPhase,
 } from "./password-reset-url-state"
+import { withPasswordForgotDiagnostics } from "./password-forgot-diagnostic"
 import { reportLiveHttpStatus, reportLiveRateLimitRetry } from "./http-status-diagnostic"
 import { reportLivePasswordResetRegistrationFailure } from "./live-ui-diagnostic"
 import {
@@ -249,10 +250,25 @@ test("a student resets with the Mailpit link without retaining tokens or followi
   )
   await page.context().clearCookies()
 
-  await page.goto("/forgot-password")
-  await page.getByRole("textbox", { name: "E-mail" }).fill(email)
-  await page.getByRole("button", { name: "Отправить ссылку" }).click()
-  await expect(page.getByText("Проверьте почту")).toBeVisible()
+  await withPasswordForgotDiagnostics(
+    page,
+    {
+      project: testInfo.project.name,
+      attempt: testInfo.retry,
+      ownedOrigin: ownedSessionOrigin(),
+      deadlineAtMs: identityDeadlineAtMs,
+    },
+    async (markPhase) => {
+      markPhase("navigate")
+      await page.goto("/forgot-password")
+      markPhase("fill")
+      await page.getByRole("textbox", { name: "E-mail" }).fill(email)
+      markPhase("click")
+      await page.getByRole("button", { name: "Отправить ссылку" }).click()
+      markPhase("success")
+      await expect(page.getByText("Проверьте почту")).toBeVisible()
+    }
+  )
 
   const resetMatch = await awaitMail(email, RESET_LINK)
   const token = resetMatch[1]

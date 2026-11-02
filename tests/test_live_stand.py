@@ -15140,3 +15140,132 @@ def test_live_caddy_first_capture_summary_preserves_failure(
     for value in (private, password_nonce, *correlations.values()):
         assert value not in captured.out
         assert value not in captured.err
+
+
+def _password_forgot_record() -> dict[str, object]:
+    def stat() -> dict[str, object]:
+        return {
+            "requests": "0",
+            "responses": "0",
+            "completed": "0",
+            "failed": "0",
+            "status": "none",
+            "responsePhase": "none",
+        }
+
+    return {
+        "scope": "main-frame-navigation-window",
+        "schema": 1,
+        "project": "mobile",
+        "attempt": 0,
+        "phase": "success",
+        "elapsed": "ge15s",
+        "auth": stat(),
+        "csrf": stat(),
+        "forgot": stat(),
+        "snapshot": None,
+    }
+
+
+def _password_forgot_line(record: dict[str, object]) -> str:
+    return (
+        "UE_LIVE_PASSWORD_FORGOT_V1 " + json.dumps(record, separators=(",", ":")) + "\n"
+    )
+
+
+def test_live_password_forgot_parser_is_closed_and_bounded() -> None:
+    parse = live_stand._live_playwright_password_forgot_diagnostics
+    expected = _password_forgot_record()
+    line = _password_forgot_line(expected)
+    assert parse(line) == [expected]
+    assert parse(line.replace("\n", "\r\n")) == [expected]
+    for malformed in (
+        line[:-1],
+        "prefix " + line,
+        "\x1b[0m" + line,
+        line.replace(" ", "\r", 1),
+        line.replace('"schema":1', '"schema":1,"schema":1'),
+        line.replace('"schema":1', '"schema":1,"\\u0073chema":1'),
+        line.replace('"schema":1', '"schema":true'),
+        line.replace('"attempt":0', '"attempt":NaN'),
+        line.replace('"attempt":0', '"attempt":2'),
+        line.replace('"elapsed":"ge15s"', '"elapsed":"private-canary"'),
+        line.replace('"snapshot":null', '"snapshot":{"token":"private-canary"}'),
+        line.replace('"requests":"0"', '"requests":"private-canary"', 1),
+        line.replace('"status":"none"', '"status":"401"', 1),
+        line.replace('"snapshot":null', '"snapshot":null,"email":"private-canary"'),
+        "UE_LIVE_PASSWORD_FORGOT_V1 " + " " * 2048 + "{}\n",
+        "UE_LIVE_PASSWORD_FORGOT_V1 " + "[" * 1000 + "]" * 1000 + "\n",
+        "UE_LIVE_PASSWORD_FORGOT_V1 " + "\ud800" + "\n",
+    ):
+        assert parse(malformed) == []
+    rows = []
+    expected_records = []
+    for project in ("desktop", "mobile"):
+        for attempt in (0, 1):
+            record = {
+                **_password_forgot_record(),
+                "project": project,
+                "attempt": attempt,
+            }
+            expected_records.append(record)
+            rows.extend(
+                (
+                    _password_forgot_line(record),
+                    _password_forgot_line({**record, "phase": "click"}),
+                )
+            )
+    assert parse("".join(rows * 100)) == expected_records
+
+
+@pytest.mark.parametrize("return_code", [0, 1])
+def test_live_password_forgot_runner_uses_only_failure_stdout_and_preserves_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    return_code: int,
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    record = _password_forgot_record()
+    valid = _password_forgot_line(record)
+    stderr_only = _password_forgot_line({**record, "project": "desktop"})
+    private = "private-diagnostic-canary"
+    completed = subprocess.CompletedProcess(
+        command,
+        return_code,
+        stdout=(valid + valid + private + "\n").encode(),
+        stderr=(stderr_only + private).encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    if return_code:
+        with pytest.raises(live_stand.StandError, match="exit code 1"):
+            live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    else:
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    expected = ["+ " + " ".join(command)]
+    if return_code:
+        expected.append(
+            "live E2E password-forgot " + json.dumps(record, separators=(",", ":"))
+        )
+    outcome = "failed" if return_code else "passed"
+    expected.append(f"live E2E outcome={outcome} exit_code={return_code}")
+    assert captured.out.splitlines() == expected
+    assert captured.err == ""
+    assert private not in captured.out
+    assert completed.stdout == completed.stderr == b""
+
+
+def test_live_password_forgot_parser_counts_complete_utf8_frame_bytes() -> None:
+    parse = live_stand._live_playwright_password_forgot_diagnostics
+    record = _password_forgot_record()
+    content = _password_forgot_line(record).removesuffix("\n")
+    max_lf = content + " " * (2047 - len(content.encode("utf-8"))) + "\n"
+    max_crlf = content + " " * (2046 - len(content.encode("utf-8"))) + "\r\n"
+    assert len(max_lf.encode("utf-8")) == len(max_crlf.encode("utf-8")) == 2048
+    assert parse(max_lf) == parse(max_crlf) == [record]
+    assert parse(" " + max_lf) == []
+    assert parse(max_lf[:-1] + " \n") == []
+    assert parse(max_crlf[:-2] + " \r\n") == []

@@ -6295,6 +6295,174 @@ def _validated_registration_admission_diag(value: object) -> dict[str, object] |
     return dict(record)
 
 
+_FORGOT_DIAGNOSTIC_PREFIX = "UE_LIVE_PASSWORD_FORGOT_V1 "
+_PASSWORD_FORGOT_KEYS = frozenset(
+    {
+        "scope",
+        "schema",
+        "project",
+        "attempt",
+        "phase",
+        "elapsed",
+        "auth",
+        "csrf",
+        "forgot",
+        "snapshot",
+    }
+)
+_PASSWORD_FORGOT_STAT_KEYS = frozenset(
+    {"requests", "responses", "completed", "failed", "status", "responsePhase"}
+)
+_PASSWORD_FORGOT_SNAPSHOT_KEYS = frozenset(
+    {
+        "forgotRoute",
+        "hydrated",
+        "formPresent",
+        "formInvalid",
+        "formAlert",
+        "submitPresent",
+        "submitDisabled",
+        "submitBusy",
+        "successMarkerVisible",
+    }
+)
+_PASSWORD_FORGOT_COUNTS = frozenset({"0", "1", "many"})
+_PASSWORD_FORGOT_STATUSES = frozenset(
+    {"none", "2xx", "401", "403", "429", "4xx", "5xx", "other", "mixed", "unavailable"}
+)
+
+
+def _validated_password_forgot_stat(value: object) -> dict[str, object] | None:
+    if type(value) is not dict or set(value) != _PASSWORD_FORGOT_STAT_KEYS:
+        return None
+    for key in ("requests", "responses", "completed", "failed"):
+        if type(value[key]) is not str or value[key] not in _PASSWORD_FORGOT_COUNTS:
+            return None
+    if (
+        type(value["status"]) is not str
+        or value["status"] not in _PASSWORD_FORGOT_STATUSES
+        or type(value["responsePhase"]) is not str
+        or value["responsePhase"] not in {
+            "none",
+            "before-click",
+            "after-click",
+            "mixed",
+        }
+    ):
+        return None
+    if value["requests"] == "0" and any(
+        value[key] != "0" for key in ("responses", "completed", "failed")
+    ):
+        return None
+    if (
+        (value["responses"] == "0") != (value["status"] == "none")
+        or (value["responses"] == "0") != (value["responsePhase"] == "none")
+        or (value["completed"] != "0" and value["responses"] == "0")
+    ):
+        return None
+    if value["requests"] == "1" and (
+        any(value[key] == "many" for key in ("responses", "completed", "failed"))
+        or (value["completed"] == "1" and value["failed"] == "1")
+    ):
+        return None
+    return dict(value)
+
+
+def _validated_password_forgot_record(value: object) -> dict[str, object] | None:
+    if type(value) is not dict or set(value) != _PASSWORD_FORGOT_KEYS:
+        return None
+    if (
+        type(value["scope"]) is not str
+        or value["scope"] not in {"main-frame-navigation-window", "unconfirmed"}
+        or type(value["schema"]) is not int
+        or value["schema"] != 1
+        or type(value["project"]) is not str
+        or value["project"] not in {"desktop", "mobile"}
+        or type(value["attempt"]) is not int
+        or value["attempt"] not in {0, 1}
+        or type(value["phase"]) is not str
+        or value["phase"] not in {"navigate", "fill", "click", "success"}
+        or type(value["elapsed"]) is not str
+        or value["elapsed"] not in {"lt1s", "1to5s", "5to15s", "ge15s", "unavailable"}
+    ):
+        return None
+    result = {
+        key: value[key]
+        for key in ("scope", "schema", "project", "attempt", "phase", "elapsed")
+    }
+    for route in ("auth", "csrf", "forgot"):
+        stat = _validated_password_forgot_stat(value[route])
+        if stat is None:
+            return None
+        if value["scope"] == "unconfirmed" and stat["requests"] != "0":
+            return None
+        result[route] = stat
+    snapshot = value["snapshot"]
+    if snapshot is not None:
+        if (
+            type(snapshot) is not dict
+            or set(snapshot) != _PASSWORD_FORGOT_SNAPSHOT_KEYS
+            or any(type(flag) is not bool for flag in snapshot.values())
+        ):
+            return None
+        if (
+            not snapshot["formPresent"]
+            and any(
+                snapshot[key]
+                for key in (
+                    "formInvalid",
+                    "formAlert",
+                    "submitPresent",
+                    "submitDisabled",
+                    "submitBusy",
+                )
+            )
+        ) or (
+            not snapshot["submitPresent"]
+            and (snapshot["submitDisabled"] or snapshot["submitBusy"])
+        ):
+            return None
+        snapshot = dict(snapshot)
+    result["snapshot"] = snapshot
+    return result
+
+
+def _live_playwright_password_forgot_diagnostics(
+    output: str,
+) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    seen: set[tuple[object, object]] = set()
+    for raw_line in output.split("\n")[:-1]:
+        try:
+            # Include CR when present and the consumed LF in the frame budget.
+            if len(raw_line.encode("utf-8")) + 1 > 2_048:
+                continue
+        except UnicodeEncodeError:
+            continue
+        line = raw_line.removesuffix("\r")
+        if not line.isprintable() or not line.startswith(_FORGOT_DIAGNOSTIC_PREFIX):
+            continue
+        try:
+            value = json.loads(
+                line[len(_FORGOT_DIAGNOSTIC_PREFIX) :],
+                object_pairs_hook=_auth_diag_json_object,
+                parse_constant=_reject_auth_diag_json_constant,
+            )
+        except (json.JSONDecodeError, ValueError, RecursionError):
+            continue
+        record = _validated_password_forgot_record(value)
+        if record is None:
+            continue
+        identity = (record["project"], record["attempt"])
+        if identity in seen:
+            continue
+        seen.add(identity)
+        records.append(record)
+        if len(records) == 4:
+            break
+    return records
+
+
 _PLAYWRIGHT_RESET_URL_LINE = re.compile(
     r"UE_LIVE_RESET_URL_V1 project=(desktop|mobile) phase=(history|reopen) "
     r"reset_route=(true|false) token_query_absent=(true|false) "
@@ -7981,6 +8149,9 @@ def _run_live_playwright(
         if return_code != 0
         else []
     )
+    password_forgot_diagnostics = (
+        _live_playwright_password_forgot_diagnostics(stdout) if return_code != 0 else []
+    )
     reset_url_observations = (
         _live_playwright_reset_url_observations(stdout) if return_code != 0 else []
     )
@@ -8131,6 +8302,11 @@ def _run_live_playwright(
     for record in auth_registration_diagnostics:
         print(
             "live E2E auth registration " + json.dumps(record, separators=(",", ":")),
+            flush=True,
+        )
+    for record in password_forgot_diagnostics:
+        print(
+            "live E2E password-forgot " + json.dumps(record, separators=(",", ":")),
             flush=True,
         )
     for project, phase, route, query, fragment, href in reset_url_observations:

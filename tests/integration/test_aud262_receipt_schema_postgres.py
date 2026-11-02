@@ -13,10 +13,17 @@ import pytest_asyncio
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
-from app.core import database
-from tests.test_aud262_receipt_migration import _load_migration
+from tests.fixtures import owned_baseline_postgres as owned
+from tests.fixtures.baseline_migration import BASELINE_DOWNGRADE_REASON
+
+# These three overrides and their guard are module-local, never a global plugin.
+initialize_database_for_tests = owned.initialize_database_for_tests
+prepare_database = owned.prepare_database
+clean_database = owned.clean_database
+default_database_guard = owned.default_database_guard
+owned_baseline_server = owned.owned_baseline_server
 
 _RUN = os.getenv("RUN_INTEGRATION_TESTS") == "1"
 _COMPLETED = datetime(2026, 10, 25, 0, 0, tzinfo=UTC)
@@ -26,123 +33,144 @@ _TABLE = "chat_send_receipts"
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.asyncio,
+    pytest.mark.timeout(
+        300, method="signal", func_only=False, disable_debugger_detection=True
+    ),
     pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to run"),
 ]
 
 
 @pytest_asyncio.fixture
-async def receipt_schema(prepare_database: None) -> AsyncIterator[SimpleNamespace]:
-    """Roll back every schema, role and row; never change shared fixture policies."""
-    if (
-        database.engine.dialect.name != "postgresql"
-        or database.engine.dialect.driver != "asyncpg"
-    ):
-        pytest.fail("Receipt schema contracts require real PostgreSQL via asyncpg")
-    migration = _load_migration()
-    schema = f"aud262_receipts_{uuid4().hex}"
-    role = f"aud262_receipts_{uuid4().hex}"
-    owner, peer, outsider, chat, second_chat, message, tenant = (
-        uuid4() for _ in range(7)
-    )
-    async with database.engine.connect() as connection:
-        transaction = await connection.begin()
+async def receipt_schema(
+    request: pytest.FixtureRequest,
+) -> AsyncIterator[SimpleNamespace]:
+    """Commit only on the acknowledged disposable server, never the default DB."""
+    server = request.getfixturevalue("owned_baseline_server")
+    with owned.committed_baseline(server) as baseline:
+        async_url = baseline.url.set(drivername="postgresql+asyncpg", query={})
+        engine = create_async_engine(
+            async_url,
+            poolclass=sa.pool.NullPool,
+            hide_parameters=True,
+            connect_args={"timeout": 5, "command_timeout": 65},
+        )
+        role = f"receipt_owner_{uuid4().hex}"
+        member = f"receipt_member_{uuid4().hex}"
+        owner, peer, outsider, chat, second_chat, message, tenant = (
+            uuid4() for _ in range(7)
+        )
         try:
-            await connection.execute(sa.schema.CreateSchema(schema))
-            await connection.execute(sa.text(f'SET LOCAL search_path TO "{schema}"'))
-            await connection.execute(
-                sa.text(f'CREATE ROLE "{role}" NOLOGIN NOSUPERUSER NOBYPASSRLS')
-            )
-            await connection.execute(
-                sa.text("CREATE TABLE users (id UUID PRIMARY KEY)")
-            )
-            await connection.execute(
-                sa.text("CREATE TABLE chats (id UUID PRIMARY KEY, tenant_id UUID)")
-            )
-            await connection.execute(
-                sa.text(
-                    "CREATE TABLE messages "
-                    "(id UUID PRIMARY KEY, "
-                    "chat_id UUID REFERENCES chats(id) ON DELETE CASCADE)"
-                )
-            )
-            await connection.execute(
-                sa.text(
-                    "CREATE TABLE chat_participants ("
-                    "chat_id UUID REFERENCES chats(id) ON DELETE CASCADE, "
-                    "user_id UUID REFERENCES users(id) ON DELETE CASCADE, "
-                    "PRIMARY KEY (chat_id, user_id))"
-                )
-            )
-            for user_id in (owner, peer, outsider):
-                await connection.execute(
-                    sa.text("INSERT INTO users (id) VALUES (:id)"), {"id": user_id}
-                )
-            for chat_id in (chat, second_chat):
-                await connection.execute(
-                    sa.text("INSERT INTO chats (id) VALUES (:id)"), {"id": chat_id}
-                )
-            for chat_id, user_id in ((chat, owner), (chat, peer), (second_chat, owner)):
+            async with engine.begin() as connection:
+                for statement in (
+                    f'CREATE ROLE "{role}" NOLOGIN NOSUPERUSER NOBYPASSRLS',
+                    f'CREATE ROLE "{member}" NOLOGIN NOSUPERUSER NOBYPASSRLS',
+                    f'GRANT ue_rls_bypass TO "{member}"',
+                    f'GRANT USAGE ON SCHEMA public TO "{role}", "{member}"',
+                    "GRANT SELECT ON public.chats, public.chat_participants "
+                    f'TO "{role}", "{member}"',
+                    "GRANT SELECT, INSERT, UPDATE, DELETE "
+                    f'ON public.chat_send_receipts TO "{role}", "{member}"',
+                    f'ALTER TABLE public.chat_send_receipts OWNER TO "{role}"',
+                ):
+                    await connection.execute(sa.text(statement))
                 await connection.execute(
                     sa.text(
-                        "INSERT INTO chat_participants (chat_id, user_id) "
-                        "VALUES (:chat, :user)"
+                        "INSERT INTO tenants (id, name, slug) "
+                        "VALUES (:id, :name, :slug)"
                     ),
-                    {"chat": chat_id, "user": user_id},
+                    {"id": tenant, "name": "Receipt contract", "slug": uuid4().hex},
                 )
-            await connection.execute(
-                sa.text("INSERT INTO messages (id, chat_id) VALUES (:id, :chat)"),
-                {"id": message, "chat": chat},
-            )
-
-            def upgrade(sync_connection: sa.Connection) -> None:
-                with Operations.context(MigrationContext.configure(sync_connection)):
-                    migration.upgrade()
-
-            await connection.run_sync(upgrade)
-            # Match the existing parent-chat tenant policy. The receipt policy
-            # must consult visible parent rows rather than bypass this boundary.
-            for statement in (
-                "ALTER TABLE chats ENABLE ROW LEVEL SECURITY",
-                "ALTER TABLE chats FORCE ROW LEVEL SECURITY",
-                "CREATE POLICY default_permissive_policy ON chats AS PERMISSIVE "
-                "USING (true) WITH CHECK (true)",
-                "CREATE POLICY tenant_isolation_policy ON chats AS RESTRICTIVE "
-                "USING (current_setting('app.bypass_rls', true) = 'on' "
-                "OR tenant_id IS NULL "
-                "OR tenant_id = "
-                "NULLIF(current_setting('app.current_tenant', true), '')::uuid)",
-                f'GRANT USAGE, CREATE ON SCHEMA "{schema}" TO "{role}"',
-                "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES "
-                f'IN SCHEMA "{schema}" TO "{role}"',
-                f'ALTER TABLE chat_send_receipts OWNER TO "{role}"',
-            ):
-                await connection.execute(sa.text(statement))
-            yield SimpleNamespace(
-                connection=connection,
-                schema=schema,
-                role=role,
-                migration=migration,
-                owner=owner,
-                peer=peer,
-                outsider=outsider,
-                chat=chat,
-                second_chat=second_chat,
-                message=message,
-                tenant=tenant,
-            )
+                for user_id in (owner, peer, outsider):
+                    await connection.execute(
+                        sa.text(
+                            "INSERT INTO users "
+                            "(id, email, hashed_password, tenant_id) "
+                            "VALUES (:id, :email, :credential, :tenant)"
+                        ),
+                        {
+                            "id": user_id,
+                            "email": f"{user_id}@example.invalid",
+                            # Deliberately unusable, generated non-authentication seed.
+                            "credential": f"!{uuid4()}",
+                            "tenant": tenant,
+                        },
+                    )
+                for chat_id in (chat, second_chat):
+                    await connection.execute(
+                        sa.text(
+                            "INSERT INTO chats (id, tenant_id) VALUES (:id, :tenant)"
+                        ),
+                        {"id": chat_id, "tenant": tenant},
+                    )
+                for chat_id, user_id in (
+                    (chat, owner),
+                    (chat, peer),
+                    (second_chat, owner),
+                ):
+                    await connection.execute(
+                        sa.text(
+                            "INSERT INTO chat_participants (chat_id, user_id) "
+                            "VALUES (:chat, :user)"
+                        ),
+                        {"chat": chat_id, "user": user_id},
+                    )
+                await connection.execute(
+                    sa.text(
+                        "INSERT INTO messages "
+                        "(id, content, sender_id, chat_id, tenant_id) "
+                        "VALUES (:id, :content, :sender, :chat, :tenant)"
+                    ),
+                    {
+                        "id": message,
+                        "content": "Receipt contract",
+                        "sender": owner,
+                        "chat": chat,
+                        "tenant": tenant,
+                    },
+                )
+            async with engine.connect() as connection:
+                await connection.begin()
+                try:
+                    yield SimpleNamespace(
+                        connection=connection,
+                        engine=engine,
+                        schema="public",
+                        role=role,
+                        member=member,
+                        migration=baseline.migration,
+                        transaction_timeouts=baseline.transaction_timeouts,
+                        owner=owner,
+                        peer=peer,
+                        outsider=outsider,
+                        chat=chat,
+                        second_chat=second_chat,
+                        message=message,
+                        tenant=tenant,
+                    )
+                finally:
+                    if connection.in_transaction():
+                        await connection.rollback()
         finally:
-            await transaction.rollback()
+            await engine.dispose()
 
 
 async def _identity(state: SimpleNamespace, user_id: UUID | str) -> None:
     connection = state.connection
     await connection.execute(sa.text(f'SET LOCAL ROLE "{state.role}"'))
+    assert await connection.scalar(sa.text("SELECT current_user")) == state.role
     bypass = await connection.scalar(
         sa.text(
             "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user"
         )
     )
     assert bypass is False
+    assert await connection.scalar(
+        sa.text("SELECT pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER')")
+    ) is False
+    await connection.execute(
+        sa.text("SELECT set_config('app.current_tenant', :tenant, true)"),
+        {"tenant": str(state.tenant)},
+    )
     await connection.execute(
         sa.text("SELECT set_config('app.current_user_id', :user, true)"),
         {"user": str(user_id)},
@@ -252,11 +280,15 @@ async def test_receipt_upgrade_creates_exact_catalog_and_forces_owner_rls(
     await connection.run_sync(inspect_schema)
     flags = await connection.execute(
         sa.text(
-            "SELECT relrowsecurity, relforcerowsecurity FROM pg_class "
+            "SELECT relrowsecurity, relforcerowsecurity, "
+            "pg_get_userbyid(relowner) FROM pg_class "
             "WHERE oid = 'chat_send_receipts'::regclass"
         )
     )
-    assert flags.one() == (True, True)
+    assert flags.one() == (True, True, state.role)
+    # These are observed while actual baseline.upgrade() is executing. SET
+    # LOCAL does not survive commit; server defaults independently bound clients.
+    assert state.transaction_timeouts == ("10s", "1min")
     assert await connection.scalar(sa.text("SHOW lock_timeout")) == "10s"
     assert await connection.scalar(sa.text("SHOW statement_timeout")) == "1min"
     await _identity(state, state.owner)
@@ -264,6 +296,36 @@ async def test_receipt_upgrade_creates_exact_catalog_and_forces_owner_rls(
     assert await _visible(connection) == [receipt_id]
     await _identity(state, state.peer)
     assert await _visible(connection) == []
+    await connection.execute(sa.text("RESET ROLE"))
+    flags = await connection.execute(
+        sa.text(
+            "SELECT rolcanlogin, rolsuper, rolbypassrls FROM pg_roles "
+            "WHERE rolname = 'ue_rls_bypass'"
+        )
+    )
+    assert flags.one() == (False, False, False)
+    await connection.execute(sa.text(f'SET LOCAL ROLE "{state.member}"'))
+    assert await connection.scalar(sa.text("SELECT current_user")) == state.member
+    assert await connection.scalar(
+        sa.text(
+            "SELECT rolsuper OR rolbypassrls FROM pg_roles "
+            "WHERE rolname = current_user"
+        )
+    ) is False
+    assert await connection.scalar(
+        sa.text("SELECT pg_has_role(current_user, 'ue_rls_bypass', 'MEMBER')")
+    ) is True
+    await connection.execute(
+        sa.text("SELECT set_config('app.current_user_id', :user, true)"),
+        {"user": str(state.owner)},
+    )
+    await connection.execute(
+        sa.text("SELECT set_config('app.current_tenant', :tenant, true)"),
+        {"tenant": str(uuid4())},
+    )
+    # Membership, not a forged GUC or native BYPASSRLS, bypasses the parent
+    # tenant boundary. The receipt's owner/participant policy still applies.
+    assert await _visible(connection) == [receipt_id]
 
 
 @pytest.mark.parametrize("identity", ["empty", "peer", "outsider"])
@@ -309,10 +371,9 @@ async def test_receipt_rls_inherits_parent_chat_tenant_visibility(
     receipt_schema: SimpleNamespace,
 ) -> None:
     state = receipt_schema
-    await state.connection.execute(
-        sa.text("UPDATE chats SET tenant_id = :tenant WHERE id = :chat"),
-        {"tenant": state.tenant, "chat": state.chat},
-    )
+    assert await state.connection.scalar(
+        sa.text("SELECT count(*) FROM chats WHERE tenant_id IS NULL")
+    ) == 0
     await _identity(state, state.owner)
     await state.connection.execute(
         sa.text("SELECT set_config('app.current_tenant', :tenant, true)"),
@@ -322,6 +383,9 @@ async def test_receipt_rls_inherits_parent_chat_tenant_visibility(
     await state.connection.execute(
         sa.text("SELECT set_config('app.current_tenant', :tenant, true)"),
         {"tenant": str(uuid4())},
+    )
+    await state.connection.execute(
+        sa.text("SELECT set_config('app.bypass_rls', 'on', true)")
     )
     assert await _visible(state.connection) == []
     with pytest.raises(sa.exc.DBAPIError) as denied:
@@ -406,21 +470,80 @@ async def test_receipt_foreign_key_lifecycle_preserves_message_deletion_marker(
     assert rows.all() == ([(receipt_id, None)] if parent == "messages" else [])
 
 
-async def test_receipt_upgrade_and_downgrade_refuse_without_losing_history(
+async def test_receipt_baseline_downgrade_refuses_without_losing_committed_history(
     receipt_schema: SimpleNamespace,
 ) -> None:
     state = receipt_schema
     await _identity(state, state.owner)
     receipt_id = await _insert(state)
+    await state.connection.commit()
 
-    def refuse(sync_connection: sa.Connection) -> None:
-        with Operations.context(MigrationContext.configure(sync_connection)):
-            with pytest.raises(RuntimeError, match="require manual review"):
-                state.migration.upgrade()
-            with pytest.raises(
-                RuntimeError, match="discard committed idempotency history"
-            ):
-                state.migration.downgrade()
+    async def snapshot(connection: AsyncConnection) -> tuple[object, object]:
+        def catalog(sync_connection: sa.Connection) -> object:
+            inspector = sa.inspect(sync_connection)
+            return (
+                inspector.get_columns(_TABLE, schema="public"),
+                inspector.get_pk_constraint(_TABLE, schema="public"),
+                inspector.get_unique_constraints(_TABLE, schema="public"),
+                inspector.get_foreign_keys(_TABLE, schema="public"),
+                inspector.get_indexes(_TABLE, schema="public"),
+            )
 
-    await state.connection.run_sync(refuse)
-    assert await _visible(state.connection) == [receipt_id]
+        rows = await connection.execute(
+            sa.text("SELECT * FROM chat_send_receipts ORDER BY id")
+        )
+        return tuple(rows.all()), repr(await connection.run_sync(catalog))
+
+    async with state.engine.connect() as observer:
+        await observer.begin()
+        observed = SimpleNamespace(**vars(state))
+        observed.connection = observer
+        await _identity(observed, state.owner)
+        assert await _visible(observer) == [receipt_id]
+        before = await snapshot(observer)
+
+        def refuse(sync_connection: sa.Connection) -> None:
+            statements: list[str] = []
+
+            def record(
+                _connection, _cursor, statement, _parameters, _context, _many
+            ) -> None:
+                statements.append(statement)
+
+            sa.event.listen(sync_connection, "before_cursor_execute", record)
+            try:
+                with Operations.context(MigrationContext.configure(sync_connection)):
+                    with pytest.raises(RuntimeError) as refused:
+                        state.migration.downgrade()
+                assert str(refused.value) == BASELINE_DOWNGRADE_REASON
+            finally:
+                sa.event.remove(sync_connection, "before_cursor_execute", record)
+            assert statements == []
+
+        await observer.run_sync(refuse)
+        assert await _visible(observer) == [receipt_id]
+        assert await snapshot(observer) == before
+        await observer.rollback()
+
+    # A second fresh transaction observes the same committed row after refusal.
+    async with state.engine.connect() as observer:
+        observed.connection = observer
+        await _identity(observed, state.owner)
+        assert await _visible(observer) == [receipt_id]
+        assert await snapshot(observer) == before
+        await observer.rollback()
+
+
+async def test_receipt_owned_fixture_never_uses_default_database(
+    request: pytest.FixtureRequest,
+) -> None:
+    """Subprocess controls execute the real autouse graph without starting Docker."""
+    assert request.getfixturevalue("default_database_guard") == []
+    watchdog = request.node.get_closest_marker("timeout")
+    assert watchdog is not None
+    assert watchdog.args == (300,)
+    assert watchdog.kwargs == {
+        "method": "signal",
+        "func_only": False,
+        "disable_debugger_detection": True,
+    }
