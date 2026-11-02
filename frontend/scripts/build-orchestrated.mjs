@@ -238,6 +238,40 @@ async function step2_syncTokens() {
   await run("node", ["./scripts/sync-tokens.mjs"])
 }
 
+// Mirror Node v24.22.1 ParseNodeOptionsEnvVar, not shell tokenization:
+// only ASCII spaces split arguments; double quotes group and backslashes
+// escape the next character only inside double quotes. Never rewrite the input.
+function parseInheritedNodeOptions(value) {
+  const tokens = []
+  let inQuotes = false
+  let startToken = true
+  for (let index = 0; index < value.length; index += 1) {
+    let character = value[index]
+    if (character === "\\" && inQuotes) {
+      if (index + 1 === value.length) return null
+      index += 1
+      character = value[index]
+    } else if (character === " " && !inQuotes) {
+      startToken = true
+      continue
+    } else if (character === '"') {
+      inQuotes = !inQuotes
+      continue
+    }
+    if (startToken) {
+      tokens.push(character)
+      startToken = false
+    } else {
+      tokens[tokens.length - 1] += character
+    }
+  }
+  return inQuotes ? null : tokens
+}
+
+function hasInheritedNodeOption(tokens, optionName) {
+  return tokens.some((token) => token.split("=", 1)[0].replaceAll("_", "-") === optionName)
+}
+
 export async function step3_viteBuild(configuredMaxWaitMs = process.env.BUILD_MAX_WAIT_MS) {
   const MAX_WAIT_MS = parseBuildMaxWaitMs(configuredMaxWaitMs)
   console.log("== Step 3: vite build (BUILD_SKIP_PWA=true) + kill-after-artifacts ==")
@@ -281,11 +315,16 @@ export async function step3_viteBuild(configuredMaxWaitMs = process.env.BUILD_MA
   const maxRssMb = parseMemoryLimit(process.env.FRONTEND_BUILD_MAX_RSS_MB, 1536)
   const maxOldSpaceMb = parseMemoryLimit(process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB, 1536)
   const inheritedNodeOptions = process.env.NODE_OPTIONS ?? ""
-  const hasOldSpaceLimit = /(?:^|\s)--max-old-space-size(?:=|\s)/.test(inheritedNodeOptions)
+  const inheritedNodeOptionTokens = parseInheritedNodeOptions(inheritedNodeOptions)
+  const hasOldSpaceLimit =
+    inheritedNodeOptionTokens !== null &&
+    hasInheritedNodeOption(inheritedNodeOptionTokens, "--max-old-space-size")
   // A one-megabyte young generation measured about 150 MB below V8's default
   // peak RSS on the production graph, with no change to the emitted chunks.
   // An inherited --max-semi-space-size keeps operator control.
-  const hasSemiSpaceLimit = /(?:^|\s)--max-semi-space-size(?:=|\s)/.test(inheritedNodeOptions)
+  const hasSemiSpaceLimit =
+    inheritedNodeOptionTokens !== null &&
+    hasInheritedNodeOption(inheritedNodeOptionTokens, "--max-semi-space-size")
 
   // FRONTEND_REACT_DEV_MODE propagates a client-only diagnostic mode.
   // When set locally, vite.config.mts adds react-dom/client →
@@ -297,14 +336,19 @@ export async function step3_viteBuild(configuredMaxWaitMs = process.env.BUILD_MA
   const isReactDevMode = process.env.FRONTEND_REACT_DEV_MODE === "true"
   const rolldownWorkerThreads = process.env.ROLLDOWN_WORKER_THREADS?.trim() || "4"
 
-  const nodeOptions = [
-    inheritedNodeOptions,
-    hasOldSpaceLimit ? "" : `--max-old-space-size=${maxOldSpaceMb}`,
-    hasSemiSpaceLimit ? "" : "--max-semi-space-size=1",
-    traceEnabled ? `--require ${JSON.stringify(traceAgentPath)}` : "",
-  ]
-    .filter(Boolean)
-    .join(" ")
+  // Preserve malformed quoting byte-for-byte so Node rejects it; appending
+  // defaults or the trace agent must not accidentally repair an invalid escape.
+  const nodeOptions =
+    inheritedNodeOptionTokens === null
+      ? inheritedNodeOptions
+      : [
+          inheritedNodeOptions,
+          hasOldSpaceLimit ? "" : `--max-old-space-size=${maxOldSpaceMb}`,
+          hasSemiSpaceLimit ? "" : "--max-semi-space-size=1",
+          traceEnabled ? `--require ${JSON.stringify(traceAgentPath)}` : "",
+        ]
+          .filter(Boolean)
+          .join(" ")
 
   await new Promise((resolve, reject) => {
     const env = {

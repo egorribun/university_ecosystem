@@ -2457,8 +2457,6 @@ jobs:
             ${{ matrix.image_name == 'frontend' && 'VITE_ENABLE_WEB_VITALS=false' || '' }}
             ${{ matrix.image_name == 'frontend' && 'VITE_CWV_TRUSTED_RUM=false' || '' }}
             ${{ matrix.image_name == 'frontend' && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || '' }}
-          cache-from: type=gha,scope=university-${{ matrix.image_name }}
-          cache-to: type=gha,scope=university-${{ matrix.image_name }},mode=max
           provenance: false
           sbom: false
 
@@ -4184,6 +4182,9 @@ jobs:
     name: Coverage & Quality Policy Gate
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
     needs:
       - backend-tests
       - db-migration-gate

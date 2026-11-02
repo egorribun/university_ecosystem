@@ -1,213 +1,177 @@
-from __future__ import annotations
+"""Executed baseline contracts for the retained quarantine quota ledger."""
 
-import importlib.util
-from pathlib import Path
-from types import SimpleNamespace
-from typing import Any
+from __future__ import annotations
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-MIGRATION_PATH = (
-    ROOT / "alembic" / "versions" / "202610200001_add_quarantine_storage_ledger.py"
+from tests.fixtures.baseline_migration import (
+    assert_baseline_operation_kinds,
+    assert_downgrade_refuses,
+    assert_exact_statements,
+    bind_baseline,
+    capture_baseline,
+    normalize_sql,
+    table_statements,
+)
+
+_EXPECTED_LEDGER_SQL = (
+    (
+        "CREATE TABLE public.quarantine_storage_scopes (\n"
+        "    scope_id character varying(64) NOT NULL,\n"
+        "    inventory_complete boolean DEFAULT false NOT NULL,\n"
+        "    inventory_cursor text,\n"
+        "    created_at timestamp with time zone DEFAULT now() NOT NULL\n"
+        ")"
+    ),
+    (
+        "CREATE TABLE public.quarantine_reservations (\n"
+        "    id uuid NOT NULL,\n"
+        "    scope_id character varying(64) NOT NULL,\n"
+        "    object_key character varying(2048) NOT NULL,\n"
+        "    size_bytes bigint NOT NULL,\n"
+        "    status character varying(16) DEFAULT 'pending'::character "
+        "varying NOT NULL,\n"
+        "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
+        "    expires_at timestamp with time zone,\n"
+        "    CONSTRAINT ck_quarantine_reservation_size CHECK ((size_bytes >= 0)),\n"
+        "    CONSTRAINT ck_quarantine_reservation_status CHECK (status IN "
+        "('pending', 'stored', 'deleting'))\n"
+        ")"
+    ),
+    (
+        "ALTER TABLE ONLY public.quarantine_reservations\n"
+        "    ADD CONSTRAINT quarantine_reservations_pkey PRIMARY KEY (id)"
+    ),
+    (
+        "ALTER TABLE ONLY public.quarantine_storage_scopes\n"
+        "    ADD CONSTRAINT quarantine_storage_scopes_pkey PRIMARY KEY (scope_id)"
+    ),
+    (
+        "ALTER TABLE ONLY public.quarantine_reservations\n"
+        "    ADD CONSTRAINT uq_quarantine_reservation_object UNIQUE "
+        "(scope_id, object_key)"
+    ),
+    (
+        "ALTER TABLE ONLY public.quarantine_reservations\n"
+        "    ADD CONSTRAINT quarantine_reservations_scope_id_fkey FOREIGN "
+        "KEY (scope_id) REFERENCES public.quarantine_storage_scopes(scope_id)"
+    ),
+    (
+        "CREATE INDEX ix_quarantine_reservations_expiry ON "
+        "public.quarantine_reservations USING btree (scope_id, status, expires_at)"
+    ),
 )
 
 
-class _Result:
-    def __init__(self, value: Any) -> None:
-        self.value = value
-
-    def scalar_one(self) -> Any:
-        return self.value
-
-
-class _Bind:
-    def __init__(self, *, dialect: str = "postgresql", schema: Any = "public") -> None:
-        self.dialect = SimpleNamespace(name=dialect)
-        self.schema = schema
-        self.statements: list[str] = []
-
-    def execute(self, statement: Any) -> _Result:
-        sql = str(statement)
-        self.statements.append(sql)
-        assert sql == "SELECT current_schema()"
-        return _Result(self.schema)
-
-
-class _Inspector:
-    def __init__(self, scopes: bool = False, reservations: bool = False) -> None:
-        self.scopes = scopes
-        self.reservations = reservations
-        self.queries: list[str] = []
-
-    def has_table(self, table: str, *, schema: str) -> bool:
-        assert schema == "public"
-        self.queries.append(table)
-        return {
-            "quarantine_storage_scopes": self.scopes,
-            "quarantine_reservations": self.reservations,
-        }[table]
-
-
-class _Operations:
-    def __init__(self, bind: _Bind | None, *, as_sql: bool = False) -> None:
-        self._bind = bind
-        self._context = SimpleNamespace(as_sql=as_sql)
-        self.get_bind_calls = 0
-        self.schema_writes: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
-
-    def get_context(self) -> SimpleNamespace:
-        return self._context
-
-    def get_bind(self) -> _Bind | None:
-        self.get_bind_calls += 1
-        return self._bind
-
-    def execute(self, *args: Any, **kwargs: Any) -> None:
-        self.schema_writes.append(("execute", args, kwargs))
-
-    def create_table(self, *args: Any, **kwargs: Any) -> None:
-        self.schema_writes.append(("create_table", args, kwargs))
-
-    def create_index(self, *args: Any, **kwargs: Any) -> None:
-        self.schema_writes.append(("create_index", args, kwargs))
-
-
-def _load_migration() -> Any:
-    spec = importlib.util.spec_from_file_location(
-        "quarantine_ledger_migration_contract", MIGRATION_PATH
+def _assert_ledger_contract(statements: list[str]) -> None:
+    assert_baseline_operation_kinds(statements)
+    selected = table_statements(
+        statements, "quarantine_storage_scopes", "quarantine_reservations"
     )
-    assert spec is not None and spec.loader is not None
-    migration = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(migration)
-    return migration
+    assert_exact_statements(selected, _EXPECTED_LEDGER_SQL)
+    table_positions = [
+        selected.index(normalize_sql(sql)) for sql in _EXPECTED_LEDGER_SQL[:2]
+    ]
+    for sql in _EXPECTED_LEDGER_SQL[2:]:
+        assert selected.index(normalize_sql(sql)) > max(table_positions)
 
 
-def _bind_migration(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    bind: _Bind | None = None,
-    inspector: _Inspector | None = None,
-    as_sql: bool = False,
-) -> tuple[Any, _Operations]:
-    migration = _load_migration()
-    operations = _Operations(bind, as_sql=as_sql)
-    monkeypatch.setattr(migration, "op", operations)
-    if inspector is not None:
-        monkeypatch.setattr(migration.sa, "inspect", lambda _bind: inspector)
-    return migration, operations
-
-
-def test_migration_rejects_offline_before_binding() -> None:
-    migration, operations = _bind_migration(pytest.MonkeyPatch(), as_sql=True)
-
-    with pytest.raises(RuntimeError, match="requires online PostgreSQL"):
-        migration.upgrade()
-
-    assert operations.get_bind_calls == 0
-    assert operations.schema_writes == []
-
-
-def test_migration_rejects_non_postgresql_without_schema_changes(
+def test_baseline_rejects_non_postgresql_without_schema_changes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bind = _Bind(dialect="sqlite")
-    migration, operations = _bind_migration(monkeypatch, bind=bind)
-
-    with pytest.raises(RuntimeError, match="requires PostgreSQL"):
+    migration, operations = bind_baseline(monkeypatch, dialect="sqlite")
+    with pytest.raises(RuntimeError, match="The MVP baseline requires PostgreSQL"):
         migration.upgrade()
+    assert operations.bind_requests == 1
+    assert operations.bind.reads == []
+    assert operations.statements == []
 
-    assert bind.statements == []
-    assert operations.schema_writes == []
 
-
-@pytest.mark.parametrize("schema", [None, "", 17])
-def test_migration_rejects_unresolved_schema(
-    monkeypatch: pytest.MonkeyPatch, schema: Any
+def test_baseline_emits_both_ledger_tables_and_bounded_expiry_index(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bind = _Bind(schema=schema)
-    migration, operations = _bind_migration(monkeypatch, bind=bind)
+    _, operations = capture_baseline(monkeypatch)
+    _assert_ledger_contract(operations.statements)
 
-    with pytest.raises(RuntimeError, match="Cannot resolve current schema"):
-        migration.upgrade()
 
-    assert bind.statements == ["SELECT current_schema()"]
-    assert operations.schema_writes == []
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_ledger_contract_rejects_missing_or_duplicate_statements(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    _assert_ledger_contract(operations.statements)
+    selected = table_statements(
+        operations.statements, "quarantine_storage_scopes", "quarantine_reservations"
+    )
+    for statement in selected:
+        changed = list(operations.statements)
+        if mutation == "missing":
+            changed.remove(statement)
+        else:
+            changed.append(statement)
+        with pytest.raises(AssertionError):
+            _assert_ledger_contract(changed)
 
 
 @pytest.mark.parametrize(
-    ("scopes", "reservations", "expected_queries"),
+    ("before", "after"),
     [
-        (True, False, ["quarantine_storage_scopes"]),
         (
-            False,
-            True,
-            [
-                "quarantine_storage_scopes",
-                "quarantine_reservations",
-            ],
+            "inventory_complete boolean DEFAULT false",
+            "inventory_complete boolean DEFAULT true",
+        ),
+        ("CHECK ((size_bytes >= 0))", "CHECK ((size_bytes > 0))"),
+        ("'pending'::character varying", "'stored'::character varying"),
+        ("UNIQUE (scope_id, object_key)", "UNIQUE (object_key)"),
+        (
+            "REFERENCES public.quarantine_storage_scopes(scope_id)",
+            "REFERENCES public.quarantine_storage_scopes(scope_id) ON DELETE CASCADE",
+        ),
+        (
+            "USING btree (scope_id, status, expires_at)",
+            "USING btree (expires_at, scope_id, status)",
         ),
     ],
+    ids=(
+        "inventory-not-complete",
+        "nonnegative-size",
+        "pending-by-default",
+        "scope-and-object-identity",
+        "quota-evidence-not-cascaded",
+        "bounded-expiry-index",
+    ),
 )
-def test_migration_rejects_preexisting_ledger_tables(
-    monkeypatch: pytest.MonkeyPatch,
-    scopes: bool,
-    reservations: bool,
-    expected_queries: list[str],
+def test_ledger_contract_rejects_quota_evidence_drift(
+    monkeypatch: pytest.MonkeyPatch, before: str, after: str
 ) -> None:
-    bind = _Bind()
-    inspector = _Inspector(scopes=scopes, reservations=reservations)
-    migration, operations = _bind_migration(monkeypatch, bind=bind, inspector=inspector)
-
-    with pytest.raises(RuntimeError, match="require manual review"):
-        migration.upgrade()
-
-    assert inspector.queries == expected_queries
-    assert operations.schema_writes == []
+    _, operations = capture_baseline(monkeypatch)
+    _assert_ledger_contract(operations.statements)
+    changed = [sql.replace(before, after) for sql in operations.statements]
+    assert changed != operations.statements
+    with pytest.raises(AssertionError):
+        _assert_ledger_contract(changed)
 
 
-def test_migration_emits_both_ledger_tables_and_bounded_expiry_index(
+def test_migration_downgrade_refuses_to_drop_quota_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    bind = _Bind()
-    inspector = _Inspector()
-    migration, operations = _bind_migration(monkeypatch, bind=bind, inspector=inspector)
-
-    migration.upgrade()
-
-    writes = operations.schema_writes
-    assert [kind for kind, _args, _kwargs in writes] == [
-        "execute",
-        "execute",
-        "create_table",
-        "create_table",
-        "create_index",
-    ]
-    scope_table = writes[2][1]
-    reservation_table = writes[3][1]
-    index = writes[4][1]
-    assert scope_table[0] == "quarantine_storage_scopes"
-    assert reservation_table[0] == "quarantine_reservations"
-    assert index == (
-        "ix_quarantine_reservations_expiry",
-        "quarantine_reservations",
-        ["scope_id", "status", "expires_at"],
-    )
-    assert inspector.queries == [
-        "quarantine_storage_scopes",
-        "quarantine_reservations",
-    ]
+    migration, operations = bind_baseline(monkeypatch)
+    assert_downgrade_refuses(migration, operations)
 
 
-def test_migration_downgrade_refuses_to_drop_quota_evidence() -> None:
-    migration = _load_migration()
-    expected_reason = (
-        "Quarantine reservation ledger is irreversible: dropping it would release "
-        "quota charges for objects that may still exist"
-    )
-
-    assert migration.downgrade_policy == "irreversible"
-    assert migration.downgrade_reason == expected_reason
-    with pytest.raises(RuntimeError) as error:
-        migration.downgrade()
-    assert str(error.value) == expected_reason
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "ALTER TABLE QUARANTINE_STORAGE_SCOPES "
+        "ALTER COLUMN inventory_complete SET DEFAULT true",
+        "ALTER TABLE quarantine_reservations "
+        "DROP CONSTRAINT ck_quarantine_reservation_size",
+    ],
+)
+def test_ledger_contract_rejects_append_only_overrides(
+    monkeypatch: pytest.MonkeyPatch, extra: str
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    _assert_ledger_contract(operations.statements)
+    with pytest.raises(AssertionError):
+        _assert_ledger_contract([*operations.statements, extra])

@@ -361,6 +361,135 @@ def verify_dependency_changes(
     return sum(accepted.values())
 
 
+def format_dependency_identity_diagnostics(rows: Any) -> str:
+    """Render bounded evidence only; never alter a dependency decision."""
+    # This display vocabulary is not a license or vulnerability exception.
+    # Unknown values stay redacted instead of being normalized or accepted.
+    targets = {
+        "trufflesecurity/trufflehog": (
+            ".github/workflows/trufflehog.yml",
+            "actions",
+            "",
+            "github",
+        ),
+        "howett.net/plist": (
+            "services/caddy/go.mod",
+            "gomod",
+            "1.0.1",
+            "golang",
+        ),
+        "github.com/klauspost/compress": (
+            "services/caddy/go.mod",
+            "gomod",
+            "1.20.1",
+            "golang",
+        ),
+        "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": (
+            "services/caddy/go.mod",
+            "gomod",
+            "1.46.0",
+            "golang",
+        ),
+    }
+    displayed_licenses = frozenset(
+        {
+            "AGPL-3.0",
+            "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause",
+            "Apache-2.0",
+            LICENSE_REF,
+            KLAUSPOST_LICENSE,
+        }
+    )
+    selected: dict[
+        str, list[tuple[tuple[bool, bool, bool, str], dict[str, Any]]]
+    ] = {name: [] for name in targets}
+    truncated = False
+    candidates = rows if isinstance(rows, list) else []
+    for row in candidates:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        if not isinstance(name, str) or name not in targets:
+            continue
+        manifest, ecosystem, version, purl_type = targets[name]
+        displayed = {
+            "change_type": frozenset({"added", "removed"}),
+            "manifest": frozenset({manifest}),
+            "ecosystem": frozenset({ecosystem}),
+            "name": frozenset({name}),
+            "version": frozenset({version}) if version else frozenset(),
+            "package_url": (
+                frozenset({f"pkg:{purl_type}/{name}@{version}"})
+                if version
+                else frozenset()
+            ),
+            "license": displayed_licenses,
+        }
+        identity: dict[str, Any] = {}
+        for field in FIELDS:
+            value = row.get(field, "<redacted>")
+            if field == "license" and field in row and value is None:
+                identity[field] = None
+            elif (
+                name == "trufflesecurity/trufflehog"
+                and field == "package_url"
+                and isinstance(row.get("version"), str)
+                and re.fullmatch(r"[0-9a-f]{40}", row["version"])
+                and value == f"pkg:github/{name}@{row['version']}"
+            ):
+                # Self-consistency only, not a trusted pin or an exception.
+                identity[field] = "<matches-40-hex-version>"
+            elif (
+                isinstance(value, str)
+                and len(value) <= 160
+                and value.isascii()
+                and value.isprintable()
+                and value in displayed[field]
+            ):
+                identity[field] = value
+            else:
+                identity[field] = "<redacted>"
+        encoded_identity = json.dumps(
+            identity, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        )
+        matches_version = (
+            row.get("version") == version
+            if version
+            else identity["package_url"] == "<matches-40-hex-version>"
+        )
+        priority = (
+            row.get("manifest") != manifest,
+            not matches_version,
+            row.get("change_type") != "added",
+            encoded_identity,
+        )
+        bucket = selected[name]
+        bucket.append((priority, identity))
+        bucket.sort(key=lambda entry: entry[0])
+        if len(bucket) > 2:
+            bucket.pop()
+            truncated = True
+    payload = {
+        "diagnostic": "dependency-review-identities-v1",
+        "rows": [
+            identity
+            for name in sorted(selected)
+            for _priority, identity in selected[name]
+        ],
+        "truncated": truncated,
+    }
+    encoded = json.dumps(
+        payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    )
+    if len(encoded) > 4096:
+        payload["rows"] = []
+        payload["truncated"] = True
+        encoded = json.dumps(
+            payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+        )
+    return encoded
+
+
 def _reject_nonstandard_json_constant(_value: str) -> None:
     raise ValueError("non-standard JSON constant")
 
@@ -1127,6 +1256,7 @@ def main() -> int:
     if args.changes_file is None:
         raise ValueError("--changes-file is required for the changes phase")
     changes = read_dependency_changes_file(args.changes_file)
+    print(format_dependency_identity_diagnostics(changes))
     accepted = verify_dependency_changes(changes, required)
     ghsa_exceptions_used = verify_ghsa_exception_rows(changes)
     print(

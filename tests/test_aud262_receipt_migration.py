@@ -1,15 +1,27 @@
-"""Fail-closed guards for the durable chat-send receipt migration."""
+"""Executed baseline contracts for private durable chat-send receipts."""
 
 from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 import sqlalchemy as sa
 
+from tests.fixtures.baseline_migration import (
+    assert_baseline_operation_kinds,
+    assert_downgrade_refuses,
+    assert_exact_statements,
+    bind_baseline,
+    capture_baseline,
+    normalize_sql,
+    table_statements,
+)
+
+# Compatibility only: the existing temporary-schema integration fixture imports
+# this lazy loader. Its deleted-revision failure remains unresolved; never point
+# this caller at the full public-schema baseline.
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION_PATH = (
     ROOT / "alembic" / "versions" / "202610250001_add_chat_send_receipts.py"
@@ -27,192 +39,167 @@ def _load_migration() -> Any:
     return migration
 
 
-class _Bind:
-    def __init__(self, dialect: str = "postgresql", schema: Any = "public") -> None:
-        self.dialect = SimpleNamespace(name=dialect)
-        self.schema = schema
-        self.reads: list[str] = []
+_EXPECTED_RECEIPT_SQL = (
+    (
+        "CREATE TABLE public.chat_send_receipts (\n"
+        "    id uuid NOT NULL,\n"
+        "    chat_id uuid NOT NULL,\n"
+        "    user_id uuid NOT NULL,\n"
+        "    key_digest character varying(64) NOT NULL,\n"
+        "    message_id uuid,\n"
+        "    completed_at timestamp with time zone NOT NULL,\n"
+        "    expires_at timestamp with time zone NOT NULL\n"
+        ")"
+    ),
+    (
+        "ALTER TABLE ONLY public.chat_send_receipts\n"
+        "    ADD CONSTRAINT chat_send_receipts_pkey PRIMARY KEY (id)"
+    ),
+    (
+        "ALTER TABLE ONLY public.chat_send_receipts\n"
+        "    ADD CONSTRAINT uq_chat_send_receipts_chat_user_key UNIQUE "
+        "(chat_id, user_id, key_digest)"
+    ),
+    (
+        "ALTER TABLE ONLY public.chat_send_receipts\n"
+        "    ADD CONSTRAINT chat_send_receipts_chat_id_fkey FOREIGN KEY "
+        "(chat_id) REFERENCES public.chats(id) ON DELETE CASCADE"
+    ),
+    (
+        "ALTER TABLE ONLY public.chat_send_receipts\n"
+        "    ADD CONSTRAINT chat_send_receipts_message_id_fkey FOREIGN KEY "
+        "(message_id) REFERENCES public.messages(id) ON DELETE SET NULL"
+    ),
+    (
+        "ALTER TABLE ONLY public.chat_send_receipts\n"
+        "    ADD CONSTRAINT chat_send_receipts_user_id_fkey FOREIGN KEY "
+        "(user_id) REFERENCES public.users(id) ON DELETE CASCADE"
+    ),
+    (
+        "CREATE INDEX ix_chat_send_receipts_expires_at ON "
+        "public.chat_send_receipts USING btree (expires_at, id)"
+    ),
+    (
+        "CREATE INDEX ix_chat_send_receipts_message_id ON "
+        "public.chat_send_receipts USING btree (message_id)"
+    ),
+    (
+        "CREATE INDEX ix_chat_send_receipts_user_id ON "
+        "public.chat_send_receipts USING btree (user_id)"
+    ),
+    "ALTER TABLE ONLY public.chat_send_receipts FORCE ROW LEVEL SECURITY",
+    "ALTER TABLE public.chat_send_receipts ENABLE ROW LEVEL SECURITY",
+    (
+        "CREATE POLICY chat_send_receipts_owner_participant ON "
+        "public.chat_send_receipts USING (((user_id = "
+        "(NULLIF(current_setting('app.current_user_id'::text, true), "
+        "''::text))::uuid) AND (EXISTS ( SELECT 1\n"
+        "   FROM (public.chat_participants participant\n"
+        "     JOIN public.chats chat ON ((chat.id = participant.chat_id)))\n"
+        "  WHERE ((participant.chat_id = chat_send_receipts.chat_id) AND "
+        "(participant.user_id = chat_send_receipts.user_id)))))) WITH "
+        "CHECK (((user_id = "
+        "(NULLIF(current_setting('app.current_user_id'::text, true), "
+        "''::text))::uuid) AND (EXISTS ( SELECT 1\n"
+        "   FROM (public.chat_participants participant\n"
+        "     JOIN public.chats chat ON ((chat.id = participant.chat_id)))\n"
+        "  WHERE ((participant.chat_id = chat_send_receipts.chat_id) AND "
+        "(participant.user_id = chat_send_receipts.user_id))))))"
+    ),
+)
 
-    def execute(self, statement: Any) -> Any:
-        self.reads.append(str(statement))
-        assert str(statement) == "SELECT current_schema()"
-        return SimpleNamespace(scalar_one=lambda: self.schema)
+
+def _assert_receipt_contract(statements: list[str]) -> None:
+    assert_baseline_operation_kinds(statements)
+    selected = table_statements(statements, "chat_send_receipts")
+    assert_exact_statements(selected, _EXPECTED_RECEIPT_SQL)
+    table_position = selected.index(normalize_sql(_EXPECTED_RECEIPT_SQL[0]))
+    force_position = selected.index(_EXPECTED_RECEIPT_SQL[-3])
+    enable_position = selected.index(_EXPECTED_RECEIPT_SQL[-2])
+    policy_position = selected.index(normalize_sql(_EXPECTED_RECEIPT_SQL[-1]))
+    assert table_position < force_position < policy_position
+    assert table_position < enable_position < policy_position
+    for sql in _EXPECTED_RECEIPT_SQL[1:-3]:
+        position = selected.index(normalize_sql(sql))
+        assert table_position < position < min(force_position, enable_position)
 
 
-class _Operations:
-    def __init__(self, bind: _Bind, *, offline: bool = False) -> None:
-        self.bind = bind
-        self.offline = offline
-        self.bind_requests = 0
-        self.writes: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
-
-    def get_context(self) -> Any:
-        return SimpleNamespace(as_sql=self.offline)
-
-    def get_bind(self) -> _Bind:
-        self.bind_requests += 1
-        return self.bind
-
-    def execute(self, *args: Any, **kwargs: Any) -> None:
-        self.writes.append(("execute", args, kwargs))
-
-    def create_table(self, *args: Any, **kwargs: Any) -> None:
-        self.writes.append(("create_table", args, kwargs))
-
-    def create_index(self, *args: Any, **kwargs: Any) -> None:
-        self.writes.append(("create_index", args, kwargs))
-
-
-def _bind_migration(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    dialect: str = "postgresql",
-    schema: Any = "public",
-    offline: bool = False,
-    exists: bool = False,
-) -> tuple[Any, _Operations]:
-    migration = _load_migration()
-    operations = _Operations(_Bind(dialect, schema), offline=offline)
-
-    def has_table(table: str, *, schema: str) -> bool:
-        assert table == "chat_send_receipts"
-        assert schema == operations.bind.schema
-        return exists
-
-    monkeypatch.setattr(migration, "op", operations)
-    monkeypatch.setattr(
-        migration.sa, "inspect", lambda _bind: SimpleNamespace(has_table=has_table)
-    )
-    return migration, operations
-
-
-def test_receipt_migration_refuses_offline_before_connection_or_writes(
+def test_receipt_baseline_refuses_other_dialects_before_catalog_or_writes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    migration, operations = _bind_migration(monkeypatch, offline=True)
-
-    with pytest.raises(RuntimeError, match="requires online PostgreSQL"):
+    migration, operations = bind_baseline(monkeypatch, dialect="sqlite")
+    with pytest.raises(RuntimeError, match="The MVP baseline requires PostgreSQL"):
         migration.upgrade()
-
-    assert operations.bind_requests == 0
+    assert operations.bind_requests == 1
     assert operations.bind.reads == []
-    assert operations.writes == []
-
-
-def test_receipt_migration_refuses_other_dialects_before_catalog_or_writes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    migration, operations = _bind_migration(monkeypatch, dialect="sqlite")
-
-    with pytest.raises(RuntimeError, match="requires PostgreSQL"):
-        migration.upgrade()
-
-    assert operations.bind.reads == []
-    assert operations.writes == []
-
-
-@pytest.mark.parametrize("schema", [None, "", 17])
-def test_receipt_migration_refuses_unresolved_schema_before_writes(
-    monkeypatch: pytest.MonkeyPatch, schema: Any
-) -> None:
-    migration, operations = _bind_migration(monkeypatch, schema=schema)
-
-    with pytest.raises(RuntimeError, match="Cannot resolve current schema"):
-        migration.upgrade()
-
-    assert operations.bind.reads == ["SELECT current_schema()"]
-    assert operations.writes == []
-
-
-def test_receipt_migration_refuses_preexisting_table_without_modification(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    migration, operations = _bind_migration(monkeypatch, exists=True)
-
-    with pytest.raises(RuntimeError, match="require manual review"):
-        migration.upgrade()
-
-    assert operations.writes == []
+    assert operations.statements == []
 
 
 def test_receipt_upgrade_emits_constrained_private_schema_before_rls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    migration, operations = _bind_migration(monkeypatch)
+    _, operations = capture_baseline(monkeypatch)
+    _assert_receipt_contract(operations.statements)
 
-    migration.upgrade()
 
-    writes = operations.writes
-    assert [kind for kind, _args, _kwargs in writes] == [
-        "execute",
-        "execute",
-        "create_table",
-        "create_index",
-        "create_index",
-        "create_index",
-        "execute",
-        "execute",
-        "execute",
-    ]
-    assert str(writes[0][1][0]) == "SET LOCAL lock_timeout = '10s'"
-    assert str(writes[1][1][0]) == "SET LOCAL statement_timeout = '60s'"
-    table_args = writes[2][1]
-    assert table_args[0] == "chat_send_receipts"
-    columns = {
-        column.name: column
-        for column in table_args[1:]
-        if isinstance(column, sa.Column)
-    }
-    assert set(columns) == {
-        "id",
-        "chat_id",
-        "user_id",
-        "key_digest",
-        "message_id",
-        "completed_at",
-        "expires_at",
-    }
-    assert {name for name, column in columns.items() if column.nullable} == {
-        "message_id"
-    }
-    assert columns["key_digest"].type.length == 64
-    assert columns["completed_at"].type.timezone is True
-    assert columns["expires_at"].type.timezone is True
-    assert all(column.server_default is None for column in columns.values())
-    constraints = [
-        item for item in table_args[1:] if isinstance(item, sa.UniqueConstraint)
-    ]
-    assert len(constraints) == 1
-    assert constraints[0].name == "uq_chat_send_receipts_chat_user_key"
-    assert [list(args) for kind, args, _kwargs in writes if kind == "create_index"] == [
-        ["ix_chat_send_receipts_message_id", "chat_send_receipts", ["message_id"]],
-        ["ix_chat_send_receipts_user_id", "chat_send_receipts", ["user_id"]],
-        [
-            "ix_chat_send_receipts_expires_at",
-            "chat_send_receipts",
-            ["expires_at", "id"],
-        ],
-    ]
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_receipt_contract_rejects_missing_or_duplicate_statements(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    _assert_receipt_contract(operations.statements)
+    selected = table_statements(operations.statements, "chat_send_receipts")
+    for statement in selected:
+        changed = list(operations.statements)
+        if mutation == "missing":
+            changed.remove(statement)
+        else:
+            changed.append(statement)
+        with pytest.raises(AssertionError):
+            _assert_receipt_contract(changed)
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ("key_digest character varying(64) NOT NULL", "key_digest text"),
+        ("message_id uuid,", "raw_key text, message_id uuid,"),
+        (
+            "REFERENCES public.messages(id) ON DELETE SET NULL",
+            "REFERENCES public.messages(id) ON DELETE CASCADE",
+        ),
+        ("USING btree (expires_at, id)", "USING btree (expires_at)"),
+        (
+            "participant.user_id = chat_send_receipts.user_id",
+            "true",
+        ),
+        ("FORCE ROW LEVEL SECURITY", "NO FORCE ROW LEVEL SECURITY"),
+    ],
+    ids=(
+        "digest-type-and-nullability",
+        "private-column-leak",
+        "message-delete-action",
+        "bounded-expiry-index",
+        "participant-ownership",
+        "forced-rls",
+    ),
+)
+def test_receipt_contract_rejects_security_drift(
+    monkeypatch: pytest.MonkeyPatch, before: str, after: str
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    _assert_receipt_contract(operations.statements)
+    changed = [sql.replace(before, after) for sql in operations.statements]
+    assert changed != operations.statements
+    with pytest.raises(AssertionError):
+        _assert_receipt_contract(changed)
 
 
 def test_receipt_downgrade_refuses_before_any_database_access(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    migration, operations = _bind_migration(monkeypatch)
-    expected_reason = (
-        "Dropping chat send receipts can discard committed idempotency history "
-        "and permit duplicate messages"
-    )
-
-    with pytest.raises(RuntimeError) as failure:
-        migration.downgrade()
-
-    assert str(failure.value) == expected_reason
-    assert migration.downgrade_policy == "irreversible"
-    assert migration.downgrade_reason == expected_reason
-    assert operations.bind_requests == 0
-    assert operations.bind.reads == []
-    assert operations.writes == []
+    migration, operations = bind_baseline(monkeypatch)
+    assert_downgrade_refuses(migration, operations)
 
 
 def test_receipt_model_registers_only_private_storage_columns() -> None:
@@ -244,3 +231,20 @@ def test_receipt_model_registers_only_private_storage_columns() -> None:
         ("user_id", "users.id", "CASCADE"),
         ("message_id", "messages.id", "SET NULL"),
     }
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "ALTER TABLE PUBLIC.CHAT_SEND_RECEIPTS DISABLE ROW LEVEL SECURITY",
+        "ALTER TABLE cHaT_sEnD_rEcEiPtS DISABLE ROW LEVEL SECURITY",
+        "CREATE POLICY allow_all ON chat_send_receipts USING (true)",
+    ],
+)
+def test_receipt_contract_rejects_append_only_overrides(
+    monkeypatch: pytest.MonkeyPatch, extra: str
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    _assert_receipt_contract(operations.statements)
+    with pytest.raises(AssertionError):
+        _assert_receipt_contract([*operations.statements, extra])

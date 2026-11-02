@@ -1,4 +1,4 @@
-"""The online retirement revision preserves schema/data and drift detection."""
+"""Baseline refusal guards preserve retained schema/data and drift detection."""
 
 from __future__ import annotations
 
@@ -14,10 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _revision():
-    path = (
-        ROOT
-        / "alembic/versions/202610010001_drop_unused_user_stats_and_vector_chunks.py"
-    )
+    path = ROOT / "alembic/versions/202611020000_mvp_baseline.py"
     spec = importlib.util.spec_from_file_location("retained_revision", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -25,49 +22,59 @@ def _revision():
     return module
 
 
-def test_online_upgrade_and_downgrade_preserve_existing_rows_and_indexes():
+def test_baseline_refusals_preserve_retained_rows_and_indexes() -> None:
+    """Real SQLite rows survive unsupported upgrade and irreversible downgrade."""
     engine = sa.create_engine("sqlite://")
-    with engine.begin() as connection:
-        connection.exec_driver_sql(
-            "CREATE TABLE user_stats (user_id TEXT PRIMARY KEY, attendance_total INTEGER)"
-        )
-        connection.exec_driver_sql(
-            "CREATE TABLE vector_chunks (id TEXT PRIMARY KEY, content TEXT)"
-        )
-        connection.exec_driver_sql(
-            "CREATE INDEX saved_content ON vector_chunks(content)"
-        )
-        connection.exec_driver_sql(
-            "INSERT INTO user_stats VALUES ('existing-user', 17)"
-        )
-        connection.exec_driver_sql(
-            "INSERT INTO vector_chunks VALUES ('existing-doc', 'retained')"
-        )
-        revision = _revision()
-        with Operations.context(MigrationContext.configure(connection)):
-            for operation in (revision.upgrade, revision.downgrade):
-                operation()
-                assert set(sa.inspect(connection).get_table_names()) == {
-                    "user_stats",
-                    "vector_chunks",
-                }
-                assert (
-                    connection.exec_driver_sql(
-                        "SELECT attendance_total FROM user_stats"
-                    ).scalar_one()
-                    == 17
-                )
-                assert (
-                    connection.exec_driver_sql(
-                        "SELECT content FROM vector_chunks"
-                    ).scalar_one()
-                    == "retained"
-                )
-                assert {
-                    index["name"]
-                    for index in sa.inspect(connection).get_indexes("vector_chunks")
-                } == {"saved_content"}
-    engine.dispose()
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                "CREATE TABLE user_stats "
+                "(user_id TEXT PRIMARY KEY, attendance_total INTEGER)"
+            )
+            connection.exec_driver_sql(
+                "CREATE TABLE vector_chunks (id TEXT PRIMARY KEY, content TEXT)"
+            )
+            connection.exec_driver_sql(
+                "CREATE INDEX saved_content ON vector_chunks(content)"
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO user_stats VALUES ('existing-user', 17)"
+            )
+            connection.exec_driver_sql(
+                "INSERT INTO vector_chunks VALUES ('existing-doc', 'retained')"
+            )
+            revision = _revision()
+            assert revision.revision == "202611020000"
+            assert revision.downgrade_policy == "irreversible"
+            with Operations.context(MigrationContext.configure(connection)):
+                for operation, reason in (
+                    (revision.upgrade, "requires PostgreSQL"),
+                    (revision.downgrade, "cannot be downgraded"),
+                ):
+                    with pytest.raises(RuntimeError, match=reason):
+                        operation()
+                    assert set(sa.inspect(connection).get_table_names()) == {
+                        "user_stats",
+                        "vector_chunks",
+                    }
+                    assert (
+                        connection.exec_driver_sql(
+                            "SELECT attendance_total FROM user_stats"
+                        ).scalar_one()
+                        == 17
+                    )
+                    assert (
+                        connection.exec_driver_sql(
+                            "SELECT content FROM vector_chunks"
+                        ).scalar_one()
+                        == "retained"
+                    )
+                    assert {
+                        index["name"]
+                        for index in sa.inspect(connection).get_indexes("vector_chunks")
+                    } == {"saved_content"}
+    finally:
+        engine.dispose()
 
 
 def _runtime_metadata():
@@ -94,7 +101,7 @@ def test_retained_metadata_matches_historical_postgresql_schema():
     metadata = build_migration_metadata(runtime, dialect_name="postgresql")
     assert set(runtime.tables) == {"users", "active_content"}
     assert metadata.tables["users"] is not runtime.tables["users"]
-    assert metadata.tables["user_stats"].info["retained_by_revision"] == "202610010001"
+    assert metadata.tables["user_stats"].info["retained_by_revision"] == "202611020000"
     expected = json.loads(
         (ROOT / "tests/fixtures/schema/retained_tables_202609300002.json").read_text()
     )
@@ -169,7 +176,7 @@ def test_migration_owned_tenant_metadata_matches_parent_revision():
         tenant_id = metadata.tables[table_name].c.tenant_id
         assert tenant_id.type.compile(dialect=postgresql.dialect()) == "UUID"
         assert tenant_id.nullable is True
-        assert tenant_id.info["migration_owned_by_revision"] == "202607230001"
+        assert tenant_id.info["migration_owned_by_revision"] == "202611020000"
         (foreign_key,) = tenant_id.foreign_keys
         assert foreign_key.target_fullname == "tenants.id"
         assert foreign_key.ondelete == "CASCADE"
@@ -316,16 +323,18 @@ def test_autogenerate_detects_retained_column_nullability_drift(
         engine.dispose()
 
 
-def test_offline_revision_has_no_schema_or_data_mutations():
+def test_offline_baseline_downgrade_refuses_without_emitting_sql() -> None:
     from io import StringIO
 
     output = StringIO()
     context = MigrationContext.configure(
         dialect_name="postgresql", opts={"as_sql": True, "output_buffer": output}
     )
+    revision = _revision()
     with Operations.context(context):
-        _revision().upgrade()
-        _revision().downgrade()
+        with pytest.raises(RuntimeError, match="cannot be downgraded") as failure:
+            revision.downgrade()
+    assert str(failure.value) == revision.downgrade_reason
     assert output.getvalue() == ""
 
 
@@ -382,49 +391,49 @@ _HOT_INDEX_SPECS = {
         "chat_participants",
         "user_id, chat_id",
         "",
-        "202603060001",
+        "202611020000",
     ),
     "ix_chat_participants_chat_id_user_id": (
         "chat_participants",
         "chat_id, user_id",
         "",
-        "202603060001",
+        "202611020000",
     ),
     "ix_messages_unread_chat_sender": (
         "messages",
         "chat_id, sender_id",
         " WHERE read_status = FALSE",
-        "202603070001",
+        "202611020000",
     ),
     "idx_messages_chat_pagination_covering": (
         "messages",
         "chat_id, created_at DESC, id DESC",
         " INCLUDE (sender_id, read_status)",
-        "202603170001",
+        "202611020000",
     ),
     "idx_news_comment_cursor": (
         "news_comments",
         "news_id, created_at, id",
         "",
-        "202603150001",
+        "202611020000",
     ),
     "ix_stored_events_pending_created": (
         "stored_events",
         "created_at, id",
         " WHERE processed_at IS NULL",
-        "202603140002",
+        "202611020000",
     ),
     "ix_stored_events_pending_aggregate_created": (
         "stored_events",
         "aggregate_id, created_at, id",
         " WHERE processed_at IS NULL",
-        "202603140002",
+        "202611020000",
     ),
     "ix_stored_events_aggregate_uuid": (
         "stored_events",
         "aggregate_id_uuid, sequence_number",
         " WHERE processed_at IS NULL AND aggregate_id_uuid IS NOT NULL",
-        "202603140003",
+        "202611020000",
     ),
 }
 _HOT_TABLE_COLUMNS = {

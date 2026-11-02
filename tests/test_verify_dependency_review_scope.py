@@ -1328,3 +1328,385 @@ class GhsaBoundedExceptionTests(unittest.TestCase):
         ):
             self.assertEqual(main(), 0)
         self.assertIn("ghsa_exceptions_used=1", output.getvalue())
+
+
+class DependencyIdentityDiagnosticTests(unittest.TestCase):
+    @staticmethod
+    def rows():
+        return [
+            action_row(
+                (
+                    "added",
+                    ".github/workflows/trufflehog.yml",
+                    "actions",
+                    "trufflesecurity/trufflehog",
+                    "a" * 40,  # Synthetic low-entropy pin, not a production SHA.
+                    "pkg:github/trufflesecurity/trufflehog@" + "a" * 40,
+                    "AGPL-3.0",
+                )
+            ),
+            action_row(
+                (
+                    "added",
+                    "services/caddy/go.mod",
+                    "gomod",
+                    "howett.net/plist",
+                    "1.0.1",
+                    "pkg:golang/howett.net/plist@1.0.1",
+                    "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause",
+                )
+            ),
+            action_row(
+                (
+                    "added",
+                    "services/caddy/go.mod",
+                    "gomod",
+                    "github.com/klauspost/compress",
+                    "1.20.1",
+                    "pkg:golang/github.com/klauspost/compress@1.20.1",
+                    "BSD-3-Clause AND Apache-2.0 AND MIT",
+                )
+            ),
+            action_row(
+                (
+                    "added",
+                    "services/caddy/go.mod",
+                    "gomod",
+                    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+                    "1.46.0",
+                    "pkg:golang/go.opentelemetry.io/otel/exporters/otlp/"
+                    "otlptrace/otlptracegrpc@1.46.0",
+                    "LicenseRef-bad-apache-2.0-bsd-3-clause",
+                )
+            ),
+        ]
+
+    def render(self, rows):
+        module = sys.modules[verify_dependency_changes.__module__]
+        formatter = getattr(module, "format_dependency_identity_diagnostics", None)
+        self.assertTrue(callable(formatter), "bounded identity diagnostics missing")
+        return formatter(rows)
+
+    def test_only_seven_identity_fields_are_emitted_for_four_target_names(self):
+        rows = self.rows()
+        for row in rows:
+            row["source_repository_url"] = "withheld-source-canary"
+            row["vulnerabilities"] = [{"private": "withheld-advisory-canary"}]
+            row["extra"] = "withheld-extra-canary"
+        rows.append(
+            action_row(
+                (
+                    "added",
+                    "withheld-manifest-canary",
+                    "npm",
+                    "withheld-package-canary",
+                    "withheld-version-canary",
+                    "withheld-purl-canary",
+                    "withheld-license-canary",
+                )
+            )
+        )
+        encoded = self.render(rows)
+        payload = json.loads(encoded)
+        self.assertEqual(payload["diagnostic"], "dependency-review-identities-v1")
+        self.assertFalse(payload["truncated"])
+        self.assertEqual(len(payload["rows"]), 4)
+        expected_fields = {
+            "change_type",
+            "manifest",
+            "ecosystem",
+            "name",
+            "version",
+            "package_url",
+            "license",
+        }
+        for row in payload["rows"]:
+            self.assertEqual(set(row), expected_fields)
+        by_name = {row["name"]: row for row in payload["rows"]}
+        self.assertEqual(
+            by_name["howett.net/plist"],
+            {
+                "change_type": "added",
+                "manifest": "services/caddy/go.mod",
+                "ecosystem": "gomod",
+                "name": "howett.net/plist",
+                "version": "1.0.1",
+                "package_url": "pkg:golang/howett.net/plist@1.0.1",
+                "license": "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause",
+            },
+        )
+        self.assertEqual(
+            by_name["trufflesecurity/trufflehog"]["version"],
+            "<redacted>",
+        )
+        self.assertEqual(
+            by_name["trufflesecurity/trufflehog"]["package_url"],
+            "<matches-40-hex-version>",
+        )
+        self.assertNotIn("a" * 40, encoded)
+        self.assertEqual(
+            by_name["github.com/klauspost/compress"]["license"],
+            "BSD-3-Clause AND Apache-2.0 AND MIT",
+        )
+        self.assertEqual(
+            by_name[
+                "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+            ]["package_url"],
+            "pkg:golang/go.opentelemetry.io/otel/exporters/otlp/"
+            "otlptrace/otlptracegrpc@1.46.0",
+        )
+        self.assertNotIn("withheld-", encoded)
+        self.assertNotIn("source_repository_url", encoded)
+        self.assertNotIn("vulnerabilities", encoded)
+
+    def test_null_license_is_not_conflated_with_missing_or_unreviewed_license(self):
+        for value, present, expected in (
+            (None, True, None),
+            (None, False, "<redacted>"),
+            ("withheld-license-canary", True, "<redacted>"),
+            (False, True, "<redacted>"),
+            (["AGPL-3.0"], True, "<redacted>"),
+        ):
+            with self.subTest(value=value, present=present):
+                row = self.rows()[0]
+                if present:
+                    row["license"] = value
+                else:
+                    del row["license"]
+                payload = json.loads(self.render([row]))
+                self.assertEqual(payload["rows"][0]["license"], expected)
+
+    def test_control_bearing_oversized_and_unreviewed_fields_are_redacted(self):
+        for field in (
+            "change_type",
+            "manifest",
+            "ecosystem",
+            "version",
+            "package_url",
+            "license",
+        ):
+            for value in (
+                "withheld-value-canary",
+                "\n::error::withheld-control-canary",
+                "\x00withheld-control-canary",
+                "\u202ewithheld-control-canary",
+                "x" * 161,
+                [],
+                {},
+                True,
+            ):
+                with self.subTest(field=field, value=value):
+                    row = self.rows()[1]
+                    row[field] = value
+                    encoded = self.render([row])
+                    self.assertEqual(
+                        json.loads(encoded)["rows"][0][field], "<redacted>"
+                    )
+                    self.assertNotIn("withheld-", encoded)
+                    self.assertNotIn("\n", encoded)
+                    self.assertNotIn("\x00", encoded)
+        row = self.rows()[1]
+        row["name"] = "howett.net/plist\n::error::withheld-name-canary"
+        self.assertEqual(json.loads(self.render([row]))["rows"], [])
+
+    def test_malformed_rows_and_non_list_payloads_do_not_escape_into_output(self):
+        for payload in (
+            None,
+            "withheld-payload-canary",
+            {},
+            [None, [], {}, {"name": []}],
+        ):
+            with self.subTest(payload=payload):
+                encoded = self.render(payload)
+                self.assertEqual(json.loads(encoded)["rows"], [])
+                self.assertNotIn("withheld-", encoded)
+
+    def test_output_is_deterministic_bounded_and_reports_truncation(self):
+        rows = self.rows() * 5
+        encoded = self.render(rows)
+        self.assertEqual(encoded, self.render(list(reversed(rows))))
+        payload = json.loads(encoded)
+        self.assertEqual(len(payload["rows"]), 8)
+        self.assertEqual(len({row["name"] for row in payload["rows"]}), 4)
+        self.assertTrue(payload["truncated"])
+        self.assertLessEqual(len(encoded), 4096)
+        self.assertTrue(encoded.isascii())
+        self.assertNotIn("\n", encoded)
+        self.assertEqual(
+            encoded,
+            json.dumps(
+                payload, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+            ),
+        )
+        self.assertFalse(json.loads(self.render(self.rows() * 2))["truncated"])
+
+    def test_four_exact_targets_survive_six_existing_service_copies(self):
+        rows = self.rows()
+        for original in self.rows()[2:]:
+            for manifest in (
+                "services/gateway/go.mod",
+                "services/ws-hub/go.mod",
+                "services/file-processor/go.mod",
+            ):
+                rows.append({**original, "manifest": manifest})
+        payload = json.loads(self.render(rows))
+        exact = [row for row in payload["rows"] if row["manifest"] != "<redacted>"]
+        self.assertEqual(len(exact), 4)
+        self.assertEqual(len({row["name"] for row in exact}), 4)
+        self.assertTrue(payload["truncated"])
+        self.assertEqual(self.render(rows), self.render(list(reversed(rows))))
+
+    def test_trufflehog_marker_reports_only_strict_raw_self_consistency(self):
+        for version, purl, expected in (
+            (
+                "b" * 40,
+                "pkg:github/trufflesecurity/trufflehog@" + "b" * 40,
+                "<matches-40-hex-version>",
+            ),
+            (
+                "B" * 40,
+                "pkg:github/trufflesecurity/trufflehog@" + "B" * 40,
+                "<redacted>",
+            ),
+            (
+                "g" * 40,
+                "pkg:github/trufflesecurity/trufflehog@" + "g" * 40,
+                "<redacted>",
+            ),
+            (
+                "b" * 39,
+                "pkg:github/trufflesecurity/trufflehog@" + "b" * 39,
+                "<redacted>",
+            ),
+            (
+                "b" * 41,
+                "pkg:github/trufflesecurity/trufflehog@" + "b" * 41,
+                "<redacted>",
+            ),
+            (
+                "b" * 40 + "\n",
+                "pkg:github/trufflesecurity/trufflehog@" + "b" * 40 + "\n",
+                "<redacted>",
+            ),
+            (
+                "b" * 40,
+                "pkg:github/trufflesecurity/trufflehog@" + "a" * 40,
+                "<redacted>",
+            ),
+            ("b" * 40, "pkg:github/other/package@" + "b" * 40, "<redacted>"),
+            ([], "withheld-purl-canary", "<redacted>"),
+            (None, "withheld-purl-canary", "<redacted>"),
+        ):
+            with self.subTest(version=version, purl=purl):
+                row = self.rows()[0]
+                row["version"] = version
+                row["package_url"] = purl
+                encoded = self.render([row])
+                identity = json.loads(encoded)["rows"][0]
+                self.assertEqual(identity["version"], "<redacted>")
+                self.assertEqual(identity["package_url"], expected)
+                self.assertNotIn("b" * 40, encoded)
+                self.assertNotIn("withheld-", encoded)
+        row = self.rows()[0]
+        row["name"] = "other/package"
+        self.assertEqual(json.loads(self.render([row]))["rows"], [])
+        rows = [self.rows()[0]]
+        for version in ("", "x" * 40, None, []):
+            rows.append(
+                {
+                    **self.rows()[0],
+                    "version": version,
+                    "package_url": "withheld-purl-canary",
+                }
+            )
+        payload = json.loads(self.render(rows))
+        self.assertEqual(len(payload["rows"]), 2)
+        self.assertTrue(payload["truncated"])
+        self.assertEqual(
+            sum(
+                row["package_url"] == "<matches-40-hex-version>"
+                for row in payload["rows"]
+            ),
+            1,
+        )
+
+    def test_oversized_top_level_encoding_uses_bounded_empty_fallback(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        real_dumps = json.dumps
+        oversized_once = False
+
+        def oversized_first_payload(value, **kwargs):
+            nonlocal oversized_once
+            if (
+                isinstance(value, dict)
+                and value.get("diagnostic") == "dependency-review-identities-v1"
+                and not oversized_once
+            ):
+                oversized_once = True
+                return "withheld-encoding-canary" + "x" * 4096
+            return real_dumps(value, **kwargs)
+
+        with patch(f"{module}.json.dumps", side_effect=oversized_first_payload):
+            encoded = self.render(self.rows())
+        payload = json.loads(encoded)
+        self.assertEqual(payload["rows"], [])
+        self.assertTrue(payload["truncated"])
+        self.assertLessEqual(len(encoded), 4096)
+        self.assertNotIn("withheld-", encoded)
+
+    def test_diagnostics_do_not_mutate_rows_or_make_caddy_identity_acceptable(self):
+        rows = self.rows()
+        snapshot = json.dumps(rows, sort_keys=True)
+        self.render(rows)
+        self.assertEqual(json.dumps(rows, sort_keys=True), snapshot)
+        with self.assertRaisesRegex(ValueError, "unexpected package"):
+            verify_dependency_changes([rows[2]], set())
+
+    def test_changes_phase_prints_diagnostics_before_original_identity_failure(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "changes.json"
+            path.write_text(json.dumps(self.rows()), encoding="utf-8")
+            argv = [
+                "verify",
+                "changes",
+                "--base-sha",
+                "0" * 40,
+                "--changes-file",
+                str(path),
+            ]
+            with (
+                patch(f"{module}.preflight", return_value=set()),
+                patch.object(sys, "argv", argv),
+                patch("sys.stdout", new_callable=io.StringIO) as output,
+            ):
+                with self.assertRaisesRegex(ValueError, "unexpected package"):
+                    main()
+            self.assertTrue(output.getvalue(), "bounded identity diagnostics missing")
+            payload = json.loads(output.getvalue())
+            self.assertEqual(len(payload["rows"]), 4)
+            self.assertNotIn("verified comparison", output.getvalue())
+
+    def test_malformed_comparison_still_fails_before_any_diagnostic(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "changes.json"
+            row = self.rows()[1]
+            row["license"] = []
+            path.write_text(json.dumps([row]), encoding="utf-8")
+            argv = [
+                "verify",
+                "changes",
+                "--base-sha",
+                "0" * 40,
+                "--changes-file",
+                str(path),
+            ]
+            with (
+                patch(f"{module}.preflight", return_value=set()),
+                patch.object(sys, "argv", argv),
+                patch("sys.stdout", new_callable=io.StringIO) as output,
+            ):
+                with self.assertRaisesRegex(ValueError, "invalid license field"):
+                    main()
+            self.assertEqual(output.getvalue(), "")

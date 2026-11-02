@@ -159,7 +159,8 @@ def test_alembic_history_does_not_require_runtime_secrets() -> None:
     result = _run_alembic_cli(["history", "--verbose"], _alembic_cli_environment())
 
     assert result.returncode == 0, result.stderr
-    assert "202503150001" in result.stdout
+    assert "Rev: 202611020000 (head)\nParent: <base>\n" in result.stdout
+    assert result.stdout.count("Rev: ") == 1
 
 
 def _staging_environment_without_secret_key() -> dict[str, str]:

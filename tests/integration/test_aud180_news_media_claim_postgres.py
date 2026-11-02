@@ -1,35 +1,31 @@
-"""Prove exclusive news image claims and migration preservation on PostgreSQL."""
+"""Prove news image claims and the irreversible baseline's PostgreSQL contract."""
 
 from __future__ import annotations
 
 import asyncio
 import importlib.util
 import os
-import sys
 from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import sqlalchemy as sa
-from alembic.config import Config
 from alembic.operations import Operations
-from alembic.runtime.environment import EnvironmentContext
-from alembic.script import ScriptDirectory
+from alembic.runtime.migration import MigrationContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import app.models as models
-from app.core import database
 from app.repositories.news_repository import NewsRepository
+from scripts.quality.render_live_alembic_sql import _owned_scratch_database
+from tests.integration.test_migration_roundtrip import (
+    migration_postgres as migration_postgres,
+)
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _MIGRATION_PATH = (
-    _PROJECT_ROOT
-    / "alembic"
-    / "versions"
-    / "202610120002_add_news_media_asset_ownership.py"
+    _PROJECT_ROOT / "alembic" / "versions" / "202611020000_mvp_baseline.py"
 )
 _RUN_INTEGRATION_TESTS = os.getenv("RUN_INTEGRATION_TESTS") == "1"
 pytestmark = [
@@ -40,26 +36,311 @@ pytestmark = [
     ),
 ]
 
+_DOWNGRADE_REASON = (
+    "The MVP baseline cannot be downgraded: reaching base or any earlier schema "
+    "is not a supported recovery path. Restore a consistent backup set instead."
+)
+_MEDIA_CATALOG_QUERIES = {
+    "columns": """
+        SELECT attribute.attname,
+               pg_catalog.format_type(attribute.atttypid, attribute.atttypmod),
+               attribute.attnotnull,
+               pg_catalog.pg_get_expr(default_row.adbin, default_row.adrelid),
+               attribute.attidentity, attribute.attgenerated
+        FROM pg_catalog.pg_attribute AS attribute
+        LEFT JOIN pg_catalog.pg_attrdef AS default_row
+          ON default_row.adrelid = attribute.attrelid
+         AND default_row.adnum = attribute.attnum
+        WHERE attribute.attrelid = 'public.news_media_assets'::regclass
+          AND attribute.attnum > 0 AND NOT attribute.attisdropped
+        ORDER BY attribute.attnum
+    """,
+    "constraints": """
+        SELECT constraint_row.conname, constraint_row.contype::text,
+               pg_catalog.pg_get_constraintdef(constraint_row.oid),
+               constraint_row.condeferrable, constraint_row.condeferred,
+               constraint_row.convalidated
+        FROM pg_catalog.pg_constraint AS constraint_row
+        WHERE constraint_row.conrelid = 'public.news_media_assets'::regclass
+        ORDER BY constraint_row.conname
+    """,
+    "indexes": """
+        SELECT index_relation.relname,
+               pg_catalog.pg_get_indexdef(index_row.indexrelid),
+               access_method.amname,
+               index_row.indisunique, index_row.indisprimary,
+               index_row.indisexclusion, index_row.indimmediate,
+               index_row.indisvalid, index_row.indisready, index_row.indislive,
+               index_row.indnullsnotdistinct,
+               index_row.indnkeyatts, index_row.indnatts,
+               COALESCE(array_to_string(index_relation.reloptions, ','), '')
+        FROM pg_catalog.pg_index AS index_row
+        JOIN pg_catalog.pg_class AS index_relation
+          ON index_relation.oid = index_row.indexrelid
+        JOIN pg_catalog.pg_am AS access_method
+          ON access_method.oid = index_relation.relam
+        WHERE index_row.indrelid = 'public.news_media_assets'::regclass
+        ORDER BY index_relation.relname
+    """,
+}
+# Independent ownership contract, not generated from the migration under test.
+# These include the historical guard's rejected flags/options, plus validity.
+_EXPECTED_MEDIA_CATALOG = {
+    "columns": (
+        ("id", "uuid", True, None, "", ""),
+        ("storage_url", "character varying(2048)", True, None, "", ""),
+        ("owner_user_id", "uuid", False, None, "", ""),
+        ("news_id", "uuid", False, None, "", ""),
+        ("created_at", "timestamp with time zone", True, "now()", "", ""),
+    ),
+    "constraints": (
+        (
+            "news_media_assets_news_id_fkey",
+            "f",
+            "FOREIGN KEY (news_id) REFERENCES news(id) ON DELETE SET NULL",
+            False,
+            False,
+            True,
+        ),
+        (
+            "news_media_assets_owner_user_id_fkey",
+            "f",
+            "FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL",
+            False,
+            False,
+            True,
+        ),
+        (
+            "news_media_assets_pkey",
+            "p",
+            "PRIMARY KEY (id)",
+            False,
+            False,
+            True,
+        ),
+        (
+            "uq_news_media_asset_news_id",
+            "u",
+            "UNIQUE (news_id)",
+            False,
+            False,
+            True,
+        ),
+        (
+            "uq_news_media_asset_storage_url",
+            "u",
+            "UNIQUE (storage_url)",
+            False,
+            False,
+            True,
+        ),
+    ),
+    "indexes": (
+        (
+            "ix_news_media_assets_owner_user_id",
+            "CREATE INDEX ix_news_media_assets_owner_user_id "
+            "ON public.news_media_assets USING btree (owner_user_id)",
+            "btree",
+            False,
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            False,
+            1,
+            1,
+            "",
+        ),
+        (
+            "news_media_assets_pkey",
+            "CREATE UNIQUE INDEX news_media_assets_pkey "
+            "ON public.news_media_assets USING btree (id)",
+            "btree",
+            True,
+            True,
+            False,
+            True,
+            True,
+            True,
+            True,
+            False,
+            1,
+            1,
+            "",
+        ),
+        (
+            "uq_news_media_asset_news_id",
+            "CREATE UNIQUE INDEX uq_news_media_asset_news_id "
+            "ON public.news_media_assets USING btree (news_id)",
+            "btree",
+            True,
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            False,
+            1,
+            1,
+            "",
+        ),
+        (
+            "uq_news_media_asset_storage_url",
+            "CREATE UNIQUE INDEX uq_news_media_asset_storage_url "
+            "ON public.news_media_assets USING btree (storage_url)",
+            "btree",
+            True,
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            False,
+            1,
+            1,
+            "",
+        ),
+    ),
+}
 
-@contextmanager
-def _migration_operations(connection: sa.Connection) -> Iterator[None]:
-    config = Config()
-    script = ScriptDirectory(_PROJECT_ROOT / "alembic")
-    with EnvironmentContext(config, script, as_sql=False) as environment:
-        environment.configure(connection=connection)
-        with Operations.context(environment.get_context()):
-            yield
 
-
-def _load_ownership_migration():
+def _load_baseline_migration():
     spec = importlib.util.spec_from_file_location(
-        "news_media_asset_ownership_migration", _MIGRATION_PATH
+        "aud180_mvp_baseline_migration", _MIGRATION_PATH
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _assert_canonical_media_catalog(
+    connection: sa.Connection,
+) -> dict[str, tuple[tuple[object, ...], ...]]:
+    catalog = {
+        kind: tuple(tuple(row) for row in connection.execute(sa.text(query)))
+        for kind, query in _MEDIA_CATALOG_QUERIES.items()
+    }
+    for kind, expected in _EXPECTED_MEDIA_CATALOG.items():
+        assert catalog[kind] == expected, f"noncanonical news media {kind}"
+    return catalog
+
+
+def _read_claim(
+    connection: sa.Connection, claim: dict[str, UUID | str]
+) -> tuple[object, ...]:
+    row = connection.execute(
+        sa.text(
+            "SELECT id, storage_url, owner_user_id, news_id, created_at "
+            "FROM public.news_media_assets WHERE id = :id"
+        ),
+        {"id": claim["id"]},
+    ).one()
+    assert row[:4] == (
+        claim["id"],
+        claim["url"],
+        claim["owner"],
+        claim["news"],
+    )
+    return tuple(row)
+
+
+@pytest.fixture(scope="module")
+def baseline_media_connection(migration_postgres) -> Iterator[sa.Connection]:
+    """Run the actual baseline only on a new, identity-guarded template0 DB.
+
+    The imported fixture owns its pinned container or validates the explicitly
+    supplied root-owned, quiescent loopback test service. A URL is not ownership
+    authority. The scratch helper requires CREATE acknowledgement, confirms the
+    new DB's OID/name/owner/current role and empty catalog, and rechecks that exact
+    identity before cleanup. It never migrates the source DB or either template.
+    The baseline's outer transaction is never committed: even cluster-global role
+    creation and optional cron catalog writes roll back before the scratch drop.
+    """
+    source_url = sa.engine.make_url(
+        migration_postgres.get_connection_url(driver="psycopg")
+    ).update_query_dict(
+        {
+            "options": (
+                "-c statement_timeout=60000 -c lock_timeout=10000 "
+                "-c idle_in_transaction_session_timeout=60000 -c search_path=public"
+            )
+        }
+    )
+    with _owned_scratch_database(
+        source_url.render_as_string(hide_password=False)
+    ) as scratch_url:
+        engine = sa.create_engine(
+            scratch_url, connect_args={"connect_timeout": 5}, poolclass=sa.pool.NullPool
+        )
+        try:
+            with engine.connect() as connection:
+                transaction = connection.begin()
+                try:
+                    assert connection.dialect.name == "postgresql"
+                    with Operations.context(MigrationContext.configure(connection)):
+                        _load_baseline_migration().upgrade()
+                    _assert_canonical_media_catalog(connection)
+                    yield connection
+                finally:
+                    transaction.rollback()
+        finally:
+            engine.dispose()
+
+
+@pytest.fixture
+def populated_baseline_media(
+    baseline_media_connection: sa.Connection,
+) -> Iterator[tuple[sa.Connection, dict[str, UUID | str]]]:
+    """Each case starts with a real populated claim and rolls its writes back."""
+    claim = {
+        "id": uuid4(),
+        "owner": uuid4(),
+        "news": uuid4(),
+        "other_news": uuid4(),
+        "url": "/static/news_images/news_0123456789abcdef0123456789abcdef.jpg",
+    }
+    connection = baseline_media_connection
+    savepoint = connection.begin_nested()
+    try:
+        connection.execute(
+            sa.text(
+                "INSERT INTO public.users (id, email, hashed_password) "
+                "VALUES (:id, :email, :password)"
+            ),
+            {
+                "id": claim["owner"],
+                "email": f"{claim['owner']}@example.invalid",
+                "password": "not-an-authentication-credential",
+            },
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO public.news (id, title, content) "
+                "VALUES (:id, :title, :content)"
+            ),
+            [
+                {"id": claim["news"], "title": "Claimed news", "content": "Body"},
+                {"id": claim["other_news"], "title": "Other news", "content": "Body"},
+            ],
+        )
+        connection.execute(
+            sa.text(
+                "INSERT INTO public.news_media_assets "
+                "(id, storage_url, owner_user_id, news_id) "
+                "VALUES (:id, :url, :owner, :news)"
+            ),
+            claim,
+        )
+        _assert_canonical_media_catalog(connection)
+        _read_claim(connection, claim)
+        yield connection, claim
+    finally:
+        savepoint.rollback()
 
 
 @pytest.mark.asyncio
@@ -106,128 +387,73 @@ async def test_two_concurrent_news_claims_serialize_on_one_asset(
         assert stored_asset.news_id in {news_a.id, news_b.id}
 
 
-@pytest.mark.asyncio
-async def test_migration_keeps_populated_claim_across_downgrade_and_reupgrade():
-    assert database.engine.dialect.name == "postgresql"
-    migration = _load_ownership_migration()
-    schema = f"aud180_media_{uuid4().hex}"
-    owner_id = uuid4()
-    news_id = uuid4()
-    other_news_id = uuid4()
-    asset_id = uuid4()
-    image_url = "/static/news_images/news_0123456789abcdef0123456789abcdef.jpg"
+def test_baseline_downgrade_refuses_without_changing_populated_claim(
+    populated_baseline_media,
+):
+    connection, claim = populated_baseline_media
+    before_catalog = _assert_canonical_media_catalog(connection)
+    before_claim = _read_claim(connection, claim)
+    statements: list[str] = []
 
-    def exercise(connection: sa.Connection) -> None:
-        connection.execute(sa.schema.CreateSchema(schema))
-        connection.execute(
-            sa.text("SELECT set_config('search_path', :schema, true)"),
-            {"schema": schema},
-        )
-        connection.exec_driver_sql("CREATE TABLE users (id UUID PRIMARY KEY)")
-        connection.exec_driver_sql("CREATE TABLE news (id UUID PRIMARY KEY)")
-        with _migration_operations(connection):
-            migration.upgrade()
-            connection.execute(
-                sa.text("INSERT INTO users (id) VALUES (:id)"), {"id": owner_id}
-            )
-            connection.execute(
-                sa.text("INSERT INTO news (id) VALUES (:id)"), {"id": news_id}
-            )
-            connection.execute(
-                sa.text("INSERT INTO news (id) VALUES (:id)"),
-                {"id": other_news_id},
-            )
-            connection.execute(
-                sa.text(
-                    "INSERT INTO news_media_assets "
-                    "(id, storage_url, owner_user_id, news_id) "
-                    "VALUES (:id, :url, :owner, :news)"
-                ),
-                {
-                    "id": asset_id,
-                    "url": image_url,
-                    "owner": owner_id,
-                    "news": news_id,
-                },
-            )
+    def record_sql(_connection, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement)
 
-            migration.downgrade()
-            assert sa.inspect(connection).has_table("news_media_assets", schema=schema)
-            migration.upgrade()
+    migration = _load_baseline_migration()
+    sa.event.listen(connection, "before_cursor_execute", record_sql)
+    try:
+        with Operations.context(MigrationContext.configure(connection)):
+            with pytest.raises(RuntimeError) as failure:
+                migration.downgrade()
+        assert str(failure.value) == _DOWNGRADE_REASON
+        assert statements == []
+    finally:
+        sa.event.remove(connection, "before_cursor_execute", record_sql)
 
-            stored = connection.execute(
-                sa.text(
-                    "SELECT id, storage_url, owner_user_id, news_id "
-                    "FROM news_media_assets WHERE id = :id"
-                ),
-                {"id": asset_id},
-            ).one()
-            assert stored == (asset_id, image_url, owner_id, news_id)
+    assert _assert_canonical_media_catalog(connection) == before_catalog
+    assert _read_claim(connection, claim) == before_claim
 
-            duplicate_claims = (
-                {
-                    "id": uuid4(),
-                    "url": (
-                        "/static/news_images/news_11111111111111111111111111111111.jpg"
-                    ),
-                    "owner": owner_id,
-                    "news": news_id,
-                },
-                {
-                    "id": uuid4(),
-                    "url": image_url,
-                    "owner": owner_id,
-                    "news": other_news_id,
-                },
-            )
-            insert = sa.text(
-                "INSERT INTO news_media_assets "
-                "(id, storage_url, owner_user_id, news_id) "
-                "VALUES (:id, :url, :owner, :news)"
-            )
-            for values in duplicate_claims:
-                with pytest.raises(sa.exc.IntegrityError):
-                    with connection.begin_nested():
-                        connection.execute(insert, values)
-
-        connection.execute(sa.schema.DropSchema(schema, cascade=True))
-
-    async with database.engine.begin() as connection:
-        await connection.run_sync(exercise)
+    duplicate_claims = (
+        {
+            "id": uuid4(),
+            "url": "/static/news_images/news_11111111111111111111111111111111.jpg",
+            "owner": claim["owner"],
+            "news": claim["news"],
+        },
+        {
+            "id": uuid4(),
+            "url": claim["url"],
+            "owner": claim["owner"],
+            "news": claim["other_news"],
+        },
+    )
+    insert = sa.text(
+        "INSERT INTO public.news_media_assets "
+        "(id, storage_url, owner_user_id, news_id) "
+        "VALUES (:id, :url, :owner, :news)"
+    )
+    for values in duplicate_claims:
+        with pytest.raises(sa.exc.IntegrityError):
+            with connection.begin_nested():
+                connection.execute(insert, values)
+        assert _assert_canonical_media_catalog(connection) == before_catalog
+        assert _read_claim(connection, claim) == before_claim
 
 
-@pytest.mark.asyncio
-async def test_migration_rejects_malformed_existing_table_before_schema_writes():
-    assert database.engine.dialect.name == "postgresql"
-    migration = _load_ownership_migration()
-    schema = f"aud180_bad_media_{uuid4().hex}"
-
-    def exercise(connection: sa.Connection) -> None:
-        connection.execute(sa.schema.CreateSchema(schema))
-        connection.execute(
-            sa.text("SELECT set_config('search_path', :schema, true)"),
-            {"schema": schema},
-        )
+def test_baseline_media_catalog_rejects_missing_column(populated_baseline_media):
+    connection, claim = populated_baseline_media
+    before_catalog = _assert_canonical_media_catalog(connection)
+    before_claim = _read_claim(connection, claim)
+    savepoint = connection.begin_nested()
+    try:
         connection.exec_driver_sql(
-            "CREATE TABLE news_media_assets "
-            "(id UUID PRIMARY KEY, storage_url TEXT NOT NULL)"
+            "ALTER TABLE public.news_media_assets DROP COLUMN created_at"
         )
-        before_tables = set(sa.inspect(connection).get_table_names(schema=schema))
-        with _migration_operations(connection):
-            with pytest.raises(RuntimeError, match="unexpected columns"):
-                migration.upgrade()
-
-        inspector = sa.inspect(connection)
-        assert set(inspector.get_table_names(schema=schema)) == before_tables
-        assert [
-            column["name"]
-            for column in inspector.get_columns("news_media_assets", schema=schema)
-        ] == ["id", "storage_url"]
-        assert inspector.get_indexes("news_media_assets", schema=schema) == []
-        connection.execute(sa.schema.DropSchema(schema, cascade=True))
-
-    async with database.engine.begin() as connection:
-        await connection.run_sync(exercise)
+        with pytest.raises(AssertionError, match="noncanonical news media columns"):
+            _assert_canonical_media_catalog(connection)
+    finally:
+        savepoint.rollback()
+    assert _assert_canonical_media_catalog(connection) == before_catalog
+    assert _read_claim(connection, claim) == before_claim
 
 
 @pytest.mark.parametrize(
@@ -236,48 +462,48 @@ async def test_migration_rejects_malformed_existing_table_before_schema_writes()
         (
             "UNIQUE (storage_url) DEFERRABLE INITIALLY IMMEDIATE",
             None,
-            "deferrable constraints",
+            "constraints",
         ),
         (
             "UNIQUE (storage_url) DEFERRABLE INITIALLY DEFERRED",
             None,
-            "deferrable constraints",
+            "constraints",
         ),
         (
             "UNIQUE NULLS NOT DISTINCT (storage_url)",
             None,
-            "modified unique constraints",
+            "constraints",
         ),
         (
             "",
             "CREATE INDEX ix_news_media_assets_owner_user_id "
-            "ON news_media_assets (owner_user_id) "
+            "ON public.news_media_assets (owner_user_id) "
             "WHERE owner_user_id IS NOT NULL",
-            "modified indexes",
+            "indexes",
         ),
         (
             "",
             "CREATE INDEX ix_news_media_assets_owner_user_id "
-            "ON news_media_assets (owner_user_id) INCLUDE (storage_url)",
-            "modified indexes",
+            "ON public.news_media_assets (owner_user_id) INCLUDE (storage_url)",
+            "indexes",
         ),
         (
             "",
             "CREATE INDEX ix_news_media_assets_owner_user_id "
-            "ON news_media_assets ((owner_user_id::text))",
-            "modified indexes",
+            "ON public.news_media_assets ((owner_user_id::text))",
+            "indexes",
         ),
         (
             "",
             "CREATE INDEX ix_news_media_assets_owner_user_id "
-            "ON news_media_assets (owner_user_id) WITH (fillfactor=80)",
-            "modified indexes",
+            "ON public.news_media_assets (owner_user_id) WITH (fillfactor=80)",
+            "indexes",
         ),
         (
             "",
             "CREATE INDEX ix_news_media_assets_owner_user_id "
-            "ON news_media_assets (owner_user_id DESC)",
-            "modified indexes",
+            "ON public.news_media_assets (owner_user_id DESC)",
+            "indexes",
         ),
     ],
     ids=(
@@ -291,103 +517,37 @@ async def test_migration_rejects_malformed_existing_table_before_schema_writes()
         "sort-option-index",
     ),
 )
-@pytest.mark.asyncio
-async def test_migration_rejects_noncanonical_constraint_or_index_options(
-    storage_url_unique: str, index_sql: str | None, message: str
+def test_baseline_media_catalog_rejects_noncanonical_constraint_or_index_options(
+    populated_baseline_media,
+    storage_url_unique: str,
+    index_sql: str | None,
+    message: str,
 ):
-    assert database.engine.dialect.name == "postgresql"
-    migration = _load_ownership_migration()
-    schema = f"aud180_bad_options_{uuid4().hex}"
-
-    def exercise(connection: sa.Connection) -> None:
-        connection.execute(sa.schema.CreateSchema(schema))
-        connection.execute(
-            sa.text("SELECT set_config('search_path', :schema, true)"),
-            {"schema": schema},
-        )
-        connection.exec_driver_sql("CREATE TABLE users (id UUID PRIMARY KEY)")
-        connection.exec_driver_sql("CREATE TABLE news (id UUID PRIMARY KEY)")
-        connection.exec_driver_sql(
-            "CREATE TABLE news_media_assets ("
-            "id UUID NOT NULL, "
-            "storage_url VARCHAR(2048) NOT NULL, "
-            "owner_user_id UUID NULL, "
-            "news_id UUID NULL, "
-            "created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, "
-            "CONSTRAINT news_media_assets_pkey PRIMARY KEY (id), "
-            "CONSTRAINT uq_news_media_asset_storage_url "
-            + (storage_url_unique or "UNIQUE (storage_url)")
-            + ", "
-            "CONSTRAINT uq_news_media_asset_news_id UNIQUE (news_id), "
-            "CONSTRAINT news_media_assets_owner_user_id_fkey "
-            "FOREIGN KEY (owner_user_id) REFERENCES users (id) ON DELETE SET NULL, "
-            "CONSTRAINT news_media_assets_news_id_fkey "
-            "FOREIGN KEY (news_id) REFERENCES news (id) ON DELETE SET NULL"
-            ")"
-        )
-        effective_index_sql = index_sql
-        if effective_index_sql is None:
-            effective_index_sql = (
-                "CREATE INDEX ix_news_media_assets_owner_user_id "
-                "ON news_media_assets (owner_user_id)"
+    connection, claim = populated_baseline_media
+    before_catalog = _assert_canonical_media_catalog(connection)
+    before_claim = _read_claim(connection, claim)
+    savepoint = connection.begin_nested()
+    try:
+        if index_sql is None:
+            connection.exec_driver_sql(
+                "ALTER TABLE public.news_media_assets "
+                "DROP CONSTRAINT uq_news_media_asset_storage_url"
             )
-        connection.exec_driver_sql(effective_index_sql)
-
-        inspector = sa.inspect(connection)
-        before = (
-            tuple(inspector.get_table_names(schema=schema)),
-            tuple(
-                column["name"]
-                for column in inspector.get_columns("news_media_assets", schema=schema)
-            ),
-            inspector.get_pk_constraint("news_media_assets", schema=schema),
-            tuple(inspector.get_unique_constraints("news_media_assets", schema=schema)),
-            tuple(inspector.get_foreign_keys("news_media_assets", schema=schema)),
-            tuple(
-                (
-                    index["name"],
-                    index.get("column_names"),
-                    index.get("unique"),
-                    index.get("include_columns"),
-                    index.get("dialect_options"),
-                    index.get("column_sorting"),
-                    index.get("expressions"),
-                )
-                for index in inspector.get_indexes("news_media_assets", schema=schema)
-            ),
-        )
-        with _migration_operations(connection):
-            with pytest.raises(RuntimeError, match=message):
-                migration.upgrade()
-
-        inspector = sa.inspect(connection)
-        after = (
-            tuple(inspector.get_table_names(schema=schema)),
-            tuple(
-                column["name"]
-                for column in inspector.get_columns("news_media_assets", schema=schema)
-            ),
-            inspector.get_pk_constraint("news_media_assets", schema=schema),
-            tuple(inspector.get_unique_constraints("news_media_assets", schema=schema)),
-            tuple(inspector.get_foreign_keys("news_media_assets", schema=schema)),
-            tuple(
-                (
-                    index["name"],
-                    index.get("column_names"),
-                    index.get("unique"),
-                    index.get("include_columns"),
-                    index.get("dialect_options"),
-                    index.get("column_sorting"),
-                    index.get("expressions"),
-                )
-                for index in inspector.get_indexes("news_media_assets", schema=schema)
-            ),
-        )
-        assert after == before
-        connection.execute(sa.schema.DropSchema(schema, cascade=True))
-
-    async with database.engine.begin() as connection:
-        await connection.run_sync(exercise)
+            connection.exec_driver_sql(
+                "ALTER TABLE public.news_media_assets "
+                "ADD CONSTRAINT uq_news_media_asset_storage_url " + storage_url_unique
+            )
+        else:
+            connection.exec_driver_sql(
+                "DROP INDEX public.ix_news_media_assets_owner_user_id"
+            )
+            connection.exec_driver_sql(index_sql)
+        with pytest.raises(AssertionError, match=f"noncanonical news media {message}"):
+            _assert_canonical_media_catalog(connection)
+    finally:
+        savepoint.rollback()
+    assert _assert_canonical_media_catalog(connection) == before_catalog
+    assert _read_claim(connection, claim) == before_claim
 
 
 @pytest.mark.asyncio

@@ -310,6 +310,141 @@ for (const [label, inheritedOptions, expectedOptions] of [
   })
 }
 
+for (const [label, inheritedOptions, expectedOptions] of [
+  [
+    "old-generation underscore equals",
+    "--max_old_space_size=768 --max-semi-space-size=8",
+    "--max_old_space_size=768 --max-semi-space-size=8",
+  ],
+  [
+    "old-generation underscore separated value",
+    "--max_old_space_size 768 --max-semi-space-size=8",
+    "--max_old_space_size 768 --max-semi-space-size=8",
+  ],
+  [
+    "old-generation mixed separators",
+    "--max-old_space-size=768 --max-semi-space-size=8",
+    "--max-old_space-size=768 --max-semi-space-size=8",
+  ],
+  [
+    "old-generation fully quoted option",
+    '"--max-old-space-size=768" --max-semi-space-size=8',
+    '"--max-old-space-size=768" --max-semi-space-size=8',
+  ],
+  [
+    "old-generation quoted title lookalike",
+    '--title="worker --max-old-space-size=768" --max-semi-space-size=8',
+    '--title="worker --max-old-space-size=768" --max-semi-space-size=8 --max-old-space-size=1536',
+  ],
+  [
+    "escaped quote keeps a title lookalike inside its value",
+    '--max-old-space-size=768 --title="worker \\"--max-semi-space-size=8"',
+    '--max-old-space-size=768 --title="worker \\"--max-semi-space-size=8" --max-semi-space-size=1',
+  ],
+  [
+    "unquoted tab remains inside a title value",
+    "--max-old-space-size=768 --title=worker\t--max-semi-space-size=8",
+    "--max-old-space-size=768 --title=worker\t--max-semi-space-size=8 --max-semi-space-size=1",
+  ],
+  [
+    "quoted underscore option",
+    '--max-old-space-size=768 "--max_semi_space_size=8"',
+    '--max-old-space-size=768 "--max_semi_space_size=8"',
+  ],
+  [
+    "partially quoted flag name",
+    '--max-old-space-size=768 --max-"semi_space"-size=8',
+    '--max-old-space-size=768 --max-"semi_space"-size=8',
+  ],
+  [
+    "empty quotes retain the following argument boundary",
+    '--max-old-space-size=768 "" --max-semi-space-size=8',
+    '--max-old-space-size=768 "" --max-semi-space-size=8',
+  ],
+  [
+    "leading and trailing spaces are preserved",
+    "  --max_old_space_size=768 --max_semi_space_size=8  ",
+    "  --max_old_space_size=768 --max_semi_space_size=8  ",
+  ],
+  [
+    "underscores in values are not normalized",
+    "--max-old-space-size=768 --title=worker_name",
+    "--max-old-space-size=768 --title=worker_name --max-semi-space-size=1",
+  ],
+]) {
+  test("build orchestrator preserves Node memory-option grammar: " + label, async (t) => {
+    const previousNodeOptions = process.env.NODE_OPTIONS
+    const previousOldSpaceLimit = process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB
+    t.after(() => {
+      if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
+      else process.env.NODE_OPTIONS = previousNodeOptions
+      if (previousOldSpaceLimit === undefined) delete process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB
+      else process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB = previousOldSpaceLimit
+    })
+    process.env.NODE_OPTIONS = inheritedOptions
+    process.env.FRONTEND_BUILD_MAX_OLD_SPACE_MB = "1536"
+    const boundary = fakeViteBoundary(t)
+    const outcome = step3_viteBuild().then(
+      () => null,
+      (error) => error
+    )
+    const viteSpawns = boundary.spawnOptions.filter(({ command }) => command === "node")
+    boundary.child.emit("close", 1, null)
+    const error = await outcome
+
+    assert.equal(viteSpawns.length, 1)
+    assert.equal(viteSpawns[0].options.env.NODE_OPTIONS, expectedOptions)
+    assert.match(error?.message ?? "", /vite build exited with code=1/u)
+    assert.equal(boundary.intervals.size, 0)
+  })
+}
+
+for (const [label, inheritedOptions] of [
+  ["unterminated double quote", '--max-old-space-size=768 --title="worker'],
+  ["trailing escape in a double quote", '--max-old-space-size=768 --title="worker\\'],
+]) {
+  for (const traceEnabled of [false, true]) {
+    test(
+      "build orchestrator leaves invalid NODE_OPTIONS for Node: " + label + ", trace=" + traceEnabled,
+      async (t) => {
+        const previousNodeOptions = process.env.NODE_OPTIONS
+        t.after(() => {
+          if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS
+          else process.env.NODE_OPTIONS = previousNodeOptions
+        })
+        process.env.NODE_OPTIONS = inheritedOptions
+        const boundary = fakeViteBoundary(t)
+        process.env.BUILD_HANG_TRACE = traceEnabled ? "1" : ""
+        const outcome = step3_viteBuild().then(
+          () => null,
+          (error) => error
+        )
+        const viteSpawns = boundary.spawnOptions.filter(({ command }) => command === "node")
+        boundary.child.emit("close", 1, null)
+        const error = await outcome
+
+        assert.equal(viteSpawns.length, 1)
+        const forwardedOptions = viteSpawns[0].options.env.NODE_OPTIONS
+        assert.equal(forwardedOptions, inheritedOptions)
+        assert.match(error?.message ?? "", /vite build exited with code=1/u)
+        assert.equal(boundary.intervals.size, 0)
+
+        const nativeResult = childProcess.spawnSync(process.execPath, ["-e", "process.exit(0)"], {
+          env: { ...process.env, NODE_OPTIONS: forwardedOptions },
+          encoding: "utf8",
+          timeout: 5000,
+          windowsHide: true,
+        })
+        assert.equal(nativeResult.error, undefined)
+        assert.equal(nativeResult.signal, null)
+        assert.notEqual(nativeResult.status, 0)
+        assert.equal(nativeResult.stdout, "")
+        assert.match(nativeResult.stderr, /invalid value for NODE_OPTIONS/u)
+      }
+    )
+  }
+}
+
 test("build orchestrator terminates the exact Vite process tree on overflow", () => {
   assert.match(scriptSource, /taskkill\.exe/)
   assert.match(scriptSource, /terminateProcessTree\(child\.pid\)/)
