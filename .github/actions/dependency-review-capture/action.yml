@@ -1,0 +1,96 @@
+# First-party transport adapter; upstream inputs/defaults are copied verbatim.
+# Original runner outputs remain untouched; only the private comparison is new.
+name: Dependency Review same-action capture
+description: Privately capture the untouched pinned action comparison for strict scope verification
+inputs:
+  repo-token:
+    description: Token for the repository. Can be passed in using `{{ secrets.GITHUB_TOKEN }}`.
+    required: false
+    default: ${{ github.token }}
+  fail-on-severity:
+    description: Don't block PRs below this severity. Possible values are `low`, `moderate`, `high`, `critical`.
+    required: false
+  fail-on-scopes:
+    description: Dependency scopes to block PRs on. Comma-separated list. Possible values are 'unknown', 'runtime', and 'development' (e.g. "runtime, development")
+    required: false
+  base-ref:
+    description: The base git ref to be used for this check. Has a default value when the workflow event is `pull_request` or `pull_request_target`. Must be provided otherwise.
+    required: false
+  head-ref:
+    description: The head git ref to be used for this check. Has a default value when the workflow event is `pull_request` or `pull_request_target`. Must be provided otherwise.
+    required: false
+  config-file:
+    description: A path to the configuration file for the action.
+    required: false
+  allow-licenses:
+    description: Comma-separated list of allowed licenses (e.g. "MIT, GPL 3.0, BSD 2 Clause")
+    required: false
+  deny-licenses:
+    description: Comma-separated list of forbidden licenses (e.g. "MIT, GPL 3.0, BSD 2 Clause")
+    required: false
+  allow-dependencies-licenses:
+    description: Comma-separated list of dependencies in purl format (e.g. "pkg:npm/express, pkg:pypi/pycrypto"). These dependencies will be permitted to use any license, no matter what license policy is enforced otherwise.
+    required: false
+  allow-ghsas:
+    description: Comma-separated list of allowed GitHub Advisory IDs (e.g. "GHSA-abcd-1234-5679, GHSA-efgh-1234-5679")
+    required: false
+  external-repo-token:
+    description: A token for fetching external configuration file if it lives in another repository. It is required if the repository is private
+    required: false
+  license-check:
+    description: A boolean to determine if license checks should be performed
+    required: false
+  vulnerability-check:
+    description: A boolean to determine if vulnerability checks should be performed
+    required: false
+  comment-summary-in-pr:
+    description: "Determines if the summary is posted as a comment in the PR itself. Setting this to `always` or `on-failure` requires you to give the workflow `pull-requests: write` permissions"
+    required: false
+  deny-packages:
+    description: A comma-separated list of package URLs to deny (e.g. "pkg:npm/express, pkg:pypi/pycrypto"). If version specified, only deny matching packages and version; else, deny all regardless of version.
+    required: false
+  deny-groups:
+    description: A comma-separated list of package URLs for group(s)/namespace(s) to deny (e.g. "pkg:npm/express/, pkg:pypi/pycrypto/"). Please note that the group name must be followed by a `/`.
+    required: false
+  retry-on-snapshot-warnings:
+    description: Whether to retry on snapshot warnings
+    required: false
+  retry-on-snapshot-warnings-timeout:
+    description: Number of seconds to wait before stopping snapshot retries.
+    required: false
+  warn-only:
+    description: When set to `true` this action will always complete with success, overriding the `fail-on-severity` parameter.
+    required: false
+  show-openssf-scorecard:
+    description: Show a summary of the OpenSSF Scorecard scores.
+    required: false
+  warn-on-openssf-scorecard-level:
+    description: Numeric threshold for the OpenSSF Scorecard score. If the score is below this threshold, the action will warn you.
+    required: false
+  show-patched-versions:
+    description: When set to `true`, the vulnerability summary table will include a column showing the first patched version for each vulnerability.
+    required: false
+  mode:
+    description: Run capture, or run the adapter's isolated tests.
+    required: false
+    default: capture
+  upstream-commit:
+    description: Existing reviewed immutable dependency-review action commit.
+    required: false
+  upstream-directory:
+    description: Fixed separately checked-out dependency-review action repository.
+    required: false
+outputs:
+  comment-content:
+    description: Prepared dependency report comment
+  dependency-changes:
+    description: All dependency changes (JSON)
+  vulnerable-changes:
+    description: Vulnerable dependency changes (JSON)
+  invalid-license-changes:
+    description: Invalid license dependency changes (JSON)
+  denied-changes:
+    description: Denied dependency changes (JSON)
+runs:
+  using: node24
+  main: index.cjs

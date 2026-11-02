@@ -1163,7 +1163,7 @@ jobs:
           echo "Linting changed Alembic migrations for ZDD safety..."
           base_sha="${{ github.event.pull_request.base.sha }}"
           if [ -z "$base_sha" ]; then base_sha="HEAD~1"; fi
-          changed_files="$(git diff --name-only "$base_sha"...HEAD -- 'alembic/versions/*.py')"
+          changed_files="$(git diff --name-only --diff-filter=ACMR "$base_sha"...HEAD -- 'alembic/versions/*.py')"
           if [ -z "$changed_files" ]; then
             echo "No changed migrations; nothing to lint."
             exit 0
@@ -1915,6 +1915,28 @@ jobs:
             --source=alembic/versions -m alembic upgrade head
 
           echo "=== Migration round-trip complete ==="
+
+      - name: Append focused baseline tests to coverage
+        env:
+          DATABASE_URL: postgresql+asyncpg://test@localhost:5433/test_migration
+          ENVIRONMENT: test
+          SECRET_KEY: test-secret-key-for-ci-migration-gate-only
+        run: |
+          set -euo pipefail
+          uv run --frozen --no-sync coverage run --append --data-file=.coverage.migration \
+            --source=alembic/versions -m pytest -n 0 --no-cov \
+            tests/test_mvp_baseline_migration.py::test_baseline_revision_is_the_root_of_the_squashed_chain \
+            tests/test_mvp_baseline_migration.py::test_downgrade_is_irreversible_and_refuses_before_changing_schema \
+            tests/test_mvp_baseline_migration.py::test_upgrade_requires_postgresql_and_executes_nothing_elsewhere \
+            tests/test_mvp_baseline_migration.py::test_upgrade_creates_the_restored_and_delivery_once_objects \
+            tests/test_mvp_baseline_migration.py::test_upgrade_schedules_pg_cron_jobs_only_when_the_extension_is_available \
+            tests/test_aud274_user_quiet_hours_retained.py \
+            tests/test_aud278_events_search_index_kept.py \
+            tests/test_seed_demo_ownership.py::test_seed_key_baseline_is_nullable_unique_and_does_not_adopt_rows \
+            tests/test_seed_demo_ownership.py::test_seed_key_baseline_downgrade_refuses_before_changing_ownership \
+            tests/test_seed_demo_ownership.py::test_seed_key_baseline_contract_rejects_ownership_drift
+          uv run --frozen --no-sync coverage report --data-file=.coverage.migration \
+            --include=alembic/versions/202611020000_mvp_baseline.py --fail-under=100
 
       - name: Build backend image for password preflight
         shell: bash
@@ -3424,6 +3446,9 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Produce Node action coverage in the current run
+        uses: ./.github/actions/node-actions-coverage
+
       - name: Select retry-safe same-run coverage producer artifacts
         id: select_coverage_producers
         shell: bash
@@ -3495,6 +3520,16 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+
+      - name: Download Node action coverage artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ fromJSON(steps.select_coverage_producers.outputs.selections).node_actions.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/coverage/node-actions
+          merge-multiple: false
 
       - name: Download Frontend coverage artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -3741,6 +3776,7 @@ jobs:
               --metadata "$metadata"
           }
           verify_producer frontend/coverage/coverage-provenance.json unit-tests frontend
+          verify_producer artifacts/coverage/node-actions/coverage-provenance.json coverage-policy-gate node_actions
           verify_producer artifacts/coverage/go/gateway/coverage-provenance.json test go_gateway
           verify_producer artifacts/coverage/go/ws-hub/coverage-provenance.json test go_ws_hub
           verify_producer artifacts/coverage/go/file-processor/coverage-provenance.json test go_file_processor
@@ -3895,6 +3931,10 @@ jobs:
           rust_id="$(selection_value rust_coverage artifact_id)"
           rust_name="$(selection_value rust_coverage artifact_name)"
           rust_digest="$(selection_value rust_coverage artifact_digest)"
+          node_actions_id="$(selection_value node_actions artifact_id)"
+          node_actions_name="$(selection_value node_actions artifact_name)"
+          node_actions_attempt="$(selection_value node_actions producer_attempt)"
+          node_actions_digest="$(selection_value node_actions artifact_digest)"
           python3 scripts/quality/coverage_provenance.py write-api-receipt \
             --repository-root "$GITHUB_WORKSPACE" \
             --output artifacts/coverage/provenance/api-selection.json \
@@ -3907,6 +3947,7 @@ jobs:
             --event "$WORKFLOW_EVENT" \
             --job coverage-policy-gate \
             --selection "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_attempt|$frontend_id|$frontend_name|$frontend_digest" \
+            --selection "artifacts/coverage/node-actions/coverage-provenance.json|coverage-policy-gate|$node_actions_attempt|$node_actions_id|$node_actions_name|$node_actions_digest" \
             --selection "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_attempt|$gateway_id|$gateway_name|$gateway_digest" \
             --selection "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_attempt|$ws_hub_id|$ws_hub_name|$ws_hub_digest" \
             --selection "artifacts/coverage/go/file-processor/coverage-provenance.json|test|$file_processor_attempt|$file_processor_id|$file_processor_name|$file_processor_digest" \
@@ -3939,6 +3980,7 @@ jobs:
           PY
           }
           frontend_artifact="$(selection_value frontend artifact_name)"
+          node_actions_artifact="$(selection_value node_actions artifact_name)"
           gateway_artifact="$(selection_value go_gateway artifact_name)"
           ws_hub_artifact="$(selection_value go_ws_hub artifact_name)"
           file_processor_artifact="$(selection_value go_file_processor artifact_name)"
@@ -3962,6 +4004,7 @@ jobs:
             --retry-selection-receipt artifacts/coverage/provenance/api-selection.json \
             --producer-expectation "artifacts/coverage/provenance/python.json|coverage-policy-gate|python-coverage-aggregate" \
             --producer-expectation "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_artifact" \
+            --producer-expectation "artifacts/coverage/node-actions/coverage-provenance.json|coverage-policy-gate|$node_actions_artifact" \
             --producer-expectation "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_artifact" \
             --producer-expectation "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_artifact" \
             --producer-expectation "artifacts/coverage/go/file-processor/coverage-provenance.json|test|$file_processor_artifact" \
@@ -3969,6 +4012,7 @@ jobs:
             --producer-expectation "artifacts/coverage/rust/coverage-provenance.json|rust-tests|$rust_artifact" \
             --metadata artifacts/coverage/provenance/python.json \
             --metadata frontend/coverage/coverage-provenance.json \
+            --metadata artifacts/coverage/node-actions/coverage-provenance.json \
             --metadata artifacts/coverage/go/gateway/coverage-provenance.json \
             --metadata artifacts/coverage/go/ws-hub/coverage-provenance.json \
             --metadata artifacts/coverage/go/file-processor/coverage-provenance.json \
@@ -4024,6 +4068,13 @@ jobs:
             --tool-version "python=$python_version" \
             --tool-version "node=$node_version" \
             --tool-version "vitest=$vitest_version" \
+            --tool-version "node-actions-node=$(read_tool node-actions-node)" \
+            --tool-version "ast-v8-to-istanbul=$(read_tool ast-v8-to-istanbul)" \
+            --tool-version "@babel/parser=$(read_tool @babel/parser)" \
+            --tool-version "@bcoe/v8-coverage=$(read_tool @bcoe/v8-coverage)" \
+            --tool-version "istanbul-lib-coverage=$(read_tool istanbul-lib-coverage)" \
+            --tool-version "istanbul-lib-report=$(read_tool istanbul-lib-report)" \
+            --tool-version "istanbul-reports=$(read_tool istanbul-reports)" \
             --tool-version "go=$go_version" \
             --tool-version "rustc=$rustc_version" \
             --tool-version "rustc-nightly=$rustc_nightly_version" \
@@ -4032,6 +4083,8 @@ jobs:
             --python-json artifacts/coverage/python/coverage.json \
             --frontend-lcov frontend/coverage/lcov.info \
             --frontend-json frontend/coverage/coverage-final.json \
+            --node-actions-lcov artifacts/coverage/node-actions/lcov.info \
+            --node-actions-json artifacts/coverage/node-actions/coverage-final.json \
             --go-report go-gateway=artifacts/coverage/go/gateway/coverage.out \
             --go-report go-ws-hub=artifacts/coverage/go/ws-hub/coverage.out \
             --go-report go-file-processor=artifacts/coverage/go/file-processor/coverage.out \
@@ -4109,6 +4162,10 @@ jobs:
           path: |
             coverage.xml
             artifacts/coverage/python/coverage.json
+            artifacts/coverage/node-actions/lcov.info
+            artifacts/coverage/node-actions/coverage-final.json
+            artifacts/coverage/node-actions/coverage-provenance.json
+            artifacts/coverage/node-actions/coverage-source-snapshot.json
             frontend/coverage/lcov.info
             frontend/coverage/coverage-final.json
             artifacts/coverage/go/gateway/coverage.out

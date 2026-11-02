@@ -182,3 +182,33 @@ def test_output_is_atomic_and_preserves_existing_records(tmp_path: Path) -> None
 def test_output_rejects_nonexistent_target(tmp_path: Path) -> None:
     with pytest.raises(selector.CoverageProducerSelectionError, match="existing"):
         selector._write_github_output(tmp_path / "missing", {})
+
+
+# PRIVATE: append to tests/test_select_coverage_producer_artifacts.py.
+def test_node_action_producer_is_same_run_existing_gate_job() -> None:
+    specs = {spec.key: spec for spec in selector.COVERAGE_PRODUCER_SPECS}
+    spec = specs["node_actions"]
+    assert spec.prefix == "node-actions-coverage-attempt-"
+    assert spec.producer_job == "coverage-policy-gate"
+    artifacts = [
+        _artifact(value, int(CONSUMER_ATTEMPT), index)
+        for index, value in enumerate(selector.COVERAGE_PRODUCER_SPECS, start=1)
+    ]
+    selected = selector.select_coverage_producers(
+        _arguments(), token="test-token", request=_network(artifacts)
+    )
+    assert selected["node_actions"]["producer_attempt"] == int(CONSUMER_ATTEMPT)
+
+
+def test_node_action_evidence_from_another_run_is_rejected() -> None:
+    artifacts = [
+        _artifact(value, int(CONSUMER_ATTEMPT), index)
+        for index, value in enumerate(selector.COVERAGE_PRODUCER_SPECS, start=1)
+    ]
+    for artifact in artifacts:
+        if artifact["name"].startswith("node-actions-coverage-attempt-"):
+            artifact["workflow_run"]["id"] = int(RUN_ID) + 1
+    with pytest.raises(selector.CoverageProducerSelectionError):
+        selector.select_coverage_producers(
+            _arguments(), token="test-token", request=_network(artifacts)
+        )

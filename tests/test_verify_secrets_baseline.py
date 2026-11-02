@@ -682,6 +682,113 @@ def _nov2_chart_reference_records() -> list[dict[str, Any]]:
     return copy.deepcopy(_NOV2_CHART_REFERENCE_RECORDS)
 
 
+# Each tuple names a source line holding exactly one owner-approved public Git
+# object id; the id itself is read from that line so no second copy exists here.
+_NOV3_PUBLIC_GIT_OBJECTS = (
+    (
+        ".github/actions/dependency-review-capture/capture.cjs",
+        11,
+        "commit",
+        "upstream commit",
+    ),
+    (
+        ".github/actions/dependency-review-capture/capture.cjs",
+        13,
+        "blob",
+        "LICENSE blob",
+    ),
+    (
+        ".github/actions/dependency-review-capture/capture.cjs",
+        14,
+        "blob",
+        "action.yml blob",
+    ),
+    (
+        ".github/actions/dependency-review-capture/capture.cjs",
+        15,
+        "blob",
+        "dist/index.js blob",
+    ),
+    (
+        ".github/actions/dependency-review-capture/capture.cjs",
+        16,
+        "blob",
+        "dist/index.js.map blob",
+    ),
+    (
+        ".github/actions/dependency-review-capture/capture.cjs",
+        17,
+        "blob",
+        "dist/licenses.txt blob",
+    ),
+    (
+        ".github/actions/dependency-review-capture/capture.cjs",
+        18,
+        "blob",
+        "dist/sourcemap-register.js blob",
+    ),
+    (
+        ".github/actions/dependency-review-capture/capture.cjs",
+        19,
+        "blob",
+        "package.json blob",
+    ),
+    (
+        ".github/actions/node-actions-coverage/action.yml",
+        21,
+        "commit",
+        "checkout ref commit",
+    ),
+    (
+        ".github/workflows/dependency-review.yml",
+        25,
+        "commit",
+        "DEPENDENCY_REVIEW_ACTION_REF commit",
+    ),
+)
+_NOV3_UPSTREAM_COMMIT_PREFIX = "a1d282b3"
+
+
+def _nov3_source_object_id(path: str, line: int) -> str:
+    root = Path(__file__).resolve().parents[1]
+    text = (root / path).read_text(encoding="utf-8").splitlines()[line - 1]
+    object_ids = re.findall(r"\b[0-9a-f]{40}\b", text)
+    assert len(object_ids) == 1, f"{path}:{line} must hold exactly one Git object id"
+    return object_ids[0]
+
+
+def _nov3_public_git_object_records() -> list[dict[str, Any]]:
+    """Owner-approved 2026-11-02 pins of the upstream Dependency Review object ids."""
+    records: list[dict[str, Any]] = []
+    for path, line, kind, label in _NOV3_PUBLIC_GIT_OBJECTS:
+        object_id = _nov3_source_object_id(path, line)
+        if kind == "commit":
+            assert object_id.startswith(_NOV3_UPSTREAM_COMMIT_PREFIX)
+        digest = hashlib.sha1(object_id.encode("ascii"), usedforsecurity=False).digest()
+        records.append(
+            {
+                "identity": {
+                    "path": path,
+                    "type": "Hex High Entropy String",
+                    "hashed_secret_bytes": list(digest),
+                },
+                "category": "public_integrity_digest",
+                "evidence": (
+                    f"Public Git SHA-1 integrity digest of {kind} object {object_id} ({label}) "
+                    f"at {path}:{line}; Git object kind {kind}; pinned public upstream "
+                    "actions/dependency-review-action@a1d282b3 (v5.0.0); identity derived "
+                    "using pinned detect-secrets 1.5.0 SHA-1. Owner approved exactly these "
+                    "ten identities on 2026-11-02; not credential material."
+                ),
+                "owner": "egorribun",
+                "reviewed_on": "2026-11-02",
+                "expires_on": "2027-01-10",
+                "approval_status": "approved",
+            }
+        )
+    return records
+
+
 def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
     historical = _reviewed_pre_retirement_dispositions()
     retired = [
@@ -698,7 +805,11 @@ def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
     assert len(survivors) == 349
     assert policy == {
         **historical,
-        "records": [*survivors, *_nov2_chart_reference_records()],
+        "records": [
+            *survivors,
+            *_nov2_chart_reference_records(),
+            *_nov3_public_git_object_records(),
+        ],
     }, "live disposition inventory changed"
 
 
@@ -716,7 +827,7 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
         repository_root=root, today=verifier.date(2026, 11, 2)
     )
-    assert len(validated) == 351
+    assert len(validated) == 361
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
 
 
@@ -737,6 +848,7 @@ def test_live_disposition_retirement_refuses_other_inventory_changes(
         ],
     }
     live["records"].extend(_nov2_chart_reference_records())
+    live["records"].extend(_nov3_public_git_object_records())
     _assert_live_disposition_retirement(live)
     changed = copy.deepcopy(live)
     if mutation == "reintroduced":

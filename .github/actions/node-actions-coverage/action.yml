@@ -1,0 +1,83 @@
+name: Produce Node action coverage
+description: Produce strict same-run four-metric coverage and canonical provenance
+runs:
+  using: composite
+  steps:
+    - name: Set up locked coverage tool runtime
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+          node-version: "24"
+          package-manager-cache: false
+
+    - name: Install locked coverage tools
+      shell: bash
+      working-directory: frontend
+      run: npm ci --ignore-scripts --no-audit --no-fund
+
+    - name: Checkout pinned Dependency Review distribution
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+          repository: actions/dependency-review-action
+          ref: a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+          path: .dependency-review-upstream
+          persist-credentials: false
+
+    - name: Test same-action Dependency Review capture
+      id: capture_tests
+      uses: ./.github/actions/dependency-review-capture
+      with:
+          mode: test
+
+    - name: Write capture coverage provenance
+      id: capture_provenance
+      if: ${{ success() && steps.capture_tests.outcome == 'success' }}
+      shell: bash
+      env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+      run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          python3 scripts/quality/coverage_provenance.py write \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output artifacts/coverage/node-actions/coverage-provenance.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job "$GITHUB_JOB" \
+            --artifact "node-actions-coverage-attempt-${RUN_ATTEMPT}" \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version "node-actions-node=$(python3 -c 'import json; print(json.load(open("artifacts/coverage/node-actions/coverage-source-snapshot.json"))["node"])')" \
+            --tool-version ast-v8-to-istanbul=1.0.7 \
+            --tool-version @babel/parser=8.0.8 \
+            --tool-version @bcoe/v8-coverage=1.0.2 \
+            --tool-version istanbul-lib-coverage=3.2.2 \
+            --tool-version istanbul-lib-report=3.0.1 \
+            --tool-version istanbul-reports=3.2.0 \
+            --tool-version quality-provenance=2.0.0 \
+            --report "node-actions|lcov|artifacts/coverage/node-actions/lcov.info|artifacts/coverage/node-actions/lcov.info" \
+            --report "node-actions|istanbul-json|artifacts/coverage/node-actions/coverage-final.json|artifacts/coverage/node-actions/coverage-final.json"
+
+    - name: Upload capture coverage evidence
+      id: capture_upload
+      if: ${{ always() && !cancelled() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+          name: node-actions-coverage-attempt-${{ github.run_attempt }}
+          path: |
+              artifacts/coverage/node-actions/coverage-final.json
+              artifacts/coverage/node-actions/lcov.info
+              artifacts/coverage/node-actions/coverage-source-snapshot.json
+              artifacts/coverage/node-actions/coverage-provenance.json
+          if-no-files-found: error
+          retention-days: 7

@@ -131,7 +131,7 @@ QUALITY_CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
 MUTMUT_GATE_PATH = REPOSITORY_ROOT / "scripts" / "mutmut_ci_gate.py"
 CHECKOUT_ACTION_PIN = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 SETUP_PYTHON_ACTION_PIN = (
-    "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+    "actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0"
 )
 UPLOAD_ARTIFACT_ACTION_PIN = (
     "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
@@ -2900,6 +2900,7 @@ def test_nightly_chaos_starts_only_its_declared_compose_dependency_closure() -> 
         "revocation-valkey",
         "valkey",
         "postgres",
+        "postgres-roles-init",
         "minio",
     }
     closure: set[str] = set()
@@ -5841,6 +5842,15 @@ def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
     selector_step = _provenance_step(
         job, "Select retry-safe same-run coverage producer artifacts"
     )
+    node_producer = _provenance_step(
+        job, "Produce Node action coverage in the current run"
+    )
+    assert node_producer["uses"] == "./.github/actions/node-actions-coverage"
+    assert "if" not in node_producer
+    assert "continue-on-error" not in node_producer
+    assert (
+        steps.index(cleanup) < steps.index(node_producer) < steps.index(selector_step)
+    )
     assert selector_step["id"] == "select_coverage_producers"
     assert "scripts.quality.select_coverage_producer_artifacts" in str(
         selector_step["run"]
@@ -5890,8 +5900,9 @@ def test_coverage_api_selection_receipt_is_bound_before_canonical_merge() -> Non
     receipt_run = str(receipt["run"])
     assert "coverage_provenance.py write-api-receipt" in receipt_run
     assert "--output artifacts/coverage/provenance/api-selection.json" in receipt_run
-    assert receipt_run.count("--selection ") == 5
+    assert receipt_run.count("--selection ") == 6
     for expected_selection in (
+        "artifacts/coverage/node-actions/coverage-provenance.json|coverage-policy-gate|$node_actions_attempt|$node_actions_id|$node_actions_name|$node_actions_digest",
         "frontend/coverage/coverage-provenance.json|unit-tests|$frontend_attempt|$frontend_id|$frontend_name|$frontend_digest",
         "artifacts/coverage/go/gateway/coverage-provenance.json|test|$gateway_attempt|$gateway_id|$gateway_name|$gateway_digest",
         "artifacts/coverage/go/ws-hub/coverage-provenance.json|test|$ws_hub_attempt|$ws_hub_id|$ws_hub_name|$ws_hub_digest",
@@ -5956,6 +5967,8 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
         "--python-json artifacts/coverage/python/coverage.json",
         "--frontend-lcov frontend/coverage/lcov.info",
         "--frontend-json frontend/coverage/coverage-final.json",
+        "--node-actions-lcov artifacts/coverage/node-actions/lcov.info",
+        "--node-actions-json artifacts/coverage/node-actions/coverage-final.json",
     ):
         assert required in normalize_run
     assert normalize_run.count("--go-report ") == 4
@@ -5993,7 +6006,11 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
     merge = _provenance_step(job, "Merge canonical coverage provenance")
     merge_run = str(merge["run"])
     assert "coverage_provenance.py merge" in merge_run
-    assert merge_run.count("--metadata ") == 7
+    assert merge_run.count("--metadata ") == 8
+    assert (
+        "--metadata artifacts/coverage/node-actions/coverage-provenance.json"
+        in merge_run
+    )
     assert "--contract quality/quality-contract.json" in merge_run
     assert "quality-evidence-${{ github.sha }}-attempt-${RUN_ATTEMPT}" in merge_run
 
@@ -6043,6 +6060,10 @@ def test_quality_evidence_bundle_is_hashed_after_validation_and_required() -> No
     assert upload["with"]["if-no-files-found"] == "error"
     upload_paths = str(upload["with"]["path"])
     for required in (
+        "artifacts/coverage/node-actions/lcov.info",
+        "artifacts/coverage/node-actions/coverage-final.json",
+        "artifacts/coverage/node-actions/coverage-provenance.json",
+        "artifacts/coverage/node-actions/coverage-source-snapshot.json",
         "coverage.xml",
         "artifacts/coverage/python/coverage.json",
         "frontend/coverage/lcov.info",
@@ -6956,53 +6977,83 @@ def test_frontend_npm_installs_require_node_24_and_npm_11() -> None:
     assert "strict-allow-scripts=true" in npmrc.splitlines()
 
 
-def test_focused_migration_tests_append_to_existing_coverage_producer() -> None:
-    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+_FOCUSED_BASELINE_SELECTORS = (
+    "tests/test_mvp_baseline_migration.py::test_baseline_revision_is_the_root_of_the_squashed_chain",
+    "tests/test_mvp_baseline_migration.py::test_downgrade_is_irreversible_and_refuses_before_changing_schema",
+    "tests/test_mvp_baseline_migration.py::test_upgrade_requires_postgresql_and_executes_nothing_elsewhere",
+    "tests/test_mvp_baseline_migration.py::test_upgrade_creates_the_restored_and_delivery_once_objects",
+    "tests/test_mvp_baseline_migration.py::test_upgrade_schedules_pg_cron_jobs_only_when_the_extension_is_available",
+    "tests/test_aud274_user_quiet_hours_retained.py",
+    "tests/test_aud278_events_search_index_kept.py",
+    "tests/test_seed_demo_ownership.py::test_seed_key_baseline_is_nullable_unique_and_does_not_adopt_rows",
+    "tests/test_seed_demo_ownership.py::test_seed_key_baseline_downgrade_refuses_before_changing_ownership",
+    "tests/test_seed_demo_ownership.py::test_seed_key_baseline_contract_rejects_ownership_drift",
+)
+
+
+def _assert_focused_baseline_coverage(workflow: dict) -> None:
     job = workflow["jobs"]["db-migration-gate"]
     steps = job["steps"]
     roundtrip = _provenance_step(
         job, "Run supported migration round-trip and verify boundary"
     )
-    focused = _provenance_step(job, "Append focused migration tests to coverage")
+    focused = _provenance_step(job, "Append focused baseline tests to coverage")
     image_build = _provenance_step(job, "Build backend image for password preflight")
     provenance = _provenance_step(job, "Write migration coverage provenance")
     upload = _provenance_step(job, "Upload migration coverage data for aggregation")
-
     assert steps.index(roundtrip) < steps.index(focused) < steps.index(image_build)
-    assert steps.index(focused) < steps.index(provenance) < steps.index(upload)
-    assert roundtrip["env"]["DATABASE_URL"] == (
-        "postgresql+asyncpg://test@localhost:5433/test_migration"
+    assert steps.index(image_build) < steps.index(provenance) < steps.index(upload)
+    for step in (roundtrip, focused, provenance, upload):
+        assert "if" not in step
+        assert "continue-on-error" not in step
+    assert "continue-on-error" not in job
+    assert (
+        roundtrip["env"]["DATABASE_URL"]
+        == "postgresql+asyncpg://test@localhost:5433/test_migration"
     )
-    assert focused["env"]["DATABASE_URL"] == "sqlite+aiosqlite:///:memory:"
-    assert focused["env"]["ENVIRONMENT"] == roundtrip["env"]["ENVIRONMENT"]
-    assert focused["env"]["SECRET_KEY"] == roundtrip["env"]["SECRET_KEY"]
-    assert focused["env"]["RUN_INTEGRATION_TESTS"] == "1"
+    assert focused["env"] == {
+        key: roundtrip["env"][key]
+        for key in ("DATABASE_URL", "ENVIRONMENT", "SECRET_KEY")
+    }
     reset_opt_in = "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"
-    for environment in (
-        workflow.get("env", {}),
-        job.get("env", {}),
-        focused.get("env", {}),
-    ):
+    for environment in (workflow.get("env", {}), job.get("env", {}), focused["env"]):
         assert reset_opt_in not in environment
-
-    run = str(focused["run"])
-    assert "uv run coverage run --append --data-file=.coverage.migration" in run
-    assert "--source=alembic/versions -m pytest" in run
-    assert "rm -f -- .coverage.migration" not in run
-    targets = (
-        "tests/test_touched_tier0_migration_contracts.py",
-        "tests/test_reconcile_schema_drift_migration.py",
-        "tests/test_legacy_migration_guard_contracts.py",
-        "tests/integration/test_aud038_default_partition_redistribution_postgres.py",
-        "tests/integration/test_historical_migration_semantics_postgres.py",
-        "tests/integration/test_aud226_partitioning_generated_ids_postgres.py",
-    )
-    offsets = [run.index(path) for path in targets]
-    assert offsets == sorted(offsets)
-    assert all(run.count(path) == 1 for path in targets)
-
-    assert provenance["env"]["ARTIFACT_NAME"] == (
-        "python-migration-coverage-attempt-${{ github.run_attempt }}"
+    lines = str(focused["run"]).replace("\\\n", " ").splitlines()
+    commands = [shlex.split(line) for line in lines if line.strip()]
+    assert commands == [
+        ["set", "-euo", "pipefail"],
+        [
+            "uv",
+            "run",
+            "--frozen",
+            "--no-sync",
+            "coverage",
+            "run",
+            "--append",
+            "--data-file=.coverage.migration",
+            "--source=alembic/versions",
+            "-m",
+            "pytest",
+            "-n",
+            "0",
+            "--no-cov",
+            *_FOCUSED_BASELINE_SELECTORS,
+        ],
+        [
+            "uv",
+            "run",
+            "--frozen",
+            "--no-sync",
+            "coverage",
+            "report",
+            "--data-file=.coverage.migration",
+            "--include=alembic/versions/202611020000_mvp_baseline.py",
+            "--fail-under=100",
+        ],
+    ]
+    assert (
+        provenance["env"]["ARTIFACT_NAME"]
+        == "python-migration-coverage-attempt-${{ github.run_attempt }}"
     )
     assert upload["with"]["name"] == provenance["env"]["ARTIFACT_NAME"]
     assert "artifacts/coverage/python/producer/.coverage.migration" in str(
@@ -7012,6 +7063,60 @@ def test_focused_migration_tests_append_to_existing_coverage_producer() -> None:
         "artifacts/coverage/python/producer/coverage-provenance-migration.json"
         in str(upload["with"]["path"])
     )
+
+
+def test_focused_baseline_tests_append_to_existing_coverage_producer() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_focused_baseline_coverage(workflow)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "missing-selector",
+        "changed-selector",
+        "no-append",
+        "wrong-source",
+        "conditional",
+        "nonblocking",
+        "lower-threshold",
+        "reset",
+        "reordered",
+        "wrong-artifact",
+    ),
+)
+def test_focused_baseline_coverage_rejects_population_and_producer_drift(
+    mutation: str,
+) -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["db-migration-gate"]
+    step = _provenance_step(job, "Append focused baseline tests to coverage")
+    if mutation == "missing-selector":
+        step["run"] = step["run"].replace(_FOCUSED_BASELINE_SELECTORS[0], "")
+    elif mutation == "changed-selector":
+        step["run"] = step["run"].replace(
+            _FOCUSED_BASELINE_SELECTORS[0], "tests/test_unreviewed.py"
+        )
+    elif mutation == "no-append":
+        step["run"] = step["run"].replace("--append", "")
+    elif mutation == "wrong-source":
+        step["run"] = step["run"].replace("--source=alembic/versions", "--source=app")
+    elif mutation == "conditional":
+        step["if"] = "false"
+    elif mutation == "nonblocking":
+        step["continue-on-error"] = True
+    elif mutation == "lower-threshold":
+        step["run"] = step["run"].replace("--fail-under=100", "--fail-under=99")
+    elif mutation == "reset":
+        step["env"]["UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"] = "1"
+    elif mutation == "reordered":
+        job["steps"].remove(step)
+        job["steps"].append(step)
+    else:
+        upload = _provenance_step(job, "Upload migration coverage data for aggregation")
+        upload["with"]["path"] = "unreviewed-coverage"
+    with pytest.raises(AssertionError):
+        _assert_focused_baseline_coverage(workflow)
 
 
 def test_aud257_postgres_regression_has_explicit_pg_routing() -> None:
@@ -7283,7 +7388,7 @@ def _aud481_assert_matrix_contract(
     upload = uploads[0]
     assert (
         upload["uses"]
-        == "github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee"
+        == "github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370"
     )
     assert (
         upload["if"]
@@ -7399,65 +7504,28 @@ def test_aud481_counterfactuals_reject_missing_image_and_nonblocking_scan() -> N
             _aud481_assert_matrix_contract(shared_cache, release_workflow, catalog)
 
 
-def test_aud350_postgresql_counterfactual_uses_existing_migration_gate() -> None:
+def test_retired_aud350_producer_does_not_replace_current_baseline_coverage() -> None:
+    # The timestamp upgrade was removed by the owner-approved fresh-only squash.
+    # Its schema-equivalence proof is separate from this raw coverage producer.
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    _assert_focused_baseline_coverage(workflow)
     job = workflow["jobs"]["db-migration-gate"]
-    steps = job["steps"]
-    roundtrip = _provenance_step(
-        job, "Run supported migration round-trip and verify boundary"
+    names = {step.get("name") for step in job["steps"]}
+    assert "Append focused migration tests to coverage" not in names
+    assert (
+        "Append AUD-350 PostgreSQL timestamp counterfactual to migration coverage"
+        not in names
     )
-    focused = _provenance_step(job, "Append focused migration tests to coverage")
-    postgres_case = _provenance_step(
-        job, "Append AUD-350 PostgreSQL timestamp counterfactual to migration coverage"
-    )
-    image_build = _provenance_step(job, "Build backend image for password preflight")
-
-    assert steps.index(roundtrip) < steps.index(focused) < steps.index(postgres_case)
-    assert steps.index(postgres_case) < steps.index(image_build)
     assert job["timeout-minutes"] == 20
     assert job["services"]["postgres"]["image"].startswith(
         "pgvector/pgvector:pg17@sha256:"
     )
-    assert (
-        focused["run"].count("tests/test_aud350_reconcile_migration_coverage.py") == 1
-    )
-    assert postgres_case["env"] == {
-        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
-        "AUD350_POSTGRES_DATABASE_URL": (
-            "postgresql+psycopg://test@127.0.0.1:5433/test_migration"
-        ),
-        "RUN_INTEGRATION_TESTS": "1",
-    }
-    integration_source = (
-        REPOSITORY_ROOT
-        / "tests"
-        / "integration"
-        / "test_aud350_stored_event_timestamp_migration.py"
-    ).read_text(encoding="utf-8")
-    assert "make_url(database_url)" in integration_source
-    assert 'url.set(drivername="postgresql+psycopg")' in integration_source
-    assert "SET LOCAL TIME ZONE 'America/Los_Angeles'" in integration_source
-    assert "created_at AT TIME ZONE 'UTC' FROM stored_events" in integration_source
-    assert "actual_local.astimezone(UTC) == expected_utc" in integration_source
-    assert (
-        "actual_utc_display == expected_utc.replace(tzinfo=None)" in integration_source
-    )
-    assert "actual_local.utcoffset() == timedelta(hours=-7)" in integration_source
-    assert (
-        "BASELINE_EXPECTED_UTC - CANDIDATE_EXPECTED_UTC != timedelta(hours=7)"
-        in integration_source
-    )
-    assert "actual_utc.utcoffset().total_seconds() == 0" not in integration_source
-
-    command = str(postgres_case["run"])
-    assert "coverage run --append --data-file=.coverage.migration" in command
-    assert "--source=alembic/versions -m pytest" in command
-    assert (
-        command.count(
-            "tests/integration/test_aud350_stored_event_timestamp_migration.py"
-        )
-        == 1
-    )
+    for retired in (
+        "tests/test_aud350_reconcile_migration_coverage.py",
+        "tests/integration/test_aud350_stored_event_timestamp_migration.py",
+    ):
+        assert not (REPOSITORY_ROOT / retired).exists()
+        assert retired not in str(job)
 
 
 def test_aud350_integration_caller_passes_its_owned_postgres_target() -> None:

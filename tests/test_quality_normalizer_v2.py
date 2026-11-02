@@ -166,7 +166,7 @@ def test_normalizer_v2_emits_current_complete_schema_valid_evidence(
     assert (
         manifest["tier0"]["files"][0]["metrics"]["branches"]["status"] == "unsupported"
     )
-    assert len(manifest["reports"]) == 14
+    assert len(manifest["reports"]) == 16
     python_json = next(
         report
         for report in manifest["reports"]

@@ -28,7 +28,8 @@
     "tests/": "@egorribun",
     ".github/": "@egorribun",
     "alembic/": "@egorribun",
-    "tools/npm-cli-shim/test/": "@egorribun"
+    "tools/npm-cli-shim/test/": "@egorribun",
+    ".github/actions/dependency-review-capture/": "@egorribun"
   },
   "tier0_rules": [
     "**/auth/**",
@@ -101,7 +102,9 @@
     "**/ssrAuth.ts",
     "**/ssrf.py",
     "**/*_session_repository.py",
-    "**/useAuthStore.ts"
+    "**/useAuthStore.ts",
+    ".github/actions/dependency-review-capture/capture.cjs",
+    ".github/actions/dependency-review-capture/index.cjs"
   ],
   "generated_patterns": [
     "**/routeTree.gen.ts",

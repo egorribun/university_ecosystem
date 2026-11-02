@@ -1728,3 +1728,65 @@ Baseline **242**, Gitleaks **27**, audit **449/512** with **63** open, all **78*
 required context/app pairs, hooks and coverage floors remain unchanged. This
 retirement must not be integrated independently of the source-field removal.
 Static source/data checks are not runtime validation or hosted-check acceptance.
+
+
+### 2026-11-02: Node action coverage component (source proposal; acceptance pending)
+
+Add the node-actions coverage component for repository-authored runtime source under .github/actions/dependency-review-capture. Initially the production inventory is exactly capture.cjs and index.cjs; both are explicitly Tier 0 and owned by @egorribun. The test harness is test infrastructure, not a runtime source exclusion. Additional .js/.cjs/.mjs runtime files become inventory requirements rather than silently disappearing.
+
+Every file and aggregate must satisfy 100% lines, statements, branches and functions. Missing files, skipped counters, malformed reports, unsupported metrics or inconsistent LCOV/Istanbul counters block. No rounded display value substitutes for exact integer equality. The entire measured source is held at 100%, which also covers changed executable units; existing patch policy and source binding are retained.
+
+Use Node24 native V8 collection for capture.cjs and index.cjs with enforced line/branch/function thresholds, plus existing frontend-lock AST conversion for real statement counters. ast-v8-to-istanbul 1.0.7 and Babel parser 8.0.8 convert the same collected V8 evidence; @bcoe/v8-coverage 1.0.2 merges processes. Existing locked Istanbul tools emit LCOV and JSON. No new package or invented integrity pin, ignore directive, floor reduction or new mandatory context is introduced.
+
+## Pinned Dependency Review upstream object identities (2026-11-02)
+
+The owner `egorribun` approved, in chat on 2026-11-02 (about 22:30 UTC), exactly
+ten new `public_integrity_digest` identities of detector type
+`Hex High Entropy String`. Each is a public immutable Git object id of the pinned
+upstream `actions/dependency-review-action` at commit
+`a1d282b36b6f3519aa1f3fc636f609c47dddb294` (v5.0.0, abbreviated `a1d282b3`).
+They are appended after the final policy record with `approval_status: approved`,
+`reviewed_on: 2026-11-02` and `expires_on: 2027-01-10` (69 days, within the
+90-day cap). The evidence of each names the exact file and line and the object
+kind, and records that the owner approved exactly these ten identities on
+2026-11-02; not credential material.
+
+| Path:line | Object kind | Object id |
+| --- | --- | --- |
+| `.github/actions/dependency-review-capture/capture.cjs:11` | commit | `a1d282b3…` (upstream commit) |
+| `.github/actions/dependency-review-capture/capture.cjs:13` | blob | `cdfebd4e…` (`LICENSE`) |
+| `.github/actions/dependency-review-capture/capture.cjs:14` | blob | `5f6cf73d…` (`action.yml`) |
+| `.github/actions/dependency-review-capture/capture.cjs:15` | blob | `2da57a50…` (`dist/index.js`) |
+| `.github/actions/dependency-review-capture/capture.cjs:16` | blob | `87e80840…` (`dist/index.js.map`) |
+| `.github/actions/dependency-review-capture/capture.cjs:17` | blob | `8f8164bf…` (`dist/licenses.txt`) |
+| `.github/actions/dependency-review-capture/capture.cjs:18` | blob | `cb1fb136…` (`dist/sourcemap-register.js`) |
+| `.github/actions/dependency-review-capture/capture.cjs:19` | blob | `e5e5ca95…` (`package.json`) |
+| `.github/actions/node-actions-coverage/action.yml:21` | commit | `a1d282b3…` (checkout ref) |
+| `.github/workflows/dependency-review.yml:25` | commit | `a1d282b3…` (`DEPENDENCY_REVIEW_ACTION_REF`) |
+
+No other identity is added. The 351-record prefix is unchanged, the disposition
+total becomes **361**, and the cap remains 512. Baseline **242** and Gitleaks
+**27** are unchanged. The verifier gains no frozen identity set and no constant
+change for these paths; the validator accepts them through the generic
+`public_integrity_digest` rule. The 2026-11-02 Helm chart records keep their
+existing evidence and line references.
+
+This is a finite disposition scope, not scanner success, audit acceptance, full
+CI, merge, deployment or a required-check result.
+
+## Single producer, ordinary same-run trust
+The composite helper .github/actions/node-actions-coverage/action.yml runs identical tests and canonical provenance in two existing jobs:
+1. Dependency Review / Review Dependencies: existing PR event scope remains unchanged. The artifact is diagnostic for that workflow; original vulnerability/license evaluation and always-run exact-row guard remain.
+2. CI / Coverage & Quality Policy Gate: producer runs before the existing same-run selector. It emits an ordinary attempt-suffixed artifact, selected/downloaded/verified using existing same-run provenance. No new job, cross-workflow selector, receipt schema, event expansion or permission is required.
+
+The actual tested runtime is the GitHub runner Node executable used by the local action. Record its process.version from the source snapshot as node-actions-node; do not misattribute setup-node's PATH executable or conflict with frontend's separate node version.
+
+The central manifest registers node-actions additively. Reuse existing LCOV/Istanbul parser and merge checks with component identity preserved; do not label these files as frontend or unsupported workflow source. Canonical quality evidence retains reports, producer receipt and source snapshot.
+
+## Trust and failure behavior
+Tests snapshot source/control bytes before runtime imports. Existing provenance binds checkout commit and workflow/run/attempt, and existing normalizer HEAD/control checks now include .github/actions. Explicit per-file inventory prevents a missing entrypoint from yielding aggregate 100%. Same-run artifact selection rejects cross-run evidence; partial diagnostic uploads cannot satisfy successful producer/provenance requirements.
+
+The capture adapter executes one immutable official bundle and preserves original nonzero exits. A successful coverage report does not turn a failed dependency review green. Snapshot captures are not independent same-UID isolation or proof against a compromised runner.
+
+
+Validation remains pending: the capture suite, exact four-metric gates, central coverage/provenance/selector tests, actionlint, Zizmor, hooks and final-source hosted evidence must pass before acceptance. All 78 required context/app pairs and resource limits remain unchanged. Source integration is not evidence of a runtime pass.

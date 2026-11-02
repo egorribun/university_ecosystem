@@ -26,6 +26,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 COMPONENTS = (
     "python",
     "frontend",
+    "node-actions",
     "go-gateway",
     "go-ws-hub",
     "go-file-processor",
@@ -40,6 +41,7 @@ COMPONENTS = (
 COVERAGE_COMPONENTS = (
     "python",
     "frontend",
+    "node-actions",
     "go-gateway",
     "go-ws-hub",
     "go-file-processor",
@@ -139,6 +141,17 @@ REPORT_FORMAT_TO_TOOLS = {
     "llvm-cov-json": frozenset({"cargo-llvm-cov", "rustc"}),
     "llvm-cov-branch-json": frozenset({"cargo-llvm-cov", "rustc-nightly"}),
 }
+NODE_ACTION_TOOLS = frozenset(
+    {
+        "node-actions-node",
+        "ast-v8-to-istanbul",
+        "@babel/parser",
+        "@bcoe/v8-coverage",
+        "istanbul-lib-coverage",
+        "istanbul-lib-report",
+        "istanbul-reports",
+    }
+)
 TRUSTED_DERIVATIONS = frozenset(
     {
         "AST function entries covered when the first executable body line is reported as executed",
@@ -169,6 +182,12 @@ EXPECTED_COVERAGE_REPORTS = frozenset(
         ),
         ("frontend", "lcov", "frontend/coverage/lcov.info"),
         ("frontend", "istanbul-json", "frontend/coverage/coverage-final.json"),
+        ("node-actions", "lcov", "artifacts/coverage/node-actions/lcov.info"),
+        (
+            "node-actions",
+            "istanbul-json",
+            "artifacts/coverage/node-actions/coverage-final.json",
+        ),
         (
             "go-gateway",
             "go-coverprofile",
@@ -1610,6 +1629,8 @@ def _source_suffixes(component: str) -> frozenset[str]:
         return frozenset({".py"})
     if component == "frontend":
         return frozenset({".ts", ".tsx"})
+    if component == "node-actions":
+        return frozenset({".js", ".cjs", ".mjs"})
     if component.startswith("go-"):
         return frozenset({".go"})
     if component.startswith("rust-"):
@@ -1847,6 +1868,10 @@ def _is_production_source(
     if pure.suffix not in _source_suffixes(component):
         return False
     lowered = pure.name.lower()
+    if component == "node-actions" and path == (
+        ".github/actions/dependency-review-capture/capture.test.cjs"
+    ):
+        return False
     if component.startswith("go-") and lowered.endswith("_test.go"):
         return False
     if component.startswith("rust-"):
@@ -2617,7 +2642,10 @@ def _validate_tool_versions(manifest: dict[str, object]) -> list[str]:
     for report_value in reports:
         report = cast(dict[str, object], report_value)
         report_format = cast(str, report["format"])
-        required_tools.update(REPORT_FORMAT_TO_TOOLS[report_format])
+        if report["component"] == "node-actions":
+            required_tools.update(NODE_ACTION_TOOLS)
+        else:
+            required_tools.update(REPORT_FORMAT_TO_TOOLS[report_format])
     tool_versions = cast(dict[str, object], manifest["tool_versions"])
     actual_tools = set(tool_versions)
     errors: list[str] = []

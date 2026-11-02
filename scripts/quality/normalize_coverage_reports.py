@@ -41,6 +41,7 @@ REPOSITORY_ROOT = DEFAULT_REPOSITORY_ROOT
 COMPONENTS = (
     "python",
     "frontend",
+    "node-actions",
     "go-gateway",
     "go-ws-hub",
     "go-file-processor",
@@ -57,6 +58,7 @@ METRIC_STATUSES = frozenset({"native", "derived", "unsupported"})
 COVERAGE_COMPONENTS = (
     "python",
     "frontend",
+    "node-actions",
     "go-gateway",
     "go-ws-hub",
     "go-file-processor",
@@ -71,6 +73,7 @@ COVERAGE_COMPONENTS = (
 COVERAGE_CONTROL_PATHS = (
     ".coveragerc",
     ".github/workflows",
+    ".github/actions",
     "Makefile",
     "pyproject.toml",
     "uv.lock",
@@ -104,6 +107,7 @@ FRONTEND_COVERAGE_EXCLUDE: tuple[str, ...] = ()
 COVERAGE_SCOPE_ROOTS = {
     "python": ("app",),
     "frontend": ("frontend/src",),
+    "node-actions": (".github/actions/dependency-review-capture",),
     "go-gateway": ("services/gateway",),
     "go-ws-hub": ("services/ws-hub",),
     "go-file-processor": ("services/file-processor",),
@@ -121,6 +125,7 @@ TIER0_AGGREGATE_DERIVATION = "sum of applicable Tier0 file metrics"
 SOURCE_ROOTS = {
     "python": ("app", "alembic/versions"),
     "frontend": ("frontend/src",),
+    "node-actions": (".github/actions/dependency-review-capture",),
     "go-gateway": ("services/gateway",),
     "go-ws-hub": ("services/ws-hub",),
     "go-file-processor": ("services/file-processor",),
@@ -145,6 +150,10 @@ SUPPORTED_REPORTS = {
     "frontend": (
         ("lcov", "frontend/coverage/lcov.info"),
         ("istanbul-json", "frontend/coverage/coverage-final.json"),
+    ),
+    "node-actions": (
+        ("lcov", "artifacts/coverage/node-actions/lcov.info"),
+        ("istanbul-json", "artifacts/coverage/node-actions/coverage-final.json"),
     ),
     "go-gateway": (("go-coverprofile", "artifacts/coverage/go/gateway/coverage.out"),),
     "go-ws-hub": (("go-coverprofile", "artifacts/coverage/go/ws-hub/coverage.out"),),
@@ -2908,6 +2917,10 @@ def _tracked_source_is_coverable(component: str, relative_path: str) -> bool:
         return pure.suffix.casefold() == ".py"
     if component == "frontend":
         return _matches_frontend_coverage_policy(relative_path)
+    if component == "node-actions":
+        return pure.suffix in {".js", ".cjs", ".mjs"} and relative_path != (
+            ".github/actions/dependency-review-capture/capture.test.cjs"
+        )
     if component.startswith("go-"):
         return (
             pure.suffix.casefold() == ".go"
@@ -3122,6 +3135,12 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--frontend-json", action="append", default=[], metavar="PATH")
     parser.add_argument(
+        "--node-actions-lcov", action="append", default=[], metavar="PATH"
+    )
+    parser.add_argument(
+        "--node-actions-json", action="append", default=[], metavar="PATH"
+    )
+    parser.add_argument(
         "--go-report", action="append", default=[], metavar="COMPONENT=PATH"
     )
     parser.add_argument(
@@ -3323,6 +3342,12 @@ def _collect_report_inputs(arguments: argparse.Namespace) -> list[_ReportInput]:
         inputs.append(_ReportInput("frontend", "lcov", _resolve_path(value)))
     for value in arguments.frontend_json:
         inputs.append(_ReportInput("frontend", "istanbul-json", _resolve_path(value)))
+    for value in arguments.node_actions_lcov:
+        inputs.append(_ReportInput("node-actions", "lcov", _resolve_path(value)))
+    for value in arguments.node_actions_json:
+        inputs.append(
+            _ReportInput("node-actions", "istanbul-json", _resolve_path(value))
+        )
     for value in arguments.go_report:
         inputs.append(
             _parse_component_path(
@@ -3808,13 +3833,19 @@ def _merge_frontend_reports(
         if not _same_counter_pair(
             lcov_report.metrics[metric_name], istanbul_report.metrics[metric_name]
         ):
-            errors.append(f"frontend LCOV and Istanbul JSON disagree for {metric_name}")
+            errors.append(
+                f"{lcov_report.component} LCOV and Istanbul JSON disagree for {metric_name}"
+            )
     lcov_sources = set(lcov_report.file_metrics)
     istanbul_sources = set(istanbul_report.file_metrics)
     for source in sorted(lcov_sources - istanbul_sources):
-        errors.append(f"frontend Istanbul JSON is missing source {source}")
+        errors.append(
+            f"{lcov_report.component} Istanbul JSON is missing source {source}"
+        )
     for source in sorted(istanbul_sources - lcov_sources):
-        errors.append(f"frontend Istanbul JSON contains unexpected source {source}")
+        errors.append(
+            f"{lcov_report.component} Istanbul JSON contains unexpected source {source}"
+        )
 
     file_metrics: dict[str, dict[str, dict[str, object]]] = {}
     for source, lcov_metrics in lcov_report.file_metrics.items():
@@ -3826,7 +3857,7 @@ def _merge_frontend_reports(
                     lcov_metrics[metric_name], istanbul_metrics[metric_name]
                 ):
                     errors.append(
-                        f"frontend LCOV and Istanbul JSON disagree for "
+                        f"{lcov_report.component} LCOV and Istanbul JSON disagree for "
                         f"{source}.{metric_name}"
                     )
             merged_metrics["statements"] = istanbul_metrics["statements"]
@@ -3872,6 +3903,8 @@ def _tier0_source_suffixes(component: str) -> frozenset[str]:
         return frozenset({".py"})
     if component == "frontend":
         return frozenset({".ts", ".tsx"})
+    if component == "node-actions":
+        return frozenset({".js", ".cjs", ".mjs"})
     if component.startswith("go-"):
         return frozenset({".go"})
     if component.startswith("rust-"):
@@ -4473,6 +4506,12 @@ def _build_manifest(
             "istanbul-json",
             _merge_frontend_reports,
         ),
+        (
+            "node-actions",
+            "lcov",
+            "istanbul-json",
+            _merge_frontend_reports,
+        ),
     )
     for (
         component,
@@ -4533,7 +4572,7 @@ def _build_manifest(
         if len(component_reports) != 1:
             continue
         if (
-            component in {"python", "frontend"}
+            component in {"python", "frontend", "node-actions"}
             and "+" not in component_reports[0].report_format
         ):
             continue

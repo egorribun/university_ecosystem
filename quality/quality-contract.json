@@ -14,144 +14,492 @@
   },
   "metric_statuses": {
     "python": {
-      "lines": ["native", "derived"],
-      "statements": ["native", "derived"],
-      "branches": ["native", "derived"],
-      "functions": ["derived", "unsupported"]
+      "lines": [
+        "native",
+        "derived"
+      ],
+      "statements": [
+        "native",
+        "derived"
+      ],
+      "branches": [
+        "native",
+        "derived"
+      ],
+      "functions": [
+        "derived",
+        "unsupported"
+      ]
     },
     "frontend": {
-      "lines": ["native", "derived"],
-      "statements": ["native", "derived"],
-      "branches": ["native", "derived"],
-      "functions": ["native", "derived"]
+      "lines": [
+        "native",
+        "derived"
+      ],
+      "statements": [
+        "native",
+        "derived"
+      ],
+      "branches": [
+        "native",
+        "derived"
+      ],
+      "functions": [
+        "native",
+        "derived"
+      ]
     },
     "go-gateway": {
-      "lines": ["derived"],
-      "statements": ["native"],
-      "branches": ["unsupported"],
-      "functions": ["unsupported"]
+      "lines": [
+        "derived"
+      ],
+      "statements": [
+        "native"
+      ],
+      "branches": [
+        "unsupported"
+      ],
+      "functions": [
+        "unsupported"
+      ]
     },
     "go-ws-hub": {
-      "lines": ["derived"],
-      "statements": ["native"],
-      "branches": ["unsupported"],
-      "functions": ["unsupported"]
+      "lines": [
+        "derived"
+      ],
+      "statements": [
+        "native"
+      ],
+      "branches": [
+        "unsupported"
+      ],
+      "functions": [
+        "unsupported"
+      ]
     },
     "go-file-processor": {
-      "lines": ["derived"],
-      "statements": ["native"],
-      "branches": ["unsupported"],
-      "functions": ["unsupported"]
+      "lines": [
+        "derived"
+      ],
+      "statements": [
+        "native"
+      ],
+      "branches": [
+        "unsupported"
+      ],
+      "functions": [
+        "unsupported"
+      ]
     },
     "go-shared": {
-      "lines": ["derived"],
-      "statements": ["native"],
-      "branches": ["unsupported"],
-      "functions": ["unsupported"]
+      "lines": [
+        "derived"
+      ],
+      "statements": [
+        "native"
+      ],
+      "branches": [
+        "unsupported"
+      ],
+      "functions": [
+        "unsupported"
+      ]
     },
     "rust-native": {
-      "lines": ["native", "derived"],
-      "statements": ["unsupported"],
-      "branches": ["native", "derived"],
-      "functions": ["native", "derived"]
+      "lines": [
+        "native",
+        "derived"
+      ],
+      "statements": [
+        "unsupported"
+      ],
+      "branches": [
+        "native",
+        "derived"
+      ],
+      "functions": [
+        "native",
+        "derived"
+      ]
     },
     "rust-wasm-sanitizer": {
-      "lines": ["native", "derived"],
-      "statements": ["unsupported"],
-      "branches": ["native", "derived"],
-      "functions": ["native", "derived"]
+      "lines": [
+        "native",
+        "derived"
+      ],
+      "statements": [
+        "unsupported"
+      ],
+      "branches": [
+        "native",
+        "derived"
+      ],
+      "functions": [
+        "native",
+        "derived"
+      ]
     },
     "rust-crypto": {
-      "lines": ["native", "derived"],
-      "statements": ["unsupported"],
-      "branches": ["native", "derived"],
-      "functions": ["native", "derived"]
+      "lines": [
+        "native",
+        "derived"
+      ],
+      "statements": [
+        "unsupported"
+      ],
+      "branches": [
+        "native",
+        "derived"
+      ],
+      "functions": [
+        "native",
+        "derived"
+      ]
     },
     "infrastructure": {
-      "lines": ["unsupported"],
-      "statements": ["unsupported"],
-      "branches": ["unsupported"],
-      "functions": ["unsupported"]
+      "lines": [
+        "unsupported"
+      ],
+      "statements": [
+        "unsupported"
+      ],
+      "branches": [
+        "unsupported"
+      ],
+      "functions": [
+        "unsupported"
+      ]
     },
     "workflows": {
-      "lines": ["unsupported"],
-      "statements": ["unsupported"],
-      "branches": ["unsupported"],
-      "functions": ["unsupported"]
+      "lines": [
+        "unsupported"
+      ],
+      "statements": [
+        "unsupported"
+      ],
+      "branches": [
+        "unsupported"
+      ],
+      "functions": [
+        "unsupported"
+      ]
     },
     "scripts": {
-      "lines": ["unsupported"],
-      "statements": ["unsupported"],
-      "branches": ["unsupported"],
-      "functions": ["unsupported"]
+      "lines": [
+        "unsupported"
+      ],
+      "statements": [
+        "unsupported"
+      ],
+      "branches": [
+        "unsupported"
+      ],
+      "functions": [
+        "unsupported"
+      ]
+    },
+    "node-actions": {
+      "lines": [
+        "native",
+        "derived"
+      ],
+      "statements": [
+        "native",
+        "derived"
+      ],
+      "branches": [
+        "native",
+        "derived"
+      ],
+      "functions": [
+        "native",
+        "derived"
+      ]
     }
   },
   "source_roots": {
-    "python": ["app", "alembic/versions"],
-    "frontend": ["frontend/src"],
-    "go-gateway": ["services/gateway"],
-    "go-ws-hub": ["services/ws-hub"],
-    "go-file-processor": ["services/file-processor"],
-    "go-shared": ["services/cmd/uni-cli", "services/pkg/logging", "services/pkg/spiffe", "services/pkg/spicedb"],
-    "rust-native": ["native/rust_ext"],
-    "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
-    "rust-crypto": ["frontend/rust-crypto"],
-    "infrastructure": ["infra", "infrastructure", "k8s", "charts"],
-    "workflows": [".github/workflows"],
-    "scripts": ["scripts"]
-  },
-  "coverage_scope": {
-    "python": ["app", "alembic/versions"],
-    "frontend": ["frontend/src"],
-    "go-gateway": ["services/gateway"],
-    "go-ws-hub": ["services/ws-hub"],
-    "go-file-processor": ["services/file-processor"],
+    "python": [
+      "app",
+      "alembic/versions"
+    ],
+    "frontend": [
+      "frontend/src"
+    ],
+    "go-gateway": [
+      "services/gateway"
+    ],
+    "go-ws-hub": [
+      "services/ws-hub"
+    ],
+    "go-file-processor": [
+      "services/file-processor"
+    ],
     "go-shared": [
       "services/cmd/uni-cli",
       "services/pkg/logging",
       "services/pkg/spiffe",
       "services/pkg/spicedb"
     ],
-    "rust-native": ["native/rust_ext"],
-    "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
-    "rust-crypto": ["frontend/rust-crypto"]
+    "rust-native": [
+      "native/rust_ext"
+    ],
+    "rust-wasm-sanitizer": [
+      "frontend/wasm-sanitizer"
+    ],
+    "rust-crypto": [
+      "frontend/rust-crypto"
+    ],
+    "infrastructure": [
+      "infra",
+      "infrastructure",
+      "k8s",
+      "charts"
+    ],
+    "workflows": [
+      ".github/workflows"
+    ],
+    "scripts": [
+      "scripts"
+    ],
+    "node-actions": [
+      ".github/actions/dependency-review-capture"
+    ]
+  },
+  "coverage_scope": {
+    "python": [
+      "app",
+      "alembic/versions"
+    ],
+    "frontend": [
+      "frontend/src"
+    ],
+    "go-gateway": [
+      "services/gateway"
+    ],
+    "go-ws-hub": [
+      "services/ws-hub"
+    ],
+    "go-file-processor": [
+      "services/file-processor"
+    ],
+    "go-shared": [
+      "services/cmd/uni-cli",
+      "services/pkg/logging",
+      "services/pkg/spiffe",
+      "services/pkg/spicedb"
+    ],
+    "rust-native": [
+      "native/rust_ext"
+    ],
+    "rust-wasm-sanitizer": [
+      "frontend/wasm-sanitizer"
+    ],
+    "rust-crypto": [
+      "frontend/rust-crypto"
+    ],
+    "node-actions": [
+      ".github/actions/dependency-review-capture"
+    ]
   },
   "components": {
-    "python": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 0}},
-    "frontend": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}},
-    "go-gateway": {"coverage": {"lines": 100, "statements": 100, "branches": 0, "functions": 0}},
-    "go-ws-hub": {"coverage": {"lines": 100, "statements": 100, "branches": 0, "functions": 0}},
-    "go-file-processor": {"coverage": {"lines": 100, "statements": 100, "branches": 0, "functions": 0}},
-    "go-shared": {"coverage": {"lines": 100, "statements": 100, "branches": 0, "functions": 0}},
-    "rust-native": {"coverage": {"lines": 100, "statements": 0, "branches": 100, "functions": 100}},
-    "rust-wasm-sanitizer": {"coverage": {"lines": 100, "statements": 0, "branches": 100, "functions": 100}},
-    "rust-crypto": {"coverage": {"lines": 100, "statements": 0, "branches": 100, "functions": 100}},
-    "infrastructure": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
-    "workflows": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}},
-    "scripts": {"coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}}
+    "python": {
+      "coverage": {
+        "lines": 100,
+        "statements": 100,
+        "branches": 100,
+        "functions": 0
+      }
+    },
+    "frontend": {
+      "coverage": {
+        "lines": 100,
+        "statements": 100,
+        "branches": 100,
+        "functions": 100
+      }
+    },
+    "go-gateway": {
+      "coverage": {
+        "lines": 100,
+        "statements": 100,
+        "branches": 0,
+        "functions": 0
+      }
+    },
+    "go-ws-hub": {
+      "coverage": {
+        "lines": 100,
+        "statements": 100,
+        "branches": 0,
+        "functions": 0
+      }
+    },
+    "go-file-processor": {
+      "coverage": {
+        "lines": 100,
+        "statements": 100,
+        "branches": 0,
+        "functions": 0
+      }
+    },
+    "go-shared": {
+      "coverage": {
+        "lines": 100,
+        "statements": 100,
+        "branches": 0,
+        "functions": 0
+      }
+    },
+    "rust-native": {
+      "coverage": {
+        "lines": 100,
+        "statements": 0,
+        "branches": 100,
+        "functions": 100
+      }
+    },
+    "rust-wasm-sanitizer": {
+      "coverage": {
+        "lines": 100,
+        "statements": 0,
+        "branches": 100,
+        "functions": 100
+      }
+    },
+    "rust-crypto": {
+      "coverage": {
+        "lines": 100,
+        "statements": 0,
+        "branches": 100,
+        "functions": 100
+      }
+    },
+    "infrastructure": {
+      "coverage": {
+        "lines": 0,
+        "statements": 0,
+        "branches": 0,
+        "functions": 0
+      }
+    },
+    "workflows": {
+      "coverage": {
+        "lines": 0,
+        "statements": 0,
+        "branches": 0,
+        "functions": 0
+      }
+    },
+    "scripts": {
+      "coverage": {
+        "lines": 0,
+        "statements": 0,
+        "branches": 0,
+        "functions": 0
+      }
+    },
+    "node-actions": {
+      "coverage": {
+        "lines": 100,
+        "statements": 100,
+        "branches": 100,
+        "functions": 100
+      }
+    }
   },
   "tier0": {
-    "coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}
+    "coverage": {
+      "lines": 100,
+      "statements": 100,
+      "branches": 100,
+      "functions": 100
+    }
   },
   "coverage_manifest": {
     "schema_version": 3,
     "normalizer_version": "3.0.0"
   },
   "coverage_reports": [
-    {"component": "python", "format": "cobertura-xml", "path": "coverage.xml"},
-    {"component": "python", "format": "coverage-py-json", "path": "artifacts/coverage/python/coverage.json"},
-    {"component": "frontend", "format": "lcov", "path": "frontend/coverage/lcov.info"},
-    {"component": "frontend", "format": "istanbul-json", "path": "frontend/coverage/coverage-final.json"},
-    {"component": "go-gateway", "format": "go-coverprofile", "path": "artifacts/coverage/go/gateway/coverage.out"},
-    {"component": "go-ws-hub", "format": "go-coverprofile", "path": "artifacts/coverage/go/ws-hub/coverage.out"},
-    {"component": "go-file-processor", "format": "go-coverprofile", "path": "artifacts/coverage/go/file-processor/coverage.out"},
-    {"component": "go-shared", "format": "go-coverprofile", "path": "artifacts/coverage/go/shared/coverage.out"},
-    {"component": "rust-native", "format": "llvm-cov-json", "path": "artifacts/coverage/rust/rust-native/llvm.json"},
-    {"component": "rust-native", "format": "llvm-cov-branch-json", "path": "artifacts/coverage/rust/rust-native/branch-llvm.json"},
-    {"component": "rust-wasm-sanitizer", "format": "llvm-cov-json", "path": "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json"},
-    {"component": "rust-wasm-sanitizer", "format": "llvm-cov-branch-json", "path": "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json"},
-    {"component": "rust-crypto", "format": "llvm-cov-json", "path": "artifacts/coverage/rust/rust-crypto/llvm.json"},
-    {"component": "rust-crypto", "format": "llvm-cov-branch-json", "path": "artifacts/coverage/rust/rust-crypto/branch-llvm.json"}
+    {
+      "component": "python",
+      "format": "cobertura-xml",
+      "path": "coverage.xml"
+    },
+    {
+      "component": "python",
+      "format": "coverage-py-json",
+      "path": "artifacts/coverage/python/coverage.json"
+    },
+    {
+      "component": "frontend",
+      "format": "lcov",
+      "path": "frontend/coverage/lcov.info"
+    },
+    {
+      "component": "frontend",
+      "format": "istanbul-json",
+      "path": "frontend/coverage/coverage-final.json"
+    },
+    {
+      "component": "go-gateway",
+      "format": "go-coverprofile",
+      "path": "artifacts/coverage/go/gateway/coverage.out"
+    },
+    {
+      "component": "go-ws-hub",
+      "format": "go-coverprofile",
+      "path": "artifacts/coverage/go/ws-hub/coverage.out"
+    },
+    {
+      "component": "go-file-processor",
+      "format": "go-coverprofile",
+      "path": "artifacts/coverage/go/file-processor/coverage.out"
+    },
+    {
+      "component": "go-shared",
+      "format": "go-coverprofile",
+      "path": "artifacts/coverage/go/shared/coverage.out"
+    },
+    {
+      "component": "rust-native",
+      "format": "llvm-cov-json",
+      "path": "artifacts/coverage/rust/rust-native/llvm.json"
+    },
+    {
+      "component": "rust-native",
+      "format": "llvm-cov-branch-json",
+      "path": "artifacts/coverage/rust/rust-native/branch-llvm.json"
+    },
+    {
+      "component": "rust-wasm-sanitizer",
+      "format": "llvm-cov-json",
+      "path": "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json"
+    },
+    {
+      "component": "rust-wasm-sanitizer",
+      "format": "llvm-cov-branch-json",
+      "path": "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json"
+    },
+    {
+      "component": "rust-crypto",
+      "format": "llvm-cov-json",
+      "path": "artifacts/coverage/rust/rust-crypto/llvm.json"
+    },
+    {
+      "component": "rust-crypto",
+      "format": "llvm-cov-branch-json",
+      "path": "artifacts/coverage/rust/rust-crypto/branch-llvm.json"
+    },
+    {
+      "component": "node-actions",
+      "format": "lcov",
+      "path": "artifacts/coverage/node-actions/lcov.info"
+    },
+    {
+      "component": "node-actions",
+      "format": "istanbul-json",
+      "path": "artifacts/coverage/node-actions/coverage-final.json"
+    }
   ],
   "manifest_path": "artifacts/coverage/quality-manifest.json",
   "exclusions": [],

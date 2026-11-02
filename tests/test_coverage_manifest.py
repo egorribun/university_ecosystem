@@ -334,6 +334,11 @@ def _run_normalizer_in_isolated_repo(
         "--python-json": (None, "artifacts/coverage/python/coverage.json"),
         "--frontend-lcov": (None, "frontend/coverage/lcov.info"),
         "--frontend-json": (None, "frontend/coverage/coverage-final.json"),
+        "--node-actions-lcov": (None, "artifacts/coverage/node-actions/lcov.info"),
+        "--node-actions-json": (
+            None,
+            "artifacts/coverage/node-actions/coverage-final.json",
+        ),
     }
     component_report_options = {
         "--go-report": {
@@ -1151,6 +1156,8 @@ def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
         "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json",
         "artifacts/coverage/rust/rust-crypto/llvm.json",
         "artifacts/coverage/rust/rust-crypto/branch-llvm.json",
+        "artifacts/coverage/node-actions/lcov.info",
+        "artifacts/coverage/node-actions/coverage-final.json",
     }
     assert expected_reports == {
         report["path"] for report in contract["coverage_reports"]
@@ -1184,6 +1191,7 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         ],
         "go-ws-hub": ["services/ws-hub"],
         "infrastructure": ["infra", "infrastructure", "k8s", "charts"],
+        "node-actions": [".github/actions/dependency-review-capture"],
         "python": ["app", "alembic/versions"],
         "rust-native": ["native/rust_ext"],
         "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
@@ -1317,12 +1325,13 @@ def test_tier0_missing_evidence_is_fail_closed_before_enforcement(
     manifest = json.loads(output.read_text(encoding="utf-8"))
     tier0 = manifest["tier0"]
     assert tier0["status"] == "failed"
-    assert tier0["files"][0]["path"] == "services/pkg/spicedb/client.go"
-    assert tier0["files"][0]["component"] == "go-shared"
-    assert all(
-        metric["status"] == "missing"
-        for metric in tier0["files"][0]["metrics"].values()
+    spicedb = next(
+        record
+        for record in tier0["files"]
+        if record["path"] == "services/pkg/spicedb/client.go"
     )
+    assert spicedb["component"] == "go-shared"
+    assert all(metric["status"] == "missing" for metric in spicedb["metrics"].values())
     assert (
         "Tier0 source inventory is missing evidence for services/pkg/spicedb/client.go"
         in tier0["errors"]
@@ -3062,6 +3071,14 @@ def test_derived_go_line_metric_must_satisfy_the_strict_v2_floor(
                     "functions": 100,
                 }
             },
+            "node-actions": {
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 100,
+                    "functions": 100,
+                }
+            },
             "infrastructure": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
@@ -3838,6 +3855,14 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
                     "functions": 100,
                 }
             },
+            "node-actions": {
+                "coverage": {
+                    "lines": 100,
+                    "statements": 100,
+                    "branches": 100,
+                    "functions": 100,
+                }
+            },
             "infrastructure": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
@@ -4079,3 +4104,171 @@ def test_parser_hardening_rejects_a_mocked_junction_ancestor(
             (FIXTURES / "python-valid.xml").read_bytes(),
             "python",
         )
+
+
+# PRIVATE: append to tests/test_coverage_manifest.py after existing helpers/tests.
+# Requires additive node-actions registration and complete-evidence testkit.
+
+
+def _node_action_pair(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    normalizer = _normalizer_module()
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+    write_complete_evidence(tmp_path)
+    reports = []
+    for report_format, name in (
+        ("lcov", "lcov.info"),
+        ("istanbul-json", "coverage-final.json"),
+    ):
+        report_path = tmp_path / "artifacts/coverage/node-actions" / name
+        raw = report_path.read_bytes()
+        reports.append(
+            normalizer._parse_report(
+                normalizer._RawReport(
+                    component="node-actions",
+                    report_format=report_format,
+                    path=report_path,
+                    raw=raw,
+                    sha256=hashlib.sha256(raw).hexdigest(),
+                )
+            )
+        )
+    return normalizer, reports
+
+
+def test_node_action_reports_measure_both_runtime_files_at_four_strict_floors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer, reports = _node_action_pair(tmp_path, monkeypatch)
+    merged, errors = normalizer._merge_frontend_reports(*reports)
+    assert errors == []
+    assert merged.component == "node-actions"
+    assert set(merged.file_metrics) == {
+        ".github/actions/dependency-review-capture/capture.cjs",
+        ".github/actions/dependency-review-capture/index.cjs",
+    }
+    for metrics in [merged.metrics, *merged.file_metrics.values()]:
+        for name in ("lines", "statements", "branches", "functions"):
+            assert metrics[name]["covered"] == metrics[name]["total"]
+            assert metrics[name]["total"] > 0
+            assert metrics[name]["status"] in {"native", "derived"}
+
+
+@pytest.mark.parametrize("counter", ("s", "b", "f"))
+def test_node_action_uncovered_statement_branch_or_function_is_not_hidden(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    counter: str,
+) -> None:
+    normalizer, reports = _node_action_pair(tmp_path, monkeypatch)
+    path = tmp_path / "artifacts/coverage/node-actions/coverage-final.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    first = next(iter(document.values()))
+    first[counter]["0"] = [1, 0] if counter == "b" else 0
+    raw = json.dumps(document).encode()
+    changed = normalizer._parse_report(
+        normalizer._RawReport(
+            component="node-actions",
+            report_format="istanbul-json",
+            path=path,
+            raw=raw,
+            sha256=hashlib.sha256(raw).hexdigest(),
+        )
+    )
+    merged, errors = normalizer._merge_frontend_reports(reports[0], changed)
+    metric = {"s": "statements", "b": "branches", "f": "functions"}[counter]
+    if counter == "s":
+        assert merged.metrics[metric]["covered"] < merged.metrics[metric]["total"]
+    else:
+        assert errors
+        assert changed.metrics[metric]["covered"] < changed.metrics[metric]["total"]
+
+
+@pytest.mark.parametrize("missing", ("capture.cjs", "index.cjs"))
+def test_node_action_pair_rejects_missing_runtime_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    missing: str,
+) -> None:
+    normalizer, reports = _node_action_pair(tmp_path, monkeypatch)
+    path = tmp_path / "artifacts/coverage/node-actions/coverage-final.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    del document[f".github/actions/dependency-review-capture/{missing}"]
+    raw = json.dumps(document).encode()
+    changed = normalizer._parse_report(
+        normalizer._RawReport(
+            component="node-actions",
+            report_format="istanbul-json",
+            path=path,
+            raw=raw,
+            sha256=hashlib.sha256(raw).hexdigest(),
+        )
+    )
+    _, errors = normalizer._merge_frontend_reports(reports[0], changed)
+    assert any(missing in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "outside",
+    (
+        "frontend/src/example.ts",
+        ".github/actions/other/index.cjs",
+        "../capture.cjs",
+    ),
+)
+def test_node_action_reports_reject_foreign_or_traversing_sources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outside: str,
+) -> None:
+    normalizer, _ = _node_action_pair(tmp_path, monkeypatch)
+    path = tmp_path / "artifacts/coverage/node-actions/coverage-final.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    record = next(iter(document.values()))
+    record["path"] = outside
+    with pytest.raises(normalizer._InputError):
+        normalizer._parse_frontend_istanbul_json(
+            json.dumps({outside: record}).encode(), "node-actions"
+        )
+
+
+def test_node_action_inventory_includes_new_runtime_but_not_test_harness() -> None:
+    normalizer = _normalizer_module()
+    for name in (
+        "capture.cjs",
+        "index.cjs",
+        "new-runtime.js",
+        "new-runtime.mjs",
+        "future.test.cjs",
+    ):
+        assert normalizer._tracked_source_is_coverable(
+            "node-actions", f".github/actions/dependency-review-capture/{name}"
+        )
+    assert not normalizer._tracked_source_is_coverable(
+        "node-actions", ".github/actions/dependency-review-capture/capture.test.cjs"
+    )
+
+
+def test_node_action_toolchain_requires_its_actual_producer_not_vitest() -> None:
+    _normalizer_module()
+    validator = sys.modules["validate_quality_contract"]
+    tools = {
+        "quality-normalizer": "3.0.0",
+        "node-actions-node": "24.11.0",
+        "ast-v8-to-istanbul": "1.0.7",
+        "@babel/parser": "8.0.8",
+        "@bcoe/v8-coverage": "1.0.2",
+        "istanbul-lib-coverage": "3.2.2",
+        "istanbul-lib-report": "3.0.1",
+        "istanbul-reports": "3.2.0",
+    }
+    manifest = {
+        "reports": [{"component": "node-actions", "format": "istanbul-json"}],
+        "tool_versions": tools,
+    }
+    assert validator._validate_tool_versions(manifest) == []
+    del tools["ast-v8-to-istanbul"]
+    tools["vitest"] = "5.0.5"
+    errors = validator._validate_tool_versions(manifest)
+    assert any("ast-v8-to-istanbul" in error for error in errors)
+    assert any("unexpected tools: vitest" in error for error in errors)
