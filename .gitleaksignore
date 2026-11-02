@@ -2,6 +2,7 @@
 0fc7af03b7f403ba6c77a2aaf26602f9e60927b4:.github/workflows/ci.yml:generic-api-key:1621
 0fc7af03b7f403ba6c77a2aaf26602f9e60927b4:.github/workflows/ci.yml:generic-api-key:1680
 31f848784087f3e481135d36f27eafa516016002:docs/superpowers/plans/STATUS.md:generic-api-key:23
+3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9:.secrets.baseline:generic-api-key:1820
 527478a3d58905270a94e06e39ef4f2c07270f35:.secrets.baseline:generic-api-key:1000
 527478a3d58905270a94e06e39ef4f2c07270f35:.secrets.baseline:generic-api-key:1007
 527478a3d58905270a94e06e39ef4f2c07270f35:.secrets.baseline:generic-api-key:1014

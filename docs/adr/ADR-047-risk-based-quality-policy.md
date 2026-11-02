@@ -1509,3 +1509,27 @@ not exported from the scanner. The second value is the attestation checksum,
 not the verifier executable checksum. Gitleaks fingerprints and all other
 exceptions are separate. Approval and source review are not scanner success,
 audit acceptance, full CI, merge, deployment, or production-database authority.
+
+
+## One exact historical public test-password hash fingerprint, 2026-11-01
+
+Owner `egorribun` approved exactly one additional Gitleaks fingerprint on
+2026-11-01 at 20:51:36 UTC:
+`3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9:.secrets.baseline:generic-api-key:1820`.
+The historical baseline line stores the SHA-1 digest of the public password
+fixture in `tests/test_auth_security.py:78` at that commit, not a newly introduced
+credential. The historical baseline and test blobs are respectively
+`25f7a8b881d1277103010320cfe925663279578b` and
+`d5a5f31448930f5abf1692632ad58d245b4745ca`.
+[Gitleaks on source e6bbbb5](https://github.com/egorribun/university_ecosystem/actions/runs/41428407935/job/125220561352)
+reported exactly this one `generic-api-key` identity with scanner exit 2.
+
+The exact inventory grows **26 to 27**, preserving all previous fingerprints.
+The current detect-secrets baseline stays **304** identities and its separate
+policy stays **504** dispositions; the older 305/502 approval-context counts
+are historical, not restored. No other commit, path, rule, line, hash copy,
+pattern, expiry, scanner setting, required context, hook or threshold is approved
+by this decision. Changed and unmatched findings remain blocking.
+The audit ledger stays **449 accepted / 63 open out of 512**. This disposition
+is not audit acceptance, scanner success, full CI or release evidence; the
+published source still requires its own scans and required hosted checks.

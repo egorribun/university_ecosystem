@@ -3,6 +3,15 @@
 Обновлено: 2026-11-01 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 
+## Текущие инвентари сканеров — 2026-11-02
+
+Baseline **304**, отдельная policy **504**, Gitleaks **27** точных исторических
+fingerprints. Ровно одно [разрешение владельца](../../adr/ADR-047-risk-based-quality-policy.md#one-exact-historical-public-test-password-hash-fingerprint-2026-11-01)
+добавляет fingerprint публичного test-password hash; прежние 26 сохранены.
+Это не новая приёмка: реестр **449 / 512 приняты, 63 открыты** не меняется.
+Датированные counts ниже сохраняют исторический контекст. Новому source
+по-прежнему нужны собственные scanner/required-check receipts; GREEN не заявлен.
+
 ## Ограниченная очистка baseline и checkpoint ac6 — 2026-11-01
 
 Реестр остаётся **449 / 512 приняты, 63 открыты**. Baseline уменьшен только

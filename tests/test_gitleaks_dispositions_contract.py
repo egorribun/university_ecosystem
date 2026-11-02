@@ -46,23 +46,35 @@ CODE_EXPRESSION_FINGERPRINT = (
 )
 
 
+# Public test-password digest moved into added historical baseline lines.
+# Approval binds only this commit/path/rule/line, not later copies of the hash.
+PUBLIC_TEST_PASSWORD_HASH_FINGERPRINT = (
+    "3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9:.secrets.baseline:generic-api-key:1820"
+)
+REVIEWED_ADDITIONS = (
+    CODE_EXPRESSION_FINGERPRINT,
+    PUBLIC_TEST_PASSWORD_HASH_FINGERPRINT,
+)
+
+
 def _assert_exact_approved_fingerprints(path: Path) -> None:
     """Keep exceptions bound to immutable commit, path, rule, and line."""
 
     assert path.is_file()
     fingerprints = path.read_text(encoding="utf-8").splitlines()
-    expected = sorted((*APPROVED_FINGERPRINTS, CODE_EXPRESSION_FINGERPRINT))
+    expected = sorted((*APPROVED_FINGERPRINTS, *REVIEWED_ADDITIONS))
 
     assert len(APPROVED_FINGERPRINTS) == 25
-    assert CODE_EXPRESSION_FINGERPRINT not in APPROVED_FINGERPRINTS
-    assert len(fingerprints) == 26
+    assert len(set(REVIEWED_ADDITIONS)) == 2
+    assert not set(REVIEWED_ADDITIONS).intersection(APPROVED_FINGERPRINTS)
+    assert len(fingerprints) == 27
     assert fingerprints == expected
     assert len(set(fingerprints)) == len(fingerprints)
     assert set(fingerprints) == set(expected)
     assert [
         fingerprint
         for fingerprint in fingerprints
-        if fingerprint != CODE_EXPRESSION_FINGERPRINT
+        if fingerprint not in REVIEWED_ADDITIONS
     ] == list(APPROVED_FINGERPRINTS)
     assert all(
         re.fullmatch(
@@ -77,16 +89,17 @@ def test_gitleaks_ignore_contains_only_exact_approved_fingerprints() -> None:
     _assert_exact_approved_fingerprints(GITLEAKS_IGNORE_PATH)
 
 
-def test_exact_26_identity_inventory_accepts_only_the_reviewed_addition(
+def test_exact_27_identity_inventory_accepts_only_the_reviewed_additions(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / ".gitleaksignore"
-    fingerprints = sorted((*APPROVED_FINGERPRINTS, CODE_EXPRESSION_FINGERPRINT))
+    fingerprints = sorted((*APPROVED_FINGERPRINTS, *REVIEWED_ADDITIONS))
     path.write_text("\n".join(fingerprints) + "\n", encoding="utf-8")
 
     _assert_exact_approved_fingerprints(path)
 
 
+@pytest.mark.parametrize("reviewed_fingerprint", REVIEWED_ADDITIONS)
 @pytest.mark.parametrize(
     "mutation",
     [
@@ -103,16 +116,17 @@ def test_exact_26_identity_inventory_accepts_only_the_reviewed_addition(
         "duplicate",
         "unapproved_extra",
         "missing_original",
+        "missing_reviewed",
         "changed_original",
         "reordered",
         "blank_line",
     ],
 )
 def test_disposition_guard_rejects_scope_and_original_inventory_drift(
-    tmp_path: Path, mutation: str
+    tmp_path: Path, mutation: str, reviewed_fingerprint: str
 ) -> None:
-    fingerprints = sorted((*APPROVED_FINGERPRINTS, CODE_EXPRESSION_FINGERPRINT))
-    parts = CODE_EXPRESSION_FINGERPRINT.split(":")
+    fingerprints = sorted((*APPROVED_FINGERPRINTS, *REVIEWED_ADDITIONS))
+    parts = reviewed_fingerprint.split(":")
     replacement = None
     field_changes = {
         "commit": (0, "0" * 40),
@@ -131,13 +145,15 @@ def test_disposition_guard_rejects_scope_and_original_inventory_drift(
     elif mutation == "global_fingerprint":
         replacement = ":".join(parts[1:])
     elif mutation == "path_backslash":
-        parts[1] = parts[1].replace("/", "\\")
+        parts[1] = parts[1].replace("/", "\\") if "/" in parts[1] else "\\" + parts[1]
         replacement = ":".join(parts)
     elif mutation == "duplicate":
-        fingerprints.append(CODE_EXPRESSION_FINGERPRINT)
+        fingerprints.append(reviewed_fingerprint)
     elif mutation == "unapproved_extra":
         parts[3] = "940"
         fingerprints.append(":".join(parts))
+    elif mutation == "missing_reviewed":
+        fingerprints.remove(reviewed_fingerprint)
     elif mutation == "missing_original":
         fingerprints.remove(APPROVED_FINGERPRINTS[0])
     elif mutation == "changed_original":
@@ -150,7 +166,7 @@ def test_disposition_guard_rejects_scope_and_original_inventory_drift(
         fingerprints.append("")
 
     if replacement is not None:
-        fingerprints[fingerprints.index(CODE_EXPRESSION_FINGERPRINT)] = replacement
+        fingerprints[fingerprints.index(reviewed_fingerprint)] = replacement
     if mutation != "reordered":
         fingerprints.sort()
     path = tmp_path / ".gitleaksignore"
