@@ -30,25 +30,36 @@ def test_quarantine_concurrency_cases_fail_closed_outside_postgresql() -> None:
     assert test_names == {
         "test_independent_workers_cannot_overbook_one_storage_scope",
         "test_pending_reservation_survives_absence_observation_and_late_put",
-        "test_quarantine_ledger_migration_creates_complete_irreversible_schema",
+        "test_quarantine_ledger_baseline_has_complete_irreversible_schema",
     }
-    assert "pytestmark = [pytest.mark.integration, pytest.mark.asyncio]" in source
+    markers = [
+        node.value
+        for node in module.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "pytestmark"
+            for target in node.targets
+        )
+    ]
+    expected_markers = ast.parse(
+        "[pytest.mark.integration, pytest.mark.asyncio, "
+        'pytest.mark.timeout(300, method="signal", func_only=False)]',
+        mode="eval",
+    ).body
+    assert [ast.dump(node) for node in markers] == [ast.dump(expected_markers)]
 
     postgres_factory = next(
         node
         for node in module.body
         if isinstance(node, ast.FunctionDef) and node.name == "_postgres_factory"
     )
-    factory_calls = [
-        node for node in ast.walk(postgres_factory) if isinstance(node, ast.Call)
+    expected_guards = ast.parse(
+        'assert engine.dialect.name == "postgresql"\n'
+        'assert engine.url.drivername == "postgresql+asyncpg"'
+    ).body
+    assert [ast.dump(node) for node in postgres_factory.body[:2]] == [
+        ast.dump(node) for node in expected_guards
     ]
-    assert any(
-        isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "pytest"
-        and node.func.attr == "fail"
-        for node in factory_calls
-    )
     calls = [node for node in ast.walk(module) if isinstance(node, ast.Call)]
     assert not any(
         isinstance(node.func, ast.Attribute)
