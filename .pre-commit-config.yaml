@@ -91,6 +91,13 @@ repos:
           - "clamd"
           - "python-multipart"
           - "uvicorn"
+          # The SPIFFE server entrypoint is checked in this isolated hook too.
+          # Keep SDK/worker pins aligned with the application dependency lock.
+          - "spiffe==0.3.2,<0.4"
+          - "uvicorn-worker==0.4.0,<0.5"
+          - "types-gunicorn==26.2.0.20261008,<27"
+          # Do not reintroduce the vulnerable ASN.1 transitive dependency here.
+          - "pyasn1==0.6.5,<0.7"
           - "types-psutil"
           - "dishka"
           - "authzed"
