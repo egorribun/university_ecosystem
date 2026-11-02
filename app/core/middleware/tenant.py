@@ -8,6 +8,7 @@ import uuid
 from typing import Any
 
 from fastapi import HTTPException, Request
+from starlette.requests import HTTPConnection
 from starlette.responses import JSONResponse
 from structlog.contextvars import clear_contextvars
 
@@ -102,12 +103,51 @@ class TenantContextMiddleware:
             return False
         return payload.get("tenant_id") == self._mvp_tenant_id
 
+    async def _handle_websocket(
+        self,
+        scope: dict[str, Any],
+        receive: Any,
+        send: Any,
+    ) -> None:
+        """Bind an upgrade to the MVP tenant before the WebSocket handler runs.
+
+        An upgrade has no client tenant header, so the HttpOnly access cookie is the
+        only tenant evidence. A cookie from another tenant, or one that does not
+        decode, is refused before the handshake (close 1008). Ticket upgrades were
+        issued under the HTTP tenant gate and bind to the configured tenant here.
+        Without a configured tenant the scope passes through unchanged.
+        """
+        if not self._mvp_tenant_id:
+            await self._app(scope, receive, send)
+            return
+        cookie = HTTPConnection(scope).cookies.get("access_token_v2")
+        if cookie is not None and not self._cookie_in_mvp_tenant(cookie):
+            await send({"type": "websocket.close", "code": 1008})
+            return
+        scope.setdefault("state", {})["tenant_id"] = self._mvp_tenant_id
+        t_token = tenant_id_ctx.set(self._mvp_tenant_id)
+        b_token = bypass_rls_ctx.set(False)
+        try:
+            await self._app(scope, receive, send)
+        finally:
+            tenant_id_ctx.reset(t_token)
+            bypass_rls_ctx.reset(b_token)
+
+    def _cookie_in_mvp_tenant(self, token: str) -> bool:
+        from app.auth.security import decode_token
+
+        payload = decode_token(token)
+        return payload is not None and payload.get("tenant_id") == self._mvp_tenant_id
+
     async def __call__(
         self,
         scope: dict[str, Any],
         receive: Any,
         send: Any,
     ) -> None:
+        if scope["type"] == "websocket":
+            await self._handle_websocket(scope, receive, send)
+            return
         if scope["type"] != "http":
             await self._app(scope, receive, send)
             return

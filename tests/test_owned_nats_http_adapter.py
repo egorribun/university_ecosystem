@@ -19,6 +19,7 @@ from scripts.owned_nats_coordinator import (
     MessagePostEvidence,
     OwnerEvidence,
     ParticipantEvidence,
+    SendPhase,
 )
 from scripts.owned_nats_outage import Deadline, MessageEvidence
 from scripts.owned_nats_owner_adapter import OwnerFilePins
@@ -40,6 +41,15 @@ class _MockBodyStream(httpx.AsyncByteStream):
     async def __aiter__(self):
         for offset in range(0, len(self.body), 4096):
             yield self.body[offset : offset + 4096]
+
+    async def aclose(self) -> None:
+        return
+
+
+class _TimeoutBodyStream(httpx.AsyncByteStream):
+    async def __aiter__(self):
+        raise httpx.ReadTimeout("synthetic transport detail")
+        yield b""  # pragma: no cover - keeps the stream an async generator
 
     async def aclose(self) -> None:
         return
@@ -177,8 +187,22 @@ def setup_case(tmp_path: Path, request: pytest.FixtureRequest):
                 },
             )
         if path == f"/api/v1/chats/{CHAT_ID}/messages":
-            if send_mode["value"] == "timeout":
+            mode = send_mode["value"]
+            if mode == "timeout":
                 raise httpx.ReadTimeout("synthetic transport detail", request=request)
+            if mode == "connect":
+                raise httpx.ConnectError("synthetic transport detail", request=request)
+            if mode == "runtime":
+                raise RuntimeError("synthetic transport detail")
+            if mode == "redirect":
+                return httpx.Response(
+                    302, headers={"location": "https://example.invalid/"}
+                )
+            if mode in {"http-401", "http-503"}:
+                return httpx.Response(
+                    int(mode.removeprefix("http-")),
+                    json={"detail": "synthetic transport detail"},
+                )
             content = (
                 "wrong message" if send_mode["value"] == "wrong-content" else CONTENT
             )
@@ -196,6 +220,11 @@ def setup_case(tmp_path: Path, request: pytest.FixtureRequest):
         return httpx.Response(404)
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if send_mode["value"] == "body-timeout" and request.url.path == (
+            f"/api/v1/chats/{CHAT_ID}/messages"
+        ):
+            requests.append(request)
+            return httpx.Response(200, stream=_TimeoutBodyStream(), request=request)
         response = response_handler(request)
         body = response.content
         return httpx.Response(
@@ -405,14 +434,41 @@ def test_create_chat_ambiguous_failure_is_never_retried(setup_case) -> None:
     ) == 1
 
 
-def test_message_timeout_is_never_retried_and_error_is_redacted(setup_case) -> None:
+@pytest.mark.parametrize(
+    ("send_mode", "expected"),
+    [
+        ("timeout", MessagePostEvidence(None, None, SendPhase.TIMEOUT)),
+        ("body-timeout", MessagePostEvidence(None, None, SendPhase.TIMEOUT)),
+        ("connect", MessagePostEvidence(None, None, SendPhase.CONNECT_ERROR)),
+        ("runtime", MessagePostEvidence(None, None, SendPhase.NOT_READY)),
+        ("redirect", MessagePostEvidence(None, None, SendPhase.NOT_READY)),
+        ("http-401", MessagePostEvidence(401, None)),
+        ("http-503", MessagePostEvidence(503, None)),
+        ("wrong-content", MessagePostEvidence(200, None, SendPhase.BODY_MISMATCH)),
+        ("reply", MessagePostEvidence(200, None, SendPhase.BODY_MISMATCH)),
+    ],
+    ids=[
+        "timeout",
+        "body-timeout",
+        "connect_error",
+        "runtime-not-ready",
+        "redirect-not-ready",
+        "http_status-401",
+        "http_status-503",
+        "body_mismatch-content",
+        "body_mismatch-reply",
+    ],
+)
+def test_send_failure_reports_only_closed_phase_and_never_retries(
+    setup_case, send_mode: str, expected: MessagePostEvidence
+) -> None:
     case = setup_case
     _login(case)
     _create(case)
-    case["send_mode"]["value"] = "timeout"  # type: ignore[index]
-    with pytest.raises(http_adapter.HttpObservationNotReady) as caught:
-        _send(case)
-    assert str(caught.value) == "owner-scoped HTTP observation is not ready"
+    case["send_mode"]["value"] = send_mode  # type: ignore[index]
+    evidence = _send(case)
+    assert evidence == expected
+    assert "synthetic transport detail" not in repr(evidence)
     assert case["adapter"]._closed
     assert list(case["adapter"]._cookies.jar) == []
     with pytest.raises(http_adapter.HttpObservationNotReady):
@@ -420,7 +476,6 @@ def test_message_timeout_is_never_retried_and_error_is_redacted(setup_case) -> N
     assert [request.url.path for request in case["requests"]].count(
         f"/api/v1/chats/{CHAT_ID}/messages"
     ) == 1
-    assert "synthetic transport detail" not in str(caught.value)
 
 
 def test_credential_owner_mismatch_and_oversize_fail_before_http(setup_case) -> None:
@@ -471,8 +526,7 @@ def test_message_response_must_match_single_form_send_without_retry(
     _login(case)
     _create(case)
     case["send_mode"]["value"] = send_mode  # type: ignore[index]
-    with pytest.raises(http_adapter.HttpObservationNotReady):
-        _send(case)
+    assert _send(case).phase is SendPhase.BODY_MISMATCH
     with pytest.raises(http_adapter.HttpObservationNotReady):
         _send(case)
     assert [request.url.path for request in case["requests"]].count(

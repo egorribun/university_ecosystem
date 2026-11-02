@@ -20,6 +20,7 @@ from scripts.owned_nats_coordinator import (
     OutageStage,
     ParticipantEvidence,
     PgRoleRow,
+    SendPhase,
     WaitVerdict,
     run_owned_outage,
     wait_for_poll,
@@ -850,3 +851,78 @@ def test_runtime_checkpoint_distinguishes_callback_and_inventory_rejection(
     captured = capsys.readouterr()
     assert captured.out == captured.err == ""
     assert "private-observation-error" not in repr(result)
+
+
+@pytest.mark.parametrize(
+    ("response", "phase", "status"),
+    [
+        (MessagePostEvidence(401, None), None, 401),
+        (MessagePostEvidence(503, None), None, 503),
+        (
+            MessagePostEvidence(201, MessageEvidence(MESSAGE, CHAT, ADMIN, CONTENT)),
+            None,
+            201,
+        ),
+        (MessagePostEvidence(None, None, SendPhase.TIMEOUT), SendPhase.TIMEOUT, None),
+        (
+            MessagePostEvidence(None, None, SendPhase.CONNECT_ERROR),
+            SendPhase.CONNECT_ERROR,
+            None,
+        ),
+        (
+            MessagePostEvidence(200, None, SendPhase.BODY_MISMATCH),
+            SendPhase.BODY_MISMATCH,
+            None,
+        ),
+        (
+            MessagePostEvidence(None, None, SendPhase.NOT_READY),
+            SendPhase.NOT_READY,
+            None,
+        ),
+        (MessagePostEvidence(200, None), SendPhase.BODY_MISMATCH, None),
+        (TimeoutError("private HTTP body"), SendPhase.NOT_READY, None),
+    ],
+    ids=[
+        "http_status-401",
+        "http_status-503",
+        "http_status-201-with-message",
+        "timeout",
+        "connect_error",
+        "body_mismatch-phase",
+        "not_ready-phase",
+        "body_mismatch-missing-message",
+        "raised-exception-not-ready",
+    ],
+)
+def test_send_boundary_failure_propagates_one_closed_phase(
+    response: object, phase: SendPhase | None, status: int | None
+) -> None:
+    ports = FakePorts()
+    ports.script["send_message_once"] = [response]
+    result = assert_failed(ports, sends=1, restores=1)
+    assert result.stage is OutageStage.SEND
+    assert result.checkpoint is OutageCheckpoint.SEND_MESSAGE
+    assert result.send_phase is phase
+    assert result.send_http_status is status
+    assert "private HTTP body" not in repr(result)
+
+
+def test_send_deadline_exhaustion_reports_timeout_phase() -> None:
+    from scripts import owned_nats_coordinator as coordinator
+
+    ports = FakePorts()
+    ports.script["send_message_once"] = [coordinator._EvidenceFailure()]
+    result = assert_failed(ports, sends=1, restores=1)
+    assert result.checkpoint is OutageCheckpoint.SEND_MESSAGE
+    assert result.send_phase is SendPhase.TIMEOUT
+    assert result.send_http_status is None
+
+
+def test_post_boundary_failure_after_accepted_post_has_no_send_phase() -> None:
+    ports = FakePorts()
+    ports.script["read_correlation"] = [CorrelationRows(None, ())]
+    result = assert_failed(ports, sends=1, restores=1)
+    assert result.stage is OutageStage.SEND
+    assert result.checkpoint is None
+    assert result.send_phase is None
+    assert result.send_http_status is None

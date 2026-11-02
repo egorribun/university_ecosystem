@@ -132,10 +132,20 @@ class ChatRowsEvidence:
     participants: tuple[ChatParticipantRow, ...]
 
 
+class SendPhase(StrEnum):
+    """Closed send-boundary failure tokens; never transport or response text."""
+
+    TIMEOUT = "timeout"
+    CONNECT_ERROR = "connect_error"
+    BODY_MISMATCH = "body_mismatch"
+    NOT_READY = "not_ready"
+
+
 @dataclass(frozen=True)
 class MessagePostEvidence:
     status_code: int | None
     message: MessageEvidence | None
+    phase: SendPhase | None = None
 
 
 @dataclass(frozen=True)
@@ -224,6 +234,7 @@ class OutageCheckpoint(StrEnum):
     PENDING_COUNT = "pending_count"
     BROKER_PROBE = "broker_probe"
     BROKER_RECEIPT = "broker_receipt"
+    SEND_MESSAGE = "send_message"
     COORDINATOR_EXCEPTION = "coordinator_exception"
 
 
@@ -274,6 +285,8 @@ class OutageResult:
     outcome: OutageOutcome
     stage: OutageStage
     checkpoint: OutageCheckpoint | None = field(default=None, compare=False)
+    send_phase: SendPhase | None = field(default=None, compare=False, repr=False)
+    send_http_status: int | None = field(default=None, compare=False, repr=False)
     runtime_diagnostic: RuntimeObservationPhase | None = field(
         default=None, compare=False, repr=False
     )
@@ -582,6 +595,19 @@ class _Context:
     chat_id: str
 
 
+def _send_post_failure(
+    response: MessagePostEvidence,
+) -> tuple[SendPhase | None, int | None]:
+    """Name the POST boundary failure; a clean 200 with a message names nothing."""
+    if response.phase is not None:
+        return response.phase, None
+    if type(response.status_code) is int and response.status_code != 200:
+        return None, response.status_code
+    if response.status_code != 200 or response.message is None:
+        return SendPhase.BODY_MISMATCH, None
+    return None, None
+
+
 class _Coordinator:
     def __init__(self, ports: OutagePorts, clock: Clock, sleep: Sleep) -> None:
         self.ports = ports
@@ -592,6 +618,8 @@ class _Coordinator:
         self.checkpoint: OutageCheckpoint | None = OutageCheckpoint.ACQUIRE_LOCK
         self.runtime_diagnostic: RuntimeObservationPhase | None = None
         self.broker_diagnostic: BrokerProbePhase | None = None
+        self.send_phase: SendPhase | None = None
+        self.send_http_status: int | None = None
 
     def _preflight(self) -> _Context:
         inventory = self.primary.child(45)
@@ -767,17 +795,27 @@ class _Coordinator:
     def _send_and_observe(self, context: _Context) -> tuple[MessageEvidence, str, int]:
         self.stage = OutageStage.SEND
         content = "owned NATS acceptance probe"
-        response = _call(
-            self.primary, self.ports.send_message_once, context.chat_id, content
-        )
-        _require(
-            type(response.status_code) is int
-            and response.status_code == 200
-            and response.message is not None
-        )
+        self.checkpoint = OutageCheckpoint.SEND_MESSAGE
+        try:
+            response = _call(
+                self.primary, self.ports.send_message_once, context.chat_id, content
+            )
+        except _EvidenceFailure:
+            self.send_phase = SendPhase.TIMEOUT
+            raise
+        except Exception:
+            self.send_phase = SendPhase.NOT_READY
+            raise
+        self.send_phase, self.send_http_status = _send_post_failure(response)
         message = response.message
+        _require(
+            self.send_phase is None
+            and self.send_http_status is None
+            and message is not None
+        )
         if message is None:
             raise _EvidenceFailure
+        self.checkpoint = None
         rows = _call(
             self.primary,
             self.ports.read_correlation,
@@ -940,10 +978,16 @@ class _Coordinator:
                         self.checkpoint = None
         if accepted:
             return OutageResult(OutageOutcome.ACCEPTED, OutageStage.COMPLETE)
+        send_failure = (
+            self.stage is OutageStage.SEND
+            and self.checkpoint is OutageCheckpoint.SEND_MESSAGE
+        )
         return OutageResult(
             OutageOutcome.FAILED,
             self.stage,
             self.checkpoint,
+            send_phase=self.send_phase if send_failure else None,
+            send_http_status=self.send_http_status if send_failure else None,
             runtime_diagnostic=(
                 self.runtime_diagnostic
                 if self.stage is OutageStage.PREFLIGHT

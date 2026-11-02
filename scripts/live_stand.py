@@ -10723,6 +10723,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     OutageResult,
                     OutageStage,
                     RuntimeObservationPhase,
+                    SendPhase,
                 )
                 from scripts.owned_nats_outage_cli import run_owned_nats_outage
 
@@ -10764,6 +10765,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                         or result.checkpoint is not OutageCheckpoint.BROKER_PROBE
                     )
                 )
+                or (
+                    result.send_phase is not None
+                    and (
+                        type(result.send_phase) is not SendPhase
+                        or result.send_http_status is not None
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.SEND
+                        or result.checkpoint is not OutageCheckpoint.SEND_MESSAGE
+                    )
+                )
+                or (
+                    result.send_http_status is not None
+                    and (
+                        type(result.send_http_status) is not int
+                        or not 100 <= result.send_http_status <= 599
+                        or result.send_http_status == 200
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.SEND
+                        or result.checkpoint is not OutageCheckpoint.SEND_MESSAGE
+                    )
+                )
             ):
                 raise StandError("owned NATS acceptance failed reason=invalid_result")
             if (
@@ -10785,10 +10807,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if result.broker_diagnostic is None
                     else f" broker_diagnostic={result.broker_diagnostic.value}"
                 )
+                if result.send_phase is not None:
+                    send_phase = f" phase={result.send_phase.value}"
+                elif result.send_http_status is not None:
+                    send_phase = f" phase=http_status={result.send_http_status}"
+                else:
+                    send_phase = ""
                 raise StandError(
                     "owned NATS acceptance failed "
                     f"outcome={result.outcome.value} stage={result.stage.value}"
-                    f"{checkpoint}{diagnostic}{broker_diagnostic}"
+                    f"{checkpoint}{diagnostic}{broker_diagnostic}{send_phase}"
                 )
         elif args.command == "up":
             up(args.ref, stack=args.stack)

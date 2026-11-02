@@ -522,6 +522,7 @@ def _require_checkpoint_contract() -> type[StrEnum]:
         "coordinator_exception",
         "broker_probe",
         "broker_receipt",
+        "send_message",
     }
     assert {entry.value for entry in checkpoint_type} == expected
     assert replace(result, checkpoint=checkpoint_type("acquire_lock")) == result

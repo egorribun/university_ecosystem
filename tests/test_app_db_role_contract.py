@@ -325,3 +325,31 @@ def test_bootstrap_resets_global_and_schema_defaults_before_granting(
     assert "privilege.grantee IN (0, 'ue_rls_bypass'::regrole)" in sql
     assert "has_any_column_privilege" in sql
     assert "has_sequence_privilege" in sql
+
+
+def test_bootstrap_narrows_append_only_tables_to_their_runtime_write_sets() -> None:
+    """ue_app writes only the columns its code writes; the ledger stays migrator-only.
+
+    The behavioural proof is in test_app_db_role_bootstrap_postgres.py. These
+    statements pin the source so a broader grant cannot slip in unreviewed.
+    """
+    normalized = " ".join(BOOTSTRAP_SQL.read_text(encoding="utf-8").split())
+    for statement in (
+        "CREATE TABLE public.alembic_version (version_num varchar(32) NOT NULL, "
+        "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))",
+        "REVOKE UPDATE, TRUNCATE ON public.data_access_logs FROM ue_app;",
+        "GRANT UPDATE (signature) ON public.data_access_logs TO ue_app;",
+        "REVOKE UPDATE, DELETE, TRUNCATE ON public.stored_events FROM ue_app;",
+        "GRANT UPDATE (processed_at, error_count, last_error, status) "
+        "ON public.stored_events TO ue_app;",
+        "REVOKE UPDATE, DELETE, TRUNCATE ON public.tenants FROM ue_app, ue_worker;",
+        "REVOKE INSERT ON public.tenants FROM ue_worker;",
+        "REVOKE ALL ON public.alembic_version FROM ue_app, ue_worker;",
+        "GRANT SELECT ON public.alembic_version TO ue_app;",
+    ):
+        assert statement in normalized, statement
+    # The retention prune runs as ue_app through the parent table, so the parent
+    # keeps DELETE. Nothing in the runtime grants may give ue_app DELETE on an
+    # event-store row or on the ledger.
+    assert "GRANT ALL" not in normalized
+    assert "ON public.alembic_version TO ue_app, ue_worker" not in normalized

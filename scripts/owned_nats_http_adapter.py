@@ -26,6 +26,7 @@ from scripts.owned_nats_coordinator import (
     MessagePostEvidence,
     OwnerEvidence,
     ParticipantEvidence,
+    SendPhase,
 )
 from scripts.owned_nats_outage import Deadline, DeadlineVerdict, MessageEvidence
 from scripts.owned_nats_owner_adapter import OwnerFilePins
@@ -54,6 +55,14 @@ class HttpObservationNotReady(RuntimeError):
 
     def __repr__(self) -> str:
         return "HttpObservationNotReady()"
+
+
+class _TransportPhaseFailure(HttpObservationNotReady):
+    """Closed transport phase for the send boundary; carries no transport text."""
+
+    def __init__(self, phase: SendPhase) -> None:
+        super().__init__()
+        self.phase = phase
 
 
 def _not_ready() -> None:
@@ -450,6 +459,8 @@ class OwnedNatsHttpPort:
             return _decode_json_object(body)
         except HttpObservationNotReady:
             raise
+        except httpx.TimeoutException:
+            raise _TransportPhaseFailure(SendPhase.TIMEOUT) from None
         except Exception:
             _not_ready()
         finally:
@@ -512,6 +523,10 @@ class OwnedNatsHttpPort:
             return status, body
         except HttpObservationNotReady:
             raise
+        except httpx.TimeoutException:
+            raise _TransportPhaseFailure(SendPhase.TIMEOUT) from None
+        except httpx.ConnectError:
+            raise _TransportPhaseFailure(SendPhase.CONNECT_ERROR) from None
         except Exception:
             _not_ready()
         finally:
@@ -718,18 +733,27 @@ class OwnedNatsHttpPort:
         self._send_attempted = True
         operation_deadline = self._operation_deadline(deadline)
         try:
-            return self._run_bounded(
+            evidence = self._run_bounded(
                 operation_deadline,
                 lambda bounded: self._send_operation(
                     owner, admin_id, chat_id, content, bounded
                 ),
             )
-        except HttpObservationNotReady:
+        except HttpObservationNotReady as error:
             self._poison()
-            raise
+            phase = (
+                error.phase
+                if isinstance(error, _TransportPhaseFailure)
+                else SendPhase.NOT_READY
+            )
+            return MessagePostEvidence(status_code=None, message=None, phase=phase)
         except Exception:
             self._poison()
             _not_ready()
+        if evidence.message is None or evidence.phase is not None:
+            # A failed or unexpected POST is never followed by another request.
+            self._poison()
+        return evidence
 
     async def _send_operation(
         self,
@@ -748,8 +772,12 @@ class OwnedNatsHttpPort:
                 f"/api/v1/chats/{chat_id}/messages",
                 files={"content": (None, content)},
             )
-            if status != 200 or body is None:
-                _not_ready()
+            if status != 200:
+                return MessagePostEvidence(status_code=status, message=None)
+            if body is None:
+                return MessagePostEvidence(
+                    status_code=status, message=None, phase=SendPhase.BODY_MISMATCH
+                )
             message_id = body.get("id")
             response_chat_id = body.get("chat_id")
             sender_id = body.get("sender_id")
@@ -766,7 +794,9 @@ class OwnedNatsHttpPort:
                 or type(attachments) is not list
                 or attachments
             ):
-                _not_ready()
+                return MessagePostEvidence(
+                    status_code=status, message=None, phase=SendPhase.BODY_MISMATCH
+                )
             self._save_cookies(client)
             return MessagePostEvidence(
                 status_code=status,

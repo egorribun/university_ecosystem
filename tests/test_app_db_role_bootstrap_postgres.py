@@ -400,3 +400,244 @@ def test_bootstrap_converges_direct_runtime_column_grants(
         assert connection.execute(
             "SELECT has_any_column_privilege('ue_app', 'public.role_probe', 'REFERENCES')"
         ).fetchone() == (False,)
+
+
+_RUNTIME_TABLE_PRIVILEGES: dict[tuple[str, str], dict[str, bool]] = {
+    ("ue_app", "public.data_access_logs"): {
+        "INSERT": True,
+        "SELECT": True,
+        "DELETE": True,
+        "UPDATE": False,
+        "TRUNCATE": False,
+    },
+    ("ue_app", "public.data_access_logs_y2026m11"): {
+        "INSERT": False,
+        "SELECT": False,
+        "UPDATE": False,
+        "DELETE": False,
+    },
+    ("ue_app", "public.stored_events"): {
+        "INSERT": True,
+        "SELECT": True,
+        "UPDATE": False,
+        "DELETE": False,
+        "TRUNCATE": False,
+    },
+    ("ue_app", "public.tenants"): {
+        "INSERT": True,
+        "SELECT": True,
+        "UPDATE": False,
+        "DELETE": False,
+        "TRUNCATE": False,
+    },
+    ("ue_app", "public.alembic_version"): {
+        "INSERT": False,
+        "SELECT": True,
+        "UPDATE": False,
+        "DELETE": False,
+        "TRUNCATE": False,
+    },
+    ("ue_worker", "public.data_access_logs"): {
+        "INSERT": True,
+        "SELECT": True,
+        "DELETE": True,
+    },
+    ("ue_worker", "public.stored_events"): {"INSERT": True, "SELECT": True},
+    ("ue_worker", "public.tenants"): {
+        "INSERT": False,
+        "SELECT": True,
+        "UPDATE": False,
+        "DELETE": False,
+    },
+    ("ue_worker", "public.alembic_version"): {
+        "INSERT": False,
+        "UPDATE": False,
+        "DELETE": False,
+    },
+}
+_RUNTIME_COLUMN_PRIVILEGES: dict[tuple[str, str, str], bool] = {
+    ("ue_app", "public.data_access_logs", "signature"): True,
+    ("ue_app", "public.data_access_logs", "action"): False,
+    ("ue_app", "public.stored_events", "processed_at"): True,
+    ("ue_app", "public.stored_events", "status"): True,
+    ("ue_app", "public.stored_events", "payload"): False,
+}
+
+
+def _create_runtime_tables(connection: psycopg.Connection) -> None:
+    """Create the real table names the grants target, owned as Alembic owns them."""
+    connection.execute("SET ROLE ue_migrator")
+    connection.execute(
+        "CREATE TABLE public.data_access_logs ("
+        "id uuid NOT NULL, action text NOT NULL, signature text, "
+        "created_at timestamptz NOT NULL, PRIMARY KEY (id, created_at)"
+        ") PARTITION BY RANGE (created_at)"
+    )
+    connection.execute(
+        "CREATE TABLE public.data_access_logs_y2026m11 PARTITION OF "
+        "public.data_access_logs FOR VALUES FROM ('2026-11-01') TO ('2026-12-01')"
+    )
+    connection.execute(
+        "CREATE TABLE public.stored_events (id uuid PRIMARY KEY, "
+        "event_type text NOT NULL, payload jsonb NOT NULL, status text NOT NULL, "
+        "processed_at timestamptz, error_count integer NOT NULL DEFAULT 0, "
+        "last_error text)"
+    )
+    connection.execute(
+        "CREATE TABLE public.tenants (id uuid PRIMARY KEY, name text NOT NULL, "
+        "slug text NOT NULL, is_active boolean NOT NULL DEFAULT true)"
+    )
+    connection.execute(
+        "INSERT INTO public.alembic_version (version_num) VALUES ('202611020000')"
+    )
+    connection.execute("RESET ROLE")
+
+
+def _assert_runtime_privileges(connection: psycopg.Connection) -> None:
+    for (role, table), expected in _RUNTIME_TABLE_PRIVILEGES.items():
+        for privilege, granted in expected.items():
+            assert connection.execute(
+                "SELECT has_table_privilege(%s, %s, %s)", (role, table, privilege)
+            ).fetchone() == (granted,), (role, table, privilege)
+    for (role, table, column), granted in _RUNTIME_COLUMN_PRIVILEGES.items():
+        assert connection.execute(
+            "SELECT has_column_privilege(%s, %s, %s, 'UPDATE')",
+            (role, table, column),
+        ).fetchone() == (granted,), (role, table, column)
+
+
+def test_first_bootstrap_owns_the_version_table_before_any_migration(
+    role_server: OwnedPostgres,
+) -> None:
+    assert _bootstrap(role_server) == 0
+    with _connect(role_server) as connection:
+        assert connection.execute(
+            "SELECT pg_get_userbyid(relowner) FROM pg_class "
+            "WHERE oid = 'public.alembic_version'::regclass"
+        ).fetchone() == ("ue_migrator",)
+        for role in ("ue_app", "ue_worker"):
+            assert connection.execute(
+                "SELECT has_table_privilege(%s, 'public.alembic_version', 'INSERT'), "
+                "has_table_privilege(%s, 'public.alembic_version', 'UPDATE'), "
+                "has_table_privilege(%s, 'public.alembic_version', 'DELETE')",
+                (role, role, role),
+            ).fetchone() == (False, False, False), role
+        assert connection.execute(
+            "SELECT has_table_privilege('ue_app', 'public.alembic_version', 'SELECT')"
+        ).fetchone() == (True,)
+
+
+def test_runtime_roles_can_only_write_the_rows_their_code_writes(
+    role_server: OwnedPostgres,
+) -> None:
+    assert _bootstrap(role_server) == 0
+    with _connect(role_server) as connection:
+        _create_runtime_tables(connection)
+    # The first start after the migrations reconverges tables the migration created.
+    assert _bootstrap(role_server) == 0
+    with _connect(role_server) as connection:
+        _assert_runtime_privileges(connection)
+
+        connection.execute("SET ROLE ue_app")
+        connection.execute(
+            "INSERT INTO public.data_access_logs VALUES "
+            "('00000000-0000-4000-8000-000000000001', 'probe', NULL, "
+            "'2026-11-03T00:00:00Z')"
+        )
+        # The signature write-back is the one UPDATE the backend performs.
+        assert (
+            connection.execute(
+                "UPDATE public.data_access_logs SET signature = 'sig' "
+                "WHERE action = 'probe'"
+            ).rowcount
+            == 1
+        )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute(
+                "UPDATE public.data_access_logs SET action = 'tampered' "
+                "WHERE action = 'probe'"
+            )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("DELETE FROM public.data_access_logs_y2026m11")
+        # The backend's retention prune deletes through the parent table.
+        connection.execute(
+            "DELETE FROM public.data_access_logs WHERE created_at < '2000-01-01'"
+        )
+
+        connection.execute(
+            "INSERT INTO public.stored_events (id, event_type, payload, status) "
+            "VALUES ('00000000-0000-4000-8000-000000000002', 'e', '{}', 'pending')"
+        )
+        assert (
+            connection.execute(
+                "UPDATE public.stored_events SET processed_at = now(), "
+                "error_count = 1, last_error = 'x', status = 'failed' "
+                "WHERE id = '00000000-0000-4000-8000-000000000002'"
+            ).rowcount
+            == 1
+        )
+        assert (
+            connection.execute(
+                "SELECT id FROM public.stored_events FOR UPDATE SKIP LOCKED LIMIT 1"
+            ).rowcount
+            == 1
+        )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("UPDATE public.stored_events SET payload = '{}'")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("DELETE FROM public.stored_events")
+
+        connection.execute("SELECT count(*) FROM public.tenants")
+        connection.execute(
+            "INSERT INTO public.tenants (id, name, slug) "
+            "VALUES ('00000000-0000-4000-8000-000000000003', 'n', 's')"
+        )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("UPDATE public.tenants SET name = 'x'")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("DELETE FROM public.tenants")
+
+        assert connection.execute(
+            "SELECT version_num FROM public.alembic_version"
+        ).fetchall() == [("202611020000",)]
+        for statement in (
+            "INSERT INTO public.alembic_version VALUES ('forged')",
+            "UPDATE public.alembic_version SET version_num = 'forged'",
+            "DELETE FROM public.alembic_version",
+        ):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                connection.execute(statement)
+        connection.execute("RESET ROLE")
+
+        connection.execute("SET ROLE ue_worker")
+        connection.execute("DELETE FROM public.data_access_logs WHERE false")
+        connection.execute(
+            "INSERT INTO public.stored_events (id, event_type, payload, status) "
+            "VALUES ('00000000-0000-4000-8000-000000000004', 'e', '{}', 'pending')"
+        )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("UPDATE public.tenants SET name = 'x'")
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute(
+                "INSERT INTO public.tenants (id, name, slug) "
+                "VALUES ('00000000-0000-4000-8000-000000000005', 'n', 's')"
+            )
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("UPDATE public.alembic_version SET version_num = 'x'")
+        connection.execute("RESET ROLE")
+
+
+def test_bootstrap_reverts_widened_append_only_grants(
+    role_server: OwnedPostgres,
+) -> None:
+    assert _bootstrap(role_server) == 0
+    with _connect(role_server) as connection:
+        _create_runtime_tables(connection)
+        connection.execute(
+            "GRANT ALL ON public.data_access_logs, public.stored_events, "
+            "public.tenants, public.alembic_version TO ue_app, ue_worker"
+        )
+        connection.execute("GRANT UPDATE ON public.data_access_logs TO ue_app")
+    assert _bootstrap(role_server) == 0
+    with _connect(role_server) as connection:
+        _assert_runtime_privileges(connection)

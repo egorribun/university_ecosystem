@@ -18,6 +18,10 @@
 --   ue_app         LOGIN NOSUPERUSER NOBYPASSRLS, no bypass membership. Backend
 --                  API and outbox worker. Receives DML only: no DDL, TRUNCATE,
 --                  REFERENCES or TRIGGER. Tenant scope comes from the session.
+--                  The append-only tables are narrowed further below: audit and
+--                  event rows take only the columns the code writes, the
+--                  migration ledger is read-only, and tenant rows are read-only
+--                  apart from seed inserts.
 --   ue_worker      LOGIN NOSUPERUSER NOBYPASSRLS, member of ue_rls_bypass.
 --                  Notifications worker. Its schedule-reminder scan reads every
 --                  tenant, so it cannot be confined to one tenant's session.
@@ -97,6 +101,13 @@ BEGIN
 END
 $guard$;
 
+-- Alembic creates alembic_version during the first migration, which runs after
+-- this bootstrap. Create the same empty table as its owner now, so the default
+-- privileges granted below never reach a table that only the migrator may write.
+-- Alembic's own create is checkfirst and therefore a no-op. Never touches rows.
+SELECT 'SET LOCAL ROLE ue_migrator; CREATE TABLE public.alembic_version (version_num varchar(32) NOT NULL, CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)); RESET ROLE'
+WHERE to_regclass('public.alembic_version') IS NULL \gexec
+
 -- Converge the runtime grants on every start: revoke everything first, so a
 -- privilege granted by an earlier launcher revision cannot survive, then grant
 -- the exact DML set. Later migrations inherit the same grants through default
@@ -124,6 +135,56 @@ ALTER DEFAULT PRIVILEGES FOR ROLE ue_migrator IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ue_app, ue_worker;
 ALTER DEFAULT PRIVILEGES FOR ROLE ue_migrator IN SCHEMA public
     GRANT USAGE, SELECT ON SEQUENCES TO ue_app, ue_worker;
+
+-- Narrow the table-wide grants above for the append-only and registry tables.
+-- ue_app cannot rewrite audit rows, rewrite or delete event-store rows, change
+-- tenant rows, or write the migration ledger:
+--   data_access_logs  INSERT and SELECT; the signature write-back is the only
+--                     UPDATE, and it is column-limited. DELETE stays on the
+--                     parent table for the retention prune that the backend
+--                     scheduler runs as ue_app. Partitions take no direct DML:
+--                     PostgreSQL checks the parent's grant for routed statements.
+--   stored_events     INSERT and SELECT; the outbox worker and DLQ requeue
+--                     update only the delivery-state columns. No DELETE.
+--   tenants           SELECT for tenant resolution; INSERT is kept for the
+--                     owner-verified disposable seed entry points, which run as
+--                     the application role. No UPDATE, DELETE or TRUNCATE.
+--   alembic_version   SELECT only, for the health probe and startup head check.
+-- ue_worker keeps its DML on the audit and event tables so retention jobs remain
+-- possible, but it never writes the migration ledger or the tenant registry.
+-- Tables created by a migration do not exist on a fresh volume until Alembic has
+-- run, so each block applies only when its relation is present. Every start
+-- reapplies the set, and a run after the migrations converges the new tables.
+DO $narrow$
+DECLARE
+    partition_oid regclass;
+BEGIN
+    IF to_regclass('public.data_access_logs') IS NOT NULL THEN
+        REVOKE UPDATE, TRUNCATE ON public.data_access_logs FROM ue_app;
+        GRANT UPDATE (signature) ON public.data_access_logs TO ue_app;
+        FOR partition_oid IN
+            SELECT inheritance.inhrelid::regclass
+            FROM pg_inherits AS inheritance
+            WHERE inheritance.inhparent = 'public.data_access_logs'::regclass
+        LOOP
+            EXECUTE format('REVOKE ALL ON %s FROM ue_app', partition_oid);
+        END LOOP;
+    END IF;
+    IF to_regclass('public.stored_events') IS NOT NULL THEN
+        REVOKE UPDATE, DELETE, TRUNCATE ON public.stored_events FROM ue_app;
+        GRANT UPDATE (processed_at, error_count, last_error, status)
+            ON public.stored_events TO ue_app;
+    END IF;
+    IF to_regclass('public.tenants') IS NOT NULL THEN
+        REVOKE UPDATE, DELETE, TRUNCATE ON public.tenants FROM ue_app, ue_worker;
+        REVOKE INSERT ON public.tenants FROM ue_worker;
+    END IF;
+    IF to_regclass('public.alembic_version') IS NOT NULL THEN
+        REVOKE ALL ON public.alembic_version FROM ue_app, ue_worker;
+        GRANT SELECT ON public.alembic_version TO ue_app;
+    END IF;
+END
+$narrow$;
 
 -- Direct revocation cannot remove PUBLIC or bypass-group privileges. Reject
 -- those unexpected effective grants rather than changing unrelated principals.
