@@ -495,6 +495,30 @@ def test_scratch_admission_rechecks_active_lease_not_operator_url(
     scratch.assert_not_called()
 
 
+@pytest.mark.parametrize("unowned", [None, "postgresql://localhost/test", object()])
+def test_baseline_refuses_unowned_values_before_database_access(
+    monkeypatch: pytest.MonkeyPatch, unowned: object
+) -> None:
+    scratch = Mock(side_effect=AssertionError("scratch must not be entered"))
+    engine = Mock(side_effect=AssertionError("engine must not be created"))
+    monkeypatch.setattr(owned, "_owned_scratch_database", scratch)
+    monkeypatch.setattr(owned.sa, "create_engine", engine)
+
+    with pytest.raises(owned.OwnedPostgresError, match="lease is required"):
+        with owned.committed_baseline(unowned):
+            pytest.fail("unowned baseline admitted")
+
+    scratch.assert_not_called()
+    engine.assert_not_called()
+
+
+def test_no_url_only_committed_baseline_entrypoint_exists() -> None:
+    # Prevent reintroducing an opt-in-only route that commits cluster roles on
+    # an operator URL without an acknowledged, active container lease.
+    assert not hasattr(owned, "scratch_baseline")
+    assert not hasattr(owned, "_upgraded_scratch_baseline")
+
+
 def test_baseline_is_actually_called_and_committed_before_yield_then_disposed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -775,6 +799,17 @@ def pytest_collection_modifyitems(items):
         "::test_receipt_owned_fixture_never_uses_default_database"
     )
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_timeout_set_timer(item, settings):
+    # Observe the real plugin's resolved settings before its timer is armed.
+    assert settings.timeout == 300
+    assert settings.method == "signal"
+    assert settings.func_only is False
+    assert settings.disable_debugger_detection is item.config.getoption(
+        "timeout_disable_debugger_detection"
+    )
+
+
 def pytest_runtest_call(item):
     from app.core.config import settings
     from app.core.config.base import _ENV_FILE
@@ -790,13 +825,19 @@ def pytest_sessionfinish(session, exitstatus):
 
 
 @pytest.mark.parametrize(
-    "missing, expected, hostile_aliases",
+    "missing, expected, hostile_aliases, timeout_enabled",
     [
-        ("", None, False),
-        ("", None, True),
-        ("initialize_database_for_tests", "init_database", False),
-        ("prepare_database", "_require_safe_database_reset", False),
-        ("clean_database", "blocked default database: lazy access", False),
+        ("", None, False, True),
+        ("", None, True, True),
+        ("initialize_database_for_tests", "init_database", False, True),
+        ("prepare_database", "_require_safe_database_reset", False, True),
+        ("clean_database", "blocked default database: lazy access", False, True),
+        (
+            "",
+            "Receipt tests require --timeout-disable-debugger-detection",
+            False,
+            False,
+        ),
     ],
 )
 def test_receipt_real_autouse_graph_isolated_before_conftest_import(
@@ -804,6 +845,7 @@ def test_receipt_real_autouse_graph_isolated_before_conftest_import(
     missing: str,
     expected: str | None,
     hostile_aliases: bool,
+    timeout_enabled: bool,
 ) -> None:
     pytester.makepyfile(owned_early_guard=_EARLY_GUARD_PLUGIN)
     # Pytester's supported launcher copies os.environ. Limit our overrides to
@@ -895,6 +937,7 @@ def test_receipt_real_autouse_graph_isolated_before_conftest_import(
                 "no:cacheprovider",
                 "-q",
                 "-s",
+                *(["--timeout-disable-debugger-detection"] if timeout_enabled else []),
                 timeout=60,
             )
     finally:
@@ -923,5 +966,7 @@ def test_receipt_real_autouse_graph_isolated_before_conftest_import(
         assert result.parseoutcomes().get("errors", 0) >= 1
         assert expected in output
         assert events == (
-            ["clean_database"] if missing == "clean_database" else [expected]
+            (["clean_database"] if missing == "clean_database" else [expected])
+            if timeout_enabled
+            else []
         )

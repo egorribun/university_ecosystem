@@ -8699,6 +8699,54 @@ def test_scanner_history_contract_checkout_is_not_shallow() -> None:
     assert "          persist-credentials: false\n" in checkout[1]
 
 
+def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
+    original = _pre_squash_source_bytes(path)
+    if path != ".github/workflows/reusable-backend-tests.yml":
+        return original
+    # Retain the immutable setup-python review, allowing only this supported
+    # pytest-timeout caller option and its explanation at the unique call site.
+    anchor = (
+        b"                  $pytestArgs = @(\n"
+        b"                    $env:INTEGRATION_TEST_PATTERN,"
+    )
+    replacement = (
+        b"                  # pytest-timeout 2.4.0 supports this only as a caller option,\n"
+        b"                  # not a marker keyword. Keep receipt watchdogs active in debuggers.\n"
+        b"                  $pytestArgs = @(\n"
+        b'                    "--timeout-disable-debugger-detection",\n'
+        b"                    $env:INTEGRATION_TEST_PATTERN,"
+    )
+    assert original.count(anchor) == 1, "reviewed timeout call site changed"
+    return original.replace(anchor, replacement)
+
+
+def _assert_live_scanner_source_bytes(path: str, actual: bytes) -> None:
+    assert actual == _reviewed_live_scanner_source_bytes(path), (
+        "live scanner source differs from its exact reviewed bytes"
+    )
+
+
+@pytest.mark.parametrize("mutation", ["missing", "changed", "duplicate", "unrelated"])
+def test_live_backend_timeout_binding_refuses_other_changes(mutation: str) -> None:
+    path = ".github/workflows/reusable-backend-tests.yml"
+    original = _pre_squash_source_bytes(path)
+    expected = _reviewed_live_scanner_source_bytes(path)
+    option = b'                    "--timeout-disable-debugger-detection",\n'
+    assert original.count(option) == 0
+    assert expected.count(option) == 1
+    _assert_live_scanner_source_bytes(path, expected)
+    if mutation == "missing":
+        invalid = original
+    elif mutation == "changed":
+        invalid = expected.replace(option, option.replace(b"disable", b"enable"))
+    elif mutation == "duplicate":
+        invalid = expected.replace(option, option + option)
+    else:
+        invalid = expected + b"# unrelated workflow change\n"
+    with pytest.raises(AssertionError, match="exact reviewed bytes"):
+        _assert_live_scanner_source_bytes(path, invalid)
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -8712,7 +8760,7 @@ def test_scanner_history_contract_checkout_is_not_shallow() -> None:
 def test_still_live_scanner_sources_keep_their_exact_reviewed_bytes(path: str) -> None:
     # Frozen provenance must not conceal a change to a still-live source.
     root = Path(__file__).resolve().parents[1]
-    assert (root / path).read_bytes() == _pre_squash_source_bytes(path)
+    _assert_live_scanner_source_bytes(path, (root / path).read_bytes())
 
 
 def _assert_live_aud447_allocation_source(source: str) -> None:

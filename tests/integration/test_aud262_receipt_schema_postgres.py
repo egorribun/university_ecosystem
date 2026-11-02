@@ -38,6 +38,16 @@ pytestmark = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def receipt_watchdog(request: pytest.FixtureRequest) -> None:
+    """Fail before Docker if the caller permits debugger-suppressed timeouts."""
+    # pytest-timeout 2.4.0 advertises this marker keyword but rejects it.
+    # Its supported CLI option applies before the protocol timer is armed.
+    assert request.config.getoption("timeout_disable_debugger_detection", False), (
+        "Receipt tests require --timeout-disable-debugger-detection"
+    )
+
+
 @pytest_asyncio.fixture
 async def receipt_schema(
     request: pytest.FixtureRequest,

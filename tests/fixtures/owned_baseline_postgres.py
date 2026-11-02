@@ -368,31 +368,15 @@ class BaselineDatabase:
 
 @contextmanager
 def committed_baseline(server: OwnedPostgres) -> Iterator[BaselineDatabase]:
-    """CREATE receipt/OID checks and DROP are retained in the existing helper."""
+    """Commit cluster-global baseline changes only on our active owned server."""
+    if not isinstance(server, OwnedPostgres):
+        raise OwnedPostgresError("Owned PostgreSQL lease is required")
     server._lease.verify(server)
-    # Only this newly created server permits committing cluster-global
-    # baseline roles/jobs. No caller-supplied/operator URL is accepted.
-    with _upgraded_scratch_baseline(
+    # A caller-supplied URL or generated database name is not ownership evidence.
+    # Keep CREATE receipt/OID checks and DROP in the existing scratch helper.
+    with _owned_scratch_database(
         server.url.render_as_string(hide_password=False)
-    ) as baseline:
-        yield baseline
-
-
-@contextmanager
-def scratch_baseline(database_url: str) -> Iterator[BaselineDatabase]:
-    """Upgrade the shipped baseline into a scratch database on an explicit service.
-
-    Only for a module that has checked its own explicit opt-in and runs against a
-    disposable PostgreSQL service (the CI integration job). The scratch database
-    is dropped on exit; cluster-global baseline roles are created when absent.
-    """
-    with _upgraded_scratch_baseline(database_url) as baseline:
-        yield baseline
-
-
-@contextmanager
-def _upgraded_scratch_baseline(database_url: str) -> Iterator[BaselineDatabase]:
-    with _owned_scratch_database(database_url) as scratch_url:
+    ) as scratch_url:
         url = make_url(scratch_url).set(drivername="postgresql+psycopg")
         engine = sa.create_engine(
             url,

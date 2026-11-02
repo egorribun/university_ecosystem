@@ -702,7 +702,10 @@ jobs:
                     )
                   }
 
+                  # pytest-timeout 2.4.0 supports this only as a caller option,
+                  # not a marker keyword. Keep receipt watchdogs active in debuggers.
                   $pytestArgs = @(
+                    "--timeout-disable-debugger-detection",
                     $env:INTEGRATION_TEST_PATTERN,
                     "tests/test_events_localization.py",
                     "tests/test_user_analytics_window_contracts.py",
