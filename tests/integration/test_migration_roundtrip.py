@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
 
@@ -14,17 +15,16 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from cryptography.fernet import Fernet
-from testcontainers.community.postgres import PostgresContainer
 
 from alembic import command
 from scripts.quality import migration_downgrade_policy
-from tests.integration.owned_postgres import _LoopbackMigrationPostgres
+from tests.fixtures import owned_baseline_postgres as owned
 from tests.test_helm_staging_contract import _render_staging
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BASELINE_REVISION = "202611020000"
 
-_RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
+_RUN = os.getenv("RUN_INTEGRATION_TESTS") == "1"
 
 pytestmark = [
     pytest.mark.integration,
@@ -32,22 +32,29 @@ pytestmark = [
 ]
 
 
-@pytest.fixture(scope="module")
-def migration_postgres():
-    """Provides isolated PostgreSQL, reusing the bounded operator when requested."""
-    operator_url = os.environ.get("MIGRATION_ROUNDTRIP_DATABASE_URL")
-    if operator_url:
-        yield _LoopbackMigrationPostgres(operator_url)
-        return
+class _OwnedMigrationPostgres:
+    """Expose one owned loopback lease through the URL API used by sibling proofs."""
 
-    with PostgresContainer(
-        "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
-    ) as postgres:
-        yield postgres
+    def __init__(self, server: owned.OwnedPostgres) -> None:
+        self._server = server
+
+    def get_connection_url(self, *, driver: str) -> str:
+        if driver not in {"asyncpg", "psycopg"}:
+            raise ValueError("Unsupported migration test database driver.")
+        return self._server.url.set(
+            drivername=f"postgresql+{driver}", query={}
+        ).render_as_string(hide_password=False)
+
+
+@pytest.fixture(scope="module")
+def migration_postgres() -> Iterator[_OwnedMigrationPostgres]:
+    """Provides one disposable owned PostgreSQL lease for this module's proofs."""
+    with owned.owned_postgres_server() as server:
+        yield _OwnedMigrationPostgres(server)
 
 
 def test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade(
-    migration_postgres,
+    migration_postgres: _OwnedMigrationPostgres,
 ) -> None:
     """The MVP baseline is the only revision. Its declared downgrade refuses before any DDL."""
     url_sync = migration_postgres.get_connection_url(driver="psycopg")
@@ -291,7 +298,7 @@ def _safe_process_diagnostic(
 
 
 def test_staging_online_alembic_uses_rendered_file_secrets_and_advances_head(
-    migration_postgres, tmp_path: Path
+    migration_postgres: _OwnedMigrationPostgres, tmp_path: Path
 ) -> None:
     """Rendered database files fail closed; unrelated app keys cannot block DDL."""
     base_url = sa.engine.make_url(

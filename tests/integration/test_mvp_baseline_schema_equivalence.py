@@ -22,6 +22,7 @@ import secrets
 import shutil
 import sys
 import tarfile
+import time
 from collections import Counter
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
@@ -30,7 +31,6 @@ from typing import Final
 
 import pytest
 import sqlalchemy as sa
-from testcontainers.community.postgres import PostgresContainer
 
 from tests.fixtures import owned_baseline_postgres as owned
 
@@ -44,9 +44,7 @@ PRE_SQUASH_COMMIT = "3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9"
 PRE_SQUASH_HEAD = "202610310001"
 BASELINE_REVISION = "202611020000"
 BASELINE_FILE = f"{BASELINE_REVISION}_mvp_baseline.py"
-PG_IMAGE = "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
-
-_RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
+_RUN = os.getenv("RUN_INTEGRATION_TESTS") == "1"
 
 pytestmark = [
     pytest.mark.integration,
@@ -58,6 +56,7 @@ pytestmark = [
 # These budgets do not claim ownership or termination of independently spawned children.
 _CHILD_TIMEOUT_SECONDS: Final = 240.0
 _CHILD_REAP_SECONDS: Final = 30.0
+_DUMP_SECONDS: Final = 120.0
 
 # Inherit operating-system launch essentials only. Runtime settings, file-secret
 # selectors, Python import overrides and CI exemptions must never select another target.
@@ -284,23 +283,25 @@ CATALOG_PROBES: dict[str, str] = {
 }
 
 
-def _loopback_url(container: PostgresContainer, driver: str) -> str:
-    """Return the container URL on 127.0.0.1; ``localhost`` tries IPv6 first on Windows."""
-    port = container.get_exposed_port(5432)
-    return (
-        f"postgresql+{driver}://{container.username}:{container.password}"
-        f"@127.0.0.1:{port}/{container.dbname}"
+def _owned_url(server: owned.OwnedPostgres, driver: str) -> str:
+    """Return the owned loopback URL without libpq options.
+
+    The container command already sets the server-side lock, statement and idle
+    transaction limits, so child processes receive the bare URL.
+    """
+    return server.url.set(drivername=f"postgresql+{driver}", query={}).render_as_string(
+        hide_password=False
     )
 
 
 @dataclass(frozen=True)
 class _Database:
-    container: PostgresContainer
+    server: owned.OwnedPostgres
     url: str
 
     @property
     def sync_url(self) -> str:
-        return _loopback_url(self.container, "psycopg")
+        return _owned_url(self.server, "psycopg")
 
 
 @dataclass(frozen=True)
@@ -391,6 +392,17 @@ def _extract_pre_squash_tree(target: Path) -> None:
     """Materialize alembic/ and app/ at the pre-squash commit without a checkout."""
     git = shutil.which("git")
     assert git is not None, "git is required to extract the pre-squash chain"
+    present, _, _ = asyncio.run(
+        _run_fixed_argv(
+            [git, "cat-file", "-e", f"{PRE_SQUASH_COMMIT}^{{commit}}"], PROJECT_ROOT
+        )
+    )
+    if present != 0:
+        pytest.fail(
+            f"pinned pre-squash commit {PRE_SQUASH_COMMIT} is absent from this "
+            "checkout; fetch it (or use fetch-depth: 0) before the baseline proof",
+            pytrace=False,
+        )
     returncode, archive, stderr = asyncio.run(
         _run_fixed_argv(
             [
@@ -604,21 +616,70 @@ def _schema_statements(dump: str) -> Counter[str]:
 
 
 def _dump(database: _Database) -> str:
-    container = database.container.get_wrapped_container()
-    exit_code, output = container.exec_run(
-        [
-            "pg_dump",
-            "--schema-only",
-            "--no-owner",
-            "--no-privileges",
-            "-U",
-            database.container.username,
-            "-d",
-            database.container.dbname,
-        ]
+    """Run pg_dump inside the owned container and return its schema-only SQL.
+
+    The execution is detached and polled with bounded requests, as in the owned
+    role bootstrap; the dump is then read back as a single archived file.
+    """
+    server = database.server
+    lease = server._lease
+    client = lease.client
+    dump_name = f"schema-{secrets.token_hex(8)}.sql"
+    lease.verify(server)
+    execution = owned._docker_call(
+        lambda: client.exec_create(
+            server.container_id,
+            cmd=[
+                "pg_dump",
+                "--schema-only",
+                "--no-owner",
+                "--no-privileges",
+                "--host=/var/run/postgresql",
+                "--port=5432",
+                "--username=baseline_admin",
+                "--no-password",
+                "--dbname=postgres",
+                f"--file=/root/{dump_name}",
+            ],
+            environment={"PGCONNECT_TIMEOUT": "5"},
+            user="root",
+        ),
+        "schema dump exec creation",
     )
-    assert exit_code == 0, output.decode("utf-8", errors="replace")
-    return output.decode("utf-8")
+    execution_id = execution.get("Id")
+    if (
+        not isinstance(execution_id, str)
+        or re.fullmatch(r"[0-9a-f]{64}", execution_id) is None
+    ):
+        raise owned.OwnedPostgresError("Owned schema dump exec identity unacknowledged")
+    lease.verify(server)
+    owned._docker_call(
+        lambda: client.exec_start(execution_id, detach=True),
+        "schema dump detached execution",
+    )
+    deadline = time.monotonic() + _DUMP_SECONDS
+    while True:
+        lease.verify(server)
+        state = owned._docker_call(
+            lambda: client.exec_inspect(execution_id), "schema dump exec inspection"
+        )
+        if state.get("Running") is False:
+            break
+        if time.monotonic() >= deadline:
+            raise AssertionError("pg_dump exceeded its bounded wait")
+        time.sleep(0.25)
+    assert state.get("ExitCode") == 0, (
+        "pg_dump failed in the owned PostgreSQL container"
+    )
+    stream, _stat = owned._docker_call(
+        lambda: client.get_archive(server.container_id, f"/root/{dump_name}"),
+        "schema dump archive retrieval",
+    )
+    archive = b"".join(stream)
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        member = tar.extractfile(dump_name)
+        assert member is not None, "pg_dump archive lacks the schema file"
+        return member.read().decode("utf-8")
 
 
 def _probe(database: _Database) -> dict[str, list[str]]:
@@ -669,20 +730,18 @@ def _capture_pair(
 
 @pytest.fixture(scope="module")
 def built(tmp_path_factory: pytest.TempPathFactory) -> Iterator[_Built]:
-    """Apply the pre-squash chain and the baseline to two fresh PostgreSQL servers."""
+    """Apply the pre-squash chain and the baseline to two owned PostgreSQL leases."""
     pre_squash_tree = tmp_path_factory.mktemp("pre_squash")
     baseline_tree = tmp_path_factory.mktemp("baseline")
     _extract_pre_squash_tree(pre_squash_tree)
     _extract_baseline_tree(baseline_tree)
 
     with (
-        PostgresContainer(PG_IMAGE) as pre_container,
-        PostgresContainer(PG_IMAGE) as baseline_container,
+        owned.owned_postgres_server() as pre_server,
+        owned.owned_postgres_server() as baseline_server,
     ):
-        pre = _Database(pre_container, _loopback_url(pre_container, "asyncpg"))
-        base = _Database(
-            baseline_container, _loopback_url(baseline_container, "asyncpg")
-        )
+        pre = _Database(pre_server, _owned_url(pre_server, "asyncpg"))
+        base = _Database(baseline_server, _owned_url(baseline_server, "asyncpg"))
 
         # The baseline must resolve the owned URL before its first DDL statement runs. The
         # pre-squash oracle predates app.core.migration_settings; its env.py returns the
@@ -705,6 +764,16 @@ def test_proof_owned_fixture_never_uses_default_database(
 ) -> None:
     """Exercise this module's real autouse graph without starting Docker."""
     assert default_database_guard == []
+
+
+def test_absent_pre_squash_commit_fails_with_a_clear_message(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A shallow checkout reports the missing pin, not a raw git tree error."""
+    monkeypatch.setattr(sys.modules[__name__], "PRE_SQUASH_COMMIT", "0" * 40)
+
+    with pytest.raises(pytest.fail.Exception, match="pinned pre-squash commit"):
+        _extract_pre_squash_tree(tmp_path)
 
 
 def test_pre_squash_chain_and_baseline_stamp_their_own_heads(built: _Built) -> None:
