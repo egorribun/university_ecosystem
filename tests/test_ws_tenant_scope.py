@@ -8,7 +8,9 @@ with an empty tenant context. Row-level security then hid every tenant row from 
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -87,3 +89,59 @@ def test_cookie_from_another_or_undecodable_tenant_is_refused_before_handshake(
             session.receive_text()
     assert refused.value.code == 1008
     assert seen == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, RuntimeError, asyncio.CancelledError])
+async def test_upgrade_restores_existing_context_in_the_calling_task(
+    failure: type[BaseException] | None,
+) -> None:
+    tenant = uuid4()
+    previous_tenant = str(uuid4())
+    seen: list[str] = []
+
+    async def downstream(scope: dict[str, Any], receive: Any, send: Any) -> None:
+        assert scope["state"]["tenant_id"] == str(tenant)
+        assert get_current_tenant() == str(tenant)
+        assert bypass_rls_ctx.get() is False
+        seen.append(get_current_tenant())
+        if failure is not None:
+            raise failure("synthetic upgrade termination")
+
+    middleware = TenantContextMiddleware(downstream, mvp_tenant_id=tenant)
+    scope = {"type": "websocket", "headers": []}
+    tenant_token = tenant_id_ctx.set(previous_tenant)
+    bypass_token = bypass_rls_ctx.set(True)
+    try:
+        if failure is None:
+            await middleware(scope, AsyncMock(), AsyncMock())
+        else:
+            with pytest.raises(failure):
+                await middleware(scope, AsyncMock(), AsyncMock())
+        assert seen == [str(tenant)]
+        assert get_current_tenant() == previous_tenant
+        assert bypass_rls_ctx.get() is True
+    finally:
+        bypass_rls_ctx.reset(bypass_token)
+        tenant_id_ctx.reset(tenant_token)
+
+
+@pytest.mark.parametrize("query", ["", "?ticket=invalid"])
+def test_tenant_binding_does_not_authenticate_the_actual_chat_route(
+    query: str,
+) -> None:
+    from app.api import websocket as websocket_api
+
+    tenant = uuid4()
+    app = FastAPI()
+    app.add_middleware(TenantContextMiddleware, mvp_tenant_id=tenant)
+    app.include_router(websocket_api.router)
+    with TestClient(app) as client:
+        with (
+            pytest.raises(WebSocketDisconnect) as refused,
+            client.websocket_connect(
+                "/ws/chat" + query, headers={"x-tenant-id": str(uuid4())}
+            ),
+        ):
+            pytest.fail("An unauthenticated socket must never be accepted")
+    assert refused.value.code == 4001
