@@ -9978,6 +9978,108 @@
       "reviewed_on": "2026-11-02",
       "expires_on": "2027-01-09",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "charts/university-ecosystem/values-staging.yaml",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          137,
+          48,
+          149,
+          253,
+          216,
+          125,
+          70,
+          132,
+          49,
+          17,
+          188,
+          104,
+          56,
+          234,
+          54,
+          223,
+          41,
+          47,
+          61,
+          125
+        ]
+      },
+      "category": "external_kubernetes_secret_reference",
+      "evidence": "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS existingSecret reference at charts/university-ecosystem/values-staging.yaml:56; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-02",
+      "expires_on": "2027-01-09",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "charts/university-ecosystem/values-staging.yaml",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          186,
+          196,
+          166,
+          53,
+          205,
+          238,
+          100,
+          52,
+          204,
+          177,
+          241,
+          191,
+          64,
+          57,
+          254,
+          78,
+          225,
+          214,
+          206,
+          73
+        ]
+      },
+      "category": "external_kubernetes_secret_reference",
+      "evidence": "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS privateKeyKey reference at charts/university-ecosystem/values-staging.yaml:58; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-02",
+      "expires_on": "2027-01-09",
+      "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "charts/university-ecosystem/values.yaml",
+        "type": "Secret Keyword",
+        "hashed_secret_bytes": [
+          186,
+          196,
+          166,
+          53,
+          205,
+          238,
+          100,
+          52,
+          204,
+          177,
+          241,
+          191,
+          64,
+          57,
+          254,
+          78,
+          225,
+          214,
+          206,
+          73
+        ]
+      },
+      "category": "external_kubernetes_secret_reference",
+      "evidence": "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS privateKeyKey reference at charts/university-ecosystem/values.yaml:139; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-02",
+      "expires_on": "2027-01-09",
+      "approval_status": "approved"
     }
   ]
 }

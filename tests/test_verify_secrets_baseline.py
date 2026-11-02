@@ -606,6 +606,116 @@ _RETIRED_DISPOSITION_PATHS = frozenset(
 )
 
 
+_NOV2_CHART_REFERENCE_RECORDS = [
+    {
+        "identity": {
+            "path": "charts/university-ecosystem/values-staging.yaml",
+            "type": "Secret Keyword",
+            "hashed_secret_bytes": [
+                137,
+                48,
+                149,
+                253,
+                216,
+                125,
+                70,
+                132,
+                49,
+                17,
+                188,
+                104,
+                56,
+                234,
+                54,
+                223,
+                41,
+                47,
+                61,
+                125,
+            ],
+        },
+        "category": "external_kubernetes_secret_reference",
+        "evidence": "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS existingSecret reference at charts/university-ecosystem/values-staging.yaml:56; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-02",
+        "expires_on": "2027-01-09",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "charts/university-ecosystem/values-staging.yaml",
+            "type": "Secret Keyword",
+            "hashed_secret_bytes": [
+                186,
+                196,
+                166,
+                53,
+                205,
+                238,
+                100,
+                52,
+                204,
+                177,
+                241,
+                191,
+                64,
+                57,
+                254,
+                78,
+                225,
+                214,
+                206,
+                73,
+            ],
+        },
+        "category": "external_kubernetes_secret_reference",
+        "evidence": "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS privateKeyKey reference at charts/university-ecosystem/values-staging.yaml:58; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-02",
+        "expires_on": "2027-01-09",
+        "approval_status": "approved",
+    },
+    {
+        "identity": {
+            "path": "charts/university-ecosystem/values.yaml",
+            "type": "Secret Keyword",
+            "hashed_secret_bytes": [
+                186,
+                196,
+                166,
+                53,
+                205,
+                238,
+                100,
+                52,
+                204,
+                177,
+                241,
+                191,
+                64,
+                57,
+                254,
+                78,
+                225,
+                214,
+                206,
+                73,
+            ],
+        },
+        "category": "external_kubernetes_secret_reference",
+        "evidence": "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS privateKeyKey reference at charts/university-ecosystem/values.yaml:139; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-02",
+        "expires_on": "2027-01-09",
+        "approval_status": "approved",
+    },
+]
+
+
+def _nov2_chart_reference_records() -> list[dict[str, Any]]:
+    return copy.deepcopy(_NOV2_CHART_REFERENCE_RECORDS)
+
+
 def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
     historical = _reviewed_pre_retirement_dispositions()
     retired = [
@@ -620,9 +730,10 @@ def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
     ]
     assert len(retired) == 156
     assert len(survivors) == 349
-    assert policy == {**historical, "records": survivors}, (
-        "live disposition inventory changed"
-    )
+    assert policy == {
+        **historical,
+        "records": [*survivors, *_nov2_chart_reference_records()],
+    }, "live disposition inventory changed"
 
 
 def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
@@ -639,7 +750,7 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
         repository_root=root, today=verifier.date(2026, 11, 2)
     )
-    assert len(validated) == 349
+    assert len(validated) == 352
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
 
 
@@ -659,6 +770,7 @@ def test_live_disposition_retirement_refuses_other_inventory_changes(
             if row["identity"]["path"] not in _RETIRED_DISPOSITION_PATHS
         ],
     }
+    live["records"].extend(_nov2_chart_reference_records())
     _assert_live_disposition_retirement(live)
     changed = copy.deepcopy(live)
     if mutation == "reintroduced":
@@ -7509,16 +7621,40 @@ def test_oct30_retired_approvals_never_reactivate_from_base_or_candidate(
         )
         == 89
     )
+    # The October-30 batch also approved two still-live Redis contract digests.
+    # Retirement must filter removed paths, not erase surviving approvals.
+    surviving_records = [
+        record
+        for record in records
+        if record["identity"]["path"]
+        in {
+            "scripts/quality/run_owned_redis_contracts.py",
+            "tests/test_aud427_428_contract_quality.py",
+        }
+    ]
+    assert len(surviving_records) == 2
+    expected = verifier.validate_false_positive_dispositions(
+        _disposition_document(*surviving_records), today=today
+    )
+    assert len(expected) == 2
     assert (
         verifier.load_trusted_base_false_positive_dispositions(
             accepted_sha, repository_root=repository, today=today
         )
-        == set()
+        == expected
     )
     with pytest.raises(verifier.BaselineArtifactError, match="retired source"):
         verifier.load_owner_authored_candidate_false_positive_dispositions(
             repository_root=repository, today=today
         )
+
+    _commit_dispositions(repository, surviving_records)
+    assert (
+        verifier.load_owner_authored_candidate_false_positive_dispositions(
+            repository_root=repository, today=today
+        )
+        == expected
+    )
 
 
 _AUD447_CI_ALLOCATION_CATEGORY = "ci_test_contract_sentinel"
@@ -9092,3 +9228,161 @@ def test_trusted_pre_retirement_policy_keeps_only_exact_live_survivors(
         verifier.load_trusted_base_false_positive_dispositions(
             accepted_sha, repository_root=repository, today=verifier.date(2027, 1, 11)
         )
+
+
+@pytest.mark.parametrize("record", _nov2_chart_reference_records())
+def test_nov2_chart_reference_exact_scope(record: dict[str, Any]) -> None:
+    assert len(verifier._NOV2_CHART_REFERENCE_EVIDENCE) == 3
+    assert (
+        len(
+            verifier._FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES[
+                "external_kubernetes_secret_reference"
+            ]
+        )
+        == 30
+    )
+    accepted = verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=verifier.date(2027, 1, 9)
+    )
+    assert len(accepted) == 1
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2027, 1, 10)
+        )
+
+
+@pytest.mark.parametrize("record", _nov2_chart_reference_records())
+@pytest.mark.parametrize(
+    "field",
+    [
+        "path",
+        "type",
+        "digest",
+        "category",
+        "evidence",
+        "owner",
+        "reviewed_on",
+        "expires_on",
+        "approval_status",
+    ],
+)
+def test_nov2_chart_reference_rejects_mutation(
+    record: dict[str, Any], field: str
+) -> None:
+    changed = copy.deepcopy(record)
+    if field in {"path", "type"}:
+        changed["identity"][field] += "-unreviewed"
+    elif field == "digest":
+        changed["identity"]["hashed_secret_bytes"][0] ^= 1
+    else:
+        changed[field] = "2027-01-10" if field == "expires_on" else "unreviewed"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(changed), today=verifier.date(2026, 11, 2)
+        )
+
+
+@pytest.mark.parametrize(
+    ("filename", "field", "value", "digest_bytes"),
+    [
+        (
+            "values-staging.yaml",
+            "existingSecret",
+            "university-internal-http-backend-server",
+            (
+                137,
+                48,
+                149,
+                253,
+                216,
+                125,
+                70,
+                132,
+                49,
+                17,
+                188,
+                104,
+                56,
+                234,
+                54,
+                223,
+                41,
+                47,
+                61,
+                125,
+            ),
+        ),
+        (
+            "values-staging.yaml",
+            "privateKeyKey",
+            "tls.key",
+            (
+                186,
+                196,
+                166,
+                53,
+                205,
+                238,
+                100,
+                52,
+                204,
+                177,
+                241,
+                191,
+                64,
+                57,
+                254,
+                78,
+                225,
+                214,
+                206,
+                73,
+            ),
+        ),
+        (
+            "values.yaml",
+            "privateKeyKey",
+            "tls.key",
+            (
+                186,
+                196,
+                166,
+                53,
+                205,
+                238,
+                100,
+                52,
+                204,
+                177,
+                241,
+                191,
+                64,
+                57,
+                254,
+                78,
+                225,
+                214,
+                206,
+                73,
+            ),
+        ),
+    ],
+)
+def test_nov2_chart_reference_source_values(
+    filename: str, field: str, value: str, digest_bytes: tuple[int, ...]
+) -> None:
+    import yaml
+
+    root = Path(__file__).resolve().parents[1]
+    path = f"charts/university-ecosystem/{filename}"
+    document = yaml.safe_load((root / path).read_text(encoding="utf-8"))
+    assert document["internalHttpMTLS"]["backendServer"][field] == value
+    assert (
+        tuple(hashlib.sha1(value.encode("utf-8"), usedforsecurity=False).digest())
+        == digest_bytes
+    )
+    assert (
+        path,
+        "Secret Keyword",
+        digest_bytes,
+    ) in verifier._NOV2_CHART_REFERENCE_EVIDENCE

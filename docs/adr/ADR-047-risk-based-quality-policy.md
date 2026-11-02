@@ -1563,7 +1563,7 @@ audit finding.
 ## Retired migration-source dispositions after ADR-051 (2026-11-02)
 
 The owner authorized removal of dispositions whose source files were removed by
-ADR-051. The live policy now contains **349** exact identities: **505 − 156**.
+ADR-051. At this retirement checkpoint the policy contained **349** exact identities: **505 − 156**.
 The separately approved workflow commit identity remains present. Every surviving
 record, including its category, evidence, owner and expiry, retains its original
 value and relative order. Baseline **304**, Gitleaks **27**, the **78** required
@@ -1602,3 +1602,24 @@ missing survivors, unrelated paths, changed expiry and reordered rows. Historica
 records remain provenance, not scanner matching authority. Source/data review
 alone is not hosted validation, schema-equivalence proof, or audit acceptance;
 final-source scanner, coverage and required-check evidence remains necessary.
+
+
+## Exact internal HTTP mTLS chart references (2026-11-02)
+
+The owner explicitly approved these three additions on 2026-11-02 at 15:15 UTC
+in response to the exact three-path/type/value question.
+
+The three owner-reviewed Secret Keyword identities in the two
+`charts/university-ecosystem/values*.yaml` files are public Kubernetes Secret
+object/key references, not credential material: the staging backend Secret
+object name and the `tls.key` key name in each file. Matching uses each exact
+path, type and digest; this description grants no filename wildcard exemption.
+The existing `external_kubernetes_secret_reference` category is retained.
+The policy contains **352** identities: the unchanged, ordered **349** survivors
+plus exactly these **3** records. Their owner is `egorribun`, reviewed on
+2026-11-02, with inclusive `expires_on: 2027-01-09`, so they cannot match on
+or after 2027-01-10. No earlier record is reclassified or extended.
+Baseline **304**, Gitleaks **27**, the **449/512** audit ledger, all **78** required
+context/app pairs, hooks and coverage floors remain unchanged. No inline
+allowlist comment is added. Source/data review is not a passing hosted scan,
+test execution, audit acceptance or release approval.

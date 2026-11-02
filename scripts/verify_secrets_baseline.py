@@ -2445,6 +2445,87 @@ _PUBLIC_SOURCE_METADATA_EVIDENCE_MARKERS = {
     ),
 }
 
+_NOV2_CHART_REFERENCE_EVIDENCE = {
+    (
+        "charts/university-ecosystem/values-staging.yaml",
+        "Secret Keyword",
+        (
+            137,
+            48,
+            149,
+            253,
+            216,
+            125,
+            70,
+            132,
+            49,
+            17,
+            188,
+            104,
+            56,
+            234,
+            54,
+            223,
+            41,
+            47,
+            61,
+            125,
+        ),
+    ): "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS existingSecret reference at charts/university-ecosystem/values-staging.yaml:56; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
+    (
+        "charts/university-ecosystem/values-staging.yaml",
+        "Secret Keyword",
+        (
+            186,
+            196,
+            166,
+            53,
+            205,
+            238,
+            100,
+            52,
+            204,
+            177,
+            241,
+            191,
+            64,
+            57,
+            254,
+            78,
+            225,
+            214,
+            206,
+            73,
+        ),
+    ): "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS privateKeyKey reference at charts/university-ecosystem/values-staging.yaml:58; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
+    (
+        "charts/university-ecosystem/values.yaml",
+        "Secret Keyword",
+        (
+            186,
+            196,
+            166,
+            53,
+            205,
+            238,
+            100,
+            52,
+            204,
+            177,
+            241,
+            191,
+            64,
+            57,
+            254,
+            78,
+            225,
+            214,
+            206,
+            73,
+        ),
+    ): "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS privateKeyKey reference at charts/university-ecosystem/values.yaml:139; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
+}
+
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
     "public_alembic_revision_identifier": {_PUBLIC_ALEMBIC_REVISION_IDENTITY},
     "synthetic_achievement_url_test_fixture": (
@@ -2453,7 +2534,10 @@ _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
     "public_compose_inspection_test_sentinel": (
         _PUBLIC_COMPOSE_INSPECTION_TEST_SENTINEL_IDENTITIES
     ),
-    "external_kubernetes_secret_reference": _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES,
+    "external_kubernetes_secret_reference": (
+        _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES
+        | frozenset(_NOV2_CHART_REFERENCE_EVIDENCE)
+    ),
     "source_contract_identifier": (
         _SOURCE_CONTRACT_IDENTIFIER_IDENTITIES
         | {_LOGGING_PUBLIC_METADATA_LABEL_IDENTITY}
@@ -5683,6 +5767,20 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        chart_evidence = _NOV2_CHART_REFERENCE_EVIDENCE.get(exact_source_identity)
+        if tuple(raw_digest_bytes) in {
+            identity[2] for identity in _NOV2_CHART_REFERENCE_EVIDENCE
+        } and (
+            chart_evidence is None
+            or category != "external_kubernetes_secret_reference"
+            or record.get("evidence") != chart_evidence
+            or record.get("owner") != "egorribun"
+            or record.get("reviewed_on") != "2026-11-02"
+            or record.get("expires_on") != "2027-01-09"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: November-2 chart reference identity or approval changed"
+            )
         nov2_workflow_binding = exact_source_identity == _NOV2_WORKFLOW_BINDING_IDENTITY
         if tuple(raw_digest_bytes) == _NOV2_WORKFLOW_BINDING_IDENTITY[2] and (
             not nov2_workflow_binding
