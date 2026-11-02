@@ -268,7 +268,8 @@ async def test_get_current_user_mfa_ttl_expired(mock_request, db_session, user_f
     payload = {"sub": str(user.id), "jti": jti}
     with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with patch(
-            "app.api.deps.auth.settings", MagicMock(mfa_step_up_ttl_seconds=300)
+            "app.api.deps.auth.settings",
+            MagicMock(mfa_step_up_ttl_seconds=300, mvp_tenant_id=None),
         ):
             returned_user = await get_current_user(mock_request, "token", db_session)
             assert returned_user.id == user.id
@@ -461,7 +462,8 @@ async def test_get_current_user_mfa_ttl_not_expired(
     payload = {"sub": str(user.id), "jti": jti}
     with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with patch(
-            "app.api.deps.auth.settings", MagicMock(mfa_step_up_ttl_seconds=300)
+            "app.api.deps.auth.settings",
+            MagicMock(mfa_step_up_ttl_seconds=300, mvp_tenant_id=None),
         ):
             returned_user = await get_current_user(mock_request, "token", db_session)
             assert returned_user.id == user.id
@@ -512,6 +514,7 @@ async def test_get_current_user_gateway_signature_success(
         MagicMock(
             internal_hmac_secret="secret-key",  # pragma: allowlist secret
             environment="testing",
+            mvp_tenant_id=None,
         ),
     ):
         # Calculate signature

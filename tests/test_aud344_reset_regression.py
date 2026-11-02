@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 import app.cli.db as candidate_cli
 from app.core.database import Base
 from app.models import ActiveSession, Group, User, UserRole
+from app.models.tenant import Tenant
 
 
 def _session(existing):
@@ -112,7 +113,12 @@ def test_actual_session_helper_redis_failure_rolls_back_database_but_keeps_prior
         async with engine.begin() as connection:
             await connection.run_sync(
                 Base.metadata.create_all,
-                tables=[Group.__table__, User.__table__, ActiveSession.__table__],
+                tables=[
+                    Tenant.__table__,
+                    Group.__table__,
+                    User.__table__,
+                    ActiveSession.__table__,
+                ],
             )
         async with session_factory() as db:
             user = User(

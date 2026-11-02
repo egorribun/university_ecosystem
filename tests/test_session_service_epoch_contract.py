@@ -42,7 +42,7 @@ async def test_user_row_is_locked_and_its_epoch_is_persisted_on_the_session() ->
     statement = db.execute.await_args.args[0]
     compiled = statement.compile()
     assert str(compiled) == (
-        "SELECT users.id, users.mfa_epoch, users.is_active \nFROM users \n"
+        "SELECT users.id, users.mfa_epoch, users.is_active, users.tenant_id \nFROM users \n"
         "WHERE users.id = :id_1 FOR UPDATE"
     )
     assert compiled.params == {"id_1": user_id}

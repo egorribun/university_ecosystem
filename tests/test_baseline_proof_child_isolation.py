@@ -90,12 +90,26 @@ class Child:
         self.released = asyncio.Event()
         self.killed = False
         self.drained = False
+        self.communication_cancelled = False
+        self.reaped = False
+        self.wait_calls = 0
 
     async def communicate(self) -> tuple[bytes, bytes]:
         self.started.set()
-        await self.released.wait()
+        try:
+            await self.released.wait()
+        except asyncio.CancelledError:
+            self.communication_cancelled = True
+            raise
         self.drained = True
         return b"output", b"diagnostic"
+
+    async def wait(self) -> int:
+        self.wait_calls += 1
+        await self.released.wait()
+        assert self.returncode is not None
+        self.reaped = True
+        return self.returncode
 
     def kill(self) -> None:
         self.killed = True
@@ -112,12 +126,17 @@ def test_cancelled_child_is_killed_and_drained_before_cancellation_escapes(
         launch = AsyncMock(return_value=child)
         monkeypatch.setattr(proof.asyncio, "create_subprocess_exec", launch)
         task = asyncio.create_task(proof._run_fixed_argv(["fixed"], tmp_path))
-        await child.started.wait()
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        await asyncio.wait_for(child.started.wait(), timeout=5)
+        task.cancel("controlled cancellation")
+        with pytest.raises(asyncio.CancelledError) as raised:
+            await asyncio.wait_for(task, timeout=5)
+        assert raised.value.args == ("controlled cancellation",)
         assert child.killed
         assert child.drained
+        assert child.reaped
+        assert child.wait_calls == 1
+        assert child.returncode == -9
+        assert not child.communication_cancelled
         launch.assert_awaited_once_with(
             "fixed",
             cwd=tmp_path,
@@ -140,23 +159,29 @@ def test_timeout_keeps_communication_alive_until_child_is_killed_and_drained(
         )
         real_wait_for = asyncio.wait_for
         calls = 0
+        original_timeout = TimeoutError("controlled deadline")
 
         async def deadline(awaitable, *, timeout):
             nonlocal calls
             calls += 1
             if calls == 1:
-                await child.started.wait()
+                await real_wait_for(child.started.wait(), timeout=5)
                 awaitable.cancel()
-                raise TimeoutError
+                raise original_timeout
             assert timeout == proof._CHILD_REAP_SECONDS
             return await real_wait_for(awaitable, timeout=timeout)
 
         monkeypatch.setattr(proof.asyncio, "wait_for", deadline)
-        with pytest.raises(TimeoutError):
-            await proof._run_fixed_argv(["fixed"], tmp_path)
+        with pytest.raises(TimeoutError) as raised:
+            await real_wait_for(proof._run_fixed_argv(["fixed"], tmp_path), timeout=5)
+        assert raised.value is original_timeout
         assert calls == 2
         assert child.killed
         assert child.drained
+        assert child.reaped
+        assert child.wait_calls == 1
+        assert child.returncode == -9
+        assert not child.communication_cancelled
 
     asyncio.run(scenario())
 

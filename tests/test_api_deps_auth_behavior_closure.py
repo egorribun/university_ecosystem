@@ -94,7 +94,9 @@ async def _run_db_success(
             module,
             "settings",
             settings_value
-            or SimpleNamespace(internal_hmac_secret="", environment="testing"),
+            or SimpleNamespace(
+                mvp_tenant_id=None, internal_hmac_secret="", environment="testing"
+            ),
         ),
     ):
         if use_factory:
@@ -164,6 +166,7 @@ async def test_gateway_hmac_accepts_three_and_two_part_signatures(use_tenant_sig
         jti,
         redis_service,
         settings_value=SimpleNamespace(
+            mvp_tenant_id=None,
             internal_hmac_secret="secret",  # pragma: allowlist secret
             environment="testing",
         ),
@@ -193,6 +196,7 @@ async def test_gateway_hmac_rejects_two_part_signature_when_tenant_is_present():
             jti,
             AsyncMock(),
             settings_value=SimpleNamespace(
+                mvp_tenant_id=None,
                 internal_hmac_secret="secret",  # pragma: allowlist secret
                 environment="testing",
             ),
@@ -227,7 +231,9 @@ async def test_gateway_missing_secret_development_and_invalid_signature_paths():
         with patch.object(
             module,
             "settings",
-            SimpleNamespace(internal_hmac_secret="", environment="production"),
+            SimpleNamespace(
+                mvp_tenant_id=None, internal_hmac_secret="", environment="production"
+            ),
         ):
             await module.get_current_user(
                 _request({"X-User-ID": str(user_id), "X-Session-ID": "jti"}),
@@ -244,6 +250,7 @@ async def test_gateway_invalid_signature_is_rejected():
         module,
         "settings",
         SimpleNamespace(
+            mvp_tenant_id=None,
             internal_hmac_secret="secret",  # pragma: allowlist secret
             environment="testing",
         ),
@@ -332,7 +339,9 @@ async def test_revoked_jti_and_redis_error_paths():
         patch.object(
             module,
             "settings",
-            SimpleNamespace(internal_hmac_secret="", environment="testing"),
+            SimpleNamespace(
+                mvp_tenant_id=None, internal_hmac_secret="", environment="testing"
+            ),
         ),
     ):
         with pytest.raises(HTTPException) as unavailable:
@@ -377,7 +386,9 @@ async def test_db_cache_miss_without_active_session_is_rejected():
         patch.object(
             module,
             "settings",
-            SimpleNamespace(internal_hmac_secret="", environment="testing"),
+            SimpleNamespace(
+                mvp_tenant_id=None, internal_hmac_secret="", environment="testing"
+            ),
         ),
     ):
         with pytest.raises(HTTPException) as exc:

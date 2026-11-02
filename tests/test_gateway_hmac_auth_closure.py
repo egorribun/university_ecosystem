@@ -105,7 +105,9 @@ def _auth_harness(
     monkeypatch.setattr(
         auth_module,
         "settings",
-        SimpleNamespace(internal_hmac_secret=secret, environment=environment),
+        SimpleNamespace(
+            mvp_tenant_id=None, internal_hmac_secret=secret, environment=environment
+        ),
     )
 
     return SimpleNamespace(
