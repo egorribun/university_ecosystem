@@ -5,10 +5,10 @@ The pre-squash chain (``alembic/`` and ``app/`` at commit 3ff5375fb, extracted w
 PostgreSQL databases. Only the statements and catalog rows listed below may differ,
 compared exactly: the AUD-269 restored indexes, the AUD-272 claim ledger, the partition
 children of the restored index, and the owner-decided removal of ``ix_users_email_lower``.
-Statements are compared after collapsing whitespace, since ``pg_dump`` wraps long
-statements. Other catalog facts that ``pg_dump`` omits must be identical, and
-``alembic_version`` is the only other allowed difference. Both databases are then
-checked against the models, and the baseline must refuse its downgrade without changing
+Statements are compared after collapsing unquoted layout, since ``pg_dump`` wraps
+long statements; quoted values and function bodies remain byte-sensitive. Other catalog facts that ``pg_dump`` omits must be identical, and
+``alembic_version`` is the only other allowed difference. The baseline is then
+checked against the current models and must refuse its downgrade without changing
 the schema.
 """
 
@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import io
 import os
+import re
 import secrets
 import shutil
 import sys
@@ -30,6 +31,13 @@ from typing import Final
 import pytest
 import sqlalchemy as sa
 from testcontainers.community.postgres import PostgresContainer
+
+from tests.fixtures import owned_baseline_postgres as owned
+
+initialize_database_for_tests = owned.initialize_database_for_tests
+prepare_database = owned.prepare_database
+clean_database = owned.clean_database
+default_database_guard = owned.default_database_guard
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PRE_SQUASH_COMMIT = "3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9"
@@ -45,16 +53,16 @@ pytestmark = [
     pytest.mark.skipif(not _RUN, reason="Set RUN_INTEGRATION_TESTS=1 to run"),
 ]
 
-# Bounded wall-clock budgets for every child process. A timed-out child is killed and
-# reaped before its TimeoutError escapes, so no harness step can wait forever.
+# Bound direct-child communication and cleanup separately. Cancellation also kills
+# and drains the direct child; failed cleanup remains an error, not proof of reaping.
+# These budgets do not claim ownership or termination of independently spawned children.
 _CHILD_TIMEOUT_SECONDS: Final = 240.0
 _CHILD_REAP_SECONDS: Final = 30.0
 
-# Environment names that can select another database or an env file in a child process.
-# Windows folds environment names to upper case and POSIX keeps them distinct, so every
-# spelling is matched case-insensitively and removed before the owned URL is installed.
-_SHADOWED_ENVIRONMENT_NAMES: Final = frozenset(
-    {"database_url", "database_url_file", "env_file_path"}
+# Inherit operating-system launch essentials only. Runtime settings, file-secret
+# selectors, Python import overrides and CI exemptions must never select another target.
+_CHILD_OPERATING_SYSTEM_NAMES: Final = frozenset(
+    {"path", "systemroot", "windir", "temp", "tmp", "tmpdir"}
 )
 
 _RESOLVED_URL_SCRIPT: Final = (
@@ -296,11 +304,20 @@ class _Database:
 
 
 @dataclass(frozen=True)
+class _Captured:
+    dump: str
+    catalog: tuple[tuple[str, tuple[str, ...]], ...]
+    version: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class _Built:
     pre_squash: _Database
     baseline: _Database
     pre_squash_tree: Path
     baseline_tree: Path
+    pre_squash_capture: _Captured
+    baseline_capture: _Captured
 
 
 @dataclass(frozen=True)
@@ -321,13 +338,25 @@ async def _run_fixed_argv(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
+    communication = asyncio.create_task(process.communicate())
     try:
         stdout, stderr = await asyncio.wait_for(
-            process.communicate(), timeout=_CHILD_TIMEOUT_SECONDS
+            asyncio.shield(communication), timeout=_CHILD_TIMEOUT_SECONDS
         )
-    except TimeoutError:
-        process.kill()
-        await asyncio.wait_for(process.wait(), timeout=_CHILD_REAP_SECONDS)
+    except BaseException:  # Cleanup must also run when the caller is cancelled.
+        if process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                # The direct child may have exited between the returncode check and kill.
+                pass
+        try:
+            await asyncio.wait_for(
+                asyncio.shield(communication), timeout=_CHILD_REAP_SECONDS
+            )
+        finally:
+            if not communication.done():
+                communication.cancel()
         raise
     return process.returncode or 0, stdout, stderr
 
@@ -337,15 +366,20 @@ def _child_environment(url: str) -> dict[str, str]:
     environment = {
         name: value
         for name, value in os.environ.items()
-        if name.casefold() not in _SHADOWED_ENVIRONMENT_NAMES
+        if name.casefold() in _CHILD_OPERATING_SYSTEM_NAMES
     }
-    environment.pop("PYTHONPATH", None)
     environment.update(
         DATABASE_URL=url,
         ENV_FILE_PATH="",
         SECRET_KEY=secrets.token_urlsafe(48),
         ENVIRONMENT="testing",
+        PYTHONNOUSERSITE="1",
+        PYTHONUTF8="1",
     )
+    if sys.platform == "linux":
+        # setup-python installs its shared interpreter library beside the base
+        # runtime. Derive that single trusted directory; never copy ambient LD_*.
+        environment["LD_LIBRARY_PATH"] = str(Path(sys.base_prefix).resolve() / "lib")
     return environment
 
 
@@ -417,44 +451,152 @@ def _assert_owned_url_is_authoritative(tree: Path, url: str) -> None:
     assert resolved == [url], diagnostic
 
 
+def _sql_tokens(text: str) -> Iterator[str]:
+    """Yield layout and SQL tokens without changing quoted values or function bodies.
+
+    This is a fail-closed lexer for pg_dump SQL, not a SQL semantic normalizer.
+    Only top-level dump comments and restriction directives are discarded.
+    """
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char.isspace():
+            end = index + 1
+            while end < len(text) and text[end].isspace():
+                end += 1
+            yield text[index:end]
+        elif text.startswith("--", index):
+            end = text.find("\n", index)
+            end = len(text) if end == -1 else end + 1
+            yield "\n" if "\n" in text[index:end] else " "
+        elif text.startswith("/*", index):
+            end, depth = index + 2, 1
+            while end < len(text) and depth:
+                if text.startswith("/*", end):
+                    depth += 1
+                    end += 2
+                elif text.startswith("*/", end):
+                    depth -= 1
+                    end += 2
+                else:
+                    end += 1
+            if depth:
+                raise ValueError("Unterminated SQL block comment")
+            yield "\n" if "\n" in text[index:end] else " "
+        elif char in "\"'":
+            # pg_dump uses standard-conforming strings; only E-prefixed strings
+            # interpret backslash escapes. Doubled quote characters remain literal.
+            escaped = (
+                char == "'"
+                and index > 0
+                and text[index - 1] in "eE"
+                and (
+                    index < 2
+                    or not (text[index - 2].isalnum() or text[index - 2] in "_$")
+                )
+            )
+            end = index + 1
+            while end < len(text):
+                if escaped and text[end] == "\\":
+                    end += 2
+                elif text[end] == char:
+                    if end + 1 < len(text) and text[end + 1] == char:
+                        end += 2
+                    else:
+                        end += 1
+                        break
+                else:
+                    end += 1
+            else:
+                raise ValueError("Unterminated SQL quoted token")
+            yield text[index:end]
+        elif char == "$" and (
+            index == 0 or not (text[index - 1].isalnum() or text[index - 1] in "_$")
+        ):
+            match = re.match(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$", text[index:])
+            if match is None:
+                end = index + 1
+                yield char
+            else:
+                delimiter = match.group()
+                end = text.find(delimiter, index + len(delimiter))
+                if end == -1:
+                    raise ValueError("Unterminated SQL dollar-quoted token")
+                end += len(delimiter)
+                yield text[index:end]
+        elif char == "\\":
+            line_start = text.rfind("\n", 0, index) + 1
+            if text[line_start:index].strip():
+                raise ValueError("Unexpected SQL backslash outside a quoted token")
+            end = text.find("\n", index)
+            end = len(text) if end == -1 else end + 1
+            directive = text[index:end].strip().split()
+            if len(directive) != 2 or directive[0] not in {
+                r"\restrict",
+                r"\unrestrict",
+            }:
+                raise ValueError("Unexpected pg_dump directive")
+            yield " "
+        else:
+            end = index + 1
+            yield char
+        index = end
+
+
 def _canonical(statement: str) -> str:
-    """Collapse layout only: pg_dump wraps statements without changing their SQL."""
-    return " ".join(statement.split())
+    """Collapse layout only outside literals, quoted identifiers and function bodies."""
+    tokens = list(_sql_tokens(statement))
+    result: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        end = index + 1
+        if token.isspace():
+            contains_newline = "\n" in token
+            while end < len(tokens) and tokens[end].isspace():
+                contains_newline = contains_newline or "\n" in tokens[end]
+                end += 1
+            # PostgreSQL concatenates adjacent string constants only if their
+            # separating whitespace contains a newline. Preserve that distinction.
+            previous = tokens[index - 1] if index else ""
+            following = tokens[end] if end < len(tokens) else ""
+            token = (
+                "\n"
+                if previous.startswith("'")
+                and following.startswith("'")
+                and contains_newline
+                else " "
+            )
+        result.append(token)
+        index = end
+    return "".join(result).strip()
 
 
 def _split_sql(text: str) -> list[str]:
-    """Split pg_dump output on top-level semicolons, honouring quotes and $$ bodies."""
+    """Split only top-level semicolons; quoted tokens are indivisible."""
     statements: list[str] = []
     buffer: list[str] = []
-    in_quote = False
-    in_dollar = False
-    index = 0
-    while index < len(text):
-        if not in_quote and text.startswith("$$", index):
-            in_dollar = not in_dollar
-            buffer.append("$$")
-            index += 2
-            continue
-        char = text[index]
-        if not in_dollar and char == "'":
-            in_quote = not in_quote
-        if char == ";" and not in_quote and not in_dollar:
-            statements.append("".join(buffer).strip())
+    for token in _sql_tokens(text):
+        if token == ";":
+            statement = "".join(buffer).strip()
+            if statement:
+                statements.append(statement)
             buffer = []
         else:
-            buffer.append(char)
-        index += 1
-    statements.append("".join(buffer).strip())
-    return [statement for statement in statements if statement]
+            buffer.append(token)
+    statement = "".join(buffer).strip()
+    if statement:
+        statements.append(statement)
+    return statements
 
 
 def _schema_statements(dump: str) -> Counter[str]:
-    kept = [
-        line
-        for line in dump.splitlines()
-        if not line.startswith(("--", "\\", "SET ", "SELECT pg_catalog.set_config"))
-    ]
-    return Counter(_canonical(statement) for statement in _split_sql("\n".join(kept)))
+    statements = (_canonical(statement) for statement in _split_sql(dump))
+    return Counter(
+        statement
+        for statement in statements
+        if not statement.startswith(("SET ", "SELECT pg_catalog.set_config"))
+    )
 
 
 def _dump(database: _Database) -> str:
@@ -502,6 +644,25 @@ def _version(database: _Database) -> list[str]:
         engine.dispose()
 
 
+def _capture(database: _Database) -> _Captured:
+    """Freeze raw evidence before any SQL splitting or approved-delta processing."""
+    dump = _dump(database)
+    catalog = _probe(database)
+    version = _version(database)
+    return _Captured(
+        dump,
+        tuple((name, tuple(rows)) for name, rows in catalog.items()),
+        tuple(version),
+    )
+
+
+def _capture_pair(
+    pre_squash: _Database, baseline: _Database
+) -> tuple[_Captured, _Captured]:
+    """Capture both independently built databases before comparing either one."""
+    return _capture(pre_squash), _capture(baseline)
+
+
 @pytest.fixture(scope="module")
 def built(tmp_path_factory: pytest.TempPathFactory) -> Iterator[_Built]:
     """Apply the pre-squash chain and the baseline to two fresh PostgreSQL servers."""
@@ -529,19 +690,29 @@ def built(tmp_path_factory: pytest.TempPathFactory) -> Iterator[_Built]:
         upgraded_base = _alembic(baseline_tree, base.url, "upgrade", "head")
         assert upgraded_base.returncode == 0, upgraded_base.stderr[-4000:]
 
-        yield _Built(pre, base, pre_squash_tree, baseline_tree)
+        pre_capture, baseline_capture = _capture_pair(pre, base)
+        yield _Built(
+            pre, base, pre_squash_tree, baseline_tree, pre_capture, baseline_capture
+        )
+
+
+def test_proof_owned_fixture_never_uses_default_database(
+    default_database_guard: list[str],
+) -> None:
+    """Exercise this module's real autouse graph without starting Docker."""
+    assert default_database_guard == []
 
 
 def test_pre_squash_chain_and_baseline_stamp_their_own_heads(built: _Built) -> None:
-    assert _version(built.pre_squash) == [PRE_SQUASH_HEAD]
-    assert _version(built.baseline) == [BASELINE_REVISION]
+    assert built.pre_squash_capture.version == (PRE_SQUASH_HEAD,)
+    assert built.baseline_capture.version == (BASELINE_REVISION,)
 
 
 def test_statement_level_schema_differs_only_by_the_audited_additions(
     built: _Built,
 ) -> None:
-    before = _schema_statements(_dump(built.pre_squash))
-    after = _schema_statements(_dump(built.baseline))
+    before = _schema_statements(built.pre_squash_capture.dump)
+    after = _schema_statements(built.baseline_capture.dump)
 
     assert before - after == Counter(
         _canonical(statement) for statement in APPROVED_REMOVED_STATEMENTS
@@ -552,8 +723,8 @@ def test_statement_level_schema_differs_only_by_the_audited_additions(
 
 
 def test_catalog_facts_outside_the_additions_are_identical(built: _Built) -> None:
-    before = _probe(built.pre_squash)
-    after = _probe(built.baseline)
+    before = dict(built.pre_squash_capture.catalog)
+    after = dict(built.baseline_capture.catalog)
 
     assert before.keys() == after.keys() == CATALOG_PROBES.keys()
     for name in CATALOG_PROBES:
@@ -573,4 +744,9 @@ def test_baseline_refuses_downgrade_and_keeps_its_revision(built: _Built) -> Non
 
     assert result.returncode != 0
     assert "cannot be downgraded" in result.stderr
-    assert _version(built.baseline) == [BASELINE_REVISION]
+    after = _capture(built.baseline)
+    assert after.version == built.baseline_capture.version == (BASELINE_REVISION,)
+    assert after.catalog == built.baseline_capture.catalog
+    assert _schema_statements(after.dump) == _schema_statements(
+        built.baseline_capture.dump
+    )
