@@ -148,6 +148,7 @@ def _wait_for_exec(server: OwnedPostgres, execution_id: str) -> int:
             return result["ExitCode"]
         remaining = deadline - time.monotonic()
         if remaining > 0:
+            # Bounded by the remaining 90-second execution deadline.
             time.sleep(min(0.1, remaining))
     # The caller's owned-server context removes the entire exact container with
     # -v, including any unfinished psql. A final bounded HTTP request may extend

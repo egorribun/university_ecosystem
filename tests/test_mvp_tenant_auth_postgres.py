@@ -12,18 +12,6 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import BackgroundTasks, HTTPException, Request
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from tests.fixtures.owned_baseline_postgres import clean_database as clean_database
-from tests.fixtures.owned_baseline_postgres import (
-    committed_baseline,
-    owned_postgres_server,
-)
-from tests.fixtures.owned_baseline_postgres import (
-    default_database_guard as default_database_guard,
-)
-from tests.fixtures.owned_baseline_postgres import (
-    initialize_database_for_tests as initialize_database_for_tests,
-)
-from tests.fixtures.owned_baseline_postgres import prepare_database as prepare_database
 
 from app.core.config import settings
 from app.core.db.listeners import register_tenant_listeners
@@ -36,6 +24,18 @@ from app.services.auth.lockout import LockoutService
 from app.services.session_service import SessionService
 from app.services.user.compliance_service import UserComplianceService
 from app.services.user.profile_service import UserProfileService
+from tests.fixtures.owned_baseline_postgres import clean_database as clean_database
+from tests.fixtures.owned_baseline_postgres import (
+    committed_baseline,
+    owned_postgres_server,
+)
+from tests.fixtures.owned_baseline_postgres import (
+    default_database_guard as default_database_guard,
+)
+from tests.fixtures.owned_baseline_postgres import (
+    initialize_database_for_tests as initialize_database_for_tests,
+)
+from tests.fixtures.owned_baseline_postgres import prepare_database as prepare_database
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(300, method="signal")]
 
