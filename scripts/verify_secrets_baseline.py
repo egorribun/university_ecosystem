@@ -5132,6 +5132,36 @@ _AUD447_PRIOR_QUALITY_IDENTITIES = frozenset(
 )
 
 
+# One separately owner-approved public workflow source commit on November 2.
+_NOV2_WORKFLOW_BINDING_IDENTITY = (
+    "tests/test_verify_secrets_baseline.py",
+    "Hex High Entropy String",
+    (
+        244,
+        50,
+        31,
+        105,
+        80,
+        18,
+        33,
+        30,
+        183,
+        134,
+        78,
+        182,
+        238,
+        65,
+        118,
+        170,
+        130,
+        66,
+        138,
+        133,
+    ),
+)
+_NOV2_WORKFLOW_BINDING_EVIDENCE = "Public repository commit for the reviewed setup-python workflow pin update; exact source reference tests/test_verify_secrets_baseline.py field _REVIEWED_SOURCE_COMMIT_OVERRIDES for .github/workflows/reusable-backend-tests.yml. Identity derived using pinned detect-secrets 1.5.0 SHA-1; not credential material."
+
+
 # Two owner-approved public integrity identities, reviewed on November 2.
 # The existing date schema is inclusive; January 9 expires before January 10.
 _NOV2_PUBLIC_INTEGRITY_EVIDENCE = {
@@ -5653,6 +5683,18 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        nov2_workflow_binding = exact_source_identity == _NOV2_WORKFLOW_BINDING_IDENTITY
+        if tuple(raw_digest_bytes) == _NOV2_WORKFLOW_BINDING_IDENTITY[2] and (
+            not nov2_workflow_binding
+            or category != "public_integrity_digest"
+            or record.get("evidence") != _NOV2_WORKFLOW_BINDING_EVIDENCE
+            or record.get("owner") != "egorribun"
+            or record.get("reviewed_on") != "2026-11-02"
+            or record.get("expires_on") != "2027-01-09"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: November-2 workflow binding identity or approval changed"
+            )
         nov2_evidence = _NOV2_PUBLIC_INTEGRITY_EVIDENCE.get(exact_source_identity)
         if (
             path in _NOV2_PUBLIC_INTEGRITY_PATHS
@@ -5840,6 +5882,7 @@ def validate_false_positive_dispositions(
             or (path, finding_type) in _OCT24_PUBLIC_DIGEST_RESERVED_PATH_TYPES
         ) and (
             exact_source_identity not in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+            and not nov2_workflow_binding
         ):
             if oct24_category is None or category != oct24_category:
                 raise BaselineArtifactError(
@@ -5852,6 +5895,7 @@ def validate_false_positive_dispositions(
                 and finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
                 and exact_source_identity
                 not in _AUD495_PUBLIC_HISTORICAL_FINGERPRINT_IDENTITIES
+                and not nov2_workflow_binding
             )
             or tuple(raw_digest_bytes) in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_DIGESTS
         ) and (
@@ -5902,10 +5946,10 @@ def validate_false_positive_dispositions(
                 category == "public_integrity_digest"
                 and path == _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_PATH
             ):
-                category_matches = (
-                    category_matches
-                    and exact_source_identity
+                category_matches = category_matches and (
+                    exact_source_identity
                     in _PUBLIC_IMMUTABLE_315_POLICY_PREFIX_IDENTITIES
+                    or nov2_workflow_binding
                 )
             if (
                 category == "public_integrity_digest"

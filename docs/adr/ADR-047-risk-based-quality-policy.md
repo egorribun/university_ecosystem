@@ -1533,3 +1533,28 @@ by this decision. Changed and unmatched findings remain blocking.
 The audit ledger stays **449 accepted / 63 open out of 512**. This disposition
 is not audit acceptance, scanner success, full CI or release evidence; the
 published source still requires its own scans and required hosted checks.
+
+
+### One exact reviewed workflow-commit disposition (2026-11-02)
+
+The owner approved one additional public-integrity disposition for the reviewed
+workflow-source commit in `tests/test_verify_secrets_baseline.py`, field
+`_REVIEWED_SOURCE_COMMIT_OVERRIDES`, for
+`.github/workflows/reusable-backend-tests.yml`. The referenced
+[public Dependabot commit](https://github.com/egorribun/university_ecosystem/commit/e77defff9ddf944793bc7107fa6b5df9e2f7903a)
+records the previously reviewed setup-python update; it is not credential material.
+
+Only that exact path, `Hex High Entropy String` detector, digest, evidence and
+approval metadata are accepted. The owner is `egorribun`, reviewed on
+`2026-11-02`; the existing inclusive date schema stores `2027-01-09`, so the
+approval is inactive from `2027-01-10`. There is no expiry extension, wildcard,
+inline pragma, category change or automatic approval.
+
+The original 504 records remain unchanged and in order; this appends one record
+for a current total of **505** under the unchanged cap **512**. Baseline **304**,
+Gitleaks **27**, all 78 required CI context/app pairs and all quality thresholds
+are unchanged. The three older dispositions on the same test path retain their
+own identities, categories, evidence and expiry dates. Exact prefix, source-value,
+scope-mutation and expiry-boundary controls cover this addition. These source
+contracts do not claim a hosted scan or required-check pass and add no accepted
+audit finding.

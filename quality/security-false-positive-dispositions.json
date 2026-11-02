@@ -15248,6 +15248,22 @@
       "reviewed_on": "2026-11-02",
       "expires_on": "2027-01-09",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "tests/test_verify_secrets_baseline.py",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          244, 50, 31, 105, 80, 18, 33, 30, 183, 134,
+          78, 182, 238, 65, 118, 170, 130, 66, 138, 133
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public repository commit for the reviewed setup-python workflow pin update; exact source reference tests/test_verify_secrets_baseline.py field _REVIEWED_SOURCE_COMMIT_OVERRIDES for .github/workflows/reusable-backend-tests.yml. Identity derived using pinned detect-secrets 1.5.0 SHA-1; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-02",
+      "expires_on": "2027-01-09",
+      "approval_status": "approved"
     }
   ]
 }
