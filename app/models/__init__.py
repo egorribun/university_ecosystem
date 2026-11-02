@@ -1,4 +1,4 @@
-from app.core.database import Base as Base
+from app.core.db.base import Base as Base
 from app.models.auth import (
     ActiveSession as ActiveSession,
 )

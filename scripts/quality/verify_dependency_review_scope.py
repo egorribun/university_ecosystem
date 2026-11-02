@@ -400,9 +400,9 @@ def format_dependency_identity_diagnostics(rows: Any) -> str:
             KLAUSPOST_LICENSE,
         }
     )
-    selected: dict[
-        str, list[tuple[tuple[bool, bool, bool, str], dict[str, Any]]]
-    ] = {name: [] for name in targets}
+    selected: dict[str, list[tuple[tuple[bool, bool, bool, str], dict[str, Any]]]] = {
+        name: [] for name in targets
+    }
     truncated = False
     candidates = rows if isinstance(rows, list) else []
     for row in candidates:

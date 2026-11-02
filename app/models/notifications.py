@@ -25,7 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql.compiler import SQLCompiler
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.core.database import Base
+from app.core.db.base import Base
 from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 
 

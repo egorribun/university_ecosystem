@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 import functools
 import os
 import sys
 from logging.config import fileConfig
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
 from sqlalchemy import engine_from_config, pool
@@ -19,10 +21,24 @@ from app.core.db.schema_drift import (
     build_partition_aware_include_object,
     filter_check_backed_nullable_diffs,
 )
-from app.core.config import Settings
-from app.core.config.base import _DEVELOPMENT_ENVIRONMENTS
+from app.core.migration_settings import (
+    MigrationSettings,
+    load_migration_settings,
+    resolve_migration_url,
+    should_skip_development_migration,
+)
 import app.models as models
 from app.core.db.retained_table_metadata import build_migration_metadata
+
+
+if TYPE_CHECKING:
+    from app.core.config import Settings
+
+
+@functools.cache
+def _migration_settings() -> MigrationSettings:
+    """Resolve the DB-only view once for this Alembic environment run."""
+    return load_migration_settings()
 
 
 @functools.cache
@@ -32,6 +48,8 @@ def _settings() -> Settings:
     Offline SQL generation with DATABASE_URL configured needs no runtime secrets,
     so validation must not happen while Alembic loads this module.
     """
+    from app.core.config import Settings
+
     return Settings(_allow_missing=True)
 
 
@@ -147,23 +165,21 @@ def _offline_get_bind(*args: Any, **kwargs: Any) -> Any:
 
 
 def get_url() -> str:
-    env_url = os.getenv("DATABASE_URL", "")
-    if env_url:
-        return env_url
-    if _settings().database_url:
-        return _settings().database_url
-    url = config.get_main_option("sqlalchemy.url")
-    if url:
-        return url
-    raise RuntimeError("Database URL is not configured for Alembic")
+    # The DB-only view enforces FILE precedence before any ini/default fallback.
+    return resolve_migration_url(
+        _migration_settings(), ini_url=config.get_main_option("sqlalchemy.url")
+    )
 
 
 def _development_fallback_skip_allowed() -> bool:
     """Allow a skip only for the documented local SQLite default in development."""
-    environment_name = (os.getenv("ENVIRONMENT") or "").strip().lower()
-    return (
-        "database_url" in _settings().development_fallback_fields
-        and environment_name in _DEVELOPMENT_ENVIRONMENTS
+    return should_skip_development_migration(
+        development_fallback_fields=_settings().development_fallback_fields,
+        environment=os.getenv("ENVIRONMENT") or "",
+        explicit_target=(
+            bool(config.get_main_option("sqlalchemy.url"))
+            or config.attributes.get("connection") is not None
+        ),
     )
 
 

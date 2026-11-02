@@ -116,15 +116,88 @@ def build_migration_metadata(
         raise ValueError(
             f"Retained tables have competing runtime ownership: {sorted(conflicts)}"
         )
+    audit_table = runtime_metadata.tables.get("data_access_logs")
+    if audit_table is not None:
+        # Reject malformed runtime declarations before SQLAlchemy can reconcile
+        # inconsistent column flags while copying their primary-key constraint.
+        _validate_data_access_log_primary_key(audit_table)
     metadata = sa.MetaData(naming_convention=runtime_metadata.naming_convention)
     for table in runtime_metadata.tables.values():
         table.to_metadata(metadata)
+    if audit_table is not None:
+        # SQLAlchemy 2.0 does not copy conditional DDL in Table.to_metadata().
+        _copy_primary_key_ddl_condition(
+            audit_table.primary_key, metadata.tables["data_access_logs"].primary_key
+        )
+    _project_data_access_log_primary_key(metadata, dialect_name=dialect_name)
     _register_retained_tables(metadata)
     _register_migration_owned_tenant_columns(metadata)
     _register_migration_owned_hot_indexes(metadata, dialect_name=dialect_name)
     for name in RETAINED_TABLES:
         metadata.tables[name].info["retained_by_revision"] = _BASELINE_REVISION
     return metadata
+
+
+def _validate_data_access_log_primary_key(table: sa.Table) -> None:
+    required = {"id", "created_at"}
+    if not required.issubset(table.c.keys()):
+        raise ValueError("Audit-log metadata is missing a primary-key column")
+    names = tuple(column.name for column in table.primary_key.columns)
+    recognized = (frozenset({"id"}), frozenset(required))
+    if frozenset(names) not in recognized:
+        raise ValueError("Audit-log metadata has an unrecognized primary key")
+    flagged = frozenset(column.name for column in table.c if column.primary_key)
+    if flagged != frozenset(names):
+        raise ValueError("Audit-log primary-key flags disagree with its constraint")
+
+
+def _copy_primary_key_ddl_condition(
+    source: sa.PrimaryKeyConstraint, target: sa.PrimaryKeyConstraint
+) -> None:
+    conditional_ddl = getattr(source, "_ddl_if", None)
+    if conditional_ddl is not None:
+        target.ddl_if(
+            dialect=conditional_ddl.dialect,
+            callable_=conditional_ddl.callable_,
+            state=conditional_ddl.state,
+        )
+
+
+def _project_data_access_log_primary_key(
+    metadata: sa.MetaData, *, dialect_name: str
+) -> None:
+    """Project only the two existing audit-log PK shapes onto a metadata clone."""
+    table = metadata.tables.get("data_access_logs")
+    if table is None:
+        return
+    _validate_data_access_log_primary_key(table)
+    previous = table.primary_key
+    names = tuple(column.name for column in previous.columns)
+    target = ("id", "created_at") if dialect_name == "postgresql" else ("id",)
+    if names == target:
+        return
+
+    # to_metadata() already copied this table. Never change the runtime mapper.
+    nullable = {column.name: column.nullable for column in table.c}
+    for column in table.c:
+        column.primary_key = column.name in target
+    replacement = sa.PrimaryKeyConstraint(
+        *(table.c[name] for name in target),
+        name=previous.name,
+        deferrable=previous.deferrable,
+        initially=previous.initially,
+        info=dict(previous.info),
+        **dict(previous.dialect_kwargs),
+    )
+    replacement.comment = previous.comment
+    # Preserve the same propagated DDL listeners as Table.to_metadata().
+    previous._schema_item_copy(replacement)
+    _copy_primary_key_ddl_condition(previous, replacement)
+    table.append_constraint(replacement)
+    # PK attachment can infer NOT NULL. Preserve the original declaration so
+    # nullability drift remains visible rather than being silently repaired.
+    for column in table.c:
+        column.nullable = nullable[column.name]
 
 
 def _register_migration_owned_tenant_columns(metadata: sa.MetaData) -> None:

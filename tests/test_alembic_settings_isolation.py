@@ -36,6 +36,7 @@ _CHILD_SOURCE = r'''
 
 import contextlib
 import importlib
+import importlib.abc
 import io
 import json
 import logging
@@ -207,6 +208,27 @@ def _safe_validation_error(error):
     }
 
 
+def _assert_runtime_validation_after_metadata(mode):
+    if mode == "migration-db-only":
+        try:
+            importlib.import_module("app.core.config")
+        except RuntimeError as error:
+            assert getattr(error, "missing_required", ()) == ("SECRET_KEY",)
+        else:
+            raise AssertionError("Ordinary runtime accepted a missing SECRET_KEY")
+    elif mode == "migration-without-idempotency":
+        try:
+            importlib.import_module("app.core.config")
+        except ValidationError as error:
+            assert _safe_validation_error(error)["idempotency_only"] is True
+        else:
+            raise AssertionError("Ordinary runtime accepted missing idempotency HMAC")
+    else:
+        configuration = importlib.import_module("app.core.config")
+        assert configuration.settings.idempotency_hmac_secret
+        assert not configuration.settings.has_development_fallbacks
+
+
 def test_clean_process_probe():
     assert "app.core.config" not in sys.modules
     assert "app.models" not in sys.modules
@@ -229,6 +251,20 @@ def test_clean_process_probe():
         "runtime-configured",
         "runtime-without-idempotency",
     }
+    forbidden_imports = []
+
+    class RuntimeImportGuard(importlib.abc.MetaPathFinder):
+        def find_spec(self, fullname, path=None, target=None):
+            if (
+                fullname == "app.core.config"
+                or fullname.startswith("app.core.config.")
+                or fullname == "app.core.database"
+                or fullname == "app.utils.encryption"
+            ):
+                forbidden_imports.append(fullname)
+                raise ImportError("Runtime import is forbidden during metadata loading")
+            return None
+
     forbidden_attempts = []
 
     def forbid_external_effects(event, _arguments):
@@ -258,7 +294,20 @@ def test_clean_process_probe():
                     include_idempotency=mode.endswith("-configured")
                 )
             if mode.startswith("migration-"):
-                result = _bootstrap_metadata()
+                guard = RuntimeImportGuard()
+                sys.meta_path.insert(0, guard)
+                try:
+                    result = _bootstrap_metadata()
+                finally:
+                    sys.meta_path.remove(guard)
+                assert forbidden_imports == []
+                assert not any(
+                    name == "app.core.config"
+                    or name.startswith("app.core.config.")
+                    or name in {"app.core.database", "app.utils.encryption"}
+                    for name in sys.modules
+                )
+                _assert_runtime_validation_after_metadata(mode)
             else:
                 configuration = importlib.import_module("app.core.config")
                 configured = configuration.Settings()
@@ -280,6 +329,7 @@ def test_clean_process_probe():
             result = {"outcome": "unexpected-error", "kind": type(error).__name__}
 
     assert forbidden_attempts == []
+    assert forbidden_imports == []
     Path(os.environ["MIGRATION_ISOLATION_RESULT"]).write_text(
         json.dumps(result, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -408,3 +458,29 @@ def test_ordinary_runtime_settings_still_reject_missing_idempotency_hmac(
         "errors": [{"loc": [], "type": "value_error"}],
         "idempotency_only": True,
     }
+
+
+def test_probe_discards_parent_database_and_env_file_redirections(
+    isolated_alembic_probe, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    poisoned_env = tmp_path / "parent.env"
+    poisoned_env.write_text("DATABASE_URL=sqlite:///parent-only.db\n", encoding="utf-8")
+    values = {
+        "DATABASE_URL": "sqlite:///parent-only.db",
+        "database_url": "sqlite:///casefold-parent.db",
+        "DATABASE_URL_FILE": str(tmp_path / "must-not-open"),
+        "database_url_file": str(tmp_path / "must-not-open-lower"),
+        "DATABASE_READ_REPLICA_URL": "sqlite:///replica-parent.db",
+        "ENV_FILE_PATH": str(poisoned_env),
+        "env_file_path": str(poisoned_env),
+        "SECRET_KEY_FILE": str(tmp_path / "runtime-key-must-not-open"),
+    }
+    for name, value in values.items():
+        monkeypatch.setenv(name, value)
+    result = isolated_alembic_probe("migration-db-only", "production")
+    assert result == {
+        "outcome": "metadata-loaded",
+        "callbacks": 1,
+        "revision_ddl": False,
+    }
+    assert {name: os.environ[name] for name in values} == values

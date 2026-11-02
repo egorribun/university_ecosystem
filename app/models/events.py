@@ -19,7 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
+from app.core.db.base import Base
 from app.core.events import EventEmitterMixin
 from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 

@@ -18,10 +18,10 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 from app.core.config import Settings, settings
+from app.core.db.base import Base as Base
 from app.core.logging import get_logger, is_logger_enabled
 from app.core.protocols import AsyncDatabaseSession
 
@@ -642,10 +642,6 @@ def init_database(current_settings: Settings | None = None) -> None:
 def get_read_engine() -> AsyncEngine:
     """Get the engine for read operations (replica if available, otherwise primary)."""
     return _read_replica_engine if _read_replica_engine is not None else _engine  # type: ignore[return-value]
-
-
-class Base(DeclarativeBase):
-    """Declarative Base for all models. (TD-002: id is per-model or mixin)"""
 
 
 async def get_db() -> AsyncGenerator[AsyncDatabaseSession]:

@@ -22,7 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
+from app.core.db.base import Base
 from app.core.events import EventEmitterMixin
 from app.models.enums import UserRole
 from app.models.mixins import UUID7PrimaryKeyMixin

@@ -1449,9 +1449,9 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
             "BSD-3-Clause AND Apache-2.0 AND MIT",
         )
         self.assertEqual(
-            by_name[
-                "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-            ]["package_url"],
+            by_name["go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"][
+                "package_url"
+            ],
             "pkg:golang/go.opentelemetry.io/otel/exporters/otlp/"
             "otlptrace/otlptracegrpc@1.46.0",
         )

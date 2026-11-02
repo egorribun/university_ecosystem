@@ -7,12 +7,12 @@ import binascii
 import hashlib
 import hmac
 from functools import lru_cache
-from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
-from sqlalchemy.types import Text, TypeDecorator
 
 from app.core.config import settings
+from app.core.db.encryption import EncryptedString as EncryptedString
+from app.core.db.encryption import TotpEncryptedString as TotpEncryptedString
 from app.core.logging import get_logger
 
 _logger = get_logger(__name__)
@@ -326,29 +326,3 @@ def rotate_encrypted_string(value: str | bytes | None) -> str | None:
         rotated = cipher.rotate(raw)
         return rotated.decode("utf-8")
     return value if isinstance(value, str) else value.decode("utf-8")
-
-
-class TotpEncryptedString(TypeDecorator[str]):
-    """TypeDecorator using the dedicated MFA TOTP encryption key ring."""
-
-    impl = Text
-    cache_ok = True
-
-    def process_bind_param(self, value: str | None, dialect: Any) -> str | None:
-        return encrypt_totp_string(value)
-
-    def process_result_value(self, value: str | None, dialect: Any) -> str | None:
-        return decrypt_totp_string(value)
-
-
-class EncryptedString(TypeDecorator[str]):
-    """TypeDecorator that transparently encrypts/decrypts string values."""
-
-    impl = Text
-    cache_ok = True
-
-    def process_bind_param(self, value: str | None, dialect: Any) -> str | None:
-        return encrypt_string(value)
-
-    def process_result_value(self, value: str | None, dialect: Any) -> str | None:
-        return decrypt_string(value)

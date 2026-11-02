@@ -20,8 +20,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
-from app.core.database import Base
+from app.core.chat_constants import CHAT_MAX_MESSAGE_LENGTH
+from app.core.db.base import Base
 from app.core.events import EventEmitterMixin
 from app.models.mixins import UUID7PrimaryKeyMixin
 

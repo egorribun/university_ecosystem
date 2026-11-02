@@ -405,7 +405,10 @@ for (const [label, inheritedOptions] of [
 ]) {
   for (const traceEnabled of [false, true]) {
     test(
-      "build orchestrator leaves invalid NODE_OPTIONS for Node: " + label + ", trace=" + traceEnabled,
+      "build orchestrator leaves invalid NODE_OPTIONS for Node: " +
+        label +
+        ", trace=" +
+        traceEnabled,
       async (t) => {
         const previousNodeOptions = process.env.NODE_OPTIONS
         t.after(() => {

@@ -14,8 +14,8 @@ from sqlalchemy import (
 # Removed postgresql UUID import
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.config import settings
-from app.core.database import Base
+from app.core.db.base import Base
+from app.core.migration_settings import database_dialect_for_models
 from app.models.mixins import UUID7PrimaryKeyMixin
 
 
@@ -44,7 +44,7 @@ class DataAccessLog(Base, UUID7PrimaryKeyMixin):
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
         index=True,
-        primary_key=not settings.database_url.startswith("sqlite"),
+        primary_key=database_dialect_for_models() != "sqlite",
     )
     signature: Mapped[str | None] = mapped_column(String(512))
 

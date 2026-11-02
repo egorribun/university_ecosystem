@@ -214,9 +214,9 @@ def _assert_tenant_schema(statements: list[str]) -> None:
             for line in creates[0].splitlines()
             if re.match(r'^\s*"?tenant_id"?\s', line, re.ASCII | re.IGNORECASE)
         ]
-        assert tenant_columns == [
-            "tenant_id uuid"
-        ], f"Unexpected {table}.tenant_id contract"
+        assert tenant_columns == ["tenant_id uuid"], (
+            f"Unexpected {table}.tenant_id contract"
+        )
         validated_tables.append(creates[0])
         only = "" if table == "notifications" else "ONLY "
         foreign_key = (

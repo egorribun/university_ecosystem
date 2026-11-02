@@ -5,7 +5,7 @@ from sqlalchemy import DateTime, Float, ForeignKey, Index, String, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
+from app.core.db.base import Base
 from app.models.mixins import UUID7PrimaryKeyMixin
 
 

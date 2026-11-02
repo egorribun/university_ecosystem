@@ -250,7 +250,9 @@ def _read_claim(
 
 
 @pytest.fixture(scope="module")
-def baseline_media_connection(migration_postgres) -> Iterator[sa.Connection]:
+def baseline_media_connection(
+    request: pytest.FixtureRequest,
+) -> Iterator[sa.Connection]:
     """Run the actual baseline only on a new, identity-guarded template0 DB.
 
     The imported fixture owns its pinned container or validates the explicitly
@@ -261,8 +263,9 @@ def baseline_media_connection(migration_postgres) -> Iterator[sa.Connection]:
     The baseline's outer transaction is never committed: even cluster-global role
     creation and optional cron catalog writes roll back before the scratch drop.
     """
+    postgres = request.getfixturevalue("migration_postgres")
     source_url = sa.engine.make_url(
-        migration_postgres.get_connection_url(driver="psycopg")
+        postgres.get_connection_url(driver="psycopg")
     ).update_query_dict(
         {
             "options": (
@@ -315,7 +318,8 @@ def populated_baseline_media(
             {
                 "id": claim["owner"],
                 "email": f"{claim['owner']}@example.invalid",
-                "password": "not-an-authentication-credential",
+                # Deliberately unusable hash for this schema-only seed.
+                "password": f"!{uuid4()}",
             },
         )
         connection.execute(

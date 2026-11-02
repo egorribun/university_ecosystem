@@ -28,9 +28,9 @@ from sqlalchemy import (
 # Removed postgresql UUID import
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
+from app.core.db.base import Base
+from app.core.db.encryption import TotpEncryptedString
 from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
-from app.utils.encryption import TotpEncryptedString
 
 
 class ChallengeState(StrEnum):
