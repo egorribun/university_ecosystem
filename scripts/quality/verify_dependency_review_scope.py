@@ -52,7 +52,23 @@ EXPECTED_MODULES = {
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.47.0",
         "github.com/klauspost/compress": "v1.20.1",
     },
+    # Locked edge-proxy graph (AUD-482). v1.46.0 is the otlptracegrpc version
+    # selected by upstream caddy v2.11.7 itself, so it is the intended pin here
+    # and is not the v1.47.0 used by the three service modules above.
+    "services/caddy/go.mod": {
+        "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.46.0",
+        "github.com/klauspost/compress": "v1.20.1",
+        "howett.net/plist": "v1.0.1",
+    },
 }
+
+# Dependency Review license identifications observed for the reviewed rows.
+# OTLP_CADDY_LICENSE is the upstream composite reported for the caddy graph.
+# PLIST_LICENSE is the marker for howett.net/plist v1.0.1, whose LICENSE file
+# combines BSD-2-Clause-Views (FreeBSD-style text) with the Go-license
+# BSD-3-Clause clause. See ADR-047 note 2026-11-03 (owner-approved).
+OTLP_CADDY_LICENSE = "Apache-2.0 AND BSD-3-Clause"
+PLIST_LICENSE = "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause"
 
 
 def _identity(
@@ -118,6 +134,24 @@ EXPECTED_ROWS = {
         "1.20.1",
         KLAUSPOST_LICENSE,
     ),
+    _identity(
+        "services/caddy/go.mod",
+        "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc",
+        "1.46.0",
+        OTLP_CADDY_LICENSE,
+    ),
+    _identity(
+        "services/caddy/go.mod",
+        "github.com/klauspost/compress",
+        "1.20.1",
+        KLAUSPOST_LICENSE,
+    ),
+    _identity(
+        "services/caddy/go.mod",
+        "howett.net/plist",
+        "1.0.1",
+        PLIST_LICENSE,
+    ),
 }
 TARGET_NAMES = {row[3] for row in EXPECTED_ROWS}
 TARGET_PURL_TYPE = "golang"
@@ -138,6 +172,9 @@ PURL_ADDITIONS = Counter(
         "pkg:golang/go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin": 1,
         "pkg:golang/go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": 1,
         "pkg:golang/github.com/klauspost/compress": 1,
+        # Name-only: the action ignores PURL versions, so every howett.net/plist
+        # row is checked against the exact caddy row above (fail-closed).
+        "pkg:golang/howett.net/plist": 1,
     }
 )
 PURL_REMOVALS = Counter({"pkg:golang/github.com/klauspost/compress@1.20.1": 1})
@@ -1059,9 +1096,52 @@ def expected_rows_for_delta(
     }
 
 
+def _base_manifest_exists(root: Path, base_sha: str, manifest: str) -> bool:
+    """Return whether a known manifest exists at the protected base commit.
+
+    `git ls-tree` fails on an unknown commit, so a missing commit is an error
+    rather than a silently absent manifest.
+    """
+    if not re.fullmatch(r"[0-9a-f]{40}", base_sha) or manifest not in EXPECTED_MODULES:
+        raise ValueError(
+            "protected-base lookup requires an immutable SHA and known manifest"
+        )
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        raise ValueError("Git executable is unavailable")
+    result = subprocess.run(  # noqa: S603 - resolved Git, validated SHA and fixed manifest path; no shell.
+        [
+            git_executable,
+            "ls-tree",
+            "--full-tree",
+            "--name-only",
+            base_sha,
+            "--",
+            manifest,
+        ],
+        cwd=root,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    if result.returncode:
+        raise ValueError(f"cannot read protected-base tree for: {manifest}")
+    try:
+        listed = result.stdout.decode("utf-8").splitlines()
+    except UnicodeDecodeError as error:
+        raise ValueError("protected-base tree output is not UTF-8") from error
+    return listed == [manifest]
+
+
 def _base_pins(root: Path, base_sha: str) -> dict[tuple[str, str], str | None]:
     base = {}
     for manifest, expected in EXPECTED_MODULES.items():
+        if not _base_manifest_exists(root, base_sha, manifest):
+            # A manifest added by this change has no base pins, so every pinned
+            # module in it must appear as a changed reviewed row.
+            for module in expected:
+                base[(manifest, module)] = None
+            continue
         text = _git_show(root, base_sha, manifest)
         if _has_tracked_replace(text, set(expected)):
             raise ValueError(f"protected base replaces a tracked module in {manifest}")

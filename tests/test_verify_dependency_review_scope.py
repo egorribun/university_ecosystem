@@ -24,6 +24,8 @@ from scripts.quality.verify_dependency_review_scope import (
     PURL_ADDITIONS,
     PURL_REMOVALS,
     _action_row,
+    _base_manifest_exists,
+    _base_pins,
     _git_show,
     _go_requirements,
     _has_tracked_replace,
@@ -42,6 +44,8 @@ from scripts.quality.verify_dependency_review_scope import (
     verify_policy_scope,
     write_dependency_changes_file,
 )
+
+PINNED_MODULE_COUNT = sum(len(mods) for mods in EXPECTED_MODULES.values())
 
 
 def action_row(identity):
@@ -95,9 +99,79 @@ def current_mods(bad=None):
 
 
 class DependencyLicenseGuardTests(unittest.TestCase):
-    def test_all_eight_exact_rows_pass(self):
+    def test_all_exact_rows_pass(self):
         rows = [action_row(row) for row in EXPECTED_ROWS]
-        self.assertEqual(verify_dependency_changes(rows, set(EXPECTED_ROWS)), 8)
+        self.assertEqual(
+            verify_dependency_changes(rows, set(EXPECTED_ROWS)), len(EXPECTED_ROWS)
+        )
+
+    @staticmethod
+    def _plist_identity(**changes):
+        identity = next(row for row in EXPECTED_ROWS if row[3] == "howett.net/plist")
+        fields = dict(
+            zip(
+                (
+                    "change_type",
+                    "manifest",
+                    "ecosystem",
+                    "name",
+                    "version",
+                    "purl",
+                    "license",
+                ),
+                identity,
+                strict=True,
+            )
+        )
+        fields.update(changes)
+        return (
+            fields["change_type"],
+            fields["manifest"],
+            fields["ecosystem"],
+            fields["name"],
+            fields["version"],
+            fields["purl"],
+            fields["license"],
+        )
+
+    def test_caddy_plist_row_passes_only_at_its_reviewed_identity(self):
+        identity = self._plist_identity()
+        self.assertEqual(
+            identity[1:5],
+            ("services/caddy/go.mod", "gomod", "howett.net/plist", "1.0.1"),
+        )
+        self.assertEqual(identity[6], "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause")
+        self.assertEqual(
+            verify_dependency_changes([action_row(identity)], {identity}), 1
+        )
+
+    def test_plist_other_version_manifest_or_license_fails(self):
+        mutations = (
+            {"version": "1.0.2", "purl": "pkg:golang/howett.net/plist@1.0.2"},
+            {"manifest": "services/gateway/go.mod"},
+            {"license": "BSD-3-Clause"},
+            {"license": None},
+        )
+        for changes in mutations:
+            with self.subTest(changes=changes):
+                with self.assertRaisesRegex(ValueError, "unexpected package"):
+                    verify_dependency_changes(
+                        [action_row(self._plist_identity(**changes))], set()
+                    )
+
+    def test_reviewed_plist_row_is_required_when_its_pin_changes(self):
+        identity = self._plist_identity()
+        with self.assertRaisesRegex(ValueError, "omitted a changed reviewed"):
+            verify_dependency_changes([], {identity})
+
+    def test_name_only_plist_exception_is_required_and_not_versioned(self):
+        purls = [item for item in PURL_ADDITIONS if "howett.net/plist" not in item]
+        with self.assertRaisesRegex(ValueError, "exact package-name PURL"):
+            verify_policy_scope(config(purls))
+        with self.assertRaisesRegex(ValueError, "versioned target PURL"):
+            verify_policy_scope(
+                config([*PURL_ADDITIONS, "pkg:golang/howett.net/plist@1.0.1"])
+            )
 
     def test_exact_subset_passes_for_unrelated_pr(self):
         row = next(iter(EXPECTED_ROWS))
@@ -352,7 +426,7 @@ class DependencyLicenseGuardTests(unittest.TestCase):
                 path = root / manifest
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding="utf-8")
-            self.assertEqual(len(verify_current_pins(root)), 8)
+            self.assertEqual(len(verify_current_pins(root)), PINNED_MODULE_COUNT)
 
     def test_tracked_module_replace_fails_closed(self):
         content = current_mods()
@@ -456,7 +530,7 @@ class DependencyLicenseGuardTests(unittest.TestCase):
                 "go 1.26.4\nreplace (\n example.test/elsewhere => example.test/fork v1.2.3\n)\n",
                 encoding="utf-8",
             )
-            self.assertEqual(len(verify_current_pins(root)), 8)
+            self.assertEqual(len(verify_current_pins(root)), PINNED_MODULE_COUNT)
 
     def test_malformed_replace_directive_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "cannot parse Go replace directive"):
@@ -492,7 +566,72 @@ class DependencyLicenseGuardTests(unittest.TestCase):
         for key in current:
             if "opentelemetry.io" in key[1]:
                 base[key] = "0.71.0" if "contrib" in key[1] else "1.46.0"
+        # The caddy manifest is new relative to the base, so none of its pins
+        # exist there and all three of its reviewed rows are required.
+        for key in current:
+            if key[0] == "services/caddy/go.mod":
+                base[key] = None
         self.assertEqual(expected_rows_for_delta(base, current), set(EXPECTED_ROWS))
+
+    def test_caddy_pins_unchanged_from_base_require_no_rows(self):
+        current = {
+            (m, n): v.lstrip("v")
+            for m, mods in EXPECTED_MODULES.items()
+            for n, v in mods.items()
+        }
+        base = dict(current)
+        self.assertEqual(expected_rows_for_delta(base, current), set())
+
+    def test_manifest_absent_at_base_requires_every_pin(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        caddy = "services/caddy/go.mod"
+        with (
+            patch(
+                f"{module}._base_manifest_exists",
+                side_effect=lambda _root, _sha, manifest: manifest != caddy,
+            ),
+            patch(f"{module}._git_show", return_value="module example.test\n"),
+        ):
+            base = _base_pins(Path("."), "0" * 40)
+        caddy_keys = {key for key in base if key[0] == caddy}
+        self.assertEqual(
+            caddy_keys, {(caddy, name) for name in EXPECTED_MODULES[caddy]}
+        )
+        self.assertTrue(all(base[key] is None for key in caddy_keys))
+
+    def test_base_manifest_lookup_distinguishes_absent_from_git_failure(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        manifest = "services/caddy/go.mod"
+        for stdout, expected in ((b"services/caddy/go.mod\n", True), (b"", False)):
+            with (
+                patch(
+                    f"{module}.shutil.which",
+                    return_value="C:/Git/cmd/git.exe",
+                ),
+                patch(
+                    f"{module}.subprocess.run",
+                    return_value=SimpleNamespace(returncode=0, stdout=stdout),
+                ) as run,
+            ):
+                self.assertIs(
+                    _base_manifest_exists(Path("."), "0" * 40, manifest), expected
+                )
+            args = run.call_args.args[0]
+            self.assertEqual(args[1:3], ["ls-tree", "--full-tree"])
+            self.assertEqual(args[-2:], ["--", manifest])
+        with (
+            patch(f"{module}.shutil.which", return_value="C:/Git/cmd/git.exe"),
+            patch(
+                f"{module}.subprocess.run",
+                return_value=SimpleNamespace(returncode=128, stdout=b""),
+            ),
+            self.assertRaisesRegex(ValueError, "cannot read protected-base tree"),
+        ):
+            _base_manifest_exists(Path("."), "0" * 40, manifest)
+        with self.assertRaisesRegex(ValueError, "immutable SHA"):
+            _base_manifest_exists(Path("."), "main", manifest)
+        with self.assertRaisesRegex(ValueError, "immutable SHA"):
+            _base_manifest_exists(Path("."), "0" * 40, "services/unknown/go.mod")
 
     def test_unchanged_target_pins_require_no_rows(self):
         current = {
@@ -940,7 +1079,10 @@ class DependencyCompareFileTests(unittest.TestCase):
             self.assertEqual(path.name, "dependency-review-changes.json")
             self.assertEqual(path.stat().st_size, byte_count)
             loaded = read_dependency_changes_file(path)
-            self.assertEqual(verify_dependency_changes(loaded, set(EXPECTED_ROWS)), 8)
+            self.assertEqual(
+                verify_dependency_changes(loaded, set(EXPECTED_ROWS)),
+                len(EXPECTED_ROWS),
+            )
             with self.assertRaisesRegex(ValueError, "already exists"):
                 write_dependency_changes_file(rows, Path(tmp))
 
@@ -1376,7 +1518,7 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
                     "1.46.0",
                     "pkg:golang/go.opentelemetry.io/otel/exporters/otlp/"
                     "otlptrace/otlptracegrpc@1.46.0",
-                    "LicenseRef-bad-apache-2.0-bsd-3-clause",
+                    "Apache-2.0 AND BSD-3-Clause",
                 )
             ),
         ]
@@ -1659,14 +1801,29 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
         snapshot = json.dumps(rows, sort_keys=True)
         self.render(rows)
         self.assertEqual(json.dumps(rows, sort_keys=True), snapshot)
+        # The exact caddy row is accepted; diagnostics must not widen a mutated one.
+        mutated = {**rows[2], "license": "MIT"}
         with self.assertRaisesRegex(ValueError, "unexpected package"):
-            verify_dependency_changes([rows[2]], set())
+            verify_dependency_changes([mutated], set())
 
     def test_changes_phase_prints_diagnostics_before_original_identity_failure(self):
         module = "scripts.quality.verify_dependency_review_scope"
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "changes.json"
-            path.write_text(json.dumps(self.rows()), encoding="utf-8")
+            # The unreviewed LicenseRef row is checked by the guard but is not a
+            # diagnostic target, so it fails the run without adding diagnostic rows.
+            unreviewed = action_row(
+                (
+                    "added",
+                    "services/gateway/go.mod",
+                    "gomod",
+                    "example.test/unreviewed",
+                    "1.0.0",
+                    "pkg:golang/example.test/unreviewed@1.0.0",
+                    LICENSE_REF,
+                )
+            )
+            path.write_text(json.dumps([*self.rows(), unreviewed]), encoding="utf-8")
             argv = [
                 "verify",
                 "changes",

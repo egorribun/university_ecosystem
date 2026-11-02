@@ -1791,3 +1791,15 @@ The capture adapter executes one immutable official bundle and preserves origina
 
 
 Validation remains pending: the capture suite, exact four-metric gates, central coverage/provenance/selector tests, actionlint, Zizmor, hooks and final-source hosted evidence must pass before acceptance. All 78 required context/app pairs and resource limits remain unchanged. Source integration is not evidence of a runtime pass.
+
+## (2026-11-03) howett.net/plist license identification
+
+**Status: approved by the owner (egorribun) on 2026-11-03** for exactly the scope below. The license identification is evidence-based.
+
+Dependency Review on PR #1343 (run 41536117012, tested SHA `92d9cfed4`) fails the upstream license check for `services/caddy/go.mod » howett.net/plist@1.0.1`, reported as `LicenseRef-bad-bsd-2-clause-views-bsd-3-clause`. The same license failure appears in each checked run from `2eb51a77e` (2026-11-01) through `92d9cfed4`, so the license step had not passed for this graph in those runs.
+
+Evidence: the upstream `LICENSE` at `https://proxy.golang.org/howett.net/plist/@v/v1.0.1.zip` (entry `howett.net/plist@v1.0.1/LICENSE`) contains two parts. The first is a two-clause BSD license with the FreeBSD-style disclaimer ("The views and conclusions contained in the software ... of the FreeBSD Project"), which corresponds to SPDX `BSD-2-Clause-Views`. The second, under "Parts of this package were made available under the license covering the Go language", is the Go license, which corresponds to SPDX `BSD-3-Clause`. Both are permissive. The marker is therefore an unmapped composite of permissive licenses, not a copyleft or incompatible license. `BSD-2-Clause-Views` is not in `allow-licenses`, and this change does not add it there.
+
+Scope: `.github/dependency-review-config.yml` gains exactly one name-only `allow-dependencies-licenses` entry, `pkg:golang/howett.net/plist`. Because the pinned action ignores PURL versions, `scripts/quality/verify_dependency_review_scope.py` binds the exception to one exact row: `services/caddy/go.mod`, `howett.net/plist`, `1.0.1`, license `LicenseRef-bad-bsd-2-clause-views-bsd-3-clause`, and the name-only PURL is listed in `PURL_ADDITIONS`. Any other version, manifest, license or a versioned PURL fails closed. The verifier also binds the two other caddy rows the same way: `otlptracegrpc` 1.46.0 (`Apache-2.0 AND BSD-3-Clause`, which the action already accepts) and `klauspost/compress` 1.20.1. `services/caddy/go.mod` is now a verified manifest, and a manifest absent at the protected base requires every pin it declares to appear as a changed row.
+
+No global allow-list entry, GHSA entry or go.mod/go.sum change is introduced by this note.
