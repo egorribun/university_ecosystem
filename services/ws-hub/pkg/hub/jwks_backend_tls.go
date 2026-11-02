@@ -18,11 +18,15 @@ func (h *Hub) newJWKSHTTPClient(endpoint string) *http.Client {
 		return client
 	}
 	transport, ok := authClient.httpClient.Transport.(*http.Transport)
-	if !ok || transport == nil || transport.TLSClientConfig == nil {
+	if !ok || transport == nil {
 		return client
 	}
 	// Every low-volume refresh reauthenticates the current SVID and bundle.
+	// Clone returns nil when no TLS configuration is installed.
 	clientTLS := transport.TLSClientConfig.Clone()
+	if clientTLS == nil {
+		return client
+	}
 	clientTLS.ClientSessionCache = nil
 	client.Transport = &http.Transport{
 		TLSClientConfig:     clientTLS,

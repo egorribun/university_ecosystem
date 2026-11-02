@@ -55,6 +55,16 @@ func TestJWKSHTTPClientConstructionFailures(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, client)
 	assert.Nil(t, closeClient)
+	// A non-nil config with an insecure endpoint must fail validation before any
+	// SPIFFE source is created.
+	client, closeClient, err = newJWKSHTTPClient(ctx, &config.Config{
+		InternalHTTPMTLSEnabled: true,
+		JWKSURL:                 "http://insecure.example/jwks",
+		BackendSpiffeID:         "spiffe://university.ecosystem/ns/default/sa/backend",
+	}, nil)
+	require.Error(t, err)
+	assert.Nil(t, client)
+	assert.Nil(t, closeClient)
 	client, closeClient, err = newJWKSHTTPClient(ctx, &config.Config{}, nil)
 	require.NoError(t, err)
 	if client == nil || closeClient == nil {

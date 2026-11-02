@@ -405,10 +405,11 @@ func (m *JWTMiddleware) JWKSTLSConfig() *tls.Config {
 // SPIFFE client TLS config changes the transport; public endpoints keep defaults.
 func (m *JWTMiddleware) newJWKSHTTPClient() *http.Client {
 	client := &http.Client{Timeout: 10 * time.Second}
-	if m.jwksTLSConfig != nil {
+	// Clone returns nil when no SPIFFE client TLS config was installed, which
+	// keeps public endpoints on the default transport.
+	if clientTLS := m.jwksTLSConfig.Clone(); clientTLS != nil {
 		// JWKS is low-volume: reauthenticate every refresh against the live
 		// SPIFFE bundle instead of retaining a connection or resumed session.
-		clientTLS := m.jwksTLSConfig.Clone()
 		clientTLS.ClientSessionCache = nil
 		client.Transport = &http.Transport{
 			TLSClientConfig:     clientTLS,
