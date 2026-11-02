@@ -7015,8 +7015,9 @@ def _assert_focused_baseline_coverage(workflow: dict) -> None:
         == "postgresql+asyncpg://test@localhost:5433/test_migration"
     )
     assert focused["env"] == {
-        key: roundtrip["env"][key]
-        for key in ("DATABASE_URL", "ENVIRONMENT", "SECRET_KEY")
+        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "ENVIRONMENT": roundtrip["env"]["ENVIRONMENT"],
+        "SECRET_KEY": roundtrip["env"]["SECRET_KEY"],
     }
     reset_opt_in = "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"
     for environment in (workflow.get("env", {}), job.get("env", {}), focused["env"]):
@@ -7084,6 +7085,7 @@ def test_focused_baseline_tests_append_to_existing_coverage_producer() -> None:
         "nonblocking",
         "lower-threshold",
         "reset",
+        "postgres-unit-reset",
         "reordered",
         "wrong-artifact",
     ),
@@ -7112,6 +7114,10 @@ def test_focused_baseline_coverage_rejects_population_and_producer_drift(
         step["run"] = step["run"].replace("--fail-under=100", "--fail-under=99")
     elif mutation == "reset":
         step["env"]["UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"] = "1"
+    elif mutation == "postgres-unit-reset":
+        step["env"]["DATABASE_URL"] = (
+            "postgresql+asyncpg://test@localhost:5433/test_migration"
+        )
     elif mutation == "reordered":
         job["steps"].remove(step)
         job["steps"].append(step)

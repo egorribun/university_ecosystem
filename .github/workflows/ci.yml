@@ -1918,7 +1918,8 @@ jobs:
 
       - name: Append focused baseline tests to coverage
         env:
-          DATABASE_URL: postgresql+asyncpg://test@localhost:5433/test_migration
+          # These mocked-op unit tests must not reset the migrated PostgreSQL service.
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           ENVIRONMENT: test
           SECRET_KEY: test-secret-key-for-ci-migration-gate-only
         run: |
