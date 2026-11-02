@@ -192,7 +192,7 @@ jobs:
 
       - name: Install wasm-pack
         if: ${{ inputs.wasm-artifact-id == '' && inputs.wasm-artifact-name == '' && inputs.wasm-artifact-digest == '' }}
-        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: wasm-pack@0.15.0
 
@@ -658,13 +658,13 @@ jobs:
 
       - name: Set up Python for differential coverage
         if: ${{ github.event_name == 'pull_request' }}
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
       - name: Install uv for differential coverage
         if: ${{ github.event_name == 'pull_request' }}
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
@@ -1795,7 +1795,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 
