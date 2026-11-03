@@ -1,7 +1,6 @@
 """Isolated regression tests for audit-seed signing configuration."""
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -27,6 +26,16 @@ class SyntheticAuditStore:
             return next(reversed(self.logs.values())).signature
         return None
 
+    def get_bind(self):
+        return SimpleNamespace(dialect=SimpleNamespace(name="synthetic"))
+
+    def add_all(self, rows) -> None:
+        for row in rows:
+            self.logs[row.id] = DataAccessLogDTO.model_validate(row)
+
+    async def flush(self) -> None:
+        return None
+
     async def connection(self):
         return SimpleNamespace(dialect=SimpleNamespace(name="synthetic"))
 
@@ -44,15 +53,9 @@ class SyntheticAuditRepository:
     def __init__(self, db: SyntheticAuditStore) -> None:
         self.db = db
 
-    async def create(self, values: dict) -> DataAccessLogDTO:
-        log = DataAccessLogDTO(id=uuid4(), created_at=datetime.now(UTC), **values)
-        self.db.logs[log.id] = log
-        return log
-
-    async def update(self, log_id: object, values: dict) -> DataAccessLogDTO:
-        log = self.db.logs[log_id].model_copy(update=values)
-        self.db.logs[log_id] = log
-        return log
+    @staticmethod
+    def _to_dto(row) -> DataAccessLogDTO:
+        return DataAccessLogDTO.model_validate(row)
 
 
 async def _run_fresh_process(child: str, environment: dict[str, str]) -> dict:
@@ -271,7 +274,7 @@ async def test_aud418_blank_secret_file_does_not_use_cached_settings(
 
 
 @pytest.mark.parametrize(
-    "failure_site", ["sign", "update", "update_missing", "mismatch", "deleted"]
+    "failure_site", ["sign", "flush", "signature_missing", "mismatch", "deleted"]
 )
 @pytest.mark.parametrize("successful_writes", [0, 2])
 async def test_aud418_audit_failure_rolls_back_savepoint_before_outer_commit(
@@ -279,8 +282,12 @@ async def test_aud418_audit_failure_rolls_back_savepoint_before_outer_commit(
 ) -> None:
     import secrets
 
-    from sqlalchemy import delete, func, select, text
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy import delete, func, select, text, update
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
 
     from app.models.logs import DataAccessLog
 
@@ -289,7 +296,7 @@ async def test_aud418_audit_failure_rolls_back_savepoint_before_outer_commit(
     actor_id = uuid4()
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     original_sign = audit_service.SecureAuditService._compute_signature
-    original_update = audit_service.AuditRepository.update
+    original_flush = AsyncSession.flush
     successful_calls = 0
 
     def fail_sign(service, log):
@@ -299,32 +306,44 @@ async def test_aud418_audit_failure_rolls_back_savepoint_before_outer_commit(
         successful_calls += 1
         return original_sign(service, log)
 
-    async def fail_update(repository, *args):
+    async def fail_flush(session, objects=None):
         nonlocal successful_calls
-        if successful_calls == successful_writes:
-            if failure_site == "update_missing":
-                return None
-            if failure_site == "mismatch":
-                updated = await original_update(repository, *args)
-                row = await repository._get_orm(args[0])
-                row.signature = "different-synthetic-signature"
-                await repository.db.flush()
-                return updated
-            if failure_site == "deleted":
-                await repository.db.execute(
-                    delete(DataAccessLog).where(DataAccessLog.id == args[0])
-                )
-                return None
-            raise RuntimeError("synthetic audit failure")
+        rows = [row for row in session.new if isinstance(row, DataAccessLog)]
+        if not rows:
+            return await original_flush(session, objects)
+        failing = successful_calls == successful_writes
         successful_calls += 1
-        return await original_update(repository, *args)
+        if failing and failure_site == "flush":
+            raise RuntimeError("synthetic audit failure")
+        await original_flush(session, objects)
+        if failing:
+            row = rows[0]
+            if failure_site == "deleted":
+                await session.execute(
+                    delete(DataAccessLog).where(DataAccessLog.id == row.id),
+                    execution_options={"synchronize_session": False},
+                )
+            else:
+                # Corrupt persisted state, not the signed in-memory DTO. The
+                # seeder must independently verify the actual stored signature.
+                signature = (
+                    None
+                    if failure_site == "signature_missing"
+                    else "different-synthetic-signature"
+                )
+                await session.execute(
+                    update(DataAccessLog)
+                    .where(DataAccessLog.id == row.id)
+                    .values(signature=signature),
+                    execution_options={"synchronize_session": False},
+                )
 
     if failure_site == "sign":
         monkeypatch.setattr(
             audit_service.SecureAuditService, "_compute_signature", fail_sign
         )
     else:
-        monkeypatch.setattr(audit_service.AuditRepository, "update", fail_update)
+        monkeypatch.setattr(AsyncSession, "flush", fail_flush)
 
     try:
         async with engine.begin() as connection:

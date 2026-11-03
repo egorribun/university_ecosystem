@@ -30,6 +30,7 @@ from app.models.domain_events import StoredEvent
 from app.models.logs import DataAccessLog
 from app.repositories.audit_repository import AuditRepository
 from app.schemas.admin import AuditSignatureScheme
+from app.utils.uuid_v7 import generate_uuid7
 
 if TYPE_CHECKING:
     from uuid import UUID
@@ -702,38 +703,54 @@ class SecureAuditService:
         user_agent: str | None = None,
         created_at: datetime | None = None,
     ) -> DataAccessLogDTO:
-        """Create a signed audit log entry.
-
-        The HMAC-SHA256 signature is computed from the fully-flushed DTO so that
-        server-generated fields (id, created_at) are included in the digest, then
-        written back to the DB row via repo.update().  This replaces the previous
-        model_copy() + flush() pattern that left signature=NULL in all rows (RZ-06).
-        """
-        repo = AuditRepository(db)
-        # Step 1: persist the row — repo.create() flush+refresh gives us the
-        # server-assigned id and created_at used in the HMAC digest.
-        values: dict[str, Any] = {
-            "actor_user_id": actor_user_id,
-            "subject_user_id": subject_user_id,
-            "resource_type": resource_type,
-            "resource_id": resource_id,
-            "action": action,
-            "context": context,
-            "ip_address": ip_address,
-            "user_agent": user_agent,
-        }
-        if created_at is not None:
-            values["created_at"] = created_at
-        log = await repo.create(values)
-        # Step 2: compute signature over the flushed DTO (id + created_at locked in).
-        signature = self._compute_signature(log)
-        # Step 3: write the signature back to the actual DB row.
-        updated = await repo.update(log.id, {"signature": signature})
-        return (
-            updated
-            if updated is not None
-            else log.model_copy(update={"signature": signature})
+        """Insert a fully signed row without requiring audit UPDATE privileges."""
+        rows = await self.create_logs(
+            db,
+            entries=[
+                {
+                    "actor_user_id": actor_user_id,
+                    "subject_user_id": subject_user_id,
+                    "resource_type": resource_type,
+                    "resource_id": resource_id,
+                    "action": action,
+                    "context": context,
+                    "ip_address": ip_address,
+                    "user_agent": user_agent,
+                    "created_at": created_at,
+                }
+            ],
         )
+        return rows[0]
+
+    def _prepare_signed_log(
+        self, entry: dict[str, Any], *, sqlite: bool
+    ) -> DataAccessLog:
+        """Freeze the INSERT representation before signing, without changing v2."""
+        row = DataAccessLog(**entry)
+        if row.id is None:
+            row.id = generate_uuid7()
+        # Native PostgreSQL UUIDs accept text but reload as canonical UUIDs.
+        # Sign those canonical values, never the caller's spelling.
+        for field in ("id", "actor_user_id", "subject_user_id"):
+            value = getattr(row, field)
+            if value is not None and not isinstance(value, uuid.UUID):
+                setattr(row, field, uuid.UUID(str(value)))
+        timestamp = row.created_at or datetime.now(UTC)
+        timestamp = (
+            timestamp.replace(tzinfo=UTC)
+            if timestamp.tzinfo is None
+            else timestamp.astimezone(UTC)
+        )
+        # SQLite's DateTime stores UTC wall time without an offset. Sign that
+        # persisted representation, not the aware value lost during reload.
+        # PostgreSQL/asyncpg returns UTC-aware timestamptz values.
+        row.created_at = timestamp.replace(tzinfo=None) if sqlite else timestamp
+        # Match the database JSON serializer and detach caller-owned structures
+        # before the first await: tuples and numeric keys normalize on storage.
+        if row.context is not None:
+            row.context = json.loads(json.dumps(row.context))
+        row.signature = self._compute_signature(row)
+        return row
 
     async def create_logs(
         self,
@@ -741,26 +758,16 @@ class SecureAuditService:
         *,
         entries: list[dict[str, Any]],
     ) -> list[DataAccessLogDTO]:
-        """Create and sign a batch in the current unit of work with two flushes."""
+        """Insert signed rows in input order with one flush and no writeback."""
         if not entries:
             return []
 
-        rows = [DataAccessLog(**entry) for entry in entries]
+        sqlite = db.get_bind().dialect.name == "sqlite"
+        rows = [self._prepare_signed_log(entry, sqlite=sqlite) for entry in entries]
         db.add_all(rows)
         await db.flush()
-        row_ids = [row.id for row in rows]
-        persisted_result = await db.execute(
-            select(DataAccessLog)
-            .where(DataAccessLog.id.in_(row_ids))
-            .execution_options(populate_existing=True)
-        )
-        persisted_by_id = {row.id: row for row in persisted_result.scalars().all()}
-        for row in rows:
-            persisted = persisted_by_id[row.id]
-            persisted.signature = self._compute_signature(persisted)
-        await db.flush()
         repo = AuditRepository(db)
-        return [repo._to_dto(persisted_by_id[row.id]) for row in rows]
+        return [repo._to_dto(row) for row in rows]
 
     def verify_integrity(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
         """Verify the fields authenticated by the signature's declared scheme."""

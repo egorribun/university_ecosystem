@@ -406,54 +406,97 @@ async def test_legacy_unmarked_signature_keeps_payload_only_coverage():
 
 
 @pytest.mark.asyncio
-async def test_create_log_returns_updated_row_after_signing_flushed_dto():
-    service = SecureAuditService(signing_key=b"key")
+@pytest.mark.parametrize("dialect", ["sqlite", "postgresql"])
+async def test_create_log_has_signed_identity_before_its_only_flush(dialect):
+    service = SecureAuditService(signing_key=secrets.token_bytes(32))
     db = MagicMock()
-    created = _audit_log_stub()
-    updated = _audit_log_stub()
+    db.get_bind.return_value.dialect.name = dialect
+    rows = []
+    db.add_all.side_effect = rows.extend
 
-    with patch.object(audit_module, "AuditRepository") as repository_type:
-        repository = repository_type.return_value
-        repository.create = AsyncMock(return_value=created)
-        repository.update = AsyncMock(return_value=updated)
+    async def flush():
+        assert len(rows) == 1
+        assert rows[0].id.version == 7
+        assert rows[0].created_at is not None
+        assert service.verify_integrity(rows[0]) is True
 
-        result = await service.create_log(
-            db,
-            resource_type="user",
-            resource_id="42",
-            action="read",
-        )
+    db.flush = AsyncMock(side_effect=flush)
+    result = await service.create_log(db, resource_type="user", action="read")
 
-    assert result is updated
-    repository.create.assert_awaited_once()
-    repository.update.assert_awaited_once()
-    assert repository.update.await_args.args[0] == created.id
-    assert repository.update.await_args.args[1]["signature"]
+    assert result.id == rows[0].id
+    assert result.signature == rows[0].signature
+    assert service.verify_integrity(result) is True
+    db.flush.assert_awaited_once()
+    db.execute.assert_not_called()
+    db.commit.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_create_log_returns_signed_copy_when_update_has_no_row():
-    service = SecureAuditService(signing_key=b"key")
+async def test_create_log_propagates_insert_failure_without_a_signed_dto():
+    from sqlalchemy.exc import IntegrityError
+
+    service = SecureAuditService(signing_key=secrets.token_bytes(32))
     db = MagicMock()
-    created = _audit_log_stub()
-    fallback = _audit_log_stub()
-    created.model_copy = MagicMock(return_value=fallback)
+    failure = IntegrityError("audit insert rejected", {}, RuntimeError("constraint"))
+    db.flush = AsyncMock(side_effect=failure)
 
-    with patch.object(audit_module, "AuditRepository") as repository_type:
-        repository = repository_type.return_value
-        repository.create = AsyncMock(return_value=created)
-        repository.update = AsyncMock(return_value=None)
+    with pytest.raises(IntegrityError) as raised:
+        await service.create_log(db, resource_type="user", action="read")
 
-        result = await service.create_log(
+    assert raised.value is failure
+    db.flush.assert_awaited_once()
+    db.execute.assert_not_called()
+    db.commit.assert_not_called()
+    db.rollback.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_logs_freezes_caller_context_before_flushing():
+    service = SecureAuditService(signing_key=secrets.token_bytes(32))
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = "postgresql"
+    context = {"nested": {"value": "original"}}
+    rows = []
+    db.add_all.side_effect = rows.extend
+
+    async def flush():
+        context["nested"]["value"] = "changed during flush"
+        assert rows[0].context == {"nested": {"value": "original"}}
+        assert service.verify_integrity(rows[0]) is True
+
+    db.flush = AsyncMock(side_effect=flush)
+    result = await service.create_logs(
+        db,
+        entries=[{"resource_type": "user", "action": "read", "context": context}],
+    )
+
+    assert result[0].context == {"nested": {"value": "original"}}
+    assert service.verify_integrity(result[0]) is True
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_logs_rejects_unserializable_batch_before_adding_rows():
+    service = SecureAuditService(signing_key=secrets.token_bytes(32))
+    db = MagicMock()
+    db.flush = AsyncMock()
+
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        await service.create_logs(
             db,
-            resource_type="user",
-            resource_id="42",
-            action="read",
+            entries=[
+                {"resource_type": "user", "action": "read"},
+                {
+                    "resource_type": "user",
+                    "action": "read",
+                    "context": {"bad": object()},
+                },
+            ],
         )
 
-    assert result is fallback
-    created.model_copy.assert_called_once()
-    assert created.model_copy.call_args.kwargs["update"]["signature"]
+    db.add_all.assert_not_called()
+    db.flush.assert_not_awaited()
+    db.commit.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1033,3 +1076,63 @@ async def test_record_domain_event_checks_isolation_before_locking_the_aggregate
     head_parameters = head_statement.compile().params
     assert head_parameters["aggregate_type_1"] == "grade"
     assert head_parameters["aggregate_id_1"] == "aud340-unit"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dialect", ["sqlite", "postgresql"])
+@pytest.mark.parametrize("representation", ["uppercase", "compact", "object"])
+async def test_create_logs_canonicalizes_uuid_fields_before_flush(
+    dialect, representation
+):
+    service = SecureAuditService(signing_key=secrets.token_bytes(32))
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = dialect
+    identifiers = {
+        field: uuid4() for field in ("id", "actor_user_id", "subject_user_id")
+    }
+    entry = {"resource_type": "profile", "action": "read"}
+    for field, value in identifiers.items():
+        entry[field] = (
+            str(value).upper()
+            if representation == "uppercase"
+            else value.hex
+            if representation == "compact"
+            else value
+        )
+    rows = []
+    db.add_all.side_effect = rows.extend
+
+    async def flush():
+        for field, value in identifiers.items():
+            assert getattr(rows[0], field) == value
+            if representation == "object":
+                assert getattr(rows[0], field) is value
+        assert service.verify_integrity(rows[0]) is True
+
+    db.flush = AsyncMock(side_effect=flush)
+    written = await service.create_logs(db, entries=[entry])
+    assert written[0].id == identifiers["id"]
+    assert written[0].signature == rows[0].signature
+    assert service.verify_integrity(written[0]) is True
+    db.flush.assert_awaited_once()
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["id", "actor_user_id", "subject_user_id"])
+@pytest.mark.parametrize("invalid", ["invalid-uuid", ""])
+async def test_create_logs_rejects_invalid_uuid_before_adding_any_rows(field, invalid):
+    service = SecureAuditService(signing_key=secrets.token_bytes(32))
+    db = MagicMock()
+    db.flush = AsyncMock()
+    with pytest.raises(ValueError):
+        await service.create_logs(
+            db,
+            entries=[
+                {"resource_type": "profile", "action": "read"},
+                {"resource_type": "profile", "action": "read", field: invalid},
+            ],
+        )
+    db.add_all.assert_not_called()
+    db.flush.assert_not_awaited()
+    db.commit.assert_not_called()
