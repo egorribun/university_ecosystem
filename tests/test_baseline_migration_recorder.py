@@ -105,3 +105,26 @@ def test_global_operation_contract_rejects_compound_statement_overrides(
     changed[position] += "; " + extra
     with pytest.raises(AssertionError):
         assert_baseline_operation_kinds(changed)
+
+
+@pytest.mark.parametrize("defect", ["missing", "duplicate", "changed", "late"])
+def test_global_operation_contract_requires_exact_early_empty_schema_guard(
+    monkeypatch: pytest.MonkeyPatch, defect: str
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    changed = list(operations.statements)
+    guard = changed[2]
+    assert guard.startswith("DO $baseline_empty$")
+    if defect == "missing":
+        del changed[2]
+    elif defect == "duplicate":
+        changed.insert(2, guard)
+    elif defect == "changed":
+        changed[2] = guard.replace("IF EXISTS (", "IF FALSE AND EXISTS (", 1)
+        assert changed[2] != guard
+    else:
+        assert defect == "late"
+        changed.remove(guard)
+        changed.append(guard)
+    with pytest.raises(AssertionError):
+        assert_baseline_operation_kinds(changed)

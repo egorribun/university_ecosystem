@@ -7,6 +7,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,14 +49,12 @@ SQUAWK_BINARY_SUFFIX = f"{SQUAWK_BINARY_DIRECTORY}/squawk-linux-x64"
 SQUAWK_RUNNER = "ubuntu-24.04"
 SQUAWK_VERIFY_SHELL = "/bin/bash --noprofile --norc -e -o pipefail {0}"
 SQUAWK_EXCLUSIONS = (
-    "prefer-robust-stmts",
-    "prefer-text-field",
-    "prefer-bigint-over-int",
-    "prefer-identity",
-    "prefer-timestamp-tz",
-    "disallowed-unique-constraint",
-    "require-enum-value-ordering",
+    "require-concurrent-index-creation",
+    "constraint-missing-not-valid",
+    "adding-foreign-key-constraint",
 )
+SQUAWK_BASELINE_PATH = "alembic/versions/202611020000_mvp_baseline.py"
+
 TRIVY_SHA256 = "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f"
 CRD_CATALOG_COMMIT = "866b2653a5334db9aed20ad74701e20fd464471b"  # pragma: allowlist secret -- immutable schema revision
 
@@ -73,12 +72,29 @@ def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
 def _squawk_exclusions(run: Any) -> tuple[str, ...] | None:
     if not isinstance(run, str):
         return None
-    match = re.search(r"squawk_args=\((.*?)\)", run, re.DOTALL)
-    if match is None:
+    lines = [line.strip() for line in run.splitlines()]
+    expected = [
+        "while IFS= read -r migration; do",
+        '[ -z "$migration" ] && continue',
+        "squawk_args=()",
+        f'if [[ "$migration" == "{SQUAWK_BASELINE_PATH}" ]]; then',
+        "squawk_args=(",
+        *(f"--exclude {rule}" for rule in SQUAWK_EXCLUSIONS),
+        ")",
+        "fi",
+    ]
+    width = len(expected)
+    matches = sum(
+        lines[index : index + width] == expected
+        for index in range(len(lines) - width + 1)
+    )
+    if (
+        matches != 1
+        or run.count("squawk_args") != 3
+        or run.count("--exclude") != len(SQUAWK_EXCLUSIONS)
+    ):
         return None
-    normalized = " ".join(match.group(1).split())
-    expected = " ".join(f"--exclude {rule}" for rule in SQUAWK_EXCLUSIONS)
-    return SQUAWK_EXCLUSIONS if normalized == expected else None
+    return SQUAWK_EXCLUSIONS
 
 
 def _has_standalone_squawk_checks(run: Any, target: str, expected_count: int) -> bool:
@@ -956,3 +972,41 @@ def test_generated_signing_keys_are_masked_before_environment_export() -> None:
             "printf '::add-mask::%s\\n' \"$secret\"",
             'printf \'SECRET_KEY=%s\\n\' "$secret" >> "$GITHUB_ENV"',
         ], (path.name, job_name)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    ["missing-reset", "wrong-path", "extra-rule", "extra-assignment", "unguarded"],
+)
+def test_squawk_integrity_contract_rejects_baseline_exception_scope_drift(
+    defect: str,
+) -> None:
+    job = _workflow(CI)["jobs"]["alembic-migrations"]
+    assert _has_pinned_squawk_integrity_contract(job)
+    lint = _step(job, "Lint Postgres Migrations (Squawk)")
+    run = lint["run"]
+    if defect == "missing-reset":
+        changed = run.replace("squawk_args=()", "", 1)
+    elif defect == "wrong-path":
+        changed = run.replace(SQUAWK_BASELINE_PATH, "alembic/versions/other.py", 1)
+    elif defect == "extra-rule":
+        changed = run.replace(
+            "--exclude adding-foreign-key-constraint",
+            "--exclude adding-foreign-key-constraint --exclude ban-drop-table",
+            1,
+        )
+    elif defect == "extra-assignment":
+        changed = run + "\nsquawk_args=(--exclude ban-drop-table)\n"
+    else:
+        assert defect == "unguarded"
+        changed = run.replace(
+            f'if [[ "$migration" == "{SQUAWK_BASELINE_PATH}" ]]; then',
+            "if true; then",
+            1,
+        )
+    assert changed != run
+    assert not _has_pinned_squawk_integrity_contract(
+        _job_with_step_update(
+            job, "Lint Postgres Migrations (Squawk)", {"run": changed}
+        )
+    )

@@ -23,6 +23,51 @@ BASELINE_DOWNGRADE_REASON = (
 )
 _CRON_PROBE = "SELECT 1 FROM pg_available_extensions WHERE name = 'pg_cron'"
 
+# Independent snapshot: do not derive the expected guard from the migration.
+_EXPECTED_EMPTY_SCHEMA_GUARD_SQL = """DO $baseline_empty$
+DECLARE
+    version_table oid := to_regclass('public.alembic_version');
+    version_rows boolean;
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_namespace
+        WHERE nspname <> 'public'
+          AND nspname <> 'information_schema'
+          AND left(nspname, 3) <> 'pg_'
+    ) OR EXISTS (
+        SELECT 1 FROM pg_depend dependency
+        JOIN pg_namespace namespace ON namespace.oid = dependency.refobjid
+        WHERE dependency.refclassid = 'pg_namespace'::regclass
+          AND namespace.nspname = 'public'
+          AND (
+              dependency.classid = 'pg_class'::regclass
+              AND (dependency.objid = version_table OR dependency.objid IN (
+                  SELECT indexrelid FROM pg_index WHERE indrelid = version_table
+              ))
+          ) IS NOT TRUE
+          AND (
+              dependency.classid = 'pg_type'::regclass
+              AND dependency.objid IN (
+                  SELECT oid FROM pg_type WHERE typrelid = version_table
+                  UNION
+                  SELECT typarray FROM pg_type WHERE typrelid = version_table
+              )
+          ) IS NOT TRUE
+    ) THEN
+        RAISE EXCEPTION 'The MVP baseline requires an empty application schema.'
+            USING ERRCODE = '55000';
+    END IF;
+    IF version_table IS NOT NULL THEN
+        EXECUTE 'SELECT EXISTS (SELECT 1 FROM public.alembic_version)'
+            INTO version_rows;
+        IF version_rows THEN
+            RAISE EXCEPTION 'The MVP baseline requires an empty version ledger.'
+                USING ERRCODE = '55000';
+        END IF;
+    END IF;
+END
+$baseline_empty$"""
+
 _EXPECTED_FUNCTION_SQL = (
     (
         "CREATE FUNCTION public.notify_outbox_event() RETURNS trigger\n"
@@ -95,9 +140,15 @@ def assert_baseline_operation_kinds(statements: list[str]) -> None:
         "SET LOCAL lock_timeout = '10s'",
         "SET LOCAL statement_timeout = '60s'",
     ]
+    assert statements[:3] == [
+        "SET LOCAL lock_timeout = '10s'",
+        "SET LOCAL statement_timeout = '60s'",
+        _EXPECTED_EMPTY_SCHEMA_GUARD_SQL,
+    ]
     assert [sql for sql in statements if sql.upper().startswith("DO ")] == [
+        _EXPECTED_EMPTY_SCHEMA_GUARD_SQL,
         "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = "
-        "'ue_rls_bypass') THEN CREATE ROLE ue_rls_bypass NOLOGIN; END IF; END $$"
+        "'ue_rls_bypass') THEN CREATE ROLE ue_rls_bypass NOLOGIN; END IF; END $$",
     ]
     assert Counter(
         sql for sql in statements if sql.upper().startswith("CREATE FUNCTION ")
