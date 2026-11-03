@@ -1015,7 +1015,7 @@ def test_caddy_build_graph_is_committed_and_read_only_during_the_image_build() -
     # go.mod hash for the version that is built, and the go.mod hash for a
     # requirement that a replacement takes over.
     replacements = dict(re.findall(r"^\t(\S+) => \S+ (v\S+)$", go_mod, re.M))
-    assert replacements["golang.org/x/net"] == "v0.60.0"
+    assert replacements["golang.org/x/net"] == "v0.62.0"
     for module, version in sorted(required):
         if module in replacements:
             assert f"{module} {version}/go.mod h1:" in go_sum, module

@@ -2858,7 +2858,7 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     assert "ARG CADDY_VERSION=2.11.7" in dockerfile
     # AUD-482: the selected security floors live in the committed build go.mod.
     go_mod = _read("services/caddy/go.mod")
-    assert "golang.org/x/net => golang.org/x/net v0.60.0" in go_mod
+    assert "golang.org/x/net => golang.org/x/net v0.62.0" in go_mod
     assert "golang.org/x/text => golang.org/x/text v0.42.0" in go_mod
     assert "google.golang.org/grpc => google.golang.org/grpc v1.83.2" in go_mod
     assert "go build" in dockerfile
