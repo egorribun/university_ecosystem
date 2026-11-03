@@ -1124,6 +1124,7 @@ def test_broker_diagnostic_field_is_private_and_not_semantic():
         "broker_diagnostic",
         "send_phase",
         "send_http_status",
+        "backend_diagnostic",
     }
     assert result.broker_diagnostic is None
     assert schema["broker_diagnostic"].compare is False
@@ -1176,6 +1177,7 @@ def test_runtime_diagnostic_field_is_private_and_not_semantic():
         "broker_diagnostic",
         "send_phase",
         "send_http_status",
+        "backend_diagnostic",
     }
     assert result.runtime_diagnostic is None
     assert schema["runtime_diagnostic"].compare is False
@@ -1317,3 +1319,87 @@ def test_send_diagnostic_is_cleared_when_cleanup_supersedes_failure(
     assert underlying.stopped is False
     assert underlying.contract_errors == []
     assert "private" not in repr(result)
+
+
+@pytest.mark.parametrize("correlated", [True, False])
+def test_backend_diagnostic_has_separate_versioned_closed_line(
+    monkeypatch, capsys, correlated
+):
+    from scripts.owned_nats_coordinator import (
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        OutageCheckpoint,
+    )
+
+    projected = BackendFailureDiagnostic(
+        BackendFailureCategory.DATABASE, BackendFailureKind.PROGRAMMING, "42501"
+    )
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.SEND,
+        OutageCheckpoint.SEND_MESSAGE,
+        send_http_status=500,
+        backend_diagnostic=projected if correlated else None,
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: result)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert captured.out == (
+        "owned_backend_failure_v1 evidence=correlated category=database kind=programming sqlstate=42501\n"
+        if correlated
+        else "owned_backend_failure_v1 evidence=unknown\n"
+    )
+    assert (
+        captured.err
+        == "live_stand: owned NATS acceptance failed outcome=failed stage=send checkpoint=send_message phase=http_status=500\n"
+    )
+
+
+def test_backend_diagnostic_invalid_values_never_print_private_data(
+    monkeypatch, capsys
+):
+    from scripts.owned_nats_coordinator import (
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        OutageCheckpoint,
+    )
+
+    base = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.SEND,
+        OutageCheckpoint.SEND_MESSAGE,
+        send_http_status=500,
+    )
+    private = _PrivateOutageValue()
+    invalid = [
+        private,
+        BackendFailureDiagnostic(private, BackendFailureKind.DATABASE),
+        BackendFailureDiagnostic(BackendFailureCategory.DATABASE, private),
+        BackendFailureDiagnostic(
+            BackendFailureCategory.DATABASE, BackendFailureKind.DATABASE, private
+        ),
+    ]
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    for value in invalid:
+        result = replace(base, backend_diagnostic=value)
+        monkeypatch.setattr(
+            cli, "run_owned_nats_outage", lambda *_a, _r=result, **_k: _r
+        )
+        assert (
+            live_stand.main(
+                ["nats-outage", "--in-place", "--state-dir", "/private/state"]
+            )
+            == 2
+        )
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert (
+            captured.err
+            == "live_stand: owned NATS acceptance failed reason=invalid_result\n"
+        )

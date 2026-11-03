@@ -10724,6 +10724,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     OutageStage,
                     RuntimeObservationPhase,
                     SendPhase,
+                    valid_backend_diagnostic,
                 )
                 from scripts.owned_nats_outage_cli import run_owned_nats_outage
 
@@ -10763,6 +10764,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                         or result.outcome is not OutageOutcome.FAILED
                         or result.stage is not OutageStage.BROKER
                         or result.checkpoint is not OutageCheckpoint.BROKER_PROBE
+                    )
+                )
+                or (
+                    result.backend_diagnostic is not None
+                    and (
+                        not valid_backend_diagnostic(result.backend_diagnostic)
+                        or result.send_http_status != 500
+                        or result.outcome is not OutageOutcome.FAILED
+                        or result.stage is not OutageStage.SEND
+                        or result.checkpoint is not OutageCheckpoint.SEND_MESSAGE
                     )
                 )
                 or (
@@ -10813,6 +10824,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                     send_phase = f" phase=http_status={result.send_http_status}"
                 else:
                     send_phase = ""
+                if result.send_http_status == 500:
+                    backend = result.backend_diagnostic
+                    if backend is None:
+                        print("owned_backend_failure_v1 evidence=unknown")
+                    else:
+                        print(
+                            "owned_backend_failure_v1 evidence=correlated "
+                            f"category={backend.category.value} kind={backend.kind.value} "
+                            f"sqlstate={backend.sqlstate}"
+                        )
                 raise StandError(
                     "owned NATS acceptance failed "
                     f"outcome={result.outcome.value} stage={result.stage.value}"

@@ -198,7 +198,19 @@ def setup_case(tmp_path: Path, request: pytest.FixtureRequest):
                 return httpx.Response(
                     302, headers={"location": "https://example.invalid/"}
                 )
-            if mode in {"http-401", "http-503"}:
+            if mode in {
+                "http-500-echo",
+                "http-500-foreign-id",
+                "http-500-duplicate-id",
+            }:
+                echoed = request.headers["x-request-id"]
+                if mode == "http-500-foreign-id":
+                    echoed = "synthetic-foreign-request"
+                headers = [("x-request-id", echoed)]
+                if mode == "http-500-duplicate-id":
+                    headers.append(("x-request-id", echoed))
+                return httpx.Response(500, headers=headers)
+            if mode in {"http-401", "http-500", "http-503"}:
                 return httpx.Response(
                     int(mode.removeprefix("http-")),
                     json={"detail": "synthetic transport detail"},
@@ -807,3 +819,55 @@ def test_slow_trickling_headers_cannot_outlive_absolute_http_deadline(
         server.shutdown()
         server.server_close()
         thread.join(timeout=1)
+
+
+def test_http500_correlation_is_private_and_single_use(setup_case) -> None:
+    from uuid import UUID
+
+    case = setup_case
+    _login(case)
+    _create(case)
+    case["send_mode"]["value"] = "http-500"
+    response = _send(case)
+    requests = [
+        request
+        for request in case["requests"]
+        if request.url.path.endswith("/messages")
+    ]
+    assert len(requests) == 1
+    correlation = requests[0].headers["x-request-id"]
+    assert UUID(correlation).version == 4
+    assert case["adapter"]._send_request_id == correlation
+    assert correlation not in repr(response)
+    assert correlation not in repr(case["adapter"])
+    assert response.status_code == 500
+    with pytest.raises(http_adapter.HttpObservationNotReady):
+        _send(case)
+    case["adapter"].close_clients(deadline=case["deadline"])
+    assert case["adapter"]._send_request_id is None
+
+
+@pytest.mark.parametrize(
+    "mode", ["http-500-echo", "http-500-foreign-id", "http-500-duplicate-id"]
+)
+def test_mismatched_response_correlation_is_discarded_without_changing500(
+    setup_case, mode
+):
+    case = setup_case
+    _login(case)
+    _create(case)
+    case["send_mode"]["value"] = mode
+    response = _send(case)
+    assert response.status_code == 500
+    assert response.phase is None
+    assert (case["adapter"]._send_request_id is not None) is (mode == "http-500-echo")
+    assert (
+        len(
+            [
+                request
+                for request in case["requests"]
+                if request.url.path.endswith("/messages")
+            ]
+        )
+        == 1
+    )

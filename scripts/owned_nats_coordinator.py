@@ -7,6 +7,7 @@ No runtime adapter or command invokes this coordinator yet.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -141,11 +142,77 @@ class SendPhase(StrEnum):
     NOT_READY = "not_ready"
 
 
+class BackendFailureCategory(StrEnum):
+    DATABASE = "database"
+    RESPONSE_VALIDATION = "response_validation"
+    UNKNOWN = "unknown"
+
+
+class BackendFailureKind(StrEnum):
+    MISSING_GREENLET = "missing_greenlet"
+    INTEGRITY = "integrity"
+    OPERATIONAL = "operational"
+    PROGRAMMING = "programming"
+    NO_RESULT = "no_result"
+    MULTIPLE_RESULTS = "multiple_results"
+    INVALID_REQUEST = "invalid_request"
+    STATEMENT = "statement"
+    DATABASE = "database"
+    RESPONSE_VALIDATION = "response_validation"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class BackendFailureDiagnostic:
+    """Finite projection only; never contains private correlation or log data."""
+
+    category: BackendFailureCategory
+    kind: BackendFailureKind
+    sqlstate: str = "UNKNOWN"
+
+
+def valid_backend_diagnostic(value: object) -> bool:
+    return (
+        type(value) is BackendFailureDiagnostic
+        and type(getattr(value, "category", None)) is BackendFailureCategory
+        and type(getattr(value, "kind", None)) is BackendFailureKind
+        and (
+            (
+                value.category is BackendFailureCategory.DATABASE
+                and value.kind
+                not in {
+                    BackendFailureKind.RESPONSE_VALIDATION,
+                    BackendFailureKind.UNKNOWN,
+                }
+            )
+            or (
+                value.category is BackendFailureCategory.RESPONSE_VALIDATION
+                and value.kind is BackendFailureKind.RESPONSE_VALIDATION
+            )
+            or (
+                value.category is BackendFailureCategory.UNKNOWN
+                and value.kind is BackendFailureKind.UNKNOWN
+            )
+        )
+        and type(getattr(value, "sqlstate", None)) is str
+        and (
+            value.sqlstate == "UNKNOWN"
+            or (
+                value.category is BackendFailureCategory.DATABASE
+                and re.fullmatch(r"[0-9A-Z]{5}", value.sqlstate) is not None
+            )
+        )
+    )
+
+
 @dataclass(frozen=True)
 class MessagePostEvidence:
     status_code: int | None
     message: MessageEvidence | None
     phase: SendPhase | None = None
+    backend_diagnostic: BackendFailureDiagnostic | None = field(
+        default=None, compare=False, repr=False
+    )
 
 
 @dataclass(frozen=True)
@@ -287,6 +354,9 @@ class OutageResult:
     checkpoint: OutageCheckpoint | None = field(default=None, compare=False)
     send_phase: SendPhase | None = field(default=None, compare=False, repr=False)
     send_http_status: int | None = field(default=None, compare=False, repr=False)
+    backend_diagnostic: BackendFailureDiagnostic | None = field(
+        default=None, compare=False, repr=False
+    )
     runtime_diagnostic: RuntimeObservationPhase | None = field(
         default=None, compare=False, repr=False
     )
@@ -620,6 +690,7 @@ class _Coordinator:
         self.broker_diagnostic: BrokerProbePhase | None = None
         self.send_phase: SendPhase | None = None
         self.send_http_status: int | None = None
+        self.backend_diagnostic: BackendFailureDiagnostic | None = None
 
     def _preflight(self) -> _Context:
         inventory = self.primary.child(45)
@@ -807,6 +878,10 @@ class _Coordinator:
             self.send_phase = SendPhase.NOT_READY
             raise
         self.send_phase, self.send_http_status = _send_post_failure(response)
+        if self.send_http_status == 500 and valid_backend_diagnostic(
+            response.backend_diagnostic
+        ):
+            self.backend_diagnostic = response.backend_diagnostic
         message = response.message
         _require(
             self.send_phase is None
@@ -988,6 +1063,7 @@ class _Coordinator:
             self.checkpoint,
             send_phase=self.send_phase if send_failure else None,
             send_http_status=self.send_http_status if send_failure else None,
+            backend_diagnostic=self.backend_diagnostic if send_failure else None,
             runtime_diagnostic=(
                 self.runtime_diagnostic
                 if self.stage is OutageStage.PREFLIGHT

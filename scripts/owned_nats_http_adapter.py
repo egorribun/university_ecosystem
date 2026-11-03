@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import TypeVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 
@@ -149,6 +149,7 @@ class OwnedNatsHttpPort:
         "_peer_id",
         "_pins",
         "_send_attempted",
+        "_send_request_id",
         "_test_transport",
         "_verified_login",
     )
@@ -179,6 +180,7 @@ class OwnedNatsHttpPort:
             self._verified_login = False
             self._create_attempted = False
             self._send_attempted = False
+            self._send_request_id: str | None = None
             self._closed = False
         except (AttributeError, TypeError, ValueError):
             _not_ready()
@@ -477,12 +479,17 @@ class OwnedNatsHttpPort:
         data: dict[str, str] | None = None,
         json_body: dict[str, str] | None = None,
         files: dict[str, tuple[None, str]] | None = None,
+        request_id: str | None = None,
     ) -> tuple[int, dict[str, object] | None]:
         self._check_owner(owner, deadline)
         seconds = self._seconds(deadline)
         headers: dict[str, str] = {}
         if method == "POST":
             headers["X-CSRF-Token"] = self._csrf_token(client.cookies)
+        if request_id is not None:
+            if not _uuid(request_id):
+                _not_ready()
+            headers["X-Request-ID"] = request_id
         response: httpx.Response | None = None
         try:
             request = client.build_request(
@@ -512,6 +519,10 @@ class OwnedNatsHttpPort:
                 auth=None,
                 follow_redirects=False,
             )
+            if request_id is not None:
+                echoed = response.headers.get_list("x-request-id")
+                if echoed and echoed != [request_id]:
+                    self._send_request_id = None
             status = response.status_code
             if type(status) is not int or 300 <= status < 400:
                 _not_ready()
@@ -731,6 +742,7 @@ class OwnedNatsHttpPort:
         ):
             _not_ready()
         self._send_attempted = True
+        self._send_request_id = str(uuid4())
         operation_deadline = self._operation_deadline(deadline)
         try:
             evidence = self._run_bounded(
@@ -771,6 +783,7 @@ class OwnedNatsHttpPort:
                 "POST",
                 f"/api/v1/chats/{chat_id}/messages",
                 files={"content": (None, content)},
+                request_id=self._send_request_id,
             )
             if status != 200:
                 return MessagePostEvidence(status_code=status, message=None)
@@ -807,6 +820,7 @@ class OwnedNatsHttpPort:
         if type(deadline) is not Deadline:
             _not_ready()
         self._closed = True
+        self._send_request_id = None
         self._verified_login = False
         try:
             self._cookies.clear()

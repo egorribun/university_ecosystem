@@ -331,6 +331,7 @@ def test_public_result_and_logs_contain_only_closed_labels(capsys) -> None:
         "broker_diagnostic",
         "send_phase",
         "send_http_status",
+        "backend_diagnostic",
     }
     assert result.checkpoint is OutageCheckpoint.SEND_MESSAGE
     assert result.send_phase is SendPhase.NOT_READY
@@ -930,3 +931,30 @@ def test_post_boundary_failure_after_accepted_post_has_no_send_phase() -> None:
     assert result.checkpoint is None
     assert result.send_phase is None
     assert result.send_http_status is None
+
+
+@pytest.mark.parametrize("cleanup", [None, "close_clients", "release_lock"])
+def test_backend_diagnostic_never_overrides_restoration_or_cleanup(
+    cleanup: str | None,
+) -> None:
+    from scripts.owned_nats_coordinator import (
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+    )
+
+    ports = FakePorts()
+    projected = BackendFailureDiagnostic(
+        BackendFailureCategory.DATABASE, BackendFailureKind.PROGRAMMING, "42501"
+    )
+    ports.script["send_message_once"] = [
+        MessagePostEvidence(500, None, backend_diagnostic=projected)
+    ]
+    if cleanup is not None:
+        ports.script[cleanup] = [RuntimeError("synthetic-private")]
+    result = assert_failed(ports, sends=1, restores=1)
+    assert result.stage is (
+        OutageStage.SEND if cleanup is None else OutageStage.CLEANUP
+    )
+    assert result.backend_diagnostic == (projected if cleanup is None else None)
+    assert "42501" not in repr(result)

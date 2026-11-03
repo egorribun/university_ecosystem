@@ -967,3 +967,98 @@ def test_policy_projection_through_real_docker_cli(
         )
         == expected
     )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [None, TimeoutError("synthetic-private"), RuntimeError("synthetic-private")],
+)
+def test_http500_diagnostic_preserves_single_post_and_original_failure(
+    monkeypatch, failure
+) -> None:
+    from uuid import uuid4
+
+    from scripts.owned_nats_coordinator import (
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        MessagePostEvidence,
+    )
+
+    port = _port()
+    request_id = str(uuid4())
+    calls = []
+
+    def send(self, *args, **kwargs):
+        calls.append("post")
+        self._send_request_id = request_id
+        return MessagePostEvidence(500, None)
+
+    monkeypatch.setattr(http.OwnedNatsHttpPort, "send_message_once", send)
+    monkeypatch.setattr(
+        SignedOwnerLeasePort, "read_signed_owner", lambda *args, **kwargs: _OWNER
+    )
+    projected = BackendFailureDiagnostic(
+        BackendFailureCategory.DATABASE, BackendFailureKind.PROGRAMMING, "42501"
+    )
+
+    def capture(*args, deadline, **kwargs):
+        calls.append("capture")
+        assert args[3] == request_id
+        assert deadline.expires_at <= 5.0
+        if failure is not None:
+            raise failure
+        return projected
+
+    monkeypatch.setattr(transport_port, "capture_backend_failure", capture)
+    response = port.send_message_once("chat", "content", deadline=_deadline())
+    assert response.status_code == 500
+    assert response.phase is None
+    assert response.backend_diagnostic == (projected if failure is None else None)
+    assert calls == ["post", "capture"]
+    assert port._http._send_request_id is None
+    assert request_id not in repr(response)
+    assert "synthetic-private" not in repr(response)
+
+
+def test_no_diagnostic_read_without_primary_deadline_reserve(monkeypatch) -> None:
+    from uuid import uuid4
+
+    from scripts.owned_nats_coordinator import MessagePostEvidence
+
+    port = _port()
+
+    def send(self, *args, **kwargs):
+        self._send_request_id = str(uuid4())
+        return MessagePostEvidence(500, None)
+
+    monkeypatch.setattr(http.OwnedNatsHttpPort, "send_message_once", send)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("diagnostic read cannot consume restoration budget")
+
+    monkeypatch.setattr(transport_port, "capture_backend_failure", forbidden)
+    response = port.send_message_once(
+        "chat", "content", deadline=Deadline.after(0.5, clock=lambda: _NOW)
+    )
+    assert response.status_code == 500
+    assert response.backend_diagnostic is None
+    assert port._http._send_request_id is None
+
+
+def test_read_admission_preserves_two_argument_cast_and_delegation(monkeypatch) -> None:
+    from scripts.owned_nats_coordinator import AdmissionEvidence
+
+    port = _port()
+    deadline = _deadline()
+    postgres = replace(_WORKER, service="postgres")
+    sentinel = object.__new__(AdmissionEvidence)
+    calls = []
+
+    def read(self, owner, target, *, deadline):
+        calls.append((self, owner, target, deadline))
+        return sentinel
+
+    monkeypatch.setattr(sql.OwnedNatsSqlAdapter, "read_admission", read)
+    assert port.read_admission(_OWNER, postgres, deadline=deadline) is sentinel
+    assert calls == [(port._sql, _OWNER, postgres, deadline)]
