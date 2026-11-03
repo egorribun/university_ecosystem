@@ -167,13 +167,23 @@ def _is_pii_field_name(value: object) -> bool:
     )
 
 
-def _redact_free_text(value: str) -> str:
-    """Redact emails and phone numbers while preserving explicit numeric tokens."""
+# Identifiers that must never be read as phone numbers: canonical UUIDs and
+# compact 32-digit hex ids, bounded by non-alphanumeric characters. Phone numbers
+# cannot reach this shape, so protecting these spans never weakens phone redaction.
+_IDENTIFIER_RE = re.compile(
+    r"(?<![0-9A-Za-z])"
+    r"(?:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
+    r"|[0-9A-Fa-f]{32})"
+    r"(?![0-9A-Za-z])",
+    re.ASCII,
+)
 
-    redacted = _EMAIL_RE.sub(_PII_REPLACEMENT, value)
+
+def _mask_phone_numbers(text: str) -> str:
+    """Redact phone numbers in one identifier-free segment."""
 
     def replace_phone(match: re.Match[str]) -> str:
-        prefix = redacted[: match.start()]
+        prefix = text[: match.start()]
         explicit_non_phone_context = _NON_PHONE_CONTEXT_RE.search(prefix) is not None
         dotted_without_phone_context = "." in match.group() and not (
             match.group().startswith("+")
@@ -183,7 +193,26 @@ def _redact_free_text(value: str) -> str:
             return match.group()
         return _PII_REPLACEMENT
 
-    return _PHONE_RE.sub(replace_phone, redacted)
+    return _PHONE_RE.sub(replace_phone, text)
+
+
+def _redact_free_text(value: str) -> str:
+    """Redact emails and phone numbers while preserving explicit numeric tokens.
+
+    Identifier spans are copied verbatim and phone matching runs only between
+    them, so a phone pattern can never be taken from inside a UUID and a phone
+    number placed next to an identifier is still redacted.
+    """
+
+    redacted = _EMAIL_RE.sub(_PII_REPLACEMENT, value)
+    parts: list[str] = []
+    cursor = 0
+    for identifier in _IDENTIFIER_RE.finditer(redacted):
+        parts.append(_mask_phone_numbers(redacted[cursor : identifier.start()]))
+        parts.append(identifier.group())
+        cursor = identifier.end()
+    parts.append(_mask_phone_numbers(redacted[cursor:]))
+    return "".join(parts)
 
 
 def _redact_nested(value: Any, *, seen: set[int]) -> Any:
@@ -316,6 +345,19 @@ def _add_service_context(
     return event_dict
 
 
+# Closed schema of the request-failure diagnostic event. The owned NATS consumer
+# (scripts/owned_nats_failure_diagnostic.py) must accept exactly these keys; a
+# test asserts that equality so the two copies cannot drift silently.
+REQUEST_FAILURE_DIAGNOSTIC_FIELDS: tuple[str, ...] = (
+    "message",
+    "logger",
+    "diagnostic_request_id",
+    "diagnostic_category",
+    "diagnostic_kind",
+    "diagnostic_sqlstate",
+)
+
+
 def configure_logging(
     *,
     level: int = logging.INFO,
@@ -410,16 +452,12 @@ def configure_logging(
             event_dict.get("logger") == "app.core.request_failure_diagnostic"
             and event_dict.get("message") == "request_failure_diagnostic"
         ):
-            fields = (
-                "message",
-                "logger",
-                "diagnostic_request_id",
-                "diagnostic_category",
-                "diagnostic_kind",
-                "diagnostic_sqlstate",
-            )
             return _orjson_serializer(
-                {key: event_dict[key] for key in fields if key in event_dict}
+                {
+                    key: event_dict[key]
+                    for key in REQUEST_FAILURE_DIAGNOSTIC_FIELDS
+                    if key in event_dict
+                }
             )
         rendered: str = renderer(logger, method_name, event_dict)
         return rendered
