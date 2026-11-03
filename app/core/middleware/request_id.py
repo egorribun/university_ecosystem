@@ -3,25 +3,31 @@
 from __future__ import annotations
 
 import uuid as _uuid_module
+from collections.abc import Callable
 from contextvars import ContextVar
+from string import ascii_letters, digits
 from typing import Any
 
 from fastapi import Request
-
-try:
-    from structlog.contextvars import clear_contextvars
-except ImportError:
-    clear_contextvars = None  # type: ignore[assignment]
+from fastapi.exceptions import ResponseValidationError
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.logging import bind_context
+from app.core.request_failure_diagnostic import log_request_failure
+
+clear_contextvars: Callable[[], None] | None
+try:
+    from structlog.contextvars import clear_contextvars as _clear_contextvars
+except ImportError:
+    clear_contextvars = None
+else:
+    clear_contextvars = _clear_contextvars
 
 # D-04 (audit 2026-03-08): Correlation ID available to any logger in this process
 # via request_id_ctx.get().  Set by RequestIDMiddleware on every HTTP request.
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="")
 
-_REQUEST_ID_SAFE_CHARS: frozenset[str] = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"  # pragma: allowlist secret
-)
+_REQUEST_ID_SAFE_CHARS: frozenset[str] = frozenset(ascii_letters + digits + "-_")
 
 
 class RequestIDMiddleware:
@@ -75,6 +81,9 @@ class RequestIDMiddleware:
 
         try:
             await self._app(scope, receive, _send_with_id)
+        except (SQLAlchemyError, ResponseValidationError) as error:
+            log_request_failure(error, request_id)
+            raise
         finally:
             request_id_ctx.reset(ctx_token)
             # LOW-W19: Clear structlog contextvars so that request-scoped

@@ -399,8 +399,31 @@ def configure_logging(
     foreign_pre_chain = list(shared_processors)
     if json_output:
         foreign_pre_chain.append(structlog.processors.format_exc_info)
+
+    def render_event(logger: Any, method_name: str, event_dict: dict[str, Any]) -> str:
+        # This producer owns a finite, privacy-safe schema. Keep its diagnostic
+        # JSON machine-readable in development too, without changing log mode
+        # or rendering inherited request/user/exception context into the event.
+        if (
+            event_dict.get("logger") == "app.core.request_failure_diagnostic"
+            and event_dict.get("message") == "request_failure_diagnostic"
+        ):
+            fields = (
+                "message",
+                "logger",
+                "diagnostic_request_id",
+                "diagnostic_category",
+                "diagnostic_kind",
+                "diagnostic_sqlstate",
+            )
+            return _orjson_serializer(
+                {key: event_dict[key] for key in fields if key in event_dict}
+            )
+        rendered: str = renderer(logger, method_name, event_dict)
+        return rendered
+
     processor_formatter = structlog.stdlib.ProcessorFormatter(
-        processor=renderer,
+        processor=render_event,
         foreign_pre_chain=foreign_pre_chain,
     )
     for handler in logging.getLogger().handlers:
