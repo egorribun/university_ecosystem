@@ -79,17 +79,14 @@ kind: ClusterRole
 metadata:
   name: spire-agent-role
 rules:
-  # The Kubernetes workload attestor watches pods to resolve workloads on this
-  # node. RBAC cannot scope list/watch by spec.nodeName, so this stays cluster
-  # scoped and read-only.
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch"]
-  # The k8s workload attestor's default kubelet path authorizes its bearer token
-  # against nodes/proxy GET (kubelet secure port). That is the only node-scoped
-  # verb justified here; reading node objects (nodes GET) and any list/watch or
-  # streaming of nodes/proxy is not required (AUD-251). Live proof is recorded
-  # as `kubectl auth can-i get nodes/proxy` and `can-i get nodes` checks.
+  # SPIRE 1.15.3's default PID workload attestor reads kubelet GET /pods.
+  # It does not list/watch pods through the Kubernetes API server. Broker
+  # object references, API-server cache and namespace-label selectors are not
+  # configured; do not grant their permissions to this default deployment.
+  # Keep kubelet access for compatibility with clusters without fine-grained
+  # kubelet authorization. IMPORTANT: nodes/proxy GET is not read-only and
+  # can authorize WebSocket exec. Replacing it with nodes/pods requires proof
+  # that every deployed kubelet supports KubeletFineGrainedAuthz (AUD-251).
   - apiGroups: [""]
     resources: ["nodes/proxy"]
     verbs: ["get"]

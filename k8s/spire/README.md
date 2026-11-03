@@ -47,3 +47,21 @@ authority and does not replace deliberate entry retirement.
 
 References: SPIRE [1.15.3 entry CLI](https://github.com/spiffe/spire/blob/v1.15.3/doc/spire_server.md#spire-server-entry-create)
 and [k8s_psat identity format](https://github.com/spiffe/spire/blob/v1.15.3/doc/plugin_server_nodeattestor_k8s_psat.md).
+
+
+## Workload attestor RBAC boundary
+
+The pinned SPIRE 1.15.3 agent uses the default PID-based `k8s` workload attestor.
+It fetches `/pods` from the local kubelet, not by listing or watching Kubernetes
+API-server pods. The default manifest therefore grants no API-server `pods`
+permissions to the agent. Enabling broker object references, API-server caching
+or namespace-label selectors requires a separate configuration and RBAC review.
+See the [pinned attestor documentation](https://github.com/spiffe/spire/blob/v1.15.3/doc/plugin_agent_workloadattestor_k8s.md)
+and [kubelet client](https://github.com/spiffe/spire/blob/v1.15.3/pkg/agent/plugin/workloadattestor/k8s/kubeletclient.go).
+
+The retained `nodes/proxy` GET grant is a compatibility requirement, not a
+read-only security boundary: Kubernetes also authorizes some WebSocket exec
+endpoints through that permission. A narrower `nodes/pods` grant requires
+verified `KubeletFineGrainedAuthz` support on every deployed kubelet. Do not
+remove the compatibility grant or claim least-privilege completion without
+live authorization and workload-attestation proof. See [Kubelet authorization](https://kubernetes.io/docs/reference/access-authn-authz/kubelet-authn-authz/).
