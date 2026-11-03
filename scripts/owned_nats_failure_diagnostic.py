@@ -27,6 +27,8 @@ from scripts.owned_nats_process import (
 _MAX_BYTES = 65536
 _MAX_JSON_DEPTH = 32
 _EVENT = "request_failure_diagnostic"
+_LOGGER = "app.core.request_failure_diagnostic"
+# Must equal app.core.logging.REQUEST_FAILURE_DIAGNOSTIC_FIELDS; tests enforce it.
 _RECORD_KEYS = frozenset(
     {
         "message",
@@ -113,6 +115,7 @@ def project_backend_failure(
     if recorder is not None:
         recorder.record(BackendCaptureStage.PROJECTION_INVALID)
     matches: list[BackendFailureDiagnostic] = []
+    saw_record = False
     for stream in (stdout, stderr):
         for line in stream.splitlines():
             try:
@@ -139,8 +142,9 @@ def project_backend_failure(
                 continue
             if type(row) is not dict or row.get("message") != _EVENT:
                 continue
-            if row.get("logger") != "app.core.request_failure_diagnostic":
+            if row.get("logger") != _LOGGER:
                 continue
+            saw_record = True
             if row.get("diagnostic_request_id") != request_id:
                 continue
             if row.keys() != _RECORD_KEYS:
@@ -162,11 +166,12 @@ def project_backend_failure(
     if len(matches) == 1:
         return matches[0]
     if recorder is not None:
-        recorder.record(
-            BackendCaptureStage.PROJECTION_UNMATCHED
-            if not matches
-            else BackendCaptureStage.PROJECTION_AMBIGUOUS
-        )
+        if len(matches) > 1:
+            recorder.record(BackendCaptureStage.PROJECTION_AMBIGUOUS)
+        elif saw_record:
+            recorder.record(BackendCaptureStage.PROJECTION_UNMATCHED)
+        else:
+            recorder.record(BackendCaptureStage.PROJECTION_ABSENT)
     return None
 
 

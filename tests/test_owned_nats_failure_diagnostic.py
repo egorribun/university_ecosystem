@@ -36,6 +36,73 @@ def _record(request_id: str, **changes: object) -> bytes:
     return json.dumps(row).encode() + b"\n"
 
 
+def test_consumer_record_keys_equal_the_emitter_schema() -> None:
+    from app.core.logging import REQUEST_FAILURE_DIAGNOSTIC_FIELDS
+
+    assert diagnostic._RECORD_KEYS == frozenset(REQUEST_FAILURE_DIAGNOSTIC_FIELDS)
+    assert len(REQUEST_FAILURE_DIAGNOSTIC_FIELDS) == len(diagnostic._RECORD_KEYS)
+
+
+@pytest.mark.parametrize(
+    ("category", "kind", "sqlstate"),
+    [
+        ("other", "runtime_error", "UNKNOWN"),
+        ("other", "pydantic_validation", "UNKNOWN"),
+        ("other", "redis", "UNKNOWN"),
+        ("other", "driver", "UNKNOWN"),
+        ("other", "other", "UNKNOWN"),
+        ("database", "operational", "08006"),
+    ],
+)
+def test_allowlisted_failure_kinds_project_only_with_their_category(
+    category: str, kind: str, sqlstate: str
+) -> None:
+    request_id = str(uuid4())
+    projected = diagnostic.project_backend_failure(
+        _record(
+            request_id,
+            diagnostic_category=category,
+            diagnostic_kind=kind,
+            diagnostic_sqlstate=sqlstate,
+        ),
+        b"",
+        request_id,
+    )
+    assert projected == BackendFailureDiagnostic(
+        BackendFailureCategory(category), BackendFailureKind(kind), sqlstate
+    )
+
+
+@pytest.mark.parametrize(
+    ("category", "kind", "sqlstate"),
+    [
+        ("other", "programming", "UNKNOWN"),
+        ("other", "redis", "42501"),
+        ("database", "redis", "UNKNOWN"),
+        ("response_validation", "redis", "UNKNOWN"),
+        ("other", "unknown", "UNKNOWN"),
+        ("unknown", "other", "UNKNOWN"),
+    ],
+)
+def test_mismatched_category_and_kind_are_unknown(
+    category: str, kind: str, sqlstate: str
+) -> None:
+    request_id = str(uuid4())
+    assert (
+        diagnostic.project_backend_failure(
+            _record(
+                request_id,
+                diagnostic_category=category,
+                diagnostic_kind=kind,
+                diagnostic_sqlstate=sqlstate,
+            ),
+            b"",
+            request_id,
+        )
+        is None
+    )
+
+
 def test_exact_projection_never_returns_correlation_or_other_fields() -> None:
     request_id = str(uuid4())
     private = "synthetic-private-request-and-exception"
@@ -337,6 +404,7 @@ def test_duplicate_correlated_keys_are_rejected_in_both_orders(key: str) -> None
     [
         ("framing", "projection_framing"),
         ("invalid", "projection_invalid"),
+        ("absent", "projection_absent"),
         ("unmatched", "projection_unmatched"),
         ("duplicate", "projection_ambiguous"),
     ],
@@ -350,6 +418,8 @@ def test_projection_failure_stage_is_finite_and_has_no_raw_evidence(mode, expect
         raw = raw[:-1]
     elif mode == "invalid":
         raw += b'{"private": "synthetic-private"}\x00\n'
+    elif mode == "absent":
+        raw = b"unrelated log line\n"
     elif mode == "unmatched":
         raw = _record(str(uuid4()))
     else:

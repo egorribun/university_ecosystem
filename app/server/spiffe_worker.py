@@ -22,7 +22,7 @@ class BackendWorker(UvicornWorker):
             await super()._serve()
             return
         # _serve runs in the forked worker. Never open gRPC or its background
-        # watcher in __init__, gunicorn_conf or an application lifespan hook.
+        # watcher in __init__, at module import or in an application lifespan hook.
         source = WorkloadContexts.connect(policy.socket_path, policy.server_identity)
         guard: TransportGuard | None = None
         try:

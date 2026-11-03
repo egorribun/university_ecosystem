@@ -89,7 +89,20 @@ test("HTTP diagnostics silently reject out-of-domain runtime values without coer
   )
 })
 
-test("HTTP diagnostics deduplicate records and stop at 104 records per worker process", () => {
+test("HTTP diagnostics deduplicate records and stop at the derived bound per worker process", async () => {
+  // The bound is projects x checks x attempts, derived from the closed check set in source.
+  const source = await readFile(helperUrl, "utf8")
+  const checkSet = source.match(
+    /const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set\(\[([\s\S]*?)\]\)/u
+  )
+  assert.ok(checkSet, "the closed check set must be declared in the helper")
+  const checkCount = [...checkSet[1].matchAll(/"[a-z0-9-]+"/gu)].length
+  assert.ok(checkCount > 0)
+  assert.match(
+    source,
+    /MAX_RECORDS =\s*LIVE_HTTP_STATUS_PROJECTS \* LIVE_HTTP_STATUS_CHECKS\.size \* LIVE_HTTP_STATUS_ATTEMPTS/u
+  )
+  const bound = 2 * checkCount * 2
   const output = reportInChild(`
     for (let status = 100; status < 600; status += 1) {
       for (let duplicate = 0; duplicate < 10; duplicate += 1) {
@@ -100,7 +113,7 @@ test("HTTP diagnostics deduplicate records and stop at 104 records per worker pr
   assert.equal(
     output,
     Array.from(
-      { length: 104 },
+      { length: bound },
       (_, index) =>
         `UE_LIVE_HTTP_STATUS_V1 project=desktop check=admin-users status=${100 + index}\n`
     ).join("")

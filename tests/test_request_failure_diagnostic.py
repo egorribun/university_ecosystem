@@ -8,17 +8,43 @@ import json
 import logging
 from uuid import UUID, uuid4
 
+import asyncpg
 import pytest
 import structlog
 from fastapi.exceptions import ResponseValidationError
+from pydantic import TypeAdapter
+from pydantic import ValidationError as PydanticValidationError
+from redis.exceptions import RedisError
 from sqlalchemy import exc
 from sqlalchemy.dialects.postgresql.asyncpg import AsyncAdapt_asyncpg_dbapi
 
 import app.core.logging as logging_mod
+from app.core.logging import REQUEST_FAILURE_DIAGNOSTIC_FIELDS
 from app.core.middleware.request_id import RequestIDMiddleware, request_id_ctx
 from app.core.request_failure_diagnostic import log_request_failure
+from scripts import owned_nats_failure_diagnostic
+from scripts.owned_nats_coordinator import (
+    BackendFailureCategory,
+    BackendFailureDiagnostic,
+    BackendFailureKind,
+    valid_backend_diagnostic,
+)
 
 pytestmark = pytest.mark.usefixtures("preserve_logging_configuration")
+
+
+class HostileGroup(ExceptionGroup):
+    @property
+    def exceptions(self):
+        raise AssertionError("must not read subclass group members")
+
+
+def _validation_error() -> PydanticValidationError:
+    try:
+        TypeAdapter(int).validate_python("private")
+    except PydanticValidationError as error:
+        return error
+    raise AssertionError("validation must fail")
 
 
 @pytest.fixture(params=[True, False], ids=["json", "console"])
@@ -166,13 +192,108 @@ def test_driver_subclasses_with_properties_are_not_inspected(diagnostic_stream):
 
 
 @pytest.mark.parametrize(
-    "request_id", ["not-a-uuid", "", str(UUID(int=1)).upper().replace("-", "")]
+    "request_id",
+    [
+        str(uuid4()),
+        str(UUID(int=1)).upper().replace("-", ""),
+        "Client_Req-7",
+        "a" * 64,
+    ],
 )
-def test_noncanonical_correlation_is_replaced_not_logged(diagnostic_stream, request_id):
+def test_assigned_request_id_is_logged_exactly(diagnostic_stream, request_id):
     log_request_failure(exc.SQLAlchemyError(), request_id)
-    value = _record(diagnostic_stream)["diagnostic_request_id"]
-    assert value == str(UUID(value))
-    assert value != request_id
+    assert _record(diagnostic_stream)["diagnostic_request_id"] == request_id
+
+
+@pytest.mark.parametrize(
+    "request_id", ["", "bad id!", "a" * 65, "private@example.com", "é"]
+)
+def test_outside_alphabet_request_id_is_never_echoed(diagnostic_stream, request_id):
+    log_request_failure(exc.SQLAlchemyError(), request_id)
+    assert _record(diagnostic_stream)["diagnostic_request_id"] == "invalid"
+    assert "private" not in diagnostic_stream.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("error", "category", "kind"),
+    [
+        (RuntimeError("private"), "other", "runtime_error"),
+        (ValueError("private"), "other", "other"),
+        (_validation_error(), "other", "pydantic_validation"),
+        (RedisError("private"), "other", "redis"),
+        (asyncpg.PostgresError("private"), "other", "driver"),
+        (asyncpg.InterfaceError("private"), "other", "driver"),
+        (
+            ExceptionGroup("private", [ValueError("private"), RuntimeError("private")]),
+            "other",
+            "runtime_error",
+        ),
+        (ExceptionGroup("private", [ValueError("private")]), "other", "other"),
+        (
+            ExceptionGroup(
+                "private",
+                [
+                    ExceptionGroup(
+                        "nested", [exc.OperationalError(None, None, Exception())]
+                    )
+                ],
+            ),
+            "database",
+            "operational",
+        ),
+        (
+            ExceptionGroup(
+                "private",
+                [RuntimeError("private"), exc.IntegrityError(None, None, Exception())],
+            ),
+            "other",
+            "runtime_error",
+        ),
+        (
+            ExceptionGroup(
+                "private",
+                [exc.IntegrityError(None, None, Exception()), RuntimeError("private")],
+            ),
+            "database",
+            "integrity",
+        ),
+        (HostileGroup("private", [RuntimeError("private")]), "other", "runtime_error"),
+        (HostileGroup("private", [ValueError("private")]), "other", "other"),
+    ],
+)
+def test_unhandled_failures_use_closed_other_and_leaf_database_kinds(
+    diagnostic_stream, error, category, kind
+):
+    log_request_failure(error, str(uuid4()))
+    record = _record(diagnostic_stream)
+    assert record["diagnostic_category"] == category
+    assert record["diagnostic_kind"] == kind
+    assert record["diagnostic_sqlstate"] == "UNKNOWN"
+    assert "private" not in diagnostic_stream.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_middleware_record_matches_client_supplied_response_header(
+    diagnostic_stream,
+):
+    async def inner(scope, receive, send):
+        await send({"type": "http.response.start", "status": 500, "headers": []})
+        raise RuntimeError("private")
+
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    with pytest.raises(RuntimeError):
+        await RequestIDMiddleware(inner)(
+            {"type": "http", "headers": [(b"x-request-id", b"Client_Req-7")]},
+            None,
+            send,
+        )
+    header = dict(sent[0]["headers"])[b"x-request-id"]
+    assert header == b"Client_Req-7"
+    assert _record(diagnostic_stream)["diagnostic_request_id"] == "Client_Req-7"
 
 
 def test_numeric_uuid_is_not_mistaken_for_phone_text(diagnostic_stream):
@@ -241,15 +362,30 @@ async def test_middleware_logs_before_context_reset_and_reraises_identity(
 
 
 @pytest.mark.asyncio
+async def test_middleware_does_not_record_cancellation(diagnostic_stream):
+    error = asyncio.CancelledError()
+
+    async def inner(scope, receive, send):
+        raise error
+
+    before = request_id_ctx.get()
+    with pytest.raises(asyncio.CancelledError) as caught:
+        await RequestIDMiddleware(inner)({"type": "http", "headers": []}, None, None)
+    assert caught.value is error
+    assert request_id_ctx.get() == before
+    assert diagnostic_stream.getvalue() == ""
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "error",
     [
-        asyncio.CancelledError(),
-        RuntimeError("private"),
         ExceptionGroup("private", [exc.SQLAlchemyError()]),
+        RuntimeError("private"),
+        RedisError("private"),
     ],
 )
-async def test_middleware_does_not_catch_cancellation_unknown_or_grouped_errors(
+async def test_middleware_reraises_every_unhandled_failure_unchanged(
     diagnostic_stream, error
 ):
     async def inner(scope, receive, send):
@@ -260,7 +396,7 @@ async def test_middleware_does_not_catch_cancellation_unknown_or_grouped_errors(
         await RequestIDMiddleware(inner)({"type": "http", "headers": []}, None, None)
     assert caught.value is error
     assert request_id_ctx.get() == before
-    assert diagnostic_stream.getvalue() == ""
+    assert UUID(_record(diagnostic_stream)["diagnostic_request_id"]).version == 4
 
 
 def test_sqlstate_string_subclasses_are_not_inspected(diagnostic_stream):
@@ -287,15 +423,49 @@ def test_inherited_context_is_not_rendered(diagnostic_stream):
     ):
         log_request_failure(exc.SQLAlchemyError(), str(uuid4()))
     record = _record(diagnostic_stream)
-    assert set(record) == {
-        "message",
-        "logger",
-        "diagnostic_request_id",
-        "diagnostic_category",
-        "diagnostic_kind",
-        "diagnostic_sqlstate",
-    }
+    assert set(record) == set(REQUEST_FAILURE_DIAGNOSTIC_FIELDS)
     assert "private" not in diagnostic_stream.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            exc.OperationalError(None, None, Exception()),
+            ("database", "operational", "UNKNOWN"),
+        ),
+        (RuntimeError("private"), ("other", "runtime_error", "UNKNOWN")),
+        (
+            ExceptionGroup("private", [exc.IntegrityError(None, None, Exception())]),
+            ("database", "integrity", "UNKNOWN"),
+        ),
+    ],
+)
+async def test_real_emitter_lines_project_to_the_matching_backend_failure(
+    diagnostic_stream, error, expected
+):
+    """Feed the exact emitted bytes, in both log modes, into the owned consumer."""
+    request_id = str(uuid4())
+
+    async def inner(scope, receive, send):
+        raise error
+
+    scope = {
+        "type": "http",
+        "headers": [(b"x-request-id", request_id.encode("ascii"))],
+    }
+    with pytest.raises(type(error)):
+        await RequestIDMiddleware(inner)(scope, None, None)
+    emitted = diagnostic_stream.getvalue().encode("utf-8")
+    projected = owned_nats_failure_diagnostic.project_backend_failure(
+        emitted, b"", request_id
+    )
+    category, kind, sqlstate = expected
+    assert projected == BackendFailureDiagnostic(
+        BackendFailureCategory(category), BackendFailureKind(kind), sqlstate
+    )
+    assert valid_backend_diagnostic(projected)
 
 
 @pytest.mark.parametrize(

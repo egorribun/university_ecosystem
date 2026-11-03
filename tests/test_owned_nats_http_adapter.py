@@ -821,6 +821,18 @@ def test_slow_trickling_headers_cannot_outlive_absolute_http_deadline(
         thread.join(timeout=1)
 
 
+@pytest.mark.parametrize("mode", ["success", "http-401", "http-503"])
+def test_only_unhandled_500_may_arrive_without_request_echo(setup_case, mode) -> None:
+    # ServerErrorMiddleware writes an unhandled 500 outside RequestIDMiddleware, so
+    # only that status may lack the echo. Any other absent echo drops correlation.
+    case = setup_case
+    _login(case)
+    _create(case)
+    case["send_mode"]["value"] = mode
+    _send(case)
+    assert case["adapter"]._send_request_id is None
+
+
 def test_http500_correlation_is_private_and_single_use(setup_case) -> None:
     from uuid import UUID
 

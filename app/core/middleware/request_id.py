@@ -9,8 +9,6 @@ from string import ascii_letters, digits
 from typing import Any
 
 from fastapi import Request
-from fastapi.exceptions import ResponseValidationError
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.logging import bind_context
 from app.core.request_failure_diagnostic import log_request_failure
@@ -81,7 +79,7 @@ class RequestIDMiddleware:
 
         try:
             await self._app(scope, receive, _send_with_id)
-        except (SQLAlchemyError, ResponseValidationError) as error:
+        except Exception as error:  # RZ-22-01-JUSTIFIED: diagnose, then re-raise
             log_request_failure(error, request_id)
             raise
         finally:

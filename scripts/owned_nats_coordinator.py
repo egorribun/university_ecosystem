@@ -1,8 +1,9 @@
 """Evidence-validating coordinator for one owner-scoped NATS acceptance run.
 
-The future adapter authenticates signed ownership and bounds every nested
-operation. These projections are evidence, not authentication substitutes.
-No runtime adapter or command invokes this coordinator yet.
+The owned NATS outage CLI (scripts/owned_nats_outage_cli.py) calls
+run_owned_outage with the verified transport adapters. Those adapters
+authenticate signed ownership and bound every nested operation. These
+projections are evidence, not authentication substitutes.
 """
 
 from __future__ import annotations
@@ -145,6 +146,8 @@ class SendPhase(StrEnum):
 class BackendFailureCategory(StrEnum):
     DATABASE = "database"
     RESPONSE_VALIDATION = "response_validation"
+    # Allowlisted non-database unhandled failure; UNKNOWN means no evidence.
+    OTHER = "other"
     UNKNOWN = "unknown"
 
 
@@ -159,7 +162,36 @@ class BackendFailureKind(StrEnum):
     STATEMENT = "statement"
     DATABASE = "database"
     RESPONSE_VALIDATION = "response_validation"
+    RUNTIME_ERROR = "runtime_error"
+    PYDANTIC_VALIDATION = "pydantic_validation"
+    REDIS = "redis"
+    DRIVER = "driver"
+    OTHER = "other"
     UNKNOWN = "unknown"
+
+
+_DATABASE_KINDS = frozenset(
+    {
+        BackendFailureKind.MISSING_GREENLET,
+        BackendFailureKind.INTEGRITY,
+        BackendFailureKind.OPERATIONAL,
+        BackendFailureKind.PROGRAMMING,
+        BackendFailureKind.NO_RESULT,
+        BackendFailureKind.MULTIPLE_RESULTS,
+        BackendFailureKind.INVALID_REQUEST,
+        BackendFailureKind.STATEMENT,
+        BackendFailureKind.DATABASE,
+    }
+)
+_OTHER_KINDS = frozenset(
+    {
+        BackendFailureKind.RUNTIME_ERROR,
+        BackendFailureKind.PYDANTIC_VALIDATION,
+        BackendFailureKind.REDIS,
+        BackendFailureKind.DRIVER,
+        BackendFailureKind.OTHER,
+    }
+)
 
 
 class BackendCaptureStage(StrEnum):
@@ -174,6 +206,9 @@ class BackendCaptureStage(StrEnum):
     RUNTIME_AFTER = "runtime_after"
     PROJECTION_FRAMING = "projection_framing"
     PROJECTION_INVALID = "projection_invalid"
+    # No diagnostic record of the event was present in the captured window.
+    PROJECTION_ABSENT = "projection_absent"
+    # Diagnostic records were present, but none carried this request id.
     PROJECTION_UNMATCHED = "projection_unmatched"
     PROJECTION_AMBIGUOUS = "projection_ambiguous"
     OWNER_AFTER = "owner_after"
@@ -228,15 +263,15 @@ def valid_backend_diagnostic(value: object) -> bool:
         and (
             (
                 value.category is BackendFailureCategory.DATABASE
-                and value.kind
-                not in {
-                    BackendFailureKind.RESPONSE_VALIDATION,
-                    BackendFailureKind.UNKNOWN,
-                }
+                and value.kind in _DATABASE_KINDS
             )
             or (
                 value.category is BackendFailureCategory.RESPONSE_VALIDATION
                 and value.kind is BackendFailureKind.RESPONSE_VALIDATION
+            )
+            or (
+                value.category is BackendFailureCategory.OTHER
+                and value.kind in _OTHER_KINDS
             )
             or (
                 value.category is BackendFailureCategory.UNKNOWN

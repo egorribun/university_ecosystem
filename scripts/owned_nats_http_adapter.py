@@ -519,11 +519,16 @@ class OwnedNatsHttpPort:
                 auth=None,
                 follow_redirects=False,
             )
+            status = response.status_code
             if request_id is not None:
                 echoed = response.headers.get_list("x-request-id")
-                if echoed and echoed != [request_id]:
+                # ServerErrorMiddleware writes an unhandled 500 outside
+                # RequestIDMiddleware, so that status carries no echo by design.
+                # The adapter-generated id stays the only correlation key then.
+                # Every other status must echo exactly this id or lose correlation.
+                server_error_without_echo = status == 500 and not echoed
+                if not server_error_without_echo and echoed != [request_id]:
                     self._send_request_id = None
-            status = response.status_code
             if type(status) is not int or 300 <= status < 400:
                 _not_ready()
             body = (
