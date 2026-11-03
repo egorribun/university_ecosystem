@@ -2829,6 +2829,7 @@ BEGIN
         JOIN pg_namespace namespace ON namespace.oid = dependency.refobjid
         WHERE dependency.refclassid = 'pg_namespace'::regclass
           AND namespace.nspname = 'public'
+          AND dependency.classid <> 'pg_default_acl'::regclass
           AND (
               dependency.classid = 'pg_class'::regclass
               AND (dependency.objid = version_table OR dependency.objid IN (

@@ -18,11 +18,15 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 
 from tests.fixtures.owned_baseline_postgres import (
     OwnedPostgres,
     OwnedPostgresError,
     _docker_call,
+    load_baseline,
     owned_postgres_server,
 )
 from tests.fixtures.owned_baseline_postgres import (
@@ -643,3 +647,107 @@ def test_bootstrap_reverts_widened_append_only_grants(
     assert _bootstrap(role_server) == 0
     with _connect(role_server) as connection:
         _assert_runtime_privileges(connection)
+
+
+def _baseline_engine(server: OwnedPostgres) -> sa.Engine:
+    server._lease.verify(server)
+    return sa.create_engine(
+        server.url.set(drivername="postgresql+psycopg"),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"connect_timeout": 5},
+    )
+
+
+def _schema_default_acls(connection: sa.Connection) -> list[tuple[str, str]]:
+    rows = connection.execute(
+        sa.text(
+            "SELECT defaults.defaclobjtype::text, defaults.defaclacl::text "
+            "FROM pg_default_acl defaults "
+            "JOIN pg_depend dependency ON dependency.objid = defaults.oid "
+            "AND dependency.classid = 'pg_default_acl'::regclass "
+            "WHERE defaults.defaclrole = 'ue_migrator'::regrole "
+            "AND defaults.defaclnamespace = 'public'::regnamespace "
+            "AND dependency.refclassid = 'pg_namespace'::regclass "
+            "AND dependency.refobjid = 'public'::regnamespace "
+            "ORDER BY defaults.defaclobjtype"
+        )
+    )
+    result = [(row[0], row[1]) for row in rows]
+    assert [kind for kind, _acl in result] == ["S", "r"]
+    return result
+
+
+def test_real_role_bootstrap_admits_baseline_with_default_acl_metadata(
+    role_server: OwnedPostgres,
+) -> None:
+    assert _bootstrap(role_server) == 0
+    engine = _baseline_engine(role_server)
+    try:
+        migration = load_baseline()
+        with engine.begin() as connection:
+            before = _schema_default_acls(connection)
+            connection.exec_driver_sql("SET LOCAL ROLE ue_migrator")
+            assert connection.scalar(sa.text("SELECT current_user")) == "ue_migrator"
+            with Operations.context(MigrationContext.configure(connection)):
+                migration.upgrade()
+            assert connection.scalar(sa.text("SELECT to_regclass('public.users')"))
+            assert connection.scalar(
+                sa.text("SELECT to_regclass('public.notification_delivery_once')")
+            )
+            assert _schema_default_acls(connection) == before
+        with engine.connect() as connection:
+            assert connection.scalar(sa.text("SELECT to_regclass('public.users')"))
+            assert _schema_default_acls(connection) == before
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("ddl", "object_probe"),
+    [
+        (
+            "CREATE TABLE public.retained (id integer)",
+            "SELECT to_regclass('public.retained') IS NOT NULL",
+        ),
+        (
+            "CREATE TYPE public.retained AS ENUM ('value')",
+            "SELECT to_regtype('public.retained') IS NOT NULL",
+        ),
+        (
+            "CREATE FUNCTION public.retained() RETURNS integer "
+            "LANGUAGE sql AS 'SELECT 1'",
+            "SELECT to_regprocedure('public.retained()') IS NOT NULL",
+        ),
+        (
+            "CREATE SCHEMA pgx",
+            "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'pgx')",
+        ),
+    ],
+    ids=["table", "enum", "function", "application-namespace"],
+)
+def test_bootstrap_default_acls_do_not_admit_application_objects(
+    role_server: OwnedPostgres, ddl: str, object_probe: str
+) -> None:
+    assert _bootstrap(role_server) == 0
+    engine = _baseline_engine(role_server)
+    try:
+        migration = load_baseline()
+        with engine.begin() as connection:
+            before = _schema_default_acls(connection)
+            connection.exec_driver_sql("SET LOCAL ROLE ue_migrator")
+            connection.exec_driver_sql(ddl)
+            with pytest.raises(
+                sa.exc.DBAPIError, match="requires an empty application schema"
+            ) as failure:
+                with connection.begin_nested():
+                    with Operations.context(MigrationContext.configure(connection)):
+                        migration.upgrade()
+            assert getattr(failure.value.orig, "sqlstate", None) == "55000"
+            assert connection.scalar(sa.text(object_probe)) is True
+            assert (
+                connection.scalar(sa.text("SELECT to_regclass('public.users')")) is None
+            )
+            assert _schema_default_acls(connection) == before
+    finally:
+        engine.dispose()
