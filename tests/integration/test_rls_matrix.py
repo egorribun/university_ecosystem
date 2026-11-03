@@ -17,6 +17,9 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.db.listeners import register_tenant_listeners
+from app.core.tenant import get_bypass_rls, set_current_tenant, tenant_id_ctx
+
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 _PG_URL = os.getenv("DATABASE_URL", "")
 _IS_PG = _PG_URL.startswith("postgresql")
@@ -77,14 +80,45 @@ def non_superuser_engine():
 
 
 @pytest_asyncio.fixture
-async def pg_session(non_superuser_engine) -> AsyncSession:
-    async_session = sessionmaker(
-        non_superuser_engine, class_=AsyncSession, expire_on_commit=False
-    )
-    async with async_session() as session:
-        async with session.begin():
-            yield session
-            await session.rollback()
+async def owned_tenant_id(pg_engine):
+    """Commit only a unique tenant; all dependent rows stay rollback-scoped."""
+    tenant_id = str(uuid.uuid4())
+    try:
+        async with pg_engine.begin() as connection:
+            await connection.execute(
+                text("INSERT INTO tenants (id, name, slug) VALUES (:id, :name, :slug)"),
+                {"id": tenant_id, "name": "RLS fixture", "slug": f"rls-{tenant_id}"},
+            )
+        yield tenant_id
+    finally:
+        async with pg_engine.begin() as connection:
+            await connection.execute(
+                text("DELETE FROM tenants WHERE id = :id"), {"id": tenant_id}
+            )
+
+
+@pytest_asyncio.fixture
+async def pg_session(non_superuser_engine, owned_tenant_id) -> AsyncSession:
+    """Bind production tenant scope while retaining a rollback-only transaction."""
+    register_tenant_listeners()
+    token = set_current_tenant(owned_tenant_id)
+    try:
+        assert not get_bypass_rls()
+        async_session = sessionmaker(
+            non_superuser_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            async with session.begin():
+                assert (
+                    await session.scalar(
+                        text("SELECT current_setting('app.current_tenant', TRUE)")
+                    )
+                    == owned_tenant_id
+                )
+                yield session
+                await session.rollback()
+    finally:
+        tenant_id_ctx.reset(token)
 
 
 @pytest_asyncio.fixture
@@ -96,11 +130,11 @@ async def setup_matrix_users_and_chats(pg_session: AsyncSession):
     # 1. Create a user of each role
     for role in roles:
         uid = str(uuid.uuid4())
-        email = f"rls_{role}@test.com"
+        email = f"rls_{role}_{uid}@example.test"
         await pg_session.execute(
             text(
-                "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required) "
-                "VALUES (:id, :email, 'x', :role, true, false)"
+                "INSERT INTO users (id, email, hashed_password, role, is_active, mfa_required, tenant_id) "
+                "VALUES (:id, :email, 'x', :role, true, false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
             ),
             {"id": uid, "email": email, "role": role},
         )
@@ -116,7 +150,8 @@ async def setup_matrix_users_and_chats(pg_session: AsyncSession):
     chat_a_id = str(uuid.uuid4())
     await pg_session.execute(
         text(
-            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+            "INSERT INTO chats (id, created_at, updated_at, tenant_id) "
+            "VALUES (:id, NOW(), NOW(), NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": chat_a_id},
     )
@@ -132,7 +167,8 @@ async def setup_matrix_users_and_chats(pg_session: AsyncSession):
     chat_b_id = str(uuid.uuid4())
     await pg_session.execute(
         text(
-            "INSERT INTO chats (id, created_at, updated_at) VALUES (:id, NOW(), NOW())"
+            "INSERT INTO chats (id, created_at, updated_at, tenant_id) "
+            "VALUES (:id, NOW(), NOW(), NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": chat_b_id},
     )
@@ -159,7 +195,7 @@ async def test_rls_matrix_read_write(
     """Verify CRUD matrix for student, teacher, and admin roles."""
     users, chat_a_id, chat_b_id = setup_matrix_users_and_chats
 
-    # Seed a message in Chat A and Chat B via Superuser bypass / raw insert
+    # Seed messages as a tenant-scoped participant, without privileged bypass.
     msg_a_id = str(uuid.uuid4())
     msg_b_id = str(uuid.uuid4())
 
@@ -170,15 +206,14 @@ async def test_rls_matrix_read_write(
     )
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'hello A', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'hello A', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": msg_a_id, "chat_id": chat_a_id, "sender": users["student"]},
     )
 
-    # Temporary switch to superuser or bypass RLS to write to Chat B
-    # Since pg_session uses non-superuser 'rls_matrix_user', we set config to a dummy participant
-    # but wait! Chat B has no participants. Let's temporarily add student to Chat B, insert, and remove.
+    # Temporarily join Chat B as student to seed its message, then revoke
+    # membership before exercising every non-participant denial below.
     await pg_session.execute(
         text(
             "INSERT INTO chat_participants (chat_id, user_id) VALUES (:chat_id, :user_id)"
@@ -187,8 +222,8 @@ async def test_rls_matrix_read_write(
     )
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'hello B', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'hello B', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": msg_b_id, "chat_id": chat_b_id, "sender": users["student"]},
     )
@@ -227,8 +262,8 @@ async def test_rls_matrix_read_write(
         new_msg_id = str(uuid.uuid4())
         await pg_session.execute(
             text(
-                "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-                "VALUES (:id, :chat_id, :sender, 'ping', NOW(), false)"
+                "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+                "VALUES (:id, :chat_id, :sender, 'ping', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
             ),
             {"id": new_msg_id, "chat_id": chat_a_id, "sender": users[role]},
         )
@@ -239,8 +274,8 @@ async def test_rls_matrix_read_write(
             async with pg_session.begin_nested():
                 await pg_session.execute(
                     text(
-                        "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-                        "VALUES (:id, :chat_id, :sender, 'ping-bad', NOW(), false)"
+                        "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+                        "VALUES (:id, :chat_id, :sender, 'ping-bad', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
                     ),
                     {"id": bad_msg_id, "chat_id": chat_b_id, "sender": users[role]},
                 )
@@ -261,8 +296,8 @@ async def test_rls_matrix_read_write(
         async with pg_session.begin_nested():
             await pg_session.execute(
                 text(
-                    "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-                    "VALUES (:id, :chat_id, :sender, 'anon msg', NOW(), false)"
+                    "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+                    "VALUES (:id, :chat_id, :sender, 'anon msg', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
                 ),
                 {
                     "id": str(uuid.uuid4()),
@@ -292,8 +327,8 @@ async def test_rls_matrix_update_delete(
     )
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'student message', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'student message', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": msg_student_id, "chat_id": chat_a_id, "sender": users["student"]},
     )
@@ -305,8 +340,8 @@ async def test_rls_matrix_update_delete(
     )
     await pg_session.execute(
         text(
-            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status) "
-            "VALUES (:id, :chat_id, :sender, 'teacher message', NOW(), false)"
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'teacher message', NOW(), false, NULLIF(current_setting('app.current_tenant', TRUE), '')::uuid)"
         ),
         {"id": msg_teacher_id, "chat_id": chat_a_id, "sender": users["teacher"]},
     )
