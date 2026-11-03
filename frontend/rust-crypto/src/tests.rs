@@ -67,12 +67,7 @@ fn pbkdf2_accepts_the_compatibility_floor() {
     let password = fixture_text(8);
     let salt = fixture_text(4);
     let mut expected = [0_u8; 32];
-    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(
-        password.as_bytes(),
-        salt.as_bytes(),
-        1_000,
-        &mut expected,
-    );
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(password.as_bytes(), salt.as_bytes(), 1_000, &mut expected);
     assert_eq!(
         pbkdf2_derive(&password, &salt, 1_000, 32).expect("valid minimum cost"),
         hex::encode(expected)
