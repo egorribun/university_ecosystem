@@ -17,6 +17,17 @@ from tests.test_helm_staging_contract import (
 )
 
 SPIFFE_SOCKET = "unix:///spiffe-workload-api/agent.sock"
+# Documentation-only destination for Helm rendering; never a deployment default.
+EXTERNAL_JWKS_CIDR = "192.0.2.44/32"
+
+
+def _external_jwks_args(endpoint: str) -> tuple[str, ...]:
+    return (
+        "--set-string",
+        f"fileProcessor.config.jwksURL={endpoint}",
+        "--set-string",
+        f"networkPolicy.fileProcessorHTTPSEgress.egressCIDRs[0]={EXTERNAL_JWKS_CIDR}",
+    )
 
 
 def _deployment(resources: list[dict[str, Any]], name_suffix: str) -> dict[str, Any]:
@@ -206,15 +217,38 @@ def test_flag_on_wires_backend_listener_probes_and_spiffe_clients() -> None:
 
 def test_public_jwks_override_does_not_receive_internal_workload_identity() -> None:
     endpoint = "https://issuer.example/.well-known/jwks.json"
-    resources = _render_staging(
-        *_enabled_args("--set", f"fileProcessor.config.jwksURL={endpoint}")
-    )
+    resources = _render_staging(*_enabled_args(*_external_jwks_args(endpoint)))
     processor = _deployment(resources, "-file-processor")
     environ = _env(_main_container(processor))
     assert environ["FP_JWKS_URL"] == endpoint
     assert "FP_INTERNAL_HTTP_MTLS_ENABLED" not in environ
     assert "FP_SPIFFE_ENABLED" not in environ
     assert _volume(processor, "spiffe-workload-api") is None
+    policy = next(
+        resource["spec"]
+        for resource in resources
+        if resource["kind"] == "NetworkPolicy"
+        and resource["metadata"]["name"].endswith("-file-processor-policy")
+    )
+    external_rules = [
+        rule
+        for rule in policy["egress"]
+        if any("ipBlock" in peer for peer in rule.get("to", []))
+    ]
+    assert external_rules == [
+        {
+            "to": [{"ipBlock": {"cidr": EXTERNAL_JWKS_CIDR}}],
+            "ports": [{"protocol": "TCP", "port": 443}],
+        }
+    ]
+    assert not any(
+        peer.get("podSelector", {})
+        .get("matchLabels", {})
+        .get("app.kubernetes.io/component")
+        == "backend"
+        for rule in policy["egress"]
+        for peer in rule.get("to", [])
+    )
     backend = _deployment(resources, "-backend")
     allowed = _env(_main_container(backend))[
         "INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS"
@@ -225,6 +259,23 @@ def test_public_jwks_override_does_not_receive_internal_workload_identity() -> N
         staging["gatewaySpiffeID"],
         staging["wsHubSpiffeID"],
     }
+
+
+def test_public_jwks_override_requires_explicit_egress_cidrs() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_staging(
+            *_enabled_args(
+                "--set-string",
+                "fileProcessor.config.jwksURL=https://issuer.example/jwks",
+                "--set-json",
+                "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs=[]",
+            )
+        )
+
+    assert (
+        "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs must contain "
+        "owner-verified CIDRs"
+    ) in error.value.stderr
 
 
 def test_explicit_internal_jwks_preserves_exact_tcp_network_policy() -> None:
@@ -289,7 +340,7 @@ def test_disabled_optional_workloads_receive_no_backend_identity_authority() -> 
     [
         ((), {"backend", "gateway", "ws-hub", "file-processor"}),
         (
-            ("--set", "fileProcessor.config.jwksURL=https://issuer.example/jwks"),
+            _external_jwks_args("https://issuer.example/jwks"),
             {"backend", "gateway", "ws-hub"},
         ),
         (

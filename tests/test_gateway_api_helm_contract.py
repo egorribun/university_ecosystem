@@ -595,7 +595,7 @@ def test_gateway_api_network_policy_changes_keep_default_deny_and_narrow_peers()
     expected_port_templates = (
         "port: 8080",
         "port: {{ .Values.wsHub.service.port }}",
-        "port: 8000",
+        "port: {{ .Values.backend.service.port }}",
         "port: {{ .Values.frontend.service.port }}",
     )
     for block, expected_port in zip(
