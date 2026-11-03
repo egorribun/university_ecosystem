@@ -628,13 +628,23 @@ def test_preflight_checkpoint_does_not_override_later_failure_or_cleanup(
     operation: str,
     stage: OutageStage,
 ) -> None:
+    from scripts.owned_nats_coordinator import OutageCheckpoint, SendPhase
+
     _require_checkpoint_contract()
     underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
     underlying.script[operation] = [RuntimeError("private transport detail")]
     result = cli.run_owned_nats_outage("/", in_place=True)
     assert result.outcome is OutageOutcome.FAILED
     assert result.stage is stage
-    assert result.checkpoint is None
+    if operation == "send_message_once":
+        assert result.checkpoint is OutageCheckpoint.SEND_MESSAGE
+        assert result.send_phase is SendPhase.NOT_READY
+    else:
+        assert result.checkpoint is None
+        assert result.send_phase is None
+    assert result.send_http_status is None
+    assert result.runtime_diagnostic is None
+    assert result.broker_diagnostic is None
     names = [call.name for call in underlying.calls]
     for name in (
         "acquire_lock",
@@ -1280,3 +1290,30 @@ def test_main_rejects_invalid_or_misplaced_send_diagnostics(monkeypatch, capsys)
         assert captured.err == (
             "live_stand: owned NATS acceptance failed reason=invalid_result\n"
         )
+
+
+@pytest.mark.parametrize("cleanup", ["close_clients", "release_lock"])
+def test_send_diagnostic_is_cleared_when_cleanup_supersedes_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cleanup: str
+) -> None:
+    underlying = _install_checkpoint_fake_ports(monkeypatch, tmp_path)
+    underlying.script["send_message_once"] = [RuntimeError("private send detail")]
+    underlying.script[cleanup] = [RuntimeError("private cleanup detail")]
+
+    result = cli.run_owned_nats_outage("/", in_place=True)
+
+    assert result.outcome is OutageOutcome.FAILED
+    assert result.stage is OutageStage.CLEANUP
+    assert result.checkpoint is None
+    assert result.send_phase is None
+    assert result.send_http_status is None
+    names = [call.name for call in underlying.calls]
+    assert names.count("send_message_once") == names.count("start_container") == 1
+    assert names.count("close_clients") == names.count("release_lock") == 1
+    assert names.index("send_message_once") < names.index("start_container")
+    assert names.index("start_container") < names.index("close_clients")
+    assert names.index("close_clients") < names.index("release_lock")
+    assert underlying.restore_started is True
+    assert underlying.stopped is False
+    assert underlying.contract_errors == []
+    assert "private" not in repr(result)
