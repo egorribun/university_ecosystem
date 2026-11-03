@@ -15,7 +15,19 @@ var testHubs sync.Map
 // *testing.T parameter. Production callers use Hub.Stop directly; this registry
 // exists only in the test binary so every limiter and Run loop is drained before
 // goleak inspects the process.
-func trackTestHub(h *Hub) *Hub {
+// The optional error preserves compatibility with the immutable benchmark
+// overlay's trackTestHub(NewHub(...)) call after NewHub became fallible.
+// Never register or benchmark a failed constructor result.
+func trackTestHub(h *Hub, constructorErrors ...error) *Hub {
+	if len(constructorErrors) > 1 {
+		panic("multiple ws-hub fixture constructor results")
+	}
+	if len(constructorErrors) == 1 && constructorErrors[0] != nil {
+		panic(constructorErrors[0])
+	}
+	if h == nil {
+		panic("nil ws-hub test fixture")
+	}
 	testHubs.Store(h, struct{}{})
 	return h
 }
