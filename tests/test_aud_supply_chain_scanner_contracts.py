@@ -88,6 +88,56 @@ def test_nightly_chaos_dry_run_serves_a_health_target_before_asserting() -> None
     assert "--dry-run" in dry_run["run"]
 
 
+# AUD-384 ---------------------------------------------------------------------
+
+
+def test_slack_notification_configuration_precedes_output_guard() -> None:
+    job = _load_workflow("nightly-full-gate.yml")["jobs"]["notify-failure"]
+    names = [step.get("name") for step in job["steps"]]
+    detect = _step(job, "Detect optional Slack notification configuration")
+    send = _step(job, "Send optional Slack notification")
+
+    assert names.index(
+        "Detect optional Slack notification configuration"
+    ) < names.index("Send optional Slack notification")
+    assert detect["id"] == "slack_config"
+    assert detect["env"]["SLACK_WEBHOOK_URL"] == "${{ secrets.SLACK_WEBHOOK_URL }}"
+    assert 'if [[ -n "$SLACK_WEBHOOK_URL" ]]; then' in detect["run"]
+    assert 'echo "configured=true" >> "$GITHUB_OUTPUT"' in detect["run"]
+    assert 'echo "configured=false" >> "$GITHUB_OUTPUT"' in detect["run"]
+    assert send["if"] == "${{ steps.slack_config.outputs.configured == 'true' }}"
+    assert "if" not in detect
+    assert "continue-on-error" not in detect
+
+
+def test_slack_notification_retains_trusted_main_and_failure_admission() -> None:
+    job = _load_workflow("nightly-full-gate.yml")["jobs"]["notify-failure"]
+    verify = _step(job, "Verify trusted main source")
+    detect = _step(job, "Detect optional Slack notification configuration")
+
+    assert job["if"] == (
+        "${{ github.ref == 'refs/heads/main' && always() "
+        "&& contains(needs.*.result, 'failure') }}"
+    )
+    assert job["steps"].index(verify) < job["steps"].index(detect)
+    assert '"$EVENT_SHA" != "$trusted_sha"' in verify["run"]
+    assert '"$WORKFLOW_SHA" != "$trusted_sha"' in verify["run"]
+    assert "exit 1" in verify["run"]
+    assert "continue-on-error" not in verify
+
+
+def test_configured_slack_delivery_remains_fail_closed() -> None:
+    job = _load_workflow("nightly-full-gate.yml")["jobs"]["notify-failure"]
+    send = _step(job, "Send optional Slack notification")
+
+    assert send["env"]["SLACK_WEBHOOK_URL"] == "${{ secrets.SLACK_WEBHOOK_URL }}"
+    assert "continue-on-error" not in job
+    assert "continue-on-error" not in send
+    assert "curl --fail-with-body --silent --show-error --request POST" in send["run"]
+    assert '"$SLACK_WEBHOOK_URL"' in send["run"]
+    assert "|| true" not in send["run"]
+
+
 # AUD-480 ---------------------------------------------------------------------
 
 
