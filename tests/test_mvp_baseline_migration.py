@@ -258,12 +258,59 @@ def test_inline_primary_key_contract_rejects_schema_and_timing_drift(
 
 # These controls exercise the real proof functions with synthetic dump/catalog
 # inputs. They do not start containers, execute DDL, or replace the comparator.
-# The 63 approved additions are independently enumerated, not derived from the
+# The approved additions are independently enumerated, not derived from the
 # implementation's broad matching expression or the baseline revision constants.
 _PROOF_RETAINED_STATEMENT = "CREATE TABLE public.retained_control (id integer)"
 _PROOF_REMOVED_INDEX = (
     "CREATE UNIQUE INDEX ix_users_email_lower ON public.users USING btree "
     "(lower((email)::text))"
+)
+# Owner decision, 2026-11-03: the one audited replacement of the
+# messages_participant_isolation policy (NULLIF form), recorded independently of the
+# equivalence module. The pre-squash form is removed and the NULLIF form is added.
+_PROOF_MESSAGES_QUAL_BEFORE = (
+    "(chat_id IN ( SELECT chat_participants.chat_id\n   FROM chat_participants\n"
+    "  WHERE (chat_participants.user_id = "
+    "(current_setting('app.current_user_id'::text, true))::uuid)))"
+)
+_PROOF_MESSAGES_QUAL_AFTER = (
+    "(chat_id IN ( SELECT chat_participants.chat_id\n   FROM chat_participants\n"
+    "  WHERE (chat_participants.user_id = "
+    "(NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)))"
+)
+_PROOF_MESSAGES_STATEMENT_BEFORE = (
+    "CREATE POLICY messages_participant_isolation ON public.messages USING "
+    "((chat_id IN ( SELECT chat_participants.chat_id FROM public.chat_participants "
+    "WHERE (chat_participants.user_id = "
+    "(current_setting('app.current_user_id'::text, true))::uuid))))"
+)
+_PROOF_MESSAGES_STATEMENT_AFTER = (
+    "CREATE POLICY messages_participant_isolation ON public.messages USING "
+    "((chat_id IN ( SELECT chat_participants.chat_id FROM public.chat_participants "
+    "WHERE (chat_participants.user_id = "
+    "(NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid))))"
+)
+_PROOF_MESSAGES_ROW_BEFORE = repr(
+    (
+        "messages",
+        "messages_participant_isolation",
+        "PERMISSIVE",
+        "{public}",
+        "ALL",
+        _PROOF_MESSAGES_QUAL_BEFORE,
+        None,
+    )
+)
+_PROOF_MESSAGES_ROW_AFTER = repr(
+    (
+        "messages",
+        "messages_participant_isolation",
+        "PERMISSIVE",
+        "{public}",
+        "ALL",
+        _PROOF_MESSAGES_QUAL_AFTER,
+        None,
+    )
 )
 _PROOF_PARENT_INDEXES = (
     (
@@ -370,8 +417,16 @@ def _proof_statement_inputs() -> tuple[list[str], list[str]]:
             )
         )
     assert len(additions) == len(set(additions)) == 63
-    before = [_PROOF_RETAINED_STATEMENT, _PROOF_REMOVED_INDEX]
-    after = [_PROOF_RETAINED_STATEMENT, *additions]
+    before = [
+        _PROOF_RETAINED_STATEMENT,
+        _PROOF_REMOVED_INDEX,
+        _PROOF_MESSAGES_STATEMENT_BEFORE,
+    ]
+    after = [
+        _PROOF_RETAINED_STATEMENT,
+        *additions,
+        _PROOF_MESSAGES_STATEMENT_AFTER,
+    ]
     return before, after
 
 
@@ -560,7 +615,9 @@ def test_schema_statement_proof_rejects_shape_drift_with_the_same_counts(
 def _proof_catalog_inputs() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     before: dict[str, list[str]] = {name: [] for name in schema_proof.CATALOG_PROBES}
     before["relations"] = [repr(("users", "r", True, True, False, "p", "d", ""))]
+    before["policies"] = [_PROOF_MESSAGES_ROW_BEFORE]
     after = deepcopy(before)
+    after["policies"] = [_PROOF_MESSAGES_ROW_AFTER]
     after["relations"].append(
         repr(("notification_delivery_once", "r", False, False, False, "p", "d", ""))
     )
@@ -886,3 +943,61 @@ def test_schema_proof_child_is_bounded_and_reaped_without_changing_its_result(
             },
         )
     ]
+
+
+def _catalog_relation(name: str, row_security: bool) -> str:
+    return repr((name, "r", row_security, False, False, "p", "d", ""))
+
+
+def _catalog_policy(
+    table: str, name: str, permissive: str, qual: str, check: str | None
+) -> str:
+    return repr((table, name, permissive, "{public}", "ALL", qual, check))
+
+
+@pytest.mark.parametrize(
+    ("policies", "expected"),
+    [
+        (
+            [_catalog_policy("messages", "allow_all", "PERMISSIVE", "true", None)],
+            ["messages.allow_all"],
+        ),
+        (
+            [
+                _catalog_policy(
+                    "messages", "write_all", "PERMISSIVE", "(user_id = 1)", "(true)"
+                )
+            ],
+            ["messages.write_all"],
+        ),
+        (
+            [
+                _catalog_policy(
+                    "messages", "restrictive_all", "RESTRICTIVE", "true", None
+                ),
+                _catalog_policy(
+                    "users", "table_without_rls", "PERMISSIVE", "true", None
+                ),
+                _catalog_policy(
+                    "messages",
+                    "participant_scope",
+                    "PERMISSIVE",
+                    "(NULLIF(current_setting('app.current_user_id'::text, true)) IS NOT NULL)",
+                    None,
+                ),
+            ],
+            [],
+        ),
+    ],
+)
+def test_unconditional_policy_catalog_check_flags_only_permissive_true_on_rls_tables(
+    policies: list[str], expected: list[str]
+) -> None:
+    relations = (_catalog_relation("messages", True), _catalog_relation("users", False))
+    rls_tables = schema_proof._rls_table_names(relations)
+
+    assert rls_tables == frozenset({"messages"})
+    assert (
+        schema_proof._unconditional_permissive_policies(tuple(policies), rls_tables)
+        == expected
+    )

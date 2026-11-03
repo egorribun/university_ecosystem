@@ -14,6 +14,7 @@ the schema.
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import io
 import os
@@ -863,6 +864,47 @@ def test_catalog_facts_outside_the_additions_are_identical(built: _Built) -> Non
         assert removed == Counter(APPROVED_CATALOG_REMOVALS.get(name, ())), name
         added = Counter(after[name]) - Counter(before[name])
         assert added == Counter(APPROVED_CATALOG_ADDITIONS.get(name, ())), name
+
+
+def _rls_table_names(relations: tuple[str, ...]) -> frozenset[str]:
+    """Return the public relations with row-level security enabled (AUD-277)."""
+    rows = (ast.literal_eval(rendered) for rendered in relations)
+    return frozenset(row[0] for row in rows if row[2] is True)
+
+
+def _is_literal_true(expression: str) -> bool:
+    return re.sub(r"[\s()]", "", expression).casefold() == "true"
+
+
+def _unconditional_permissive_policies(
+    policies: tuple[str, ...], rls_tables: frozenset[str]
+) -> list[str]:
+    """Return ``table.policy`` for permissive policies on RLS tables that admit everything.
+
+    A policy is unconditional when its USING or WITH CHECK expression is literally
+    ``true``. Restrictive policies and policies on tables without RLS are not counted.
+    """
+    offenders: list[str] = []
+    for rendered in policies:
+        table, name, permissive, _roles, _command, qual, with_check = ast.literal_eval(
+            rendered
+        )
+        if table not in rls_tables or permissive != "PERMISSIVE":
+            continue
+        if any(
+            expression is not None and _is_literal_true(expression)
+            for expression in (qual, with_check)
+        ):
+            offenders.append(f"{table}.{name}")
+    return offenders
+
+
+def test_no_permissive_using_true_policy_exists_on_any_rls_table(built: _Built) -> None:
+    """AUD-277: the baseline catalog has no RLS policy that admits every row."""
+    catalog = dict(built.baseline_capture.catalog)
+    rls_tables = _rls_table_names(catalog["relations"])
+    assert rls_tables, "the baseline catalog reports no RLS-enabled table"
+    assert _unconditional_permissive_policies(catalog["policies"], rls_tables) == []
 
 
 def test_baseline_database_matches_the_current_models(built: _Built) -> None:

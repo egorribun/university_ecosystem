@@ -8,10 +8,21 @@ call there, without importing env.py, which runs migrations at import time.
 from __future__ import annotations
 
 import ast
+import importlib.util
+import re
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.schema import CreateTable
+
+import app.models as models
+from app.core.db.retained_table_metadata import build_migration_metadata
 
 ROOT = Path(__file__).resolve().parents[1]
 ENV_FILE = ROOT / "alembic" / "env.py"
+BASELINE_FILE = ROOT / "alembic" / "versions" / "202611020000_mvp_baseline.py"
 
 
 def _online_configure_keywords() -> dict[str, ast.expr]:
@@ -53,3 +64,61 @@ def test_online_context_keeps_its_existing_comparison_options() -> None:
     ):
         assert _is_constant(keywords.get(name), True), name
     assert {"include_object", "process_revision_directives"} <= keywords.keys()
+
+
+class _PostgresBind:
+    class dialect:
+        name = "postgresql"
+
+    def execute(self, _statement: Any) -> Any:
+        return SimpleNamespace(fetchone=lambda: None)
+
+
+class _RecordingOp:
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    def get_bind(self) -> _PostgresBind:
+        return _PostgresBind()
+
+    def execute(self, statement: Any) -> None:
+        self.statements.append(str(statement))
+
+
+def _baseline_create_table(table: str) -> str:
+    spec = importlib.util.spec_from_file_location(
+        "baseline_default_probe", BASELINE_FILE
+    )
+    assert spec is not None and spec.loader is not None
+    module: Any = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    recorder = _RecordingOp()
+    module.op = recorder
+    module.upgrade()
+    prefix = f"CREATE TABLE public.{table} ("
+    created = [
+        statement for statement in recorder.statements if statement.startswith(prefix)
+    ]
+    assert len(created) == 1, table
+    return created[0]
+
+
+def _topics_default(create_table: str) -> str:
+    lines = [line.strip() for line in create_table.splitlines()]
+    topics = [line for line in lines if line.startswith("topics ")]
+    assert len(topics) == 1, create_table
+    match = re.search(r"DEFAULT (.+) NOT NULL", topics[0], re.IGNORECASE)
+    assert match is not None, topics[0]
+    return match.group(1)
+
+
+def test_push_subscription_topics_default_agrees_between_model_and_baseline() -> None:
+    """AUD-434: the model and the baseline spell one PostgreSQL default for topics."""
+    metadata = build_migration_metadata(models.Base.metadata, dialect_name="postgresql")
+    model_table = metadata.tables["push_subscriptions"]
+    model_ddl = str(CreateTable(model_table).compile(dialect=postgresql.dialect()))
+
+    model_default = _topics_default(model_ddl)
+    baseline_default = _topics_default(_baseline_create_table("push_subscriptions"))
+
+    assert model_default == baseline_default == "'[]'::json"
