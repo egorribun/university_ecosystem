@@ -330,3 +330,130 @@ def test_duplicate_correlated_keys_are_rejected_in_both_orders(key: str) -> None
                 diagnostic.project_backend_failure(duplicated + b"\n", b"", request_id)
                 is None
             )
+
+
+@pytest.mark.parametrize(
+    "mode, expected",
+    [
+        ("framing", "projection_framing"),
+        ("invalid", "projection_invalid"),
+        ("unmatched", "projection_unmatched"),
+        ("duplicate", "projection_ambiguous"),
+    ],
+)
+def test_projection_failure_stage_is_finite_and_has_no_raw_evidence(mode, expected):
+    from scripts.owned_nats_coordinator import BackendCaptureRecorder
+
+    request_id = str(uuid4())
+    raw = _record(request_id)
+    if mode == "framing":
+        raw = raw[:-1]
+    elif mode == "invalid":
+        raw += b'{"private": "synthetic-private"}\x00\n'
+    elif mode == "unmatched":
+        raw = _record(str(uuid4()))
+    else:
+        raw += raw
+    recorder = BackendCaptureRecorder()
+    assert (
+        diagnostic.project_backend_failure(raw, b"", request_id, recorder=recorder)
+        is None
+    )
+    assert recorder.stage.value == expected
+    assert request_id not in repr(recorder)
+    assert "synthetic-private" not in repr(recorder)
+
+
+@pytest.mark.parametrize(
+    "boundary", ["runtime_before", "log_prepare", "log_process", "runtime_after"]
+)
+def test_collector_records_exact_failed_boundary(monkeypatch, boundary):
+    from scripts.owned_nats_coordinator import BackendCaptureRecorder
+
+    request_id = str(uuid4())
+    port, runtime, _reads = _collector(monkeypatch, request_id)
+    if boundary == "runtime_before":
+        monkeypatch.setattr(
+            diagnostic.docker,
+            "observe_owned_core_runtime",
+            lambda *args, **kwargs: None,
+        )
+    elif boundary == "runtime_after":
+        snapshots = iter((runtime, None))
+        monkeypatch.setattr(
+            diagnostic.docker,
+            "observe_owned_core_runtime",
+            lambda *args, **kwargs: next(snapshots),
+        )
+    elif boundary == "log_prepare":
+        monkeypatch.setattr(
+            diagnostic.docker, "prepare_daemon_read", lambda *args, **kwargs: None
+        )
+    else:
+        result = replace(_successful_process(b""), outcome=ProcessOutcome.TIMED_OUT)
+        monkeypatch.setattr(
+            diagnostic.docker,
+            "_run_pinned_docker_process",
+            lambda *args, **kwargs: result,
+        )
+    recorder = BackendCaptureRecorder()
+    assert (
+        diagnostic.capture_backend_failure(
+            _OWNER,
+            port._docker_pins,
+            port._compose_pins,
+            request_id,
+            deadline=_deadline(),
+            recorder=recorder,
+        )
+        is None
+    )
+    assert recorder.stage.value == boundary
+
+
+def test_capture_recorder_rejects_untrusted_stage_without_mutation() -> None:
+    from scripts.owned_nats_coordinator import (
+        BackendCaptureRecorder,
+        BackendCaptureStage,
+    )
+
+    class Hostile:
+        def __str__(self):
+            pytest.fail("private object stringified")
+
+        def __repr__(self):
+            pytest.fail("private object rendered")
+
+    recorder = BackendCaptureRecorder()
+    recorder.record(BackendCaptureStage.LOG_PROCESS)
+    for value in ("log_process", Hostile()):
+        with pytest.raises(TypeError, match=r"^invalid backend capture stage$"):
+            recorder.record(value)
+        assert recorder.stage is BackendCaptureStage.LOG_PROCESS
+
+
+def test_capture_stage_is_private_nonsemantic_constructor_extension() -> None:
+    from dataclasses import fields
+
+    from scripts.owned_nats_coordinator import (
+        BackendCaptureStage,
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+    )
+
+    original = BackendFailureDiagnostic(
+        BackendFailureCategory.UNKNOWN, BackendFailureKind.UNKNOWN
+    )
+    three_arguments = BackendFailureDiagnostic(
+        BackendFailureCategory.UNKNOWN, BackendFailureKind.UNKNOWN, "UNKNOWN"
+    )
+    annotated = replace(original, capture_stage=BackendCaptureStage.OWNER_AFTER)
+    field = next(item for item in fields(original) if item.name == "capture_stage")
+    assert field.repr is False
+    assert field.compare is False
+    assert original.capture_stage is None
+    assert three_arguments.capture_stage is None
+    assert original == three_arguments == annotated
+    assert repr(original) == repr(annotated)
+    assert "owner_after" not in repr(annotated)

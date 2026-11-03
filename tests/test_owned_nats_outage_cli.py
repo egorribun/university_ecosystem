@@ -1403,3 +1403,101 @@ def test_backend_diagnostic_invalid_values_never_print_private_data(
             captured.err
             == "live_stand: owned NATS acceptance failed reason=invalid_result\n"
         )
+
+
+def test_capture_stage_is_unknown_evidence_and_preserves_closed_send_line(
+    monkeypatch, capsys
+):
+    from scripts.owned_nats_coordinator import (
+        BackendCaptureStage,
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        OutageCheckpoint,
+    )
+
+    projected = BackendFailureDiagnostic(
+        BackendFailureCategory.UNKNOWN,
+        BackendFailureKind.UNKNOWN,
+        capture_stage=BackendCaptureStage.PROJECTION_UNMATCHED,
+    )
+    result = OutageResult(
+        OutageOutcome.FAILED,
+        OutageStage.SEND,
+        OutageCheckpoint.SEND_MESSAGE,
+        send_http_status=500,
+        backend_diagnostic=projected,
+    )
+    monkeypatch.setattr(live_stand, "_configure_state_mode", lambda _args: None)
+    monkeypatch.setattr(cli, "run_owned_nats_outage", lambda *_a, **_k: result)
+    assert (
+        live_stand.main(["nats-outage", "--in-place", "--state-dir", "/private/state"])
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert (
+        captured.out
+        == "owned_backend_failure_v1 evidence=unknown capture_stage=projection_unmatched\n"
+    )
+    assert (
+        captured.err
+        == "live_stand: owned NATS acceptance failed outcome=failed stage=send checkpoint=send_message phase=http_status=500\n"
+    )
+
+
+def test_capture_stage_never_allows_arbitrary_strings_or_correlated_claims():
+    from scripts.owned_nats_coordinator import (
+        BackendCaptureStage,
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        valid_backend_diagnostic,
+    )
+
+    unknown = BackendFailureDiagnostic(
+        BackendFailureCategory.UNKNOWN,
+        BackendFailureKind.UNKNOWN,
+        capture_stage=BackendCaptureStage.OWNER_AFTER,
+    )
+    assert valid_backend_diagnostic(unknown)
+    assert not valid_backend_diagnostic(replace(unknown, capture_stage="private"))
+    assert not valid_backend_diagnostic(
+        replace(unknown, capture_stage=_PrivateOutageValue())
+    )
+    assert not valid_backend_diagnostic(replace(unknown, sqlstate="42501"))
+    assert not valid_backend_diagnostic(
+        replace(unknown, category=BackendFailureCategory.DATABASE)
+    )
+    assert not valid_backend_diagnostic(
+        replace(unknown, kind=BackendFailureKind.PROGRAMMING)
+    )
+
+
+@pytest.mark.parametrize("cleanup", ["close_clients", "release_lock"])
+def test_capture_checkpoint_is_discarded_when_cleanup_supersedes_send(cleanup):
+    from scripts.owned_nats_coordinator import (
+        BackendCaptureStage,
+        BackendFailureCategory,
+        BackendFailureDiagnostic,
+        BackendFailureKind,
+        MessagePostEvidence,
+        run_owned_outage,
+    )
+
+    ports = FakePorts()
+    diagnostic = BackendFailureDiagnostic(
+        BackendFailureCategory.UNKNOWN,
+        BackendFailureKind.UNKNOWN,
+        capture_stage=BackendCaptureStage.RUNTIME_BEFORE,
+    )
+    ports.script["send_message_once"] = [
+        MessagePostEvidence(500, None, backend_diagnostic=diagnostic)
+    ]
+    ports.script[cleanup] = [RuntimeError("synthetic-private")]
+    result = run_owned_outage(ports, clock=ports.clock, sleep=ports.sleep)
+    assert result.stage is OutageStage.CLEANUP
+    assert result.backend_diagnostic is None
+    assert result.send_http_status is None
+    names = [call.name for call in ports.calls]
+    assert names.count("send_message_once") == names.count("start_container") == 1
+    assert names[-2:] == ["close_clients", "release_lock"]

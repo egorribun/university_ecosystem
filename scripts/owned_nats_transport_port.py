@@ -19,7 +19,11 @@ from scripts import owned_nats_http_adapter as http_adapter
 from scripts import owned_nats_process as process
 from scripts.owned_nats_coordinator import (
     AdmissionEvidence,
+    BackendCaptureRecorder,
+    BackendCaptureStage,
+    BackendFailureCategory,
     BackendFailureDiagnostic,
+    BackendFailureKind,
     BrokerEvidence,
     ChatCreateEvidence,
     ChatRowsEvidence,
@@ -770,14 +774,25 @@ class OwnedNatsTransportPort:
     ) -> BackendFailureDiagnostic | None:
         # Leave the primary operation a reserve: diagnostics never gain a fresh
         # deadline or borrow the coordinator's restoration/cleanup budget.
+        recorder = BackendCaptureRecorder()
+
+        def unavailable() -> BackendFailureDiagnostic:
+            return BackendFailureDiagnostic(
+                BackendFailureCategory.UNKNOWN,
+                BackendFailureKind.UNKNOWN,
+                capture_stage=recorder.stage,
+            )
+
         try:
             budget = deadline.timeout_for(6.0)
             if budget.seconds is None or budget.seconds <= 1.0:
-                return None
+                return unavailable()
             bounded = deadline.child(budget.seconds - 1.0)
+            recorder.record(BackendCaptureStage.REQUEST_ID)
             request_id = self._http._send_request_id
             if request_id is None:
-                return None
+                return unavailable()
+            recorder.record(BackendCaptureStage.OWNER_BEFORE)
             owner = self._owner_port.read_signed_owner(deadline=bounded)
             diagnostic = capture_backend_failure(
                 owner,
@@ -785,13 +800,19 @@ class OwnedNatsTransportPort:
                 self._compose_pins,
                 request_id,
                 deadline=bounded,
+                recorder=recorder,
             )
+            capture_stage = recorder.stage
+            recorder.record(BackendCaptureStage.OWNER_AFTER)
             if self._owner_port.read_signed_owner(deadline=bounded) != owner:
-                return None
+                return unavailable()
+            if diagnostic is None:
+                recorder.record(capture_stage)
+                return unavailable()
             return diagnostic
         except (OSError, RuntimeError, AttributeError, TypeError, ValueError):
             # Closed diagnostic failure cannot replace the already observed500.
-            return None
+            return unavailable()
         finally:
             self._http._send_request_id = None
 

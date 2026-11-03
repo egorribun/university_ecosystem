@@ -10882,6 +10882,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     backend = result.backend_diagnostic
                     if backend is None:
                         print("owned_backend_failure_v1 evidence=unknown")
+                    elif backend.capture_stage is not None:
+                        print(
+                            "owned_backend_failure_v1 evidence=unknown "
+                            f"capture_stage={backend.capture_stage.value}"
+                        )
                     else:
                         print(
                             "owned_backend_failure_v1 evidence=correlated "

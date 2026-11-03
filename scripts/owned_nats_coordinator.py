@@ -162,6 +162,41 @@ class BackendFailureKind(StrEnum):
     UNKNOWN = "unknown"
 
 
+class BackendCaptureStage(StrEnum):
+    """Last bounded diagnostic boundary, never an inferred backend cause."""
+
+    DEADLINE_RESERVE = "deadline_reserve"
+    REQUEST_ID = "request_id"
+    OWNER_BEFORE = "owner_before"
+    RUNTIME_BEFORE = "runtime_before"
+    LOG_PREPARE = "log_prepare"
+    LOG_PROCESS = "log_process"
+    RUNTIME_AFTER = "runtime_after"
+    PROJECTION_FRAMING = "projection_framing"
+    PROJECTION_INVALID = "projection_invalid"
+    PROJECTION_UNMATCHED = "projection_unmatched"
+    PROJECTION_AMBIGUOUS = "projection_ambiguous"
+    OWNER_AFTER = "owner_after"
+
+
+class BackendCaptureRecorder:
+    """Internal finite checkpoint without raw process or request material."""
+
+    __slots__ = ("_stage",)
+
+    def __init__(self) -> None:
+        self._stage = BackendCaptureStage.DEADLINE_RESERVE
+
+    @property
+    def stage(self) -> BackendCaptureStage:
+        return self._stage
+
+    def record(self, stage: BackendCaptureStage) -> None:
+        if type(stage) is not BackendCaptureStage:
+            raise TypeError("invalid backend capture stage")
+        self._stage = stage
+
+
 @dataclass(frozen=True)
 class BackendFailureDiagnostic:
     """Finite projection only; never contains private correlation or log data."""
@@ -169,9 +204,23 @@ class BackendFailureDiagnostic:
     category: BackendFailureCategory
     kind: BackendFailureKind
     sqlstate: str = "UNKNOWN"
+    capture_stage: BackendCaptureStage | None = field(
+        default=None, compare=False, repr=False
+    )
 
 
 def valid_backend_diagnostic(value: object) -> bool:
+    if (
+        type(value) is BackendFailureDiagnostic
+        and getattr(value, "capture_stage", None) is not None
+    ):
+        return (
+            type(value.capture_stage) is BackendCaptureStage
+            and value.category is BackendFailureCategory.UNKNOWN
+            and value.kind is BackendFailureKind.UNKNOWN
+            and type(value.sqlstate) is str
+            and value.sqlstate == "UNKNOWN"
+        )
     return (
         type(value) is BackendFailureDiagnostic
         and type(getattr(value, "category", None)) is BackendFailureCategory

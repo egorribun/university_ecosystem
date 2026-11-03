@@ -7,6 +7,8 @@ from uuid import UUID
 
 from scripts import owned_nats_docker as docker
 from scripts.owned_nats_coordinator import (
+    BackendCaptureRecorder,
+    BackendCaptureStage,
     BackendFailureCategory,
     BackendFailureDiagnostic,
     BackendFailureKind,
@@ -89,9 +91,15 @@ def _json_depth_within_limit(raw: bytes) -> bool:
 
 
 def project_backend_failure(
-    stdout: bytes, stderr: bytes, request_id: str
+    stdout: bytes,
+    stderr: bytes,
+    request_id: str,
+    *,
+    recorder: BackendCaptureRecorder | None = None,
 ) -> BackendFailureDiagnostic | None:
     """Never format raw records; ambiguous, partial or unmatched evidence is unknown."""
+    if recorder is not None:
+        recorder.record(BackendCaptureStage.PROJECTION_FRAMING)
     if (
         not _request_id(request_id)
         or type(stdout) is not bytes
@@ -102,6 +110,8 @@ def project_backend_failure(
         return None
     if len(stdout.splitlines()) + len(stderr.splitlines()) > 64:
         return None
+    if recorder is not None:
+        recorder.record(BackendCaptureStage.PROJECTION_INVALID)
     matches: list[BackendFailureDiagnostic] = []
     for stream in (stdout, stderr):
         for line in stream.splitlines():
@@ -149,7 +159,15 @@ def project_backend_failure(
             if not valid_backend_diagnostic(projected):
                 return None
             matches.append(projected)
-    return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return matches[0]
+    if recorder is not None:
+        recorder.record(
+            BackendCaptureStage.PROJECTION_UNMATCHED
+            if not matches
+            else BackendCaptureStage.PROJECTION_AMBIGUOUS
+        )
+    return None
 
 
 def _backend(snapshot: object, owner: OwnerEvidence) -> ContainerSnapshot | None:
@@ -175,14 +193,19 @@ def capture_backend_failure(
     request_id: str,
     *,
     deadline: Deadline,
+    recorder: BackendCaptureRecorder | None = None,
 ) -> BackendFailureDiagnostic | None:
     """Use existing pinned executable/daemon and signed closure validation twice."""
     if not _request_id(request_id) or not docker._live(deadline):
         return None
+    if recorder is not None:
+        recorder.record(BackendCaptureStage.RUNTIME_BEFORE)
     before = docker.observe_owned_core_runtime(owner, pins, compose, deadline=deadline)
     backend = _backend(before, owner)
     if backend is None:
         return None
+    if recorder is not None:
+        recorder.record(BackendCaptureStage.LOG_PREPARE)
     prepared = docker.prepare_daemon_read(pins, deadline=deadline)
     if prepared is None:
         return None
@@ -195,6 +218,8 @@ def capture_backend_failure(
         stderr_limit=_MAX_BYTES,
         input_limit=0,
     )
+    if recorder is not None:
+        recorder.record(BackendCaptureStage.LOG_PROCESS)
     result = docker._run_pinned_docker_process(pins, request, deadline=deadline)
     if (
         type(result) is not PrivateProcessResult
@@ -204,7 +229,11 @@ def capture_backend_failure(
         or result.local_cleanup is not LocalCleanup.CONFIRMED
     ):
         return None
+    if recorder is not None:
+        recorder.record(BackendCaptureStage.RUNTIME_AFTER)
     after = docker.observe_owned_core_runtime(owner, pins, compose, deadline=deadline)
     if _backend(after, owner) != backend or not docker._live(deadline):
         return None
-    return project_backend_failure(result.stdout, result.stderr, request_id)
+    return project_backend_failure(
+        result.stdout, result.stderr, request_id, recorder=recorder
+    )
