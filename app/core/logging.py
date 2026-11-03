@@ -30,6 +30,8 @@ from app.core.orjson_utils import orjson
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from structlog.typing import EventDict
+
 # Module-level flag to prevent double configuration
 _configured = False
 
@@ -400,7 +402,7 @@ def configure_logging(
     if json_output:
         foreign_pre_chain.append(structlog.processors.format_exc_info)
 
-    def render_event(logger: Any, method_name: str, event_dict: dict[str, Any]) -> str:
+    def render_event(logger: Any, method_name: str, event_dict: EventDict) -> str:
         # This producer owns a finite, privacy-safe schema. Keep its diagnostic
         # JSON machine-readable in development too, without changing log mode
         # or rendering inherited request/user/exception context into the event.
