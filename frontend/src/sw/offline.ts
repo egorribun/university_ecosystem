@@ -415,6 +415,13 @@ async function replayRecord(
   // A pass whose lease was taken over must not send: the new holder owns this queue now.
   if (!(await ownership.isHeld())) return "stop"
 
+  // Credential collection can yield to a page draining or replacing this row. Authorize
+  // the latest stored row and lease together, then send its current payload, not getAll's copy.
+  const current = await currentReplayRecord(db, store, record, ownership)
+  if (current === "stop") return "stop"
+  if (!current) return
+  record = current
+
   const attempt = await deliver(target, record, credentials.csrfToken)
   if (attempt.status === "delivered") {
     const outcome = await commitReplayRecord(db, store, record, ownership, { kind: "delete" })
@@ -452,6 +459,37 @@ const REPLAY_RECORD_METADATA = [
   "retryCount",
   "nextAttemptAt",
 ] as const
+
+/**
+ * Fence a snapshot after credential renewal. IDB cannot make an HTTP request atomic with
+ * a queue read: a request already sent can outlive lease takeover, so retain idempotency keys.
+ */
+async function currentReplayRecord(
+  db: ReplayDatabase,
+  store: ReplayStore,
+  snapshot: QueuedRecord,
+  ownership: ReplayOwnership
+): Promise<QueuedRecord | "stop" | undefined> {
+  const tx = db.transaction([REPLAY_LEASE_STORE, store], "readwrite")
+  try {
+    const lease = (await tx.objectStore(REPLAY_LEASE_STORE).get(REPLAY_LEASE_KEY)) as
+      ReplayLeaseRecord | undefined
+    const current = (await tx.objectStore(store).get(snapshot.id)) as QueuedRecord | undefined
+    if (ownership.lost || lease?.owner !== ownership.owner || lease.expiresAt <= Date.now()) {
+      ownership.lost = true
+      await tx.done
+      return "stop"
+    }
+    await tx.done
+    if (current && REPLAY_RECORD_METADATA.some((key) => current[key] !== snapshot[key])) {
+      return "stop"
+    }
+    return current
+  } catch (error) {
+    await tx.done.catch(() => undefined)
+    throw error
+  }
+}
 
 /**
  * Lease authorization and the row mutation share one transaction. Only IDB requests are

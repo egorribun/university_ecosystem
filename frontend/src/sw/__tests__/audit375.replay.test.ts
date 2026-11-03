@@ -1047,6 +1047,85 @@ describe("AUD-375: replay mutations are fenced by the shared live lease", () => 
     }
   })
 
+  it.each(["identity", "retry-state", "removed", "session"])(
+    "does not send a queue snapshot whose %s changed during credential renewal",
+    async (change) => {
+      const first = await fencedReplayWorker()
+      await first.worker.storePendingMutation(mutationRecord())
+      const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+      const [row] = await first.worker.readPendingMutations()
+      first.credentialsSpy.mockResolvedValueOnce(first.proof).mockImplementationOnce(async () => {
+        if (change === "removed") {
+          await observer.delete(STORES.MUTATION, row.id)
+        } else {
+          await observer.put(
+            STORES.MUTATION,
+            change === "identity"
+              ? { ...row, mutationId: "replacement", idempotencyKey: "replacement-key" }
+              : change === "session"
+                ? { ...row, sessionNonce: "other-session" }
+                : { ...row, retryCount: 2, nextAttemptAt: NOW + 10_000 }
+          )
+        }
+        return first.proof
+      })
+      const fetchMock = vi.fn().mockResolvedValue(okResponse())
+      vi.stubGlobal("fetch", fetchMock)
+      try {
+        await first.worker.processOfflineQueues()
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(await first.worker.readPendingMutations()).toEqual(
+          change === "removed"
+            ? []
+            : [
+                change === "identity"
+                  ? { ...row, mutationId: "replacement", idempotencyKey: "replacement-key" }
+                  : change === "session"
+                    ? { ...row, sessionNonce: "other-session" }
+                    : { ...row, retryCount: 2, nextAttemptAt: NOW + 10_000 },
+              ]
+        )
+        expect(first.notices).not.toHaveBeenCalled()
+      } finally {
+        observer.close()
+      }
+    }
+  )
+
+  it("replays the current stored payload after credential renewal without losing its identity", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    const [row] = await first.worker.readPendingMutations()
+    const payload = { revised: true }
+    first.credentialsSpy.mockResolvedValueOnce(first.proof).mockImplementationOnce(async () => {
+      await observer.put(STORES.MUTATION, { ...row, payload })
+      return first.proof
+    })
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(500))
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      await first.worker.processOfflineQueues()
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify(payload),
+          headers: expect.objectContaining({
+            "X-CSRF-Token": CSRF,
+            "Idempotency-Key": row.idempotencyKey,
+          }),
+        })
+      )
+      expect(await first.worker.readPendingMutations()).toEqual([
+        { ...row, payload, retryCount: 1, nextAttemptAt: NOW + 500 },
+      ])
+      expect(first.notices).not.toHaveBeenCalled()
+    } finally {
+      observer.close()
+    }
+  })
+
   it.each(["identity", "retry-state", "removed"])(
     "does not replace a queue row whose %s changed while its request was pending",
     async (change) => {
@@ -1186,6 +1265,44 @@ describe("AUD-375: replay mutations are fenced by the shared live lease", () => 
     await first.worker.storePendingMutation(mutationRecord())
     const before = await first.worker.readPendingMutations()
     let observed = false
+    let fetchEntered = false
+    const get = FakeIDBObjectStore.prototype.get
+    const operationSpy = vi.spyOn(FakeIDBObjectStore.prototype, "get")
+    operationSpy.mockImplementation(function (this: IDBObjectStore, key) {
+      const request = get.call(this, key)
+      if (
+        fetchEntered &&
+        this.name === STORES.MUTATION &&
+        this.transaction.objectStoreNames.contains(REPLAY_LEASE_STORE)
+      ) {
+        request.addEventListener(
+          "success",
+          () => {
+            observed = true
+            vi.mocked(Date.now).mockReturnValue(NOW + REPLAY_LEASE_TTL_MS)
+          },
+          { once: true }
+        )
+      }
+      return request
+    })
+    const fetchMock = vi.fn(async () => {
+      fetchEntered = true
+      return okResponse(500)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    await first.worker.processOfflineQueues()
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(observed).toBe(true)
+    expect(await first.worker.readPendingMutations()).toEqual(before)
+    expect(first.notices).not.toHaveBeenCalled()
+  })
+
+  it("refuses to send when the lease expires during the pre-send row read", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const before = await first.worker.readPendingMutations()
+    let observed = false
     const get = FakeIDBObjectStore.prototype.get
     const operationSpy = vi.spyOn(FakeIDBObjectStore.prototype, "get")
     operationSpy.mockImplementation(function (this: IDBObjectStore, key) {
@@ -1205,9 +1322,75 @@ describe("AUD-375: replay mutations are fenced by the shared live lease", () => 
       }
       return request
     })
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse(500)))
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(500))
+    vi.stubGlobal("fetch", fetchMock)
     await first.worker.processOfflineQueues()
+    expect(fetchMock).not.toHaveBeenCalled()
     expect(observed).toBe(true)
+    expect(await first.worker.readPendingMutations()).toEqual(before)
+    expect(first.notices).not.toHaveBeenCalled()
+  })
+
+  it.each(["missing", "foreign"])(
+    "refuses to send if a renewed lease becomes %s before the pre-send fence",
+    async (state) => {
+      const first = await fencedReplayWorker()
+      await first.worker.storePendingMutation(mutationRecord())
+      const before = await first.worker.readPendingMutations()
+      const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+      const renew = first.lease.renewReplayLease
+      const renewal = vi
+        .spyOn(first.lease, "renewReplayLease")
+        .mockImplementation(async (...args) => {
+          const held = await renew(...args)
+          expect(held).toBe(true)
+          if (state === "missing") {
+            await observer.delete(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)
+          } else {
+            await observer.put(REPLAY_LEASE_STORE, {
+              id: REPLAY_LEASE_KEY,
+              owner: "successor",
+              expiresAt: NOW + REPLAY_LEASE_TTL_MS,
+            })
+          }
+          return held
+        })
+      const fetchMock = vi.fn().mockResolvedValue(okResponse())
+      vi.stubGlobal("fetch", fetchMock)
+      try {
+        await first.worker.processOfflineQueues()
+        expect(renewal).toHaveBeenCalledOnce()
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(await first.worker.readPendingMutations()).toEqual(before)
+        expect(first.notices).not.toHaveBeenCalled()
+      } finally {
+        observer.close()
+      }
+    }
+  )
+
+  it("propagates an aborted pre-send fence without sending or changing the queue", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const before = await first.worker.readPendingMutations()
+    const get = FakeIDBObjectStore.prototype.get
+    vi.spyOn(FakeIDBObjectStore.prototype, "get").mockImplementation(function (
+      this: IDBObjectStore,
+      key
+    ) {
+      const request = get.call(this, key)
+      if (
+        this.name === STORES.MUTATION &&
+        this.transaction.objectStoreNames.contains(REPLAY_LEASE_STORE)
+      ) {
+        this.transaction.abort()
+      }
+      return request
+    })
+    const fetchMock = vi.fn().mockResolvedValue(okResponse())
+    vi.stubGlobal("fetch", fetchMock)
+    await expect(first.worker.processOfflineQueues()).rejects.toMatchObject({ name: "AbortError" })
+    expect(fetchMock).not.toHaveBeenCalled()
     expect(await first.worker.readPendingMutations()).toEqual(before)
     expect(first.notices).not.toHaveBeenCalled()
   })
