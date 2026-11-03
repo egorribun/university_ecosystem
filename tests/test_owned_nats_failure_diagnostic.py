@@ -214,3 +214,119 @@ def test_missing_schema_field_is_unknown() -> None:
             )
             is None
         )
+
+
+@pytest.mark.parametrize("depth", [31, 32, 33])
+@pytest.mark.parametrize("top_level", ["object", "array"])
+def test_json_depth_boundary_preserves_bounded_unrelated_logs(
+    depth: int, top_level: str
+) -> None:
+    request_id = str(uuid4())
+    if top_level == "object":
+        unrelated = b'{"unrelated":' + b"[" * (depth - 1) + b"]" * (depth - 1) + b"}\n"
+    else:
+        unrelated = b"[" * depth + b"]" * depth + b"\n"
+    projected = diagnostic.project_backend_failure(
+        _record(request_id) + unrelated, b"", request_id
+    )
+    assert (projected is not None) is (depth <= 32)
+
+
+@pytest.mark.parametrize("depth", [33, 2001])
+def test_overdepth_is_rejected_before_decoder_regardless_of_recursion_limit(
+    monkeypatch: pytest.MonkeyPatch, depth: int
+) -> None:
+    request_id = str(uuid4())
+
+    # A decoder that never recurses must still never receive an overdepth row.
+    def permissive_decoder(*args, **kwargs):
+        pytest.fail("overdepth input reached the JSON decoder")
+
+    monkeypatch.setattr(diagnostic.json, "loads", permissive_decoder)
+    raw = b'{"unrelated":' + b"[" * (depth - 1) + b"]" * (depth - 1) + b"}\n"
+    assert diagnostic.project_backend_failure(raw, b"", request_id) is None
+
+
+@pytest.mark.parametrize(
+    "text", ["[" * 2000, "]}" * 1000, '\\"' + "[" * 2000, "\\" * 4 + '"' + "[" * 2000]
+)
+def test_quoted_brackets_and_escapes_do_not_count_as_json_depth(text: str) -> None:
+    request_id = str(uuid4())
+    unrelated = json.dumps({"unrelated": text}).encode() + b"\n"
+    assert (
+        diagnostic.project_backend_failure(
+            _record(request_id) + unrelated, b"", request_id
+        )
+        is not None
+    )
+
+
+def test_non_json_text_does_not_gain_json_depth_semantics() -> None:
+    request_id = str(uuid4())
+    unrelated = b"ordinary unrelated log: " + b"[" * 2000 + b"\n"
+    assert (
+        diagnostic.project_backend_failure(
+            _record(request_id) + unrelated, b"", request_id
+        )
+        is not None
+    )
+
+
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        "utf-8-sig",
+        "utf-16",
+        "utf-16-le",
+        "utf-16-be",
+        "utf-32",
+        "utf-32-le",
+        "utf-32-be",
+    ],
+)
+@pytest.mark.parametrize("payload_kind", ["producer", "deep"])
+def test_non_wire_encodings_fail_closed_before_json_decode(
+    monkeypatch: pytest.MonkeyPatch, encoding: str, payload_kind: str
+) -> None:
+    request_id = str(uuid4())
+    payload = (
+        _record(request_id).decode().rstrip("\n")
+        if payload_kind == "producer"
+        else '{"unrelated":' + "[" * 2000 + "]" * 2000 + "}"
+    )
+    encoded = payload.encode(encoding) + b"\n"
+
+    def forbidden_decoder(*args, **kwargs):
+        pytest.fail("unsupported wire encoding reached JSON decoder")
+
+    monkeypatch.setattr(diagnostic.json, "loads", forbidden_decoder)
+    assert diagnostic.project_backend_failure(encoded, b"", request_id) is None
+
+
+@pytest.mark.parametrize("encoding", ["utf-8-sig", "utf-16-be", "utf-32-le"])
+def test_encoded_junk_cannot_leave_a_prior_correlated_claim(encoding: str) -> None:
+    request_id = str(uuid4())
+    raw = (
+        _record(request_id)
+        + ('{"unrelated":' + "[" * 2000 + "]" * 2000 + "}").encode(encoding)
+        + b"\n"
+    )
+    assert diagnostic.project_backend_failure(raw, b"", request_id) is None
+
+
+@pytest.mark.parametrize("key", ["diagnostic_request_id", "diagnostic_sqlstate"])
+def test_duplicate_correlated_keys_are_rejected_in_both_orders(key: str) -> None:
+    request_id = str(uuid4())
+    raw = _record(request_id).rstrip(b"\n")
+    original = request_id if key == "diagnostic_request_id" else "42501"
+    wrong = str(uuid4()) if key == "diagnostic_request_id" else "UNKNOWN"
+    for value in (original, wrong):
+        extra = json.dumps(key).encode() + b":" + json.dumps(value).encode()
+        for duplicated in (
+            b"{" + extra + b"," + raw[1:],
+            raw[:-1] + b"," + extra + b"}",
+        ):
+            assert (
+                diagnostic.project_backend_failure(duplicated + b"\n", b"", request_id)
+                is None
+            )

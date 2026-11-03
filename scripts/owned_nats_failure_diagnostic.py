@@ -23,6 +23,7 @@ from scripts.owned_nats_process import (
 )
 
 _MAX_BYTES = 65536
+_MAX_JSON_DEPTH = 32
 _EVENT = "request_failure_diagnostic"
 _RECORD_KEYS = frozenset(
     {
@@ -59,6 +60,34 @@ def _reject_constant(_value: str) -> None:
     raise ValueError("invalid diagnostic constant")
 
 
+def _json_depth_within_limit(raw: bytes) -> bool:
+    """Bound decoder work independently of interpreter recursion settings.
+
+    Brackets inside strings are data, including after escaped backslashes or
+    quotes. The JSON decoder remains responsible for validating JSON syntax.
+    """
+    depth = 0
+    quoted = False
+    escaped = False
+    for byte in raw:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif byte == ord("\\"):
+                escaped = True
+            elif byte == ord('"'):
+                quoted = False
+        elif byte == ord('"'):
+            quoted = True
+        elif byte in b"{[":
+            depth += 1
+            if depth > _MAX_JSON_DEPTH:
+                return False
+        elif byte in b"}]":
+            depth -= 1
+    return True
+
+
 def project_backend_failure(
     stdout: bytes, stderr: bytes, request_id: str
 ) -> BackendFailureDiagnostic | None:
@@ -77,12 +106,24 @@ def project_backend_failure(
     for stream in (stdout, stderr):
         for line in stream.splitlines():
             try:
+                text = line.decode("utf-8")
+            except UnicodeDecodeError:
+                return None
+            # The producer emits UTF-8 without BOM. Decode explicitly: passing
+            # bytes to json.loads also admits UTF-16/32 outside this byte guard.
+            if "\x00" in text or text.lstrip().startswith("\ufeff"):
+                return None
+            if line.lstrip().startswith((b"{", b"[")) and not _json_depth_within_limit(
+                line
+            ):
+                return None
+            try:
                 row = json.loads(
-                    line,
+                    text,
                     object_pairs_hook=_unique_pairs,
                     parse_constant=_reject_constant,
                 )
-            except (UnicodeDecodeError, ValueError, RecursionError):
+            except (ValueError, RecursionError):
                 if line.lstrip().startswith(b"{"):
                     return None
                 continue
