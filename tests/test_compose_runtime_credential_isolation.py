@@ -18,7 +18,7 @@ from typing import Any
 
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]
 COMPOSE_FILES = (
     "docker-compose.yml",
     "docker-compose.full.yml",
@@ -30,14 +30,14 @@ WORKER_ALLOWLIST = "docker-compose.runtime-worker.allowlist"
 _SOURCE_FILES = {
     path.name: path
     for path in (
-        REPO_ROOT / "docker-compose.yml",
-        REPO_ROOT / "docker-compose.full.yml",
-        REPO_ROOT / "docker-compose.prod.yml",
-        REPO_ROOT / "docker-compose.runtime-app.allowlist",
-        REPO_ROOT / "docker-compose.runtime-worker.allowlist",
-        REPO_ROOT / ".env.example",
-        REPO_ROOT / ".env.docker.example",
-        REPO_ROOT / "start-docker.ps1",
+        ROOT / "docker-compose.yml",
+        ROOT / "docker-compose.full.yml",
+        ROOT / "docker-compose.prod.yml",
+        ROOT / "docker-compose.runtime-app.allowlist",
+        ROOT / "docker-compose.runtime-worker.allowlist",
+        ROOT / ".env.example",
+        ROOT / ".env.docker.example",
+        ROOT / "start-docker.ps1",
     )
 }
 
