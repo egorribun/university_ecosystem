@@ -1051,3 +1051,36 @@ def test_retry_scan_preserves_non_script_values_fail_closed(steps: Any) -> None:
 
     assert catalog_validator._is_retry_candidate(job)
     assert job == original
+
+
+def test_caddy_proof_catalog_matches_blocking_source_job() -> None:
+    ci = next(
+        item
+        for item in _catalog()["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
+    )
+    proof = ci["jobs"]["caddy-emitted-log-proof"]
+    assert proof["profile"] == "required-pr-main"
+    assert proof["check_name_template"] == "Caddy emitted-log redaction proof"
+    assert proof["needs"] == ["pre-commit-check"]
+    assert proof["expected_timeout_minutes"] == 20
+    assert proof["guard"] == "workflow trigger"
+    assert "caddy-emitted-log-proof" in ci["jobs"]["ci-success"]["needs"]
+
+
+@pytest.mark.parametrize("remove_job", [True, False])
+def test_caddy_proof_catalog_omissions_fail_closed(remove_job: bool) -> None:
+    value = _catalog()
+    ci = next(
+        item
+        for item in value["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
+    )
+    if remove_job:
+        del ci["jobs"]["caddy-emitted-log-proof"]
+        expected_error = "job inventory mismatch"
+    else:
+        ci["jobs"]["ci-success"]["needs"].remove("caddy-emitted-log-proof")
+        expected_error = "needs differs from workflow"
+    errors = _errors(value)
+    assert any(expected_error in error for error in errors), errors

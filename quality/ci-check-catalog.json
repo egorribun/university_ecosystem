@@ -1646,7 +1646,8 @@
             "coverage-policy-gate",
             "codecov-upload",
             "quality-inventory-check",
-            "kyverno-test"
+            "kyverno-test",
+            "caddy-emitted-log-proof"
           ],
           "artifacts": [
             {
@@ -1656,6 +1657,23 @@
               "provenance": "run_id_attempt"
             }
           ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "caddy-emitted-log-proof": {
+          "profile": "required-pr-main",
+          "check_name_template": "Caddy emitted-log redaction proof",
+          "expected_timeout_minutes": 20,
+          "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
+          "artifacts": [],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,
