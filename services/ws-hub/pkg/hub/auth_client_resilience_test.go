@@ -79,3 +79,21 @@ func TestInternalAPIAuthClient_WithSPIFFERejectsTLSConfigurationFailure(t *testi
 	require.True(t, ok)
 	assert.Nil(t, transport.TLSClientConfig)
 }
+
+func TestInternalAPIAuthClient_WithSPIFFERejectsUninitializedIdentity(t *testing.T) {
+	client := mustNewTestAuthClient(t, "https://auth.test", "", nil)
+	transport, ok := client.httpClient.Transport.(*http.Transport)
+	require.True(t, ok)
+	originalTLS := &tls.Config{MinVersion: tls.VersionTLS13}
+	transport.TLSClientConfig = originalTLS
+
+	// Exercise the production TLS-config delegate rather than replacing its seam.
+	// An unavailable workload identity must fail before changing the transport.
+	err := client.WithSPIFFE(&spiffe.Client{}, "spiffe://university.ecosystem/ns/default/sa/app")
+
+	require.EqualError(t, err,
+		"failed to create SPIFFE client TLS config for auth client: spiffe client is uninitialized",
+	)
+	assert.Same(t, transport, client.httpClient.Transport)
+	assert.Same(t, originalTLS, transport.TLSClientConfig)
+}
