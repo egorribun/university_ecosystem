@@ -6635,6 +6635,81 @@ def _validated_password_forgot_record(value: object) -> dict[str, object] | None
     return result
 
 
+def _render_forgot_observation(value: object) -> str | None:
+    """Enforce a finite public output domain at the final logging boundary."""
+    if type(value) is not dict or _validated_password_forgot_record(value) is None:
+        return None
+    # Validation is a guard only. Rebuild independently from literal public
+    # domains; never serialize its result or caller-owned strings/containers.
+    observations: dict[str, object] = {}
+    for route in ("auth", "csrf", "forgot"):
+        stat = value[route]
+        observations[route] = {
+            "requests": _closed_diagnostic_label(stat["requests"], ("0", "1", "many")),
+            "responses": _closed_diagnostic_label(
+                stat["responses"], ("0", "1", "many")
+            ),
+            "completed": _closed_diagnostic_label(
+                stat["completed"], ("0", "1", "many")
+            ),
+            "failed": _closed_diagnostic_label(stat["failed"], ("0", "1", "many")),
+            "status": _closed_diagnostic_label(
+                stat["status"],
+                (
+                    "none",
+                    "2xx",
+                    "401",
+                    "403",
+                    "429",
+                    "4xx",
+                    "5xx",
+                    "other",
+                    "mixed",
+                    "unavailable",
+                ),
+            ),
+            "responsePhase": _closed_diagnostic_label(
+                stat["responsePhase"], ("none", "before-click", "after-click", "mixed")
+            ),
+        }
+    snapshot = value["snapshot"]
+    flags = (
+        None
+        if snapshot is None
+        else {
+            key: snapshot[key] is True
+            for key in (
+                "forgotRoute",
+                "hydrated",
+                "formPresent",
+                "formInvalid",
+                "formAlert",
+                "submitPresent",
+                "submitDisabled",
+                "submitBusy",
+                "successMarkerVisible",
+            )
+        }
+    )
+    output = {
+        "scope": _closed_diagnostic_label(
+            value["scope"], ("main-frame-navigation-window", "unconfirmed")
+        ),
+        "schema": 1,
+        "project": _closed_diagnostic_label(value["project"], ("desktop", "mobile")),
+        "attempt": 0 if value["attempt"] == 0 else 1,
+        "phase": _closed_diagnostic_label(
+            value["phase"], ("navigate", "fill", "click", "success")
+        ),
+        "elapsed": _closed_diagnostic_label(
+            value["elapsed"], ("lt1s", "1to5s", "5to15s", "ge15s", "unavailable")
+        ),
+        **observations,
+        "snapshot": flags,
+    }
+    return json.dumps(output, separators=(",", ":"))
+
+
 def _live_playwright_password_forgot_diagnostics(
     output: str,
 ) -> list[dict[str, object]]:
@@ -8519,10 +8594,9 @@ def _run_live_playwright(
             flush=True,
         )
     for record in password_forgot_diagnostics:
-        print(
-            "live E2E password-forgot " + json.dumps(record, separators=(",", ":")),
-            flush=True,
-        )
+        rendered = _render_forgot_observation(record)
+        if rendered is not None:
+            print("live E2E password-forgot " + rendered, flush=True)
     for project, phase, route, query, fragment, href in reset_url_observations:
         print(
             f"live E2E reset-url project={project} phase={phase} "

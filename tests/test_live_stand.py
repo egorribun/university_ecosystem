@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import importlib.util
@@ -15414,6 +15415,7 @@ def test_live_forgot_stats_reconstruct_each_multichar_label(
         }
     projected = live_stand._validated_password_forgot_record(record)
     assert projected == record
+    assert json.loads(live_stand._render_forgot_observation(record)) == record
     assert projected is not None
     for route in ("auth", "csrf", "forgot"):
         assert projected[route] == expected_stat
@@ -15430,7 +15432,181 @@ def test_live_forgot_empty_stats_reconstruct_none_labels() -> None:
         record[route]["responsePhase"] = "".join(["no", "ne"])
     projected = live_stand._validated_password_forgot_record(record)
     assert projected == record
+    assert json.loads(live_stand._render_forgot_observation(record)) == record
     assert projected is not None
     for route in ("auth", "csrf", "forgot"):
         for field in ("status", "responsePhase"):
             assert projected[route][field] is not record[route][field]
+
+
+@pytest.mark.parametrize("snapshot_present", [False, True])
+def test_live_forgot_sink_renderer_preserves_public_values(
+    snapshot_present: bool,
+) -> None:
+    record = _password_forgot_record()
+    if snapshot_present:
+        record["snapshot"] = {
+            key: True for key in live_stand._PASSWORD_FORGOT_SNAPSHOT_KEYS
+        }
+    rendered = live_stand._render_forgot_observation(record)
+    assert type(rendered) is str
+    assert json.loads(rendered) == record
+
+
+def test_live_forgot_sink_rejects_private_values_when_parser_is_bypassed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    private = make_test_password(
+        required_classes=frozenset({"lower", "upper", "digit"})
+    )
+    valid = _password_forgot_record()
+    forged = [
+        None,
+        private,
+        [private],
+        {**valid, "password": private},
+        {**valid, "project": private},
+        {**valid, "scope": "https://private.invalid/?token=" + private},
+        {**valid, "phase": "Authorization: Bearer " + private},
+        {**valid, "schema": True},
+        {**valid, "attempt": 10**100},
+        {**valid, "snapshot": {"body": private}},
+        {**valid, "forgot": {"body": private}},
+    ]
+    for route in ("auth", "csrf", "forgot"):
+        for field in (
+            "requests",
+            "responses",
+            "completed",
+            "failed",
+            "status",
+            "responsePhase",
+        ):
+            stat = {**valid[route], field: private}
+            forged.append({**valid, route: stat})
+    for value in forged:
+        assert live_stand._render_forgot_observation(value) is None
+    completed = subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"")
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    monkeypatch.setattr(
+        live_stand,
+        "_live_playwright_password_forgot_diagnostics",
+        lambda _output: [*forged, valid],
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        "+ " + " ".join(command),
+        "live E2E password-forgot " + json.dumps(valid, separators=(",", ":")),
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert private not in captured.out
+    assert captured.err == ""
+
+
+@pytest.mark.parametrize("scope", ["main-frame-navigation-window", "unconfirmed"])
+@pytest.mark.parametrize("project", ["desktop", "mobile"])
+@pytest.mark.parametrize("attempt", [0, 1])
+@pytest.mark.parametrize("phase", ["navigate", "fill", "click", "success"])
+@pytest.mark.parametrize("elapsed", ["lt1s", "1to5s", "5to15s", "ge15s", "unavailable"])
+@pytest.mark.parametrize("snapshot_kind", ["none", "all-true", "all-false", "mixed"])
+def test_live_forgot_sink_renderer_matches_all_accepted_public_domains(
+    scope: str,
+    project: str,
+    attempt: int,
+    phase: str,
+    elapsed: str,
+    snapshot_kind: str,
+) -> None:
+    record = {
+        **_password_forgot_record(),
+        "scope": scope,
+        "project": project,
+        "attempt": attempt,
+        "phase": phase,
+        "elapsed": elapsed,
+    }
+    if snapshot_kind != "none":
+        record["snapshot"] = {
+            key: snapshot_kind == "all-true"
+            or (
+                snapshot_kind == "mixed"
+                and key in {"hydrated", "formPresent", "submitPresent"}
+            )
+            for key in live_stand._PASSWORD_FORGOT_SNAPSHOT_KEYS
+        }
+    # Zero request statistics are consistent with either observation scope.
+    validated = live_stand._validated_password_forgot_record(record)
+    assert validated == record
+    rendered = live_stand._render_forgot_observation(record)
+    assert type(rendered) is str
+    assert json.loads(rendered) == validated
+    assert (
+        len(("UE_LIVE_PASSWORD_FORGOT_V1 " + rendered + "\n").encode("utf-8")) <= 2048
+    )
+
+
+def test_live_forgot_sink_literal_domains_match_validation_guards() -> None:
+    source = (ROOT / "scripts" / "live_stand.py").read_text(encoding="utf-8")
+    functions = {
+        node.name: node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef)
+    }
+    guard_domains = {}
+    for node in ast.walk(functions["_validated_password_forgot_record"]):
+        if (
+            isinstance(node, ast.Compare)
+            and len(node.ops) == 1
+            and isinstance(node.ops[0], ast.NotIn)
+            and isinstance(node.left, ast.Subscript)
+            and isinstance(node.left.slice, ast.Constant)
+            and isinstance(node.comparators[0], ast.Set)
+        ):
+            guard_domains[node.left.slice.value] = ast.literal_eval(node.comparators[0])
+    renderer = functions["_render_forgot_observation"]
+    rendered_domains = {}
+    for node in ast.walk(renderer):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_closed_diagnostic_label"
+        ):
+            observed, labels = node.args
+            assert isinstance(observed, ast.Subscript)
+            assert isinstance(observed.slice, ast.Constant)
+            assert isinstance(labels, ast.Tuple), (
+                "sink labels must remain independent literals"
+            )
+            rendered_domains[observed.slice.value] = set(ast.literal_eval(labels))
+    for field in ("scope", "project", "phase", "elapsed"):
+        assert rendered_domains[field] == guard_domains[field]
+    for field in ("requests", "responses", "completed", "failed"):
+        assert rendered_domains[field] == live_stand._PASSWORD_FORGOT_COUNTS
+    assert rendered_domains["status"] == live_stand._PASSWORD_FORGOT_STATUSES
+    stat_guard = functions["_validated_password_forgot_stat"]
+    phase_sets = [
+        ast.literal_eval(node.comparators[0])
+        for node in ast.walk(stat_guard)
+        if isinstance(node, ast.Compare)
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.NotIn)
+        and isinstance(node.comparators[0], ast.Set)
+    ]
+    assert phase_sets == [rendered_domains["responsePhase"]]
+    attempt_domains = [
+        {ast.literal_eval(node.body), ast.literal_eval(node.orelse)}
+        for node in ast.walk(renderer)
+        if isinstance(node, ast.IfExp)
+        and isinstance(node.body, ast.Constant)
+        and isinstance(node.body.value, int)
+        and isinstance(node.orelse, ast.Constant)
+        and isinstance(node.orelse.value, int)
+    ]
+    assert attempt_domains == [guard_domains["attempt"]]
