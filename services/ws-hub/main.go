@@ -34,18 +34,20 @@ import (
 // Bootstrap seams keep failure handling deterministic in unit tests while
 // production continues to use the concrete implementations below.
 var (
-	initTracerFunc          = telemetry.InitTracer
-	initRedisFunc           = initRedis
-	initRevocationRedisFunc = initRevocationRedis
-	initSpiffeClientFunc    = initSpiffeClient
-	setupHubFunc            = setupHubWithRevocation
-	runServerFunc           = runServer
-	newSpiffeClientFunc     = spiffe.NewClient
-	closeRedisFunc          = func(client *redis.Client) error { return client.Close() }
-	closeSpiffeClientFunc   = func(client *spiffe.Client) error { return client.Close() }
-	setupJWKSFunc           = func(h *hub.Hub, ctx context.Context, url string) error { return h.SetupJWKS(ctx, url) }
-	subscribeNATSFunc       = func(h *hub.Hub, ctx context.Context) error { return h.SubscribeToNATS(ctx) }
-	configureAuthSPIFFEFunc = func(client *hub.InternalAPIAuthClient, spiffeClient *spiffe.Client, serverID string) error {
+	initTracerFunc           = telemetry.InitTracer
+	initRedisFunc            = initRedis
+	initRevocationRedisFunc  = initRevocationRedis
+	initSpiffeClientFunc     = initSpiffeClient
+	setupHubFunc             = setupHubWithRevocation
+	newBackendAuthClientFunc = hub.NewInternalAPIAuthClientWithToken
+	newRuntimeHubFunc        = hub.NewHub
+	runServerFunc            = runServer
+	newSpiffeClientFunc      = spiffe.NewClient
+	closeRedisFunc           = func(client *redis.Client) error { return client.Close() }
+	closeSpiffeClientFunc    = func(client *spiffe.Client) error { return client.Close() }
+	setupJWKSFunc            = func(h *hub.Hub, ctx context.Context, url string) error { return h.SetupJWKS(ctx, url) }
+	subscribeNATSFunc        = func(h *hub.Hub, ctx context.Context) error { return h.SubscribeToNATS(ctx) }
+	configureAuthSPIFFEFunc  = func(client *hub.InternalAPIAuthClient, spiffeClient *spiffe.Client, serverID string) error {
 		return client.WithSPIFFE(spiffeClient, serverID)
 	}
 	healthNATSConnectedFunc   = func(conn *nats.Conn) bool { return conn != nil && conn.IsConnected() }
@@ -356,7 +358,7 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	if len(spiffeClients) > 0 {
 		spiffeClient = spiffeClients[0]
 	}
-	authClient, err := hub.NewInternalAPIAuthClientWithToken(cfg.BackendURL, cfg.InternalAuthToken, rdb)
+	authClient, err := newBackendAuthClientFunc(cfg.BackendURL, cfg.InternalAuthToken, rdb)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to construct backend auth client", "err", err)
 		return nil, fmt.Errorf("construct backend auth client: %w", err)
@@ -374,7 +376,7 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	authClient.StartEviction(ctx)
 	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
 	//nolint:contextcheck
-	h, err := hub.NewHub(nc, logger, authClient, cfg, rdb, revocationRDB)
+	h, err := newRuntimeHubFunc(nc, logger, authClient, cfg, rdb, revocationRDB)
 	if err != nil {
 		logger.ErrorContext(ctx, "Failed to construct ws-hub", "err", err)
 		return nil, fmt.Errorf("construct ws-hub: %w", err)
