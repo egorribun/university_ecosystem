@@ -1,4 +1,9 @@
-"""Canonical identifiers survive redaction; phone numbers beside them still do not."""
+"""Canonical UUIDs survive redaction; phone numbers beside them still do not.
+
+Only hyphenated 8-4-4-4-12 UUIDs bounded by non-alphanumerics are protected. A
+compact 32-hex string is not an identifier shape, so a phone number padded into
+one must still be redacted.
+"""
 
 from __future__ import annotations
 
@@ -44,7 +49,6 @@ def test_seeded_uuid4_values_survive_the_free_text_path() -> None:
         assert _redact_free_text(text) == text
         assert _redact_free_text(f"request {text} done") == f"request {text} done"
         assert _redact_free_text(text.upper()) == text.upper()
-        assert _redact_free_text(identifier.hex) == identifier.hex
 
 
 @pytest.mark.parametrize(
@@ -66,11 +70,38 @@ def test_phone_next_to_an_identifier_is_still_redacted(
     assert _REDACTED in result
 
 
-def test_phone_next_to_a_compact_identifier_is_still_redacted() -> None:
-    compact = uuid.UUID(int=0x0123456789ABCDEF0123456789ABCDEF).hex
-    result = _redact_free_text(f"{compact} call 555-123-4567")
-    assert compact in result
-    assert "555-123-4567" not in result
+@pytest.mark.parametrize(
+    ("text", "phone_digits"),
+    [
+        ("+79161234567" + "a" * 21, "79161234567"),
+        ("tok=89161234567" + "a" * 21, "89161234567"),
+        ("user=+79161234567" + "f" * 21 + " end", "79161234567"),
+        ("9161234567" + "a" * 22, "9161234567"),
+        ("call +7 916 123 45 67 " + "a" * 32, "916 123 45 67"),
+    ],
+)
+def test_phone_padded_into_a_compact_hex_run_is_still_redacted(
+    text: str, phone_digits: str
+) -> None:
+    result = _redact_free_text(text)
+    assert phone_digits not in result
+    assert _REDACTED in result
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "+79161234567" + "1f2e3d4c-5b6a-4789-8abc-def012345678",
+        "1f2e3d4c-5b6a-4789-8abc-def012345678" + "+79161234567",
+        "1f2e3d4c-5b6a-4789-8abc-def012345678" + "-+79161234567",
+        "+79161234567-" + "1f2e3d4c-5b6a-4789-8abc-def012345678",
+        "1f2e3d4c-5b6a-4789-8abc-def012345678 +79161234567",
+    ],
+)
+def test_phone_glued_beside_a_canonical_uuid_is_still_redacted(text: str) -> None:
+    result = _redact_free_text(text)
+    assert "79161234567" not in result
+    assert _REDACTED in result
 
 
 def test_identifier_containing_phone_digits_is_not_partially_redacted() -> None:

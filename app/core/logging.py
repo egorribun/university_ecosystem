@@ -167,20 +167,22 @@ def _is_pii_field_name(value: object) -> bool:
     )
 
 
-# Identifiers that must never be read as phone numbers: canonical UUIDs and
-# compact 32-digit hex ids, bounded by non-alphanumeric characters. Phone numbers
-# cannot reach this shape, so protecting these spans never weakens phone redaction.
-_IDENTIFIER_RE = re.compile(
+# Only canonical hyphenated UUIDs (8-4-4-4-12) bounded by non-alphanumeric
+# characters are copied verbatim, so request and entity ids survive intact. Any
+# other run, including a compact 32-hex string, goes through phone redaction.
+# A UUID glued to an alphanumeric character is not protected. Accepted gaps: a
+# phone-like digit run inside a canonical UUID shape is not redacted, and the
+# phone pattern never matches inside a longer digit run.
+_UUID_RE = re.compile(
     r"(?<![0-9A-Za-z])"
-    r"(?:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
-    r"|[0-9A-Fa-f]{32})"
+    r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"
     r"(?![0-9A-Za-z])",
     re.ASCII,
 )
 
 
 def _mask_phone_numbers(text: str) -> str:
-    """Redact phone numbers in one identifier-free segment."""
+    """Redact phone numbers in one UUID-free segment."""
 
     def replace_phone(match: re.Match[str]) -> str:
         prefix = text[: match.start()]
@@ -197,20 +199,20 @@ def _mask_phone_numbers(text: str) -> str:
 
 
 def _redact_free_text(value: str) -> str:
-    """Redact emails and phone numbers while preserving explicit numeric tokens.
+    """Redact emails and phone numbers while preserving canonical UUIDs.
 
-    Identifier spans are copied verbatim and phone matching runs only between
+    Canonical UUID spans are copied verbatim and phone matching runs only between
     them, so a phone pattern can never be taken from inside a UUID and a phone
-    number placed next to an identifier is still redacted.
+    number placed next to a UUID is still redacted.
     """
 
     redacted = _EMAIL_RE.sub(_PII_REPLACEMENT, value)
     parts: list[str] = []
     cursor = 0
-    for identifier in _IDENTIFIER_RE.finditer(redacted):
-        parts.append(_mask_phone_numbers(redacted[cursor : identifier.start()]))
-        parts.append(identifier.group())
-        cursor = identifier.end()
+    for uuid_match in _UUID_RE.finditer(redacted):
+        parts.append(_mask_phone_numbers(redacted[cursor : uuid_match.start()]))
+        parts.append(uuid_match.group())
+        cursor = uuid_match.end()
     parts.append(_mask_phone_numbers(redacted[cursor:]))
     return "".join(parts)
 

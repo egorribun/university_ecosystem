@@ -411,6 +411,8 @@ async def ensure_partitions_exist(*, strict: bool = False) -> bool:
             )
             return False
 
+        failed_creations = 0
+
         # 1a. Ensure DEFAULT partition exists for notification tables.
         # The MVP baseline creates these tables with postgresql_partition_by
         # but no DEFAULT partition; without one, rows whose date falls outside
@@ -444,12 +446,12 @@ async def ensure_partitions_exist(*, strict: bool = False) -> bool:
                 SAProgrammingError,
             ) as e:
                 await conn.rollback()
+                failed_creations += 1
                 logger.error("Failed to ensure default partition for %s: %s", table, e)
 
         # 1b. Ensure future partitions exist
         import rust_ext
 
-        failed_creations = 0
         for table, _ in PARTITIONED_TABLES:
             for i in range(settings.partition_warmup_months + 1):
                 try:
@@ -632,8 +634,9 @@ async def run_maintenance() -> int:
             return 1
         logger.info("Partition maintenance completed")
         return 0
-    except (OSError, SQLAlchemyError, PartitionMaintenanceError) as exc:
-        # Avoid logging error text, which may contain SQL or connection details.
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: domain exception conversion
+        # Every maintenance failure maps to exit status 1. Only the class name is
+        # logged: avoid error text, which may contain SQL or connection details.
         logger.error("Partition maintenance failed (%s)", type(exc).__name__)
         return 1
     finally:

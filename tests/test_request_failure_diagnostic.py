@@ -399,6 +399,21 @@ async def test_middleware_reraises_every_unhandled_failure_unchanged(
     assert UUID(_record(diagnostic_stream)["diagnostic_request_id"]).version == 4
 
 
+@pytest.mark.asyncio
+async def test_middleware_does_not_record_base_exception_cancellation(
+    diagnostic_stream,
+):
+    error = asyncio.CancelledError()
+
+    async def inner(scope, receive, send):
+        raise error
+
+    with pytest.raises(asyncio.CancelledError) as caught:
+        await RequestIDMiddleware(inner)({"type": "http", "headers": []}, None, None)
+    assert caught.value is error
+    assert diagnostic_stream.getvalue() == ""
+
+
 def test_sqlstate_string_subclasses_are_not_inspected(diagnostic_stream):
     class HostileString(str):
         def __str__(self):

@@ -277,9 +277,24 @@ async def test_strict_run_without_failures_returns_true() -> None:
     mocks.isolate.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_failed_default_partition_raises_after_isolation_when_strict() -> None:
+    engine, conn = _engine_and_conn()
+    conn.exec_driver_sql.side_effect = _fail_default_creates
+    with _ensure_mocks(engine) as mocks:
+        with pytest.raises(PartitionMaintenanceError, match="2 partition creation"):
+            await ensure_partitions_exist(strict=True)
+    mocks.isolate.assert_awaited_once()
+
+
 def _fail_non_default_creates(sql: object, *_: object) -> None:
     if "CREATE TABLE" in str(sql) and "DEFAULT" not in str(sql):
         raise OSError("synthetic partition creation failure")
+
+
+def _fail_default_creates(sql: object, *_: object) -> None:
+    if "CREATE TABLE" in str(sql) and "DEFAULT" in str(sql):
+        raise OSError("synthetic default partition failure")
 
 
 @pytest.mark.asyncio
@@ -372,9 +387,14 @@ async def test_run_maintenance_succeeds_with_exit_status_zero() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "failure",
-    [PartitionMaintenanceError("leaf not isolated"), OSError("connection reset")],
+    [
+        PartitionMaintenanceError("leaf not isolated"),
+        OSError("connection reset"),
+        ValueError("unparsed bound 2026-13-99"),
+        TypeError("unexpected rust payload"),
+    ],
 )
-async def test_run_maintenance_fails_closed_on_any_isolation_or_connection_error(
+async def test_run_maintenance_fails_closed_on_any_maintenance_failure(
     failure: Exception,
 ) -> None:
     engine, _conn = _engine_and_conn()
@@ -386,8 +406,41 @@ async def test_run_maintenance_fails_closed_on_any_isolation_or_connection_error
         patch.object(manager, "logger") as logger,
     ):
         assert await manager.run_maintenance() == 1
-    logger.error.assert_called_once()
-    assert "leaf not isolated" not in str(logger.error.call_args)
+    logger.error.assert_called_once_with(
+        "Partition maintenance failed (%s)", type(failure).__name__
+    )
+    assert str(failure) not in str(logger.error.call_args)
+    engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_maintenance_lets_interrupts_propagate() -> None:
+    engine, _conn = _engine_and_conn()
+    with (
+        patch.object(manager, "engine", engine),
+        patch.object(
+            manager,
+            "ensure_partitions_exist",
+            AsyncMock(side_effect=KeyboardInterrupt),
+        ),
+    ):
+        with pytest.raises(KeyboardInterrupt):
+            await manager.run_maintenance()
+    engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_maintenance_exits_one_when_a_default_partition_fails() -> None:
+    engine, conn = _engine_and_conn()
+    conn.exec_driver_sql.side_effect = _fail_default_creates
+    with (
+        _ensure_mocks(engine),
+        patch.object(manager, "logger") as logger,
+    ):
+        assert await manager.run_maintenance() == 1
+    logger.error.assert_called_with(
+        "Partition maintenance failed (%s)", "PartitionMaintenanceError"
+    )
     engine.dispose.assert_awaited_once()
 
 
