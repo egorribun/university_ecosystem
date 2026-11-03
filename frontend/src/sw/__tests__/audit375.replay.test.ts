@@ -1,4 +1,8 @@
-import { IDBFactory, IDBObjectStore as FakeIDBObjectStore } from "fake-indexeddb"
+import {
+  IDBDatabase as FakeIDBDatabase,
+  IDBFactory,
+  IDBObjectStore as FakeIDBObjectStore,
+} from "fake-indexeddb"
 import { openDB, type IDBPDatabase } from "idb"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -1433,5 +1437,326 @@ describe("AUD-375: replay mutations are fenced by the shared live lease", () => 
     expect(rowsAtNotice).toEqual([])
     expect(first.logger.warn).toHaveBeenCalledOnce()
     expect(await first.worker.readPendingMutations()).toEqual([])
+  })
+})
+
+/** Holds the first replay request open until the test settles it, so a row can change mid-flight. */
+function gateFirstRequest() {
+  const entered = replayGate<void>()
+  const response = replayGate<Response>()
+  const fetchMock = vi
+    .fn()
+    .mockImplementationOnce(() => {
+      entered.resolve(undefined)
+      return response.promise
+    })
+    .mockResolvedValue(okResponse())
+  vi.stubGlobal("fetch", fetchMock)
+  return { entered, response, fetchMock }
+}
+
+describe("AUD-375: replay commits never delete a row that changed while its request was pending", () => {
+  beforeEach(() => {
+    vi.stubGlobal("indexedDB", new IDBFactory())
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true)
+    vi.spyOn(Date, "now").mockReturnValue(NOW)
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+    Object.defineProperty(navigator, "locks", { value: undefined, configurable: true })
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    Reflect.deleteProperty(navigator, "locks")
+  })
+
+  it("keeps a row whose payload was rewritten during a delivered request and sends the rewrite next", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    const gate = gateFirstRequest()
+    const pass = first.worker.processOfflineQueues()
+    try {
+      await gate.entered.promise
+      const [row] = await first.worker.readPendingMutations()
+      const rewritten = { ...row, payload: { displayName: "Grace" } }
+      await observer.put(STORES.MUTATION, rewritten)
+      gate.response.resolve(okResponse())
+      await pass
+
+      expect(await first.worker.readPendingMutations()).toEqual([rewritten])
+      expect(first.notices).not.toHaveBeenCalled()
+
+      await first.worker.processOfflineQueues()
+      expect(gate.fetchMock).toHaveBeenCalledTimes(2)
+      expect(gate.fetchMock).toHaveBeenNthCalledWith(
+        2,
+        `${ORIGIN}/api/v1/profile`,
+        expect.objectContaining({
+          body: JSON.stringify({ displayName: "Grace" }),
+          headers: expect.objectContaining({ "Idempotency-Key": "op-1" }),
+        })
+      )
+      expect(await first.worker.readPendingMutations()).toEqual([])
+    } finally {
+      gate.response.resolve(okResponse())
+      await pass
+      observer.close()
+    }
+  })
+
+  it("keeps a row whose payload was rewritten during a retryable failure without counting that failure", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    const gate = gateFirstRequest()
+    const pass = first.worker.processOfflineQueues()
+    try {
+      await gate.entered.promise
+      const [row] = await first.worker.readPendingMutations()
+      const rewritten = { ...row, payload: { displayName: "Grace" } }
+      await observer.put(STORES.MUTATION, rewritten)
+      gate.response.resolve(okResponse(503))
+      await pass
+
+      expect(await first.worker.readPendingMutations()).toEqual([rewritten])
+      expect(first.notices).not.toHaveBeenCalled()
+    } finally {
+      gate.response.resolve(okResponse())
+      await pass
+      observer.close()
+    }
+  })
+
+  it("skips a row whose identity changed during its request and still replays the next row", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(
+      mutationRecord({ mutationId: "m-a", idempotencyKey: "op-a" })
+    )
+    await first.worker.storePendingMutation(
+      mutationRecord({ mutationId: "m-b", idempotencyKey: "op-b" })
+    )
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    const gate = gateFirstRequest()
+    const pass = first.worker.processOfflineQueues()
+    try {
+      await gate.entered.promise
+      const [rowA] = await first.worker.readPendingMutations()
+      await observer.put(STORES.MUTATION, {
+        ...rowA,
+        mutationId: "replacement",
+        idempotencyKey: "replacement-key",
+      })
+      gate.response.resolve(okResponse())
+      await pass
+
+      expect(gate.fetchMock).toHaveBeenCalledTimes(2)
+      expect(gate.fetchMock).toHaveBeenNthCalledWith(
+        2,
+        `${ORIGIN}/api/v1/profile`,
+        expect.objectContaining({
+          headers: expect.objectContaining({ "Idempotency-Key": "op-b" }),
+        })
+      )
+      expect(await first.worker.readPendingMutations()).toEqual([
+        expect.objectContaining({ mutationId: "replacement", idempotencyKey: "replacement-key" }),
+      ])
+      expect(first.notices).not.toHaveBeenCalled()
+    } finally {
+      gate.response.resolve(okResponse())
+      await pass
+      observer.close()
+    }
+  })
+
+  it("skips a row replaced during credential renewal and still replays the next row", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(
+      mutationRecord({ mutationId: "m-a", idempotencyKey: "op-a" })
+    )
+    await first.worker.storePendingMutation(
+      mutationRecord({ mutationId: "m-b", idempotencyKey: "op-b" })
+    )
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    const [rowA] = await first.worker.readPendingMutations()
+    first.credentialsSpy.mockResolvedValueOnce(first.proof).mockImplementationOnce(async () => {
+      await observer.put(STORES.MUTATION, {
+        ...rowA,
+        mutationId: "replacement",
+        idempotencyKey: "replacement-key",
+      })
+      return first.proof
+    })
+    const fetchMock = vi.fn().mockResolvedValue(okResponse())
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      await first.worker.processOfflineQueues()
+
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${ORIGIN}/api/v1/profile`,
+        expect.objectContaining({
+          headers: expect.objectContaining({ "Idempotency-Key": "op-b" }),
+        })
+      )
+      expect(await first.worker.readPendingMutations()).toEqual([
+        expect.objectContaining({ mutationId: "replacement", idempotencyKey: "replacement-key" }),
+      ])
+      expect(first.notices).not.toHaveBeenCalled()
+    } finally {
+      observer.close()
+    }
+  })
+
+  it("stops the pass without deleting or sending further rows when the lease is lost during a request", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(
+      mutationRecord({ mutationId: "m-a", idempotencyKey: "op-a" })
+    )
+    await first.worker.storePendingMutation(
+      mutationRecord({ mutationId: "m-b", idempotencyKey: "op-b" })
+    )
+    const before = await first.worker.readPendingMutations()
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    const gate = gateFirstRequest()
+    const pass = first.worker.processOfflineQueues()
+    try {
+      await gate.entered.promise
+      await observer.delete(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)
+      gate.response.resolve(okResponse())
+      await pass
+
+      expect(gate.fetchMock).toHaveBeenCalledOnce()
+      expect(await first.worker.readPendingMutations()).toEqual(before)
+      expect(first.notices).not.toHaveBeenCalled()
+    } finally {
+      gate.response.resolve(okResponse())
+      await pass
+      observer.close()
+    }
+  })
+
+  it("sends nothing and stops when the lease is lost at the pre-send credential check", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(
+      mutationRecord({ mutationId: "m-a", idempotencyKey: "op-a" })
+    )
+    await first.worker.storePendingMutation(
+      mutationRecord({ mutationId: "m-b", idempotencyKey: "op-b" })
+    )
+    const before = await first.worker.readPendingMutations()
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    first.credentialsSpy.mockResolvedValueOnce(first.proof).mockImplementationOnce(async () => {
+      await observer.delete(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)
+      return first.proof
+    })
+    const fetchMock = vi.fn().mockResolvedValue(okResponse())
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      await first.worker.processOfflineQueues()
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(await first.worker.readPendingMutations()).toEqual(before)
+    } finally {
+      observer.close()
+    }
+  })
+
+  it("fences the pre-send row read in a readonly transaction", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const transaction = vi.spyOn(FakeIDBDatabase.prototype, "transaction")
+    let fenceAtSend: unknown[] | undefined
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        fenceAtSend = transaction.mock.calls.at(-1)?.slice(0, 2)
+        return okResponse()
+      })
+    )
+
+    await first.worker.processOfflineQueues()
+
+    expect(fenceAtSend).toEqual([[REPLAY_LEASE_STORE, STORES.MUTATION], "readonly"])
+    expect(await first.worker.readPendingMutations()).toEqual([])
+  })
+
+  it("keeps a row rewritten during a rejected request, so the rejection never dead-letters the new payload", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    const gate = gateFirstRequest()
+    const pass = first.worker.processOfflineQueues()
+    try {
+      await gate.entered.promise
+      const [row] = await first.worker.readPendingMutations()
+      const rewritten = { ...row, payload: { displayName: "Grace" } }
+      await observer.put(STORES.MUTATION, rewritten)
+      gate.response.resolve(okResponse(403))
+      await pass
+
+      expect(await first.worker.readPendingMutations()).toEqual([rewritten])
+      expect(first.notices).not.toHaveBeenCalled()
+      expect(first.logger.warn).not.toHaveBeenCalled()
+    } finally {
+      gate.response.resolve(okResponse())
+      await pass
+      observer.close()
+    }
+  })
+
+  it("keeps an expired other-session row rewritten before its drop, then drops it on a later pass", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(
+      mutationRecord({ sessionNonce: "session-old", timestamp: NOW - OTHER_SESSION_RECORD_TTL_MS })
+    )
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    let rewrite: Promise<unknown> | undefined
+    const getAll = FakeIDBObjectStore.prototype.getAll
+    vi.spyOn(FakeIDBObjectStore.prototype, "getAll").mockImplementation(function (
+      this: IDBObjectStore,
+      ...args
+    ) {
+      const request = getAll.apply(this, args)
+      if (this.name === STORES.MUTATION && !rewrite) {
+        // Queued while the snapshot is delivered, so it commits before the drop's transaction.
+        request.addEventListener(
+          "success",
+          () => {
+            const [snapshot] = request.result as object[]
+            rewrite = observer.put(STORES.MUTATION, {
+              ...snapshot,
+              payload: { rewritten: true },
+            })
+          },
+          { once: true }
+        )
+      }
+      return request
+    })
+
+    try {
+      await first.worker.processOfflineQueues()
+      await rewrite
+
+      expect(await first.worker.readPendingMutations()).toEqual([
+        expect.objectContaining({ payload: { rewritten: true } }),
+      ])
+      expect(first.logger.warn).not.toHaveBeenCalled()
+
+      await first.worker.processOfflineQueues()
+
+      expect(await first.worker.readPendingMutations()).toEqual([])
+      expect(first.logger.warn).toHaveBeenCalledExactlyOnceWith(
+        "Dropped expired offline record from another browser session",
+        expect.objectContaining({ store: STORES.MUTATION })
+      )
+    } finally {
+      observer.close()
+    }
   })
 })

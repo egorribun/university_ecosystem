@@ -460,9 +460,28 @@ const REPLAY_RECORD_METADATA = [
   "nextAttemptAt",
 ] as const
 
+/** Marks a payload that cannot be serialized. Such a row is never sent, so the marker is stable. */
+const UNSERIALIZABLE_BODY = Symbol("unserializable-body")
+
+/**
+ * The request body that replay sends for a row, or a marker when it cannot be serialized. A commit
+ * compares this, the only way replay reads a payload, so a rewrite that changes the bytes sent is
+ * detected while a rewrite that sends nothing different (for example a GET) is not.
+ */
+function replayBodyFingerprint(
+  record: QueuedRecord
+): string | undefined | typeof UNSERIALIZABLE_BODY {
+  try {
+    return replayBody(record)
+  } catch {
+    return UNSERIALIZABLE_BODY
+  }
+}
+
 /**
  * Fence a snapshot after credential renewal. IDB cannot make an HTTP request atomic with
  * a queue read: a request already sent can outlive lease takeover, so retain idempotency keys.
+ * A row that was removed or replaced meanwhile is skipped; only a lost lease stops the pass.
  */
 async function currentReplayRecord(
   db: ReplayDatabase,
@@ -470,7 +489,9 @@ async function currentReplayRecord(
   snapshot: QueuedRecord,
   ownership: ReplayOwnership
 ): Promise<QueuedRecord | "stop" | undefined> {
-  const tx = db.transaction([REPLAY_LEASE_STORE, store], "readwrite")
+  // Read-only: nothing is written here. IDB still orders this against any overlapping readwrite
+  // (a lease claim or a commit), so the lease check and the row read observe one consistent state.
+  const tx = db.transaction([REPLAY_LEASE_STORE, store], "readonly")
   try {
     const lease = (await tx.objectStore(REPLAY_LEASE_STORE).get(REPLAY_LEASE_KEY)) as
       ReplayLeaseRecord | undefined
@@ -481,8 +502,8 @@ async function currentReplayRecord(
       return "stop"
     }
     await tx.done
-    if (current && REPLAY_RECORD_METADATA.some((key) => current[key] !== snapshot[key])) {
-      return "stop"
+    if (!current || REPLAY_RECORD_METADATA.some((key) => current[key] !== snapshot[key])) {
+      return undefined
     }
     return current
   } catch (error) {
@@ -494,6 +515,8 @@ async function currentReplayRecord(
 /**
  * Lease authorization and the row mutation share one transaction. Only IDB requests are
  * awaited inside it; credentials, network delivery and notifications stay outside.
+ * A row whose identity, retry state or request body no longer matches the sent snapshot is left
+ * in place for the next pass, and only a lost lease stops the pass.
  */
 async function commitReplayRecord(
   db: ReplayDatabase,
@@ -501,7 +524,7 @@ async function commitReplayRecord(
   record: QueuedRecord,
   ownership: ReplayOwnership,
   mutation: ReplayMutation
-): Promise<"committed" | "missing" | "stop"> {
+): Promise<"committed" | "missing" | "changed" | "stop"> {
   const tx = db.transaction([REPLAY_LEASE_STORE, store], "readwrite")
   try {
     const lease = (await tx.objectStore(REPLAY_LEASE_STORE).get(REPLAY_LEASE_KEY)) as
@@ -517,9 +540,12 @@ async function commitReplayRecord(
       await tx.done
       return "missing"
     }
-    if (REPLAY_RECORD_METADATA.some((key) => current[key] !== record[key])) {
+    if (
+      REPLAY_RECORD_METADATA.some((key) => current[key] !== record[key]) ||
+      replayBodyFingerprint(current) !== replayBodyFingerprint(record)
+    ) {
       await tx.done
-      return "stop"
+      return "changed"
     }
     if (mutation.kind === "delete") {
       await queue.delete(record.id)
