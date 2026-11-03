@@ -20,7 +20,8 @@ _EXPECTED_LEDGER_SQL = (
         "    scope_id character varying(64) NOT NULL,\n"
         "    inventory_complete boolean DEFAULT false NOT NULL,\n"
         "    inventory_cursor text,\n"
-        "    created_at timestamp with time zone DEFAULT now() NOT NULL\n"
+        "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
+        "    CONSTRAINT quarantine_storage_scopes_pkey PRIMARY KEY (scope_id)\n"
         ")"
     ),
     (
@@ -35,16 +36,9 @@ _EXPECTED_LEDGER_SQL = (
         "    expires_at timestamp with time zone,\n"
         "    CONSTRAINT ck_quarantine_reservation_size CHECK ((size_bytes >= 0)),\n"
         "    CONSTRAINT ck_quarantine_reservation_status CHECK (status IN "
-        "('pending', 'stored', 'deleting'))\n"
+        "('pending', 'stored', 'deleting')),\n"
+        "    CONSTRAINT quarantine_reservations_pkey PRIMARY KEY (id)\n"
         ")"
-    ),
-    (
-        "ALTER TABLE ONLY public.quarantine_reservations\n"
-        "    ADD CONSTRAINT quarantine_reservations_pkey PRIMARY KEY (id)"
-    ),
-    (
-        "ALTER TABLE ONLY public.quarantine_storage_scopes\n"
-        "    ADD CONSTRAINT quarantine_storage_scopes_pkey PRIMARY KEY (scope_id)"
     ),
     (
         "ALTER TABLE ONLY public.quarantine_reservations\n"

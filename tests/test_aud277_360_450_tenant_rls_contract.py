@@ -137,7 +137,8 @@ CREATE TABLE public.tenants (
     slug character varying(64) NOT NULL,
     domain character varying(256),
     is_active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT tenants_pkey PRIMARY KEY (id)
 )
 """
 
@@ -193,8 +194,6 @@ def _expected_tenant_security() -> list[str]:
 def _assert_tenant_schema(statements: list[str]) -> None:
     expected_tenants = [
         _TENANTS_TABLE_SQL,
-        "ALTER TABLE ONLY public.tenants\n"
-        "    ADD CONSTRAINT tenants_pkey PRIMARY KEY (id)",
         "CREATE UNIQUE INDEX ix_tenants_domain ON public.tenants USING btree (domain)",
         "CREATE INDEX ix_tenants_is_active ON public.tenants USING btree (is_active)",
         "CREATE UNIQUE INDEX ix_tenants_slug ON public.tenants USING btree (slug)",

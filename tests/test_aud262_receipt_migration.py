@@ -48,12 +48,9 @@ _EXPECTED_RECEIPT_SQL = (
         "    key_digest character varying(64) NOT NULL,\n"
         "    message_id uuid,\n"
         "    completed_at timestamp with time zone NOT NULL,\n"
-        "    expires_at timestamp with time zone NOT NULL\n"
+        "    expires_at timestamp with time zone NOT NULL,\n"
+        "    CONSTRAINT chat_send_receipts_pkey PRIMARY KEY (id)\n"
         ")"
-    ),
-    (
-        "ALTER TABLE ONLY public.chat_send_receipts\n"
-        "    ADD CONSTRAINT chat_send_receipts_pkey PRIMARY KEY (id)"
     ),
     (
         "ALTER TABLE ONLY public.chat_send_receipts\n"

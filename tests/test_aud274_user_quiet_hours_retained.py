@@ -24,10 +24,9 @@ _PREFERENCES_DDL = (
     "    dnd_start time without time zone,\n"
     "    dnd_end time without time zone,\n"
     "    timezone character varying(64),\n"
-    "    user_id uuid NOT NULL\n"
+    "    user_id uuid NOT NULL,\n"
+    "    CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id)\n"
     ")",
-    "ALTER TABLE ONLY public.user_preferences\n"
-    "    ADD CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id)",
     "ALTER TABLE ONLY public.user_preferences\n"
     "    ADD CONSTRAINT fk_user_preferences_user_id FOREIGN KEY (user_id) "
     "REFERENCES public.users(id) ON DELETE CASCADE",
@@ -65,6 +64,9 @@ def test_baseline_creates_final_quiet_hours_schema(
         ("dnd_end time without time zone", "dnd_end time with time zone"),
         ("timezone character varying(64)", "timezone character varying(32)"),
         ("ON DELETE CASCADE", "ON DELETE SET NULL"),
+        ("user_preferences_pkey", "user_preferences_wrong_pkey"),
+        ("PRIMARY KEY (user_id)", "PRIMARY KEY (timezone)"),
+        (",\n    CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id)", ""),
     ],
 )
 def test_quiet_hours_contract_rejects_schema_drift(
