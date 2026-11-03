@@ -3,7 +3,7 @@ import { resolve } from "node:path"
 
 import { JSDOM } from "jsdom"
 
-import { expect, test } from "../e2e/test"
+import { expect, test } from "../../e2e/test"
 
 /**
  * AUD-432 (full SSR): the server-rendered documents are checked by executing the production

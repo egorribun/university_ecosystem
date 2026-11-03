@@ -13,7 +13,7 @@ import { matchesMainSkipLinkLocale } from "./ssr-common-locale.mjs"
 import { matchesNewsSearchLocale } from "./ssr-news-locale.mjs"
 
 const specUrl = new URL("./ssr-hydration-i18n.live.spec.ts", import.meta.url)
-const ssrDocumentSpecUrl = new URL("../e2e-production/ssr-document-render.spec.ts", import.meta.url)
+const ssrDocumentSpecUrl = new URL("./production/ssr-document-render.spec.ts", import.meta.url)
 const dashboardCatalogUrls = {
   en: new URL("../../src/i18n/locales/en/dashboard.json", import.meta.url),
   ru: new URL("../../src/i18n/locales/ru/dashboard.json", import.meta.url),
@@ -28,7 +28,7 @@ const commonCatalogUrls = {
 }
 
 // AUD-432 (full SSR): the rendered documents are executed by the production-server spec
-// (tests/e2e-production/ssr-document-render.spec.ts). This contract executes the same policy code and the
+// (tests/e2e-live/production/ssr-document-render.spec.ts). This contract executes the same policy code and the
 // same locale probes on real catalog text, so no assertion depends on the spec or renderer text.
 
 test("live acceptance projects record no traces, screenshots or video, and the executed SSR spec exists", async () => {

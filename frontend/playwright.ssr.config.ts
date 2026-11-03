@@ -13,5 +13,5 @@ if (process.env.SKIP_WEBSERVER === "true" || !baseConfig.webServer) {
 
 export default defineConfig({
   ...baseConfig,
-  testDir: "./tests/e2e-production",
+  testDir: "./tests/e2e-live/production",
 })
