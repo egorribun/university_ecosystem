@@ -113,6 +113,18 @@ func TestRealIP(t *testing.T) {
 			xff:        "1.1.1.1, not-an-ip",
 			expected:   "10.0.0.2", // stops at malformed
 		},
+		{
+			name:       "Spoofed leftmost entry behind a trusted chain is ignored (AUD-167)",
+			remoteAddr: "10.0.0.2:1234",
+			xff:        "9.9.9.9, 1.1.1.1, 192.168.1.50",
+			expected:   "1.1.1.1", // the rightmost untrusted hop, not the client-supplied prefix
+		},
+		{
+			name:       "Malformed entry inside a trusted chain fails closed to the proxy (AUD-167)",
+			remoteAddr: "10.0.0.2:1234",
+			xff:        "1.1.1.1, not-an-ip, 192.168.1.50",
+			expected:   "10.0.0.2", // a broken hop must not select a client key
+		},
 	}
 
 	for _, tt := range tests {

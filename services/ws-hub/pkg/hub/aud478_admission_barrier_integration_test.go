@@ -53,7 +53,7 @@ func TestIntegration_AUD478AdmissionOpensOnlyAfterReplayIsApplied(t *testing.T) 
 		RevocationReplayWindowSeconds: 60,
 	}
 	auth := &recordingAuthClient{}
-	h := trackTestHub(NewHub(nc, logger, auth, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nc, logger, auth, cfg, nil))
 	t.Cleanup(h.Stop)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -78,7 +78,7 @@ func TestIntegration_AUD478AdmissionOpensOnlyAfterReplayIsApplied(t *testing.T) 
 	shortCfg := *cfg
 	shortCfg.RevocationReplayWindowSeconds = 1
 	lateAuth := &recordingAuthClient{}
-	late := trackTestHub(NewHub(nc, logger, lateAuth, &shortCfg, nil))
+	late := trackTestHub(mustNewTestHub(t, nc, logger, lateAuth, &shortCfg, nil))
 	t.Cleanup(late.Stop)
 	lateCtx, lateCancel := context.WithCancel(context.Background())
 	t.Cleanup(lateCancel)
@@ -107,7 +107,7 @@ func TestIntegration_AUD478BarrierReclosesWhenReplayConsumerIsDeleted(t *testing
 		InternalSecret:                secret,
 		RevocationReplayWindowSeconds: 60,
 	}
-	h := trackTestHub(NewHub(nc, logger, &recordingAuthClient{}, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nc, logger, &recordingAuthClient{}, cfg, nil))
 	t.Cleanup(h.Stop)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

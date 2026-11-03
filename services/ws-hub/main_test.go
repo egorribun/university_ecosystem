@@ -273,7 +273,7 @@ func TestRunServer_MetricsListenerServesScrapeUntilShutdown(t *testing.T) {
 	metricsAddr := freeLoopbackAddr(t)
 	cfg := &config.Config{Port: "0", WebTransportPort: "0", MetricsAddr: metricsAddr}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := hub.NewHub(nil, logger, nil, cfg, nil)
+	h := mustNewTestHub(t, nil, logger, nil, cfg, nil)
 	quit := make(chan os.Signal, 1)
 	done := make(chan error, 1)
 	go func() { done <- runServer(cfg, logger, h, http.NewServeMux(), quit) }()
@@ -298,7 +298,7 @@ func TestRunServer_MetricsListenerBindFailureStopsServer(t *testing.T) {
 	webTransportServeFunc = func(*webtransport.Server, net.PacketConn) error { return nil }
 	cfg := &config.Config{Port: "0", WebTransportPort: "0", MetricsAddr: "-1"}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := hub.NewHub(nil, logger, nil, cfg, nil)
+	h := mustNewTestHub(t, nil, logger, nil, cfg, nil)
 	done := make(chan error, 1)
 	go func() { done <- runServer(cfg, logger, h, http.NewServeMux(), make(chan os.Signal, 1)) }()
 
@@ -327,7 +327,7 @@ func TestRunServer_MetricsShutdownFailureIsLoggedNotReturned(t *testing.T) {
 	}
 	cfg := &config.Config{Port: "0", WebTransportPort: "0", MetricsAddr: metricsAddr}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := hub.NewHub(nil, logger, nil, cfg, nil)
+	h := mustNewTestHub(t, nil, logger, nil, cfg, nil)
 	quit := make(chan os.Signal, 1)
 	quit <- os.Interrupt
 	done := make(chan error, 1)
@@ -361,7 +361,7 @@ func TestRunServer_Error(t *testing.T) {
 		WebTransportPort: "-1",
 	}
 	logger := initLogger()
-	h := hub.NewHub(nil, logger, nil, cfg, nil)
+	h := mustNewTestHub(t, nil, logger, nil, cfg, nil)
 	mux := http.NewServeMux()
 	require.Error(t, runServer(cfg, logger, h, mux))
 }

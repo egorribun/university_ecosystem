@@ -227,7 +227,7 @@ func TestAUD478RevocationReplayWindowComesFromConfig(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := trackTestHub(NewHub(nil, logger, nil, tc.cfg, nil))
+			h := trackTestHub(mustNewTestHub(t, nil, logger, nil, tc.cfg, nil))
 			require.Equal(t, tc.want, h.revocationReplayWindow)
 		})
 	}

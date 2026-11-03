@@ -607,8 +607,9 @@ func validateReplayChatBinding(subject, room string, frame map[string]any) bool 
 	return exists && chatPayloadMatchesRoom(room, payload)
 }
 
-// NewHub creates a new Hub instance.
-func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client, revocationClients ...*goredis.Client) *Hub {
+// NewHub creates a new Hub instance. Cache construction and revocation-client
+// configuration failures are returned to the caller (AGENTS.md section 2.1).
+func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client, revocationClients ...*goredis.Client) (*Hub, error) {
 	bufSize := 4096
 	maxC := 10000
 	workers := 4
@@ -647,7 +648,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 
 	dedupCache, err := newDedupLRUFunc(10000)
 	if err != nil {
-		panic(fmt.Sprintf("failed to initialize dedup LRU cache: %v", err))
+		return nil, fmt.Errorf("failed to initialize dedup LRU cache: %w", err)
 	}
 
 	var js nats.JetStreamContext
@@ -658,7 +659,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 	}
 	revocationRedisClient := rdb
 	if len(revocationClients) > 1 {
-		panic("ws-hub: at most one revocation Redis client may be configured")
+		return nil, errors.New("ws-hub: at most one revocation Redis client may be configured")
 	}
 	if len(revocationClients) == 1 {
 		revocationRedisClient = revocationClients[0]
@@ -694,7 +695,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 	}
 	hub.sessionRevocationCheck = hub.checkJTINotRevoked
 	hub.revocationWatchdogInterval = time.Second
-	return hub
+	return hub, nil
 }
 
 // SetupJWKS initialises the JWKS cache for RS256 token verification.

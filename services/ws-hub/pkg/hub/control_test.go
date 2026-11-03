@@ -53,7 +53,7 @@ func TestHandleControlMessage_ValidSignature_DisconnectsClient(t *testing.T) {
 		InternalSecret:      secret,
 	}
 	mockAuth := &mockAuthClient{allowed: true}
-	h := trackTestHub(NewHub(nil, logger, mockAuth, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nil, logger, mockAuth, cfg, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -127,7 +127,7 @@ func TestHandleControlMessage_InvalidSignature_MessageRejected(t *testing.T) {
 		BroadcastWorkers:    1,
 		InternalSecret:      secret,
 	}
-	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -190,7 +190,7 @@ func TestHandleControlMessage_MalformedJSON_NoPanic(t *testing.T) {
 	cfg := &config.Config{
 		InternalSecret: secret,
 	}
-	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 
 	ctx := context.Background()
 	handler := h.handleControlMessage(ctx)
@@ -230,7 +230,7 @@ func TestHandleControlMessage_GuardsAndActionFallbacks(t *testing.T) {
 	t.Run("canceled context drops callback before parsing", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		h := trackTestHub(NewHub(nil, logger, nil, cfg, nil))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, cfg, nil))
 
 		assert.NotPanics(t, func() {
 			h.handleControlMessage(ctx)(&nats.Msg{Data: []byte("not-json")})
@@ -238,7 +238,7 @@ func TestHandleControlMessage_GuardsAndActionFallbacks(t *testing.T) {
 	})
 
 	t.Run("empty internal secret fails closed", func(t *testing.T) {
-		h := trackTestHub(NewHub(nil, logger, nil, &config.Config{}, nil))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, &config.Config{}, nil))
 		payload := signedControlPayload(t, secret, testControlData{
 			Action:    "disconnect",
 			Timestamp: 1700000000000,
@@ -251,7 +251,7 @@ func TestHandleControlMessage_GuardsAndActionFallbacks(t *testing.T) {
 	})
 
 	t.Run("access revoked reason forces disconnect branch", func(t *testing.T) {
-		h := trackTestHub(NewHub(nil, logger, nil, cfg, nil))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, cfg, nil))
 		payload := signedControlPayload(t, secret, testControlData{
 			Action:    "refresh",
 			Reason:    "access_revoked",
@@ -265,7 +265,7 @@ func TestHandleControlMessage_GuardsAndActionFallbacks(t *testing.T) {
 	})
 
 	t.Run("unknown action is ignored after signature validation", func(t *testing.T) {
-		h := trackTestHub(NewHub(nil, logger, nil, cfg, nil))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, cfg, nil))
 		payload := signedControlPayload(t, secret, testControlData{
 			Action:    "rotate_keys",
 			Reason:    "operator_request",
@@ -286,7 +286,7 @@ func TestDisconnectUser_MultipleSessionsForUser(t *testing.T) {
 		BroadcastBufferSize: 10,
 		BroadcastWorkers:    1,
 	}
-	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nats-io/nats.go"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"github.com/university-ecosystem/ws-hub/pkg/hub"
 )
@@ -67,7 +70,7 @@ func TestAUD167EquivalentTrustedProxyAddressesResolveClient(t *testing.T) {
 func TestAUD167MappedLoopbackPeerKeepsClientBucketsSeparate(t *testing.T) {
 	cfg := aud167Config(t, "::ffff:127.0.0.1")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := hub.NewHub(nil, logger, nil, cfg, nil)
+	h := mustNewHubForConfigTest(t, nil, logger, nil, cfg, nil)
 	h.UpgradeLimiter.Stop()
 	h.UpgradeLimiter = hub.NewWSUpgradeRateLimiter(2, 3600)
 	t.Cleanup(h.Stop)
@@ -116,4 +119,12 @@ func TestAUD167MappedLoopbackPeerKeepsClientBucketsSeparate(t *testing.T) {
 	if got := request(clientB + ", " + clientA); got != http.StatusTooManyRequests {
 		t.Errorf("spoofed header from client A: status %d, want 429", got)
 	}
+}
+
+// mustNewHubForConfigTest adapts hub.NewHub for this package's proxy fixture.
+func mustNewHubForConfigTest(t *testing.T, nc *nats.Conn, logger *slog.Logger, authClient hub.RoomAuthClient, cfg *config.Config, rdb *redis.Client) *hub.Hub {
+	t.Helper()
+	h, err := hub.NewHub(nc, logger, authClient, cfg, rdb)
+	require.NoError(t, err)
+	return h
 }

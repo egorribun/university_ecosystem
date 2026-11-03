@@ -238,7 +238,7 @@ func TestSetupHub_CleansUpOnJWKSAndSubscriptionFailures(t *testing.T) {
 
 func TestDefaultSubscribeNATSFuncPropagatesHubConfigurationError(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := hub.NewHub(nil, logger, nil, &config.Config{EnableJetStream: false}, nil)
+	h := mustNewTestHub(t, nil, logger, nil, &config.Config{EnableJetStream: false}, nil)
 	t.Cleanup(h.Stop)
 
 	err := subscribeNATSFunc(h, context.Background())
@@ -249,7 +249,7 @@ func TestSetupHub_ConfiguresSPIFFEAuthClient(t *testing.T) {
 	resetBootstrapSeams(t)
 	// Exercise the production default wrapper with a disabled SPIFFE client
 	// before replacing it with the deterministic success seam below.
-	require.NoError(t, configureAuthSPIFFEFunc(hub.NewInternalAPIAuthClientWithToken("http://auth.test", "", nil), nil, ""))
+	require.NoError(t, configureAuthSPIFFEFunc(mustNewTestAuthClient(t, "http://auth.test", "", nil), nil, ""))
 	configured := false
 	configureAuthSPIFFEFunc = func(*hub.InternalAPIAuthClient, *spiffe.Client, string) error {
 		configured = true
@@ -297,7 +297,7 @@ func TestRunServer_UsesDefaultWebTransportPortAndReportsHTTPShutdownError(t *tes
 	quit := make(chan os.Signal, 1)
 	quit <- os.Interrupt
 	cfg := &config.Config{Port: "0", WebTransportPort: ""}
-	h := hub.NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, cfg, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, cfg, nil)
 	assert.NoError(t, runServer(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), h, http.NewServeMux(), quit))
 }
 
@@ -315,7 +315,7 @@ func (w *errorResponseWriter) Write([]byte) (int, error) {
 }
 
 func TestSetupHandlers_EncoderAndTransportBranches(t *testing.T) {
-	h := hub.NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, &config.Config{}, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, &config.Config{}, nil)
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, &config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
 
@@ -334,7 +334,7 @@ func TestSetupHandlers_ReadinessReadyEncodeFailure(t *testing.T) {
 	healthRedisPingFunc = func(context.Context, *redis.Client) error { return nil }
 	healthJWKSReadyFunc = func(*hub.Hub) bool { return true }
 
-	h := hub.NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, &config.Config{}, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, &config.Config{}, nil)
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, &config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
 	writer := &errorResponseWriter{header: make(http.Header)}

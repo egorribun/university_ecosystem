@@ -35,7 +35,7 @@ func setupEmpiricalHub(t *testing.T, rdb *goredis.Client) *Hub {
 		MaxClients:          1000,
 	}
 
-	h := NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, rdb)
+	h := mustNewTestHub(t, nil, logger, &mockAuthClient{allowed: true}, cfg, rdb)
 	return trackTestHub(h)
 }
 

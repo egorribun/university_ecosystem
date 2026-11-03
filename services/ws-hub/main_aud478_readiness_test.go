@@ -19,7 +19,7 @@ import (
 // replay has not drained is not ready, and becomes ready once the replay clears.
 func TestAUD478ReadinessFailsWhileRevocationReplayDrains(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := hub.NewHub(nil, logger, nil, &config.Config{}, nil, nil)
+	h := mustNewTestHub(t, nil, logger, nil, &config.Config{}, nil, nil)
 
 	oldNATS := healthNATSConnectedFunc
 	oldRedisConfigured := healthRedisConfiguredFunc

@@ -106,7 +106,7 @@ func TestSetupJWKSUsesBackendClientCertificate(t *testing.T) {
 		baseURL:    server.URL,
 		httpClient: &http.Client{Transport: &http.Transport{TLSClientConfig: configured}},
 	}
-	h := NewHub(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), auth, nil, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), auth, nil, nil)
 	t.Cleanup(h.Stop)
 
 	client := h.newJWKSHTTPClient(server.URL)

@@ -24,7 +24,7 @@ func TestValidateUpgradeTicketIdentity_Errors(t *testing.T) {
 	logger := newTestLogger()
 
 	t.Run("redis nil", func(t *testing.T) {
-		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, nil))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, &configHubPlaceholder, nil))
 		_, err := h.validateUpgradeTicketIdentity(context.Background(), strings.Repeat("a", 64))
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "redis not available")
@@ -34,7 +34,7 @@ func TestValidateUpgradeTicketIdentity_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, &configHubPlaceholder, rClient))
 
 		_, err := h.validateUpgradeTicketIdentity(context.Background(), "short")
 		assert.Error(t, err)
@@ -45,7 +45,7 @@ func TestValidateUpgradeTicketIdentity_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, &configHubPlaceholder, rClient))
 
 		invalidTicket := strings.Repeat("a", 63) + "Z" // Z is not lowercase hex
 		_, err := h.validateUpgradeTicketIdentity(context.Background(), invalidTicket)
@@ -57,7 +57,7 @@ func TestValidateUpgradeTicketIdentity_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, &configHubPlaceholder, rClient))
 
 		validTicket := strings.Repeat("a", 64)
 		_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
@@ -69,7 +69,7 @@ func TestValidateUpgradeTicketIdentity_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		rClient.Close() //nolint:errcheck,gosec // G104: intentional close to trigger redis error in next call
-		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, &configHubPlaceholder, rClient))
 
 		validTicket := strings.Repeat("a", 64)
 		_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
@@ -81,7 +81,7 @@ func TestValidateUpgradeTicketIdentity_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, &configHubPlaceholder, rClient))
 
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, "nocolon"))
@@ -95,7 +95,7 @@ func TestValidateUpgradeTicketIdentity_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, &configHubPlaceholder, rClient))
 
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, ":jti"))
@@ -109,7 +109,7 @@ func TestValidateUpgradeTicketIdentity_Errors(t *testing.T) {
 		mr := miniredis.RunT(t)
 		rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 		defer func() { require.NoError(t, rClient.Close()) }()
-		h := trackTestHub(NewHub(nil, logger, nil, &configHubPlaceholder, rClient))
+		h := trackTestHub(mustNewTestHub(t, nil, logger, nil, &configHubPlaceholder, rClient))
 
 		ticket := strings.Repeat("a", 64)
 		require.NoError(t, mr.Set("ott:ws:"+ticket, "user-id:"))
@@ -129,7 +129,7 @@ func TestInternalAPIAuthClient_DoRequest_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		auth := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
+		auth := mustNewTestAuthClient(t, server.URL, "", nil)
 		allowed := auth.CanJoinRoom(context.Background(), uuid.NewString(), uuid.NewString())
 		assert.False(t, allowed) // Should fail-closed on timeout error
 	})
@@ -140,13 +140,13 @@ func TestInternalAPIAuthClient_DoRequest_Errors(t *testing.T) {
 		}))
 		defer server.Close()
 
-		auth := NewInternalAPIAuthClientWithToken(server.URL, "", nil)
+		auth := mustNewTestAuthClient(t, server.URL, "", nil)
 		allowed := auth.CanJoinRoom(context.Background(), uuid.NewString(), uuid.NewString())
 		assert.False(t, allowed)
 	})
 
 	t.Run("invalid UUID validation fast path", func(t *testing.T) {
-		auth := NewInternalAPIAuthClientWithToken("http://localhost", "", nil)
+		auth := mustNewTestAuthClient(t, "http://localhost", "", nil)
 		allowed := auth.CanJoinRoom(context.Background(), "invalid-user-uuid", uuid.NewString())
 		assert.False(t, allowed)
 
@@ -161,7 +161,7 @@ func TestInternalAPIAuthClientInvalidateEdgeCases(t *testing.T) {
 	rClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	defer func() { require.NoError(t, rClient.Close()) }()
 
-	auth := NewInternalAPIAuthClientWithToken("http://localhost", "", rClient)
+	auth := mustNewTestAuthClient(t, "http://localhost", "", rClient)
 
 	t.Run("invalid user UUID", func(t *testing.T) {
 		assert.NotPanics(t, func() {

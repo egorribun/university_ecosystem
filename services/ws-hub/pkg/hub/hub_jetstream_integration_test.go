@@ -164,8 +164,8 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 	t.Cleanup(cancel)
 	cacheAuthClients := []*recordingAuthClient{{}, {}}
 	hubs := []*Hub{
-		trackTestHub(NewHub(nc, logger, cacheAuthClients[0], cfg, nil)),
-		trackTestHub(NewHub(nc, logger, cacheAuthClients[1], cfg, nil)),
+		trackTestHub(mustNewTestHub(t, nc, logger, cacheAuthClients[0], cfg, nil)),
+		trackTestHub(mustNewTestHub(t, nc, logger, cacheAuthClients[1], cfg, nil)),
 	}
 	for _, h := range hubs {
 		t.Cleanup(h.Stop)
@@ -176,7 +176,7 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 	coreModeCfg := *cfg
 	coreModeCfg.EnableJetStream = false
 	coreModeAuth := &recordingAuthClient{}
-	coreModeHub := trackTestHub(NewHub(nc, logger, coreModeAuth, &coreModeCfg, nil))
+	coreModeHub := trackTestHub(mustNewTestHub(t, nc, logger, coreModeAuth, &coreModeCfg, nil))
 	t.Cleanup(coreModeHub.Stop)
 	require.NoError(t, coreModeHub.SubscribeToNATS(ctx))
 	require.Len(t, coreModeHub.subs, 6)
@@ -224,7 +224,7 @@ func TestIntegration_SubscribeToNATSJetStreamConsumers(t *testing.T) {
 	}
 
 	lateAuth := &recordingAuthClient{}
-	lateHub := trackTestHub(NewHub(nc, logger, lateAuth, cfg, nil))
+	lateHub := trackTestHub(mustNewTestHub(t, nc, logger, lateAuth, cfg, nil))
 	t.Cleanup(lateHub.Stop)
 	require.NoError(t, lateHub.SubscribeToNATS(ctx))
 	require.Eventually(t, func() bool {
@@ -277,7 +277,7 @@ func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
 		InternalSecret:      "integration-replay-signing-secret",
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	h := trackTestHub(NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nc, logger, &mockAuthClient{allowed: true}, cfg, nil))
 	t.Cleanup(h.Stop)
 	streamInfo, err := js.StreamInfo(chatStream)
 	require.NoError(t, err)

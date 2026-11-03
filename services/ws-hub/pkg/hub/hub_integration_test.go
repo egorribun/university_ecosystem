@@ -140,7 +140,7 @@ func newIntegrationHub(t *testing.T, nc *nats.Conn, broadcastBuf int, maxClients
 		ClientMsgRateLimit:  100,
 		ClientMsgRateBurst:  100,
 	}
-	return trackTestHub(NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	return trackTestHub(mustNewTestHub(t, nc, logger, &mockAuthClient{allowed: true}, cfg, nil))
 }
 
 // startRedisContainer spins up pinned Redis 7.4.11-alpine and returns a connected
@@ -193,7 +193,7 @@ func newIntegrationHubWithRedis(t *testing.T, nc *nats.Conn, rdb *redis.Client, 
 		ClientMsgRateBurst:  100,
 		SendBufferSize:      16,
 	}
-	return trackTestHub(NewHub(nc, logger, &mockAuthClient{allowed: true}, cfg, rdb))
+	return trackTestHub(mustNewTestHub(t, nc, logger, &mockAuthClient{allowed: true}, cfg, rdb))
 }
 
 // TestIntegration_NATSChatMessageDelivery verifies the full pipeline:
@@ -407,7 +407,7 @@ func TestIntegration_HandleRegisterMaxClients(t *testing.T) {
 		ClientMsgRateLimit:  10,
 		ClientMsgRateBurst:  10,
 	}
-	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -677,7 +677,7 @@ func TestIntegration_NATSCacheInvalidation(t *testing.T) {
 	}
 
 	auth := &integrationRecordingAuthClient{}
-	h := trackTestHub(NewHub(nc, logger, auth, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nc, logger, auth, cfg, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

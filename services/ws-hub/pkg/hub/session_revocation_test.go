@@ -258,7 +258,7 @@ func TestSessionRevocationListenerClosesPublishedJTIAndStops(t *testing.T) {
 	mr := miniredis.RunT(t)
 	redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-	h := trackTestHub(NewHub(nil, newTestLogger(), &mockAuthClient{allowed: true}, nil, nil, redisClient))
+	h := trackTestHub(mustNewTestHub(t, nil, newTestLogger(), &mockAuthClient{allowed: true}, nil, nil, redisClient))
 	t.Cleanup(h.Stop)
 	assert.Equal(t, baseline+1, testutil.ToFloat64(ActiveGoroutines), "hub limiter is tracked")
 	h.Unregister = make(chan *Client, 2)
@@ -298,7 +298,7 @@ func TestStartSessionRevocationListenerFailsClosedAndReplacesPriorLifecycle(t *t
 		mr := miniredis.RunT(t)
 		redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 		t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-		h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+		h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 		h.Stop()
 		assert.ErrorContains(t, h.StartSessionRevocationListener(context.Background()), "after hub shutdown")
 	})
@@ -310,7 +310,7 @@ func TestStartSessionRevocationListenerFailsClosedAndReplacesPriorLifecycle(t *t
 			MaxRetries:  0,
 		})
 		t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-		h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+		h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 		t.Cleanup(h.Stop)
 		assert.Error(t, h.StartSessionRevocationListener(context.Background()))
 	})
@@ -319,7 +319,7 @@ func TestStartSessionRevocationListenerFailsClosedAndReplacesPriorLifecycle(t *t
 		mr := miniredis.RunT(t)
 		redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 		t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-		h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+		h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 		t.Cleanup(h.Stop)
 		cancelled := false
 		h.sessionRevocationCancel = func() { cancelled = true }
@@ -445,7 +445,7 @@ func TestStopOwnsSessionRevocationStartupBeforeSubscribeAcknowledgement(t *testi
 		MaxRetries:      0,
 	})
 	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-	h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+	h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 	t.Cleanup(h.Stop)
 
 	startResult := make(chan error, 1)
@@ -508,7 +508,7 @@ func TestSessionRevocationStartupTimeoutFailsClosed(t *testing.T) {
 		MaxRetries:      0,
 	})
 	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-	h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+	h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 	h.sessionRevocationSubscribeTimeout = 25 * time.Millisecond
 	t.Cleanup(h.Stop)
 
@@ -555,7 +555,7 @@ func TestStopOwnsSessionRevocationBootstrapBeforePubSubExists(t *testing.T) {
 		MaxRetries:      0,
 	})
 	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-	h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+	h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 	h.sessionRevocationSubscribeTimeout = time.Second
 	t.Cleanup(h.Stop)
 
@@ -589,7 +589,7 @@ func TestReplacingSessionRevocationListenerRetainsNewLifecycleOwner(t *testing.T
 	mr := miniredis.RunT(t)
 	redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-	h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+	h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 	t.Cleanup(h.Stop)
 	require.NoError(t, h.StartSessionRevocationListener(context.Background()))
 
@@ -651,7 +651,7 @@ func TestSessionRevocationListenerCloseErrorsAreContained(t *testing.T) {
 			MaxRetries:  0,
 		})
 		t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-		h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+		h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 		t.Cleanup(h.Stop)
 		assert.Error(t, h.StartSessionRevocationListener(context.Background()))
 	})
@@ -660,7 +660,7 @@ func TestSessionRevocationListenerCloseErrorsAreContained(t *testing.T) {
 		mr := miniredis.RunT(t)
 		redisClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 		t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-		h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+		h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 		require.NoError(t, h.StartSessionRevocationListener(context.Background()))
 		h.Stop()
 	})
@@ -793,7 +793,7 @@ func TestSessionRevocationListenerSubscriberCloseErrorIsContained(t *testing.T) 
 		MaxRetries:  0,
 	})
 	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-	h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+	h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 	t.Cleanup(h.Stop)
 
 	assert.Error(t, h.StartSessionRevocationListener(context.Background()))
@@ -816,7 +816,7 @@ func TestStartSessionRevocationListenerContainsBootstrapRegistrationError(t *tes
 
 	redisClient := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:1"})
 	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
-	h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+	h := mustNewTestHub(t, nil, newTestLogger(), nil, nil, nil, redisClient)
 	t.Cleanup(h.Stop)
 
 	err := h.StartSessionRevocationListener(context.Background())

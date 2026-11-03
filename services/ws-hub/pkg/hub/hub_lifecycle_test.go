@@ -60,7 +60,7 @@ func TestEnqueueChatDelivery_UndeliverableSequencedMessageIsNotAcknowledged(t *t
 
 	newHub := func(t *testing.T) *Hub {
 		t.Helper()
-		h := NewHub(nil, slog.New(slog.NewTextHandler(os.Stderr, nil)), nil,
+		h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(os.Stderr, nil)), nil,
 			&config.Config{BroadcastBufferSize: 4, InternalSecret: strings.Repeat("cfg-", 16)}, nil)
 		t.Cleanup(h.Stop)
 		return h
@@ -133,7 +133,7 @@ func TestNewHub_UsesConfiguredJetStreamAndRateSettings(t *testing.T) {
 		NatsStreamNotifications: "notification-stream",
 		EnableJetStream:         true,
 	}
-	h := NewHub(nil, slog.New(slog.NewTextHandler(os.Stderr, nil)), nil, cfg, nil)
+	h := mustNewTestHub(t, nil, slog.New(slog.NewTextHandler(os.Stderr, nil)), nil, cfg, nil)
 	t.Cleanup(h.Stop)
 	assert.Equal(t, 7, cap(h.Broadcast))
 	assert.Equal(t, 9, h.maxClients)
@@ -159,7 +159,7 @@ func TestNewHub_LoadsJetStreamContextWhenAvailable(t *testing.T) {
 	jetStreamContextFunc = func(*nats.Conn) (nats.JetStreamContext, error) {
 		return &scriptedJetStream{}, nil
 	}
-	h := NewHub(nc, slog.New(slog.NewTextHandler(os.Stderr, nil)), nil, &config.Config{EnableJetStream: true}, nil)
+	h := mustNewTestHub(t, nc, slog.New(slog.NewTextHandler(os.Stderr, nil)), nil, &config.Config{EnableJetStream: true}, nil)
 	t.Cleanup(h.Stop)
 	assert.NotNil(t, h.js)
 }

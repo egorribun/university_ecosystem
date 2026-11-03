@@ -27,7 +27,7 @@ func newWTTestHub() *Hub {
 		ClientMsgRateLimit:  10,
 		ClientMsgRateBurst:  20,
 	}
-	return trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	return trackTestHub(mustNewFixtureHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 }
 
 func hubWithWTTicketRedis(t *testing.T, payload string) *Hub {

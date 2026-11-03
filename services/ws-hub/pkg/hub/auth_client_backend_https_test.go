@@ -21,7 +21,7 @@ func TestWithSPIFFERejectsNonHTTPSBackendURL(t *testing.T) {
 	}
 
 	for _, baseURL := range []string{"http://backend:8000", "ftp://backend:8000", "https://", "://broken"} {
-		client := NewInternalAPIAuthClientWithToken(baseURL, "", nil)
+		client := mustNewTestAuthClient(t, baseURL, "", nil)
 		err := client.WithSPIFFE(&spiffe.Client{}, "spiffe://university.ecosystem/ns/default/sa/app")
 		require.EqualError(t, err,
 			fmt.Sprintf("auth client base URL %q must use https when SPIFFE mTLS is configured", baseURL))
@@ -39,7 +39,7 @@ func TestWithSPIFFEInstallsTLSOnHTTPSBackendURL(t *testing.T) {
 		return configured, nil
 	}
 
-	client := NewInternalAPIAuthClientWithToken("HTTPS://backend.internal:8000", "", nil)
+	client := mustNewTestAuthClient(t, "HTTPS://backend.internal:8000", "", nil)
 
 	require.NoError(t, client.WithSPIFFE(&spiffe.Client{}, "spiffe://university.ecosystem/ns/default/sa/app"))
 	transport, ok := client.httpClient.Transport.(*http.Transport)

@@ -95,16 +95,16 @@ var authClientTLSConfigFunc = func(client *spiffe.Client, backendSpiffeID string
 var newAuthLRUFunc = lru.New[string, cacheEntry]
 
 // NewInternalAPIAuthClientWithToken creates a client that authenticates the
-// internal participant callback with X-Internal-Token.
-func NewInternalAPIAuthClientWithToken(baseURL, internalAuthToken string, redisClient *redis.Client) *InternalAPIAuthClient {
+// internal participant callback with X-Internal-Token. A cache construction
+// failure is returned to the caller (AGENTS.md section 2.1) rather than panicking.
+func NewInternalAPIAuthClientWithToken(baseURL, internalAuthToken string, redisClient *redis.Client) (*InternalAPIAuthClient, error) {
 	return newInternalAPIAuthClient(baseURL, internalAuthToken, redisClient)
 }
 
-func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *redis.Client) *InternalAPIAuthClient {
+func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *redis.Client) (*InternalAPIAuthClient, error) {
 	cache, err := newAuthLRUFunc(100000)
 	if err != nil {
-		// FP-P2-03: Panic if LRU fails to initialize (should never happen with valid size)
-		panic(fmt.Sprintf("failed to initialize LRU cache: %v", err))
+		return nil, fmt.Errorf("failed to initialize LRU cache: %w", err)
 	}
 
 	// MOD-03 (audit 2026-03-15 Wave 7): Circuit breaker configuration.
@@ -121,7 +121,7 @@ func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *re
 		},
 	})
 
-	return &InternalAPIAuthClient{
+	client := &InternalAPIAuthClient{
 		baseURL:           baseURL,
 		internalAuthToken: internalAuthToken,
 		redis:             redisClient,
@@ -151,6 +151,7 @@ func newInternalAPIAuthClient(baseURL, internalAuthToken string, redisClient *re
 		calls: make(map[string]*call),
 		cb:    cb,
 	}
+	return client, nil
 }
 
 // WithSPIFFE configures the client's HTTP transport to use SPIFFE mTLS when communicating with the backend.

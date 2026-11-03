@@ -356,7 +356,11 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	if len(spiffeClients) > 0 {
 		spiffeClient = spiffeClients[0]
 	}
-	authClient := hub.NewInternalAPIAuthClientWithToken(cfg.BackendURL, cfg.InternalAuthToken, rdb)
+	authClient, err := hub.NewInternalAPIAuthClientWithToken(cfg.BackendURL, cfg.InternalAuthToken, rdb)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to construct backend auth client", "err", err)
+		return nil, fmt.Errorf("construct backend auth client: %w", err)
+	}
 	if cfg.SpiffeEnabled {
 		if spiffeClient == nil {
 			logger.ErrorContext(ctx, "SPIFFE is enabled but spiffeClient is nil")
@@ -370,7 +374,11 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	authClient.StartEviction(ctx)
 	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
 	//nolint:contextcheck
-	h := hub.NewHub(nc, logger, authClient, cfg, rdb, revocationRDB)
+	h, err := hub.NewHub(nc, logger, authClient, cfg, rdb, revocationRDB)
+	if err != nil {
+		logger.ErrorContext(ctx, "Failed to construct ws-hub", "err", err)
+		return nil, fmt.Errorf("construct ws-hub: %w", err)
+	}
 	// A real service bootstrap always has a dedicated revocation Redis: run()
 	// fails before reaching this point when it cannot initialise one. Keep the
 	// nil guard for isolated health/unit fixtures, whose action path is never

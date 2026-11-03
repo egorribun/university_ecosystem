@@ -81,7 +81,7 @@ def _container_logs(container: str) -> str:
 def _edge_container(
     image: str, caddyfile: Path, container_port: int, environment: list[str]
 ) -> Iterator[tuple[str, int]]:
-    name = f"ue-agent-deploy3-caddy-{secrets.token_hex(4)}"
+    name = f"ue-l3-caddy-{secrets.token_hex(4)}"
     # Create first: only a returned, validated ID authorizes start and cleanup.
     # A name collision must never remove somebody else's existing container.
     container = _docker(
@@ -169,6 +169,13 @@ def _marker(label: str) -> str:
     return f"{label}-{secrets.token_hex(12)}"
 
 
+def _spotify_shaped(label: str) -> str:
+    # Spotify authorization codes are long URL-safe base64 strings with an "AQ"
+    # prefix. The probe uses that shape so the negative receipt matches the
+    # production credential class, not only a generic marker.
+    return f"AQ{label}{secrets.token_urlsafe(96)}"
+
+
 def _probe_edge(
     scheme: str,
     port: int,
@@ -182,7 +189,20 @@ def _probe_edge(
     reset_token = _marker("AUDRESET")
     bearer = _marker("AUDBEARER")
     cookie = _marker("AUDCOOKIE")
-    secrets_seen = (code, state, password, token, ticket, reset_token, bearer, cookie)
+    spotify_code = _spotify_shaped("AUDSPOTIFY")
+    spotify_state = _marker("AUDSPOTIFYSTATE")
+    secrets_seen = (
+        code,
+        state,
+        password,
+        token,
+        ticket,
+        reset_token,
+        bearer,
+        cookie,
+        spotify_code,
+        spotify_state,
+    )
 
     _request(
         scheme,
@@ -198,6 +218,13 @@ def _probe_edge(
     _request(scheme, port, f"/reset-password/{reset_token}")
     _request(scheme, port, f"/ws/ticket?ticket={ticket}")
     _request(scheme, port, f"/ws/chat?ticket={ticket}")
+    # The Spotify OAuth callback is the production path that carries the code.
+    _request(
+        scheme,
+        port,
+        "/api/v1/integrations/spotify/callback"
+        f"?code={spotify_code}&state={spotify_state}&scope=user-read-email",
+    )
 
     logs = _container_logs(container)
     for value in secrets_seen:
@@ -205,6 +232,9 @@ def _probe_edge(
     for marker in _REDACTION_MARKERS:
         assert marker in logs, f"the edge log is missing the {marker!r} marker"
     assert "/login?" in logs, "the probe request was not logged at all"
+    assert (
+        "/api/v1/integrations/spotify/callback?code=REDACTED&state=REDACTED" in logs
+    ), "the Spotify callback row was not logged with its redacted URI"
     return logs
 
 

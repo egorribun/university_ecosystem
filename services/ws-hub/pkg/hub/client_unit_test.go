@@ -283,7 +283,7 @@ func TestHandleJoin_EmptyRoomNoOp(t *testing.T) {
 func TestHandleJoin_DeniedIncrementsAuthFailures(t *testing.T) {
 	logger := setupTestHub().Logger
 	cfg := &config.Config{MaxClients: 10, BroadcastBufferSize: 10, BroadcastWorkers: 1}
-	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: false}, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nil, logger, &mockAuthClient{allowed: false}, cfg, nil))
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-deny", "u-deny")
 
@@ -362,7 +362,7 @@ func TestReadPump_HubCtxDoneTeardown(t *testing.T) {
 	logger := setupTestHub().Logger
 	cfg := &config.Config{MaxClients: 10, BroadcastBufferSize: 10, BroadcastWorkers: 1,
 		ClientMsgRateLimit: 10, ClientMsgRateBurst: 10}
-	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	h := trackTestHub(mustNewTestHub(t, nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
 	hubCtx, hubCancel := context.WithCancel(context.Background())
 	h.ctx = hubCtx
 	hubCancel() // hub ctx done before ReadPump teardown runs

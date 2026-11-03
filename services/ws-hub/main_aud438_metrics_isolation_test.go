@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
-	"github.com/university-ecosystem/ws-hub/pkg/hub"
 )
 
 // aud438Status fetches url and returns the HTTP status code.
@@ -31,7 +30,7 @@ func aud438Status(t *testing.T, url string) int {
 func TestAUD438MetricsListenerIsolatedOnSocket(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := &config.Config{}
-	h := hub.NewHub(nil, logger, nil, cfg, nil, nil)
+	h := mustNewTestHub(t, nil, logger, nil, cfg, nil, nil)
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nil, nil)
 

@@ -74,7 +74,7 @@ func newNatsTestHub(auth RoomAuthClient, secret string, broadcastCap int) *Hub {
 		ClientMsgRateBurst:  10,
 		InternalSecret:      secret,
 	}
-	h := trackTestHub(NewHub(nil, logger, auth, cfg, nil))
+	h := trackTestHub(mustNewFixtureHub(nil, logger, auth, cfg, nil))
 	h.sessionRevocationCheck = func(context.Context, string) error { return nil }
 	h.subscribeCacheInvalidations = func(nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error) {
 		return nil, nil

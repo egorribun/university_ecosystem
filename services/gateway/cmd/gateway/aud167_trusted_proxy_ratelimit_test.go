@@ -73,3 +73,21 @@ func TestAUD167SpoofedForwardedForFromUntrustedPeerDoesNotEscapeLimit(t *testing
 	require.Equal(t, http.StatusTooManyRequests, gatewayRequestStatus(t, router, peer, "203.0.113.99"),
 		"a spoofed forwarded address from an untrusted peer must not reset its budget")
 }
+
+// TestAUD167RotatingSpoofedLeftmostHopBehindTrustedProxyCannotEscapeLimit: a
+// client behind a trusted proxy controls only the leftmost X-Forwarded-For
+// entries. The proxy appends the real client address on the right, so rotating
+// the forged prefix must keep the same rate-limit key.
+func TestAUD167RotatingSpoofedLeftmostHopBehindTrustedProxyCannotEscapeLimit(t *testing.T) {
+	router := gatewayRateLimitedRouter(t, []string{"10.200.0.0/24"})
+	const proxy = "10.200.0.12:45690"
+
+	for i := 0; i < 3; i++ {
+		forwarded := fmt.Sprintf("203.0.113.%d, 198.51.100.77", i+1)
+		require.Equal(t, http.StatusNoContent, gatewayRequestStatus(t, router, proxy, forwarded),
+			fmt.Sprintf("request %d is within the real client's budget", i+1))
+	}
+	require.Equal(t, http.StatusTooManyRequests,
+		gatewayRequestStatus(t, router, proxy, "203.0.113.99, 198.51.100.77"),
+		"a rotated forged prefix must not reset the real client's budget")
+}
