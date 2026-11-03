@@ -308,22 +308,18 @@ def test_baseline_downgrade_refuses_before_catalog_access_or_ddl(
     assert_downgrade_refuses(migration, operations)
 
 
-def test_baseline_preserves_aud180_news_media_asset_ddl(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _, operations = capture_baseline(monkeypatch)
+def _assert_news_media_asset_ddl(statements: list[str]) -> None:
     assert_exact_statements(
-        table_statements(operations.statements, "news_media_assets"),
+        table_statements(statements, "news_media_assets"),
         (
             "CREATE TABLE public.news_media_assets (\n"
             "    id uuid NOT NULL,\n"
             "    storage_url character varying(2048) NOT NULL,\n"
             "    owner_user_id uuid,\n"
             "    news_id uuid,\n"
-            "    created_at timestamp with time zone DEFAULT now() NOT NULL\n"
+            "    created_at timestamp with time zone DEFAULT now() NOT NULL,\n"
+            "    CONSTRAINT news_media_assets_pkey PRIMARY KEY (id)\n"
             ")",
-            "ALTER TABLE ONLY public.news_media_assets\n"
-            "    ADD CONSTRAINT news_media_assets_pkey PRIMARY KEY (id)",
             "ALTER TABLE ONLY public.news_media_assets\n"
             "    ADD CONSTRAINT uq_news_media_asset_news_id UNIQUE (news_id)",
             "ALTER TABLE ONLY public.news_media_assets\n"
@@ -338,6 +334,56 @@ def test_baseline_preserves_aud180_news_media_asset_ddl(
             "USING btree (owner_user_id)",
         ),
     )
+
+
+def test_baseline_preserves_aud180_news_media_asset_ddl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    _assert_news_media_asset_ddl(operations.statements)
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ("news_media_assets_pkey", "news_media_assets_wrong_pkey"),
+        ("PRIMARY KEY (id)", "PRIMARY KEY (news_id)"),
+        (",\n    CONSTRAINT news_media_assets_pkey PRIMARY KEY (id)", ""),
+        ("character varying(2048)", "character varying(1024)"),
+        ("UNIQUE (news_id)", "UNIQUE (owner_user_id)"),
+        ("UNIQUE (storage_url)", "UNIQUE (owner_user_id)"),
+        ("ON DELETE SET NULL", "ON DELETE CASCADE"),
+        ("USING btree (owner_user_id)", "USING btree (news_id)"),
+    ],
+)
+def test_news_media_asset_contract_rejects_schema_drift(
+    monkeypatch: pytest.MonkeyPatch, before: str, after: str
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    _assert_news_media_asset_ddl(operations.statements)
+    changed = [
+        sql.replace(before, after) if "news_media_assets" in sql else sql
+        for sql in operations.statements
+    ]
+    assert changed != operations.statements
+    with pytest.raises(AssertionError):
+        _assert_news_media_asset_ddl(changed)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate"])
+def test_news_media_asset_contract_rejects_missing_or_duplicate_statements(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    _, operations = capture_baseline(monkeypatch)
+    _assert_news_media_asset_ddl(operations.statements)
+    for statement in table_statements(operations.statements, "news_media_assets"):
+        changed = list(operations.statements)
+        if mutation == "missing":
+            changed.remove(statement)
+        else:
+            changed.append(statement)
+        with pytest.raises(AssertionError):
+            _assert_news_media_asset_ddl(changed)
 
 
 def test_baseline_rejects_non_postgres_before_catalog_access_or_ddl(
