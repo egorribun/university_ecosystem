@@ -15273,3 +15273,164 @@ def test_live_password_forgot_parser_counts_complete_utf8_frame_bytes() -> None:
     assert parse(" " + max_lf) == []
     assert parse(max_lf[:-1] + " \n") == []
     assert parse(max_crlf[:-2] + " \r\n") == []
+
+
+@pytest.mark.parametrize(
+    "kind", ["password", "uri", "header", "body", "list", "integer", "boolean"]
+)
+def test_live_forgot_diagnostics_reject_private_values_in_every_field(
+    kind: str,
+) -> None:
+    private = make_test_password(
+        required_classes=frozenset({"lower", "upper", "digit"})
+    )
+    private_value = {
+        "password": private,
+        "uri": "https://private.invalid/path?token=" + private,
+        "header": "Authorization: Bearer " + private,
+        "body": {"password": private},
+        "list": [private],
+        "integer": 10**100,
+        "boolean": True,
+    }[kind]
+    parse = live_stand._live_playwright_password_forgot_diagnostics
+    for field in ("scope", "schema", "project", "attempt", "phase", "elapsed"):
+        record = {**_password_forgot_record(), field: private_value}
+        assert parse(_password_forgot_line(record)) == []
+    for route in ("auth", "csrf", "forgot"):
+        for field in (
+            "requests",
+            "responses",
+            "completed",
+            "failed",
+            "status",
+            "responsePhase",
+        ):
+            record = _password_forgot_record()
+            stat = dict(record[route])
+            stat[field] = private_value
+            record[route] = stat
+            assert parse(_password_forgot_line(record)) == []
+    for field in live_stand._PASSWORD_FORGOT_SNAPSHOT_KEYS:
+        if type(private_value) is bool:
+            continue  # Boolean flags are the complete permitted snapshot domain.
+        record = _password_forgot_record()
+        record["snapshot"] = {
+            key: private_value if key == field else False
+            for key in live_stand._PASSWORD_FORGOT_SNAPSHOT_KEYS
+        }
+        assert parse(_password_forgot_line(record)) == []
+
+
+@pytest.mark.parametrize("flag", [False, True])
+def test_live_forgot_diagnostics_reconstruct_public_labels_and_snapshots(
+    flag: bool,
+) -> None:
+    record = _password_forgot_record()
+    record["scope"] = "".join(["main-frame-", "navigation-window"])
+    record["project"] = "".join(["mo", "bile"])
+    record["phase"] = "".join(["suc", "cess"])
+    record["elapsed"] = "".join(["ge", "15s"])
+    snapshot = {key: flag for key in live_stand._PASSWORD_FORGOT_SNAPSHOT_KEYS}
+    record["snapshot"] = snapshot
+    projected = live_stand._validated_password_forgot_record(record)
+    assert projected == record
+    assert projected is not record
+    for field in ("scope", "project", "phase", "elapsed"):
+        assert projected[field] is not record[field]
+    for route in ("auth", "csrf", "forgot"):
+        assert projected[route] is not record[route]
+    assert projected["snapshot"] is not snapshot
+    snapshot["hydrated"] = not flag
+    assert projected["snapshot"]["hydrated"] is flag
+
+
+def test_live_forgot_runner_never_prints_forged_private_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    command = live_stand._live_e2e_command(mode="smoke")
+    valid = _password_forgot_record()
+    private = make_test_password(
+        required_classes=frozenset({"lower", "upper", "digit"})
+    )
+    forged = [
+        {**valid, "password": private},
+        {**valid, "project": private},
+        {**valid, "phase": "https://private.invalid/?token=" + private},
+        {**valid, "snapshot": {"Authorization": "Bearer " + private}},
+        {**valid, "forgot": {"body": private}},
+    ]
+    rows = "".join(_password_forgot_line(record) for record in forged)
+    completed = subprocess.CompletedProcess(
+        command,
+        1,
+        stdout=(rows + _password_forgot_line(valid)).encode(),
+        stderr=rows.encode(),
+    )
+    monkeypatch.setattr(
+        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
+    )
+    with pytest.raises(live_stand.StandError, match="exit code 1"):
+        live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        "+ " + " ".join(command),
+        "live E2E password-forgot " + json.dumps(valid, separators=(",", ":")),
+        "live E2E outcome=failed exit_code=1",
+    ]
+    assert captured.err == ""
+    assert private not in captured.out
+    assert completed.stdout == completed.stderr == b""
+
+
+@pytest.mark.parametrize("value", [None, True, 1, {}, [], "private-label-canary"])
+def test_closed_diagnostic_label_rejects_unapproved_values(value: object) -> None:
+    assert live_stand._closed_diagnostic_label(value, ("desktop", "mobile")) is None
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["2xx", "401", "403", "429", "4xx", "5xx", "other", "mixed", "unavailable"],
+)
+@pytest.mark.parametrize("response_phase", ["before-click", "after-click", "mixed"])
+@pytest.mark.parametrize("count", ["1", "many"])
+def test_live_forgot_stats_reconstruct_each_multichar_label(
+    status: str, response_phase: str, count: str
+) -> None:
+    record = _password_forgot_record()
+    expected_stat = {
+        "requests": count,
+        "responses": count,
+        "completed": count,
+        "failed": "0" if count == "1" else "many",
+        "status": status,
+        "responsePhase": response_phase,
+    }
+    for route in ("auth", "csrf", "forgot"):
+        record[route] = {
+            key: "".join([label[:1], label[1:]]) for key, label in expected_stat.items()
+        }
+    projected = live_stand._validated_password_forgot_record(record)
+    assert projected == record
+    assert projected is not None
+    for route in ("auth", "csrf", "forgot"):
+        assert projected[route] == expected_stat
+        assert projected[route] is not record[route]
+        for field, label in expected_stat.items():
+            if len(label) > 1:
+                assert projected[route][field] is not record[route][field]
+
+
+def test_live_forgot_empty_stats_reconstruct_none_labels() -> None:
+    record = _password_forgot_record()
+    for route in ("auth", "csrf", "forgot"):
+        record[route]["status"] = "".join(["no", "ne"])
+        record[route]["responsePhase"] = "".join(["no", "ne"])
+    projected = live_stand._validated_password_forgot_record(record)
+    assert projected == record
+    assert projected is not None
+    for route in ("auth", "csrf", "forgot"):
+        for field in ("status", "responsePhase"):
+            assert projected[route][field] is not record[route][field]

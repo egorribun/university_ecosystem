@@ -6491,6 +6491,16 @@ _PASSWORD_FORGOT_STATUSES = frozenset(
 )
 
 
+def _closed_diagnostic_label(value: object, labels: Iterable[str]) -> str | None:
+    """Reconstruct a public label instead of retaining the observed string."""
+    if type(value) is not str:
+        return None
+    for label in labels:
+        if value == label:
+            return label
+    return None
+
+
 def _validated_password_forgot_stat(value: object) -> dict[str, object] | None:
     if type(value) is not dict or set(value) != _PASSWORD_FORGOT_STAT_KEYS:
         return None
@@ -6525,7 +6535,22 @@ def _validated_password_forgot_stat(value: object) -> dict[str, object] | None:
         or (value["completed"] == "1" and value["failed"] == "1")
     ):
         return None
-    return dict(value)
+    return {
+        "requests": _closed_diagnostic_label(
+            value["requests"], _PASSWORD_FORGOT_COUNTS
+        ),
+        "responses": _closed_diagnostic_label(
+            value["responses"], _PASSWORD_FORGOT_COUNTS
+        ),
+        "completed": _closed_diagnostic_label(
+            value["completed"], _PASSWORD_FORGOT_COUNTS
+        ),
+        "failed": _closed_diagnostic_label(value["failed"], _PASSWORD_FORGOT_COUNTS),
+        "status": _closed_diagnostic_label(value["status"], _PASSWORD_FORGOT_STATUSES),
+        "responsePhase": _closed_diagnostic_label(
+            value["responsePhase"], ("none", "before-click", "after-click", "mixed")
+        ),
+    }
 
 
 def _validated_password_forgot_record(value: object) -> dict[str, object] | None:
@@ -6546,9 +6571,19 @@ def _validated_password_forgot_record(value: object) -> dict[str, object] | None
         or value["elapsed"] not in {"lt1s", "1to5s", "5to15s", "ge15s", "unavailable"}
     ):
         return None
-    result = {
-        key: value[key]
-        for key in ("scope", "schema", "project", "attempt", "phase", "elapsed")
+    result: dict[str, object] = {
+        "scope": _closed_diagnostic_label(
+            value["scope"], ("main-frame-navigation-window", "unconfirmed")
+        ),
+        "schema": 1,
+        "project": _closed_diagnostic_label(value["project"], ("desktop", "mobile")),
+        "attempt": 0 if value["attempt"] == 0 else 1,
+        "phase": _closed_diagnostic_label(
+            value["phase"], ("navigate", "fill", "click", "success")
+        ),
+        "elapsed": _closed_diagnostic_label(
+            value["elapsed"], ("lt1s", "1to5s", "5to15s", "ge15s", "unavailable")
+        ),
     }
     for route in ("auth", "csrf", "forgot"):
         stat = _validated_password_forgot_stat(value[route])
@@ -6582,7 +6617,20 @@ def _validated_password_forgot_record(value: object) -> dict[str, object] | None
             and (snapshot["submitDisabled"] or snapshot["submitBusy"])
         ):
             return None
-        snapshot = dict(snapshot)
+        snapshot = {
+            key: snapshot[key] is True
+            for key in (
+                "forgotRoute",
+                "hydrated",
+                "formPresent",
+                "formInvalid",
+                "formAlert",
+                "submitPresent",
+                "submitDisabled",
+                "submitBusy",
+                "successMarkerVisible",
+            )
+        }
     result["snapshot"] = snapshot
     return result
 
