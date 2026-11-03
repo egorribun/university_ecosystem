@@ -199,6 +199,7 @@ def test_driver_subclasses_with_properties_are_not_inspected(diagnostic_stream):
         "Client_Req-7",
         "a" * 64,
     ],
+    ids=["uuid4", "compact-uppercase-uuid", "client-assigned", "max-length"],
 )
 def test_assigned_request_id_is_logged_exactly(diagnostic_stream, request_id):
     log_request_failure(exc.SQLAlchemyError(), request_id)
