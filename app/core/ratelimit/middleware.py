@@ -13,6 +13,7 @@ from app.core.localization import resolve_locale
 from app.core.logging import get_logger
 from app.core.ratelimit.contract import RateLimitStrategy
 from app.core.ratelimit.models import EndpointRateLimit, RateLimitInfo
+from app.core.ratelimit.policy import uses_ip_bucket
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 from app.core.ratelimit.utils import extract_user_id_for_ratelimit, resolve_client_ip
@@ -22,14 +23,6 @@ if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = get_logger("app.security.ratelimit")
-
-# Credential-guessing and account-recovery routes stay on the per-IP bucket even when
-# the caller presents a token: the IP bucket is their brute-force control.
-_IP_BUCKETED_PATH_PREFIXES: tuple[str, ...] = (
-    "/api/v1/auth/login",
-    "/api/v1/auth/register",
-    "/api/v1/password/",
-)
 
 _rate_limit_fallback_total = Counter(
     "rate_limit_fallback_total",
@@ -216,7 +209,7 @@ class RateLimitMiddleware:
         register and password-recovery routes.
         """
         request_path = request.url.path if path is None else path
-        if not request_path.startswith(_IP_BUCKETED_PATH_PREFIXES):
+        if not uses_ip_bucket(request_path):
             user_id = extract_user_id_for_ratelimit(request)
             if user_id:
                 return f"user:{user_id}"

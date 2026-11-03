@@ -12,6 +12,7 @@ from app.core.ratelimit.contract import RateLimitStrategy
 from app.core.ratelimit.delay import ProgressiveDelayTracker
 from app.core.ratelimit.exceptions import RateLimitExceeded, RateLimitStorageUnavailable
 from app.core.ratelimit.logic import enforce_rate_limit
+from app.core.ratelimit.policy import uses_ip_bucket
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
 from app.core.ratelimit.utils import (
@@ -52,7 +53,11 @@ def sensitive_route_limit(
         # removes false-positive blocks for innocent co-tenants and tightly
         # targets the actual authenticated identity.
         # Lightweight JWT decode (no DB) — used for bucketing only, not authz.
-        user_id = extract_user_id_for_ratelimit(request)
+        user_id = (
+            None
+            if uses_ip_bucket(request.url.path)
+            else extract_user_id_for_ratelimit(request)
+        )
         if user_id:
             key = f"{key_prefix}:user:{user_id}:{request.url.path}"
         else:
