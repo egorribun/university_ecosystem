@@ -10,7 +10,6 @@ import {
 } from "./register-double-submit-lifecycle.mjs"
 
 const specUrl = new URL("./register-double-submit.live.spec.ts", import.meta.url)
-const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
 const registerUrl = new URL("../../src/pages/Register.tsx", import.meta.url)
 
 test("live registration double-submit acceptance uses one real owned account", async () => {
@@ -20,17 +19,22 @@ test("live registration double-submit acceptance uses one real owned account", a
     "the mobile double-submit registration acceptance must exist"
   )
 
-  const [spec, config, register] = await Promise.all([
+  const [spec, register] = await Promise.all([
     readFile(specUrl, "utf8"),
-    readFile(configUrl, "utf8"),
     readFile(registerUrl, "utf8"),
   ])
 
-  assert.match(config, /name:\s*["']desktop["']/u)
-  assert.match(config, /name:\s*["']mobile["']/u)
-  assert.match(config, /trace:\s*["']off["']/u)
-  assert.match(config, /screenshot:\s*["']off["']/u)
-  assert.match(config, /video:\s*["']off["']/u)
+  // Behaviour: evaluate the live Playwright config and read the effective project settings.
+  const { default: liveConfig } = await import("../../playwright.live.config.ts")
+  const projects = Object.fromEntries(liveConfig.projects.map((project) => [project.name, project]))
+  assert.ok(projects.desktop, "the desktop acceptance project must exist")
+  assert.ok(projects.mobile, "the mobile acceptance project must exist")
+  for (const name of ["desktop", "mobile"]) {
+    const use = { ...liveConfig.use, ...projects[name].use }
+    assert.equal(use.trace, "off", `${name} must not record traces`)
+    assert.equal(use.screenshot, "off", `${name} must not capture screenshots`)
+    assert.equal(use.video, "off", `${name} must not record video`)
+  }
   assert.match(register, /api\.post\(["']\/auth\/register["']/u)
   assert.match(register, /navigate\(\{\s*to:\s*["']\/login["']\s*\}\)/u)
   assert.match(register, /const \[hydrated, setHydrated\] = useState\(false\)/u)

@@ -26,7 +26,7 @@ corresponding plaintext variable.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | `postgresql+asyncpg://ue_app:pass@host/db`: runtime login for the backend and outbox worker. Use a `NOSUPERUSER NOBYPASSRLS` role with DML grants only and no `ue_rls_bypass` membership, so the tenant policies apply to every request. Never use the bootstrap superuser or `ue_migrator`. | Required |
+| `DATABASE_URL` | `postgresql+asyncpg://ue_app:pass@host/db`: runtime login for the backend and outbox worker. Use a `NOSUPERUSER NOBYPASSRLS` role with DML grants only and no `ue_rls_bypass` membership, so the tenant policies apply to every request. Never use the bootstrap superuser or `ue_migrator`. | Validated at startup |
 | `NOTIFICATIONS_DATABASE_URL` | Compose stacks only: `ue_worker` login for the notifications worker. Membership in `ue_rls_bypass` lets its schedule-reminder scan read every tenant. The application does not read this name. | Required by `docker-compose.yml` |
 | `MIGRATION_DATABASE_URL` | Compose stacks only: `ue_migrator` login for the `migrations` service (`alembic upgrade head`). It owns the schema and is the only superuser login outside bootstrap. The application does not read this name. | Required by `docker-compose.yml` |
 | `UE_APP_DB_PASSWORD`, `UE_WORKER_DB_PASSWORD`, `UE_MIGRATOR_DB_PASSWORD` | Compose and bootstrap inputs: passwords for the `ue_app`, `ue_worker` and `ue_migrator` logins. `start-docker.ps1` generates them as alphanumeric values; `postgres-roles-init` applies them on every start. | Generated |
@@ -51,7 +51,7 @@ corresponding plaintext variable.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MVP_TENANT_ID` | Optional operator-configured UUID of the existing active organization for single-organization MVP routing. It does not authenticate users, create a tenant, or grant an RLS bypass; missing or inactive configured tenants fail closed. When unset, no default tenant is selected and existing fail-closed RLS behavior remains. | Unset (`None`) |
-| `SECRET_KEY` | Primary JWT signing secret | Required |
+| `SECRET_KEY` | Primary JWT signing secret | Validated at startup |
 | `ALGORITHM` | JWT algorithm; `HS256` is permitted only for local development/testing | `RS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Token TTL; ws-hub's `WS_REVOCATION_REPLAY_WINDOW_SECONDS` must be at least this many seconds | `60` |
 | `MAX_SESSIONS_PER_USER` | Concurrent sessions (0=unlimited) | `5` |
@@ -246,9 +246,8 @@ roles fail closed.
 Fields that are not listed in a thematic section above. Defaults are the runtime
 `Settings` defaults read from the model; secret-valued defaults are shown as
 placeholders and the secret source is named in the code. Variables read outside
-`Settings` (for example `os.environ` in `app/core/nats_broker.py`, the Go services
-and the Temporal entrypoint) are documented in their thematic sections and are not
-part of this inventory.
+`Settings` are listed in [Variables read outside Settings](#variables-read-outside-settings)
+and are not part of this inventory.
 
 ### `app/core/config/app_gen.py`
 
@@ -505,3 +504,99 @@ part of this inventory.
 | `STORAGE_S3_ACCESS_KEY_ID` | Storage S3 access key ID. Defined in `app/core/config/storage.py`. | Empty |
 | `STORAGE_S3_BASE_URL` | Storage S3 base URL. Defined in `app/core/config/storage.py`. | Empty |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | Storage S3 secret access key. Defined in `app/core/config/storage.py`. | Empty |
+
+## Variables read outside Settings
+
+These names are read directly from the process environment by the `app` package,
+not through the `Settings` model. `tests/test_configuration_outside_settings_drift.py`
+derives the set from the code and fails when a literal `os.environ` or `os.getenv`
+read has no row here with a documented default.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CI` | CI runner flag. Together with `GITHUB_ACTIONS` it relaxes secret enforcement for tooling steps; set by the CI platform, not by operators. Read in `app/core/config/__init__.py`, `app/core/config/integrations.py` and `app/core/settings_sources.py`. | Unset (not CI) |
+| `GITHUB_ACTIONS` | GitHub Actions runner flag; same effect as `CI` (`true` only). | Unset (not CI) |
+| `ENABLE_PROFILING` | Selects the Pyroscope profiler when `true` (case-insensitive); any other value uses the no-op profiler. Read in `app/core/profiling.py`. | `false` |
+| `PYROSCOPE_SERVER_ADDRESS` | Pyroscope server URL used when profiling is enabled and no explicit address is passed. | `http://pyroscope:4040` |
+| `ENV_FILE_PATH` | Overrides the environment file read by the settings sources. An empty value disables the file; a file byte-identical to the example file is refused. | Unset (project-root `.env` when present) |
+| `ENV_EXAMPLE_PATH` | Overrides the example file used to detect an unedited copy in `ENV_FILE_PATH`. | `.env.example` in the project root |
+| `OTEL_SDK_DISABLED` | OpenTelemetry kill switch read before any provider or exporter starts; `1`, `true`, `yes` or `on` disable the SDK. Read in `app/core/observability.py`. | Unset (SDK enabled) |
+| `OUTBOX_WORKER_RUNTIME_DIR` | Directory for the outbox worker PID and heartbeat markers. Read in `app/workers/outbox.py`. | System temporary directory |
+| `NATS_TASK_TIMEOUT_SECONDS` | Per-task timeout for the NATS task worker in `app/core/nats_broker.py`. | `30` |
+| `NATS_FETCH_BATCH_SIZE` | Messages fetched per NATS task-worker batch, clamped to 1 through 100. | `20` |
+| `SPICEDB_INSECURE` | Permits a plaintext SpiceDB connection when `true`; TLS is otherwise forced. Local development only. Read in `app/core/spicedb.py`. | `false` |
+
+### Go services (gateway, ws-hub, file-processor)
+
+These names are read by the Go services under `services/gateway`, `services/ws-hub` and
+`services/file-processor`. `tests/test_configuration_outside_settings_drift.py` derives
+the set from the literal names passed to `os.Getenv`, `os.LookupEnv`, the `getEnv*`
+helpers, `readSecretEnv` and the file-processor secret table, and fails when one has no row
+here with a documented default. A secret-capable name also accepts a `<NAME>_FILE` mount
+where the Go code reads it through `readSecretEnv` or the `_FILE` lookup.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GATEWAY_PORT` | Gateway HTTP listen port. | `8080` |
+| `GATEWAY_H3_ENABLED` | Enables the HTTP/3 listener on the gateway. | `true` |
+| `GATEWAY_H3_PORT` | HTTP/3 listen port on the gateway. | `8443` |
+| `GATEWAY_H3_ALT_SVC_MAX_AGE` | `Alt-Svc` max-age advertised for HTTP/3, in seconds. | `2592000` |
+| `GATEWAY_TRUSTED_PROXIES` | Comma-separated proxy addresses whose forwarded client IP is trusted. | Unset (no trusted proxies) |
+| `ALLOWED_ORIGINS` | Comma-separated browser origins accepted by the gateway for CORS. | `http://localhost:3000,http://localhost:5173` |
+| `APP_VERSION` | Version label reported by the gateway. | `unknown` |
+| `VITE_ENVIRONMENT` | Environment name the gateway reads for its runtime mode (`development`, `staging` or `production`). | `development` |
+| `GIN_MODE` | Gin mode; the gateway switches to test mode when it is `test`. Read, not set by operators in production. | Unset |
+| `BACKEND_URL` | Gateway upstream URL for the backend service. | `http://backend:8000` |
+| `BACKEND_INTERNAL_URL` | ws-hub upstream URL for internal calls to the backend. | `http://backend:8000` |
+| `BACKEND_SPIFFE_ID` | SPIFFE ID expected for the backend peer. | `spiffe://university.ecosystem/ns/default/sa/app` |
+| `FILE_PROCESSOR_ADDR` | gRPC address of the file-processor service. | `file-processor:50051` |
+| `FILE_PROCESSOR_SPIFFE_ID` | SPIFFE ID expected for the file-processor peer. | `spiffe://university.ecosystem/ns/default/sa/file-processor` |
+| `FILE_PROCESSING_CAPABILITY_SECRET` | Gateway secret that signs file-processing capabilities (`_FILE` supported); minimum strength enforced at startup. | Validated at startup |
+| `WSHUB_URL` | Gateway upstream URL for the ws-hub service. | `http://ws-hub:8081` |
+| `GRPC_USE_TLS` | gRPC TLS toggle; only the exact value `false` disables TLS. | `true` |
+| `GRPC_CA_FILE` | CA bundle for verifying gRPC peers. | Unset |
+| `GRPC_CLIENT_CERT_FILE` | Client certificate presented on gRPC calls. | Unset |
+| `GRPC_CLIENT_KEY_FILE` | Private key for `GRPC_CLIENT_CERT_FILE`. | Unset |
+| `GRPC_CLIENT_IDENTITY_URI` | Expected SPIFFE URI SAN of the gRPC client identity. | Unset |
+| `GRPC_SERVER_NAME` | Server name used to verify the gRPC TLS certificate. | Unset |
+| `INTERNAL_HTTP_MTLS_ENABLED` | Enables mutual TLS for internal HTTP calls; must parse as a boolean. | `false` |
+| `TLS_CERT_FILE` | Certificate file for the gateway's own TLS listener. | Unset |
+| `TLS_KEY_FILE` | Private key file for `TLS_CERT_FILE`. | Unset |
+| `JWT_SECRET` | Gateway JWT verification secret (`_FILE` supported). | Validated at startup |
+| `JWKS_ENDPOINT` | Gateway JWKS URL for RS256 key discovery. | Unset |
+| `JWKS_PUBLIC_KEY_PEM` | Optional RS256 public key in PEM form. | Unset |
+| `JWKS_REFRESH_INTERVAL` | JWKS refresh interval in seconds. | `300` |
+| `JWKS_URL` | ws-hub JWKS URL used to verify tokens. | `http://backend:8000/.well-known/jwks.json` |
+| `JWT_SECRETS` | ws-hub ring of JWT verification secrets for rotation (`_FILE` supported). | Unset (single-secret mode) |
+| `REDIS_URL` | Redis URL read by the gateway and ws-hub (`_FILE` supported). | Unset |
+| `REDIS_DB` | Redis logical database index for ws-hub. | `0` |
+| `REDIS_PASSWORD` | Redis password for ws-hub (`_FILE` supported). | Unset |
+| `NATS_USER` | NATS user for ws-hub (`_FILE` supported). | Unset |
+| `NATS_PASSWORD` | NATS password for ws-hub (`_FILE` supported). | Unset |
+| `NATS_STREAM_CHAT` | JetStream stream name for chat events. | `CHAT_EVENTS` |
+| `NATS_STREAM_NOTIFICATIONS` | JetStream stream name for notification events. | `NOTIFICATIONS_EVENTS` |
+| `ENABLE_JETSTREAM` | Enables JetStream consumers in ws-hub. | `true` |
+| `WS_HUB_PORT` | ws-hub HTTP and WebSocket listen port. | `8081` |
+| `WS_HUB_WT_PORT` | ws-hub WebTransport port; falls back to `WT_PORT`. | `8443` |
+| `WT_PORT` | Fallback WebTransport port when `WS_HUB_WT_PORT` is unset. | `8443` |
+| `WS_ALLOWED_ORIGINS` | Comma-separated origins accepted for WebSocket upgrades in addition to the same-origin check. | Unset (none added) |
+| `WS_HUB_MAX_CLIENTS` | Maximum concurrent WebSocket clients per ws-hub process. | `10000` |
+| `WS_SEND_BUFFER_SIZE` | Per-client outbound frame buffer size. | `256` |
+| `WS_BROADCAST_BUFFER_SIZE` | Broadcast fan-out buffer size. | `4096` |
+| `WS_BROADCAST_WORKERS` | Broadcast worker count, capped at 12. | `2 * GOMAXPROCS` (capped) |
+| `WS_CLIENT_MSG_RATE_LIMIT` | Per-client inbound message rate, messages per second. | `10` |
+| `WS_CLIENT_MSG_BURST` | Per-client inbound message burst size. | `20` |
+| `AUTH_CLIENT_MAX_CONNS_PER_HOST` | Maximum pooled connections per host for the ws-hub auth client; non-positive values are ignored. | `20` |
+| `RATE_LIMIT_RPS` | Gateway rate limit, requests per second per instance. | `100` |
+| `RATE_LIMIT_BURST` | Gateway rate-limit burst size. | `200` |
+| `SPIFFE_ENABLED` | Enables SPIFFE identity in the gateway; only the exact value `true` enables it. | `false` |
+| `SPIFFE_ENDPOINT_SOCKET` | SPIFFE Workload API socket path. | `unix:///run/spire/sockets/agent.sock` |
+| `SPIFFE_TRUST_DOMAIN` | SPIFFE trust domain. | `university.ecosystem` |
+| `SPIFFE_MY_ID` | SPIFFE ID of the gateway workload. | `spiffe://university.ecosystem/ns/default/sa/gateway` |
+| `FP_JWT_SECRET` | file-processor JWT verification secret (`_FILE` supported). | Validated at startup |
+| `FP_MINIO_ACCESS_KEY` | file-processor MinIO access key (`_FILE` supported). | Validated at startup |
+| `FP_MINIO_SECRET_KEY` | file-processor MinIO secret key (`_FILE` supported). | Validated at startup |
+| `FP_NATS_URL` | file-processor NATS URL (`_FILE` supported). | Validated at startup |
+| `FP_PROCESSING_CAPABILITY_SECRET` | file-processor secret that verifies processing capabilities (`_FILE` supported). | Validated at startup |
+| `FP_REVOCATION_REDIS_URL` | file-processor revocation Redis URL (`_FILE` supported). | Validated at startup |
+| `FP_SCHEMA_PATH` | Path to a GraphQL schema file that replaces the bundled `schema.graphql`. | Unset (bundled schema) |

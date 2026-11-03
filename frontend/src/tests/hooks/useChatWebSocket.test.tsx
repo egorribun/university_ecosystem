@@ -1218,7 +1218,7 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
   })
 
   it("handles a typing timeout that races with cleanup", async () => {
-    const { socket, unmount } = await mountAndOpen({ enabled: true })
+    const { socket, unmount, result } = await mountAndOpen({ enabled: true })
 
     vi.useFakeTimers()
     act(() =>
@@ -1229,11 +1229,17 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
         user_name: "Racer",
       })
     )
+    expect(result.current.getTypingUsersForChat(CHAT_ID)).toEqual([
+      { userId: "00000000-0000-4000-8000-000000000099", userName: "Racer" },
+    ])
 
+    // Cleanup's own clearTimeout is suppressed, so the pending typing timeout still fires.
     const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation(() => {})
     act(() => socket.close(1000))
     act(() => vi.advanceTimersByTime(3_000))
     clearTimeoutSpy.mockRestore()
+
+    expect(result.current.getTypingUsersForChat(CHAT_ID)).toEqual([])
     unmount()
   })
 

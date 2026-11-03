@@ -69,6 +69,31 @@ describe("wasm fuzzer artifact gate", () => {
     expect(result.ok).toBe(false)
     expect(result.failures[0]).toContain("missing")
   })
+
+  it.each([0, -1, 1.5, Number.NaN, 100_001])(
+    "fails closed for an invalid iteration count (%s) before reading artifacts",
+    async (iterations) => {
+      const path = join(dir, "placeholder.wasm")
+      writeFileSync(path, Buffer.alloc(64))
+
+      const result = await runFuzzCampaign({ sanitizerPath: path, cryptoPath: path, iterations })
+
+      expect(result.ok).toBe(false)
+      expect(result.executed).toBe(0)
+      expect(result.failures).toHaveLength(1)
+      expect(result.failures[0]).toContain("iterations")
+    }
+  )
+
+  it("fails closed for a non-integer or negative seed", async () => {
+    const path = join(dir, "placeholder.wasm")
+    writeFileSync(path, Buffer.alloc(64))
+
+    const result = await runFuzzCampaign({ sanitizerPath: path, cryptoPath: path, seed: -1 })
+
+    expect(result.ok).toBe(false)
+    expect(result.failures[0]).toContain("seed")
+  })
 })
 
 describe("wasm fuzzer oracles and generators", () => {

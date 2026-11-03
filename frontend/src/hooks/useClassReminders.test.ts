@@ -234,7 +234,13 @@ describe("useClassReminders — permission gating", () => {
     renderHook(() =>
       useClassReminders([{ id: 9, title: "History", when: tPlus(15), minutesBefore: 5 }])
     )
-    await vi.runAllTimersAsync()
+    // The reminder fires at T+10 minutes. The rejected registration is swallowed: the hook
+    // neither throws nor falls back to a page notification, and no timer remains pending.
+    await vi.advanceTimersByTimeAsync(11 * 60_000)
+
+    expect(getRegistration).toHaveBeenCalledOnce()
+    expect(notificationCtor).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
 

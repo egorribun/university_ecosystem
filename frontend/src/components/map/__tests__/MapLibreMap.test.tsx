@@ -883,19 +883,32 @@ describe("MapLibreMap", () => {
 
   it("keeps move-end safe when the map or callback is absent", () => {
     const emptyRef = { current: null } as React.MutableRefObject<MapRef | null>
-    const { rerender } = render(<MapLibreMapComponent {...baseProps} />)
+    const onMapMoveEnd = vi.fn()
+    const map = makeMap()
+    const { rerender } = render(<MapLibreMapComponent {...baseProps} onMapMoveEnd={onMapMoveEnd} />)
     act(() => {
       currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
     })
+    expect(onMapMoveEnd).not.toHaveBeenCalled()
 
-    rerender(<MapLibreMapComponent {...baseProps} mapRef={emptyRef} />)
+    rerender(<MapLibreMapComponent {...baseProps} onMapMoveEnd={onMapMoveEnd} mapRef={emptyRef} />)
     act(() => {
       currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
     })
+    expect(onMapMoveEnd).not.toHaveBeenCalled()
 
-    rerender(<MapLibreMapComponent {...baseProps} mapRef={makeRef(makeMap())} />)
+    rerender(
+      <MapLibreMapComponent {...baseProps} onMapMoveEnd={onMapMoveEnd} mapRef={makeRef(map)} />
+    )
     act(() => {
       currentMoveEndHandler()({ originalEvent: { type: "mouse" } })
+    })
+    expect(onMapMoveEnd).toHaveBeenCalledExactlyOnceWith({
+      zoom: 16,
+      latitude: 55.7,
+      longitude: 37.8,
+      pitch: 45,
+      bearing: expect.any(Number),
     })
   })
 

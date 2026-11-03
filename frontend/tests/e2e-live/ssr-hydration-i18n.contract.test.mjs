@@ -9,7 +9,6 @@ import { extractSeoMetadata, matchesRequestedCatalogTitle } from "./seo-metadata
 
 const specUrl = new URL("./ssr-hydration-i18n.live.spec.ts", import.meta.url)
 const seoMetadataUrl = new URL("./seo-metadata.mjs", import.meta.url)
-const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
 const authRouteUrl = new URL("../../src/routes/_auth.tsx", import.meta.url)
 const dashboardRouteUrl = new URL("../../src/routes/_auth/dashboard.tsx", import.meta.url)
 const newsRouteUrl = new URL("../../src/routes/_auth/news.index.tsx", import.meta.url)
@@ -24,7 +23,6 @@ test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys
 
   const [
     spec,
-    config,
     authRoute,
     dashboardRoute,
     newsRoute,
@@ -35,7 +33,6 @@ test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys
     hydration,
   ] = await Promise.all([
     readFile(specUrl, "utf8"),
-    readFile(configUrl, "utf8"),
     readFile(authRouteUrl, "utf8"),
     readFile(dashboardRouteUrl, "utf8"),
     readFile(newsRouteUrl, "utf8"),
@@ -46,11 +43,16 @@ test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys
     readFile(hydrationUrl, "utf8"),
   ])
 
-  assert.match(config, /name:\s*["']desktop["']/u)
-  assert.match(config, /name:\s*["']mobile["']/u)
-  assert.match(config, /trace:\s*["']off["']/u)
-  assert.match(config, /screenshot:\s*["']off["']/u)
-  assert.match(config, /video:\s*["']off["']/u)
+  // Behaviour: the live Playwright config is evaluated, not matched as text.
+  const { default: liveConfig } = await import("../../playwright.live.config.ts")
+  const projects = Object.fromEntries(liveConfig.projects.map((project) => [project.name, project]))
+  assert.ok(projects.desktop && projects.mobile, "desktop and mobile live projects must exist")
+  for (const name of ["desktop", "mobile"]) {
+    const use = { ...liveConfig.use, ...projects[name].use }
+    assert.equal(use.trace, "off", `${name} must not record traces`)
+    assert.equal(use.screenshot, "off", `${name} must not capture screenshots`)
+    assert.equal(use.video, "off", `${name} must not record video`)
+  }
   assert.match(authRoute, /ssr:\s*true/u)
   assert.match(dashboardRoute, /createFileRoute\(["']\/_auth\/dashboard["']\)/u)
   assert.match(dashboardRoute, /ssr:\s*true/u)

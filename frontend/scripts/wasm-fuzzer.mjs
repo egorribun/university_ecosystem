@@ -222,6 +222,15 @@ async function fuzzCrypto(wasmPath, random, iterations, failures) {
   return executed + 13
 }
 
+/** Why the campaign parameters are unusable, or null when they are valid. */
+export function campaignParameterProblem({ seed, iterations }) {
+  if (!Number.isSafeInteger(seed) || seed < 0) return "seed must be a non-negative integer"
+  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > MAX_ITERATIONS) {
+    return `iterations must be an integer from 1 to ${MAX_ITERATIONS}`
+  }
+  return null
+}
+
 /**
  * Runs a bounded, seeded fuzz campaign. Returns `{ ok, executed, failures }`
  * instead of exiting, so callers and tests decide how a failure is reported.
@@ -233,6 +242,11 @@ export async function runFuzzCampaign({
   seed = DEFAULT_SEED,
   iterations = DEFAULT_ITERATIONS,
 } = {}) {
+  // AUD-416: a zero-iteration campaign still runs the fixed rejection probes,
+  // so it must be refused here rather than reported as a pass.
+  const parameterProblem = campaignParameterProblem({ seed, iterations })
+  if (parameterProblem) return { ok: false, executed: 0, failures: [parameterProblem] }
+
   const failures = []
   for (const [label, wasmPath] of [
     ["wasm-sanitizer", sanitizerPath],
@@ -260,11 +274,8 @@ export async function runFuzzCampaign({
 async function main() {
   const seed = Number(process.env.WASM_FUZZ_SEED ?? DEFAULT_SEED)
   const iterations = Number(process.env.WASM_FUZZ_ITERATIONS ?? DEFAULT_ITERATIONS)
-  if (!Number.isSafeInteger(seed) || seed < 0)
-    throw new Error("WASM_FUZZ_SEED must be a non-negative integer")
-  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > MAX_ITERATIONS) {
-    throw new Error(`WASM_FUZZ_ITERATIONS must be an integer from 1 to ${MAX_ITERATIONS}`)
-  }
+  const parameterProblem = campaignParameterProblem({ seed, iterations })
+  if (parameterProblem) throw new Error(parameterProblem)
 
   console.log(`=== WASM Binary Fuzzer: seed ${seed}, ${iterations} iterations ===`)
   const result = await runFuzzCampaign({ seed, iterations })
