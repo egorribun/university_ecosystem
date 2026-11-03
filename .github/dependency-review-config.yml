@@ -36,13 +36,15 @@ allow-licenses:
   - LicenseRef-scancode-google-patent-license-golang
   - LicenseRef-scancode-public-domain
 
-# AUD-479 bounded GHSA exception (owner egorribun, decision 2026-11-02). The
+# AUD-479 bounded GHSA exception (owner egorribun, decisions 2026-11-02/03). The
 # action can only allow an advisory globally, so the scope is enforced by
 # scripts/quality/verify_dependency_review_scope.py (GHSA_EXCEPTIONS): this
-# advisory is accepted only for go-jose/v3 v3.0.5 in services/caddy/go.mod. The
+# advisories are accepted only for go-jose/v3 v3.0.5 in services/caddy/go.mod. The
 # verifier fails on any other occurrence and on or after 2027-01-10.
 allow-ghsas:
   - "GHSA-mgcc-cww5-fp2q"
+  - "GHSA-4w3g-jfj2-cw2q"
+  - "GHSA-vvm8-gf78-28g4"
 
 # W149 SW4 — per-package allow for pact-python 3.4.0+.
 # Bot reports "We could not detect a license" because the package's

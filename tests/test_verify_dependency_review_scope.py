@@ -1234,10 +1234,6 @@ class ProtectedBaseGitReadTests(unittest.TestCase):
                 _git_show(self.root, self.valid_sha, CONFIG_PATH)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 def _advisory_row(manifest, name, version, ghsa, change_type="added"):
     vulnerabilities = []
     if ghsa:
@@ -1272,7 +1268,7 @@ class GhsaBoundedExceptionTests(unittest.TestCase):
     """AUD-479: the GHSA exception is bounded to one manifest, package and version."""
 
     def test_exception_is_recorded_with_owner_expiry_and_scope(self):
-        (record,) = GHSA_EXCEPTIONS
+        record = GHSA_EXCEPTIONS[0]
         self.assertEqual(record["ghsa"], CADDY_JOSE_GHSA)
         self.assertEqual(record["owner"], "egorribun")
         self.assertEqual(record["expires"], date(2027, 1, 10))
@@ -1867,3 +1863,54 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "invalid license field"):
                     main()
             self.assertEqual(output.getvalue(), "")
+
+
+class ExtendedCaddyJoseExceptionTests(unittest.TestCase):
+    def test_exact_three_advisories_have_identical_scope_and_expiry(self):
+        self.assertEqual(
+            {record["ghsa"] for record in GHSA_EXCEPTIONS},
+            {CADDY_JOSE_GHSA, "GHSA-4w3g-jfj2-cw2q", "GHSA-vvm8-gf78-28g4"},
+        )
+        first = GHSA_EXCEPTIONS[0]
+        for record in GHSA_EXCEPTIONS:
+            for field in (
+                "owner",
+                "expires",
+                "manifest",
+                "ecosystem",
+                "name",
+                "version",
+            ):
+                self.assertEqual(record[field], first[field])
+
+    def test_each_advisory_accepts_only_the_exact_live_scope(self):
+        for record in GHSA_EXCEPTIONS:
+            with self.subTest(advisory=record["ghsa"]):
+                row = _advisory_row(
+                    record["manifest"],
+                    record["name"],
+                    record["version"],
+                    record["ghsa"],
+                )
+                self.assertEqual(
+                    verify_ghsa_exception_rows([row], today=date(2027, 1, 9)), 1
+                )
+                for day in (date(2027, 1, 10), date(2027, 1, 11)):
+                    with self.assertRaises(ValueError):
+                        verify_ghsa_exception_rows([row], today=day)
+                for manifest, name, version in (
+                    ("services/gateway/go.mod", record["name"], record["version"]),
+                    (
+                        record["manifest"],
+                        "github.com/go-jose/go-jose/v4",
+                        record["version"],
+                    ),
+                    (record["manifest"], record["name"], "3.0.4"),
+                ):
+                    wrong = _advisory_row(manifest, name, version, record["ghsa"])
+                    with self.assertRaises(ValueError):
+                        verify_ghsa_exception_rows([wrong], today=date(2027, 1, 9))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -206,6 +206,38 @@ GHSA_EXCEPTIONS: tuple[dict[str, Any], ...] = (
             "go-jose/v3 release or a Caddy release without go-jose/v3 is available."
         ),
     },
+    {
+        "ghsa": "GHSA-4w3g-jfj2-cw2q",
+        "owner": "egorribun",
+        "expires": date(2027, 1, 10),
+        "manifest": "services/caddy/go.mod",
+        "ecosystem": "gomod",
+        "name": "github.com/go-jose/go-jose/v3",
+        "version": "3.0.5",
+        "reason": "Panic when decrypting untrusted CBC-HMAC ciphertext. No patched v3 release exists.",
+        "reachability": (
+            "Caddy retains go-jose/v3 through its upstream dependency graph. "
+            "Deployed reachability is not established; the owner accepted only "
+            "this exact manifest, package, version and advisory until the "
+            "unchanged expiry. Re-evaluate upstream removal or a patched v3 release."
+        ),
+    },
+    {
+        "ghsa": "GHSA-vvm8-gf78-28g4",
+        "owner": "egorribun",
+        "expires": date(2027, 1, 10),
+        "manifest": "services/caddy/go.mod",
+        "ecosystem": "gomod",
+        "name": "github.com/go-jose/go-jose/v3",
+        "version": "3.0.5",
+        "reason": "Stack exhaustion when parsing deeply nested untrusted JSON. No patched v3 release exists.",
+        "reachability": (
+            "Caddy retains go-jose/v3 through its upstream dependency graph. "
+            "Deployed reachability is not established; the owner accepted only "
+            "this exact manifest, package, version and advisory until the "
+            "unchanged expiry. Re-evaluate upstream removal or a patched v3 release."
+        ),
+    },
 )
 _GHSA_ID_PATTERN = re.compile(r"GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}")
 _GHSA_EXCEPTION_FIELDS = frozenset(

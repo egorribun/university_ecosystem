@@ -80,3 +80,21 @@ def test_caddy_does_not_override_upstream_crypto_or_otel_versions(
     module: str,
 ) -> None:
     assert module not in _go_mod_replacements()
+
+
+def test_caddy_crypto_uses_official_openpgp_module_split() -> None:
+    go_mod = (_CADDY_BUILD / "go.mod").read_text(encoding="utf-8")
+    match = re.search(
+        r"^\s*golang\.org/x/crypto (v0\.58\.1-0\.20261009181718-[0-9a-f]{12}) // indirect$",
+        go_mod,
+        re.M,
+    )
+    assert match is not None, "pin the reviewed official GO-2026-5932 pseudo-version"
+    assert not re.search(r"^\s*golang\.org/x/crypto/openpgp\s", go_mod, re.M)
+    sums = (_CADDY_BUILD / "go.sum").read_text(encoding="utf-8")
+    for suffix in ("", "/go.mod"):
+        assert re.search(
+            rf"^golang\.org/x/crypto {re.escape(match.group(1) + suffix)} h1:[A-Za-z0-9+/]{{43}}=$",
+            sums,
+            re.M,
+        )

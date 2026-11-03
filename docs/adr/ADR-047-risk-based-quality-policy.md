@@ -1803,3 +1803,27 @@ Evidence: the upstream `LICENSE` at `https://proxy.golang.org/howett.net/plist/@
 Scope: `.github/dependency-review-config.yml` gains exactly one name-only `allow-dependencies-licenses` entry, `pkg:golang/howett.net/plist`. Because the pinned action ignores PURL versions, `scripts/quality/verify_dependency_review_scope.py` binds the exception to one exact row: `services/caddy/go.mod`, `howett.net/plist`, `1.0.1`, license `LicenseRef-bad-bsd-2-clause-views-bsd-3-clause`, and the name-only PURL is listed in `PURL_ADDITIONS`. Any other version, manifest, license or a versioned PURL fails closed. The verifier also binds the two other caddy rows the same way: `otlptracegrpc` 1.46.0 (`Apache-2.0 AND BSD-3-Clause`, which the action already accepts) and `klauspost/compress` 1.20.1. `services/caddy/go.mod` is now a verified manifest, and a manifest absent at the protected base requires every pin it declares to appear as a changed row.
 
 No global allow-list entry, GHSA entry or go.mod/go.sum change is introduced by this note.
+
+## Exact Caddy go-jose advisory extension (2026-11-03)
+
+The owner approved adding GHSA-4w3g-jfj2-cw2q and GHSA-vvm8-gf78-28g4
+beside GHSA-mgcc-cww5-fp2q. Each record remains restricted to
+`github.com/go-jose/go-jose/v3` version `3.0.5` in `services/caddy/go.mod`,
+owned by `egorribun`, and inactive on or after 2027-01-10. No expiry is extended.
+The scoped verifier rejects other manifests, versions and packages; the global
+Dependency Review action configuration is not sufficient authorization by itself.
+
+The upstream advisories report no patched v3 release. This is explicit temporary
+risk acceptance, not a finding of non-reachability or a clean scan. Final-source
+hosted evidence remains mandatory.
+
+- <https://github.com/advisories/GHSA-4w3g-jfj2-cw2q>
+- <https://github.com/advisories/GHSA-vvm8-gf78-28g4>
+
+The Caddy module also selects the official x/crypto pseudo-version identified as
+fixed by [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932), directly in its
+requirement rather than with a replacement. Upstream split the unmaintained
+OpenPGP packages into a separate vulnerable module; this is not a repair to
+OpenPGP. The Caddy graph must not reintroduce that separate module. Module
+verification, readonly build and final-source vulnerability scanning remain
+required before acceptance.
