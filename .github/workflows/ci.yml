@@ -1242,16 +1242,19 @@ jobs:
           fi
           # AUD-208: lint the DDL each changed revision executes against a live
           # PostgreSQL scratch database. Offline --sql has no inspector, so drop
-          # guards render nothing; index, foreign-key and timeout rules stay enabled.
+          # guards render nothing. Only the exact empty-schema baseline receives
+          # its three owner-approved rules; timeout rules remain enabled.
           sql_dir="$(mktemp -d)"
-          squawk_args=(
-            --exclude prefer-robust-stmts --exclude prefer-text-field
-            --exclude prefer-bigint-over-int --exclude prefer-identity
-            --exclude prefer-timestamp-tz --exclude disallowed-unique-constraint
-            --exclude require-enum-value-ordering
-          )
           while IFS= read -r migration; do
             [ -z "$migration" ] && continue
+            squawk_args=()
+            if [[ "$migration" == "alembic/versions/202611020000_mvp_baseline.py" ]]; then
+              squawk_args=(
+                --exclude require-concurrent-index-creation
+                --exclude constraint-missing-not-valid
+                --exclude adding-foreign-key-constraint
+              )
+            fi
             revision_metadata="$(uv run python scripts/quality/read_alembic_revision.py "$migration")"
             read -r revision down_revision <<< "$revision_metadata"
             echo "Checking $migration ($down_revision -> $revision)"
@@ -4762,3 +4765,4 @@ jobs:
           path: artifacts/quality/ci-health-report.*
           if-no-files-found: error
           retention-days: 14
+

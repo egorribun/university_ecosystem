@@ -75,6 +75,15 @@ def migration_gate(
 set -eu
 sql="${@: -1}"
 name="${sql##*/}"
+arguments=("$@")
+unset 'arguments[-1]'
+expected=()
+if [[ "$name" == "202611020000_mvp_baseline.sql" ]]; then
+  expected=(--exclude require-concurrent-index-creation
+            --exclude constraint-missing-not-valid
+            --exclude adding-foreign-key-constraint)
+fi
+[[ "${arguments[*]}" == "${expected[*]}" ]] || exit 93
 printf '%s\\n' "$name" >> "$TEST_SCAN_LOG"
 if [[ "$name" == "${TEST_SCANNER_FAIL:-}" ]]; then exit 23; fi
 """,
@@ -286,3 +295,45 @@ def test_current_baseline_lint_has_no_retired_admission_or_failure_bypass() -> N
         assert "scripts.quality.historical148_squawk_admission" not in step.get(
             "run", ""
         )
+
+
+BASELINE = "alembic/versions/202611020000_mvp_baseline.py"
+
+
+def test_baseline_exception_is_reset_before_the_next_migration(
+    migration_gate: MigrationGate,
+) -> None:
+    status, scans = migration_gate([BASELINE, SECOND])
+    assert status == 0
+    assert scans == ["202611020000_mvp_baseline.sql", "second.sql"]
+
+
+def test_baseline_exception_cannot_be_widened_to_another_path(
+    migration_gate: MigrationGate,
+) -> None:
+    status, scans = migration_gate(
+        [SECOND], mutate=lambda text: text.replace(BASELINE, SECOND)
+    )
+    assert status == 93
+    assert scans == []
+
+
+def test_baseline_exception_cannot_add_an_unapproved_rule(
+    migration_gate: MigrationGate,
+) -> None:
+    status, scans = migration_gate(
+        [BASELINE],
+        mutate=lambda text: text.replace(
+            "--exclude adding-foreign-key-constraint",
+            "--exclude adding-foreign-key-constraint --exclude ban-drop-table",
+        ),
+    )
+    assert status == 93
+    assert scans == []
+
+
+def test_global_squawk_configuration_has_no_exclusions() -> None:
+    import tomllib
+
+    config = tomllib.loads((ROOT / ".squawk.toml").read_text(encoding="utf-8"))
+    assert config == {"excluded_rules": []}

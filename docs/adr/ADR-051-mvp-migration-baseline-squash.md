@@ -128,3 +128,27 @@ notification is absent. In particular, an old unread notification retains its
 claim, even after its delivery-attempt history expires, and cannot be replayed
 just because cleanup ran. Cleanup uses the existing retention window and bounded
 batch size; no new retention setting or schema object is introduced.
+
+
+
+## Addendum: exact empty-schema Squawk exception (2026-11-03)
+
+The owner authorizes only `require-concurrent-index-creation`,
+`constraint-missing-not-valid` and `adding-foreign-key-constraint` to be disabled
+for `alembic/versions/202611020000_mvp_baseline.py`. This supersedes the earlier
+no-suppression statement for this exact path and rule set only. Every other
+migration retains the complete rule set; global configuration excludes no rule.
+Squawk 2.67.0 uses `excluded_rules`, not `exclude-rules`.
+
+The baseline is for a fresh, quiescent PostgreSQL database. Before schema DDL it
+rejects existing application namespaces or public namespace objects, apart from
+Alembic version bookkeeping, whose ledger must be empty. Preinstalled extensions
+that own public objects are deliberately not admitted. No deployed upgrade path,
+concurrent-migrator safety or new schema-equivalence exception is granted.
+The bookkeeping exemption presumes Alembic created the empty version ledger;
+it does not attest the shape of an arbitrary preexisting relation with that name.
+
+Acceptance still requires the owned PostgreSQL refusal test, exact-scope negative
+contracts, unchanged schema equivalence and raw pinned Squawk reporting zero
+findings with only these three exclusions. This addendum records authorization,
+not passing hosted evidence.

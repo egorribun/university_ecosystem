@@ -32,6 +32,8 @@ from typing import Final
 
 import pytest
 import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 
 from tests.fixtures import owned_baseline_postgres as owned
 
@@ -924,3 +926,54 @@ def test_baseline_refuses_downgrade_and_keeps_its_revision(built: _Built) -> Non
     assert _schema_statements(after.dump) == _schema_statements(
         built.baseline_capture.dump
     )
+
+
+def test_baseline_refuses_nonempty_schema_before_ddl(built: _Built) -> None:
+    migration = owned.load_baseline()
+    engine = sa.create_engine(built.baseline.sync_url, poolclass=sa.pool.NullPool)
+    try:
+        with engine.connect() as connection:
+            with pytest.raises(
+                sa.exc.DBAPIError, match="requires an empty application schema"
+            ) as failure:
+                with connection.begin():
+                    with Operations.context(MigrationContext.configure(connection)):
+                        migration.upgrade()
+            assert getattr(failure.value.orig, "sqlstate", None) == "55000"
+    finally:
+        engine.dispose()
+    after = _capture(built.baseline)
+    assert after.version == built.baseline_capture.version == (BASELINE_REVISION,)
+    assert after.catalog == built.baseline_capture.catalog
+    assert _schema_statements(after.dump) == _schema_statements(
+        built.baseline_capture.dump
+    )
+
+
+def test_baseline_refuses_populated_pgx_namespace(built: _Built) -> None:
+    server = built.baseline.server
+    server._lease.verify(server)
+    with owned._owned_scratch_database(
+        server.url.render_as_string(hide_password=False)
+    ) as scratch_url:
+        url = sa.engine.make_url(scratch_url).set(drivername="postgresql+psycopg")
+        engine = sa.create_engine(url, poolclass=sa.pool.NullPool)
+        try:
+            migration = owned.load_baseline()
+            with engine.begin() as connection:
+                connection.exec_driver_sql("CREATE SCHEMA pgx")
+                connection.exec_driver_sql("CREATE TABLE pgx.retained (id integer)")
+                with pytest.raises(
+                    sa.exc.DBAPIError, match="requires an empty application schema"
+                ) as failure:
+                    with connection.begin_nested():
+                        with Operations.context(MigrationContext.configure(connection)):
+                            migration.upgrade()
+                assert getattr(failure.value.orig, "sqlstate", None) == "55000"
+                assert connection.scalar(sa.text("SELECT to_regclass('pgx.retained')"))
+                assert (
+                    connection.scalar(sa.text("SELECT to_regclass('public.users')"))
+                    is None
+                )
+        finally:
+            engine.dispose()

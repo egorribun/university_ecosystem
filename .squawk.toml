@@ -1,4 +1,3 @@
-exclude-rules = [
-  "prefer-robust-stmts",
-  "prefer-text-field",
-]
+# All migrations retain the full rule set. The baseline-only exception is
+# selected by its exact path in CI, never by global configuration.
+excluded_rules = []
