@@ -359,6 +359,7 @@ Path(os.environ.get("STATIC_DIR", "app/test-static")).mkdir(parents=True, exist_
 
 # Load modular fixtures
 pytest_plugins = [
+    "scripts.quality.pytest_failure_locations",
     "tests.fixtures.database.database",
     "tests.fixtures.infrastructure.infrastructure",
     "tests.fixtures.auth.auth_fixtures",
