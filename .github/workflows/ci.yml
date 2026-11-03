@@ -1243,7 +1243,7 @@ jobs:
           # AUD-208: lint the DDL each changed revision executes against a live
           # PostgreSQL scratch database. Offline --sql has no inspector, so drop
           # guards render nothing. Only the exact empty-schema baseline receives
-          # its three owner-approved rules; timeout rules remain enabled.
+          # its five owner-approved rules; timeout rules remain enabled.
           sql_dir="$(mktemp -d)"
           while IFS= read -r migration; do
             [ -z "$migration" ] && continue
@@ -1253,6 +1253,8 @@ jobs:
                 --exclude require-concurrent-index-creation
                 --exclude constraint-missing-not-valid
                 --exclude adding-foreign-key-constraint
+                --exclude prefer-text-field
+                --exclude prefer-bigint-over-int
               )
             fi
             revision_metadata="$(uv run python scripts/quality/read_alembic_revision.py "$migration")"

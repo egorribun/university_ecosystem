@@ -81,7 +81,9 @@ expected=()
 if [[ "$name" == "202611020000_mvp_baseline.sql" ]]; then
   expected=(--exclude require-concurrent-index-creation
             --exclude constraint-missing-not-valid
-            --exclude adding-foreign-key-constraint)
+            --exclude adding-foreign-key-constraint
+            --exclude prefer-text-field
+            --exclude prefer-bigint-over-int)
 fi
 [[ "${arguments[*]}" == "${expected[*]}" ]] || exit 93
 printf '%s\\n' "$name" >> "$TEST_SCAN_LOG"

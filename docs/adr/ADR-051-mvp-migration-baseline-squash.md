@@ -134,7 +134,8 @@ batch size; no new retention setting or schema object is introduced.
 ## Addendum: exact empty-schema Squawk exception (2026-11-03)
 
 The owner authorizes only `require-concurrent-index-creation`,
-`constraint-missing-not-valid` and `adding-foreign-key-constraint` to be disabled
+`constraint-missing-not-valid`, `adding-foreign-key-constraint`,
+`prefer-text-field` and `prefer-bigint-over-int` to be disabled
 for `alembic/versions/202611020000_mvp_baseline.py`. This supersedes the earlier
 no-suppression statement for this exact path and rule set only. Every other
 migration retains the complete rule set; global configuration excludes no rule.
@@ -150,5 +151,11 @@ it does not attest the shape of an arbitrary preexisting relation with that name
 
 Acceptance still requires the owned PostgreSQL refusal test, exact-scope negative
 contracts, unchanged schema equivalence and raw pinned Squawk reporting zero
-findings with only these three exclusions. This addendum records authorization,
+findings with only these five exclusions. This addendum records authorization,
 not passing hosted evidence.
+
+The owner approved the two additional type-style exclusions on 2026-11-03
+after hosted CI identified `prefer-text-field` and `prefer-bigint-over-int`
+on the baseline. Changing those types would change the approved schema. This
+permission preserves the schema and applies only to the same baseline path; it
+does not authorize any further rule exclusion, global exception or schema drift.

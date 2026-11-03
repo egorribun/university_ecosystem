@@ -52,6 +52,8 @@ SQUAWK_EXCLUSIONS = (
     "require-concurrent-index-creation",
     "constraint-missing-not-valid",
     "adding-foreign-key-constraint",
+    "prefer-text-field",
+    "prefer-bigint-over-int",
 )
 SQUAWK_BASELINE_PATH = "alembic/versions/202611020000_mvp_baseline.py"
 
