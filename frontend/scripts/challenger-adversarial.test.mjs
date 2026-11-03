@@ -444,8 +444,8 @@ describe("EMPIRICAL: Live WASM runtime stress testing & security fuzzing", () =>
     assert.equal(typeof hmacLong, "string")
     assert.equal(hmacLong.length, 64)
 
-    // PBKDF2 with 100 iterations
-    const pbkdf2Res = crypto.pbkdf2_derive("mypassword", "mysalt", 100, 32)
+    // PBKDF2 at the low-level compatibility floor.
+    const pbkdf2Res = crypto.pbkdf2_derive("mypassword", "mysalt", 1_000, 32)
     assert.equal(typeof pbkdf2Res, "string")
     assert.equal(pbkdf2Res.length, 64)
 

@@ -24,7 +24,10 @@ fn make_err(msg: &str) -> String {
     msg.to_string()
 }
 
-const MIN_PBKDF2_ITERATIONS: u32 = 1;
+// AUD-414: match pbkdf2 0.13's minimum supported compatibility cost.
+// This is not a password-storage recommendation (SHA-256 recommends 600000).
+// RFC one-round vectors exercise the upstream primitive only in test code.
+const MIN_PBKDF2_ITERATIONS: u32 = 1_000;
 const MAX_PBKDF2_ITERATIONS: u32 = 1_000_000;
 const MIN_PBKDF2_KEY_SIZE: usize = 1;
 const MAX_PBKDF2_KEY_SIZE: usize = 1_024;
@@ -61,7 +64,7 @@ pub fn pbkdf2_derive(
 ) -> Result<String, ErrorType> {
     if !(MIN_PBKDF2_ITERATIONS..=MAX_PBKDF2_ITERATIONS).contains(&iterations) {
         return Err(make_err(
-            "PBKDF2 iterations must be between 1 and 1,000,000",
+            "PBKDF2 iterations must be between 1,000 and 1,000,000",
         ));
     }
     if !(MIN_PBKDF2_KEY_SIZE..=MAX_PBKDF2_KEY_SIZE).contains(&key_size) {

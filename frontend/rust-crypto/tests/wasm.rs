@@ -3,8 +3,9 @@
 // KAT suite in src/lib.rs (same RFC 7914 / RFC 4231 vectors) AND exercise the
 // wasm-only error path where JsValue is real (scrypt_derive with r=0 → Err).
 //
-// Kept to the cheap vectors (c=1 PBKDF2, N=16 scrypt) so the headless run stays
-// fast; the native suite already covers the heavier N=1024/16384 vectors.
+// The c=1 PBKDF2 RFC vector is confined to the upstream test primitive. The
+// exported API separately rejects weak costs and accepts its 1000-round floor.
+// The native suite also covers the heavier N=1024/16384 scrypt vectors.
 
 #![cfg(target_arch = "wasm32")]
 
@@ -17,9 +18,24 @@ wasm_bindgen_test_configure!(run_in_browser);
 #[wasm_bindgen_test]
 fn pbkdf2_parity_rfc7914() {
     // RFC 7914 §11: P="passwd", S="salt", c=1, dkLen=64.
+    let mut derived = [0_u8; 64];
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(b"passwd", b"salt", 1, &mut derived);
     assert_eq!(
-        pbkdf2_derive("passwd", "salt", 1, 64).expect("valid PBKDF2 parameters"),
+        hex::encode(derived),
         "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783" // pragma: allowlist secret
+    );
+}
+
+#[wasm_bindgen_test]
+fn pbkdf2_public_api_enforces_the_cost_boundary() {
+    for iterations in [0, 1, 2, 999, 1_000_001] {
+        assert!(pbkdf2_derive("pw", "salt", iterations, 32).is_err());
+    }
+    let mut expected = [0_u8; 32];
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(b"pw", b"salt", 1_000, &mut expected);
+    assert_eq!(
+        pbkdf2_derive("pw", "salt", 1_000, 32).expect("valid minimum cost"),
+        hex::encode(expected)
     );
 }
 
@@ -88,8 +104,13 @@ fn scrypt_parity_rfc7914_vector1() {
 #[wasm_bindgen_test]
 fn scrypt_invalid_r_returns_err() {
     // r=0 is rejected by ScryptParams::new → scrypt_derive maps to Err(JsValue).
-    // This is the wasm-only path: JsValue construction would panic on native, so
-    // it is exercised here in the browser where JsValue is real. (n=0 is NOT
-    // tested — n.ilog2() panics before any param check.)
+    // This exercises the actual JsValue error mapping in the browser.
     assert!(scrypt_derive(b"pw", b"salt", 16, 0, 1, 64).is_err());
+}
+
+#[wasm_bindgen_test]
+fn scrypt_rejects_degenerate_costs_without_panicking() {
+    for n in [0, 1, 2, 4, 8] {
+        assert!(scrypt_derive(b"pw", b"salt", n, 1, 1, 32).is_err());
+    }
 }

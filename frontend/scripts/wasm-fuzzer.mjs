@@ -179,7 +179,7 @@ async function fuzzCrypto(wasmPath, random, iterations, failures) {
     if (!BASE64_44.test(encoded)) fail(failures, "hmac_sha256_sign_base64", "is not padded base64")
 
     const keySize = 1 + Math.floor(random() * 64)
-    const pbkdf2Iterations = 1 + Math.floor(random() * 3)
+    const pbkdf2Iterations = 1_000 + Math.floor(random() * 3)
     const derived = pbkdf2_derive(key, message, pbkdf2Iterations, keySize)
     if (derived.length !== keySize * 2 || !/^[0-9a-f]+$/.test(derived)) {
       fail(failures, "pbkdf2_derive", `returned ${derived.length} chars for key_size ${keySize}`)
@@ -199,11 +199,15 @@ async function fuzzCrypto(wasmPath, random, iterations, failures) {
   // Each invalid parameter must be rejected; acceptance is a validation failure.
   const probe = new Uint8Array([1, 2, 3])
   expectRejection(failures, "pbkdf2_derive(iterations=0)", () => pbkdf2_derive("p", "s", 0, 32))
+  expectRejection(failures, "pbkdf2_derive(iterations=1)", () => pbkdf2_derive("p", "s", 1, 32))
+  expectRejection(failures, "pbkdf2_derive(iterations=999)", () => pbkdf2_derive("p", "s", 999, 32))
   expectRejection(failures, "pbkdf2_derive(iterations=1000001)", () =>
     pbkdf2_derive("p", "s", 1_000_001, 32)
   )
-  expectRejection(failures, "pbkdf2_derive(key_size=0)", () => pbkdf2_derive("p", "s", 1, 0))
-  expectRejection(failures, "pbkdf2_derive(key_size=1025)", () => pbkdf2_derive("p", "s", 1, 1025))
+  expectRejection(failures, "pbkdf2_derive(key_size=0)", () => pbkdf2_derive("p", "s", 1_000, 0))
+  expectRejection(failures, "pbkdf2_derive(key_size=1025)", () =>
+    pbkdf2_derive("p", "s", 1_000, 1025)
+  )
   expectRejection(failures, "scrypt_derive(N=0)", () => scrypt_derive(probe, probe, 0, 8, 1, 32))
   expectRejection(failures, "scrypt_derive(N=3)", () => scrypt_derive(probe, probe, 3, 8, 1, 32))
   expectRejection(failures, "scrypt_derive(N=1)", () => scrypt_derive(probe, probe, 1, 1, 1, 32))
@@ -215,7 +219,7 @@ async function fuzzCrypto(wasmPath, random, iterations, failures) {
   expectRejection(failures, "scrypt_derive(dk_len=65)", () =>
     scrypt_derive(probe, probe, 16, 1, 1, 65)
   )
-  return executed + 11
+  return executed + 13
 }
 
 /**

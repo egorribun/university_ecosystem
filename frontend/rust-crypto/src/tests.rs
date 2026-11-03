@@ -49,8 +49,34 @@ fn pbkdf2_rejects_zero_and_oversized_parameters() {
     let salt = fixture_text(4);
     assert!(pbkdf2_derive(&password, &salt, 0, 32).is_err());
     assert!(pbkdf2_derive(&password, &salt, 1_000_001, 32).is_err());
-    assert!(pbkdf2_derive(&password, &salt, 1, 0).is_err());
-    assert!(pbkdf2_derive(&password, &salt, 1, 1_025).is_err());
+    assert!(pbkdf2_derive(&password, &salt, 1_000, 0).is_err());
+    assert!(pbkdf2_derive(&password, &salt, 1_000, 1_025).is_err());
+}
+
+#[test]
+fn pbkdf2_rejects_costs_below_the_compatibility_floor() {
+    let password = fixture_text(8);
+    let salt = fixture_text(4);
+    for iterations in [1, 2, 999] {
+        assert!(pbkdf2_derive(&password, &salt, iterations, 32).is_err());
+    }
+}
+
+#[test]
+fn pbkdf2_accepts_the_compatibility_floor() {
+    let password = fixture_text(8);
+    let salt = fixture_text(4);
+    let mut expected = [0_u8; 32];
+    pbkdf2::pbkdf2_hmac::<sha2::Sha256>(
+        password.as_bytes(),
+        salt.as_bytes(),
+        1_000,
+        &mut expected,
+    );
+    assert_eq!(
+        pbkdf2_derive(&password, &salt, 1_000, 32).expect("valid minimum cost"),
+        hex::encode(expected)
+    );
 }
 
 #[test]
