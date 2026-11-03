@@ -1,7 +1,6 @@
 import json
 import re
 import tomllib
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -94,19 +93,14 @@ def test_dependency_resolution_policy_enforces_cooldown_and_security_visibility(
     assert isinstance(uv, dict)
     assert uv.get("required-version") == "==0.12.23"
     assert uv.get("exclude-newer") == "7 days"
-    assert uv.get("exclude-newer-package") == {
-        "brotli": "2026-10-22T14:00:13Z",
-        "pillow": "2026-10-16T22:18:10Z",
-        "pyasn1": "2026-10-27T06:32:50Z",
-        "virtualenv": "2026-10-17T16:09:43Z",
-    }
-    assert "pyasn1==0.6.5" in uv["constraint-dependencies"]
+    assert uv.get("exclude-newer-package", {}) == {}
+    assert "pyasn1==0.6.5" not in uv["constraint-dependencies"]
     assert "pyasn1>=0.6.5,<0.7" in uv["constraint-dependencies"]
     assert "certifi>=2026.10.19" in uv["constraint-dependencies"]
     assert "certifi==2026.10.19" not in uv["constraint-dependencies"]
-    assert "pillow==13.0.0" in uv["constraint-dependencies"]
-    assert "virtualenv==21.14.9" in uv["constraint-dependencies"]
-    assert "brotli==1.2.1" in uv["constraint-dependencies"]
+    assert "pillow==13.0.0" not in uv["constraint-dependencies"]
+    assert "virtualenv==21.14.9" not in uv["constraint-dependencies"]
+    assert "brotli==1.2.1" not in uv["constraint-dependencies"]
     assert "brotli>=1.2.1,<2" in uv["constraint-dependencies"]
     assert "pillow>=13.0.0,<14" in pyproject["project"]["dependencies"]
 
@@ -278,19 +272,16 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     assert isinstance(lock_options, dict)
     assert "exclude-newer" in lock_options
     assert lock_options["exclude-newer-span"] == "P7D"
-    assert lock_options.get("exclude-newer-package") == {
-        "brotli": "2026-10-22T14:00:13Z",
-        "pillow": "2026-10-16T22:18:10Z",
-        "pyasn1": "2026-10-27T06:32:50Z",
-        "virtualenv": "2026-10-17T16:09:43Z",
-    }
+    assert lock_options.get("exclude-newer-package", {}) == {}
     lock = _read_toml("uv.lock")
     pyasn1_packages = [
         package for package in lock["package"] if package["name"] == "pyasn1"
     ]
     assert len(pyasn1_packages) == 1
     assert pyasn1_packages[0]["version"] == "0.6.5"
-    assert {"name": "pyasn1", "specifier": "==0.6.5"} in lock["manifest"]["constraints"]
+    assert {"name": "pyasn1", "specifier": "==0.6.5"} not in lock["manifest"][
+        "constraints"
+    ]
     assert {"name": "pyasn1", "specifier": ">=0.6.5,<0.7"} in lock["manifest"][
         "constraints"
     ]
@@ -306,7 +297,7 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     ]
     assert len(pillow_packages) == 1
     assert pillow_packages[0]["version"] == "13.0.0"
-    assert {"name": "pillow", "specifier": "==13.0.0"} in lock["manifest"][
+    assert {"name": "pillow", "specifier": "==13.0.0"} not in lock["manifest"][
         "constraints"
     ]
 
@@ -315,7 +306,7 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     ]
     assert len(virtualenv_packages) == 1
     assert virtualenv_packages[0]["version"] == "21.14.9"
-    assert {"name": "virtualenv", "specifier": "==21.14.9"} in lock["manifest"][
+    assert {"name": "virtualenv", "specifier": "==21.14.9"} not in lock["manifest"][
         "constraints"
     ]
 
@@ -324,17 +315,12 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
     ]
     assert len(brotli_packages) == 1
     assert brotli_packages[0]["version"] == "1.2.1"
-    assert {"name": "brotli", "specifier": "==1.2.1"} in lock["manifest"]["constraints"]
+    assert {"name": "brotli", "specifier": "==1.2.1"} not in lock["manifest"][
+        "constraints"
+    ]
     assert {"name": "brotli", "specifier": ">=1.2.1,<2"} in lock["manifest"][
         "constraints"
     ]
-    brotli_cutoff = lock_options["exclude-newer-package"]["brotli"]
-    assert brotli_cutoff == "2026-10-22T14:00:13Z"
-    cutoff_time = datetime.fromisoformat(brotli_cutoff.replace("Z", "+00:00"))
-    removal_time = datetime.fromisoformat("2026-10-29T14:00:13+00:00")
-    assert removal_time - cutoff_time == timedelta(days=7)
-    assert "# Remove Brotli after 2026-10-29T14:00:13Z." in _read_text("pyproject.toml")
-
     runbook = _read_text("docs/DEPENDENCY_COOLDOWN_EMERGENCY.md")
     assert TARGETED_EMERGENCY_COMMAND in runbook
     assert "`vulnerabilityAlerts`" in runbook
@@ -506,16 +492,12 @@ def test_opentelemetry_manifest_and_dependabot_preserve_reviewed_generation() ->
         assert ignored[f"@opentelemetry/{name}"] == ["version-update:semver-minor"]
 
 
-def test_pyasn1_fixed_cutoff_stops_widening_at_owner_boundary() -> None:
-    """The exact early-release allowance never admits later uploads."""
-    uv = _read_toml("pyproject.toml")["tool"]["uv"]
-    cutoff = datetime.fromisoformat(uv["exclude-newer-package"]["pyasn1"])
-    boundary = datetime(2026, 11, 3, 6, 32, 50, tzinfo=UTC)
-    cooldown = timedelta(days=7)
-    assert cutoff + cooldown == boundary
-    assert cutoff > boundary - timedelta(microseconds=1) - cooldown
-    assert cutoff == boundary - cooldown
-    assert cutoff < boundary + timedelta(microseconds=1) - cooldown
-    constraints = uv["constraint-dependencies"]
-    assert "pyasn1==0.6.5" in constraints
-    assert "pyasn1>=0.6.5,<0.7" in constraints
+def test_closed_emergency_constraints_keep_all_security_floors() -> None:
+    pyproject = _read_toml("pyproject.toml")
+    uv = pyproject["tool"]["uv"]
+    assert uv["exclude-newer"] == "7 days"
+    assert uv.get("exclude-newer-package", {}) == {}
+    assert "pyasn1>=0.6.5,<0.7" in uv["constraint-dependencies"]
+    assert "brotli>=1.2.1,<2" in uv["constraint-dependencies"]
+    assert "pillow>=13.0.0,<14" in pyproject["project"]["dependencies"]
+    assert "virtualenv>=21.14.9" in pyproject["dependency-groups"]["dev"]

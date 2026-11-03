@@ -455,28 +455,17 @@ members = ["native/rust_ext"]
 # setup-uv action reads this exact requirement before downloading the binary.
 required-version = "==0.12.23"
 exclude-newer = "7 days"
-# Owner-approved exact security exceptions; global seven-day cooldown remains.
-# Remove Pillow after 2026-10-23T22:18:10Z.
-# Remove virtualenv after 2026-10-24T16:09:43Z.
-# Remove Brotli after 2026-10-29T14:00:13Z.
-# Owner egorribun approved pyasn1 0.6.5 only (2026-11-02). Fixed cutoff
-# stops widening the rolling age rule at 2026-11-03T06:32:50Z; remove it
-# and the temporary exact pin after that boundary, retaining the security floor.
-exclude-newer-package = { brotli = "2026-10-22T14:00:13Z", pillow = "2026-10-16T22:18:10Z", pyasn1 = "2026-10-27T06:32:50Z", virtualenv = "2026-10-17T16:09:43Z" }
+
 environments = [
     "sys_platform == 'win32'",
     "sys_platform == 'linux'",
     "sys_platform == 'darwin'",
 ]
-# Security floors and exact owner-approved emergency constraints:
+# Durable security floors:
 # transitive entries bound resolution without pretending app code imports them.
 constraint-dependencies = [
-    "pyasn1==0.6.5",  # Temporary exact approved cooldown release; remove after boundary
     "pyasn1>=0.6.5,<0.7",  # CVE-2026-119194/-119195/-119196/-119197 security floor
     "certifi>=2026.10.19",  # GHSA-6q48-6c7w-9gw2; durable security floor
-    "pillow==13.0.0",  # Nine October advisories; bounded emergency release
-    "virtualenv==21.14.9",  # GHSA-c978-59m8-c77v; bounded emergency release
-    "brotli==1.2.1",  # PYSEC-2026-4322; temporary exact emergency release
     "brotli>=1.2.1,<2",  # durable floor for the fixed Brotli decoder
     "h2>=4.4.1,<5",  # fixes the h2 advisory in httpx's HTTP/2 transport
     "urllib3>=2.8.0,<2.9",  # PY-P1-01: patched 2.8+ line; urllib3 v3 breaks transport APIs

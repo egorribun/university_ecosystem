@@ -215,7 +215,6 @@ dependency requirements, go.mod/go.sum, scanner policy or dispositions,
 suppressions, baseline, hooks, required contexts, merge, or deployment are part
 of this approval. Ordinary security, test, and hosted gates remain required.
 
-
 ## Owner-approved Virtualenv exception, 2026-10-21
 
 At 22:44 UTC the owner approved only virtualenv `21.14.9`, replacing
@@ -327,7 +326,6 @@ approval does not cover Zod, Puppeteer, Undici, any advisory allowance, scanner
 disposition, baseline, hook, required context, merge or deployment. Normal
 lock consistency, tests, vulnerability gates and all required hosted checks
 remain mandatory on the final source.
-
 
 ## Owner-approved Caddy Alpine Brotli exception, 2026-10-24
 
@@ -450,3 +448,37 @@ check, compatibility test or Trivy result; those checks remain mandatory for
 the final source. The earlier finite Brotli exception remains separate. See
 [ADR-047](adr/ADR-047-risk-based-quality-policy.md#exact-caddy-dependency-cooldown)
 for the bounded owner decision.
+
+## Routine Python cooldown cleanup, 2026-11-03
+
+The pyasn1 0.6.5-only age exception approved by egorribun on 2026-11-02
+covered CVE-2026-119194, CVE-2026-119195, CVE-2026-119196 and
+CVE-2026-119197. Its fixed artifact cutoff was 2026-10-27T06:32:50Z;
+the ordinary seven-day window reaches that cutoff at
+2026-11-03T06:32:50Z. The cutoff did not implement a native UV expiry field:
+after that boundary it could not admit an upload earlier than the normal rule.
+
+This cleanup must not be applied before that UTC boundary. It removes the
+package-specific UV cutoffs and temporary exact constraints for pyasn1,
+Pillow, virtualenv and Brotli. The other three recorded maturity boundaries
+were 2026-10-23T22:18:10Z, 2026-10-24T16:09:43Z and
+2026-10-29T14:00:13Z respectively. Historical approvals above are retained as
+history, not active permissions.
+
+The durable floors remain pyasn1>=0.6.5,<0.7 and brotli>=1.2.1,<2 in UV
+constraints, pillow>=13.0.0,<14 in production dependencies, and
+virtualenv>=21.14.9 in development dependencies. The ordinary global seven-day
+policy applies to every package. The isolated pre-commit hook's exact tooling
+pins are retained for reproducibility; they are not cooldown exemptions.
+
+On 2026-11-03 after the boundary, pinned uv0.12.23 regenerated the lock
+without package upgrades and passed `uv lock --check` against source
+`31e5c01e`. All 236 package records, including versions, sources and artifact
+hashes, remain unchanged. Only the four expired cutoff entries and four
+temporary exact constraints were removed. Resolution reused the authentic UV
+cache offline, including existing http-ece metadata and verified static pyvips
+metadata. No project application, tests, package installation or native build
+was run.
+
+This establishes lock consistency, not hosted test, vulnerability-scan or
+release readiness. All ordinary advisory checks and required CI remain blocking.
