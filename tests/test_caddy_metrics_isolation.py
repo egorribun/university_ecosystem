@@ -14,14 +14,14 @@ from pathlib import Path
 
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 EDGE_CADDYFILES = (
-    REPO_ROOT / "services" / "caddy" / "Caddyfile",
-    REPO_ROOT / "infrastructure" / "Caddyfile",
+    REPOSITORY_ROOT / "services" / "caddy" / "Caddyfile",
+    REPOSITORY_ROOT / "infrastructure" / "Caddyfile",
 )
-CHART_VALUES = REPO_ROOT / "charts" / "university-ecosystem" / "values.yaml"
-CHART_TEMPLATES = REPO_ROOT / "charts" / "university-ecosystem" / "templates"
-COMPOSE_FILES = tuple(sorted(REPO_ROOT.glob("docker-compose*.yml")))
+CHART_VALUES = REPOSITORY_ROOT / "charts" / "university-ecosystem" / "values.yaml"
+CHART_TEMPLATES = REPOSITORY_ROOT / "charts" / "university-ecosystem" / "templates"
+COMPOSE_FILES = tuple(sorted(REPOSITORY_ROOT.glob("docker-compose*.yml")))
 WS_HUB_METRICS_PORT = 9108
 WS_HUB_PUBLIC_PORT = 8081
 
