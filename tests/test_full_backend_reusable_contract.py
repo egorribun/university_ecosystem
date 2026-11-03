@@ -42,7 +42,47 @@ _REVIEWED_WORKFLOW_PIN_REPLACEMENTS = (
 )
 
 
+# Exact AUD-346 local target addition; all other nightly bytes remain frozen.
+_REVIEWED_CHAOS_TARGET = (
+    b"      # AUD-346: dry-runs apply no faults, but the recovery assertion stays live.\n"
+    b"      # The default target is served locally so the assertion has real traffic\n"
+    b"      # to evaluate. A live execution receipt still requires a cluster.\n"
+    b"      - name: Start local dry-run health target\n"
+    b"        shell: bash\n"
+    b"        run: |\n"
+    b"          set -euo pipefail\n"
+    b'          target_dir="$RUNNER_TEMP/chaos-dry-run-target"\n'
+    b'          mkdir -p "$target_dir"\n'
+    b"          printf 'ok\\n' > \"$target_dir/health\"\n"
+    b'          python3 -m http.server 8000 --bind 127.0.0.1 --directory "$target_dir" \\\n'
+    b'            >"$RUNNER_TEMP/chaos-dry-run-target.log" 2>&1 &\n'
+    b"          for _attempt in {1..15}; do\n"
+    b"            if curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null; then\n"
+    b'              echo "Dry-run health target is serving /health."\n'
+    b"              exit 0\n"
+    b"            fi\n"
+    b"            sleep 1\n"
+    b"          done\n"
+    b'          echo "::error::Dry-run health target did not start." >&2\n'
+    b"          exit 1\n"
+    b"\n"
+)
+
+
 def _normalize_reviewed_workflow_pins(name: str, source: bytes) -> bytes:
+    if name == "nightly-full-gate.yml":
+        assert source.count(_REVIEWED_CHAOS_TARGET) == 1, (
+            "reviewed chaos target changed"
+        )
+        assert (
+            source.count(
+                _REVIEWED_CHAOS_TARGET + b"      - name: Run chaos loadtest dry-runs\n"
+            )
+            == 1
+        ), "reviewed chaos target moved"
+        source = source.replace(_REVIEWED_CHAOS_TARGET, b"", 1)
+    else:
+        assert _REVIEWED_CHAOS_TARGET not in source, "chaos target in wrong workflow"
     counts = _REVIEWED_WORKFLOW_PIN_COUNTS[name]
     for (current, frozen), count in zip(
         _REVIEWED_WORKFLOW_PIN_REPLACEMENTS, counts, strict=True
@@ -1555,3 +1595,45 @@ def test_reviewed_action_pin_refresh_accepts_no_other_source_change(
     with pytest.raises(AssertionError):
         normalized = _normalize_reviewed_workflow_pins(name, changed)
         assert hashlib.sha256(normalized).hexdigest() == expected
+
+
+@pytest.mark.parametrize(
+    "mutation", ["missing", "duplicate", "port", "readiness", "comment"]
+)
+def test_reviewed_chaos_target_accepts_only_exact_source(mutation: str) -> None:
+    source = NIGHTLY.read_bytes()
+    assert source.count(_REVIEWED_CHAOS_TARGET) == 1
+    if mutation == "missing":
+        changed = source.replace(_REVIEWED_CHAOS_TARGET, b"", 1)
+    elif mutation == "duplicate":
+        changed = source + _REVIEWED_CHAOS_TARGET
+    elif mutation == "port":
+        changed = source.replace(
+            _REVIEWED_CHAOS_TARGET,
+            _REVIEWED_CHAOS_TARGET.replace(b"http.server 8000", b"http.server 8001"),
+            1,
+        )
+    elif mutation == "readiness":
+        changed = source.replace(
+            _REVIEWED_CHAOS_TARGET,
+            _REVIEWED_CHAOS_TARGET.replace(b"curl --fail --silent", b"curl --silent"),
+            1,
+        )
+    else:
+        changed = source.replace(b"# AUD-346: dry-runs", b"# changed: dry-runs", 1)
+    with pytest.raises(AssertionError, match="reviewed chaos target changed"):
+        _normalize_reviewed_workflow_pins(NIGHTLY.name, changed)
+
+
+@pytest.mark.parametrize("name", [MANUAL.name, FULL_BACKEND.name])
+def test_reviewed_chaos_target_rejects_other_workflow(name: str) -> None:
+    source = (WORKFLOWS / name).read_bytes() + _REVIEWED_CHAOS_TARGET
+    with pytest.raises(AssertionError, match="chaos target in wrong workflow"):
+        _normalize_reviewed_workflow_pins(name, source)
+
+
+def test_reviewed_chaos_target_cannot_move_away_from_dry_runs() -> None:
+    source = NIGHTLY.read_bytes()
+    changed = source.replace(_REVIEWED_CHAOS_TARGET, b"", 1) + _REVIEWED_CHAOS_TARGET
+    with pytest.raises(AssertionError, match="reviewed chaos target moved"):
+        _normalize_reviewed_workflow_pins(NIGHTLY.name, changed)
