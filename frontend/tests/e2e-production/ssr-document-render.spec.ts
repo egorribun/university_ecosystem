@@ -3,7 +3,7 @@ import { resolve } from "node:path"
 
 import { JSDOM } from "jsdom"
 
-import { expect, test } from "./test"
+import { expect, test } from "../e2e/test"
 
 /**
  * AUD-432 (full SSR): the server-rendered documents are checked by executing the production
@@ -29,11 +29,6 @@ function nonceFromPolicy(policy: string | undefined): string {
 }
 
 test.describe("Production SSR document render", () => {
-  test.skip(
-    process.env.PRODUCTION_SERVER_E2E !== "true",
-    "Run with PRODUCTION_SERVER_E2E=true so the compiled SSR server (server-prod.mjs) renders the documents."
-  )
-
   for (const language of ["ru", "en"] as const) {
     for (const path of ["/login", "/register"] as const) {
       test(`${path} renders ${language} on the server with a bootstrap for hydration`, async ({
@@ -54,7 +49,23 @@ test.describe("Production SSR document render", () => {
 
         // Translated text is present in the markup for the requested locale.
         const catalog = await authCatalog(language)
-        const text = document.body.textContent ?? ""
+        const section = document.querySelector(`section.auth-shell--${path.slice(1)}`)
+        expect(section, "the response must contain the rendered auth form").not.toBeNull()
+        const form = section?.querySelector("form")
+        expect(form).not.toBeNull()
+        const submit = form?.querySelector(`button#${path.slice(1)}-submit[type="submit"]`)
+        expect(submit).not.toBeNull()
+        expect(submit?.textContent?.trim()).toBe(
+          path === "/login" ? catalog.actions.signIn : catalog.actions.signUp
+        )
+        expect(submit?.hasAttribute("disabled")).toBe(true)
+        for (const id of ["email", "password"]) {
+          expect(form?.querySelector(`input#${id}`)?.hasAttribute("disabled")).toBe(true)
+        }
+        // Ignore embedded bootstrap/catalog data: it is not rendered form content.
+        const rendered = section?.cloneNode(true) as Element
+        rendered.querySelectorAll("script, style, template").forEach((node) => node.remove())
+        const text = rendered.textContent ?? ""
         expect(text).toContain(path === "/login" ? catalog.actions.signIn : catalog.actions.signUp)
 
         // No raw translation key reaches the markup.
@@ -89,7 +100,11 @@ test.describe("Production SSR document render", () => {
       headers: { cookie: "ue:language=ru" },
       maxRedirects: 0,
     })
-    const text = new JSDOM(await response.text()).window.document.body.textContent ?? ""
+    expect(response.status()).toBe(200)
+    const document = new JSDOM(await response.text()).window.document
+    const submit = document.querySelector("section.auth-shell--login form button#login-submit")
+    expect(submit).not.toBeNull()
+    const text = submit?.textContent?.trim() ?? ""
     expect(text).toContain(russian.actions.signIn)
     expect(text).not.toContain(english.actions.signIn)
   })

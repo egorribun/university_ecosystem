@@ -27,6 +27,7 @@
     "tests",
     "playwright.config.ts",
     "playwright.live.config.ts",
+    "playwright.ssr.config.ts",
     "vitest.config.ts",
     ".storybook"
   ]

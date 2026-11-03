@@ -522,6 +522,10 @@ jobs:
             --project=chromium \
             --output=test-results/ssr-caching \
             --reporter=html
+          npx playwright test --config=playwright.ssr.config.ts \
+            --project=chromium \
+            --output=test-results/ssr-document-render \
+            --reporter=html
 
       - name: Run authenticated accessibility E2E tests (cross-env auto-managed)
         if: inputs.browser == 'chromium' && inputs.shard-index == 1

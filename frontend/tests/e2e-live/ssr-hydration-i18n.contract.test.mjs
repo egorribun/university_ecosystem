@@ -1,7 +1,8 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
 import { readFile } from "node:fs/promises"
-import { URL } from "node:url"
+import { fileURLToPath, URL } from "node:url"
 import test from "node:test"
 import { createInstance } from "i18next"
 import sharp from "sharp"
@@ -11,7 +12,7 @@ import { matchesMainSkipLinkLocale } from "./ssr-common-locale.mjs"
 import { matchesNewsSearchLocale } from "./ssr-news-locale.mjs"
 
 const specUrl = new URL("./ssr-hydration-i18n.live.spec.ts", import.meta.url)
-const ssrDocumentSpecUrl = new URL("../e2e/ssr-document-render.spec.ts", import.meta.url)
+const ssrDocumentSpecUrl = new URL("../e2e-production/ssr-document-render.spec.ts", import.meta.url)
 const dashboardCatalogUrls = {
   en: new URL("../../src/i18n/locales/en/dashboard.json", import.meta.url),
   ru: new URL("../../src/i18n/locales/ru/dashboard.json", import.meta.url),
@@ -26,7 +27,7 @@ const commonCatalogUrls = {
 }
 
 // AUD-432 (full SSR): the rendered documents are executed by the production-server spec
-// (tests/e2e/ssr-document-render.spec.ts). This contract executes the same policy code and the
+// (tests/e2e-production/ssr-document-render.spec.ts). This contract executes the same policy code and the
 // same locale probes on real catalog text, so no assertion depends on the spec or renderer text.
 
 test("live acceptance projects record no traces, screenshots or video, and the executed SSR spec exists", async () => {
@@ -49,6 +50,8 @@ test("live acceptance projects record no traces, screenshots or video, and the e
   // must reach the real stack (no route, websocket or request mocking) and must not leave
   // console diagnostics that could carry account data.
   const spec = await readFile(specUrl, "utf8")
+  const documentSpec = await readFile(ssrDocumentSpecUrl, "utf8")
+  assert.doesNotMatch(documentSpec, /\b(?:test|describe)\.(?:skip|fixme)\s*\(/u)
   assert.doesNotMatch(spec, /page\.route|routeWebSocket|useMockApi|page\.request/u)
   assert.doesNotMatch(spec, /console\.(?:log|info|warn|error)/u)
 })
@@ -68,7 +71,9 @@ test("the SSR CSP composition executes on an HTML response and binds the nonce",
   assert.equal(html.headers.get("last-modified"), null)
 
   const json = applyNodeCspToHtmlResponse(
-    new globalThis.Response("{}", { headers: { "content-type": "application/json" } }),
+    new globalThis.Response("{}", {
+      headers: { "content-type": "application/json" },
+    }),
     nonce
   )
   assert.equal(json.headers.get("content-security-policy"), null)
@@ -337,4 +342,34 @@ test("SSR locale probe catches ordinary fallback that raw-key scanning misses", 
   assert.equal(fallbackPlaceholder, ruNews.search.placeholder)
   assert.equal(fallbackPlaceholder.includes(":"), false)
   assert.notEqual(fallbackPlaceholder, enNews.search.placeholder)
+})
+
+test("production document suite is collected without skips and rejects preview or unmanaged servers", () => {
+  const cwd = fileURLToPath(new URL("../../", import.meta.url))
+  const cli = fileURLToPath(new URL("../../node_modules/@playwright/test/cli.js", import.meta.url))
+  const collect = (production, unmanaged) =>
+    spawnSync(
+      process.execPath,
+      [cli, "test", "--config=playwright.ssr.config.ts", "--project=chromium", "--list"],
+      {
+        cwd,
+        env: {
+          ...process.env,
+          PRODUCTION_SERVER_E2E: production,
+          SKIP_WEBSERVER: unmanaged,
+        },
+        encoding: "utf8",
+        timeout: 30_000,
+      }
+    )
+  const preview = collect("false", "false")
+  assert.notEqual(preview.status, 0)
+  assert.match(preview.stderr + preview.stdout, /require PRODUCTION_SERVER_E2E=true/u)
+  const unmanaged = collect("true", "true")
+  assert.notEqual(unmanaged.status, 0)
+  assert.match(unmanaged.stderr + unmanaged.stdout, /require the managed production server/u)
+  const production = collect("true", "false")
+  assert.equal(production.error, undefined)
+  assert.equal(production.status, 0)
+  assert.match(production.stdout, /Total: 5 tests in 1 file/u)
 })

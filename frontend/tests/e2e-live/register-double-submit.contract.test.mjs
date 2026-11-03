@@ -211,3 +211,35 @@ test("failed or missing request completion remains unverified", async () => {
   assert.equal(await waitForRegistrationCompletion([failedRequest], 100), false)
   assert.equal(await waitForRegistrationCompletion([new Promise(() => {})], 10), false)
 })
+
+test("every required registration step is mandatory and unique", () => {
+  for (const step of REGISTRATION_STEP_ORDER) {
+    const missing = REGISTRATION_STEP_ORDER.filter((entry) => entry !== step)
+    assert.ok(registrationTraceViolations(missing, 1).includes(`missing ${step}`))
+    assert.ok(
+      registrationTraceViolations([...REGISTRATION_STEP_ORDER, step], 1).includes(
+        `duplicate ${step}`
+      )
+    )
+  }
+})
+
+test("every inverted registration step pair is rejected", () => {
+  for (let left = 0; left < REGISTRATION_STEP_ORDER.length; left += 1) {
+    for (let right = left + 1; right < REGISTRATION_STEP_ORDER.length; right += 1) {
+      const trace = [...REGISTRATION_STEP_ORDER]
+      ;[trace[left], trace[right]] = [trace[right], trace[left]]
+      assert.ok(
+        registrationTraceViolations(trace, 1).includes(
+          `${REGISTRATION_STEP_ORDER[right]} before ${REGISTRATION_STEP_ORDER[left]}`
+        )
+      )
+    }
+  }
+})
+
+test("registration count accepts only the integer one", () => {
+  for (const count of [-1, 0, 2, 1.5, Number.NaN, Infinity, "1", null, undefined]) {
+    assert.ok(registrationTraceViolations([...REGISTRATION_STEP_ORDER], count).length > 0)
+  }
+})
