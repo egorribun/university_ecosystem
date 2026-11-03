@@ -488,6 +488,18 @@ jobs:
             --allowlist security/audit-allowlist.yaml `
             --npm frontend
 
+      # AUD-480: the allowlisted gate above blocks only high and critical npm
+      # advisories. This step blocks every moderate and low advisory in the
+      # frontend tree. npm audit includes devDependencies unless --omit=dev is
+      # given, and this step never passes it. It has no allowlist: fix or pin the
+      # advisory instead of adding an ignore.
+      - name: Block moderate and low npm advisories
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          npm audit --audit-level=low
+
       # The audit above remains blocking. This optional report only identifies
       # public advisory metadata when its numeric IDs are insufficient to triage.
       - name: Report npm advisory metadata after failure

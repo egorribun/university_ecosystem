@@ -1199,10 +1199,11 @@
           ],
           "artifacts": [],
           "retry_policy": {
-            "mode": "none",
+            "mode": "review-required",
             "first_failure_preserved": true,
-            "classifier": "not_applicable",
-            "review_required": false
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "AUD-378: bounded retry of the SLSA attestation verify step, three attempts with 120s timeouts and backoff. It retries any nonzero exit, not only transient Rekor timeouts. Each failed attempt is reported as a warning and the final failure fails the job. Prove transient-only classification before relaxing this entry."
           }
         },
         "alembic-migrations": {

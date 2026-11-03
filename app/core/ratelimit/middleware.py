@@ -15,13 +15,21 @@ from app.core.ratelimit.contract import RateLimitStrategy
 from app.core.ratelimit.models import EndpointRateLimit, RateLimitInfo
 from app.core.ratelimit.strategies.memory import MemorySlidingWindowStrategy
 from app.core.ratelimit.strategies.redis import RedisSlidingWindowStrategy
-from app.core.ratelimit.utils import resolve_client_ip
+from app.core.ratelimit.utils import extract_user_id_for_ratelimit, resolve_client_ip
 from app.core.static import is_private_static_path
 
 if TYPE_CHECKING:
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = get_logger("app.security.ratelimit")
+
+# Credential-guessing and account-recovery routes stay on the per-IP bucket even when
+# the caller presents a token: the IP bucket is their brute-force control.
+_IP_BUCKETED_PATH_PREFIXES: tuple[str, ...] = (
+    "/api/v1/auth/login",
+    "/api/v1/auth/register",
+    "/api/v1/password/",
+)
 
 _rate_limit_fallback_total = Counter(
     "rate_limit_fallback_total",
@@ -86,7 +94,7 @@ class RateLimitMiddleware:
             return
 
         path_limit, path_window, path_pattern = self._get_limits_for_path(path)
-        base_identifier = self._build_identifier(request)
+        base_identifier = self._build_identifier(request, path)
         identifier = (
             f"{base_identifier}:{path_pattern}" if path_pattern else base_identifier
         )
@@ -199,8 +207,19 @@ class RateLimitMiddleware:
                 )
         return self._limit, self._window_seconds, "default"
 
-    def _build_identifier(self, request: Request) -> str:
-        """Use client IP because this middleware has not authenticated credentials."""
+    def _build_identifier(self, request: Request, path: str | None = None) -> str:
+        """Key authenticated traffic by verified user, everything else by client IP.
+
+        The token is checked with the same signature and expiry verification as the
+        sensitive-route dependency (``extract_user_id_for_ratelimit``). Forged,
+        expired or malformed tokens fall back to the IP bucket, and so do login,
+        register and password-recovery routes.
+        """
+        request_path = request.url.path if path is None else path
+        if not request_path.startswith(_IP_BUCKETED_PATH_PREFIXES):
+            user_id = extract_user_id_for_ratelimit(request)
+            if user_id:
+                return f"user:{user_id}"
         return f"ip:{resolve_client_ip(request)}"
 
     # MED-W19: Paths that are always exempt from rate limiting (health/metrics).

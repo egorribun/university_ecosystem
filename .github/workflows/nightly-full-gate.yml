@@ -811,6 +811,28 @@ jobs:
         with:
           persist-credentials: false
 
+      # AUD-346: dry-runs apply no faults, but the recovery assertion stays live.
+      # The default target is served locally so the assertion has real traffic
+      # to evaluate. A live execution receipt still requires a cluster.
+      - name: Start local dry-run health target
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_dir="$RUNNER_TEMP/chaos-dry-run-target"
+          mkdir -p "$target_dir"
+          printf 'ok\n' > "$target_dir/health"
+          python3 -m http.server 8000 --bind 127.0.0.1 --directory "$target_dir" \
+            >"$RUNNER_TEMP/chaos-dry-run-target.log" 2>&1 &
+          for _attempt in {1..15}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null; then
+              echo "Dry-run health target is serving /health."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Dry-run health target did not start." >&2
+          exit 1
+
       - name: Run chaos loadtest dry-runs
         run: |
           python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/redis-chaos.yaml --duration 5 --verbose

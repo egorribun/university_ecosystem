@@ -640,22 +640,23 @@ class ChaosLoadTestOrchestrator:
         report_output = "\n".join(summary_lines)
         logger.info(report_output)
 
+        # AUD-346: the recovery assertion is never disabled, including in
+        # dry-run. Dry-run only avoids applying faults; the same thresholds
+        # decide the exit status, so a dry-run cannot pass without recovery traffic.
         success = True
-        if not self.dry_run:
-            if p6.total_requests == 0:
-                logger.error("ASSERTION FAILED: No recovery requests were recorded.")
-                success = False
-            elif p6.success_rate < 80.0:
-                logger.error(
-                    "ASSERTION FAILED: Post-recovery success rate below threshold (%.1f%% < 80.0%%)",
-                    p6.success_rate,
-                )
-                success = False
+        if p6.total_requests == 0:
+            logger.error("ASSERTION FAILED: No recovery requests were recorded.")
+            success = False
+        elif p6.success_rate < 80.0:
+            logger.error(
+                "ASSERTION FAILED: Post-recovery success rate below threshold (%.1f%% < 80.0%%)",
+                p6.success_rate,
+            )
+            success = False
 
-        if self.dry_run:
-            logger.info("[DRY-RUN] Recovery availability assertion skipped.")
-        elif success:
-            logger.info("Recovery availability assertion passed.")
+        if success:
+            scope = " (dry-run: no fault was injected)" if self.dry_run else ""
+            logger.info("Recovery availability assertion passed%s.", scope)
         else:
             logger.error("Recovery availability assertion failed.")
 

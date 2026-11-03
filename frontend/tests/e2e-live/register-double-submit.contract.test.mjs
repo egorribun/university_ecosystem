@@ -4,25 +4,23 @@ import { readFile } from "node:fs/promises"
 import { URL } from "node:url"
 import test from "node:test"
 import {
+  REGISTRATION_STEP_ORDER,
+  registrationTraceViolations,
+} from "./register-double-submit.decisions.mjs"
+import {
   isOpaqueRegistrationReceipt,
   waitForRegistrationCompletion,
   withRegistrationDetach,
 } from "./register-double-submit-lifecycle.mjs"
 
 const specUrl = new URL("./register-double-submit.live.spec.ts", import.meta.url)
-const registerUrl = new URL("../../src/pages/Register.tsx", import.meta.url)
 
-test("live registration double-submit acceptance uses one real owned account", async () => {
+test("live registration double-submit acceptance is an executable ordering decision", async () => {
   assert.equal(
     existsSync(specUrl),
     true,
     "the mobile double-submit registration acceptance must exist"
   )
-
-  const [spec, register] = await Promise.all([
-    readFile(specUrl, "utf8"),
-    readFile(registerUrl, "utf8"),
-  ])
 
   // Behaviour: evaluate the live Playwright config and read the effective project settings.
   const { default: liveConfig } = await import("../../playwright.live.config.ts")
@@ -35,95 +33,64 @@ test("live registration double-submit acceptance uses one real owned account", a
     assert.equal(use.screenshot, "off", `${name} must not capture screenshots`)
     assert.equal(use.video, "off", `${name} must not record video`)
   }
-  assert.match(register, /api\.post\(["']\/auth\/register["']/u)
-  assert.match(register, /navigate\(\{\s*to:\s*["']\/login["']\s*\}\)/u)
-  assert.match(register, /const \[hydrated, setHydrated\] = useState\(false\)/u)
-  assert.match(register, /useEffect\(\(\) => \{\s*setHydrated\(true\)\s*\}, \[\]\)/u)
-  assert.match(register, /const controlsDisabled = !hydrated \|\| isSubmitting\s*$/mu)
 
-  // Bind the readiness/submission guard to actual controls, not an unrelated
-  // disabled prop elsewhere in the component. Runtime hydration tests and the
-  // live double-submit acceptance remain the behavioral evidence.
-  const fieldControls = Array.from(
-    register.matchAll(/<(?:Input|Select)\b[\s\S]*?\/>/gu),
-    ([source]) => source
-  )
-  const buttonControls = Array.from(
-    register.matchAll(/<(?:Button|button)\b[\s\S]*?^\s*>/gmu),
-    ([source]) => source
-  )
-  assert.equal(fieldControls.length, 6, "five inputs, including invite code, and one role selector")
-  assert.equal(buttonControls.length, 4, "submit, two reveal buttons, and the email suggestion")
-  for (const control of [...fieldControls, ...buttonControls]) {
-    assert.match(control, /disabled=\{controlsDisabled\}/u)
+  // The live spec records each step into a trace and asserts the trace with this validator.
+  // Wiring: every step of the decision must be recorded by the spec.
+  const spec = await readFile(specUrl, "utf8")
+  assert.ok(spec.includes('from "./register-double-submit.decisions.mjs"'))
+  for (const step of REGISTRATION_STEP_ORDER) {
+    assert.ok(spec.includes(`trace.push("${step}")`), `the spec must record ${step}`)
   }
-  const submit = buttonControls.find((control) => /id=["']register-submit["']/u.test(control))
-  assert.ok(submit, "the real registration submit control must exist")
-  assert.match(submit, /type=["']submit["']/u)
-  assert.match(submit, /loading=\{isSubmitting\}/u)
+  assert.ok(spec.includes("registrationTraceViolations(trace, registerPostCount)"))
 
-  assert.match(spec, /page\.setViewportSize\(\{\s*width:\s*360/u)
-  assert.match(spec, /stubBreachedPasswordLookup\(page\)/u)
-  const registrationNavigation = spec.indexOf(
-    'await page.goto("/register", { waitUntil: "domcontentloaded" })'
-  )
-  const hydrationWait = spec.indexOf(
-    "await page.waitForFunction(() => window.__APP_HYDRATED === true)",
-    registrationNavigation
-  )
-  const firstFormInteraction = spec.indexOf('await page.locator("#full_name").fill')
-  assert.ok(
-    registrationNavigation >= 0 &&
-      hydrationWait > registrationNavigation &&
-      firstFormInteraction > hydrationWait,
-    "registration controls must not be interacted with before React hydration"
-  )
-  assert.match(spec, /freshPassword\(\)/u)
-  assert.match(
-    spec,
-    /createOwnedResetAccount\(testInfo\.project\.name,\s*crypto\.randomUUID\(\)\)/u
-  )
-  assert.match(spec, /touchscreen\.tap\(x,\s*y\)/u)
-  assert.match(spec, /dblclick\(/u)
-  assert.match(spec, /registerPostCount/u)
-  assert.match(spec, /expect\(registerPostCount\)\.toBe\(1\)/u)
-  assert.match(spec, /isOpaqueRegistrationReceipt\(registrationBody\)/u)
-  assert.match(spec, /withRegistrationDetach\(/u)
-  assert.doesNotMatch(spec, /registrationBody\?\.id|registrationBody\.id/u)
-  assert.match(spec, /registerOwnedSessionCleanup\(/u)
-  assert.match(spec, /findOwnedResetUserId\(/u)
-  assert.match(spec, /readOwnedResetUserId\(/u)
-  assert.match(spec, /await loginWith\(page, email, password\)/u)
-  assert.match(spec, /method:\s*["']DELETE["']/u)
-  const cleanupRegistration = spec.indexOf("registerOwnedSessionCleanup(")
-  const requestListener = spec.indexOf('page.on("request", countRegistrationPosts)')
-  const click = spec.indexOf("await submitButton.dblclick")
-  assert.ok(
-    cleanupRegistration >= 0 && cleanupRegistration < requestListener && requestListener < click,
-    "the owned-account cleanup must be registered before a registration request can be sent"
-  )
-  assert.match(spec, /if \(!registrationSubmitAttempted && registerPostCount === 0\) return/u)
-  assert.match(spec, /createdUser\.id \?\?\s*\(await findOwnedResetUserId\(/u)
-  assert.match(spec, /section\.auth-shell--login/u)
-  assert.ok(
-    spec.lastIndexOf("no extra registration request during navigation and identity verification") >
-      spec.indexOf("createdUser.id = await readOwnedResetUserId("),
-    "the request-count observation continues through identity verification"
-  )
-  assert.match(
-    spec,
-    /expect\(\s*registerPostCount,\s*"no extra registration request during navigation and identity verification"\s*\)\.toBe\(1\)/u
-  )
-  assert.match(
-    spec,
-    /await page\.close\(\)[\s\S]*?expect\(\s*registerPostCount,\s*"no extra registration request before the page closed"\s*\)\.toBe\(1\)/u
-  )
-  assert.match(spec, /\/login\$/u)
+  // Static policy guards kept deliberately: the acceptance must reach the real registration
+  // API (no route mocking or direct API posts) and must not embed a literal password. Only a
+  // live run can exercise the behaviour itself.
   assert.doesNotMatch(
     spec,
     /page\.route|routeWebSocket|page\.request\.(?:post|put|patch|delete)\(|fulfill\(/u
   )
   assert.doesNotMatch(spec, /password\s*[:=]\s*["'][^"']+/iu)
+})
+
+test("the ordering decision accepts the legal sequence with exactly one registration POST", () => {
+  assert.deepEqual(registrationTraceViolations([...REGISTRATION_STEP_ORDER], 1), [])
+})
+
+test("the ordering decision rejects a registration that is not single or not ordered", () => {
+  const legal = [...REGISTRATION_STEP_ORDER]
+  const swap = (a, b) => legal.map((step) => (step === a ? b : step === b ? a : step))
+
+  assert.ok(
+    registrationTraceViolations(legal, 2).includes("expected exactly one registration POST, saw 2")
+  )
+  assert.ok(registrationTraceViolations(legal, 0).length > 0)
+  assert.ok(
+    registrationTraceViolations(swap("hydrated", "filled"), 1).includes("filled before hydrated")
+  )
+  assert.ok(
+    registrationTraceViolations(swap("cleanup-registered", "submitted"), 1).includes(
+      "submitted before cleanup-registered"
+    )
+  )
+  assert.ok(
+    registrationTraceViolations(swap("listener-attached", "submitted"), 1).includes(
+      "submitted before listener-attached"
+    )
+  )
+  assert.ok(registrationTraceViolations([...legal, "submitted"], 1).includes("duplicate submitted"))
+  assert.ok(
+    registrationTraceViolations(
+      legal.filter((step) => step !== "page-closed"),
+      1
+    ).includes("missing page-closed")
+  )
+  assert.ok(
+    registrationTraceViolations(
+      legal.filter((step) => step !== "hydrated"),
+      1
+    ).length > 0
+  )
 })
 
 test("registration accepts only the generic success receipt", () => {

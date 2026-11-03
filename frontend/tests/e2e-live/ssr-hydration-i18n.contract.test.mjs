@@ -5,45 +5,37 @@ import { URL } from "node:url"
 import test from "node:test"
 import { createInstance } from "i18next"
 import sharp from "sharp"
+import { applyNodeCspToHtmlResponse } from "../../scripts/server-csp.mjs"
 import { extractSeoMetadata, matchesRequestedCatalogTitle } from "./seo-metadata.mjs"
+import { matchesMainSkipLinkLocale } from "./ssr-common-locale.mjs"
+import { matchesNewsSearchLocale } from "./ssr-news-locale.mjs"
 
 const specUrl = new URL("./ssr-hydration-i18n.live.spec.ts", import.meta.url)
-const seoMetadataUrl = new URL("./seo-metadata.mjs", import.meta.url)
-const authRouteUrl = new URL("../../src/routes/_auth.tsx", import.meta.url)
-const dashboardRouteUrl = new URL("../../src/routes/_auth/dashboard.tsx", import.meta.url)
-const newsRouteUrl = new URL("../../src/routes/_auth/news.index.tsx", import.meta.url)
-const rootRouteUrl = new URL("../../src/routes/__root.tsx", import.meta.url)
-const seoComponentUrl = new URL("../../src/components/ui/SEO.tsx", import.meta.url)
-const serverUrl = new URL("../../src/server.ts", import.meta.url)
-const ssrThemeUrl = new URL("../../src/ssrTheme.ts", import.meta.url)
-const hydrationUrl = new URL("../../src/app/hydration.ts", import.meta.url)
+const ssrDocumentSpecUrl = new URL("../e2e/ssr-document-render.spec.ts", import.meta.url)
+const dashboardCatalogUrls = {
+  en: new URL("../../src/i18n/locales/en/dashboard.json", import.meta.url),
+  ru: new URL("../../src/i18n/locales/ru/dashboard.json", import.meta.url),
+}
+const newsCatalogUrls = {
+  en: new URL("../../src/i18n/locales/en/news.json", import.meta.url),
+  ru: new URL("../../src/i18n/locales/ru/news.json", import.meta.url),
+}
+const commonCatalogUrls = {
+  en: new URL("../../src/i18n/locales/en/common.json", import.meta.url),
+  ru: new URL("../../src/i18n/locales/ru/common.json", import.meta.url),
+}
 
-test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys", async () => {
+// AUD-432 (full SSR): the rendered documents are executed by the production-server spec
+// (tests/e2e/ssr-document-render.spec.ts). This contract executes the same policy code and the
+// same locale probes on real catalog text, so no assertion depends on the spec or renderer text.
+
+test("live acceptance projects record no traces, screenshots or video, and the executed SSR spec exists", async () => {
   assert.equal(existsSync(specUrl), true, "the authenticated SSR/i18n live scenario must exist")
-
-  const [
-    spec,
-    authRoute,
-    dashboardRoute,
-    newsRoute,
-    rootRoute,
-    seoComponent,
-    server,
-    ssrTheme,
-    hydration,
-  ] = await Promise.all([
-    readFile(specUrl, "utf8"),
-    readFile(authRouteUrl, "utf8"),
-    readFile(dashboardRouteUrl, "utf8"),
-    readFile(newsRouteUrl, "utf8"),
-    readFile(rootRouteUrl, "utf8"),
-    readFile(seoComponentUrl, "utf8"),
-    readFile(serverUrl, "utf8"),
-    readFile(ssrThemeUrl, "utf8"),
-    readFile(hydrationUrl, "utf8"),
-  ])
-
-  // Behaviour: the live Playwright config is evaluated, not matched as text.
+  assert.equal(
+    existsSync(ssrDocumentSpecUrl),
+    true,
+    "the executed production-server document render must exist"
+  )
   const { default: liveConfig } = await import("../../playwright.live.config.ts")
   const projects = Object.fromEntries(liveConfig.projects.map((project) => [project.name, project]))
   assert.ok(projects.desktop && projects.mobile, "desktop and mobile live projects must exist")
@@ -53,172 +45,92 @@ test("live dashboard acceptance covers real RU/EN SSR hydration without raw keys
     assert.equal(use.screenshot, "off", `${name} must not capture screenshots`)
     assert.equal(use.video, "off", `${name} must not record video`)
   }
-  assert.match(authRoute, /ssr:\s*true/u)
-  assert.match(dashboardRoute, /createFileRoute\(["']\/_auth\/dashboard["']\)/u)
-  assert.match(dashboardRoute, /ssr:\s*true/u)
-  assert.match(newsRoute, /createFileRoute\(["']\/_auth\/news\//u)
-  assert.match(newsRoute, /prefetchNewsListQuery/u)
-  assert.match(server, /extractLangFromRequest\(request\)/u)
-  assert.match(ssrTheme, /parseCookie\(header,\s*["']ue:language["']\)/u)
-  assert.match(rootRoute, /lang=\{lang\}/u)
-  assert.match(rootRoute, /data-ssr-auth=\{ssrAuthMarker\}/u)
-  assert.match(rootRoute, /export function ActivityRootSeoFallback/u)
-  assert.match(rootRoute, /<SeoReadinessProvider>/u)
-  assert.match(seoComponent, /useLayoutEffect\(\(\)\s*=>\s*\{/u)
-  assert.match(seoComponent, /unregister\(instanceId\)/u)
-  assert.match(hydration, /window\.__APP_HYDRATED\s*=\s*true/u)
-
-  assert.match(spec, /loginAs\(page,\s*["']student["']\)/u)
-  assert.match(spec, /page\.goto\(["']\/dashboard["']/u)
-  assert.match(spec, /name:\s*["']ue:language["']/u)
-  assert.match(spec, /window\.localStorage\.setItem\(["']ue:language["']/u)
-  assert.match(spec, /window\.__APP_HYDRATED\s*===\s*true/u)
-  assert.match(spec, /data-ssr-auth/u)
-  assert.match(spec, /function readNewsSearchPlaceholder\(markup: string \| null\)/u)
-  assert.match(
-    spec,
-    /NEWS_SEARCH_PLACEHOLDER_CATALOGS[\s\S]*?enNews\.search\.placeholder[\s\S]*?ruNews\.search\.placeholder/u
-  )
-  assert.match(
-    spec,
-    /expect\(readNewsSearchPlaceholder\(newsServerMarkup \?\? null\)\)\.toBe\(\s*NEWS_SEARCH_PLACEHOLDER_CATALOGS\[language\]/u
-  )
-  assert.match(spec, /serverLanguage/u)
-  assert.match(spec, /hydrationDiagnostics/u)
-  assert.match(spec, /rawTranslationKeys\.server/u)
-  assert.match(spec, /rawTranslationKeys\.client/u)
-  assert.match(spec, /new JSDOM\(markup\)/u)
-  assert.match(
-    spec,
-    /page\.evaluate\(\s*\(\)\s*=> document\.querySelector\("#root"\)\?\.outerHTML/u
-  )
-  assert.doesNotMatch(spec, /new DOMParser\(\)|page\.evaluate\(\s*\(markup\)/u)
-  assert.match(
-    spec,
-    /querySelectorAll<HTMLElement>\([\s\S]*?aria-label[\s\S]*?aria-description[\s\S]*?alt/u
-  )
-  assert.match(spec, /a\[href="\/news"\]:visible/u)
-  assert.match(spec, /await newsLink\.click\(\)/u)
-  assert.match(spec, /toHaveURL\(\/\\\/news\$\/u\)/u)
-  assert.match(spec, /University news/u)
-  assert.match(spec, /Новости университета/u)
-  assert.match(spec, /const newsResponse = await page\.reload\(/u)
-  assert.match(spec, /newsResponse\?\.status\(\)\)\.toBe\(200\)/u)
-  assert.match(spec, /newsResponse\?\.headers\(\)\["content-type"\][\s\S]*?text\/html/u)
-  assert.match(spec, /newsServerLanguage[\s\S]*?\.toBe\(language\)/u)
-  assert.match(spec, /newsRawTranslationKeys\.server/u)
-  assert.match(spec, /newsRawTranslationKeys\.client/u)
-  assert.match(spec, /spaTranslationKeys\.client/u)
-  assert.match(spec, /Russian dashboard SSR hydrates and preserves i18n across News navigation/u)
-  assert.match(spec, /English dashboard SSR hydrates and preserves i18n across News navigation/u)
-  assert.match(spec, /a public route retains one localized root metadata fallback/u)
-  assert.match(spec, /assertSingleRootClientHead\(page,\s*["']en["']\)/u)
-  assert.match(spec, /expectedRootHeadSnapshot\(language\)/u)
+  // Policy guards with no behavioural equivalent without the live stack: the live acceptance
+  // must reach the real stack (no route, websocket or request mocking) and must not leave
+  // console diagnostics that could carry account data.
+  const spec = await readFile(specUrl, "utf8")
   assert.doesNotMatch(spec, /page\.route|routeWebSocket|useMockApi|page\.request/u)
   assert.doesNotMatch(spec, /console\.(?:log|info|warn|error)/u)
 })
 
-test("AUD-137 live News checks the requested locale in SPA, SSR and hydrated markup", async () => {
-  const spec = await readFile(specUrl, "utf8")
-  assert.match(spec, /import \{ matchesNewsSearchLocale \} from "\.\/ssr-news-locale\.mjs"/u)
-  assert.match(
-    spec,
-    /const spaNewsMarkup = await page\.locator\("#root"\)\.evaluate\(\(root\) => root\.outerHTML\)/u
+test("the SSR CSP composition executes on an HTML response and binds the nonce", () => {
+  const nonce = "AAAAAAAAAAAAAAAAAAAAAA=="
+  const html = applyNodeCspToHtmlResponse(
+    new globalThis.Response("<!doctype html><html></html>", {
+      headers: { "content-type": "text/html; charset=utf-8", etag: '"stale"' },
+    }),
+    nonce
   )
-  assert.match(
-    spec,
-    /const hydratedNewsMarkup = await page\.locator\("#root"\)\.evaluate\(\(root\) => root\.outerHTML\)/u
+  assert.ok(html.headers.get("content-security-policy")?.includes(`'nonce-${nonce}'`))
+  assert.ok(html.headers.get("content-security-policy-report-only")?.includes(`'nonce-${nonce}'`))
+  assert.equal(html.headers.get("cache-control"), "no-store, private, max-age=0")
+  assert.equal(html.headers.get("etag"), null)
+  assert.equal(html.headers.get("last-modified"), null)
+
+  const json = applyNodeCspToHtmlResponse(
+    new globalThis.Response("{}", { headers: { "content-type": "application/json" } }),
+    nonce
   )
-
-  const spa = spec.indexOf("const spaNewsMarkup =")
-  const reload = spec.indexOf("const newsResponse = await page.reload(")
-  const server = spec.indexOf("matchesNewsSearchLocale(newsServerMarkup ?? null,")
-  const hydrated = spec.indexOf("const hydratedNewsMarkup =")
-  const activity = spec.indexOf("const activityLink = page.locator(")
-  assert.ok(spa >= 0 && spa < reload && reload < server && server < hydrated && hydrated < activity)
-
-  for (const snapshot of ["spaNewsMarkup", "newsServerMarkup \\?\\? null", "hydratedNewsMarkup"]) {
-    const assertion = new RegExp(
-      `expect\\(\\s*matchesNewsSearchLocale\\(\\s*${snapshot},\\s*NEWS_SEARCH_PLACEHOLDER_CATALOGS\\[language\\]\\s*\\)\\s*\\)\\.toBe\\(\\s*true\\s*\\)`,
-      "u"
-    )
-    assert.match(spec, assertion)
-  }
+  assert.equal(json.headers.get("content-security-policy"), null)
 })
 
-test("AUD-137 live dashboard checks the common skip link in SSR and hydrated markup", async () => {
-  const [spec, layout] = await Promise.all([
-    readFile(specUrl, "utf8"),
-    readFile(new URL("../../src/components/layout/MainLayout.tsx", import.meta.url), "utf8"),
+test("executable locale probes accept the requested catalog text and reject the other locale", async () => {
+  const [enDashboard, ruDashboard, enNews, ruNews, enCommon, ruCommon] = await Promise.all([
+    readJson(dashboardCatalogUrls.en),
+    readJson(dashboardCatalogUrls.ru),
+    readJson(newsCatalogUrls.en),
+    readJson(newsCatalogUrls.ru),
+    readJson(commonCatalogUrls.en),
+    readJson(commonCatalogUrls.ru),
   ])
-  assert.match(
-    layout,
-    /<a href="#main-content" className="skip-link"[\s\S]*?t\("common:skipToMain"\)/u
-  )
-  assert.match(spec, /import \{ matchesMainSkipLinkLocale \} from "\.\/ssr-common-locale\.mjs"/u)
-  assert.match(spec, /from "\.\.\/\.\.\/src\/i18n\/locales\/en\/common\.json"/u)
-  assert.match(spec, /from "\.\.\/\.\.\/src\/i18n\/locales\/ru\/common\.json"/u)
-  assert.match(
-    spec,
-    /MAIN_SKIP_LINK_CATALOGS[\s\S]*?enCommon\.skipToMain[\s\S]*?ruCommon\.skipToMain/u
-  )
+  const catalogs = {
+    dashboard: { en: enDashboard, ru: ruDashboard },
+    news: { en: enNews, ru: ruNews },
+    common: { en: enCommon, ru: ruCommon },
+  }
+  const skipMarkup = (text) =>
+    `<div id="root"><a class="skip-link" href="#main-content">${text}</a></div>`
+  const placeholderMarkup = (text) =>
+    `<div id="root"><div class="news-theme"><header><input placeholder="${text}" aria-label="${text}"></header></div></div>`
 
-  const serverProbe = spec.indexOf("matchesMainSkipLinkLocale(serverMarkup ?? null,")
-  const hydration = spec.indexOf("await page.waitForFunction(() => window.__APP_HYDRATED === true)")
-  const clientCapture = spec.indexOf("const hydratedDashboardMarkup =")
-  const clientProbe = spec.indexOf("matchesMainSkipLinkLocale(hydratedDashboardMarkup,")
-  const newsNavigation = spec.indexOf("const newsLink = page.locator(")
-  assert.ok(
-    serverProbe >= 0 &&
-      serverProbe < hydration &&
-      hydration < clientCapture &&
-      clientCapture < clientProbe &&
-      clientProbe < newsNavigation
-  )
-  for (const snapshot of ["serverMarkup \\?\\? null", "hydratedDashboardMarkup"]) {
-    assert.match(
-      spec,
-      new RegExp(
-        `expect\\(\\s*matchesMainSkipLinkLocale\\(\\s*${snapshot},\\s*MAIN_SKIP_LINK_CATALOGS\\[language\\]\\s*\\)\\s*\\)\\.toBe\\(\\s*true\\s*\\)`,
-        "u"
+  for (const language of ["en", "ru"]) {
+    const other = language === "en" ? "ru" : "en"
+    const requested = catalogs.common[language].skipToMain
+    const fallback = catalogs.common[other].skipToMain
+    assert.notEqual(requested, fallback, "the locales must differ to prove the probe")
+    assert.equal(matchesMainSkipLinkLocale(skipMarkup(requested), requested), true)
+    assert.equal(matchesMainSkipLinkLocale(skipMarkup(fallback), requested), false)
+
+    const newsText = catalogs.news[language].search.placeholder
+    assert.equal(matchesNewsSearchLocale(placeholderMarkup(newsText), newsText), true)
+    assert.equal(
+      matchesNewsSearchLocale(placeholderMarkup(catalogs.news[other].search.placeholder), newsText),
+      false
+    )
+
+    for (const landmark of ["dashboard", "news"]) {
+      const title = catalogs[landmark][language].pageTitle
+      const titles = {
+        en: { pageTitle: catalogs[landmark].en.pageTitle },
+        ru: { pageTitle: catalogs[landmark].ru.pageTitle },
+      }
+      assert.equal(
+        matchesRequestedCatalogTitle(language, titles, `${title} | University Ecosystem`),
+        true,
+        `${landmark} title must match ${language}`
       )
-    )
+      assert.equal(
+        matchesRequestedCatalogTitle(
+          language,
+          titles,
+          `${catalogs[landmark][other].pageTitle} | University Ecosystem`
+        ),
+        false,
+        `${landmark} fallback title must not match ${language}`
+      )
+    }
   }
 })
-
-test("live acceptance verifies each finite route title against its requested locale on SSR and client", async () => {
-  const [spec, dashboardPage, newsPage, seoMetadata] = await Promise.all([
-    readFile(specUrl, "utf8"),
-    readFile(new URL("../../src/pages/Dashboard.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../../src/pages/News.tsx", import.meta.url), "utf8"),
-    readFile(seoMetadataUrl, "utf8"),
-  ])
-  assert.match(dashboardPage, /t\(["']dashboard:pageTitle["']\)/u)
-  assert.match(newsPage, /t\(["']news:pageTitle["']\)/u)
-  assert.match(spec, /from ["']\.\.\/\.\.\/src\/i18n\/locales\/en\/dashboard\.json["']/u)
-  assert.match(spec, /from ["']\.\.\/\.\.\/src\/i18n\/locales\/ru\/dashboard\.json["']/u)
-  assert.match(spec, /from ["']\.\.\/\.\.\/src\/i18n\/locales\/en\/news\.json["']/u)
-  assert.match(spec, /from ["']\.\.\/\.\.\/src\/i18n\/locales\/ru\/news\.json["']/u)
-  assert.match(spec, /expectedDocumentTitle\(language,\s*["']dashboard["']\)/u)
-  assert.match(spec, /expectedDocumentTitle\(language,\s*["']news["']\)/u)
-  assert.match(spec, /readDocumentTitle\(serverMarkup/u)
-  assert.match(spec, /readDocumentTitle\(newsServerMarkup/u)
-  assert.match(spec, /page\.title\(\)/u)
-  assert.match(spec, /PAGE_TITLE_CATALOGS\[landmark\]\[language\]/u)
-  assert.doesNotMatch(spec, /Object\.values\(PAGE_TITLE_CATALOGS\[landmark\]\)/u)
-  assert.match(spec, /extractSeoMetadata\(markup\)/u)
-  assert.match(seoMetadata, /export function matchesRequestedCatalogTitle/u)
-})
-
-const dashboardCatalogUrls = {
-  en: new URL("../../src/i18n/locales/en/dashboard.json", import.meta.url),
-  ru: new URL("../../src/i18n/locales/ru/dashboard.json", import.meta.url),
-}
-
-const newsCatalogUrls = {
-  en: new URL("../../src/i18n/locales/en/news.json", import.meta.url),
-  ru: new URL("../../src/i18n/locales/ru/news.json", import.meta.url),
-}
 
 const i18nConfigUrl = new URL("../../src/i18n/config.ts", import.meta.url)
 const i18nMetadataUrl = new URL("../../src/i18n/metadata.ts", import.meta.url)

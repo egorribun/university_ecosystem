@@ -327,8 +327,9 @@ def test_dns_and_443_direct_address_intent_is_scoped(
         assert not _allowed_side(
             resources, processor, Endpoint(None, {}, address), "Egress", "TCP", 443
         )
+    # AUD-189: no public destination is granted to the file-processor by default.
     for address in ("198.51.100.1", "2001:db8::1"):
-        assert _allowed_side(
+        assert not _allowed_side(
             resources, processor, Endpoint(None, {}, address), "Egress", "TCP", 443
         )
 

@@ -4,10 +4,18 @@
 
 rules: []  # Custom rules go here; all scanning comes from the rulesets below.
 
-# Use 'semgrep --config <pack>' locally: semgrep --config p/python --config p/fastapi .
-# The CI job runs: semgrep ci --config auto  (or the packs below when no token is set)
-
-# Rulesets to run (in semgrep CI these are resolved via SEMGREP_APP_TOKEN or --config):
+# Enforcement point (AUD-380, ADR-047 Q4 scanner de-duplication): Semgrep runs
+# only as the pinned `semgrep-docker` pre-commit hook (`semgrep-sast` in
+# .pre-commit-config.yaml), which runs `semgrep --config auto --error --oss-only`.
+# There is NO hosted Semgrep CI job: the reusable security audit deliberately
+# has no `semgrep` job, and CI skips the pre-commit hook (SKIP=semgrep-docker).
+# Do not describe a hosted Semgrep job here unless one is reinstated under ADR-047.
+#
+# Local packs for targeted runs, for example:
+#   semgrep --config p/python --config p/fastapi .
+#
+# Packs named for targeting (descriptive only; the hook runs `--config auto`,
+# which selects rules by detected language and does not enumerate these packs):
 # p/python            - General Python security (injection, unsafe deserialization, etc.)
 # p/fastapi           - FastAPI-specific patterns (auth bypass, injection)
 # p/jwt               - JWT misuse (none algorithm, weak secrets, HS/RS confusion)
@@ -16,7 +24,3 @@ rules: []  # Custom rules go here; all scanning comes from the rulesets below.
 # p/secrets           - Hardcoded credentials, API keys, connection strings
 # p/supply-chain      - Dependency confusion, pinning issues
 # p/owasp-top-ten     - Comprehensive OWASP Top 10 coverage across all languages
-#
-# These are enforced in CI via the 'semgrep' job in reusable-security-audit.yml.
-# To add SEMGREP_APP_TOKEN: GitHub Settings → Secrets → Actions → SEMGREP_APP_TOKEN
-# and configure the matching rule sets in app.semgrep.dev.

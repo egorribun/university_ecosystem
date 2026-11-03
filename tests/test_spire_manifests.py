@@ -132,3 +132,27 @@ def test_spire_bundle_rbac_and_agent_mount_are_least_privilege() -> None:
             for mount in container["volumeMounts"]
         )
     assert "/run/spire/bundle/bundle.crt" in init["command"][-1]
+
+
+def test_spire_agent_cluster_role_grants_no_node_list_watch_or_node_object_read() -> (
+    None
+):
+    # AUD-251: the agent keeps only the kubelet proxy GET and pod reads it needs.
+    # Node object reads, node list/watch and nodes/proxy list/watch are excluded.
+    role = _documents("k8s/spire/spire-rbac.yaml", "ClusterRole")
+    agent_role = next(
+        item for item in role if item["metadata"]["name"] == "spire-agent-role"
+    )
+    granted = {
+        (resource, verb)
+        for rule in agent_role["rules"]
+        for resource in rule["resources"]
+        for verb in rule["verbs"]
+    }
+    assert granted == {
+        ("pods", "get"),
+        ("pods", "list"),
+        ("pods", "watch"),
+        ("nodes/proxy", "get"),
+    }
+    assert all(rule.get("resourceNames") is None for rule in agent_role["rules"])

@@ -3064,7 +3064,8 @@ def test_file_processor_default_jwks_uses_release_backend_port_and_preserves_dep
         and rule.get("ports") == [{"protocol": "TCP", "port": 6379}]
         for rule in processor_policy["spec"]["egress"]
     )
-    assert any(
+    # AUD-189: the default file-processor has no public TCP 443 destination.
+    assert not any(
         rule.get("ports") == [{"protocol": "TCP", "port": 443}]
         for rule in processor_policy["spec"]["egress"]
     )
@@ -3123,12 +3124,15 @@ def test_file_processor_jwks_policies_are_scoped_to_each_release() -> None:
     assert policy_selectors[0][1] != policy_selectors[1][1]
 
 
-def test_external_https_jwks_override_keeps_existing_443_egress_only() -> None:
+def test_external_https_jwks_override_allows_only_declared_443_cidrs() -> None:
     release_name = "jwks-external-contract"
     jwks_url = "https://issuer.example.invalid/.well-known/jwks.json"
+    declared_cidr = "192.0.2.0/24"  # Documentation range, not a deployed issuer.
     resources = _render_staging(
         "--set-string",
         f"fileProcessor.config.jwksURL={jwks_url}",
+        "--set-json",
+        f"networkPolicy.fileProcessorHTTPSEgress.egressCIDRs={json.dumps([declared_cidr])}",
         release_name=release_name,
     )
     processor = _component_resource(resources, "Deployment", "file-processor")
@@ -3169,10 +3173,27 @@ def test_external_https_jwks_override_keeps_existing_443_egress_only() -> None:
         )
         for rule in backend_policy["spec"]["ingress"]
     )
-    assert any(
-        rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+    assert [
+        rule
         for rule in processor_policy["spec"]["egress"]
-    )
+        if rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+    ] == [
+        {
+            "to": [{"ipBlock": {"cidr": declared_cidr}}],
+            "ports": [{"protocol": "TCP", "port": 443}],
+        }
+    ]
+
+
+def test_external_https_jwks_override_without_declared_cidrs_fails_closed() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_staging(
+            "--set-string",
+            "fileProcessor.config.jwksURL=https://issuer.example.invalid/.well-known/jwks.json",
+            release_name="jwks-external-undeclared-contract",
+        )
+
+    assert "fileProcessorHTTPSEgress.egressCIDRs" in error.value.stderr
 
 
 _SERVICE_COMPONENTS = (

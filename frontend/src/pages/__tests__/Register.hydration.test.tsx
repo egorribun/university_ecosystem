@@ -146,7 +146,9 @@ it("hydrates without recovery and submits the first valid registration once", as
     expect(password).toHaveValue(submittedPassword)
     expect(confirmation).toHaveValue(submittedPassword)
 
-    await user.click(submit)
+    // A double activation sends the first registration; the second physical input arrives
+    // while the form is still pending and must not create another request.
+    await user.dblClick(submit)
     await waitFor(() => expect(post).toHaveBeenCalledOnce())
     expect(post).toHaveBeenCalledWith("/auth/register", {
       full_name: "Hydration Student",

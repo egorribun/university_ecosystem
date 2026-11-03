@@ -1035,11 +1035,83 @@ jobs:
             --output "$provenance" \
             "https://github.com/slsa-framework/slsa-verifier/releases/download/v2.7.1/slsa-verifier-linux-amd64.intoto.jsonl"
           echo "$provenance_sha256  $provenance" | sha256sum --check --strict
-          /tmp/slsa-verifier verify-artifact /tmp/slsa-verifier \
-            --provenance-path "$provenance" \
-            --source-uri github.com/slsa-framework/slsa-verifier \
-            --source-tag v2.7.1
+          # Transparency-log (Rekor) lookups can time out transiently. Retry the
+          # same verification a bounded number of times; never skip it. Each
+          # attempt is time-limited, and exhausting every attempt fails the job.
+          verified=0
+          for attempt in 1 2 3; do
+            status=0
+            timeout --kill-after=15s 120s /tmp/slsa-verifier verify-artifact /tmp/slsa-verifier \
+              --provenance-path "$provenance" \
+              --source-uri github.com/slsa-framework/slsa-verifier \
+              --source-tag v2.7.1 || status=$?
+            if [[ "$status" -eq 0 ]]; then
+              verified=1
+              break
+            fi
+            echo "::warning::SLSA attestation verification attempt ${attempt}/3 exited ${status}." >&2
+            if [[ "$attempt" -lt 3 ]]; then
+              sleep $((attempt * 20))
+            fi
+          done
+          if [[ "$verified" -ne 1 ]]; then
+            echo "::error::SLSA provenance attestation did not verify in 3 bounded attempts." >&2
+            exit 1
+          fi
           echo "SLSA provenance attestation verified for the pinned slsa-verifier."
+
+  # AUD-449: the emitted-log redaction proof runs against the real Caddy edge
+  # image built from this commit. It is local-only in the ordinary suite and is
+  # wired here so the CI Success aggregate executes it on every pull request.
+  caddy-emitted-log-proof:
+    name: Caddy emitted-log redaction proof
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: pre-commit-check
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build Caddy edge image for the proof
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: services/caddy
+          file: services/caddy/Dockerfile
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: "university-ecosystem/caddy:${{ github.sha }}"
+          provenance: false
+          sbom: false
+
+      - name: Run Caddy emitted-log redaction proof
+        env:
+          RUN_DOCKER_PROOFS: "1"
+          CADDY_PROOF_IMAGE: "university-ecosystem/caddy:${{ github.sha }}"
+        run: >-
+          uv run --frozen --no-sync pytest
+          tests/test_caddy_emitted_log_redaction_docker.py
+          -v --tb=short -p no:cacheprovider -rs
 
   alembic-migrations:
     name: Alembic Migrations
@@ -4503,6 +4575,7 @@ jobs:
       - codecov-upload
       - quality-inventory-check
       - kyverno-test
+      - caddy-emitted-log-proof
 
     steps:
       - name: Check all jobs passed
@@ -4562,6 +4635,7 @@ jobs:
             "coverage-policy-gate|$COVERAGE_RESULT"
             "quality-inventory-check|${{ needs.quality-inventory-check.result }}"
             "kyverno-test|${{ needs.kyverno-test.result }}"
+            "caddy-emitted-log-proof|${{ needs.caddy-emitted-log-proof.result }}"
           )
 
           # Coverage is allowed to be skipped only when a direct producer

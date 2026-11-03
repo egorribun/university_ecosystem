@@ -43,6 +43,14 @@
     {{- end -}}
   {{- end -}}
 {{- end -}}
+{{- range $cidr := .Values.networkPolicy.fileProcessorHTTPSEgress.egressCIDRs -}}
+  {{- if regexMatch "/0$" (toString $cidr) -}}
+    {{- fail (printf "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs entry %q must not be a /0 range" $cidr) -}}
+  {{- end -}}
+{{- end -}}
+{{- if and .Values.fileProcessor.enabled (not $fileProcessorUsesBackendJWKS) (eq (len .Values.networkPolicy.fileProcessorHTTPSEgress.egressCIDRs) 0) -}}
+  {{- fail "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs must contain owner-verified CIDRs for an external HTTPS fileProcessor.config.jwksURL (AUD-188)" -}}
+{{- end -}}
 
 ---
 # Default deny: block all ingress AND egress for every pod bearing release labels.
@@ -676,7 +684,17 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
-    {{- include "university-ecosystem.httpsEgressRules" . | nindent 4 }}
+    # TCP 443 only to owner-declared external endpoints (AUD-189). No public
+    # destination is granted by default; in-cluster dependencies above are
+    # selected by pod labels.
+    {{- range $cidr := .Values.networkPolicy.fileProcessorHTTPSEgress.egressCIDRs }}
+    - to:
+        - ipBlock:
+            cidr: {{ $cidr | quote }}
+      ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
     - to:
         - namespaceSelector:
             matchLabels:
@@ -824,7 +842,8 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
-    {{- include "university-ecosystem.httpsEgressRules" . | nindent 4 }}
+    # No public TCP 443: the outbox worker declares no external HTTPS dependency
+    # (AUD-189). Its NATS, PostgreSQL, SpiceDB and OTLP peers are listed above.
     - to:
         - namespaceSelector:
             matchLabels:

@@ -557,10 +557,17 @@ networkPolicy:
   # issuer. Populate with owner-verified endpoint CIDRs; there is no open default.
   gatewayJWKS:
     egressCIDRs: []
-  # TCP 443 egress for backup, backend, file-processor and outbox-worker. Public
-  # destinations stay reachable; cluster, private and link-local ranges are
-  # excepted. The listed baseline exclusions must remain when adding cluster
-  # CIDRs; owner-verified private HTTPS endpoints go in privateCIDRs.
+  # Required only when file-processor reaches an external HTTPS endpoint (for
+  # example an HTTPS MinIO or a non-default JWKS issuer). Its other dependencies
+  # (MinIO, Temporal, NATS, revocation Redis, backend JWKS, OTLP) are in-cluster
+  # pod selectors and need no TCP 443 (AUD-189). Owner-verified CIDRs only.
+  fileProcessorHTTPSEgress:
+    egressCIDRs: []
+  # TCP 443 egress for backup and backend only: their declared public
+  # dependencies (object storage, HIBP, Spotify OAuth). Public destinations stay
+  # reachable; cluster, private and link-local ranges are excepted. The listed
+  # baseline exclusions must remain when adding cluster CIDRs; owner-verified
+  # private HTTPS endpoints go in privateCIDRs.
   httpsEgress:
     privateCIDRs: []
     exceptIPv4CIDRs:

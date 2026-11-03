@@ -33,7 +33,6 @@ APPROVED_FINGERPRINTS = (
     "527478a3d58905270a94e06e39ef4f2c07270f35:.secrets.baseline:generic-api-key:993",
     "ab4063f9064b34ae2c234d60da4a2c74463f330d:services/gateway/internal/config/config_test.go:generic-api-key:458",
     "c7402955b6071a80a4ff3b0367c63b78de0144fd:docs/superpowers/plans/2026-10-19-reset-link-fragment-redaction.md:generic-api-key:15",
-    "d9948f315e05d3c28cdb3e5439a9b04b72515fe7:docs/superpowers/plans/2026-09-22-mvp-safe-pause-handoff.md:generic-api-key:39",
     "f0ed193e7824078f1047ad7f782014059ed5450b:tests/test_internal_hmac_secret_security.py:generic-api-key:16",
 )
 
@@ -64,10 +63,10 @@ def _assert_exact_approved_fingerprints(path: Path) -> None:
     fingerprints = path.read_text(encoding="utf-8").splitlines()
     expected = sorted((*APPROVED_FINGERPRINTS, *REVIEWED_ADDITIONS))
 
-    assert len(APPROVED_FINGERPRINTS) == 25
+    assert len(APPROVED_FINGERPRINTS) == 24
     assert len(set(REVIEWED_ADDITIONS)) == 2
     assert not set(REVIEWED_ADDITIONS).intersection(APPROVED_FINGERPRINTS)
-    assert len(fingerprints) == 27
+    assert len(fingerprints) == 26
     assert fingerprints == expected
     assert len(set(fingerprints)) == len(fingerprints)
     assert set(fingerprints) == set(expected)

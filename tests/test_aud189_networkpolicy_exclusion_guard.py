@@ -67,7 +67,7 @@ def test_cluster_specific_exclusions_remain_configurable() -> None:
         item
         for item in resources
         if item.get("kind") == "NetworkPolicy"
-        and item["metadata"]["name"].endswith("-file-processor-policy")
+        and item["metadata"]["name"].endswith("-backend-policy")
     )
     blocks: dict[str, dict[str, Any]] = {
         peer["ipBlock"]["cidr"]: peer["ipBlock"]

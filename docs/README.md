@@ -75,7 +75,7 @@ handoffs are intentionally not part of the canonical index.
   conditional 250-overlay result. The policy approvals do not establish passing
   tests, final-source validation, or hosted-check results. Git and PR #1343 determine published source
   and hosted status. The current detect-secrets disposition scope is 361;
-  the separate finite Gitleaks approval covers 27 historical fingerprints.
+  the separate finite Gitleaks approval covers 26 historical fingerprints.
   See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](adr/ADR-047-risk-based-quality-policy.md#one-exact-historical-public-test-password-hash-fingerprint-2026-11-01).
   See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
   and the [nine-identity update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).

@@ -85,10 +85,13 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
-  # Kubelet attestation needs a single GET through the node proxy. Enumerating
-  # nodes or streaming nodes/proxy is not required by the agent (AUD-251).
+  # The k8s workload attestor's default kubelet path authorizes its bearer token
+  # against nodes/proxy GET (kubelet secure port). That is the only node-scoped
+  # verb justified here; reading node objects (nodes GET) and any list/watch or
+  # streaming of nodes/proxy is not required (AUD-251). Live proof is recorded
+  # as `kubectl auth can-i get nodes/proxy` and `can-i get nodes` checks.
   - apiGroups: [""]
-    resources: ["nodes", "nodes/proxy"]
+    resources: ["nodes/proxy"]
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

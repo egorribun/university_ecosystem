@@ -22,6 +22,7 @@ import {
   waitForRegistrationCompletion,
   withRegistrationDetach,
 } from "./register-double-submit-lifecycle.mjs"
+import { registrationTraceViolations } from "./register-double-submit.decisions.mjs"
 
 function isRegistrationPost(request: Request): boolean {
   const url = new URL(request.url())
@@ -49,8 +50,11 @@ test("rapid double submit on a 360px registration form creates one account", asy
   await context.addCookies([{ name: "ue:language", value: "ru", url: liveBaseUrl }])
   await page.addInitScript(() => window.localStorage.setItem("ue:language", "ru"))
   await stubBreachedPasswordLookup(page)
+  const trace: string[] = []
   await page.goto("/register", { waitUntil: "domcontentloaded" })
+  trace.push("navigated")
   await page.waitForFunction(() => window.__APP_HYDRATED === true)
+  trace.push("hydrated")
 
   // The existing owned-identity helper binds project, UUID, name, email and
   // role. Registration deliberately does not return a public user id.
@@ -61,6 +65,7 @@ test("rapid double submit on a 360px registration form creates one account", asy
   await page.locator("#email").fill(email)
   await page.locator("#password").fill(password)
   await page.locator("#confirmPassword").fill(password)
+  trace.push("filled")
 
   const submitButton = page.locator("#register-submit")
   await expect(submitButton).toBeVisible()
@@ -72,6 +77,7 @@ test("rapid double submit on a 360px registration form creates one account", asy
   let registrationPageClosed = false
   const registrationCompletions: Array<Promise<boolean>> = []
   const createdUser: { id: string | undefined } = { id: undefined }
+  trace.push("cleanup-registered")
   registerOwnedSessionCleanup(async (cleanupBrowser, cleanupDeadlineAtMs) => {
     if (!registrationSubmitAttempted && registerPostCount === 0) return
     const requestsCompleted =
@@ -152,6 +158,7 @@ test("rapid double submit on a 360px registration form creates one account", asy
     )
   }
   page.on("request", countRegistrationPosts)
+  trace.push("listener-attached")
 
   const cdp = await context.newCDPSession(page)
 
@@ -174,6 +181,7 @@ test("rapid double submit on a 360px registration form creates one account", asy
           connectionType: "cellular3g",
         })
 
+        trace.push("submitted")
         if (testInfo.project.name.toLowerCase().includes("mobile")) {
           const bounds = await submitButton.boundingBox()
           if (!bounds) throw new Error("Registration submit control is not visible")
@@ -204,9 +212,11 @@ test("rapid double submit on a 360px registration form creates one account", asy
       expect(registrationResponse.status()).toBe(200)
       expect(isOpaqueRegistrationReceipt(registrationBody)).toBe(true)
       expect(registerPostCount).toBe(1)
+      trace.push("receipt-verified")
       await expect(page).toHaveURL(/\/login$/u)
       await expect(page.locator("section.auth-shell--login")).toBeVisible()
       await loginWith(page, email, password)
+      trace.push("logged-in")
       const identityDeadlineAtMs = liveTestSlotDeadlineAtMs(testInfo)
       if (identityDeadlineAtMs === null)
         throw new Error("Owned registration identity deadline unavailable")
@@ -220,6 +230,7 @@ test("rapid double submit on a 360px registration form creates one account", asy
         registerPostCount,
         "no extra registration request during navigation and identity verification"
       ).toBe(1)
+      trace.push("identity-verified")
     },
     async () => {
       try {
@@ -228,6 +239,7 @@ test("rapid double submit on a 360px registration form creates one account", asy
         try {
           await page.close()
           registrationPageClosed = true
+          trace.push("page-closed")
         } finally {
           page.off("request", countRegistrationPosts)
         }
@@ -241,4 +253,8 @@ test("rapid double submit on a 360px registration form creates one account", asy
     }
   )
   expect(registerPostCount, "no extra registration request before the page closed").toBe(1)
+  expect(
+    registrationTraceViolations(trace, registerPostCount),
+    "registration steps ran out of order or more than once"
+  ).toEqual([])
 })
