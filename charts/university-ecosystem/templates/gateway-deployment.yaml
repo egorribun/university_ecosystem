@@ -93,7 +93,7 @@ spec:
             - name: JWT_ISSUER
               value: {{ required "global.jwtIssuer must be set" .Values.global.jwtIssuer | quote }}
             - name: BACKEND_URL
-              value: {{ printf "%s://%s:8000" (ternary "https" "http" .Values.internalHttpMTLS.enabled) (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) | quote }}
+              value: {{ printf "%s://%s:%v" (ternary "https" "http" .Values.internalHttpMTLS.enabled) (include "university-ecosystem.componentName" (dict "root" . "component" "backend")) .Values.backend.service.port | quote }}
             - name: FILE_PROCESSOR_ADDR
               value: "{{ include "university-ecosystem.componentName" (dict "root" . "component" "file-processor") }}:50051"
             - name: REDIS_URL_FILE

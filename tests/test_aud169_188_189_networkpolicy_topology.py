@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import copy
 import ipaddress
+import json
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -29,6 +31,7 @@ from tests.test_revocation_store_security_contract import _helm, _resolved_args
 NAMESPACE = "university-ecosystem"
 FIRST = "topology-first"
 SECOND = "topology-second"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @dataclass(frozen=True)
@@ -368,3 +371,76 @@ def test_mutated_topology_exposes_missing_and_additive_policy_rules(
 def test_an_empty_policy_peer_cannot_hide_a_cross_namespace_allowance() -> None:
     assert _peer_matches({}, NAMESPACE, Endpoint("other", {}, "10.0.0.1"))
     assert _peer_matches({}, NAMESPACE, Endpoint(None, {}, "198.51.100.1"))
+
+
+def test_gateway_backend_hop_uses_configured_port_and_same_release(
+    topology: tuple[list[dict[str, Any]], dict[str, Endpoint]],
+) -> None:
+    resources, endpoints = topology
+    for source_release in (FIRST, SECOND):
+        gateway = _resource(resources, "Deployment", f"{source_release}-gateway")
+        source = _pod(gateway, "10.35.0.11")
+        environment = {
+            item["name"]: item.get("value")
+            for item in gateway["spec"]["template"]["spec"]["containers"][0]["env"]
+        }
+        backend_url = urlsplit(environment["BACKEND_URL"])
+        assert (backend_url.hostname, backend_url.port) == (
+            f"{source_release}-backend",
+            8181,
+        )
+        for target_release in (FIRST, SECOND):
+            target = endpoints[f"{target_release}-backend"]
+            same_release = source_release == target_release
+            assert (
+                _allowed_side(resources, source, target, "Egress", "TCP", 8181)
+                is same_release
+            )
+            assert (
+                _allowed_side(resources, target, source, "Ingress", "TCP", 8181)
+                is same_release
+            )
+            for protocol, port in (("TCP", 8000), ("TCP", 8182), ("UDP", 8181)):
+                assert not _allowed_side(
+                    resources, source, target, "Egress", protocol, port
+                )
+                assert not _allowed_side(
+                    resources, target, source, "Ingress", protocol, port
+                )
+        foreign = Endpoint("other", source.labels, source.address)
+        assert not _allowed_side(
+            resources,
+            endpoints[f"{source_release}-backend"],
+            foreign,
+            "Ingress",
+            "TCP",
+            8181,
+        )
+
+
+def test_backend_listener_args_preserve_image_process_and_configured_port(
+    topology: tuple[list[dict[str, Any]], dict[str, Endpoint]],
+) -> None:
+    resources, _ = topology
+    dockerfile = (ROOT / "backend.Dockerfile").read_text(encoding="utf-8")
+    image_args = json.loads(dockerfile.split("\nCMD ", 1)[1].replace("\\\n", ""))
+    assert image_args[0] == "gunicorn"
+    assert image_args.count("--bind") == 1
+    bind_index = image_args.index("--bind") + 1
+    assert image_args[bind_index] == "0.0.0.0:8000"
+    expected = [*image_args]
+    expected[bind_index] = "0.0.0.0:8181"
+    for release in (FIRST, SECOND):
+        backend = _resource(resources, "Deployment", f"{release}-backend")
+        container = backend["spec"]["template"]["spec"]["containers"][0]
+        assert "command" not in container  # Keep the image's tini ENTRYPOINT.
+        assert container["args"] == expected
+        assert {item["name"]: item["containerPort"] for item in container["ports"]}[
+            "http"
+        ] == 8181
+        for probe_name in ("startupProbe", "livenessProbe", "readinessProbe"):
+            probe = container[probe_name]
+            if "exec" in probe:
+                assert probe["exec"]["command"][-2:] == ["--port", "8181"]
+            else:
+                assert probe["httpGet"]["port"] == "http"

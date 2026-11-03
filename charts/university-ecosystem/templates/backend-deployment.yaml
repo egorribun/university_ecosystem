@@ -88,6 +88,25 @@ spec:
         - name: backend
           image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.backend.image) | quote }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          # Preserve the image's tini ENTRYPOINT and Gunicorn options while
+          # binding the same port declared by the Service and health probes.
+          args:
+            - gunicorn
+            - app.main:app
+            - --worker-class
+            - app.server.spiffe_worker.BackendWorker
+            - --workers
+            - "2"
+            - --bind
+            - {{ printf "0.0.0.0:%v" .Values.backend.service.port | quote }}
+            - --graceful-timeout
+            - "30"
+            - --timeout
+            - "60"
+            - --keep-alive
+            - "5"
+            - --error-logfile
+            - "-"
           # RZ-03: container-level hardening — drop all Linux capabilities, block privilege
           # escalation, and mount root filesystem read-only (writable dirs via emptyDir below).
           securityContext:

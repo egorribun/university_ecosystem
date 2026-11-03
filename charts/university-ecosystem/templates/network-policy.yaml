@@ -137,10 +137,11 @@ spec:
     - to:
         - podSelector:
             matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
               app.kubernetes.io/component: backend
       ports:
         - protocol: TCP
-          port: 8000
+          port: {{ .Values.backend.service.port }}
     # Redis — rate limiter.
     - to:
         - podSelector:
@@ -463,10 +464,11 @@ spec:
     - from:
         - podSelector:
             matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
               app.kubernetes.io/component: gateway
       ports:
         - protocol: TCP
-          port: 8000
+          port: {{ .Values.backend.service.port }}
     {{- if $fileProcessorUsesBackendJWKS }}
     # The default file-processor JWKS URL targets this release's backend service.
     - from:
@@ -495,7 +497,7 @@ spec:
               {{- end }}
       ports:
         - protocol: TCP
-          port: 8000
+          port: {{ .Values.backend.service.port }}
     {{- end }}
     {{- if .Values.gatewayApi.enabled }}
     # The Gateway API route sends /.well-known directly to the backend.
@@ -512,7 +514,7 @@ spec:
               {{- end }}
       ports:
         - protocol: TCP
-          port: 8000
+          port: {{ .Values.backend.service.port }}
     {{- end }}
     - from:
         - podSelector:
@@ -520,7 +522,7 @@ spec:
               app.kubernetes.io/component: ws-hub
       ports:
         - protocol: TCP
-          port: 8000
+          port: {{ .Values.backend.service.port }}
     # Prometheus scraping from monitoring namespace.
     - from:
         - namespaceSelector:
@@ -528,7 +530,7 @@ spec:
               kubernetes.io/metadata.name: monitoring
       ports:
         - protocol: TCP
-          port: 8000
+          port: {{ .Values.backend.service.port }}
   egress:
     # PostgreSQL.
     - to:
