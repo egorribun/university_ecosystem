@@ -8,7 +8,11 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
-from app.server.spiffe_identity import WorkloadIdentityError, authorize_verified_leaf
+from app.server.spiffe_identity import (
+    WorkloadIdentityError,
+    authorize_verified_leaf,
+    chain_deadline,
+)
 
 IDENTITY = "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway"
 NOW = datetime(2026, 11, 2, tzinfo=UTC)
@@ -118,6 +122,17 @@ def test_trust_domain_root_cannot_be_a_workload() -> None:
 def test_empty_allowlist_rejects_valid_leaf() -> None:
     with pytest.raises(WorkloadIdentityError):
         authorize_verified_leaf(leaf((IDENTITY,)), frozenset(), NOW)
+
+
+def test_chain_deadline_rejects_missing_verified_path() -> None:
+    with pytest.raises(WorkloadIdentityError, match="chain is missing"):
+        chain_deadline([], NOW)
+
+
+@pytest.mark.parametrize("offset", [-1, 60, 61])
+def test_chain_deadline_rejects_certificate_outside_validity(offset: int) -> None:
+    with pytest.raises(WorkloadIdentityError, match="outside its validity"):
+        chain_deadline([leaf((IDENTITY,))], NOW + timedelta(seconds=offset))
 
 
 @pytest.mark.parametrize("suffix", ["\n", "\r", "\t", "\x00", "\x7f", " "])

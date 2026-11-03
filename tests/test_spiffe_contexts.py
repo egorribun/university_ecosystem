@@ -170,6 +170,28 @@ def test_local_bundle_expiry_limits_server_generation(sdk: Mock) -> None:
     )
 
 
+def test_expired_local_authority_rejects_still_valid_svid(sdk: Mock) -> None:
+    old = sdk.get_x509_context.return_value
+    authority = leaf(
+        ("spiffe://university.ecosystem/test-ca",),
+        ca=True,
+        key_cert_sign=True,
+        valid_until=NOW + timedelta(seconds=30),
+    )
+    sdk.get_x509_context.return_value = X509Context(
+        old.x509_svids,
+        X509BundleSet.of(
+            [X509Bundle(TrustDomain("university.ecosystem"), {authority})]
+        ),
+    )
+    provider = WorkloadContexts(sdk, IDENTITY)
+    first = provider.current()
+    spiffe_identity.datetime.now.return_value = NOW + timedelta(seconds=30)
+    with pytest.raises(WorkloadIdentityError, match="trust authority has expired"):
+        provider.current()
+    assert first.context.verify_mode == ssl.CERT_REQUIRED
+
+
 def test_missing_public_chain_api_fails_before_opening_sdk(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

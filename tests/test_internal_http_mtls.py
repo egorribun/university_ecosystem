@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import runpy
+import sys
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -114,6 +116,69 @@ def test_plaintext_probe_only_when_explicitly_disabled(
         mtls.http.client, "HTTPConnection", Mock(return_value=connection)
     )
     assert mtls.probe("/health/ready", 8000, {})
+    connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [OSError("unavailable"), mtls.http.client.HTTPException("invalid response")],
+)
+def test_plaintext_probe_failure_closes_connection(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    connection = Mock()
+    connection.request.side_effect = error
+    monkeypatch.setattr(
+        mtls.http.client, "HTTPConnection", Mock(return_value=connection)
+    )
+    assert not mtls.probe("/health/ready", 8000, {})
+    connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "failure", ["no_socket", "no_leaf", "no_chain", "mismatched_chain"]
+)
+def test_secure_probe_incomplete_peer_proof_never_sends_http(
+    monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    source = Mock()
+    monkeypatch.setattr(mtls.WorkloadContexts, "connect", Mock(return_value=source))
+    connection = Mock()
+    der = leaf((IDENTITY,)).public_bytes(Encoding.DER)
+    connection.sock.getpeercert.return_value = der
+    connection.sock.get_verified_chain.return_value = [der]
+    if failure == "no_socket":
+        connection.sock = None
+    elif failure == "no_leaf":
+        connection.sock.getpeercert.return_value = None
+    elif failure == "no_chain":
+        connection.sock.get_verified_chain.return_value = []
+    else:
+        connection.sock.get_verified_chain.return_value = [b"different leaf"]
+    monkeypatch.setattr(
+        mtls.http.client, "HTTPSConnection", Mock(return_value=connection)
+    )
+    assert not mtls.probe("/health/ready", 8000, environment())
+    connection.request.assert_not_called()
+    connection.close.assert_called_once()
+    source.close.assert_called_once()
+
+
+def test_module_entrypoint_exits_with_probe_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = Mock()
+    connection.getresponse.return_value.status = 200
+    monkeypatch.setattr(
+        mtls.http.client, "HTTPConnection", Mock(return_value=connection)
+    )
+    monkeypatch.setenv(mtls.ENABLED_ENV, "false")
+    monkeypatch.setattr(sys, "argv", ["internal_mtls", "probe", "/health/ready"])
+    monkeypatch.delitem(sys.modules, "app.server.internal_mtls")
+    with pytest.raises(SystemExit) as caught:
+        runpy.run_module("app.server.internal_mtls", run_name="__main__")
+    assert caught.value.code == 0
+    connection.request.assert_called_once_with("GET", "/health/ready")
     connection.close.assert_called_once()
 
 

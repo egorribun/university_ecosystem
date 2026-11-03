@@ -276,3 +276,192 @@ def test_missing_verified_chain_rejects_peer(
     transport.tls.get_verified_chain.return_value = []
     assert not guard.admit(transport)
     assert transport.aborted
+
+
+def test_watcher_notification_and_closed_guard_are_inert(
+    setup_guard: tuple[TransportGuard, Mock, Mock, Transport],
+) -> None:
+    guard, source, loop, transport = setup_guard
+    guard._updated()
+    loop.call_soon_threadsafe.assert_called_once_with(guard.refresh)
+    guard.close()
+    source.current.reset_mock()
+    guard._updated()
+    guard.refresh()
+    assert guard._client_hello(transport.tls, None, transport.tls.context) == (
+        ssl.ALERT_DESCRIPTION_INTERNAL_ERROR
+    )
+    loop.call_soon_threadsafe.assert_called_once()
+    source.current.assert_not_called()
+    assert not guard.valid(transport)
+
+
+@pytest.mark.parametrize("reason", ["untracked", "expired", "rotated", "closing"])
+def test_valid_rejects_each_stale_authority_reason(
+    setup_guard: tuple[TransportGuard, Mock, Mock, Transport], reason: str
+) -> None:
+    guard, source, _loop, transport = setup_guard
+    if reason != "untracked":
+        assert guard.admit(transport)
+    if reason == "expired":
+        peer = guard.connections[transport]
+        guard.connections[transport] = transport_module.PeerConnection(
+            peer.context, NOW - timedelta(seconds=1), peer.timer
+        )
+    elif reason == "rotated":
+        source.current.return_value = TLSGeneration(
+            ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER), b"new", NOW + timedelta(minutes=1)
+        )
+    elif reason == "closing":
+        transport.abort()
+    assert not guard.valid(transport)
+    assert transport.aborted
+
+
+@pytest.mark.parametrize("kind", ["http", "ws"])
+def test_protocol_closes_non_transport_and_aborts_unadmitted(kind: str) -> None:
+    guard = Mock(spec=TransportGuard)
+    guard.admit.return_value = False
+    classes = guarded_protocols(guard)
+    protocol = object.__new__(classes[0 if kind == "http" else 1])
+    invalid = Mock(spec=asyncio.BaseTransport)
+    protocol.connection_made(invalid)
+    invalid.close.assert_called_once()
+    guard.admit.assert_not_called()
+    transport = Transport(None)
+    protocol.connection_made(transport)
+    assert transport.aborted
+    assert not protocol.admitted
+    protocol.connection_lost(None)
+    guard.remove.assert_called_once_with(transport)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["valid", "before_receive", "after_receive", "send"])
+async def test_http_application_rechecks_receive_and_send(
+    monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    from unittest.mock import AsyncMock
+
+    guard = Mock(spec=TransportGuard)
+    guard.admit.return_value = True
+    guard.valid.return_value = True
+    guard.reject.side_effect = lambda transport: transport.abort()
+    http, _ws = guarded_protocols(guard)
+    protocol = object.__new__(http)
+    protocol.cycle = Mock()
+    received = []
+    request = {"type": "http.request", "body": b"", "more_body": False}
+    response = {"type": "http.response.start", "status": 200, "headers": []}
+    receive = AsyncMock(return_value=request)
+    send = AsyncMock()
+
+    async def application(
+        scope: object, guarded_receive: object, guarded_send: object
+    ) -> None:
+        if phase == "before_receive":
+            guard.valid.return_value = False
+        elif phase == "after_receive":
+
+            async def revoke_during_receive() -> dict[str, object]:
+                guard.valid.return_value = False
+                return request
+
+            receive.side_effect = revoke_during_receive
+        received.append(await guarded_receive())
+        if phase == "send":
+            guard.valid.return_value = False
+        await guarded_send(response)
+
+    def base_connection_made(self: object, transport: object) -> None:
+        self.app = application
+
+    monkeypatch.setattr(
+        transport_module.H11Protocol, "connection_made", base_connection_made
+    )
+    transport = Transport(None)
+    protocol.connection_made(transport)
+    await protocol.app({}, receive, send)
+    if phase == "valid":
+        assert received == [request]
+        receive.assert_awaited_once()
+        send.assert_awaited_once_with(response)
+        assert not transport.aborted
+        guard.reject.assert_not_called()
+    else:
+        assert transport.aborted
+        assert protocol.cycle.disconnected
+        protocol.cycle.message_event.set.assert_called()
+        send.assert_not_awaited()
+        if phase == "send":
+            assert received == [request]
+        else:
+            assert received == [{"type": "http.disconnect"}]
+        if phase == "before_receive":
+            receive.assert_not_awaited()
+        else:
+            receive.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_websocket_delegates_only_while_transport_is_valid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    guard = Mock(spec=TransportGuard)
+    guard.valid.return_value = True
+    _http, ws = guarded_protocols(guard)
+    protocol = object.__new__(ws)
+    protocol.admitted = True
+    protocol.transport = Transport(None)
+    base = transport_module.WebSocketsSansIOProtocol
+    events = Mock()
+    data = Mock()
+    run = AsyncMock()
+    receive = AsyncMock(return_value={"type": "websocket.receive", "text": "hello"})
+    send = AsyncMock()
+    monkeypatch.setattr(base, "data_received", data)
+    monkeypatch.setattr(base, "handle_events", events)
+    monkeypatch.setattr(base, "run_asgi", run)
+    monkeypatch.setattr(base, "receive", receive)
+    monkeypatch.setattr(base, "send", send)
+    protocol.data_received(b"frame")
+    data.assert_called_once_with(b"frame")
+    protocol.handle_events()
+    events.assert_called_once()
+    await protocol.run_asgi()
+    run.assert_awaited_once()
+    assert await protocol.receive() == receive.return_value
+    message = {"type": "websocket.send", "text": "reply"}
+    await protocol.send(message)
+    send.assert_awaited_once_with(message)
+    guard.valid.return_value = False
+    protocol.data_received(b"rejected")
+    data.assert_called_once_with(b"frame")
+    protocol.handle_events()
+    await protocol.run_asgi()
+    events.assert_called_once()
+    run.assert_awaited_once()
+    assert await protocol.receive() == {"type": "websocket.disconnect", "code": 1008}
+    receive.assert_awaited_once()
+    with pytest.raises(transport_module.ClientDisconnected):
+        await protocol.send(message)
+    send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_websocket_revocation_while_receive_is_pending_discards_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    guard = Mock(spec=TransportGuard)
+    guard.valid.side_effect = [True, False]
+    _http, ws = guarded_protocols(guard)
+    protocol = object.__new__(ws)
+    protocol.transport = Transport(None)
+    receive = AsyncMock(return_value={"type": "websocket.receive", "text": "private"})
+    monkeypatch.setattr(transport_module.WebSocketsSansIOProtocol, "receive", receive)
+    assert await protocol.receive() == {"type": "websocket.disconnect", "code": 1008}
+    receive.assert_awaited_once()

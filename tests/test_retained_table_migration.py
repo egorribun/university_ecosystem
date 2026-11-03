@@ -960,3 +960,23 @@ def test_runtime_users_tenant_shape_drift_is_rejected(drift: str) -> None:
         sa.Index("extra_tenant", column)
     with pytest.raises(ValueError, match="Runtime users tenant schema"):
         build_migration_metadata(runtime, dialect_name="postgresql")
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlite"])
+def test_runtime_users_missing_tenant_column_is_rejected_without_mutation(
+    dialect: str,
+) -> None:
+    from app.core.db.retained_table_metadata import build_migration_metadata
+
+    runtime = sa.MetaData()
+    sa.Table("tenants", runtime, sa.Column("id", sa.UUID(), primary_key=True))
+    users = sa.Table("users", runtime, sa.Column("id", sa.UUID(), primary_key=True))
+    original_id = users.c.id
+
+    with pytest.raises(ValueError, match="Runtime users tenant schema"):
+        build_migration_metadata(runtime, dialect_name=dialect)
+
+    assert set(runtime.tables) == {"users", "tenants"}
+    assert tuple(users.c.keys()) == ("id",)
+    assert users.c.id is original_id
+    assert not users.indexes

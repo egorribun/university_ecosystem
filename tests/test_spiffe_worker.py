@@ -10,8 +10,10 @@ from tests.test_internal_http_mtls import environment
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("started", [True, False])
 async def test_worker_binds_guarded_protocols_after_config_load(
     monkeypatch: pytest.MonkeyPatch,
+    started: bool,
 ) -> None:
     for key, value in environment().items():
         monkeypatch.setenv(key, value)
@@ -32,10 +34,15 @@ async def test_worker_binds_guarded_protocols_after_config_load(
         "guarded_protocols",
         Mock(return_value=(http_protocol, ws_protocol)),
     )
-    server = Mock(started=True)
+    server = Mock(started=started)
     server.serve = AsyncMock()
     monkeypatch.setattr(spiffe_worker, "Server", Mock(return_value=server))
-    await worker._serve()
+    if started:
+        await worker._serve()
+    else:
+        with pytest.raises(SystemExit) as caught:
+            await worker._serve()
+        assert caught.value.code == spiffe_worker.Arbiter.WORKER_BOOT_ERROR
     assert worker.config.http is http_protocol
     assert worker.config.ws is ws_protocol
     assert worker.config.ssl is guard.start.return_value
