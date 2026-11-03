@@ -431,6 +431,69 @@ async def test_create_log_has_signed_identity_before_its_only_flush(dialect):
     db.commit.assert_not_called()
 
 
+@pytest.mark.parametrize("explicit_none", [False, True])
+def test_audit_preparation_supplies_only_missing_or_none_id(explicit_none):
+    service = SecureAuditService(signing_key=secrets.token_bytes(32))
+    entry = {"resource_type": "user", "action": "read"}
+    if explicit_none:
+        entry["id"] = None
+    original = dict(entry)
+    generated = uuid4()
+
+    with patch.object(
+        audit_module, "generate_uuid7", return_value=generated
+    ) as generate:
+        row = service._prepare_signed_log(entry, sqlite=False)
+
+    generate.assert_called_once_with()
+    assert row.id == generated
+    assert entry == original
+    assert service.verify_integrity(row) is True
+
+
+@pytest.mark.parametrize("representation", ["uuid", "uppercase", "compact"])
+def test_audit_preparation_preserves_supplied_id_without_generation(representation):
+    service = SecureAuditService(signing_key=secrets.token_bytes(32))
+    identity = uuid4()
+    supplied = {
+        "uuid": identity,
+        "uppercase": str(identity).upper(),
+        "compact": identity.hex,
+    }[representation]
+    entry = {"id": supplied, "resource_type": "user", "action": "read"}
+    original = dict(entry)
+
+    with patch.object(audit_module, "generate_uuid7") as generate:
+        row = service._prepare_signed_log(entry, sqlite=False)
+
+    generate.assert_not_called()
+    assert row.id == identity
+    assert entry == original
+    assert service.verify_integrity(row) is True
+
+
+@pytest.mark.asyncio
+async def test_audit_empty_id_is_rejected_without_generation_or_database_mutation():
+    service = SecureAuditService(signing_key=secrets.token_bytes(32))
+    db = MagicMock()
+    db.get_bind.return_value.dialect.name = "postgresql"
+    db.flush = AsyncMock()
+    entry = {"id": "", "resource_type": "user", "action": "read"}
+    original = dict(entry)
+
+    with patch.object(audit_module, "generate_uuid7") as generate:
+        with pytest.raises(ValueError):
+            await service.create_logs(db, entries=[entry])
+
+    generate.assert_not_called()
+    assert entry == original
+    db.add_all.assert_not_called()
+    db.flush.assert_not_awaited()
+    db.execute.assert_not_called()
+    db.commit.assert_not_called()
+    db.rollback.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_create_log_propagates_insert_failure_without_a_signed_dto():
     from sqlalchemy.exc import IntegrityError

@@ -726,9 +726,10 @@ class SecureAuditService:
         self, entry: dict[str, Any], *, sqlite: bool
     ) -> DataAccessLog:
         """Freeze the INSERT representation before signing, without changing v2."""
-        row = DataAccessLog(**entry)
-        if row.id is None:
-            row.id = generate_uuid7()
+        values = dict(entry)
+        if values.get("id") is None:
+            values["id"] = generate_uuid7()
+        row = DataAccessLog(**values)
         # Native PostgreSQL UUIDs accept text but reload as canonical UUIDs.
         # Sign those canonical values, never the caller's spelling.
         for field in ("id", "actor_user_id", "subject_user_id"):
