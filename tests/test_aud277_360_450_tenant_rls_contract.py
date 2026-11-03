@@ -128,7 +128,7 @@ _MESSAGE_PARTICIPANT_SQL = (
     "USING ((chat_id IN ( SELECT chat_participants.chat_id\n"
     "   FROM public.chat_participants\n"
     "  WHERE (chat_participants.user_id = "
-    "(current_setting('app.current_user_id'::text, true))::uuid))))"
+    "(NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid))))"
 )
 _TENANTS_TABLE_SQL = """
 CREATE TABLE public.tenants (

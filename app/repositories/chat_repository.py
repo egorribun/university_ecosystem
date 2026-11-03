@@ -843,7 +843,16 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
     async def create_message(self, message: Message) -> MessageDTO:
         """
         Persist a new message to the database.
+
+        The ``messages_participant_isolation`` policy also checks INSERT on
+        PostgreSQL and needs the sender's transaction-local identity. Plain sends
+        and forwards reach here without an Idempotency-Key, so bind the sender
+        here rather than relying on the caller.
         """
+        if self.db.get_bind().dialect.name == "postgresql":
+            # Guarded so non-PostgreSQL callers never read sender_id; the helper
+            # performs the same dialect check and would be a no-op otherwise.
+            await self._set_message_rls_user(message.sender_id)
         self.db.add(message)
         await self.db.flush()
         return MessageDTO.model_validate(message)

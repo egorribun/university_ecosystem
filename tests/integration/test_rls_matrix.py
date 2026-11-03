@@ -19,6 +19,10 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.db.listeners import register_tenant_listeners
 from app.core.tenant import get_bypass_rls, set_current_tenant, tenant_id_ctx
+from tests.fixtures.rls_runtime_role import (
+    RUNTIME_ROLE_FLAGS_QUERY,
+    runtime_role_statements,
+)
 
 _RUN = bool(os.getenv("RUN_INTEGRATION_TESTS"))
 _PG_URL = os.getenv("DATABASE_URL", "")
@@ -40,30 +44,26 @@ def pg_engine():
     engine.sync_engine.dispose()
 
 
+# Generated per run: the runtime login is built by this module, never reused.
+_RUNTIME_PASSWORD = uuid.uuid4().hex + uuid.uuid4().hex
+
+
 @pytest_asyncio.fixture(scope="module", autouse=True)
-async def setup_rls_role(pg_engine):
+async def setup_rls_role(pg_engine) -> None:
+    """Build rls_matrix_user as NOSUPERUSER NOBYPASSRLS with production DML grants.
+
+    The hosted integration database user is a superuser and bypasses RLS, so
+    the matrix must run as this role.
+    """
     async with pg_engine.connect() as conn:
-        await conn.execute(
-            text("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'rls_matrix_user') THEN
-                    CREATE ROLE rls_matrix_user WITH LOGIN PASSWORD 'matrix_pass'; -- pragma: allowlist secret
-                END IF;
-            END
-            $$;
-        """)
-        )
-        await conn.execute(
-            text(
-                "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rls_matrix_user"
+        for statement in runtime_role_statements("rls_matrix_user", _RUNTIME_PASSWORD):
+            await conn.exec_driver_sql(statement)
+        flags = (
+            await conn.execute(
+                text(RUNTIME_ROLE_FLAGS_QUERY), {"role": "rls_matrix_user"}
             )
-        )
-        await conn.execute(
-            text(
-                "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO rls_matrix_user"
-            )
-        )
+        ).one()
+        assert tuple(flags) == (False, False, False), "runtime role must not bypass RLS"
         await conn.commit()
 
 
@@ -72,7 +72,7 @@ def non_superuser_engine():
     from urllib.parse import urlparse, urlunparse
 
     parsed = urlparse(_PG_URL)
-    netloc = f"rls_matrix_user:matrix_pass@{parsed.hostname}:{parsed.port}"
+    netloc = f"rls_matrix_user:{_RUNTIME_PASSWORD}@{parsed.hostname}:{parsed.port}"
     test_url = urlunparse(parsed._replace(netloc=netloc))
     engine = create_async_engine(test_url, echo=False, future=True)
     yield engine
@@ -212,6 +212,12 @@ async def test_rls_matrix_read_write(
         {"id": msg_a_id, "chat_id": chat_a_id, "sender": users["student"]},
     )
 
+    # Positive control: the user who sent msg_a reads that row back.
+    res_own = await pg_session.execute(
+        text("SELECT id FROM messages WHERE id = :id"), {"id": msg_a_id}
+    )
+    assert res_own.fetchone() is not None, "sender must read its own message"
+
     # Temporarily join Chat B as student to seed its message, then revoke
     # membership before exercising every non-participant denial below.
     await pg_session.execute(
@@ -227,6 +233,11 @@ async def test_rls_matrix_read_write(
         ),
         {"id": msg_b_id, "chat_id": chat_b_id, "sender": users["student"]},
     )
+    # Positive control: while a participant, the student reads msg_b.
+    res_b_member = await pg_session.execute(
+        text("SELECT id FROM messages WHERE id = :id"), {"id": msg_b_id}
+    )
+    assert res_b_member.fetchone() is not None, "participant must read msg_b"
     await pg_session.execute(
         text(
             "DELETE FROM chat_participants WHERE chat_id = :chat_id AND user_id = :user_id"
@@ -270,7 +281,7 @@ async def test_rls_matrix_read_write(
 
         # Write to Chat B (Non-participant) -> FAILURE
         bad_msg_id = str(uuid.uuid4())
-        with pytest.raises(DBAPIError):
+        with pytest.raises(DBAPIError, match="row-level security policy"):
             async with pg_session.begin_nested():
                 await pg_session.execute(
                     text(
@@ -282,17 +293,19 @@ async def test_rls_matrix_read_write(
                 # Flush is required to trigger constraint/RLS violation check in DB
                 await pg_session.flush()
 
-    # 2. Anonymous / Unauthenticated context -> cannot read or write anything
+    # 2. Anonymous / Unauthenticated context. The empty identity means no
+    # identity: it reads zero rows and must not raise 22P02 (invalid input syntax
+    # for type uuid). The NULLIF form of messages_participant_isolation makes this so.
     await pg_session.execute(text("SELECT set_config('app.current_user_id', '', true)"))
 
-    # Read A -> Empty
+    # Read A -> zero rows, not an error
     res_anon_a = await pg_session.execute(
         text("SELECT id FROM messages WHERE id = :id"), {"id": msg_a_id}
     )
     assert res_anon_a.fetchone() is None
 
     # Write A -> Fail
-    with pytest.raises(DBAPIError):
+    with pytest.raises(DBAPIError, match="row-level security policy"):
         async with pg_session.begin_nested():
             await pg_session.execute(
                 text(
@@ -388,3 +401,99 @@ async def test_rls_matrix_update_delete(
     assert res_del_other.rowcount == 0, (
         "Student must not be able to delete teacher's message"
     )
+
+
+@pytest.mark.asyncio
+async def test_tenant_a_participant_is_denied_tenant_b_messages(
+    pg_session: AsyncSession,
+    setup_matrix_users_and_chats,
+) -> None:
+    """The tenant policy hides tenant B rows from a tenant A session, even for a participant.
+
+    Participation alone would show a tenant B message to its participant. The
+    RESTRICTIVE tenant_isolation_policy must also deny the read and the insert
+    under tenant A's GUC. Tenant B is seeded inside this rolled-back transaction
+    under its own tenant GUC, then the GUC is switched back to tenant A.
+    """
+    users, _chat_a_id, _chat_b_id = setup_matrix_users_and_chats
+    student = users["student"]
+    tenant_a = str(
+        await pg_session.scalar(
+            text("SELECT current_setting('app.current_tenant', TRUE)")
+        )
+    )
+    tenant_b = str(uuid.uuid4())
+    chat_b2 = str(uuid.uuid4())
+    msg_b = str(uuid.uuid4())
+
+    await pg_session.execute(
+        text(
+            "INSERT INTO tenants (id, name, slug) VALUES (:id, 'RLS tenant B', :slug)"
+        ),
+        {"id": tenant_b, "slug": f"rls-b-{tenant_b}"},
+    )
+    # Seed tenant B under its own tenant GUC, with the student as participant.
+    await pg_session.execute(
+        text("SELECT set_config('app.current_tenant', :tenant, true)"),
+        {"tenant": tenant_b},
+    )
+    await pg_session.execute(
+        text(
+            "INSERT INTO chats (id, created_at, updated_at, tenant_id) "
+            "VALUES (:id, NOW(), NOW(), :tenant)"
+        ),
+        {"id": chat_b2, "tenant": tenant_b},
+    )
+    await pg_session.execute(
+        text(
+            "INSERT INTO chat_participants (chat_id, user_id) VALUES (:chat_id, :user_id)"
+        ),
+        {"chat_id": chat_b2, "user_id": student},
+    )
+    await pg_session.execute(
+        text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": student}
+    )
+    await pg_session.execute(
+        text(
+            "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+            "VALUES (:id, :chat_id, :sender, 'tenant B message', NOW(), false, :tenant)"
+        ),
+        {"id": msg_b, "chat_id": chat_b2, "sender": student, "tenant": tenant_b},
+    )
+
+    # Positive control: under tenant B, its participant reads the row.
+    visible_in_b = await pg_session.execute(
+        text("SELECT id FROM messages WHERE id = :id"), {"id": msg_b}
+    )
+    assert visible_in_b.fetchone() is not None, "tenant B participant must read msg_b"
+
+    # Back to tenant A: the same student is a participant of chat_b2 but is denied.
+    await pg_session.execute(
+        text("SELECT set_config('app.current_tenant', :tenant, true)"),
+        {"tenant": tenant_a},
+    )
+    hidden = await pg_session.execute(
+        text("SELECT id FROM messages WHERE id = :id"), {"id": msg_b}
+    )
+    assert hidden.fetchone() is None, "tenant A must not read tenant B messages"
+    count_b = await pg_session.scalar(
+        text("SELECT count(*) FROM messages WHERE chat_id = :chat_id"),
+        {"chat_id": chat_b2},
+    )
+    assert count_b == 0, "tenant A must see no tenant B rows in chat_b2"
+
+    with pytest.raises(DBAPIError, match="row-level security policy"):
+        async with pg_session.begin_nested():
+            await pg_session.execute(
+                text(
+                    "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "
+                    "VALUES (:id, :chat_id, :sender, 'cross-tenant', NOW(), false, :tenant)"
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "chat_id": chat_b2,
+                    "sender": student,
+                    "tenant": tenant_b,
+                },
+            )
+            await pg_session.flush()

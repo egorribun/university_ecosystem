@@ -105,6 +105,8 @@ Audit findings
   downgrade must refuse without changing the schema.
 - The owner decision of 2026-11-02 records the equivalence as proven. This ADR
   does not record a run of that test.
+- Owner approval of 2026-11-03 (in chat): one exact replacement of the
+  `messages_participant_isolation` policy with the `NULLIF` form, so an unbound pooled session denies with zero rows instead of raising 22P02; it is the only approved statement and catalog removal.
 
 ## Not decided here
 

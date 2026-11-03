@@ -28,6 +28,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -36,6 +37,13 @@ from app.core.events import EventBus, MessageEdited, MessageSent
 from app.core.tenant import get_bypass_rls, set_current_tenant, tenant_id_ctx
 from app.repositories.chat_repository import ChatRepository
 from app.services import event_handlers
+from tests.fixtures.rls_runtime_role import (
+    RUNTIME_ROLE_FLAGS_QUERY,
+    runtime_role_statements,
+)
+
+# Generated per run: the runtime login is built by this module, never reused.
+_RUNTIME_PASSWORD = uuid.uuid4().hex + uuid.uuid4().hex
 
 # ---------------------------------------------------------------------------
 # Skip guard — these tests need PostgreSQL + explicit opt-in
@@ -70,28 +78,21 @@ def pg_engine():
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
-async def setup_rls_role(pg_engine):
-    """Create a temporary non-superuser role and grant necessary privileges for testing RLS."""
+async def setup_rls_role(pg_engine) -> None:
+    """Build rls_test_user as a NOSUPERUSER NOBYPASSRLS login with production DML grants.
+
+    The hosted integration database user is a superuser, which bypasses RLS, so
+    every RLS assertion in this module runs as this role.
+    """
     async with pg_engine.connect() as conn:
-        await conn.execute(
-            text("""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'rls_test_user') THEN
-                    CREATE ROLE rls_test_user WITH LOGIN PASSWORD 'test_pass'; -- pragma: allowlist secret
-                END IF;
-            END
-            $$;
-        """)
-        )
-        await conn.execute(
-            text("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO rls_test_user")
-        )
-        await conn.execute(
-            text(
-                "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO rls_test_user"
+        for statement in runtime_role_statements("rls_test_user", _RUNTIME_PASSWORD):
+            await conn.exec_driver_sql(statement)
+        flags = (
+            await conn.execute(
+                text(RUNTIME_ROLE_FLAGS_QUERY), {"role": "rls_test_user"}
             )
-        )
+        ).one()
+        assert tuple(flags) == (False, False, False), "runtime role must not bypass RLS"
         await conn.commit()
 
 
@@ -101,7 +102,7 @@ def non_superuser_engine():
     from urllib.parse import urlparse, urlunparse
 
     parsed = urlparse(_PG_URL)
-    netloc = f"rls_test_user:test_pass@{parsed.hostname}:{parsed.port}"
+    netloc = f"rls_test_user:{_RUNTIME_PASSWORD}@{parsed.hostname}:{parsed.port}"
     test_url = urlunparse(parsed._replace(netloc=netloc))
     engine = create_async_engine(test_url, echo=False, future=True)
     yield engine
@@ -318,11 +319,11 @@ async def test_rls_with_null_user_id_returns_no_messages(
     pg_session: AsyncSession,
     two_users_and_chat,
 ):
-    """Setting app.current_user_id to an empty string returns zero message rows.
+    """A bound identity that is not a participant reads zero message rows.
 
-    This guards the case where _set_rls_user() is called with a NULL/empty
-    user_id (e.g. an anonymous or unauthenticated path that accidentally
-    reaches a query touching messages).
+    This binds a random UUID, the miscall case where a query reaches messages
+    with a user who is in no chat. The empty-string identity is a separate
+    path: test_rls_matrix_read_write covers it and asserts zero rows, not an error.
     """
     user_a_id, _, chat_id = two_users_and_chat
     msg_id = str(uuid.uuid4())
@@ -573,9 +574,7 @@ async def test_rls_blocks_writing_mismatched_sender_id(
         text("SELECT set_config('app.current_user_id', :uid, true)"), {"uid": user_b_id}
     )
 
-    from sqlalchemy.exc import DBAPIError
-
-    with pytest.raises(DBAPIError):
+    with pytest.raises(DBAPIError, match="row-level security policy"):
         await pg_session.execute(
             text(
                 "INSERT INTO messages (id, chat_id, sender_id, content, created_at, read_status, tenant_id) "

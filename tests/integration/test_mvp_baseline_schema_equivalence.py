@@ -139,6 +139,56 @@ _PARTITION_SUFFIXES: Final = (
     "2028_05",
     "default",
 )
+# Owner decision, 2026-11-03 (approved in chat): exactly one audited replacement of
+# the messages_participant_isolation policy. The NULLIF form makes an unbound pooled
+# session deny with zero rows, instead of raising 22P02 (invalid_text_representation),
+# after a transaction-local app.current_user_id has ended and reads as ''. ADR-051
+# records the same approval.
+_MESSAGES_PARTICIPANT_STATEMENT_BEFORE: Final = (
+    "CREATE POLICY messages_participant_isolation ON public.messages USING "
+    "((chat_id IN ( SELECT chat_participants.chat_id FROM public.chat_participants "
+    "WHERE (chat_participants.user_id = "
+    "(current_setting('app.current_user_id'::text, true))::uuid))))"
+)
+_MESSAGES_PARTICIPANT_STATEMENT_AFTER: Final = (
+    "CREATE POLICY messages_participant_isolation ON public.messages USING "
+    "((chat_id IN ( SELECT chat_participants.chat_id FROM public.chat_participants "
+    "WHERE (chat_participants.user_id = "
+    "(NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid))))"
+)
+_MESSAGES_PARTICIPANT_QUAL_BEFORE: Final = (
+    "(chat_id IN ( SELECT chat_participants.chat_id\n   FROM chat_participants\n"
+    "  WHERE (chat_participants.user_id = "
+    "(current_setting('app.current_user_id'::text, true))::uuid)))"
+)
+_MESSAGES_PARTICIPANT_QUAL_AFTER: Final = (
+    "(chat_id IN ( SELECT chat_participants.chat_id\n   FROM chat_participants\n"
+    "  WHERE (chat_participants.user_id = "
+    "(NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid)))"
+)
+# repr() of the pg_policies row, as _probe() produces it.
+_MESSAGES_PARTICIPANT_ROW_BEFORE: Final = repr(
+    (
+        "messages",
+        "messages_participant_isolation",
+        "PERMISSIVE",
+        "{public}",
+        "ALL",
+        _MESSAGES_PARTICIPANT_QUAL_BEFORE,
+        None,
+    )
+)
+_MESSAGES_PARTICIPANT_ROW_AFTER: Final = repr(
+    (
+        "messages",
+        "messages_participant_isolation",
+        "PERMISSIVE",
+        "{public}",
+        "ALL",
+        _MESSAGES_PARTICIPANT_QUAL_AFTER,
+        None,
+    )
+)
 APPROVED_ADDED_STATEMENTS: Final = (
     *_DELIVERY_ONCE_STATEMENTS,
     *_RESTORED_PARENT_INDEXES,
@@ -153,12 +203,14 @@ APPROVED_ADDED_STATEMENTS: Final = (
             f"public.notifications_{suffix}_user_id_created_at_idx1",
         )
     ),
+    _MESSAGES_PARTICIPANT_STATEMENT_AFTER,
 )
 # Owner decision: keep exactly one unique lower(email) index. The pre-squash
 # ix_users_email_lower is dropped; the restored ux_users_lower_email replaces it.
 APPROVED_REMOVED_STATEMENTS: Final = (
     "CREATE UNIQUE INDEX ix_users_email_lower ON public.users USING btree "
     "(lower((email)::text))",
+    _MESSAGES_PARTICIPANT_STATEMENT_BEFORE,
 )
 
 _DELIVERY_ONCE_RELATION: Final = (
@@ -180,6 +232,7 @@ _DELIVERY_ONCE_COLUMNS: Final = (
 )
 # Catalog rows the baseline adds on purpose, in the repr form produced by _probe.
 APPROVED_CATALOG_ADDITIONS: Final[Mapping[str, tuple[str, ...]]] = {
+    "policies": (_MESSAGES_PARTICIPANT_ROW_AFTER,),
     "relations": (repr(_DELIVERY_ONCE_RELATION),),
     "columns": tuple(
         repr(
@@ -207,6 +260,11 @@ APPROVED_CATALOG_ADDITIONS: Final[Mapping[str, tuple[str, ...]]] = {
         )
         for suffix in _PARTITION_SUFFIXES
     ),
+}
+
+# Catalog rows the replacement above removes. Only this one fact may disappear.
+APPROVED_CATALOG_REMOVALS: Final[Mapping[str, tuple[str, ...]]] = {
+    "policies": (_MESSAGES_PARTICIPANT_ROW_BEFORE,),
 }
 
 CATALOG_PROBES: dict[str, str] = {
@@ -801,7 +859,8 @@ def test_catalog_facts_outside_the_additions_are_identical(built: _Built) -> Non
 
     assert before.keys() == after.keys() == CATALOG_PROBES.keys()
     for name in CATALOG_PROBES:
-        assert not Counter(before[name]) - Counter(after[name]), name
+        removed = Counter(before[name]) - Counter(after[name])
+        assert removed == Counter(APPROVED_CATALOG_REMOVALS.get(name, ())), name
         added = Counter(after[name]) - Counter(before[name])
         assert added == Counter(APPROVED_CATALOG_ADDITIONS.get(name, ())), name
 

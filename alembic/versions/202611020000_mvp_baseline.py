@@ -2639,8 +2639,8 @@ _POLICIES: tuple[str, ...] = (
         "CREATE POLICY messages_participant_isolation ON public.messages USING "
         "((chat_id IN ( SELECT chat_participants.chat_id\n"
         "   FROM public.chat_participants\n"
-        "  WHERE (chat_participants.user_id = (current_setting('app.current_user_id':"
-        ":text, true))::uuid))))"
+        "  WHERE (chat_participants.user_id = "
+        "(NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::uuid))))"
     ),
     (
         "CREATE POLICY tenant_isolation_policy ON public.chats USING "
