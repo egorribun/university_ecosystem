@@ -411,16 +411,92 @@ def _squawk_step(workflow: str) -> str:
     return workflow[start : workflow.index("      - name: Wait for PostgreSQL", start)]
 
 
-def test_squawk_lints_live_rendered_sql_without_index_fk_or_timeout_exclusions() -> (
-    None
-):
-    """AUD-208: changed revisions are linted from live PostgreSQL DDL, not --sql stubs."""
+_BASELINE_SQUAWK_PATH = "alembic/versions/202611020000_mvp_baseline.py"
+_BASELINE_SQUAWK_EXCLUSIONS = (
+    "require-concurrent-index-creation",
+    "constraint-missing-not-valid",
+    "adding-foreign-key-constraint",
+    "prefer-text-field",
+    "prefer-bigint-over-int",
+)
 
-    step = _squawk_step(Path(".github/workflows/ci.yml").read_text(encoding="utf-8"))
 
+def _assert_squawk_live_scope(step: str) -> None:
     assert "python -m scripts.quality.render_live_alembic_sql" in step
     assert "alembic upgrade" not in step
     assert "_emit_news_media_asset_ddl" not in step
+    lines = [line.strip() for line in step.splitlines()]
+    scoped = [
+        "while IFS= read -r migration; do",
+        '[ -z "$migration" ] && continue',
+        "squawk_args=()",
+        f'if [[ "$migration" == "{_BASELINE_SQUAWK_PATH}" ]]; then',
+        "squawk_args=(",
+        *(f"--exclude {rule}" for rule in _BASELINE_SQUAWK_EXCLUSIONS),
+        ")",
+        "fi",
+    ]
+    normalized = "\n".join(lines)
+    exception = "\n".join(scoped)
+    assert normalized.count(exception) == 1
+    # Removing the one exact reset-and-baseline block must leave no exception.
+    # All other changed migrations retain every original rule, including index,
+    # foreign-key and timeout rules. No extra assignment may leak baseline args.
+    ordinary = normalized.replace(exception, "", 1)
+    assert "--exclude" not in ordinary
+    assert step.count("squawk_args") == 3
     for rule in _SQUAWK_RULES_THAT_MUST_LINT:
+        assert f"--exclude {rule}" not in ordinary
+    for rule in (
+        "require-timeout-settings",
+        "require-lock-timeout",
+        "require-statement-timeout",
+        "require-concurrent-index-deletion",
+    ):
         assert f"--exclude {rule}" not in step
     assert '"$squawk_binary_path" "${squawk_args[@]}" "$sql_file"' in step
+
+
+def test_squawk_lints_live_sql_with_only_the_approved_baseline_exception() -> None:
+    """AUD-208: exact baseline exception; other changed revisions keep all rules."""
+    step = _squawk_step(Path(".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    _assert_squawk_live_scope(step)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "wrong-path",
+        "missing-reset",
+        "unguarded",
+        "extra-rule",
+        "timeout",
+        "leaked-args",
+    ],
+)
+def test_squawk_live_scope_rejects_exception_widening(defect: str) -> None:
+    step = _squawk_step(Path(".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    _assert_squawk_live_scope(step)
+    if defect == "wrong-path":
+        changed = step.replace(_BASELINE_SQUAWK_PATH, "alembic/versions/other.py")
+    elif defect == "missing-reset":
+        changed = step.replace("squawk_args=()", "", 1)
+    elif defect == "unguarded":
+        changed = step.replace(
+            f'if [[ "$migration" == "{_BASELINE_SQUAWK_PATH}" ]]; then',
+            "if true; then",
+            1,
+        )
+    elif defect in {"extra-rule", "timeout"}:
+        rule = "ban-drop-table" if defect == "extra-rule" else "require-lock-timeout"
+        changed = step.replace(
+            "--exclude prefer-text-field",
+            f"--exclude prefer-text-field --exclude {rule}",
+            1,
+        )
+    else:
+        assert defect == "leaked-args"
+        changed = step + "\nsquawk_args=(--exclude adding-foreign-key-constraint)\n"
+    assert changed != step
+    with pytest.raises(AssertionError):
+        _assert_squawk_live_scope(changed)
