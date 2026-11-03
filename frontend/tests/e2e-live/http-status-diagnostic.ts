@@ -1,4 +1,4 @@
-// Bound both projects x twenty-six checks x two attempts (CI retries once).
+// Keep the existing hard output bound as the closed check set grows.
 const emittedRecords = new Set<string>()
 const MAX_RECORDS = 104
 const emittedRetryRecords = new Set<string>()
@@ -17,6 +17,10 @@ export type LiveRateLimitRetryDecision =
   "retry" | "declined-header" | "declined-deadline" | "not-retried"
 
 export type LiveHttpStatusCheck =
+  | "student-users-denied"
+  | "teacher-users-denied"
+  | "student-feature-flags-denied"
+  | "teacher-feature-flags-denied"
   | "admin-users"
   | "admin-feature-flags"
   | "admin-feature-flags-ui"
@@ -45,6 +49,10 @@ export type LiveHttpStatusCheck =
   | "email-mfa-login-accept"
 
 const LIVE_HTTP_STATUS_CHECKS: ReadonlySet<LiveHttpStatusCheck> = new Set([
+  "student-users-denied",
+  "teacher-users-denied",
+  "student-feature-flags-denied",
+  "teacher-feature-flags-denied",
   "admin-users",
   "admin-feature-flags",
   "admin-feature-flags-ui",

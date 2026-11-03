@@ -2715,6 +2715,10 @@ def test_live_playwright_emits_only_closed_paint_and_footer_diagnostics(
 @pytest.mark.parametrize(
     "check",
     [
+        "student-users-denied",
+        "teacher-users-denied",
+        "student-feature-flags-denied",
+        "teacher-feature-flags-denied",
         "admin-users",
         "admin-feature-flags",
         "admin-feature-flags-ui",
@@ -2723,7 +2727,7 @@ def test_live_playwright_emits_only_closed_paint_and_footer_diagnostics(
         "chat-attachment-create",
     ],
 )
-@pytest.mark.parametrize("status", [100, 200, 403, 500, 599])
+@pytest.mark.parametrize("status", [100, 200, 401, 403, 429, 500, 599])
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
 def test_live_playwright_http_status_accepts_only_fixed_domains(
     project: str, check: str, status: int, newline: str

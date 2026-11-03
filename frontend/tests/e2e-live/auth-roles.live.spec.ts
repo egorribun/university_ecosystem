@@ -257,7 +257,7 @@ test("admin can access feature-flag diagnostics", async ({ page }, testInfo) => 
 for (const role of ["student", "teacher"] as const) {
   test(`${role} is denied access to admin pages, user listing, and feature flags`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     await loginAs(page, role)
 
     const identity = await page.request.get("/api/v1/users/me")
@@ -270,6 +270,7 @@ for (const role of ["student", "teacher"] as const) {
     )
 
     const users = await page.request.get("/api/v1/users")
+    reportLiveHttpStatus(testInfo.project.name, `${role}-users-denied`, users.status())
     expect(users.status(), `${role} GET /api/v1/users status`).toBe(403)
 
     await page.goto("/admin/feature-flags")
@@ -279,6 +280,11 @@ for (const role of ["student", "teacher"] as const) {
     ).toHaveURL(/\/dashboard$/)
 
     const featureFlags = await page.request.get("/api/v1/admin/feature-flags")
+    reportLiveHttpStatus(
+      testInfo.project.name,
+      `${role}-feature-flags-denied`,
+      featureFlags.status()
+    )
     expect(featureFlags.status(), `${role} GET /api/v1/admin/feature-flags status`).toBe(403)
   })
 }

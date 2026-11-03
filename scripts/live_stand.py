@@ -7214,7 +7214,9 @@ def _live_playwright_login_failures(output: str) -> list[_PlaywrightLoginFailure
 
 _PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
     r"UE_LIVE_HTTP_STATUS_V1 project=(?P<project>desktop|mobile) "
-    r"check=(?P<check>admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay|"
+    r"check=(?P<check>student-users-denied|teacher-users-denied|"
+    r"student-feature-flags-denied|teacher-feature-flags-denied|"
+    r"admin-users|admin-feature-flags|admin-feature-flags-ui|password-reset-replay|"
     r"auth-login|auth-session-cap|auth-logout|auth-session-preflight|"
     r"messenger-message-send|chat-attachment-create|email-otp-register|"
     r"email-otp-verification-start|email-otp-verification-wrong-code|"
@@ -7228,6 +7230,10 @@ _PLAYWRIGHT_HTTP_STATUS_LINE = re.compile(
 _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
     check: check
     for check in (
+        "student-users-denied",
+        "teacher-users-denied",
+        "student-feature-flags-denied",
+        "teacher-feature-flags-denied",
         "admin-users",
         "admin-feature-flags",
         "admin-feature-flags-ui",
@@ -7256,7 +7262,7 @@ _PLAYWRIGHT_HTTP_STATUS_CHECKS = {
         "email-mfa-login-accept",
     )
 }
-# 26 closed checks × two projects × two attempts (initial plus one retry).
+# Keep the existing hard output bound as the closed check set grows.
 _PLAYWRIGHT_HTTP_STATUS_LIMIT = 104
 
 

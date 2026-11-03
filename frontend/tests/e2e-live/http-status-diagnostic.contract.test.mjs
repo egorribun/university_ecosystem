@@ -26,11 +26,15 @@ function reportInChild(calls) {
 }
 
 test("HTTP diagnostics emit only fixed project/check labels and integer status boundaries", () => {
-  for (const status of [100, 599]) {
+  for (const status of [100, 200, 401, 403, 429, 500, 599]) {
     const calls = []
     const expected = []
     for (const project of ["desktop", "mobile"]) {
       for (const check of [
+        "student-users-denied",
+        "teacher-users-denied",
+        "student-feature-flags-denied",
+        "teacher-feature-flags-denied",
         "admin-users",
         "admin-feature-flags",
         "admin-feature-flags-ui",
@@ -505,4 +509,19 @@ test("login failure diagnostics cannot replace the original failure if stdout th
     `),
     ""
   )
+})
+
+test("role-denial probes report status before preserving the strict forbidden assertions", async () => {
+  const source = await readFile(new URL("./auth-roles.live.spec.ts", import.meta.url), "utf8")
+  const denial = source.slice(source.indexOf('for (const role of ["student", "teacher"] as const)'))
+  for (const [variable, check] of [
+    ["users", "users"],
+    ["featureFlags", "feature-flags"],
+  ]) {
+    const diagnostic = denial.indexOf("`${role}-" + check + "-denied`")
+    const assertion = denial.indexOf("expect(" + variable + ".status(),")
+    assert.ok(diagnostic >= 0 && diagnostic < assertion)
+    assert.match(denial.slice(assertion).split("\n")[0], /\.toBe\(403\)/u)
+  }
+  assert.doesNotMatch(denial, /Retry|retry|waitForTimeout|expect\.poll/u)
 })
