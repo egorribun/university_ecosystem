@@ -218,6 +218,40 @@ def test_unexpected_refresh_failure_retires_authority_and_keeps_monitoring(
     loop.call_later.assert_called_with(0.25, guard._health_check)
 
 
+def test_health_callback_after_close_does_not_rearm_monitoring(
+    setup_guard: tuple[TransportGuard, Mock, Mock, Transport],
+) -> None:
+    guard, source, loop, transport = setup_guard
+    guard.start()
+    assert guard.admit(transport)
+    guard.close()
+    loop.call_later.reset_mock()
+    source.current.reset_mock()
+
+    # A callback already queued when close() runs must not revive the timer.
+    guard._health_check()
+
+    loop.call_later.assert_not_called()
+    source.current.assert_not_called()
+    assert transport.aborted
+    assert not guard.connections
+
+
+def test_refresh_preserves_current_unexpired_connection(
+    setup_guard: tuple[TransportGuard, Mock, Mock, Transport],
+) -> None:
+    guard, _source, _loop, transport = setup_guard
+    assert guard.admit(transport)
+    peer = guard.connections[transport]
+
+    guard.refresh()
+
+    assert guard.connections[transport] is peer
+    assert not transport.aborted
+    peer.timer.cancel.assert_not_called()
+    assert guard.valid(transport)
+
+
 @pytest.mark.asyncio
 async def test_http_rotation_between_parse_and_task_dispatch_never_invokes_app() -> (
     None

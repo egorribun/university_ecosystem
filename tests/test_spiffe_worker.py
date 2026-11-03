@@ -82,3 +82,26 @@ async def test_disabled_worker_never_opens_sdk(monkeypatch: pytest.MonkeyPatch) 
     await object.__new__(BackendWorker)._serve()
     conventional.assert_awaited_once()
     source.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_guard_construction_failure_closes_connected_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for key, value in environment().items():
+        monkeypatch.setenv(key, value)
+    source = Mock()
+    monkeypatch.setattr(
+        spiffe_worker.WorkloadContexts, "connect", Mock(return_value=source)
+    )
+    failure = RuntimeError("cannot subscribe to workload updates")
+    monkeypatch.setattr(spiffe_worker, "TransportGuard", Mock(side_effect=failure))
+    server = Mock()
+    monkeypatch.setattr(spiffe_worker, "Server", server)
+
+    with pytest.raises(RuntimeError, match="cannot subscribe") as caught:
+        await object.__new__(BackendWorker)._serve()
+
+    assert caught.value is failure
+    source.close.assert_called_once()
+    server.assert_not_called()
