@@ -338,7 +338,6 @@ def test_bootstrap_narrows_append_only_tables_to_their_runtime_write_sets() -> N
         "CREATE TABLE public.alembic_version (version_num varchar(32) NOT NULL, "
         "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))",
         "REVOKE UPDATE, TRUNCATE ON public.data_access_logs FROM ue_app;",
-        "GRANT UPDATE (signature) ON public.data_access_logs TO ue_app;",
         "REVOKE UPDATE, DELETE, TRUNCATE ON public.stored_events FROM ue_app;",
         "GRANT UPDATE (processed_at, error_count, last_error, status) "
         "ON public.stored_events TO ue_app;",
@@ -353,3 +352,5 @@ def test_bootstrap_narrows_append_only_tables_to_their_runtime_write_sets() -> N
     # event-store row or on the ledger.
     assert "GRANT ALL" not in normalized
     assert "ON public.alembic_version TO ue_app, ue_worker" not in normalized
+    # The signed-row INSERT has no write-back, so ue_app holds no audit UPDATE.
+    assert "GRANT UPDATE (signature)" not in normalized

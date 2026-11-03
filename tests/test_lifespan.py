@@ -1413,6 +1413,52 @@ async def test_lifespan_warm_cache_testing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_startup_skips_partition_scheduler_without_ddl_authority() -> None:
+    """A runtime login that cannot create tables starts no partition scheduler."""
+    app = FastAPI()
+    app.state.dishka_container = AsyncMock()
+    mock_nats = AsyncMock()
+    mock_nats.is_connected = False
+
+    async def container_get_mock(svc_type):
+        from app.core.nats_broker import NatsTaskBroker
+
+        if svc_type == NatsTaskBroker:
+            return mock_nats
+        return MagicMock()
+
+    app.state.dishka_container.get.side_effect = container_get_mock
+
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch(
+            "app.core.lifespan.ensure_partitions_exist",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as mock_ensure,
+        patch(
+            "app.core.lifespan.start_partition_management_scheduler",
+            new_callable=AsyncMock,
+        ) as mock_scheduler,
+    ):
+        mock_settings.environment = "production"
+        mock_settings.embedded_outbox_worker_enabled = False
+        mock_settings.embedded_cdc_outbox_worker_enabled = False
+        mock_settings.partition_management_enabled = True
+        mock_settings.app_process_role = "worker"
+
+        await _startup_background_workers(app)
+
+        mock_ensure.assert_awaited_once_with()
+        assert not hasattr(app.state, "partition_stopper")
+        mock_scheduler.assert_not_called()
+
+        for task in app.state.background_tasks:
+            task.cancel()
+        await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
 async def test_startup_background_workers_partition_enabled_testing_env() -> None:
     with (
         patch("app.core.lifespan.settings") as mock_settings,

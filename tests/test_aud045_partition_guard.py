@@ -67,6 +67,9 @@ class _CatalogConnection:
         sql = str(statement)
         self.sql.append(sql)
         self.calls.append((sql, parameters))
+        # Login-authority and runtime-role probes answer "yes" and are not DDL.
+        if "has_schema_privilege" in sql or "pg_roles" in sql:
+            return _Result([True])
         if "pg_try_advisory_xact_lock" in sql:
             return _Result([self.lock])
         if "current_setting('transaction_isolation')" in sql:

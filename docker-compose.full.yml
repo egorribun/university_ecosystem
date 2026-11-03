@@ -703,7 +703,9 @@ services:
       context: .
       dockerfile: backend.Dockerfile
       target: runtime
-    command: alembic upgrade head
+    # Schema changes, then partition maintenance, both as ue_migrator. The runtime
+    # never runs partition DDL; see app/services/partition_manager.py.
+    command: ["sh", "-c", "alembic upgrade head && python -m app.services.partition_manager"]
     # One-shot Alembic has no HTTP server; completion is checked by exit status.
     healthcheck:
       disable: true

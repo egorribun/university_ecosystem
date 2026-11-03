@@ -139,11 +139,15 @@ ALTER DEFAULT PRIVILEGES FOR ROLE ue_migrator IN SCHEMA public
 -- Narrow the table-wide grants above for the append-only and registry tables.
 -- ue_app cannot rewrite audit rows, rewrite or delete event-store rows, change
 -- tenant rows, or write the migration ledger:
---   data_access_logs  INSERT and SELECT; the signature write-back is the only
---                     UPDATE, and it is column-limited. DELETE stays on the
---                     parent table for the retention prune that the backend
---                     scheduler runs as ue_app. Partitions take no direct DML:
---                     PostgreSQL checks the parent's grant for routed statements.
+--   data_access_logs  INSERT and SELECT, and no UPDATE at all: a signed row is
+--                     written once by a single INSERT (audit_service.create_logs).
+--                     DELETE stays on the parent table only. Leaf partitions take
+--                     no direct DML: PostgreSQL checks the parent's grant for
+--                     routed statements, while a statement that names a leaf is
+--                     checked against that leaf's own grant. The partition manager
+--                     revokes each leaf's runtime grants in the transaction that
+--                     creates it, and the REVOKE below repeats on every start.
+--                     Partition DROP is migrator-only (see partition_manager).
 --   stored_events     INSERT and SELECT; the outbox worker and DLQ requeue
 --                     update only the delivery-state columns. No DELETE.
 --   tenants           SELECT for tenant resolution; INSERT is kept for the
@@ -160,8 +164,9 @@ DECLARE
     partition_oid regclass;
 BEGIN
     IF to_regclass('public.data_access_logs') IS NOT NULL THEN
+        -- Table-level REVOKE also clears any column-level UPDATE grant left by an
+        -- earlier revision, such as the retired signature write-back.
         REVOKE UPDATE, TRUNCATE ON public.data_access_logs FROM ue_app;
-        GRANT UPDATE (signature) ON public.data_access_logs TO ue_app;
         FOR partition_oid IN
             SELECT inheritance.inhrelid::regclass
             FROM pg_inherits AS inheritance

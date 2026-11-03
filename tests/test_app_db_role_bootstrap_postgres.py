@@ -456,7 +456,7 @@ _RUNTIME_TABLE_PRIVILEGES: dict[tuple[str, str], dict[str, bool]] = {
     },
 }
 _RUNTIME_COLUMN_PRIVILEGES: dict[tuple[str, str, str], bool] = {
-    ("ue_app", "public.data_access_logs", "signature"): True,
+    ("ue_app", "public.data_access_logs", "signature"): False,
     ("ue_app", "public.data_access_logs", "action"): False,
     ("ue_app", "public.stored_events", "processed_at"): True,
     ("ue_app", "public.stored_events", "status"): True,
@@ -544,14 +544,12 @@ def test_runtime_roles_can_only_write_the_rows_their_code_writes(
             "('00000000-0000-4000-8000-000000000001', 'probe', NULL, "
             "'2026-11-03T00:00:00Z')"
         )
-        # The signature write-back is the one UPDATE the backend performs.
-        assert (
+        # Signed rows are written once by INSERT, so ue_app has no audit UPDATE.
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
             connection.execute(
                 "UPDATE public.data_access_logs SET signature = 'sig' "
                 "WHERE action = 'probe'"
-            ).rowcount
-            == 1
-        )
+            )
         with pytest.raises(psycopg.errors.InsufficientPrivilege):
             connection.execute(
                 "UPDATE public.data_access_logs SET action = 'tampered' "
@@ -638,6 +636,10 @@ def test_bootstrap_reverts_widened_append_only_grants(
             "public.tenants, public.alembic_version TO ue_app, ue_worker"
         )
         connection.execute("GRANT UPDATE ON public.data_access_logs TO ue_app")
+        # The retired signature write-back left a column-level grant behind.
+        connection.execute(
+            "GRANT UPDATE (signature) ON public.data_access_logs TO ue_app"
+        )
     assert _bootstrap(role_server) == 0
     with _connect(role_server) as connection:
         _assert_runtime_privileges(connection)

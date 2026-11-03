@@ -1,5 +1,6 @@
 import asyncio
 import re
+import sys
 from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -28,6 +29,16 @@ PARTITIONED_TABLES = [
     ("notification_deliveries", "attempted_at"),
     ("data_access_logs", "created_at"),
 ]
+
+# Audit leaves must never be directly DML-able by the runtime role. The grant is
+# withheld in the same transaction that creates each leaf, and every attached
+# leaf is swept after each privileged maintenance run.
+_AUDIT_PARTITION_TABLE = "data_access_logs"
+_RUNTIME_ROLE = "ue_app"
+
+
+class PartitionMaintenanceError(RuntimeError):
+    """Privileged partition maintenance could not complete its creation or isolation."""
 
 
 def _normalise_partition_timestamp(value: object) -> datetime | None:
@@ -113,6 +124,76 @@ async def _lock_partition_ddl(conn: Any, table: str) -> None:
         text("SELECT pg_advisory_xact_lock(hashtext(:table_name))"),
         {"table_name": table},
     )
+
+
+async def _has_partition_ddl_authority(conn: Any) -> bool:
+    """Whether this login may create tables in the current schema.
+
+    The bootstrap guard keeps CREATE on schema public away from ue_app and
+    ue_worker, so partition DDL can only run under the migrator login.
+    """
+
+    result = await conn.execute(
+        text(
+            "SELECT pg_catalog.has_schema_privilege("
+            "current_user, pg_catalog.current_schema(), 'CREATE')"
+        )
+    )
+    return bool(result.scalar_one())
+
+
+async def _role_exists(conn: Any, role_name: str) -> bool:
+    result = await conn.execute(
+        text(
+            "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_roles "
+            "WHERE rolname = :role_name)"
+        ),
+        {"role_name": role_name},
+    )
+    return bool(result.scalar_one())
+
+
+async def _revoke_runtime_access(conn: Any, relation_sql: str) -> None:
+    """Remove the runtime role's direct grants on one audit leaf.
+
+    Default privileges grant ue_app DML on every table the migrator creates,
+    and a statement that names a leaf is checked against that leaf's own grant.
+    The caller owns the transaction, so this REVOKE commits with the CREATE.
+    """
+
+    if not await _role_exists(conn, _RUNTIME_ROLE):
+        return
+    await conn.exec_driver_sql(f"REVOKE ALL ON {relation_sql} FROM {_RUNTIME_ROLE}")
+
+
+async def _isolate_audit_partitions(conn: Any) -> None:
+    """Revoke runtime grants from every attached audit leaf, however it was created."""
+
+    preparer = conn.dialect.identifier_preparer
+    result = await conn.execute(
+        text(
+            """
+            SELECT child_ns.nspname AS child_schema, child.relname AS partition_name
+            FROM pg_catalog.pg_inherits AS inheritance
+            JOIN pg_catalog.pg_class AS parent ON parent.oid = inheritance.inhparent
+            JOIN pg_catalog.pg_namespace AS parent_ns ON parent_ns.oid = parent.relnamespace
+            JOIN pg_catalog.pg_class AS child ON child.oid = inheritance.inhrelid
+            JOIN pg_catalog.pg_namespace AS child_ns ON child_ns.oid = child.relnamespace
+            WHERE parent.relname = :table_name
+              AND parent_ns.nspname = pg_catalog.current_schema()
+            """
+        ),
+        {"table_name": _AUDIT_PARTITION_TABLE},
+    )
+    rows = result.all()
+    for row in rows:
+        relation = (
+            f"{preparer.quote_identifier(row.child_schema)}."
+            f"{preparer.quote_identifier(row.partition_name)}"
+        )
+        await _revoke_runtime_access(conn, relation)
+    if rows:
+        await conn.commit()
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,17 +387,29 @@ async def _prune_expired_partition(
     return valid
 
 
-async def ensure_partitions_exist() -> None:
+async def ensure_partitions_exist(*, strict: bool = False) -> bool:
     """
     Ensures that PostgreSQL partitions exist for the current and next few months,
-    and prunes old partitions based on retention settings.
+    prunes old partitions based on retention settings, and revokes the runtime
+    role's direct grants on every audit leaf.
+
+    Returns False, without any DDL, when this login cannot create tables: the
+    runtime role is refused and the migrator maintenance step does the work.
+    With ``strict``, a failed partition creation raises PartitionMaintenanceError
+    after isolation has run, instead of being logged and skipped.
     """
     from app.core.config import settings
 
     async with engine.connect() as conn:
         if conn.dialect.name != "postgresql":
             logger.debug("Partition management skipped: not a PostgreSQL database")
-            return
+            return True
+        if not await _has_partition_ddl_authority(conn):
+            logger.info(
+                "Partition management skipped: this database role cannot create "
+                "tables; the migrator maintenance step owns partition DDL"
+            )
+            return False
 
         # 1a. Ensure DEFAULT partition exists for notification tables.
         # The MVP baseline creates these tables with postgresql_partition_by
@@ -356,6 +449,7 @@ async def ensure_partitions_exist() -> None:
         # 1b. Ensure future partitions exist
         import rust_ext
 
+        failed_creations = 0
         for table, _ in PARTITIONED_TABLES:
             for i in range(settings.partition_warmup_months + 1):
                 try:
@@ -416,6 +510,10 @@ async def ensure_partitions_exist() -> None:
                         f"PARTITION OF {safe_table} "
                         f"FOR VALUES FROM ('{safe_start}') TO ('{safe_end}')"
                     )
+                    if table == _AUDIT_PARTITION_TABLE:
+                        # Same transaction as the CREATE: no committed leaf exists
+                        # while ue_app holds the default-privilege grants.
+                        await _revoke_runtime_access(conn, safe_partition)
                     await conn.commit()
                 except (
                     OSError,
@@ -426,6 +524,7 @@ async def ensure_partitions_exist() -> None:
                     ImportError,
                 ) as e:
                     await conn.rollback()
+                    failed_creations += 1
                     # RZ-20-04 + RZ-33-03: Broadened — DDL errors, rust_ext import,
                     # and asyncpg interface errors.
                     logger.error(
@@ -471,6 +570,15 @@ async def ensure_partitions_exist() -> None:
                         await conn.rollback()
                         raise
 
+        # 3. Isolate audit leaves that predate this code, such as baseline leaves
+        # that were created while ue_app still held the default-privilege grants.
+        await _isolate_audit_partitions(conn)
+        if strict and failed_creations:
+            raise PartitionMaintenanceError(
+                f"{failed_creations} partition creation(s) failed"
+            )
+        return True
+
 
 async def start_partition_management_scheduler(
     interval_seconds: int = 86400,
@@ -508,3 +616,33 @@ async def start_partition_management_scheduler(
         await registry.shutdown(timeout=10.0)
 
     return stop
+
+
+async def run_maintenance() -> int:
+    """Create, prune and isolate partitions; return the process exit status.
+
+    Run by the migrations service as ``python -m app.services.partition_manager``
+    immediately after ``alembic upgrade head``, under the migrator login. Any
+    other login is refused without DDL, and any failure exits non-zero so the
+    deployment stops instead of leaving partitions unmanaged.
+    """
+    try:
+        if not await ensure_partitions_exist(strict=True):
+            logger.error("Partition maintenance refused: run it as the migrator role")
+            return 1
+        logger.info("Partition maintenance completed")
+        return 0
+    except (OSError, SQLAlchemyError, PartitionMaintenanceError) as exc:
+        # Avoid logging error text, which may contain SQL or connection details.
+        logger.error("Partition maintenance failed (%s)", type(exc).__name__)
+        return 1
+    finally:
+        await engine.dispose()
+
+
+def main() -> int:
+    return asyncio.run(run_maintenance())
+
+
+if __name__ == "__main__":
+    sys.exit(main())

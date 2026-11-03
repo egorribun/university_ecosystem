@@ -69,6 +69,11 @@ class _Connection:
 
     async def execute(self, statement, *args):
         sql = str(statement)
+        # Login-authority and runtime-role probes answer "yes" without being DDL.
+        if "has_schema_privilege" in sql or "pg_roles" in sql:
+            return _Result([True])
+        if "child_ns.nspname AS child_schema, child.relname AS partition_name" in sql:
+            return _Result([])
         self.executed.append((sql, args))
         self.operations.append(("execute", sql))
         if self.default_error and "DEFAULT" in sql:

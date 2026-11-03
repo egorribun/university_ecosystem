@@ -2265,7 +2265,11 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     migration_spec = migration["spec"]["template"]["spec"]
     assert migration_spec["automountServiceAccountToken"] is False
     migration_container = migration_spec["containers"][0]
-    assert migration_container["command"] == ["alembic", "upgrade", "head"]
+    assert migration_container["command"] == [
+        "sh",
+        "-c",
+        "alembic upgrade head && python -m app.services.partition_manager",
+    ]
     assert migration_container["image"].endswith(":contract-sha")
     migration_env = {entry["name"]: entry for entry in migration_container["env"]}
     _assert_secret_file_values(
@@ -3361,6 +3365,10 @@ def test_migrations_disable_inherited_backend_runtime_healthcheck(
 
     assert migrations["build"]["dockerfile"] == "backend.Dockerfile"
     assert migrations["build"]["target"] == "runtime"
-    assert migrations["command"] == "alembic upgrade head"
+    assert migrations["command"] == [
+        "sh",
+        "-c",
+        "alembic upgrade head && python -m app.services.partition_manager",
+    ]
     assert re.search(r"^HEALTHCHECK\b", runtime, re.MULTILINE)
     assert migrations.get("healthcheck") == {"disable": True}

@@ -64,7 +64,8 @@ spec:
         - name: migrate
           image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.backend.image) | quote }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
-          command: ["alembic", "upgrade", "head"]
+          # Schema changes, then partition maintenance, both as the schema owner.
+          command: ["sh", "-c", "alembic upgrade head && python -m app.services.partition_manager"]
           env:
             - name: RATE_LIMIT_STORAGE_BACKEND
               value: "redis"

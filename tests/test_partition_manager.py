@@ -1,10 +1,17 @@
 import asyncio
+import runpy
+import sys
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.core import database
+from app.services import partition_manager as manager
 from app.services.partition_manager import (
+    PartitionMaintenanceError,
     ensure_partitions_exist,
     start_partition_management_scheduler,
 )
@@ -132,3 +139,270 @@ async def test_partition_scheduler():
         await asyncio.sleep(0.05)
         await stop_func()
         assert mock_ensure.called
+
+
+def _engine_and_conn(dialect_name: str = "postgresql") -> tuple[MagicMock, AsyncMock]:
+    conn = AsyncMock()
+    conn.dialect = SimpleNamespace(
+        name=dialect_name,
+        identifier_preparer=SimpleNamespace(
+            quote=lambda name: f'"{name}"',
+            quote_identifier=lambda name: f'"{name}"',
+        ),
+    )
+    engine = MagicMock()
+    engine.connect.return_value.__aenter__ = AsyncMock(return_value=conn)
+    engine.connect.return_value.__aexit__ = AsyncMock(return_value=False)
+    engine.dispose = AsyncMock()
+    return engine, conn
+
+
+@contextmanager
+def _ensure_mocks(
+    engine: MagicMock,
+    *,
+    authority: bool = True,
+    rust_name: str = "data_access_logs_y2026m11",
+) -> Iterator[SimpleNamespace]:
+    """Replace each catalog and DDL helper so ensure's branches run in isolation."""
+    rust = MagicMock()
+    rust.get_partition_info.return_value = SimpleNamespace(
+        name=rust_name, start_date="2026-11-01", end_date="2026-12-01"
+    )
+    mocks = SimpleNamespace(
+        authority=AsyncMock(return_value=authority),
+        lock=AsyncMock(),
+        range_exists=AsyncMock(return_value=False),
+        prunable=AsyncMock(return_value=[]),
+        isolate=AsyncMock(),
+        revoke=AsyncMock(),
+    )
+    with ExitStack() as stack:
+        stack.enter_context(patch.object(manager, "engine", engine))
+        stack.enter_context(
+            patch(
+                "app.core.config.settings",
+                SimpleNamespace(
+                    partition_warmup_months=0, partition_retention_days=365
+                ),
+            )
+        )
+        stack.enter_context(patch.dict("sys.modules", {"rust_ext": rust}))
+        stack.enter_context(
+            patch.object(manager, "_has_partition_ddl_authority", mocks.authority)
+        )
+        stack.enter_context(patch.object(manager, "_lock_partition_ddl", mocks.lock))
+        stack.enter_context(
+            patch.object(manager, "_range_partition_exists", mocks.range_exists)
+        )
+        stack.enter_context(
+            patch.object(manager, "_list_prunable_partitions", mocks.prunable)
+        )
+        stack.enter_context(
+            patch.object(manager, "_isolate_audit_partitions", mocks.isolate)
+        )
+        stack.enter_context(
+            patch.object(manager, "_revoke_runtime_access", mocks.revoke)
+        )
+        yield mocks
+
+
+@pytest.mark.asyncio
+async def test_ensure_refuses_a_login_without_ddl_authority_before_any_ddl() -> None:
+    engine, conn = _engine_and_conn()
+    with _ensure_mocks(engine, authority=False) as mocks:
+        assert await ensure_partitions_exist() is False
+    mocks.lock.assert_not_called()
+    mocks.isolate.assert_not_called()
+    conn.exec_driver_sql.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_reports_no_refusal_for_non_postgresql_dialects() -> None:
+    engine, conn = _engine_and_conn("sqlite")
+    with _ensure_mocks(engine) as mocks:
+        assert await ensure_partitions_exist() is True
+    mocks.authority.assert_not_called()
+    conn.exec_driver_sql.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_audit_leaf_is_revoked_inside_the_transaction_that_creates_it() -> None:
+    events: list[tuple[str, str]] = []
+    engine, conn = _engine_and_conn()
+    conn.exec_driver_sql.side_effect = lambda sql, *_: events.append(("sql", str(sql)))
+    conn.commit.side_effect = lambda: events.append(("commit", ""))
+    with _ensure_mocks(engine) as mocks:
+        mocks.revoke.side_effect = lambda _conn, relation: events.append(
+            ("revoke", relation)
+        )
+        assert await ensure_partitions_exist() is True
+
+    relation = '"data_access_logs_y2026m11"'
+    assert [event for event in events if event[0] == "revoke"] == [("revoke", relation)]
+    position = events.index(("revoke", relation))
+    assert events[position - 1][0] == "sql"
+    assert "CREATE TABLE" in events[position - 1][1]
+    assert events[position + 1] == ("commit", "")
+
+
+@pytest.mark.asyncio
+async def test_failed_creation_is_logged_and_skipped_when_not_strict() -> None:
+    engine, conn = _engine_and_conn()
+    conn.exec_driver_sql.side_effect = _fail_non_default_creates
+    with (
+        _ensure_mocks(engine) as mocks,
+        patch.object(manager, "logger") as logger,
+    ):
+        assert await ensure_partitions_exist() is True
+    mocks.isolate.assert_awaited_once()
+    assert logger.error.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_failed_creation_raises_after_isolation_when_strict() -> None:
+    engine, conn = _engine_and_conn()
+    conn.exec_driver_sql.side_effect = _fail_non_default_creates
+    with _ensure_mocks(engine) as mocks:
+        with pytest.raises(PartitionMaintenanceError, match="3 partition creation"):
+            await ensure_partitions_exist(strict=True)
+    mocks.isolate.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_strict_run_without_failures_returns_true() -> None:
+    engine, _conn = _engine_and_conn()
+    with _ensure_mocks(engine) as mocks:
+        assert await ensure_partitions_exist(strict=True) is True
+    mocks.isolate.assert_awaited_once()
+
+
+def _fail_non_default_creates(sql: object, *_: object) -> None:
+    if "CREATE TABLE" in str(sql) and "DEFAULT" not in str(sql):
+        raise OSError("synthetic partition creation failure")
+
+
+@pytest.mark.asyncio
+async def test_isolation_revokes_every_attached_audit_leaf() -> None:
+    _engine, conn = _engine_and_conn()
+    rows = [
+        SimpleNamespace(
+            child_schema="public", partition_name="data_access_logs_y2026m11"
+        ),
+        SimpleNamespace(
+            child_schema="archive", partition_name="data_access_logs_y2025m01"
+        ),
+    ]
+    conn.execute.return_value = SimpleNamespace(all=lambda: rows)
+    with patch.object(manager, "_revoke_runtime_access", AsyncMock()) as revoke:
+        await manager._isolate_audit_partitions(conn)
+    assert [call.args[1] for call in revoke.await_args_list] == [
+        '"public"."data_access_logs_y2026m11"',
+        '"archive"."data_access_logs_y2025m01"',
+    ]
+    conn.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_isolation_with_no_attached_leaves_issues_no_write() -> None:
+    _engine, conn = _engine_and_conn()
+    conn.execute.return_value = SimpleNamespace(all=lambda: [])
+    with patch.object(manager, "_revoke_runtime_access", AsyncMock()) as revoke:
+        await manager._isolate_audit_partitions(conn)
+    revoke.assert_not_awaited()
+    conn.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_revoke_skips_a_missing_runtime_role() -> None:
+    _engine, conn = _engine_and_conn()
+    conn.execute.return_value = SimpleNamespace(scalar_one=lambda: False)
+    await manager._revoke_runtime_access(conn, '"public"."data_access_logs_y2026m11"')
+    conn.exec_driver_sql.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_revoke_removes_every_runtime_grant_on_the_leaf() -> None:
+    _engine, conn = _engine_and_conn()
+    conn.execute.return_value = SimpleNamespace(scalar_one=lambda: True)
+    await manager._revoke_runtime_access(conn, '"public"."data_access_logs_y2026m11"')
+    conn.exec_driver_sql.assert_awaited_once_with(
+        'REVOKE ALL ON "public"."data_access_logs_y2026m11" FROM ue_app'
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("authority", [True, False])
+async def test_ddl_authority_probe_reads_the_schema_create_privilege(
+    authority: bool,
+) -> None:
+    _engine, conn = _engine_and_conn()
+    conn.execute.return_value = SimpleNamespace(scalar_one=lambda: authority)
+    assert await manager._has_partition_ddl_authority(conn) is authority
+    statement = str(conn.execute.await_args.args[0])
+    assert "has_schema_privilege" in statement
+    assert "'CREATE'" in statement
+
+
+@pytest.mark.asyncio
+async def test_run_maintenance_refuses_the_runtime_login_with_exit_status_one() -> None:
+    engine, _conn = _engine_and_conn()
+    with (
+        patch.object(manager, "engine", engine),
+        patch.object(
+            manager, "ensure_partitions_exist", AsyncMock(return_value=False)
+        ) as ensure,
+    ):
+        assert await manager.run_maintenance() == 1
+    ensure.assert_awaited_once_with(strict=True)
+    engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_maintenance_succeeds_with_exit_status_zero() -> None:
+    engine, _conn = _engine_and_conn()
+    with (
+        patch.object(manager, "engine", engine),
+        patch.object(manager, "ensure_partitions_exist", AsyncMock(return_value=True)),
+    ):
+        assert await manager.run_maintenance() == 0
+    engine.dispose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    [PartitionMaintenanceError("leaf not isolated"), OSError("connection reset")],
+)
+async def test_run_maintenance_fails_closed_on_any_isolation_or_connection_error(
+    failure: Exception,
+) -> None:
+    engine, _conn = _engine_and_conn()
+    with (
+        patch.object(manager, "engine", engine),
+        patch.object(
+            manager, "ensure_partitions_exist", AsyncMock(side_effect=failure)
+        ),
+        patch.object(manager, "logger") as logger,
+    ):
+        assert await manager.run_maintenance() == 1
+    logger.error.assert_called_once()
+    assert "leaf not isolated" not in str(logger.error.call_args)
+    engine.dispose.assert_awaited_once()
+
+
+def test_main_returns_the_maintenance_status() -> None:
+    with patch.object(manager, "run_maintenance", AsyncMock(return_value=7)):
+        assert manager.main() == 7
+
+
+def test_module_entrypoint_exits_with_the_maintenance_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine, _conn = _engine_and_conn("sqlite")
+    monkeypatch.setattr(database, "engine", engine)
+    # runpy executes a fresh copy; drop the cached module so it is not re-imported.
+    monkeypatch.delitem(sys.modules, "app.services.partition_manager")
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_module("app.services.partition_manager", run_name="__main__")
+    assert exit_info.value.code == 0

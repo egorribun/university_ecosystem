@@ -375,16 +375,19 @@ async def _startup_background_workers(app: FastAPI) -> None:
 
     if settings.partition_management_enabled:
         try:
-            await ensure_partitions_exist()
-            # RZ-W19-05: Avoid starting the background scheduler in testing.
-            # Running it concurrently with tests executes DDL queries that interfere with
-            # the query budget checks of HTTP requests.
-            if settings.environment != "testing":
-                app.state.partition_stopper = (
-                    await start_partition_management_scheduler(
-                        settings.partition_management_interval_seconds
+            # False means this login cannot create tables (ue_app, ue_worker). The
+            # runtime then starts no scheduler; the migrator maintenance step owns
+            # partition creation, retention and audit-leaf isolation.
+            if await ensure_partitions_exist():
+                # RZ-W19-05: Avoid starting the background scheduler in testing.
+                # Running it concurrently with tests executes DDL queries that interfere with
+                # the query budget checks of HTTP requests.
+                if settings.environment != "testing":
+                    app.state.partition_stopper = (
+                        await start_partition_management_scheduler(
+                            settings.partition_management_interval_seconds
+                        )
                     )
-                )
         except Exception as exc:  # RZ-22-01-JUSTIFIED: handler-nak — partition init failure is non-fatal (reviewed TD-27-04)
             _logger.warning("Partition init failed: %s", exc)
 
