@@ -134,9 +134,11 @@ jobs:
           uv run --frozen --no-sync python -m scripts.live_stand e2e
           --in-place --state-dir "$LIVE_STATE_DIR" --mode "$LIVE_E2E_MODE"
 
+      # Independent evidence after E2E failure; neither acceptance may mask the other.
+      # A cancelled job or unsuccessful stand start must never begin the outage.
       - name: Run owned NATS outage acceptance
         id: nats-outage
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'egorribun/university_ecosystem' && github.event.pull_request.head.ref == 'egorribun' && steps.core-e2e.outcome == 'success' }}
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == 'egorribun/university_ecosystem' && github.event.pull_request.head.ref == 'egorribun' && steps.start-stand.outcome == 'success' }}
         timeout-minutes: 10
         run: >-
           uv run --frozen --no-sync python -m scripts.live_stand nats-outage

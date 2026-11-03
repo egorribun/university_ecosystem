@@ -462,17 +462,29 @@ def test_nats_outage_is_gated_and_receipted_as_metadata_only() -> None:
     assert outage_index == core_index + 1
     assert outage_index < stop_index
     assert outage["if"] == (
-        "${{ github.event_name == 'pull_request' && "
+        "${{ !cancelled() && github.event_name == 'pull_request' && "
         "github.event.pull_request.head.repo.full_name == "
         "'egorribun/university_ecosystem' && "
         "github.event.pull_request.head.ref == 'egorribun' && "
-        "steps.core-e2e.outcome == 'success' }}"
+        "steps.start-stand.outcome == 'success' }}"
     )
     assert "python -m scripts.live_stand nats-outage" in outage["run"]
     assert "scripts/live_stand.py nats-outage" not in outage["run"]
     assert "--in-place" in outage["run"]
     assert '--state-dir "$LIVE_STATE_DIR"' in outage["run"]
     assert outage.get("timeout-minutes") == 10
+    assert job["timeout-minutes"] == 120
+    assert not job.get("continue-on-error", False)
+    assert all(not step.get("continue-on-error", False) for step in steps)
+    assert steps[core_index].get("if") is None
+    assert steps[core_index]["run"] == (
+        "uv run --frozen --no-sync python -m scripts.live_stand e2e "
+        '--in-place --state-dir "$LIVE_STATE_DIR" --mode "$LIVE_E2E_MODE"'
+    )
+    assert outage["run"] == (
+        "uv run --frozen --no-sync python -m scripts.live_stand nats-outage "
+        '--in-place --state-dir "$LIVE_STATE_DIR"'
+    )
 
     stop = steps[stop_index]
     assert "always()" in stop.get("if", "")
@@ -485,6 +497,8 @@ def test_nats_outage_is_gated_and_receipted_as_metadata_only() -> None:
     )
     assert receipt["if"] == "${{ always() }}"
     assert receipt["env"]["NATS_OUTAGE_OUTCOME"] == "${{ steps.nats-outage.outcome }}"
+    assert receipt["env"]["E2E_OUTCOME"] == "${{ steps.core-e2e.outcome }}"
+    assert '"e2e": os.environ.get("E2E_OUTCOME", "")' in receipt["run"]
     assert '"nats_outage": os.environ.get("NATS_OUTAGE_OUTCOME", "")' in receipt["run"]
     assert '"schema": "ue-live-acceptance-receipt-v1"' in receipt["run"]
     assert '"kind": "owned-core-live-acceptance"' in receipt["run"]
@@ -499,6 +513,182 @@ def test_nats_outage_is_gated_and_receipted_as_metadata_only() -> None:
     assert "os.environ.copy" not in receipt["run"]
     assert "os.environ.items" not in receipt["run"]
     assert "stdout" not in receipt["run"] and "stderr" not in receipt["run"]
+
+
+@pytest.mark.parametrize("e2e_outcome", ("success", "failure"))
+@pytest.mark.parametrize(
+    ("cancelled", "event", "repository", "branch", "stand_outcome", "expected"),
+    (
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "success",
+            True,
+        ),
+        (
+            True,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "success",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "failure",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "cancelled",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "skipped",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "",
+            False,
+        ),
+        (
+            False,
+            "schedule",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "success",
+            False,
+        ),
+        (
+            False,
+            "workflow_dispatch",
+            "egorribun/university_ecosystem",
+            "egorribun",
+            "success",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "fork/university_ecosystem",
+            "egorribun",
+            "success",
+            False,
+        ),
+        (
+            False,
+            "pull_request",
+            "egorribun/university_ecosystem",
+            "other",
+            "success",
+            False,
+        ),
+    ),
+)
+def test_nats_admission_is_independent_but_requires_a_live_owned_stand(
+    e2e_outcome: str,
+    cancelled: bool,
+    event: str,
+    repository: str,
+    branch: str,
+    stand_outcome: str,
+    expected: bool,
+) -> None:
+    """Evaluate the finite source clauses, not a general Actions interpreter.
+
+    GitHub applies implicit success() only when no status function is present:
+    https://docs.github.com/en/actions/reference/workflows-and-actions/expressions
+    """
+    _, workflow = _workflow()
+    steps = workflow["jobs"]["live-acceptance"]["steps"]
+    outage = next(step for step in steps if step.get("id") == "nats-outage")
+    expression = outage["if"]
+    assert expression.startswith("${{ ") and expression.endswith(" }}")
+    clauses = expression[4:-3].split(" && ")
+    values = {
+        "!cancelled()": not cancelled,
+        "github.event_name == 'pull_request'": event == "pull_request",
+        "github.event.pull_request.head.repo.full_name == "
+        "'egorribun/university_ecosystem'": repository
+        == "egorribun/university_ecosystem",
+        "github.event.pull_request.head.ref == 'egorribun'": branch == "egorribun",
+        "steps.start-stand.outcome == 'success'": stand_outcome == "success",
+    }
+    assert clauses == list(values), "admission guards must not be removed or widened"
+    assert all(values[clause] for clause in clauses) is expected
+    assert "steps.core-e2e.outcome" not in expression
+    assert e2e_outcome in {"success", "failure"}
+    # The real job keeps both failures fatal; receipt fields preserve each outcome.
+    assert not next(step for step in steps if step.get("id") == "core-e2e").get(
+        "continue-on-error", False
+    )
+
+
+def test_core_receipt_preserves_failed_e2e_when_independent_nats_passes(
+    monkeypatch, tmp_path
+) -> None:
+    _, workflow = _workflow()
+    job = workflow["jobs"]["live-acceptance"]
+    steps = job["steps"]
+    receipt = next(
+        step
+        for step in steps
+        if step.get("name") == "Write the metadata-only Core receipt"
+    )
+    checkout = next(
+        step for step in steps if step.get("uses", "").startswith("actions/checkout@")
+    )
+    # Use an existing public source pin rather than a credential-shaped test literal.
+    source_sha = checkout["uses"].split("@", 1)[1]
+    values = {
+        "VERIFIED_SHA": source_sha,
+        "LIVE_MODE": "smoke",
+        "CHECKOUT_OUTCOME": "success",
+        "STAND_START_OUTCOME": "success",
+        "E2E_OUTCOME": "failure",
+        "NATS_OUTAGE_OUTCOME": "success",
+        "STAND_STOP_OUTCOME": "success",
+        "GITHUB_WORKFLOW_REF": "owned-live-contract",
+        "GITHUB_EVENT_NAME": "pull_request",
+        "GITHUB_RUN_ID": "1",
+        "GITHUB_RUN_ATTEMPT": "1",
+    }
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.chdir(tmp_path)
+    script = receipt["run"].split("python - <<'PY'\n", 1)[1]
+    assert script.endswith("\nPY\n")
+    script_path = tmp_path / "receipt.py"
+    script_path.write_text(script.removesuffix("PY\n"), encoding="utf-8")
+    runpy.run_path(str(script_path), run_name="__main__")
+    result = json.loads(
+        (tmp_path / "core-live-acceptance-receipt.json").read_text(encoding="utf-8")
+    )
+    assert result["outcomes"] == {
+        "checkout_verification": "success",
+        "stand_start": "success",
+        "e2e": "failure",
+        "nats_outage": "success",
+        "stand_stop": "success",
+    }
+    assert not job.get("continue-on-error", False)
+    assert all(not step.get("continue-on-error", False) for step in steps)
 
 
 def test_live_stand_nats_outage_dispatches_once_and_redacts_failures(
