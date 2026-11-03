@@ -226,7 +226,15 @@ def test_release_gateway_uses_tls_for_jwks_and_routes_discovery_to_backend() -> 
     assert any(
         rule.get("to")
         == [
-            {"podSelector": {"matchLabels": {"app.kubernetes.io/component": "backend"}}}
+            {
+                "podSelector": {
+                    "matchLabels": {
+                        "app.kubernetes.io/name": "university-ecosystem",
+                        "app.kubernetes.io/instance": "jwks-transport-contract",
+                        "app.kubernetes.io/component": "backend",
+                    }
+                }
+            }
         ]
         and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
         for rule in gateway_policy["spec"]["egress"]
@@ -283,7 +291,15 @@ def test_development_gateway_uses_internal_jwks_without_external_cidrs() -> None
     assert any(
         rule.get("to")
         == [
-            {"podSelector": {"matchLabels": {"app.kubernetes.io/component": "backend"}}}
+            {
+                "podSelector": {
+                    "matchLabels": {
+                        "app.kubernetes.io/name": "university-ecosystem",
+                        "app.kubernetes.io/instance": "jwks-internal-contract",
+                        "app.kubernetes.io/component": "backend",
+                    }
+                }
+            }
         ]
         and rule.get("ports") == [{"protocol": "TCP", "port": 8000}]
         for rule in policy["spec"]["egress"]
