@@ -81,6 +81,39 @@ describe("offline database upgrade", () => {
     }
   })
 
+  it("preserves an existing replay lease during a schema upgrade", async () => {
+    const observer = observeDatabaseConnections()
+    try {
+      const legacy = await openDB(DB_NAME, NOTIFICATION_INTERACTIONS_DB_VERSION - 1, {
+        upgrade(database) {
+          database.createObjectStore(REPLAY_LEASE_STORE, { keyPath: "id" })
+          database.createObjectStore(STORES.NAVIGATION, { keyPath: "id", autoIncrement: true })
+        },
+      })
+      const lease = { id: "replay", owner: "another-worker", expiresAt: Date.now() + 60_000 }
+      await legacy.put(REPLAY_LEASE_STORE, lease)
+      const navigation = { url: "/events", timestamp: 1 }
+      const navigationId = await legacy.add(STORES.NAVIGATION, navigation)
+      legacy.close()
+
+      await initOfflineQueue()
+      const upgraded = await openDB(DB_NAME, NOTIFICATION_INTERACTIONS_DB_VERSION)
+      try {
+        expect(Array.from(upgraded.objectStoreNames).sort()).toEqual(ALL_STORES)
+        expect(await upgraded.get(REPLAY_LEASE_STORE, lease.id)).toEqual(lease)
+        expect(await upgraded.get(STORES.NAVIGATION, navigationId)).toEqual({
+          ...navigation,
+          id: navigationId,
+        })
+        expect(upgraded.transaction(REPLAY_LEASE_STORE).store.keyPath).toBe("id")
+      } finally {
+        upgraded.close()
+      }
+    } finally {
+      observer.close()
+    }
+  })
+
   it("preserves all legacy queue records when upgrading from version 3", async () => {
     await createVersionThreeDatabase(false)
     const oldDb = await openDB(DB_NAME, 3)
