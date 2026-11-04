@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from dataclasses import replace
 from pathlib import Path
 
@@ -13,6 +15,51 @@ from tests.symlink_support import FILE_SYMLINKS_SUPPORTED
 
 PROJECT = "ue-live-0123456789abcdef"
 DATABASE_URL = "postgresql+asyncpg://tester@postgres:5432/demo"
+
+
+def _owner_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> live_stand.StandOwner:
+    worktree = tmp_path / "ue-live"
+    (worktree / ".secrets").mkdir(parents=True)
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    return live_stand.StandOwner(
+        repository=str(tmp_path / "repo"),
+        worktree=str(worktree),
+        project_name=PROJECT,
+        published_ports=(),
+        schema_version=1,
+    )
+
+
+def test_written_owner_record_is_readable_by_other_uids(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = _owner_for(tmp_path, monkeypatch)
+
+    record_path = live_stand._write_seed_owned_stand_record(owner)
+
+    mode = record_path.stat().st_mode
+    assert mode & 0o444 == 0o444
+    if os.name == "posix":
+        assert stat.S_IMODE(mode) == 0o644
+
+
+def test_restrictive_umask_still_yields_a_readable_owner_record(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    owner = _owner_for(tmp_path, monkeypatch)
+
+    previous_umask = os.umask(0o077)
+    try:
+        record_path = live_stand._write_seed_owned_stand_record(owner)
+    finally:
+        os.umask(previous_umask)
+
+    mode = record_path.stat().st_mode
+    assert mode & 0o444 == 0o444
+    if os.name == "posix":
+        assert stat.S_IMODE(mode) == 0o644
 
 
 def _record(**overrides: object) -> dict[str, object]:

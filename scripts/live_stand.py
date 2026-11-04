@@ -4938,6 +4938,9 @@ def _write_seed_owned_stand_record(owner: StandOwner) -> Path:
     flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(temporary, flags, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+        # The record is not secret and must stay readable by the backend container's
+        # uid 10001; fchmod sets the mode explicitly so the umask cannot strip read bits.
+        os.fchmod(descriptor, 0o644)
         json.dump(record, handle, sort_keys=True)
     os.replace(temporary, destination)
     return destination
