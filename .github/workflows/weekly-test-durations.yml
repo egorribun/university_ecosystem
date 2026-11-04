@@ -69,12 +69,14 @@ jobs:
         run: uv sync --frozen
 
       - name: Run the measurable test suite
+        env:
+          SHARD_ID: ${{ matrix.shard }}
         run: >-
           uv run pytest tests/ --no-cov
           --ignore=tests/performance
           --ignore=tests/chaos
           --ignore=tests/test_schemathesis_api.py
-          --shard-id=${{ matrix.shard }}
+          --shard-id="${SHARD_ID}"
           --num-shards=4
           --junitxml=pytest-report.xml
 

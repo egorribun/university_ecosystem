@@ -440,13 +440,14 @@ jobs:
         # and differential gate; keep shard runs focused on test correctness.
         run: >-
           npm run test:unit-ci --
-          --shard=${{ matrix.shard }}/4
+          --shard="${SHARD_ID}/4"
           --coverage.thresholds.lines=0
           --coverage.thresholds.branches=0
           --coverage.thresholds.functions=0
           --coverage.thresholds.statements=0
         env:
           CI: "true"
+          SHARD_ID: ${{ matrix.shard }}
 
       - name: Write frontend shard provenance
         working-directory: ${{ github.workspace }}
