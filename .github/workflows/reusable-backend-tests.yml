@@ -767,6 +767,7 @@ jobs:
                   uv run --frozen --no-sync pytest \
                     tests/security/test_mfa_race.py \
                     tests/integration/test_aud447_quarantine_cas_postgres.py \
+                    tests/test_aud447_lossless_storage_postgres.py \
                     -v --tb=short -p no:cacheprovider -rs --junitxml=pg-proofs.xml
                   uv run --frozen --no-sync python -c "
                   import sys
@@ -775,8 +776,19 @@ jobs:
                   suites = [root] if root.tag == 'testsuite' else list(root)
                   total = sum(int(suite.get('tests', '0')) for suite in suites)
                   unexecuted = sum(int(suite.get(key, '0')) for suite in suites for key in ('skipped', 'failures', 'errors'))
-                  if total == 0 or unexecuted:
-                      print(f'PostgreSQL proofs: tests={total} not-executed-or-failed={unexecuted}')
+                  expected = {
+                      ('tests.security.test_mfa_race', 'test_mfa_challenge_race_condition'),
+                      ('tests.security.test_mfa_race', 'test_mfa_step_up_challenge_verification_race'),
+                      ('tests.integration.test_aud447_quarantine_cas_postgres', 'test_quarantine_never_overwrites_bytes_repaired_after_they_were_read'),
+                      ('tests.integration.test_aud447_quarantine_cas_postgres', 'test_quarantine_replaces_observed_bytes_and_scrubs_link_in_error_field'),
+                      ('tests.integration.test_aud447_quarantine_cas_postgres', 'test_failed_replay_stores_scrubbed_error_text'),
+                      ('tests.test_aud447_lossless_storage_postgres', 'test_aud447_postgres_insert_and_replay_store_no_token_bytes'),
+                  }
+                  cases = list(root.iter('testcase'))
+                  actual = [(case.get('classname'), case.get('name')) for case in cases]
+                  failed_cases = sum(any(case.find(status) is not None for status in ('skipped', 'failure', 'error')) for case in cases)
+                  if total != len(expected) or unexecuted or failed_cases or len(actual) != len(expected) or set(actual) != expected:
+                      print(f'PostgreSQL proofs: tests={total} not-executed-or-failed={unexecuted} failed-cases={failed_cases} observed={len(actual)} expected={len(expected)}')
                       sys.exit(1)
                   print(f'PostgreSQL proofs executed {total} test(s) with no skips.')
                   "
