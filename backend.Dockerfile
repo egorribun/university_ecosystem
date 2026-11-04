@@ -64,9 +64,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Stage 2: Runtime
 FROM python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83 AS runtime
 
+# Dump a Python traceback on SIGSEGV/SIGFPE/SIGABRT/SIGBUS/SIGILL — aids debugging.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    # Dump a Python traceback on SIGSEGV/SIGFPE/SIGABRT/SIGBUS/SIGILL — aids debugging.
     PYTHONFAULTHANDLER=1 \
     PATH="/opt/venv/bin:$PATH"
 

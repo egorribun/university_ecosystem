@@ -126,7 +126,7 @@ export function prepareLhciHtml(html) {
   // The class is present on the opening tag before any script can run. Drop
   // the legacy marker rather than interpolating a script into externally
   // supplied HTML (which would trigger an XSS-prone sink in static analysis).
-  prepared = prepared.replace(/<!--\s*LHCI_MODE_MARKER\s*-->/iu, "")
+  prepared = prepared.replace(/<[!]--\s*LHCI_MODE_MARKER\s*-->/iu, "")
   return addLhciStaticEffectsCss(prepared)
 }
 

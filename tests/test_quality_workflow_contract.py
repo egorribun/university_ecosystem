@@ -7801,3 +7801,68 @@ def test_pr_postgres_receipt_route_rejects_disabled_proofs(mutation: str) -> Non
     else:
         with pytest.raises(AssertionError):
             _assert_pr_postgres_receipt_route(ci, reusable)
+
+
+@pytest.mark.parametrize("service", ["ws-hub", "file-processor", "gateway"])
+@pytest.mark.parametrize("syft_status", [0, 23])
+def test_go_sbom_step_preserves_arguments_and_failure(
+    tmp_path: Path, service: str, syft_status: int
+) -> None:
+    workflow = yaml.safe_load(GO_LINT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["go-sbom"]
+    matrix_expression = "${{ matrix.service }}"
+    assert job["strategy"]["matrix"]["service"] == [
+        "ws-hub",
+        "file-processor",
+        "gateway",
+    ]
+    step = _step_named(job, "Generate SPDX-JSON SBOM for " + matrix_expression)
+    assert step["env"]["SERVICE"] == matrix_expression
+    upload = _step_named(job, "Upload SBOM artifact")
+    assert upload["with"]["path"] == "sbom-" + matrix_expression + ".spdx.json"
+    script = (
+        f"export SERVICE={shlex.quote(service)}\n"
+        f"export SYFT_EXIT={syft_status}\n"
+        'syft() { printf \'%s\\0\' "$@" > trace; return "$SYFT_EXIT"; }\n' + step["run"]
+    )
+    result = _run_coverage_shape_checks(script, tmp_path)
+    assert (tmp_path / "trace").read_bytes().split(b"\0") == [
+        f"dir:services/{service}".encode(),
+        b"--output",
+        f"spdx-json=sbom-{service}.spdx.json".encode(),
+        b"--scope",
+        b"all-layers",
+        b"",
+    ]
+    assert result.returncode == syft_status
+    assert result.stdout == (
+        f"Generated SBOM for {service}\n" if syft_status == 0 else ""
+    )
+    assert result.stderr == ""
+
+
+def test_go_sbom_service_is_literal_shell_data(tmp_path: Path) -> None:
+    workflow = yaml.safe_load(GO_LINT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["go-sbom"]
+    expression = "${{ matrix.service }}"
+    step = _step_named(job, "Generate SPDX-JSON SBOM for " + expression)
+    assert step["env"]["SERVICE"] == expression
+    service = "$(touch marker)"
+    script = (
+        f"export SERVICE={shlex.quote(service)}\n"
+        "export SYFT_EXIT=0\n"
+        'syft() { printf \'%s\\0\' "$@" > trace; return "$SYFT_EXIT"; }\n' + step["run"]
+    )
+    result = _run_coverage_shape_checks(script, tmp_path)
+    assert result.returncode == 0
+    assert result.stdout == f"Generated SBOM for {service}\n"
+    assert result.stderr == ""
+    assert (tmp_path / "trace").read_bytes().split(b"\0") == [
+        b"dir:services/$(touch marker)",
+        b"--output",
+        b"spdx-json=sbom-$(touch marker).spdx.json",
+        b"--scope",
+        b"all-layers",
+        b"",
+    ]
+    assert not (tmp_path / "marker").exists()
