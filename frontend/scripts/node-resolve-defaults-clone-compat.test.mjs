@@ -91,7 +91,7 @@ test("actual CJS and ESM consumers retain the scoped clone contract", async () =
   assert.equal(packages[""].devDependencies["@rollup/plugin-node-resolve"], "16.0.3")
   assert.equal(manifest.overrides.deepmerge, undefined)
   assert.deepEqual(manifest.overrides["@rollup/plugin-node-resolve@16.0.3"], {
-    deepmerge: "file:../../../scripts/node-resolve-defaults-clone-compat",
+    deepmerge: "file:./scripts/node-resolve-defaults-clone-compat",
   })
   const target = "scripts/node-resolve-defaults-clone-compat"
   const edge = packages["node_modules/deepmerge"]

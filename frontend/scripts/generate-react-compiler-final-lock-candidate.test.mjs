@@ -540,6 +540,17 @@ test("local input preflight accepts every committed local dependency without wid
   const directories = localPaths.filter((value) => value !== ARCHIVE)
   const files = localPaths.filter((value) => value === ARCHIVE)
   assert.equal(assertFinalLocalInputs(directories, files), true)
+  assert.ok(directories.includes("scripts/minimatch-3-compat"))
+  assert.throws(
+    () =>
+      assertFinalLocalInputs(
+        directories.map((value) =>
+          value === "scripts/minimatch-3-compat" ? "scripts/minimatch-3-compat-old" : value
+        ),
+        files
+      ),
+    { name: "AssertionError" }
+  )
   for (const directory of directories) {
     assert.throws(
       () =>

@@ -1319,6 +1319,7 @@ export function assertFinalInstalledGraph(frontend, mode, controls) {
 export function assertFinalLocalInputs(localDirectories, localFiles) {
   assert.deepEqual(localDirectories.sort(), [
     "scripts/boundary-micromatch-compat",
+    "scripts/minimatch-3-compat",
     "scripts/node-resolve-defaults-clone-compat",
     "wasm-sanitizer/pkg",
   ])
