@@ -543,6 +543,41 @@ def test_postgres_migration_gates_pin_python_before_uv() -> None:
         assert jobs[job_name]["env"]["UV_PYTHON"] == "3.14", job_name
 
 
+def test_alembic_job_migrates_an_empty_database_and_keeps_drift_check() -> None:
+    workflow = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["alembic-migrations"]["steps"]
+    run_text = "\n".join(str(step.get("run", "")) for step in steps)
+
+    # AUD-208: the MVP baseline rejects a populated public schema, and it creates
+    # the pgvector extension itself. Nothing may create tables or the extension
+    # before the first `alembic upgrade head`.
+    assert "create_all" not in run_text
+    assert "CREATE EXTENSION" not in run_text
+    assert all(step.get("name") != "Create database tables" for step in steps)
+
+    upgrade_index = next(
+        index
+        for index, step in enumerate(steps)
+        if "alembic -c alembic.ini upgrade head" in str(step.get("run", ""))
+    )
+    assert upgrade_index == next(
+        index
+        for index, step in enumerate(steps)
+        if str(step.get("name", "")).startswith("Run Alembic upgrade")
+    ), "the supported-range upgrade must be the first migration step"
+
+    # Metadata-vs-migration drift, which create_all previously seeded, is still
+    # enforced by MOD-14-03 after the migrated schema exists.
+    drift = [
+        index
+        for index, step in enumerate(steps)
+        if step.get("name") == "Check Alembic schema drift (MOD-14-03)"
+    ]
+    assert len(drift) == 1
+    assert drift[0] > upgrade_index
+    assert "alembic -c alembic.ini check" in steps[drift[0]]["run"]
+
+
 def _mvp_rollback_adr_section() -> str:
     path = ROOT / "docs" / "adr" / "ADR-036-sqlalchemy-dual-default-migration-policy.md"
     source = path.read_text(encoding="utf-8")
