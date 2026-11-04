@@ -876,6 +876,51 @@ describe("rooms", () => {
     expect(lastSocket().send).not.toHaveBeenCalled()
   })
 
+  it("retries a temporary 1013 close and rejoins the active room after the new socket opens", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5)
+    const { result, socket } = await connected({ currentUserId: "user-a" })
+    act(() => result.current.sendJoin(CHAT))
+    expect(sentJoins(socket)).toStrictEqual([{ type: "join", room: CHAT }])
+    expect(result.current.isConnected).toBe(true)
+
+    act(() => socket.close(1013, "try again later"))
+    expect(result.current.isConnected).toBe(false)
+    expect(mocks.apiPost).toHaveBeenCalledTimes(1)
+    expect(sockets()).toHaveLength(1)
+
+    await act(() => vi.advanceTimersByTimeAsync(499))
+    expect(mocks.apiPost).toHaveBeenCalledTimes(1)
+    expect(sockets()).toHaveLength(1)
+
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(mocks.apiPost).toHaveBeenCalledTimes(2)
+    expect(sockets()).toHaveLength(2)
+    const replacement = lastSocket()
+    expect(sentJoins(replacement)).toStrictEqual([])
+
+    act(() => replacement.onopen?.())
+    expect(result.current.isConnected).toBe(true)
+    expect(sentJoins(replacement)).toStrictEqual([{ type: "join", room: CHAT }])
+  })
+
+  it.each([1000, 4001, 4003])(
+    "keeps the selected room disconnected after terminal close code %s",
+    async (code) => {
+      vi.spyOn(Math, "random").mockReturnValue(0.5)
+      const { result, socket } = await connected({ currentUserId: "user-a" })
+      act(() => result.current.sendJoin(CHAT))
+      expect(sentJoins(socket)).toStrictEqual([{ type: "join", room: CHAT }])
+
+      act(() => socket.close(code))
+      expect(result.current.isConnected).toBe(false)
+      await act(() => vi.advanceTimersByTimeAsync(60_000))
+      expect(result.current.isConnected).toBe(false)
+      expect(mocks.apiPost).toHaveBeenCalledTimes(1)
+      expect(sockets()).toHaveLength(1)
+      expect(sentJoins(socket)).toStrictEqual([{ type: "join", room: CHAT }])
+    }
+  )
+
   it("throttles typing notifications to one per 500 ms per chat", () => {
     const sendTyping = vi.spyOn(chatApi, "sendTyping").mockResolvedValue(undefined)
     mocks.apiPost.mockReturnValue(new Promise(() => undefined))

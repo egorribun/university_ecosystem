@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -49,8 +50,8 @@ func TestAUD478ResetDropsEveryGenerationOfLocalAndSharedCache(t *testing.T) {
 }
 
 // TestAUD478InFlightAnswerFromRetiredGenerationIsNotCached covers a backend check that
-// started before a reset and completes after it. The caller still gets that answer, but
-// it must not populate L1 or L2 for the new generation.
+// started before a reset and completes after it. The retired answer must neither
+// authorize the caller nor populate L1 or L2 for the new generation.
 func TestAUD478InFlightAnswerFromRetiredGenerationIsNotCached(t *testing.T) {
 	mr, rc := newMiniredisClient(t)
 	started := make(chan struct{})
@@ -75,7 +76,7 @@ func TestAUD478InFlightAnswerFromRetiredGenerationIsNotCached(t *testing.T) {
 
 	select {
 	case allowed := <-done:
-		require.True(t, allowed, "the caller receives the answer it asked for")
+		require.False(t, allowed, "the caller must not receive an allow from a retired generation")
 	case <-time.After(5 * time.Second):
 		require.FailNow(t, "in-flight join did not complete")
 	}
@@ -85,6 +86,162 @@ func TestAUD478InFlightAnswerFromRetiredGenerationIsNotCached(t *testing.T) {
 
 	require.True(t, c.CanJoinRoom(ctx, rdUser, rdRoom))
 	require.Equal(t, int32(2), calls.Load(), "the next join must ask the backend, not the retired generation")
+}
+
+func TestAUD478ResetAllowsNewFlightWhileOldFlightIsPending(t *testing.T) {
+	oldStarted, newStarted := make(chan struct{}), make(chan struct{})
+	oldRelease, newRelease := make(chan struct{}), make(chan struct{})
+	var oldOnce, newOnce sync.Once
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch calls.Add(1) {
+		case 1:
+			close(oldStarted)
+			select {
+			case <-oldRelease:
+			case <-r.Context().Done():
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		case 2:
+			close(newStarted)
+			select {
+			case <-newRelease:
+			case <-r.Context().Done():
+				return
+			}
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			t.Error("a current-generation waiter created an extra backend request")
+			w.WriteHeader(http.StatusForbidden)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() {
+		oldOnce.Do(func() { close(oldRelease) })
+		newOnce.Do(func() { close(newRelease) })
+	})
+	client := mustNewTestAuthClient(t, server.URL, "", nil)
+	oldDone := make(chan bool, 1)
+	go func() { oldDone <- client.CanJoinRoom(context.Background(), rdUser, rdRoom) }()
+	waitRoomMembershipSignal(t, oldStarted, "old flight did not start")
+	require.NoError(t, client.ResetAuthorizationCache(context.Background()))
+	newDone := make(chan bool, 1)
+	go func() { newDone <- client.CanJoinRoom(context.Background(), rdUser, rdRoom) }()
+	waitRoomMembershipSignal(t, newStarted, "post-reset authorization joined the retired flight")
+	require.EqualValues(t, 2, calls.Load())
+	client.callMu.Lock()
+	currentFlight := client.calls[rdUser+":"+rdRoom]
+	client.callMu.Unlock()
+	require.NotNil(t, currentFlight)
+	oldOnce.Do(func() { close(oldRelease) })
+	require.False(t, <-oldDone, "the retired flight must not authorize its original caller")
+	client.callMu.Lock()
+	retainedFlight := client.calls[rdUser+":"+rdRoom]
+	client.callMu.Unlock()
+	require.Same(t, currentFlight, retainedFlight, "retiring the old flight must not remove the new one")
+
+	observed := &observedDoneContext{Context: context.Background(), observed: make(chan struct{})}
+	waiterDone := make(chan bool, 1)
+	go func() { waiterDone <- client.CanJoinRoom(observed, rdUser, rdRoom) }()
+	waitRoomMembershipSignal(t, observed.observed, "current-generation waiter did not attach")
+	newOnce.Do(func() { close(newRelease) })
+	require.False(t, <-newDone, "the new flight must use the current backend denial")
+	require.False(t, <-waiterDone)
+	require.EqualValues(t, 2, calls.Load())
+}
+
+func TestAUD478SingleFlightWaiterHonorsCancellation(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	client := mustNewTestAuthClient(t, server.URL, "", nil)
+	leaderDone := make(chan bool, 1)
+	go func() { leaderDone <- client.CanJoinRoom(context.Background(), rdUser, rdRoom) }()
+	waitRoomMembershipSignal(t, started, "leader did not start")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	observed := &observedDoneContext{Context: ctx, observed: make(chan struct{})}
+	waiterDone := make(chan bool, 1)
+	go func() { waiterDone <- client.CanJoinRoom(observed, rdUser, rdRoom) }()
+	select {
+	case <-observed.observed:
+	case <-time.After(time.Second):
+		t.Fatal("waiter did not observe its cancellation context")
+	}
+	cancel()
+	select {
+	case allowed := <-waiterDone:
+		require.False(t, allowed)
+	case <-time.After(time.Second):
+		t.Fatal("cancelled waiter remained blocked on the leader")
+	}
+	releaseOnce.Do(func() { close(release) })
+	require.True(t, <-leaderDone, "a cancelled waiter must not cancel the leader")
+}
+
+func TestAUD478RetiredLookupCannotReplaceCurrentFlight(t *testing.T) {
+	currentStarted, staleStarted := make(chan struct{}), make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			close(currentStarted)
+		} else {
+			close(staleStarted)
+		}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+	client := mustNewTestAuthClient(t, server.URL, "", nil)
+	require.NoError(t, client.ResetAuthorizationCache(context.Background()))
+	currentDone := make(chan bool, 1)
+	go func() { currentDone <- client.CanJoinRoom(context.Background(), rdUser, rdRoom) }()
+	waitRoomMembershipSignal(t, currentStarted, "current-generation flight did not start")
+	client.callMu.Lock()
+	currentFlight := client.calls[rdUser+":"+rdRoom]
+	client.callMu.Unlock()
+	require.NotNil(t, currentFlight)
+
+	// Model a caller that completed the cache lookup before reset but was
+	// delayed before entering the single-flight map.
+	retiredDone := make(chan bool, 1)
+	go func() {
+		retiredDone <- client.requestRoomAuthorization(context.Background(), rdUser, rdRoom, rdUser+":"+rdRoom, 0)
+	}()
+	select {
+	case allowed := <-retiredDone:
+		require.False(t, allowed)
+	case <-staleStarted:
+		t.Fatal("retired lookup started a backend request and replaced the current flight")
+	case <-time.After(time.Second):
+		t.Fatal("retired lookup did not fail closed")
+	}
+	client.callMu.Lock()
+	retainedFlight := client.calls[rdUser+":"+rdRoom]
+	client.callMu.Unlock()
+	require.Same(t, currentFlight, retainedFlight)
+	require.EqualValues(t, 1, calls.Load())
+	releaseOnce.Do(func() { close(release) })
+	require.True(t, <-currentDone)
 }
 
 // TestAUD478StaleGenerationEntryIsNeverServed checks the read side: an L1 entry tagged

@@ -65,8 +65,9 @@ type RoomAuthCacheResetter interface {
 
 // call represents an in-flight request to the backend.
 type call struct {
-	wg  sync.WaitGroup
-	res bool
+	done       chan struct{}
+	res        bool
+	generation uint64
 }
 
 // InternalAPIAuthClient implements RoomAuthClient using backend HTTP calls.
@@ -395,6 +396,25 @@ func (c *InternalAPIAuthClient) ResetAuthorizationCache(ctx context.Context) err
 	return nil
 }
 
+// authorizationCacheGeneration snapshots the generation used by a room join.
+func (c *InternalAPIAuthClient) authorizationCacheGeneration() uint64 {
+	c.genMu.RLock()
+	defer c.genMu.RUnlock()
+	return c.generation
+}
+
+// withAuthorizationCacheGeneration keeps a reset from interleaving between the
+// final generation check and committing membership based on that generation.
+func (c *InternalAPIAuthClient) withAuthorizationCacheGeneration(generation uint64, commit func()) bool {
+	c.genMu.RLock()
+	defer c.genMu.RUnlock()
+	if c.generation != generation {
+		return false
+	}
+	commit()
+	return true
+}
+
 // CanJoinRoom checks local cache, uses single-flight to prevent thundering herd,
 // and calls the Python backend on cache miss.
 //
@@ -408,15 +428,22 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	}
 
 	key := userID + ":" + roomID
+	generation, allowed, cached := c.cachedRoomAuthorization(ctx, key)
+	if cached {
+		return allowed
+	}
+	return c.requestRoomAuthorization(ctx, userID, roomID, key, generation)
+}
 
+func (c *InternalAPIAuthClient) cachedRoomAuthorization(ctx context.Context, key string) (uint64, bool, bool) {
 	// 1 and 2. Fast path (L1) and shared path (L2, PERF-006) under the shared
 	// generation lock. A reset cannot interleave with these reads.
 	c.genMu.RLock()
+	defer c.genMu.RUnlock()
 	generation := c.generation
 	entry, ok := c.cache.Get(key)
 	if ok && entry.generation == generation && time.Now().Before(entry.expiresAt) {
-		c.genMu.RUnlock()
-		return entry.allowed
+		return generation, entry.allowed, true
 	}
 	if c.redis != nil {
 		redisKey := "auth:perms:" + key
@@ -429,59 +456,78 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 				expiresAt:  time.Now().Add(authCacheTTL),
 				generation: generation,
 			})
-			c.genMu.RUnlock()
-			return allowed
+			return generation, allowed, true
 		}
 	}
-	c.genMu.RUnlock()
+	return generation, false, false
+}
 
+func (c *InternalAPIAuthClient) requestRoomAuthorization(
+	ctx context.Context,
+	userID, roomID, key string,
+	generation uint64,
+) bool {
 	// 3. Slow path: single-flight request
-	c.callMu.Lock()
-	if c.calls[key] != nil {
-		activeCall := c.calls[key]
-		c.callMu.Unlock()
-		activeCall.wg.Wait()
-		return activeCall.res
+	// Keep the generation stable through map insertion: an older lookup cannot
+	// replace a flight that was created after a reset.
+	c.genMu.RLock()
+	if c.generation != generation {
+		c.genMu.RUnlock()
+		return false
 	}
-	newCall := new(call)
-	newCall.wg.Add(1)
-	// HIGH-W19: defer wg.Done so waiters are always unblocked even if
-	// doRequestWithBreakerResult panics; explicit call below is removed
-	defer newCall.wg.Done()
+	c.callMu.Lock()
+	if activeCall := c.calls[key]; activeCall != nil && activeCall.generation == generation {
+		c.callMu.Unlock()
+		c.genMu.RUnlock()
+		select {
+		case <-activeCall.done:
+		case <-ctx.Done():
+			return false
+		}
+		c.genMu.RLock()
+		allowed := ctx.Err() == nil && activeCall.generation == c.generation && activeCall.res
+		c.genMu.RUnlock()
+		return allowed
+	}
+	newCall := &call{done: make(chan struct{}), generation: generation}
 	c.calls[key] = newCall
 	c.callMu.Unlock()
+	c.genMu.RUnlock()
+	// Always release waiters, including on panic. A retired flight must not
+	// remove a newer flight for the same key when it eventually finishes.
+	defer func() {
+		c.callMu.Lock()
+		if c.calls[key] == newCall {
+			delete(c.calls, key)
+		}
+		c.callMu.Unlock()
+		close(newCall.done)
+	}()
 
 	// Backend failures deny this request, but are not cacheable decisions.
 	allowed, authErr := c.doRequestWithBreakerResult(ctx, userID, roomID)
-	if authErr == nil {
-		// An answer from a generation that a reset has since retired is returned to
-		// this caller but never cached, so it cannot outlive the reset.
-		c.genMu.RLock()
-		if c.generation == generation {
-			c.cache.Add(key, cacheEntry{
-				allowed:    allowed,
-				expiresAt:  time.Now().Add(authCacheTTL),
-				generation: generation,
-			})
+	c.genMu.RLock()
+	if c.generation != generation {
+		// A reset retires the answer for this caller as well as its waiters.
+		allowed = false
+	} else if authErr == nil {
+		c.cache.Add(key, cacheEntry{
+			allowed:    allowed,
+			expiresAt:  time.Now().Add(authCacheTTL),
+			generation: generation,
+		})
 
-			if c.redis != nil {
-				redisKey := "auth:perms:" + key
-				val := "0"
-				if allowed {
-					val = "1"
-				}
-				c.redis.Set(ctx, redisKey, val, authCacheTTL)
+		if c.redis != nil {
+			redisKey := "auth:perms:" + key
+			val := "0"
+			if allowed {
+				val = "1"
 			}
+			c.redis.Set(ctx, redisKey, val, authCacheTTL)
 		}
-		c.genMu.RUnlock()
 	}
-
-	// Resolve in-flight call
 	newCall.res = allowed
-
-	c.callMu.Lock()
-	delete(c.calls, key)
-	c.callMu.Unlock()
+	c.genMu.RUnlock()
 
 	return allowed
 }

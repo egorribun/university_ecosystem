@@ -48,9 +48,9 @@ func (h *Hub) natsReconnects() uint64 {
 
 // AdmissionClosed reports whether WebSocket and WebTransport admission and readiness
 // must fail closed. It is true while the revocation replay drains, while the
-// authorization cache is unknown, and during the window between a NATS reconnect and
-// the reset that follows it. The live reconnect comparison closes that window
-// synchronously, so admission does not wait for the watcher's next poll.
+// authorization cache is unknown, while NATS is disconnected, and during the window
+// between a reconnect and the reset that follows it. Live connection and reconnect
+// checks close those windows without waiting for the watcher's next poll.
 func (h *Hub) AdmissionClosed() bool {
 	if h.RevocationCatchingUp() {
 		return true
@@ -58,7 +58,8 @@ func (h *Hub) AdmissionClosed() bool {
 	if !h.authCacheTracked.Load() {
 		return false
 	}
-	return h.authCacheAdmissionClosed.Load() || h.natsReconnects() != h.observedNATSReconnects.Load()
+	return !h.natsConnectionUp() || h.authCacheAdmissionClosed.Load() ||
+		h.natsReconnects() != h.observedNATSReconnects.Load()
 }
 
 // resetAuthorizationCache resets the authorization cache when the configured client

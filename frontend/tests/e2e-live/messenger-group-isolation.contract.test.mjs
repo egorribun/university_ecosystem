@@ -134,9 +134,21 @@ test("live WebSocket assertions exercise real group fan-out without transport mo
   )
   assert.match(spec, /eventsForMessage\(socket, chatId, sentMessage\.id\)/u)
   assert.match(spec, /message_edited[\s\S]*?message_deleted/u)
+  const joinStart = websocketClient.indexOf("func (c *Client) handleJoin(")
+  const joinEnd = websocketClient.indexOf("func (c *Client) prepareAuthorizedRoomJoin(", joinStart)
+  assert.ok(joinStart >= 0 && joinEnd > joinStart, "the room join handler must exist")
+  const joinHandler = websocketClient.slice(joinStart, joinEnd)
+  assert.match(
+    joinHandler,
+    /authorized, retryConnection := c\.authorizeRoomJoinWithStatus\(ctx, msg\.Room,[\s\S]*?return c\.prepareAuthorizedRoomJoin\(ctx, msg, decision\)/u
+  )
+  assert.match(
+    joinHandler,
+    /if !authorized \{\s*if retryConnection && c\.roomJoinContextActive\(ctx\) \{[\s\S]*?c\.closeTransportWithControlFrame\(websocket\.CloseTryAgainLater, "room admission temporarily unavailable"\)\s*c\.cancelConnection\(\)\s*return\s*\}\s*c\.rejectUnauthorizedRoomJoin\(ctx, msg\.Room\)\s*return\s*\}\s*c\.finishAuthorizedRoomJoin\(ctx, msg, decision\)/u
+  )
   assert.match(
     websocketClient,
-    /authorized := c\.authorizeRoomJoin\(ctx, msg\.Room,[\s\S]*?if !authorized \{\s*c\.rejectUnauthorizedRoomJoin\(ctx, msg\.Room\)\s*return/u
+    /admission, admitted := c\.roomJoinAdmissionSnapshot\(\)\s*if !admitted \{\s*return false, true\s*\}/u
   )
   assert.match(
     websocketClient,

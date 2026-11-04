@@ -493,10 +493,17 @@ func (c *Client) handleJoin(ctx context.Context, msg Message) {
 		return
 	}
 	decision := &roomJoinDecision{}
-	authorized := c.authorizeRoomJoin(ctx, msg.Room, func() bool {
+	authorized, retryConnection := c.authorizeRoomJoinWithStatus(ctx, msg.Room, func() bool {
 		return c.prepareAuthorizedRoomJoin(ctx, msg, decision)
 	})
 	if !authorized {
+		if retryConnection && c.roomJoinContextActive(ctx) {
+			// A still-open socket would never resend this join on recovery. Let
+			// ReadPump perform unregister after the retryable close is delivered.
+			c.closeTransportWithControlFrame(websocket.CloseTryAgainLater, "room admission temporarily unavailable")
+			c.cancelConnection()
+			return
+		}
 		c.rejectUnauthorizedRoomJoin(ctx, msg.Room)
 		return
 	}
@@ -539,7 +546,7 @@ func (c *Client) prepareAuthorizedRoomJoin(
 		}
 		return false
 	}
-	decision.replayCtx, decision.replayState = c.prepareRoomReplay(ctx, msg.Room)
+	decision.replayCtx, decision.replayState = c.prepareRoomReplayLocked(ctx, msg.Room)
 	return false
 }
 
@@ -610,6 +617,41 @@ func (c *Client) cancelJoinedReplayForRetry(room string) bool {
 	return true
 }
 
+type roomAuthorizationGeneration interface {
+	authorizationCacheGeneration() uint64
+	withAuthorizationCacheGeneration(uint64, func()) bool
+}
+
+type roomJoinAdmission struct {
+	tracked    bool
+	reconnects uint64
+	cache      roomAuthorizationGeneration
+	generation uint64
+}
+
+// roomJoinAdmissionSnapshot applies the admission barrier to existing transports.
+func (c *Client) roomJoinAdmissionSnapshot() (roomJoinAdmission, bool) {
+	admission := roomJoinAdmission{tracked: c.Hub.authCacheTracked.Load()}
+	if admission.tracked {
+		admission.reconnects = c.Hub.natsReconnects()
+	}
+	if !c.roomJoinAdmissionCurrent(admission) {
+		return admission, false
+	}
+	if cache, ok := c.Hub.authClient.(roomAuthorizationGeneration); ok {
+		admission.cache = cache
+		admission.generation = cache.authorizationCacheGeneration()
+	}
+	return admission, c.roomJoinAdmissionCurrent(admission)
+}
+
+func (c *Client) roomJoinAdmissionCurrent(admission roomJoinAdmission) bool {
+	if c.Hub.authCacheTracked.Load() != admission.tracked || c.Hub.AdmissionClosed() {
+		return false
+	}
+	return !admission.tracked || c.Hub.natsReconnects() == admission.reconnects
+}
+
 // authorizeRoomJoin runs backend authorization outside the keyed mutex. A
 // revocation epoch check prevents a stale backend response from committing a
 // membership after an invalidation; invalidated joins retry only after the
@@ -617,23 +659,37 @@ func (c *Client) cancelJoinedReplayForRetry(room string) bool {
 // after the authorization result is current and may decline membership for a
 // replay that will join after catch-up.
 func (c *Client) authorizeRoomJoin(ctx context.Context, room string, commitMembership func() bool) bool {
+	authorized, _ := c.authorizeRoomJoinWithStatus(ctx, room, commitMembership)
+	return authorized
+}
+
+func (c *Client) authorizeRoomJoinWithStatus(
+	ctx context.Context,
+	room string,
+	commitMembership func() bool,
+) (authorized, retryConnection bool) {
 	for {
 		if !c.roomJoinContextActive(ctx) {
-			return false
+			return false, false
+		}
+		admission, admitted := c.roomJoinAdmissionSnapshot()
+		if !admitted {
+			return false, true
 		}
 		lock, epoch, pending, ready, retry := c.roomJoinSnapshot(ctx, room)
 		if retry {
 			continue
 		}
 		if !ready || lock == nil {
-			return false
+			return false, false
 		}
 		allowed, refreshed := c.Hub.authorizeRoomJoin(ctx, c.UserID, room, pending)
-		finished, retry := c.finishRoomJoinAuthorization(
+		finished, retry, unavailable := c.finishRoomJoinAuthorization(
 			ctx,
 			room,
 			lock,
 			epoch,
+			admission,
 			allowed,
 			refreshed,
 			commitMembership,
@@ -641,7 +697,7 @@ func (c *Client) authorizeRoomJoin(ctx context.Context, room string, commitMembe
 		if retry {
 			continue
 		}
-		return finished
+		return finished, unavailable
 	}
 }
 
@@ -687,28 +743,45 @@ func (c *Client) finishRoomJoinAuthorization(
 	room string,
 	lock *roomMembershipLock,
 	epoch *roomMembershipEpoch,
+	admission roomJoinAdmission,
 	allowed bool,
 	refreshed bool,
 	commitMembership func() bool,
-) (finished bool, retry bool) {
+) (finished bool, retry bool, unavailable bool) {
 	lock.Lock()
 	entry := lock.entry
 	if entry.revocationEpoch != epoch || entry.revocations > 0 || entry.mutationPending || entry.drainFailedClosed.Load() {
 		lock.Unlock()
-		return false, true
+		return false, true, false
 	}
-	if refreshed {
-		c.Hub.clearRoomRevocationPending(c.UserID, room)
+	unavailable = true
+	commit := func() {
+		// Holding Hub.mu through the final admission check and membership
+		// publication prevents a blocked join from using an earlier check.
+		c.Hub.mu.Lock()
+		defer c.Hub.mu.Unlock()
+		if !c.roomJoinAdmissionCurrent(admission) {
+			return
+		}
+		unavailable = false
+		if refreshed {
+			c.Hub.clearRoomRevocationPending(c.UserID, room)
+		}
+		if !allowed || !c.roomJoinContextActive(ctx) {
+			return
+		}
+		if commitMembership() {
+			c.joinRoomLocked(room)
+		}
+		finished = true
 	}
-	if !allowed || !c.roomJoinContextActive(ctx) {
-		lock.Unlock()
-		return false, false
-	}
-	if commitMembership() {
-		c.JoinRoom(room)
+	if admission.cache != nil {
+		admission.cache.withAuthorizationCacheGeneration(admission.generation, commit)
+	} else {
+		commit()
 	}
 	lock.Unlock()
-	return true, false
+	return finished, false, unavailable
 }
 func (c *Client) sendReplayJoinError(room, code, detail string) {
 	frame, err := json.Marshal(map[string]string{
@@ -747,6 +820,13 @@ func (c *Client) startRoomReplay(ctx context.Context, room string, lastSeq uint6
 // network work. Join authorization calls it while the keyed epoch is current,
 // then launches runRoomReplay only after releasing the membership mutex.
 func (c *Client) prepareRoomReplay(ctx context.Context, room string) (context.Context, *roomReplayState) {
+	c.Hub.mu.Lock()
+	defer c.Hub.mu.Unlock()
+	return c.prepareRoomReplayLocked(ctx, room)
+}
+
+// prepareRoomReplayLocked installs replay and membership while Hub.mu is held.
+func (c *Client) prepareRoomReplayLocked(ctx context.Context, room string) (context.Context, *roomReplayState) {
 	replayCtx, cancelReplay := context.WithCancel(ctx)
 	state := &roomReplayState{
 		ctx:      replayCtx,
@@ -765,7 +845,7 @@ func (c *Client) prepareRoomReplay(ctx context.Context, room string) (context.Co
 
 	// Membership is established only after the replay barrier exists. Live
 	// messages are then buffered by enqueueRoomBroadcast until replay drains.
-	c.JoinRoom(room)
+	c.joinRoomLocked(room)
 	return replayCtx, state
 }
 
@@ -1586,7 +1666,14 @@ func (c *Client) JoinRoom(room string) {
 
 	c.Hub.mu.Lock()
 	defer c.Hub.mu.Unlock()
+	c.joinRoomLocked(room)
+}
 
+// joinRoomLocked adds membership while Hub.mu is held.
+func (c *Client) joinRoomLocked(room string) {
+	if room == "" {
+		return
+	}
 	c.mu.Lock()
 	c.Rooms[room] = true
 	c.mu.Unlock()
