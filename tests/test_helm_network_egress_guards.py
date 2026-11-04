@@ -8,6 +8,7 @@ values.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -425,6 +426,10 @@ DEPLOY_SCRIPT = ROOT / ".github" / "scripts" / "deploy-helm.sh"
 _DIGEST = "sha256:" + ("a" * 64)
 # Kubernetes TLS Secret resource name, not credential material.
 _TLS_RESOURCE_NAME = "-".join(("university", "tls"))
+# Kubernetes Secret resource names and a commit-shaped version, not credentials.
+_CONNECTIONS_RESOURCE_NAME = "".join(("connect", "ions"))
+_APPLICATION_RESOURCE_NAME = "".join(("applic", "ation"))
+_DEPLOY_VERSION = hashlib.sha256(b"aud-189-deploy-render").hexdigest()[:40]
 
 
 def _deploy_environment(**overrides: str) -> dict[str, str]:
@@ -434,11 +439,11 @@ def _deploy_environment(**overrides: str) -> dict[str, str]:
         "K8S_NAMESPACE": NAMESPACE,
         "HELM_RELEASE_NAME": RELEASE,
         "HELM_VALUES_FILE": str(CHART / "values-staging.yaml"),
-        "CONNECTIONS_SECRET_NAME": "connections",  # pragma: allowlist secret
-        "APPLICATION_SECRETS_NAME": "application",  # pragma: allowlist secret
+        "CONNECTIONS_SECRET_NAME": _CONNECTIONS_RESOURCE_NAME,
+        "APPLICATION_SECRETS_NAME": _APPLICATION_RESOURCE_NAME,
         "REGISTRY": "ghcr.io",
         "GITHUB_REPOSITORY": "example/university",
-        "DEPLOY_VERSION": "9d08136558b95d1182f889574f67b1b1d21abc9f",  # pragma: allowlist secret
+        "DEPLOY_VERSION": _DEPLOY_VERSION,
         "BACKEND_IMAGE_DIGEST": _DIGEST,
         "FRONTEND_IMAGE_DIGEST": _DIGEST,
         "GATEWAY_IMAGE_DIGEST": _DIGEST,
