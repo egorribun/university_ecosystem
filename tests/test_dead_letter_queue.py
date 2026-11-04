@@ -113,6 +113,7 @@ async def test_add_failed_job_duplicate(dlq, mock_session):
     """Test duplicate job is skipped."""
     existing_job = MagicMock()
     existing_job.status = JobStatus.PENDING.value
+    existing_job.error_message = None
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing_job
     mock_session.execute.return_value = mock_result

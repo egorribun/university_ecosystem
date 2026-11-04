@@ -96,7 +96,13 @@ _QUARANTINED_AUTH_PAYLOAD = json.dumps({"kind": "auth-email-quarantined-v1"})
 
 # Same rule as the DLQ token-scrub migration: error text that echoes a plaintext
 # ``#token=`` / ``?token=`` link is replaced, so no error field keeps the link.
-_PLAINTEXT_TOKEN_LINK = re.compile(r"[#?&]token=[^\s&\"'<>]+")
+# The separator and the ``=`` may also arrive percent-encoded or as HTML
+# entities, and the parameter name may vary in case; each form is a live link.
+_PLAINTEXT_TOKEN_LINK = re.compile(
+    r"(?:[#?&]|%23|%3f|%26|&amp;|&#0*38;|&#x0*26;)token(?:=|%3d|&#0*61;|&#x0*3d;)"
+    r"[^\s&\"'<>]+",
+    re.IGNORECASE,
+)
 
 
 def _scrub_error_text(error: str) -> str:
@@ -157,6 +163,10 @@ class DeadLetterQueue:
             if job_type == "app.tasks.email.send_auth_email":
                 # Keep retry state and let the caller persist the payload repair.
                 _protect_retained_auth_payload(existing)
+            # The retained row keeps its own earlier error text; a link that an
+            # earlier failure stored must not survive a later duplicate either.
+            if existing.error_message is not None:
+                existing.error_message = _scrub_error_text(existing.error_message)
             logger.debug(
                 "Duplicate job detected, skipping: type=%s, hash=%s",
                 job_type,

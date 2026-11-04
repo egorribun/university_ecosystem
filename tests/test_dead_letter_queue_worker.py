@@ -67,7 +67,7 @@ def make_dlq(session: AsyncMock | None = None) -> DeadLetterQueue:
 async def test_add_failed_job_returns_none_on_active_duplicate(status: str):
     session = AsyncMock()
     existing_result = MagicMock()
-    duplicate = MagicMock(status=status)
+    duplicate = MagicMock(status=status, error_message=None)
     existing_result.scalar_one_or_none.return_value = duplicate
     session.execute.return_value = existing_result
     session.add = MagicMock()
