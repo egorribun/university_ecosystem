@@ -2811,6 +2811,10 @@ def test_release_rejects_mutable_password_init_image_without_backend_binding() -
         ("wsHub.autoscaling.minReplicas=1", "wsHub.autoscaling.minReplicas"),
         ("wsHub.autoscaling.enabled=false", "wsHub.autoscaling.enabled=true"),
         ("wsHub.service.port=8082", "wsHub.service.port"),
+        (
+            "wsHub.metrics.port=8081",
+            "wsHub.metrics.port must differ from wsHub.service.port",
+        ),
         ("wsHub.config.allowedOrigins={}", "allowedOrigins"),
         ("wsHub.config.allowedOrigins={http://insecure.example}", "https://"),
     ],
@@ -2818,7 +2822,11 @@ def test_release_rejects_mutable_password_init_image_without_backend_binding() -
 def test_release_rejects_incomplete_ws_hub_contract(
     override: str, message: str
 ) -> None:
-    flag = "--set" if override.endswith(("false", "=1", "=8082")) else "--set-string"
+    flag = (
+        "--set"
+        if override.endswith(("false", "=1", "=8081", "=8082"))
+        else "--set-string"
+    )
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         _existing_secret_command("staging", flag, override),
         check=False,
@@ -2828,6 +2836,19 @@ def test_release_rejects_incomplete_ws_hub_contract(
     )
     assert result.returncode != 0
     assert message in result.stderr
+
+
+def test_ws_hub_rejects_same_metrics_port_without_schema_validation() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_staging(
+            "--skip-schema-validation",
+            "--set",
+            "wsHub.metrics.port=8081",
+        )
+
+    assert (
+        "wsHub.metrics.port must differ from wsHub.service.port" in error.value.stderr
+    )
 
 
 def test_staging_uses_namespaced_issuer_and_production_cluster_issuer() -> None:

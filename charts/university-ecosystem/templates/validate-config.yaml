@@ -48,6 +48,9 @@
 {{- end -}}
 {{- /* A late-starting ws-hub replica must replay every revocation that a still-valid access token could carry. */ -}}
 {{- if .Values.wsHub.enabled -}}
+  {{- if eq (int .Values.wsHub.metrics.port) (int .Values.wsHub.service.port) -}}
+    {{- fail "wsHub.metrics.port must differ from wsHub.service.port" -}}
+  {{- end -}}
   {{- $replayWindowSeconds := int .Values.wsHub.config.revocationReplayWindowSeconds -}}
   {{- $accessTokenSeconds := mul (int .Values.backend.config.accessTokenExpireMinutes) 60 -}}
   {{- if lt $replayWindowSeconds $accessTokenSeconds -}}
