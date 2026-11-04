@@ -205,8 +205,9 @@ class RateLimitMiddleware:
 
         The token is checked with the same signature and expiry verification as the
         sensitive-route dependency (``extract_user_id_for_ratelimit``). Forged,
-        expired or malformed tokens fall back to the IP bucket, and so do login,
-        register and password-recovery routes.
+        expired, malformed, non-access or non-UUID-subject tokens fall back to the
+        IP bucket, and so do login, register and password-recovery routes. Bucketing
+        only: revocation and account state are not consulted here.
         """
         request_path = request.url.path if path is None else path
         if not uses_ip_bucket(request_path):

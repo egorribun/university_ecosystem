@@ -1,4 +1,5 @@
 import threading
+import uuid
 
 import httpx
 import pytest
@@ -1222,9 +1223,10 @@ def test_extract_user_id_for_ratelimit_from_cookie():
     request.headers.get = lambda header, default="": ""  # No auth header
     request.cookies.get = lambda header: "cookie_token"
 
-    with _mock_security_module(lambda token: {"sub": "user-123"}):
+    user_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "ratelimit-cookie-user"))
+    with _mock_security_module(lambda token: {"sub": user_id}):
         result = extract_user_id_for_ratelimit(request)
-    assert result == "user-123"
+    assert result == user_id
 
 
 def test_extract_user_id_for_ratelimit_none_sub():

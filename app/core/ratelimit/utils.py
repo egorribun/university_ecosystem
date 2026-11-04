@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import ipaddress
+import uuid
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import settings
 
@@ -229,6 +230,34 @@ def compose_identifier(namespace: str, identifier: str) -> str:
     return f"{ns}:{ident}" if ns else ident
 
 
+# Claims that declare a token type. The codebase mints access tokens without any
+# of these (session_service ``_mint_jwt`` and ``_mint_pure_jwt``); a refresh, MFA
+# step-up or other non-access token carrying one of them must not key a user bucket.
+_TOKEN_TYPE_CLAIMS: tuple[str, ...] = (
+    "typ",
+    "type",
+    "token_type",
+    "token_use",
+    "purpose",
+)
+
+
+def _is_access_token_payload(payload: dict[str, Any]) -> bool:
+    """Return False when a token declares any type marker other than ``access``."""
+    return all(payload.get(claim, "access") == "access" for claim in _TOKEN_TYPE_CLAIMS)
+
+
+def _canonical_user_subject(sub: object) -> str | None:
+    """Return ``sub`` only when it is a canonical lowercase hyphenated UUID."""
+    if not isinstance(sub, str):
+        return None
+    try:
+        parsed = uuid.UUID(sub)
+    except ValueError:
+        return None
+    return sub if str(parsed) == sub else None
+
+
 def extract_user_id_for_ratelimit(request: Request) -> str | None:
     """Extract the authenticated user's sub claim for per-user rate limiting.
 
@@ -237,8 +266,13 @@ def extract_user_id_for_ratelimit(request: Request) -> str | None:
     user identity rather than IP.  This is safe for rate-limiting purposes:
     we are not granting access based on this claim, only bucketing requests.
 
-    Falls back to ``None`` when the token is absent or unparseable — the
-    caller should then fall back to an IP-based key.
+    Only a token that passes ``decode_token`` (signature, exp, aud, iss, jti)
+    and declares no non-access type marker, with a canonical UUID ``sub``, yields
+    a user key.  Revocation and account state are deliberately not consulted, so
+    a signature-valid token that was logged out keeps its bucket until it expires.
+
+    Falls back to ``None`` when the token is absent, unparseable or of another
+    kind -- the caller should then fall back to an IP-based key.
     """
     token: str | None = None
 
@@ -256,7 +290,8 @@ def extract_user_id_for_ratelimit(request: Request) -> str | None:
         from app.auth.security import decode_token
 
         payload = decode_token(token)
-        sub = payload.get("sub") if payload else None
-        return str(sub) if sub else None
+        if not payload or not _is_access_token_payload(payload):
+            return None
+        return _canonical_user_subject(payload.get("sub"))
     except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — token decode failure returns None (anonymous) (reviewed TD-27-04)
         return None
