@@ -53,9 +53,9 @@ def test_glob_security_pin_matches_manifest_and_lock() -> None:
 def test_modern_minimatch_override_preserves_legacy_api_boundaries() -> None:
     frontend = REPOSITORY_ROOT / "frontend"
     manifest = json.loads((frontend / "package.json").read_text(encoding="utf-8"))
-    packages = json.loads(
-        (frontend / "package-lock.json").read_text(encoding="utf-8")
-    )["packages"]
+    packages = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))[
+        "packages"
+    ]
     overrides = manifest["overrides"]
     assert "minimatch" not in overrides
     modern_version = overrides["minimatch@>=10"]
