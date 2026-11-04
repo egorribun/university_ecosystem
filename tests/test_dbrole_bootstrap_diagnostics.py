@@ -57,6 +57,8 @@ def test_bootstrap_wrapper_projects_only_sqlstate(
         "UE_MIGRATOR_DB_PASSWORD": sentinel,
         "UE_APP_DB_PASSWORD": sentinel,
         "UE_WORKER_DB_PASSWORD": sentinel,
+        "UE_SPICEDB_DB_PASSWORD": sentinel,
+        "UE_TEMPORAL_DB_PASSWORD": sentinel,
         "FAKE_DIAGNOSTIC": diagnostic,
         "FAKE_EXIT": str(psql_exit),
     }

@@ -21,6 +21,8 @@ load_secret PGPASSWORD
 load_secret UE_MIGRATOR_DB_PASSWORD
 load_secret UE_APP_DB_PASSWORD
 load_secret UE_WORKER_DB_PASSWORD
+load_secret UE_SPICEDB_DB_PASSWORD
+load_secret UE_TEMPORAL_DB_PASSWORD
 : "${POSTGRES_DB:?Missing database name}"
 export POSTGRES_DB
 # Establish logging controls at session startup, before transaction sampling.
@@ -46,8 +48,8 @@ collect_outcome() {
         status=$code
         markers=$((markers + 1))
         ;;
-      'psql:/bootstrap/bootstrap-app-roles.sql:'*)
-        remainder=${record#psql:/bootstrap/bootstrap-app-roles.sql:}
+      'psql:/bootstrap/bootstrap-'*'.sql:'*)
+        remainder=${record#psql:/bootstrap/bootstrap-*.sql:}
         line=${remainder%%:*}
         case "$line" in
           ''|*[!0-9]*) continue ;;

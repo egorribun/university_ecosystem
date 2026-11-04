@@ -2903,6 +2903,7 @@ def test_nightly_chaos_starts_only_its_declared_compose_dependency_closure() -> 
         "valkey",
         "postgres",
         "postgres-roles-init",
+        "postgres-databases-init",
         "minio",
     }
     closure: set[str] = set()

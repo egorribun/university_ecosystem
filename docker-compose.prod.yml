@@ -14,6 +14,8 @@
 #   UE_APP_DB_PASSWORD_SOURCE_FILE=/etc/university/secrets/ue_app_db_password
 #   UE_WORKER_DB_PASSWORD_SOURCE_FILE=/etc/university/secrets/ue_worker_db_password
 #   UE_MIGRATOR_DB_PASSWORD_SOURCE_FILE=/etc/university/secrets/ue_migrator_db_password
+#   UE_SPICEDB_DB_PASSWORD_SOURCE_FILE=/etc/university/secrets/ue_spicedb_db_password
+#   UE_TEMPORAL_DB_PASSWORD_SOURCE_FILE=/etc/university/secrets/ue_temporal_db_password
 #   POSTGRES_PASSWORD_SOURCE_FILE=/etc/university/secrets/postgres_password
 #   MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE=/etc/university/secrets/mfa_totp_encryption_keys
 #   VAPID_PRIVATE_KEY_SOURCE_FILE=/etc/university/secrets/vapid_private_key
@@ -98,6 +100,10 @@ secrets:
     file: ${UE_WORKER_DB_PASSWORD_SOURCE_FILE:?Set UE_WORKER_DB_PASSWORD_SOURCE_FILE for production}
   ue_migrator_db_password:
     file: ${UE_MIGRATOR_DB_PASSWORD_SOURCE_FILE:?Set UE_MIGRATOR_DB_PASSWORD_SOURCE_FILE for production}
+  ue_spicedb_db_password:
+    file: ${UE_SPICEDB_DB_PASSWORD_SOURCE_FILE:?Set UE_SPICEDB_DB_PASSWORD_SOURCE_FILE for production}
+  ue_temporal_db_password:
+    file: ${UE_TEMPORAL_DB_PASSWORD_SOURCE_FILE:?Set UE_TEMPORAL_DB_PASSWORD_SOURCE_FILE for production}
   postgres_password:
     file: ${POSTGRES_PASSWORD_SOURCE_FILE:?Set POSTGRES_PASSWORD_SOURCE_FILE for production}
   mfa_totp_encryption_keys:
@@ -531,11 +537,17 @@ services:
       UE_APP_DB_PASSWORD_FILE: /run/secrets/ue_app_db_password
       UE_WORKER_DB_PASSWORD: !reset null
       UE_WORKER_DB_PASSWORD_FILE: /run/secrets/ue_worker_db_password
+      UE_SPICEDB_DB_PASSWORD: !reset null
+      UE_SPICEDB_DB_PASSWORD_FILE: /run/secrets/ue_spicedb_db_password
+      UE_TEMPORAL_DB_PASSWORD: !reset null
+      UE_TEMPORAL_DB_PASSWORD_FILE: /run/secrets/ue_temporal_db_password
     secrets:
       - postgres_password
       - ue_migrator_db_password
       - ue_app_db_password
       - ue_worker_db_password
+      - ue_spicedb_db_password
+      - ue_temporal_db_password
 
   # Preserve client login identity: no forced user, auth_user or bootstrap secret.
   pgbouncer:

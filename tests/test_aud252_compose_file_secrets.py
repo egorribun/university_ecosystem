@@ -29,6 +29,8 @@ _SECRET_NAMES = (
     "ue_app_db_password",
     "ue_worker_db_password",
     "ue_migrator_db_password",
+    "ue_spicedb_db_password",
+    "ue_temporal_db_password",
     "mfa_totp_encryption_keys",
     "vapid_private_key",
     "spotify_client_secret",
@@ -125,6 +127,8 @@ _PRODUCTION_SERVICE_SECRETS = {
         "ue_app_db_password",
         "ue_worker_db_password",
         "ue_migrator_db_password",
+        "ue_spicedb_db_password",
+        "ue_temporal_db_password",
     },
 }
 _SERVICE_FILE_ENVIRONMENT = {

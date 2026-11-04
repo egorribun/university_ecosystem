@@ -33,6 +33,8 @@ RUNTIME_ROLE_BY_SERVICE = {
     "outbox-worker": "ue_app",
     "notifications-worker": "ue_worker",
     "migrations": "ue_migrator",
+    # Daily partition DDL runs as the schema owner, as the migrations service does.
+    "partition-maintenance": "ue_migrator",
 }
 # The disposable test-runner stack keeps the bootstrap superuser. Its integration
 # suite creates roles, extensions and fixtures, and it is never deployed. Converting
@@ -236,6 +238,8 @@ def test_launcher_generates_and_mirrors_the_database_role_passwords() -> None:
         "UE_MIGRATOR_DB_PASSWORD",
         "UE_APP_DB_PASSWORD",
         "UE_WORKER_DB_PASSWORD",
+        "UE_SPICEDB_DB_PASSWORD",
+        "UE_TEMPORAL_DB_PASSWORD",
     ):
         # One template line in each of .env.docker and .env.
         assert script.count(f"{key}=$") == 2, key
@@ -243,7 +247,7 @@ def test_launcher_generates_and_mirrors_the_database_role_passwords() -> None:
     assert "function Ensure-DatabaseRolePasswords" in script
     assert "\nEnsure-DatabaseRolePasswords\n" in script
     assert "'POSTGRES_(?:USER|PASSWORD)|'" in script
-    assert "'UE_(?:MIGRATOR|APP|WORKER)_DB_PASSWORD|' +" in script
+    assert "'UE_(?:MIGRATOR|APP|WORKER|SPICEDB|TEMPORAL)_DB_PASSWORD|' +" in script
     assert (
         "'DATABASE_URL|DATABASE_URL_SYNC|NOTIFICATIONS_DATABASE_URL|MIGRATION_DATABASE_URL)='"
         in script

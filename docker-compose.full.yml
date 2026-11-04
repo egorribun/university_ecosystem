@@ -502,12 +502,18 @@ services:
       UE_MIGRATOR_DB_PASSWORD: "${UE_MIGRATOR_DB_PASSWORD:?UE_MIGRATOR_DB_PASSWORD is required - run start-docker.ps1}"
       UE_APP_DB_PASSWORD: "${UE_APP_DB_PASSWORD:?UE_APP_DB_PASSWORD is required - run start-docker.ps1}"
       UE_WORKER_DB_PASSWORD: "${UE_WORKER_DB_PASSWORD:?UE_WORKER_DB_PASSWORD is required - run start-docker.ps1}"
+      # SpiceDB and Temporal log in as their own roles (bootstrap-service-roles.sql).
+      UE_SPICEDB_DB_PASSWORD: "${UE_SPICEDB_DB_PASSWORD:?UE_SPICEDB_DB_PASSWORD is required - run start-docker.ps1}"
+      UE_TEMPORAL_DB_PASSWORD: "${UE_TEMPORAL_DB_PASSWORD:?UE_TEMPORAL_DB_PASSWORD is required - run start-docker.ps1}"
     entrypoint: [ "/bin/sh", "/bootstrap/run-bootstrap.sh" ]
     volumes:
       - ./infrastructure/postgres-roles:/bootstrap:ro
     depends_on:
       postgres:
         condition: service_healthy
+      # The service roles take ownership of databases this one-shot creates.
+      postgres-databases-init:
+        condition: service_completed_successfully
     networks:
       - internal
     read_only: true
@@ -734,6 +740,61 @@ services:
           cpus: '0.50'
           memory: 512M
     restart: on-failure
+
+  # Daily partition retention. Runs partition maintenance as ue_migrator, the only
+  # login that may create or drop partitions (app/services/partition_manager.py),
+  # once per day after the schema is ready. One sequential shell loop cannot
+  # overlap itself. A failed run is retried after 15 minutes and logs only the
+  # exit status: the partition manager never prints SQL or connection text.
+  partition-maintenance:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+      target: runtime
+    command:
+      - sh
+      - -c
+      - |
+        while :; do
+          if python -m app.services.partition_manager; then
+            echo "[partition-maintenance] Daily run completed."
+            sleep 86400
+          else
+            echo "[partition-maintenance] Run failed; retrying in 900 seconds." >&2
+            sleep 900
+          fi
+        done
+    healthcheck:
+      disable: true
+    env_file:
+      - docker-compose.runtime-app.allowlist
+    environment:
+      # Owner role for partition DDL only; no runtime service receives this login.
+      DATABASE_URL: "postgresql+asyncpg://ue_migrator:${UE_MIGRATOR_DB_PASSWORD:?UE_MIGRATOR_DB_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - internal
+      - revocation_net
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+    restart: unless-stopped
 
   nats:
     image: nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4
@@ -1137,11 +1198,14 @@ services:
       - --datastore-engine
       - postgres
       - --datastore-conn-uri
-      - "postgres://${POSTGRES_USER:-postgres}@postgres:5432/spicedb?sslmode=disable"
+      - "postgres://ue_spicedb@postgres:5432/spicedb?sslmode=disable"
     environment:
-      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+      # ue_spicedb owns the spicedb database only; the superuser is never used.
+      PGPASSWORD: "${UE_SPICEDB_DB_PASSWORD:?UE_SPICEDB_DB_PASSWORD is required - run start-docker.ps1}"
     depends_on:
       postgres-databases-init:
+        condition: service_completed_successfully
+      postgres-roles-init:
         condition: service_completed_successfully
     networks:
       - internal
@@ -1169,7 +1233,7 @@ services:
     command: >-
       serve
       --datastore-engine postgres
-      --datastore-conn-uri "postgres://${POSTGRES_USER:-postgres}@postgres:5432/spicedb?sslmode=disable"
+      --datastore-conn-uri "postgres://ue_spicedb@postgres:5432/spicedb?sslmode=disable"
       --telemetry-endpoint=
       --skip-release-check=true
     # Internal only - accessed by backend services; no host port exposure
@@ -1183,12 +1247,14 @@ services:
       SPICEDB_GRPC_NO_TLS: "true"
       # pgx consumes PGPASSWORD without echoing it in SpiceDB's startup config
       # log or exposing it in the container command line.
-      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+      PGPASSWORD: "${UE_SPICEDB_DB_PASSWORD:?UE_SPICEDB_DB_PASSWORD is required - run start-docker.ps1}"
     networks:
       - internal
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-roles-init:
+        condition: service_completed_successfully
       postgres-databases-init:
         condition: service_completed_successfully
       spicedb-migrate:
@@ -1227,8 +1293,9 @@ services:
       SQL_PLUGIN: postgres12
       SQL_HOST: postgres
       SQL_PORT: "5432"
-      SQL_USER: "${POSTGRES_USER:-postgres}"
-      SQL_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+      # ue_temporal owns the temporal and temporal_visibility databases only.
+      SQL_USER: "ue_temporal"
+      SQL_PASSWORD: "${UE_TEMPORAL_DB_PASSWORD:?UE_TEMPORAL_DB_PASSWORD is required - run start-docker.ps1}"
     entrypoint: [ "/bin/sh", "-c" ]
     command:
       - |
@@ -1243,6 +1310,8 @@ services:
         echo "[temporal-admin-tools] Schema bootstrap complete."
     depends_on:
       postgres-databases-init:
+        condition: service_completed_successfully
+      postgres-roles-init:
         condition: service_completed_successfully
     networks:
       - internal
@@ -1310,9 +1379,10 @@ services:
       # envsubst). Custom entrypoint at services/temporal/entrypoint.sh does
       # sed-based substitution of ${POSTGRES_USER} + ${POSTGRES_PWD} before
       # exec'ing temporal-server. POSTGRES_USER + POSTGRES_PWD are passed
-      # through here as the entrypoint's required inputs.
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PWD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+      # through here as the entrypoint's required inputs and carry the ue_temporal
+      # login, never the bootstrap superuser.
+      POSTGRES_USER: "ue_temporal"
+      POSTGRES_PWD: "${UE_TEMPORAL_DB_PASSWORD:?UE_TEMPORAL_DB_PASSWORD is required - run start-docker.ps1}"
       # The server spans published_ports + internal networks. A hostname lookup returns
       # only one of those addresses, so binding gRPC to it strands clients on
       # the other network. Membership still advertises one concrete address.
@@ -1341,6 +1411,8 @@ services:
       postgres:
         condition: service_healthy
       temporal-admin-tools:
+        condition: service_completed_successfully
+      postgres-roles-init:
         condition: service_completed_successfully
       temporal-jwks-ca:
         condition: service_completed_successfully

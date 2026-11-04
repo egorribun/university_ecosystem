@@ -932,3 +932,31 @@ hibernation:
       enabled: true
       minReplicasDay: 2
       maxReplicasDay: 10
+
+# Daily partition retention (app/services/partition_manager.py). Creates upcoming
+# audit and notification partitions and prunes expired ones. Only the schema owner
+# login may run this DDL, so the CronJob uses the migration credentials, like the
+# migration hook. The schedule is UTC and concurrencyPolicy forbids overlap.
+partitionMaintenance:
+  enabled: true
+  schedule: "30 3 * * *"
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  backoffLimit: 1
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: "0.5"
+      memory: 512Mi
+  alert:
+    # Fires when a partition-maintenance Job fails. releaseLabel matches the
+    # Prometheus Operator selector used by k8s/monitoring/prometheus-rules.yaml.
+    enabled: true
+    releaseLabel: prometheus

@@ -1482,14 +1482,16 @@ def test_spicedb_does_not_log_database_credentials_and_has_watch_support() -> No
         spicedb = services["spicedb"]
 
         assert "${POSTGRES_PASSWORD}" not in spicedb["command"]
-        assert spicedb["environment"]["PGPASSWORD"].startswith("${POSTGRES_PASSWORD:?")
+        assert spicedb["environment"]["PGPASSWORD"].startswith(
+            "${UE_SPICEDB_DB_PASSWORD:?"
+        )
         assert "track_commit_timestamp=on" in postgres["command"]
 
         assert migration["image"] == spicedb["image"]
         assert migration["command"][:3] == ["datastore", "migrate", "head"]
         assert "--skip-release-check=true" in migration["command"]
         assert migration["environment"]["PGPASSWORD"].startswith(
-            "${POSTGRES_PASSWORD:?"
+            "${UE_SPICEDB_DB_PASSWORD:?"
         )
         assert migration["depends_on"]["postgres-databases-init"]["condition"] == (
             "service_completed_successfully"
@@ -2252,7 +2254,10 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "name": trigger_auth["metadata"]["name"]
     }
     assert "connectionFromEnv" not in postgresql_trigger["metadata"]
-    assert not any(item.get("kind") == "CronJob" for item in resources)
+    # The only CronJob this render may contain is the daily partition retention job.
+    assert {
+        item["metadata"]["name"] for item in resources if item.get("kind") == "CronJob"
+    } == {"contract-university-ecosystem-partition-maintenance"}
     migration = next(
         item
         for item in resources

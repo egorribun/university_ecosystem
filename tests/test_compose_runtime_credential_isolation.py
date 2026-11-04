@@ -46,7 +46,13 @@ SUPERUSER_KEYS = frozenset(
     {"POSTGRES_PASSWORD", "PGPASSWORD", "SQL_PASSWORD", "POSTGRES_PWD"}
 )
 ROLE_PASSWORD_KEYS = frozenset(
-    {"UE_MIGRATOR_DB_PASSWORD", "UE_APP_DB_PASSWORD", "UE_WORKER_DB_PASSWORD"}
+    {
+        "UE_MIGRATOR_DB_PASSWORD",
+        "UE_APP_DB_PASSWORD",
+        "UE_WORKER_DB_PASSWORD",
+        "UE_SPICEDB_DB_PASSWORD",
+        "UE_TEMPORAL_DB_PASSWORD",
+    }
 )
 ROLE_URL_KEYS = frozenset(
     {"DATABASE_URL_SYNC", "MIGRATION_DATABASE_URL", "NOTIFICATIONS_DATABASE_URL"}
@@ -61,6 +67,8 @@ APP_EXCLUDED = frozenset(
         "UE_MIGRATOR_DB_PASSWORD",
         "UE_APP_DB_PASSWORD",
         "UE_WORKER_DB_PASSWORD",
+        "UE_SPICEDB_DB_PASSWORD",
+        "UE_TEMPORAL_DB_PASSWORD",
         "DATABASE_URL",
         "DATABASE_URL_SYNC",
         "NOTIFICATIONS_DATABASE_URL",
@@ -77,25 +85,27 @@ WORKER_EXCLUDED = APP_EXCLUDED | frozenset(
     }
 )
 
-# Services that bootstrap or migrate the database; they may name superuser or role secrets.
+# Services that bootstrap the database; they may name the superuser secret and every
+# role secret. The one-shot roles job is the only service that receives them all.
 BOOTSTRAP_ALLOWED_REFS: dict[str, frozenset[str]] = {
     "postgres": frozenset({"POSTGRES_PASSWORD"}),
     "postgres-databases-init": frozenset({"POSTGRES_PASSWORD"}),
     "postgres-roles-init": frozenset({"POSTGRES_PASSWORD"}) | ROLE_PASSWORD_KEYS,
-    "spicedb-migrate": frozenset({"POSTGRES_PASSWORD"}),
-    "temporal-admin-tools": frozenset({"POSTGRES_PASSWORD"}),
 }
 
-# Runtime services still given the superuser password because they have no dedicated
-# database role yet (the infrastructure/postgres-roles bootstrap owns role creation).
-# The exact set is pinned by test_superuser_runtime_exceptions_are_exact; removing an
-# entry requires provisioning its role and wiring a role-scoped DATABASE URL first.
-KNOWN_SUPERUSER_RUNTIME: dict[str, tuple[frozenset[str], frozenset[str]]] = {
-    "spicedb": (frozenset({"POSTGRES_PASSWORD"}), frozenset({"PGPASSWORD"})),
-    "temporal": (frozenset({"POSTGRES_PASSWORD"}), frozenset({"POSTGRES_PWD"})),
-}
+# Variables whose value is the bootstrap superuser login or its password. A runtime
+# service that references one of them, or logs in as the superuser by name, is a
+# superuser runtime. No runtime service may be one: the exception set is empty.
+SUPERUSER_VARIABLES = frozenset(
+    {"POSTGRES_PASSWORD", "POSTGRES_PWD", "SQL_PASSWORD", "POSTGRES_USER"}
+)
+_SUPERUSER_LOGIN_URL = re.compile(r"postgres(?:ql)?(?:\+\w+)?://postgres[:@]")
+_LOGIN_KEYS = frozenset({"PGUSER", "SQL_USER", "POSTGRES_USER"})
 
-# Each runtime service may reference only the credential of its own role.
+# Each runtime service may reference only the credential of its own role. The
+# SpiceDB and Temporal services take their role password through the one environment
+# name each client reads (PGPASSWORD, POSTGRES_PWD, SQL_PASSWORD); the owner set
+# admits that name, and the referenced variable must still be the service's own.
 OWNER_REFS: dict[str, frozenset[str]] = {
     "backend": frozenset({"DATABASE_URL", "UE_APP_DB_PASSWORD"}),
     "outbox-worker": frozenset({"DATABASE_URL", "UE_APP_DB_PASSWORD"}),
@@ -103,6 +113,13 @@ OWNER_REFS: dict[str, frozenset[str]] = {
         {"NOTIFICATIONS_DATABASE_URL", "UE_WORKER_DB_PASSWORD"}
     ),
     "migrations": frozenset({"MIGRATION_DATABASE_URL", "UE_MIGRATOR_DB_PASSWORD"}),
+    "partition-maintenance": frozenset(
+        {"MIGRATION_DATABASE_URL", "UE_MIGRATOR_DB_PASSWORD"}
+    ),
+    "spicedb-migrate": frozenset({"UE_SPICEDB_DB_PASSWORD", "PGPASSWORD"}),
+    "spicedb": frozenset({"UE_SPICEDB_DB_PASSWORD", "PGPASSWORD"}),
+    "temporal-admin-tools": frozenset({"UE_TEMPORAL_DB_PASSWORD", "SQL_PASSWORD"}),
+    "temporal": frozenset({"UE_TEMPORAL_DB_PASSWORD", "POSTGRES_PWD"}),
 }
 
 _KEY_LINE = re.compile(r"^([A-Z][A-Z0-9_]*)=")
@@ -205,6 +222,24 @@ def _referenced_variables(service: dict[str, Any]) -> set[str]:
     return set(_INTERPOLATION.findall(yaml.safe_dump(service)))
 
 
+def _environment_values(service: dict[str, Any]) -> dict[str, str]:
+    environment = service.get("environment") or {}
+    if isinstance(environment, list):
+        pairs = (item.partition("=") for item in environment)
+        return {key: value for key, _, value in pairs}
+    return {str(key): str(value) for key, value in environment.items()}
+
+
+def _runs_as_superuser(service: dict[str, Any]) -> bool:
+    """True when the service holds the bootstrap superuser login or password."""
+    if _referenced_variables(service) & SUPERUSER_VARIABLES:
+        return True
+    for key, value in _environment_values(service).items():
+        if key in _LOGIN_KEYS and value == "postgres":
+            return True
+    return _SUPERUSER_LOGIN_URL.search(yaml.safe_dump(service)) is not None
+
+
 def _credential_violations(file_name: str, document: dict[str, Any]) -> list[str]:
     violations: list[str] = []
     for name, service in document.get("services", {}).items():
@@ -216,13 +251,8 @@ def _credential_violations(file_name: str, document: dict[str, Any]) -> list[str
                     f"{file_name}:{name} references {sorted(refs - BOOTSTRAP_ALLOWED_REFS[name])}"
                 )
             continue
-        if name in KNOWN_SUPERUSER_RUNTIME:
-            allowed_refs, allowed_keys = KNOWN_SUPERUSER_RUNTIME[name]
-            if refs - allowed_refs or (names & SUPERUSER_KEYS) - allowed_keys:
-                violations.append(
-                    f"{file_name}:{name} exposes more than its superuser login"
-                )
-            continue
+        if _runs_as_superuser(service):
+            violations.append(f"{file_name}:{name} runs as the bootstrap superuser")
         owner = OWNER_REFS.get(name, frozenset())
         if refs - owner:
             violations.append(
@@ -240,11 +270,7 @@ def _superuser_runtime_services(document: dict[str, Any]) -> set[str]:
     return {
         name
         for name, service in document.get("services", {}).items()
-        if name not in BOOTSTRAP_ALLOWED_REFS
-        and (
-            _referenced_variables(service) & SUPERUSER_KEYS
-            or _service_env_names(service) & SUPERUSER_KEYS
-        )
+        if name not in BOOTSTRAP_ALLOWED_REFS and _runs_as_superuser(service)
     }
 
 
@@ -253,12 +279,10 @@ def test_runtime_services_receive_no_superuser_or_foreign_role_credentials() -> 
         assert _credential_violations(file_name, _load_compose(file_name)) == []
 
 
-def test_superuser_runtime_exceptions_are_exact() -> None:
-    """Only the documented runtime services may still hold the superuser password."""
-    for file_name in ("docker-compose.yml", "docker-compose.full.yml"):
-        assert _superuser_runtime_services(_load_compose(file_name)) == set(
-            KNOWN_SUPERUSER_RUNTIME
-        ), file_name
+def test_no_runtime_service_uses_the_bootstrap_superuser() -> None:
+    """SpiceDB and Temporal log in as their own roles; no runtime exception remains."""
+    for file_name in COMPOSE_FILES:
+        assert _superuser_runtime_services(_load_compose(file_name)) == set(), file_name
 
 
 def test_runtime_services_use_role_scoped_env_files() -> None:
@@ -266,6 +290,8 @@ def test_runtime_services_use_role_scoped_env_files() -> None:
         services = _load_compose(file_name)["services"]
         assert _env_file_entries(services["backend"]) == [APP_ALLOWLIST]
         assert _env_file_entries(services["migrations"]) == [APP_ALLOWLIST]
+    full_services = _load_compose("docker-compose.full.yml")["services"]
+    assert _env_file_entries(full_services["partition-maintenance"]) == [APP_ALLOWLIST]
     base = _load_compose("docker-compose.yml")["services"]
     for worker in ("notifications-worker", "outbox-worker"):
         assert _env_file_entries(base[worker]) == [WORKER_ALLOWLIST]
@@ -308,3 +334,41 @@ def test_negative_control_detects_whole_env_file_injection() -> None:
     violations = _credential_violations("synthetic", document)
     assert any(v.startswith("synthetic:backend receives") for v in violations)
     assert any(v.startswith("synthetic:notifications-worker") for v in violations)
+
+
+def test_negative_control_detects_superuser_runtime_wiring() -> None:
+    """A runtime service that takes the superuser by variable, by name or by URL fails."""
+    document = copy.deepcopy(_load_compose("docker-compose.full.yml"))
+    document["services"]["spicedb"]["environment"]["PGPASSWORD"] = (
+        "${POSTGRES_PASSWORD}"
+    )
+    document["services"]["partition-maintenance"]["command"] = [
+        "sh",
+        "-c",
+        "postgres://postgres@postgres:5432/university",
+    ]
+    document["services"]["temporal"]["environment"]["POSTGRES_USER"] = "postgres"
+    assert _superuser_runtime_services(document) == {
+        "spicedb",
+        "partition-maintenance",
+        "temporal",
+    }
+    violations = _credential_violations("synthetic", document)
+    assert any(v.startswith("synthetic:spicedb references") for v in violations)
+    assert any(
+        v == "synthetic:partition-maintenance runs as the bootstrap superuser"
+        for v in violations
+    )
+    assert any(v.startswith("synthetic:temporal") for v in violations)
+
+
+def test_negative_control_detects_foreign_service_credential() -> None:
+    """SpiceDB must not receive the Temporal login, even under its own environment name."""
+    document = copy.deepcopy(_load_compose("docker-compose.yml"))
+    document["services"]["spicedb"]["environment"]["PGPASSWORD"] = (
+        "${UE_TEMPORAL_DB_PASSWORD}"
+    )
+    violations = _credential_violations("synthetic", document)
+    assert violations == [
+        "synthetic:spicedb references foreign credentials ['UE_TEMPORAL_DB_PASSWORD']"
+    ]

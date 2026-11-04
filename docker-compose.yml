@@ -411,12 +411,18 @@ services:
       UE_MIGRATOR_DB_PASSWORD: "${UE_MIGRATOR_DB_PASSWORD:-}"
       UE_APP_DB_PASSWORD: "${UE_APP_DB_PASSWORD:-}"
       UE_WORKER_DB_PASSWORD: "${UE_WORKER_DB_PASSWORD:-}"
+      # SpiceDB and Temporal log in as their own roles (bootstrap-service-roles.sql).
+      UE_SPICEDB_DB_PASSWORD: "${UE_SPICEDB_DB_PASSWORD:-}"
+      UE_TEMPORAL_DB_PASSWORD: "${UE_TEMPORAL_DB_PASSWORD:-}"
     entrypoint: ["/bin/sh", "/bootstrap/run-bootstrap.sh"]
     volumes:
       - ./infrastructure/postgres-roles:/bootstrap:ro
     depends_on:
       postgres:
         condition: service_healthy
+      # The service roles take ownership of databases this one-shot creates.
+      postgres-databases-init:
+        condition: service_completed_successfully
     networks:
       - db_net
     read_only: true
@@ -653,8 +659,9 @@ services:
       SQL_PLUGIN: postgres12
       SQL_HOST: postgres
       SQL_PORT: "5432"
-      SQL_USER: "${POSTGRES_USER:-postgres}"
-      SQL_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}"
+      # ue_temporal owns the temporal and temporal_visibility databases only.
+      SQL_USER: "ue_temporal"
+      SQL_PASSWORD: "${UE_TEMPORAL_DB_PASSWORD:?UE_TEMPORAL_DB_PASSWORD is required - set in .env file}"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -669,6 +676,8 @@ services:
         echo "[temporal-admin-tools] Schema bootstrap complete."
     depends_on:
       postgres-databases-init:
+        condition: service_completed_successfully
+      postgres-roles-init:
         condition: service_completed_successfully
     networks:
       - db_net
@@ -694,8 +703,9 @@ services:
       - "127.0.0.1:7233:7233"
     environment:
       # POSTGRES_USER + POSTGRES_PWD are the entrypoint's required sed inputs.
-      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PWD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}"
+      # They carry the ue_temporal login, never the bootstrap superuser.
+      POSTGRES_USER: "ue_temporal"
+      POSTGRES_PWD: "${UE_TEMPORAL_DB_PASSWORD:?UE_TEMPORAL_DB_PASSWORD is required - set in .env file}"
       # Temporal is attached to three networks. Binding to the hostname's
       # first address makes gRPC unreachable from whichever network Docker
       # resolves second; listen on every interface and advertise one concrete
@@ -719,6 +729,8 @@ services:
       postgres:
         condition: service_healthy
       temporal-admin-tools:
+        condition: service_completed_successfully
+      postgres-roles-init:
         condition: service_completed_successfully
       temporal-jwks-ca:
         condition: service_completed_successfully
@@ -933,11 +945,14 @@ services:
       - --datastore-engine
       - postgres
       - --datastore-conn-uri
-      - "postgres://${POSTGRES_USER:-postgres}@postgres:5432/spicedb?sslmode=disable"
+      - "postgres://ue_spicedb@postgres:5432/spicedb?sslmode=disable"
     environment:
-      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}"
+      # ue_spicedb owns the spicedb database only; the superuser is never used.
+      PGPASSWORD: "${UE_SPICEDB_DB_PASSWORD:?UE_SPICEDB_DB_PASSWORD is required - set in .env file}"
     depends_on:
       postgres-databases-init:
+        condition: service_completed_successfully
+      postgres-roles-init:
         condition: service_completed_successfully
     networks:
       - db_net
@@ -965,11 +980,11 @@ services:
     environment:
       SPICEDB_GRPC_PRESHARED_KEY: "${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY must be set}"
       SPICEDB_GRPC_NO_TLS: "true"
-      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}"
+      PGPASSWORD: "${UE_SPICEDB_DB_PASSWORD:?UE_SPICEDB_DB_PASSWORD is required - set in .env file}"
     command: >-
       serve
       --datastore-engine postgres
-      --datastore-conn-uri "postgres://${POSTGRES_USER:-postgres}@postgres:5432/spicedb?sslmode=disable"
+      --datastore-conn-uri "postgres://ue_spicedb@postgres:5432/spicedb?sslmode=disable"
       --telemetry-endpoint=
       --skip-release-check=true
     # Internal only - accessed by backend services
@@ -986,6 +1001,8 @@ services:
       postgres-databases-init:
         condition: service_completed_successfully
       spicedb-migrate:
+        condition: service_completed_successfully
+      postgres-roles-init:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:50051"]

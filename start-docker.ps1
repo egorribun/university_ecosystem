@@ -1390,7 +1390,7 @@ function Ensure-DatabaseRolePasswords {
     # other shape are regenerated. Every value is mirrored into .env for Compose
     # interpolation and into .env.docker, the launcher's canonical interpolation file.
     # Runtime containers receive only the names in docker-compose.runtime-app.allowlist.
-    foreach ($key in @("UE_MIGRATOR_DB_PASSWORD", "UE_APP_DB_PASSWORD", "UE_WORKER_DB_PASSWORD")) {
+    foreach ($key in @("UE_MIGRATOR_DB_PASSWORD", "UE_APP_DB_PASSWORD", "UE_WORKER_DB_PASSWORD", "UE_SPICEDB_DB_PASSWORD", "UE_TEMPORAL_DB_PASSWORD")) {
         $value = Get-EnvEntry -Path $EnvFile -Key $key
         if (-not $value -or $value -match "CHANGE_ME" -or $value -notmatch '^[A-Za-z0-9]{32,}$') {
             $value = New-Secret -Length 48
@@ -1612,7 +1612,7 @@ function Write-WorkerEnvironmentFile {
         'MFA_EMAIL_OTP_(?:HMAC_KEYS|ACTIVE_HMAC_KEY_ID)|' +
         'MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID|' +
         'POSTGRES_(?:USER|PASSWORD)|' +
-        'UE_(?:MIGRATOR|APP|WORKER)_DB_PASSWORD|' +
+        'UE_(?:MIGRATOR|APP|WORKER|SPICEDB|TEMPORAL)_DB_PASSWORD|' +
         'DATABASE_URL|DATABASE_URL_SYNC|NOTIFICATIONS_DATABASE_URL|MIGRATION_DATABASE_URL)='
     )
     $workerLines = @(
@@ -2885,11 +2885,14 @@ if ($needsEnvDocker -and $needsEnvCompose) {
     $spotifyOauthStateSecret = New-Secret -Length 48
 
     # Login passwords for the database roles created by
-    # infrastructure/postgres-roles/bootstrap-app-roles.sql. New-Secret emits only
+    # infrastructure/postgres-roles/bootstrap-app-roles.sql and bootstrap-service-roles.sql
+    # (SpiceDB and Temporal). New-Secret emits only
     # ASCII letters and digits, so each value is safe inside DATABASE_URL.
     $ueMigratorDbPassword = New-Secret -Length 48
     $ueAppDbPassword      = New-Secret -Length 48
     $ueWorkerDbPassword   = New-Secret -Length 48
+    $ueSpicedbDbPassword  = New-Secret -Length 48
+    $ueTemporalDbPassword = New-Secret -Length 48
 
     # -- .env.docker (launcher interpolation file; see docker-compose.runtime-app.allowlist) --
     $dockerEnv = @"
@@ -2899,6 +2902,8 @@ POSTGRES_DB=university
 UE_MIGRATOR_DB_PASSWORD=$ueMigratorDbPassword
 UE_APP_DB_PASSWORD=$ueAppDbPassword
 UE_WORKER_DB_PASSWORD=$ueWorkerDbPassword
+UE_SPICEDB_DB_PASSWORD=$ueSpicedbDbPassword
+UE_TEMPORAL_DB_PASSWORD=$ueTemporalDbPassword
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
 JWT_AUDIENCE=university-ecosystem-api
@@ -2947,6 +2952,8 @@ POSTGRES_DB=university
 UE_MIGRATOR_DB_PASSWORD=$ueMigratorDbPassword
 UE_APP_DB_PASSWORD=$ueAppDbPassword
 UE_WORKER_DB_PASSWORD=$ueWorkerDbPassword
+UE_SPICEDB_DB_PASSWORD=$ueSpicedbDbPassword
+UE_TEMPORAL_DB_PASSWORD=$ueTemporalDbPassword
 SECRET_KEY=$secretKey
 ALGORITHM=RS256
 JWT_AUDIENCE=university-ecosystem-api
@@ -3054,7 +3061,9 @@ if (-not $generated) {
         "IMGPROXY_SALT",
         "UE_MIGRATOR_DB_PASSWORD",
         "UE_APP_DB_PASSWORD",
-        "UE_WORKER_DB_PASSWORD"
+        "UE_WORKER_DB_PASSWORD",
+        "UE_SPICEDB_DB_PASSWORD",
+        "UE_TEMPORAL_DB_PASSWORD"
     )
     $missingDockerKeys = @()
     $synchronizedKeys = @()
