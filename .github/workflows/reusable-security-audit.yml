@@ -1035,6 +1035,7 @@ jobs:
             --repo-root "$GITHUB_WORKSPACE" \
             --target "$fixture" \
             --report "$report"
+          python3 -m unittest tests.test_validate_trivy_kyverno_fixture scripts.quality.prove_aud245_trivy_path_scope
 
       - name: Run Trivy configuration scanner (IaC)
         id: trivy_config

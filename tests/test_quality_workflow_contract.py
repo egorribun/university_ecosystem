@@ -1488,6 +1488,15 @@ def test_trivy_fixture_preflight_is_ordered_pinned_and_nonprinting() -> None:
     assert '--output "$report"' in script
     assert "trivy-host-access-noignore.json" in script
     assert "python3 scripts/quality/validate_trivy_kyverno_fixture.py" in script
+    path_scope_proof = (
+        "python3 -m unittest tests.test_validate_trivy_kyverno_fixture "
+        "scripts.quality.prove_aud245_trivy_path_scope"
+    )
+    assert script.splitlines().count(path_scope_proof) == 1
+    assert "set -euo pipefail" in script
+    assert script.index("python3 scripts/quality/validate_trivy_kyverno_fixture.py") < (
+        script.index(path_scope_proof)
+    )
     assert "--format table" not in script
     assert not any(
         line.lstrip().startswith(("cat ", "tee ", "jq "))
