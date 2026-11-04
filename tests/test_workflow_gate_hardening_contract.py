@@ -337,17 +337,42 @@ def test_dast_nuclei_gate_rejects_invalid_evidence_before_counting(
     assert "high or critical finding(s)." not in stdout + stderr
 
 
-def test_scorecard_fails_on_high_severity_after_sarif_upload() -> None:
+def test_scorecard_publishes_every_check_then_gates_per_key_floor() -> None:
     job = _load("scorecard.yml")["jobs"]["analysis"]
     names = _names(job)
-    gate = _step(job, "Fail on high-severity Scorecard findings")
+    json_run = _step(job, "Run OpenSSF Scorecard (native JSON for the floor gate)")
+    sarif_run = _step(job, "Run OpenSSF Scorecard (SARIF for Code Scanning)")
+    upload = _step(job, "Upload SARIF results to GitHub Security tab")
+    gate = _step(job, "Gate Scorecard key-check floors")
 
-    assert names.index("Upload SARIF results to GitHub Security tab") < names.index(
-        gate["name"]
-    )
-    assert "security-severity" in gate["run"]
-    assert ">= 7.0" in gate["run"]
-    assert "sys.exit(1)" in gate["run"]
+    assert json_run["with"]["results_format"] == "json"
+    assert sarif_run["with"]["results_format"] == "sarif"
+    assert names.index(upload["name"]) < names.index(gate["name"])
+    assert "python3 scripts/quality/scorecard_floors_gate.py" in gate["run"]
+    assert "quality/scorecard-floors.json" in gate["run"]
+    assert "security-severity" not in gate["run"]
+    assert "continue-on-error" not in gate
+    assert "Filter policy-only" not in " ".join(names)
+
+
+def test_scorecard_gate_refuses_to_run_on_an_unsuccessful_json_scan() -> None:
+    job = _load("scorecard.yml")["jobs"]["analysis"]
+    gate = _step(job, "Gate Scorecard key-check floors")
+
+    assert gate["env"] == {
+        "SCORECARD_RESULT_OUTCOME": "${{ steps.scorecard-json.outcome }}",
+        "EVENT_SHA": "${{ github.sha }}",
+    }
+    assert '"$SCORECARD_RESULT_OUTCOME" != "success"' in gate["run"]
+
+
+def test_scorecard_reports_are_retained_for_ninety_days() -> None:
+    job = _load("scorecard.yml")["jobs"]["analysis"]
+    upload = _step(job, "Upload Scorecard reports")
+
+    assert upload["if"] == "${{ always() }}"
+    assert upload["with"]["retention-days"] == 90
+    assert upload["with"]["if-no-files-found"] == "error"
 
 
 def test_sqlmap_writes_result_logs_and_fails_on_confirmed_injection() -> None:

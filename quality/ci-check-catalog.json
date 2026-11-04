@@ -4534,7 +4534,14 @@
           "expected_duration_seconds": 1200,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
           "needs": [],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "scorecard-results-${{ github.run_id }}",
+              "path_pattern": "scorecard-results.json\nscorecard-results.sarif\n",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,

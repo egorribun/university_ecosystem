@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "owner_decision": "2026-11-04: gate per key check, not on the aggregate score",
+  "source": {
+    "workflow": ".github/workflows/scorecard.yml",
+    "workflow_run_id": 41410082985,
+    "measurement": "Pre-filter Scorecard SARIF of the run log. A result carries 'score is N' only for checks scoring below 10, so a gated check with no result is recorded as 10. Binary-Artifacts, Pinned-Dependencies, SAST and Vulnerabilities were read from their recorded results."
+  },
+  "gated_checks": {
+    "Dangerous-Workflow": 10,
+    "Token-Permissions": 10,
+    "Pinned-Dependencies": 9,
+    "Vulnerabilities": 0,
+    "Binary-Artifacts": 8,
+    "SAST": 9
+  },
+  "published_only_checks": [
+    "Branch-Protection",
+    "CII-Best-Practices",
+    "Code-Review",
+    "Contributors",
+    "Packaging",
+    "Signed-Releases"
+  ]
+}

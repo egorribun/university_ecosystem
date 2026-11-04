@@ -187,3 +187,16 @@ def test_policy_integrity_protects_npm_lifecycle_inputs() -> None:
         "frontend/scripts/setup-lhci-binaries.cjs",
     ):
         assert protected_path in source
+
+
+def test_scorecard_gate_script_is_owner_protected() -> None:
+    owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
+    source = WORKFLOW_PATH.read_text(encoding="utf-8")
+    protected_case = source.split('case "$path" in', 1)[1].split(
+        'protected_paths+=("$path")', 1
+    )[0]
+    path = "scripts/quality/scorecard_floors_gate.py"
+    assert f"{path} @egorribun" in owners.splitlines()
+    assert path in protected_case
+    assert "quality/ @egorribun" in owners.splitlines()
+    assert "quality/*" in protected_case

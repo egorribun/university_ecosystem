@@ -91,6 +91,52 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Enforce Scorecard floor ratchet
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || [[ ! "$TESTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Scorecard ratchet needs immutable PR base and tested commit SHAs."
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+          git fetch --no-tags --depth=1 origin "$PR_BASE_SHA"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$PR_BASE_SHA"
+          policy=quality/scorecard-floors.json
+          gate=scripts/quality/scorecard_floors_gate.py
+          base_policy="$(git ls-tree -r --name-only "$PR_BASE_SHA" -- "$policy")"
+          base_gate="$(git ls-tree -r --name-only "$PR_BASE_SHA" -- "$gate")"
+          current_policy="$(git ls-tree -r --name-only "$TESTED_SHA" -- "$policy")"
+          current_gate="$(git ls-tree -r --name-only "$TESTED_SHA" -- "$gate")"
+          if [[ -z "$base_policy" && -z "$base_gate" && -z "$current_policy" && -z "$current_gate" ]]; then
+            echo "Scorecard floor policy has not been introduced on this branch."
+            exit 0
+          fi
+          if [[ -z "$current_policy" || -z "$current_gate" ]]; then
+            echo "::error::The Scorecard policy and gate must both be present."
+            exit 1
+          fi
+          git show "$TESTED_SHA:$policy" > "$RUNNER_TEMP/scorecard-current-policy.json"
+          if [[ -z "$base_policy" && -z "$base_gate" ]]; then
+            # First introduction: validate the initial approved six floors.
+            git show "$TESTED_SHA:$gate" > "$RUNNER_TEMP/scorecard-current-gate.py"
+            python3 "$RUNNER_TEMP/scorecard-current-gate.py" "$RUNNER_TEMP/scorecard-current-policy.json" \
+              --previous-floors "$RUNNER_TEMP/scorecard-current-policy.json"
+          elif [[ -n "$base_policy" && -n "$base_gate" ]]; then
+            # The checker and baseline both come from the exact trusted base commit.
+            git show "$PR_BASE_SHA:$policy" > "$RUNNER_TEMP/scorecard-previous-policy.json"
+            git show "$PR_BASE_SHA:$gate" > "$RUNNER_TEMP/scorecard-trusted-gate.py"
+            python3 "$RUNNER_TEMP/scorecard-trusted-gate.py" "$RUNNER_TEMP/scorecard-current-policy.json" \
+              --previous-floors "$RUNNER_TEMP/scorecard-previous-policy.json"
+          else
+            echo "::error::Trusted base contains an incomplete Scorecard floor policy."
+            exit 1
+          fi
+
       - name: Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
 

@@ -1012,3 +1012,16 @@ def test_squawk_integrity_contract_rejects_baseline_exception_scope_drift(
             job, "Lint Postgres Migrations (Squawk)", {"run": changed}
         )
     )
+
+
+def test_security_audit_protects_scorecard_gate_inputs() -> None:
+    jobs = _workflow(SECURITY_AUDIT)["jobs"]
+    for job_name in ("policy-integrity", "pip-audit"):
+        run = _step(
+            jobs[job_name], "Verify security policy inputs against protected base"
+        )["run"]
+        for path in (
+            "scripts/quality/scorecard_floors_gate.py",
+            "quality/scorecard-floors.json",
+        ):
+            assert f'"{path}"' in run

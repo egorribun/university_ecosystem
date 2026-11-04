@@ -173,6 +173,7 @@ jobs:
               .github/scripts/validate_mfa_smoke_path.py|\
               .github/scripts/verify_mfa_key_rotation.py|\
               scripts/osv_batch_audit.py|scripts/check_dependency_audit_report.py|\
+              scripts/quality/scorecard_floors_gate.py|\
               scripts/audit_dependencies.py|scripts/ci/helm_dependency_build.py|\
               frontend/scripts/generate-zod-root-lock-candidate.mjs|\
               frontend/scripts/generate-zod-root-lock-candidate.test.mjs|\
