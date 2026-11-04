@@ -7721,3 +7721,83 @@ def test_aud447_postgres_allocation_rejects_unsafe_workflow_mutations(
 
     with pytest.raises((AssertionError, KeyError)):
         _assert_aud447_owned_postgres_allocation(candidate)
+
+
+def _assert_pr_postgres_receipt_route(ci: dict, reusable: dict) -> None:
+    caller = ci["jobs"]["backend-tests"]
+    inputs = reusable[True]["workflow_call"]["inputs"]
+    selected = caller["with"]
+    assert selected["integration-test-pattern"] == "tests/integration/"
+    assert selected["run-integration-tests"] == "${{ matrix.run-integration }}"
+    assert any(
+        leg.get("run-integration") is True
+        for leg in caller["strategy"]["matrix"]["include"]
+    )
+    assert (
+        selected.get("integration-shard-id", inputs["integration-shard-id"]["default"])
+        == -1
+    )
+    assert (
+        selected.get(
+            "integration-num-shards", inputs["integration-num-shards"]["default"]
+        )
+        == 1
+    )
+    job = reusable["jobs"]["integration-tests"]
+    step = _provenance_step(job, "Run integration tests")
+    guard = (
+        "$requireBaselineReceipt = $integrationNumShards -eq 1 -and "
+        '$env:INTEGRATION_TEST_PATTERN -eq "tests/integration/"'
+    )
+    assert str(step["run"]).count(guard) == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "valid",
+        "changed-pattern",
+        "explicit-shard-count",
+        "explicit-shard-id",
+        "default-shard-count",
+        "default-shard-id",
+        "disabled-integration",
+        "unlinked-integration",
+        "removed-receipt-guard",
+    ],
+)
+def test_pr_postgres_receipt_route_rejects_disabled_proofs(mutation: str) -> None:
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    reusable = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    caller = ci["jobs"]["backend-tests"]
+    selected = caller["with"]
+    inputs = reusable[True]["workflow_call"]["inputs"]
+    if mutation == "changed-pattern":
+        selected["integration-test-pattern"] = "tests/other/"
+    elif mutation == "explicit-shard-count":
+        selected["integration-num-shards"] = 4
+    elif mutation == "explicit-shard-id":
+        selected["integration-shard-id"] = 0
+    elif mutation == "default-shard-count":
+        inputs["integration-num-shards"]["default"] = 4
+    elif mutation == "default-shard-id":
+        inputs["integration-shard-id"]["default"] = 0
+    elif mutation == "disabled-integration":
+        for leg in caller["strategy"]["matrix"]["include"]:
+            leg["run-integration"] = False
+    elif mutation == "unlinked-integration":
+        selected["run-integration-tests"] = False
+    elif mutation == "removed-receipt-guard":
+        step = _provenance_step(
+            reusable["jobs"]["integration-tests"], "Run integration tests"
+        )
+        step["run"] = step["run"].replace(
+            "$requireBaselineReceipt =", "$disabledReceipt =", 1
+        )
+    else:
+        assert mutation == "valid"
+    if mutation == "valid":
+        _assert_pr_postgres_receipt_route(ci, reusable)
+    else:
+        with pytest.raises(AssertionError):
+            _assert_pr_postgres_receipt_route(ci, reusable)

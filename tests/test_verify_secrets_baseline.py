@@ -9331,6 +9331,89 @@ _AUD363_STEP = (
 )
 
 
+# Exact, counted PostgreSQL receipt insertion in the live workflow.
+_POSTGRES_RECEIPT_SETUP = (
+    b"                  # The canonical PR integration suite is unsharded. Capture\n"
+    b"                  # these existing PostgreSQL proofs without rerunning them.\n"
+    b'                  $requireBaselineReceipt = $integrationNumShards -eq 1 -and $env:INTEGRATION_TEST_PATTERN -eq "tests/integration/"\n'
+    b"                  if ($requireBaselineReceipt) {\n"
+    b'                    $receiptName = "baseline-equivalence-" + [guid]::NewGuid().ToString("N") + ".xml"\n'
+    b"                    $baselineReceipt = Join-Path $env:RUNNER_TEMP $receiptName\n"
+    b'                    $pytestArgs += "--junitxml=$baselineReceipt"\n'
+    b"                  }\n"
+)
+
+
+_POSTGRES_RECEIPT_VALIDATION = (
+    b"                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+    b"                  if ($requireBaselineReceipt) {\n"
+    b"                    $receiptValidator = @'\n"
+    b"                  import sys\n"
+    b"                  from xml.etree import ElementTree\n"
+    b"\n"
+    b"                  expected = {'tests.integration.test_mvp_baseline_schema_equivalence': ('test_proof_owned_fixture_never_uses_default_database',\n"
+    b"                                                                              'test_absent_pre_squash_commit_fails_with_a_clear_message',\n"
+    b"                                                                              'test_pre_squash_chain_and_baseline_stamp_their_own_heads',\n"
+    b"                                                                              'test_statement_level_schema_differs_only_by_the_audited_additions',\n"
+    b"                                                                              'test_catalog_facts_outside_the_additions_are_identical',\n"
+    b"                                                                              'test_no_permissive_using_true_policy_exists_on_any_rls_table',\n"
+    b"                                                                              'test_baseline_database_matches_the_current_models',\n"
+    b"                                                                              'test_baseline_refuses_downgrade_and_keeps_its_revision',\n"
+    b"                                                                              'test_baseline_refuses_nonempty_schema_before_ddl',\n"
+    b"                                                                              'test_baseline_refuses_populated_pgx_namespace'),\n"
+    b"                   'tests.integration.test_aud277_360_450_tenant_rls_postgres': ('test_no_permissive_true_policy_remains_on_core_tables',\n"
+    b"                                                                                 'test_tenant_session_sees_only_its_rows_and_never_null_rows',\n"
+    b"                                                                                 'test_guc_bypass_cannot_expose_other_tenants_or_null_rows',\n"
+    b"                                                                                 'test_dedicated_bypass_role_member_sees_every_row',\n"
+    b"                                                                                 'test_ordinary_writes_are_stamped_with_the_session_tenant',\n"
+    b"                                                                                 'test_writes_cannot_target_another_tenant_or_escape_the_session',\n"
+    b"                                                                                 'test_messages_need_both_participation_and_the_session_tenant',\n"
+    b"                                                                                 'test_every_tenant_table_forces_rls_and_stamps_unowned_inserts',\n"
+    b"                                                                                 'test_notification_producer_rows_are_owned_by_the_session_tenant',\n"
+    b"                                                                                 'test_worker_bypass_producer_must_write_its_tenant_explicitly',\n"
+    b"                                                                                 'test_bypass_scheduler_persists_owned_reminders_and_outbox_events'),\n"
+    b"                   'tests.integration.test_aud262_receipt_schema_postgres': ('test_receipt_upgrade_creates_exact_catalog_and_forces_owner_rls',\n"
+    b"                                                                             'test_receipt_rls_hides_other_owners_and_rejects_forged_writes[empty]',\n"
+    b"                                                                             'test_receipt_rls_hides_other_owners_and_rejects_forged_writes[peer]',\n"
+    b"                                                                             'test_receipt_rls_hides_other_owners_and_rejects_forged_writes[outsider]',\n"
+    b"                                                                             'test_receipt_rls_revokes_owner_access_after_membership_removal',\n"
+    b"                                                                             'test_receipt_rls_inherits_parent_chat_tenant_visibility',\n"
+    b"                                                                             'test_receipt_unique_scope_allows_other_chat_and_sender',\n"
+    b"                                                                             'test_expired_receipt_has_no_global_visibility_or_implicit_deletion',\n"
+    b"                                                                             'test_receipt_foreign_key_lifecycle_preserves_message_deletion_marker[messages]',\n"
+    b"                                                                             'test_receipt_foreign_key_lifecycle_preserves_message_deletion_marker[users]',\n"
+    b"                                                                             'test_receipt_foreign_key_lifecycle_preserves_message_deletion_marker[chats]',\n"
+    b"                                                                             'test_receipt_baseline_downgrade_refuses_without_losing_committed_history',\n"
+    b"                                                                             'test_receipt_owned_fixture_never_uses_default_database',\n"
+    b"                                                                             'test_notification_pair_claims_commit_conflict_and_rollback_on_owned_postgres',\n"
+    b"                                                                             'test_notification_pair_ledger_is_unique_without_attempt_constraint'),\n"
+    b"                   'tests.integration.test_dlq_retry_postgres': ('test_retry_completed_job_waits_for_worker_and_preserves_state',\n"
+    b"                                                                 'test_aud447_dedup_waits_for_worker_refreshes_and_leaves_commit_to_caller')}\n"
+    b"                  root = ElementTree.parse(sys.argv[1]).getroot()\n"
+    b"                  for classname, names in expected.items():\n"
+    b"                      cases = [\n"
+    b'                          case for case in root.iter("testcase")\n'
+    b'                          if case.get("classname") == classname\n'
+    b"                      ]\n"
+    b'                      observed = [case.get("name") for case in cases]\n'
+    b"                      if (\n"
+    b"                          len(cases) != len(names)\n"
+    b"                          or set(observed) != set(names)\n"
+    b"                          or any(\n"
+    b"                              case.find(status) is not None\n"
+    b"                              for case in cases\n"
+    b'                              for status in ("skipped", "failure", "error")\n'
+    b"                          )\n"
+    b"                      ):\n"
+    b'                          raise SystemExit(f"PostgreSQL cohort receipt incomplete or unsuccessful: {classname}")\n'
+    b'                  print(f"INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS {sum(map(len, expected.values()))}")\n'
+    b"                  '@\n"
+    b"                    uv run --frozen --no-sync python -c $receiptValidator $baselineReceipt\n"
+    b"                    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+    b"                  }\n"
+)
+
+
 def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
     original = _pre_squash_source_bytes(path)
     if path != ".github/workflows/reusable-backend-tests.yml":
@@ -9436,10 +9519,19 @@ def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
     reviewed = reviewed.replace(step_anchor, _AUD363_STEP + step_anchor)
     unit_args = b"                  $pytestArgs = @($env:TEST_PATTERN)\n"
     assert reviewed.count(unit_args) == 1
-    return reviewed.replace(
+    reviewed = reviewed.replace(
         unit_args,
         unit_args
         + b'                  $pytestArgs += "--timeout-disable-debugger-detection"\n',
+    )
+    receipt_anchor = b"                  uv run python scripts/quality/run_owned_redis_contracts.py @pytestArgs\n"
+    assert reviewed.count(receipt_anchor) == 1, (
+        "reviewed PostgreSQL receipt anchor changed"
+    )
+    return reviewed.replace(
+        receipt_anchor,
+        _POSTGRES_RECEIPT_SETUP + receipt_anchor + _POSTGRES_RECEIPT_VALIDATION,
+        1,
     )
 
 
@@ -10108,5 +10200,70 @@ def test_live_aud363_binding_refuses_other_changes(mutation: str) -> None:
         invalid = expected.replace(_AUD363_STEP, _AUD363_STEP * 2, 1)
     else:
         invalid = expected + b"# unrelated workflow change\n"
+    with pytest.raises(AssertionError, match="exact reviewed bytes"):
+        _assert_live_scanner_source_bytes(path, invalid)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing-setup",
+        "missing-validation",
+        "changed-guard",
+        "changed-test",
+        "allow-skips",
+        "ignore-exit",
+        "duplicate-validation",
+        "unrelated",
+    ],
+)
+def test_live_postgres_receipt_binding_refuses_other_changes(mutation: str) -> None:
+    path = ".github/workflows/reusable-backend-tests.yml"
+    expected = _reviewed_live_scanner_source_bytes(path)
+    setup = _POSTGRES_RECEIPT_SETUP
+    validation = _POSTGRES_RECEIPT_VALIDATION
+    assert expected.count(setup) == expected.count(validation) == 1
+    _assert_live_scanner_source_bytes(path, expected)
+
+    def replace_once(source: bytes, old: bytes, new: bytes) -> bytes:
+        assert source.count(old) == 1
+        return source.replace(old, new, 1)
+
+    if mutation == "missing-setup":
+        invalid = replace_once(expected, setup, b"")
+    elif mutation == "missing-validation":
+        invalid = replace_once(expected, validation, b"")
+    elif mutation == "changed-guard":
+        changed = replace_once(
+            setup, b"$integrationNumShards -eq 1", b"$integrationNumShards -eq 2"
+        )
+        invalid = replace_once(expected, setup, changed)
+    elif mutation == "changed-test":
+        changed = replace_once(
+            validation,
+            b"test_proof_owned_fixture_never_uses_default_database",
+            b"test_unreviewed_proof",
+        )
+        invalid = replace_once(expected, validation, changed)
+    elif mutation == "allow-skips":
+        changed = replace_once(
+            validation,
+            b'for status in ("skipped", "failure", "error")',
+            b'for status in ("failure", "error")',
+        )
+        invalid = replace_once(expected, validation, changed)
+    elif mutation == "ignore-exit":
+        changed = replace_once(
+            validation,
+            b"                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+            b"                  if ($requireBaselineReceipt) {\n",
+            b"                  if ($requireBaselineReceipt) {\n",
+        )
+        invalid = replace_once(expected, validation, changed)
+    elif mutation == "duplicate-validation":
+        invalid = replace_once(expected, validation, validation + validation)
+    else:
+        invalid = expected + b"# unrelated workflow change\n"
+    assert invalid != expected
     with pytest.raises(AssertionError, match="exact reviewed bytes"):
         _assert_live_scanner_source_bytes(path, invalid)
