@@ -139,6 +139,8 @@ func TestAUD478WebTransportPeerReceivesRetryableClose(t *testing.T) {
 		<-serveDone
 		_ = packet.Close()
 	})
+	localAddr := packet.LocalAddr()
+	require.NotNil(t, localAddr)
 	transport := &webtransport.Transport{
 		TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots},
 		QUICConfig: &quic.Config{
@@ -149,11 +151,12 @@ func TestAUD478WebTransportPeerReceivesRetryableClose(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, transport.Close()) })
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	response, peer, err := transport.Dial(ctx, "https://"+packet.LocalAddr().String()+"/webtransport", nil)
+	response, peer, err := transport.Dial(ctx, "https://"+localAddr.String()+"/webtransport", nil)
 	if response != nil && response.Body != nil {
 		defer response.Body.Close()
 	}
 	require.NoError(t, err)
+	require.NotNil(t, response)
 	require.Equal(t, http.StatusOK, response.StatusCode)
 	var serverSession *webtransport.Session
 	select {
@@ -199,6 +202,7 @@ func TestAUD478WebTransportPeerReceivesRetryableClose(t *testing.T) {
 	_, err = peer.AcceptStream(ctx)
 	var sessionErr *webtransport.SessionError
 	require.ErrorAs(t, err, &sessionErr)
+	require.NotNil(t, sessionErr)
 	require.True(t, sessionErr.Remote)
 	require.Equal(t, webtransport.SessionErrorCode(websocket.CloseTryAgainLater), sessionErr.ErrorCode)
 	require.Equal(t, "room admission temporarily unavailable", sessionErr.Message)

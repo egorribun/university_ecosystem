@@ -91,6 +91,7 @@ func aud478WaitForRetryClose(t *testing.T, socket *websocket.Conn) {
 	_, _, err := socket.ReadMessage()
 	var closeErr *websocket.CloseError
 	require.ErrorAs(t, err, &closeErr, "temporary room admission failure must close the socket")
+	require.NotNil(t, closeErr)
 	require.Equal(t, websocket.CloseTryAgainLater, closeErr.Code)
 }
 
