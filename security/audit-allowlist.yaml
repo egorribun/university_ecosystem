@@ -3,14 +3,14 @@
 npm:
   overrides:
     - package: glob
-      pinned_version: "13.0.6"
+      pinned_version: "14.0.2"
       owner: frontend@university.example
       expires: 2026-12-31
       reason: |
-        Build tooling currently spans workbox-build (^11.0.1), Storybook
-        docgen (^13.0.1), and Sentry bundler plugins (^13.0.6). Pinning the
-        shared override to audited glob 13.0.6 avoids retaining an older
-        duplicate while all CI and production builds run on Node.js 24.
+        Build tooling spans workbox-build (^11.0.1) and Storybook docgen
+        (^13.0.1). Pinning the shared override to glob 14.0.2 removes
+        GHSA-3g3m-2fjr-6pw4 while retaining one dependency graph on Node.js 24.
+        The patched minimatch graph is separately pinned to mature releases.
   advisories: []
 
 pip:

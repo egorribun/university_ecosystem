@@ -30,6 +30,47 @@ def test_unapproved_high_severity_advisory_remains_fail_closed() -> None:
         check_allowances({"unapproved-advisory"}, [], ecosystem="npm")
 
 
+def test_glob_security_pin_matches_manifest_and_lock() -> None:
+    frontend = REPOSITORY_ROOT / "frontend"
+    manifest = json.loads((frontend / "package.json").read_text(encoding="utf-8"))
+    lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
+    allowlist = load_allowlist(REPOSITORY_ROOT / "security/audit-allowlist.yaml")
+    entries = allowlist["npm"]["overrides"]
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry["package"] == "glob"
+    version = entry["pinned_version"]
+    assert tuple(int(part) for part in version.split(".")) >= (14, 0, 2)
+    assert manifest["devDependencies"]["glob"] == version
+    assert manifest["overrides"]["glob"] == version
+    assert lock["packages"][""]["devDependencies"]["glob"] == version
+    assert lock["packages"]["node_modules/glob"]["version"] == version
+    assert entry["owner"] == "frontend@university.example"
+    assert str(entry["expires"]) == "2026-12-31"
+    assert allowlist["npm"]["advisories"] == []
+
+
+def test_modern_minimatch_override_preserves_legacy_api_boundaries() -> None:
+    frontend = REPOSITORY_ROOT / "frontend"
+    manifest = json.loads((frontend / "package.json").read_text(encoding="utf-8"))
+    packages = json.loads(
+        (frontend / "package-lock.json").read_text(encoding="utf-8")
+    )["packages"]
+    overrides = manifest["overrides"]
+    assert "minimatch" not in overrides
+    modern_version = overrides["minimatch@>=10"]
+    assert tuple(int(part) for part in modern_version.split(".")) >= (11, 0, 2)
+    assert packages["node_modules/minimatch"]["version"] == modern_version
+    for consumer in ("eslint-plugin-react", "eslint-plugin-jsx-a11y", "filelist"):
+        prefix = f"node_modules/{consumer}"
+        requested = packages[prefix]["dependencies"]["minimatch"]
+        installed = packages[f"{prefix}/node_modules/minimatch"]["version"]
+        assert installed.split(".")[0] == requested.lstrip("^").split(".")[0]
+    matcher = "@isaacs/nonrecursive-glob-match"
+    assert overrides[matcher] == "1.0.2"
+    assert packages[f"node_modules/{matcher}"]["version"] == overrides[matcher]
+
+
 def test_advisory_allowlist_entry_without_expiry_fails_closed() -> None:
     with pytest.raises(
         AuditFailure,

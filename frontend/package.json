@@ -174,7 +174,7 @@
     "eslint-plugin-storybook": "^10.6.3",
     "fake-indexeddb": "^6.2.6",
     "fast-check": "^4.8.0",
-    "glob": "13.0.6",
+    "glob": "14.0.2",
     "globals": "17.13.0",
     "istanbul-lib-coverage": "^3.2.2",
     "istanbul-lib-report": "^3.0.1",
@@ -226,7 +226,7 @@
   },
   "overrides": {
     "tmp": "^0.2.4",
-    "glob": "13.0.6",
+    "glob": "14.0.2",
     "chrome-launcher": "1.2.1",
     "fast-uri": "3.1.9",
     "ip-address": "10.7.5",
@@ -261,7 +261,9 @@
         "zod": "4.6.7"
       }
     },
-    "seroval": "1.6.12"
+    "seroval": "1.6.12",
+    "minimatch@>=10": "11.0.2",
+    "@isaacs/nonrecursive-glob-match": "1.0.2"
   },
   "allowScripts": {
     "core-js": false,
