@@ -156,7 +156,51 @@ class CaddyReportTests(unittest.TestCase):
     def test_missing_or_conflicting_osv_blocks(self):
         pair = finding()
         self.reject(messages() + pair[1:])
-        self.reject(messages() + pair + [copy.deepcopy(pair[0])])
+        conflicting = copy.deepcopy(pair[0])
+        conflicting["osv"]["summary"] = "Different upstream record"
+        self.reject(messages() + pair + [conflicting])
+
+    def test_official_emitter_repeats_identical_osv_across_module_versions(self):
+        pair = finding()
+        records = [*messages(), pair[0], copy.deepcopy(pair[0]), pair[1]]
+        self.assertEqual(self.check(records), {"reachable": 1, "accepted": 1})
+
+    def test_conflicting_advisory_error_is_bounded_and_identifiable(self):
+        pair = finding()
+        conflict = copy.deepcopy(pair[0])
+        conflict["osv"]["summary"] = "sensitive raw text not for logs"
+        gate = self.validator()
+        with self.assertRaises(gate.ReportError) as caught:
+            self.check([*messages(), *pair, conflict])
+        self.assertEqual(str(caught.exception), "Conflicting advisory: GO-2099-1000")
+
+    def test_duplicate_never_merges_changed_advisory_fields(self):
+        for field, value in (
+            ("aliases", ["GHSA-abcd-1234-5678"]),
+            ("affected", []),
+            ("modified", "2099-01-01T00:00:00Z"),
+        ):
+            pair = finding()
+            conflict = copy.deepcopy(pair[0])
+            conflict["osv"][field] = value
+            self.reject([*messages(), *pair, conflict])
+
+    def test_identical_duplicates_do_not_accept_unknown_finding(self):
+        pair = finding(alias="GHSA-abcd-1234-5678")
+        self.reject([*messages(), pair[0], copy.deepcopy(pair[0]), pair[1]])
+
+    def test_duplicate_compares_parsed_objects_not_key_order(self):
+        pair = finding()
+        reordered = {"osv": dict(reversed(list(pair[0]["osv"].items())))}
+        self.assertEqual(self.check([*messages(), *pair, reordered])["accepted"], 1)
+
+    def test_duplicate_keeps_json_value_types_distinct(self):
+        for left, right in ((True, 1), (1, 1.0)):
+            pair = finding()
+            pair[0]["osv"]["database_specific"] = {"value": left}
+            conflict = copy.deepcopy(pair[0])
+            conflict["osv"]["database_specific"]["value"] = right
+            self.reject([*messages(), *pair, conflict])
 
     def test_unknown_alias_cannot_expand_existing_exception(self):
         pair = finding()

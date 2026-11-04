@@ -129,21 +129,33 @@ def validate_report(
         raise ReportError("Report does not describe the Caddy source root")
 
     advisories: dict[str, dict[str, Any]] = {}
+    advisory_payloads: dict[str, str] = {}
     for record in records:
         if "osv" not in record:
             continue
         osv = record["osv"]
         identifier = osv.get("id")
         aliases = osv.get("aliases", [])
-        if (
-            not isinstance(identifier, str)
-            or not identifier.startswith("GO-")
-            or identifier in advisories
-            or not isinstance(aliases, list)
-            or not all(isinstance(alias, str) and alias for alias in aliases)
+        if not isinstance(identifier, str) or not re.fullmatch(
+            r"GO-[0-9]{4}-[0-9]{1,12}", identifier
         ):
-            raise ReportError("Invalid or duplicate advisory")
+            raise ReportError("Malformed advisory identifier")
+        if not isinstance(aliases, list) or not all(
+            isinstance(alias, str) and alias for alias in aliases
+        ):
+            raise ReportError(f"Malformed advisory aliases: {identifier}")
+        # v1.8.0 emitOSVs emits per-module records without deduplication. A
+        # multi-module advisory can repeat; never merge or overwrite conflicts.
+        canonical = json.dumps(
+            osv, sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+        if (
+            identifier in advisory_payloads
+            and advisory_payloads[identifier] != canonical
+        ):
+            raise ReportError(f"Conflicting advisory: {identifier}")
         advisories[identifier] = osv
+        advisory_payloads[identifier] = canonical
 
     as_of = today if today is not None else datetime.now(UTC).date()
     reachable = 0
