@@ -200,3 +200,17 @@ def test_scorecard_gate_script_is_owner_protected() -> None:
     assert path in protected_case
     assert "quality/ @egorribun" in owners.splitlines()
     assert "quality/*" in protected_case
+
+
+def test_nuclei_security_scripts_are_owner_protected() -> None:
+    owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
+    source = WORKFLOW_PATH.read_text(encoding="utf-8")
+    protected_case = source.split('case "$path" in', 1)[1].split(
+        'protected_paths+=("$path")', 1
+    )[0]
+    for path in (
+        "scripts/quality/dast_privacy.py",
+        "scripts/quality/nuclei_findings_gate.py",
+    ):
+        assert f"{path} @egorribun" in owners.splitlines()
+        assert path in protected_case

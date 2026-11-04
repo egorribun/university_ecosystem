@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -84,257 +84,142 @@ def test_nightly_slack_notification_reads_a_step_output_in_its_condition() -> No
     assert "secrets." not in send["if"]
 
 
-def test_dast_nuclei_fails_on_high_or_critical_only_after_publication() -> None:
+def test_dast_nuclei_gate_runs_after_publication_and_delegates_to_the_parser() -> None:
     job = _load("dast.yml")["jobs"]["nuclei"]
     names = _names(job)
-    gate = _step(job, "Fail on high or critical Nuclei findings")
+    evidence = _step(job, "Validate Nuclei report evidence")
+    code_scanning = _step(job, "Upload results to GitHub Security")
+    gate = _step(job, "Fail on medium, high or critical Nuclei findings")
     run = gate["run"]
 
-    assert names.index("Upload raw JSON findings") < names.index(gate["name"])
-    assert '.info.severity == "high" or .info.severity == "critical"' in run
-    assert "exit 1" in run
-    assert "[[ ! -f nuclei-results.json ]]" in run  # missing export fails closed
-
-
-def _nuclei_export(severity: str) -> str:
-    """Representative native JSON export, not JSONL or scanner emulation."""
-    return json.dumps(
-        [
-            {
-                "template-id": "workflow-contract-fixture",
-                "info": {
-                    "name": "Synthetic workflow contract finding",
-                    "author": ["workflow-contract"],
-                    "tags": ["workflow-contract"],
-                    "severity": severity,
-                },
-                "type": "http",
-                "host": "https://example.invalid",
-                "matched-at": "https://example.invalid/",
-                "timestamp": "2026-10-31T00:00:00Z",
-                "matcher-status": True,
-            }
-        ]
+    assert gate["if"] == "${{ always() }}"
+    assert "if" not in evidence
+    assert (
+        'nuclei_findings_gate.py "$RUNNER_TEMP/nuclei-results.json"' in evidence["run"]
     )
+    assert '--check-sarif "$RUNNER_TEMP/nuclei-results.sarif"' in evidence["run"]
+    assert names.index(evidence["name"]) < names.index(code_scanning["name"])
+    assert code_scanning["if"] == (
+        "${{ success() && hashFiles('nuclei-results.sarif') != '' }}"
+    )
+    for upload in ("Upload sanitized JSON findings", "Upload sanitized SARIF report"):
+        assert names.index(upload) < names.index(gate["name"])
+    assert 'nuclei_findings_gate.py "$RUNNER_TEMP/nuclei-results.json"' in run
+    assert '--summary-file "$GITHUB_STEP_SUMMARY"' in run
+    assert "jq" not in run
+    assert gate.get("continue-on-error", False) is False
 
 
-@pytest.fixture
-def nuclei_gate(pytester, monkeypatch: pytest.MonkeyPatch):
+def test_dast_nuclei_checkout_includes_the_parser_and_the_scan_stays_native() -> None:
     job = _load("dast.yml")["jobs"]["nuclei"]
+    checkout = next(
+        step
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
     scan = _step(job, "Run Nuclei scan")["run"]
-    gate = _step(job, "Fail on high or critical Nuclei findings")
-    script = gate["run"]
 
-    # A producer switch to JSONL requires an explicit fixture-contract review.
-    assert "-json-export nuclei-results.json" in scan
+    assert checkout["with"]["sparse-checkout"].split() == [".github", "scripts/quality"]
+    assert '-json-export "$RUNNER_TEMP/nuclei-results.json"' in scan
+    assert "-severity critical,high,medium,low,info" in scan
+
+
+@pytest.mark.parametrize(
+    ("export", "expected_status", "expected_output", "summary_row"),
+    [
+        ("[]", 0, "no medium, high or critical findings", "| medium | 0 | yes |"),
+        (
+            '[{"info":{"severity":"medium"}}]',
+            1,
+            "Nuclei reported 1 medium, high or critical finding",
+            "| medium | 1 | yes |",
+        ),
+        (None, 1, "Nuclei produced no JSON export", None),
+    ],
+)
+def test_nuclei_workflow_executes_the_checked_in_gate_and_propagates_its_status(
+    pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    export: str | None,
+    expected_status: int,
+    expected_output: str,
+    summary_row: str | None,
+) -> None:
+    gate = _step(
+        _load("dast.yml")["jobs"]["nuclei"],
+        "Fail on medium, high or critical Nuclei findings",
+    )
+    script = gate["run"]
     assert gate["shell"] == "bash"
-    assert "${{" not in script, "Actions expressions require runner substitution"
+    assert "${{" not in script
 
     git_bash = Path("C:/Program Files/Git/bin/bash.exe")
     bash = (
         str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
     )
-    assert bash, "Real Bash is required to execute the Nuclei gate"
+    assert bash, "Real Bash is required to execute the Nuclei workflow gate"
     monkeypatch.chdir(pytester.path)
     monkeypatch.delenv("BASH_ENV", raising=False)
+    monkeypatch.setenv("TEST_GATE_PYTHON", Path(sys.executable).as_posix())
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", "summary.md")
+    monkeypatch.setenv("RUNNER_TEMP", pytester.path.as_posix())
 
-    # Missing jq is a fixture/environment failure, never product RED evidence.
-    probe = pytester.run(
+    parser = Path("scripts/quality/nuclei_findings_gate.py")
+    parser.parent.mkdir(parents=True)
+    shutil.copyfile(ROOT / parser, parser)
+    if export is not None:
+        Path("nuclei-results.json").write_text(export, encoding="utf-8")
+    workflow_script = Path("actual-nuclei-gate.sh")
+    workflow_script.write_text(
+        'python3() { "$TEST_GATE_PYTHON" "$@"; }\n' + script,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    result = pytester.run(
         bash,
         "--noprofile",
         "--norc",
         "-e",
         "-o",
         "pipefail",
-        "-c",
-        "jq --version",
+        workflow_script.as_posix(),
         timeout=20,
     )
-    assert probe.ret == 0, (
-        "Real jq must be available inside Bash before testing the Nuclei gate:\n"
-        + probe.stdout.str()
-        + "\n"
-        + probe.stderr.str()
-    )
-    assert probe.stdout.str().strip().startswith("jq-")
-
-    script_path = pytester.path / "actual-nuclei-gate.sh"
-    script_path.write_text(script, encoding="utf-8", newline="\n")
-    export_path = pytester.path / "nuclei-results.json"
-
-    def run(export: str | None):
-        export_path.unlink(missing_ok=True)
-        if export is not None:
-            export_path.write_text(export, encoding="utf-8", newline="\n")
-        return pytester.run(
-            bash,
-            "--noprofile",
-            "--norc",
-            "-e",
-            "-o",
-            "pipefail",
-            script_path.as_posix(),
-            timeout=20,
-        )
-
-    return run
+    assert result.ret == expected_status
+    assert expected_output in result.stdout.str() + result.stderr.str()
+    if summary_row is not None:
+        assert summary_row in Path("summary.md").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(
-    ("export", "expected_success", "blocking_count"),
+    ("step_name", "artifact_name", "path", "condition"),
     [
-        pytest.param("[]", True, None, id="native-empty-array"),
-        pytest.param(_nuclei_export("medium"), True, None, id="native-medium"),
-        pytest.param(_nuclei_export("high"), False, 1, id="native-high"),
-        pytest.param(_nuclei_export("critical"), False, 1, id="native-critical"),
-        pytest.param(None, False, None, id="missing-export"),
-        pytest.param("", False, None, id="zero-byte-export"),
-        pytest.param("[", False, None, id="malformed-json"),
-        pytest.param(
-            '{"info":{"severity":"medium"}}',
-            False,
-            None,
-            id="wrong-top-level-object",
+        (
+            "Upload sanitized JSON findings",
+            "nuclei-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+            "nuclei-results.json",
+            "always()",
+        ),
+        (
+            "Upload sanitized SARIF report",
+            "nuclei-sarif-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+            "nuclei-results.sarif",
+            "${{ always() && hashFiles('nuclei-results.sarif') != '' }}",
         ),
     ],
 )
-def test_dast_nuclei_gate_consumes_native_json_export(
-    nuclei_gate,
-    export: str | None,
-    expected_success: bool,
-    blocking_count: int | None,
+def test_dast_nuclei_reports_are_retained_for_ninety_days(
+    step_name: str, artifact_name: str, path: str, condition: str
 ) -> None:
-    result = nuclei_gate(export)
-    stdout = result.stdout.str()
-    stderr = result.stderr.str()
-    diagnostic = f"exit={result.ret}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    job = _load("dast.yml")["jobs"]["nuclei"]
+    upload = _step(job, step_name)
 
-    assert (result.ret == 0) is expected_success, diagnostic
-
-    clean_message = "Nuclei reported no high or critical findings."
-    if expected_success:
-        assert clean_message in stdout, diagnostic
-    else:
-        assert clean_message not in stdout + stderr, diagnostic
-
-    if blocking_count is not None:
-        # A jq type error must not satisfy the high/critical negative control.
-        assert result.ret == 1, diagnostic
-        assert f"Nuclei reported {blocking_count} high or critical" in stderr, (
-            diagnostic
-        )
-
-
-@pytest.mark.parametrize(
-    ("export", "blocking_count"),
-    [
-        pytest.param(_nuclei_export("info"), 0, id="canonical-info"),
-        pytest.param(_nuclei_export("low"), 0, id="canonical-low"),
-        pytest.param(_nuclei_export("unknown"), 0, id="canonical-unknown"),
-        pytest.param(
-            json.dumps(
-                [
-                    json.loads(_nuclei_export(severity))[0]
-                    for severity in ("medium", "high", "critical")
-                ],
-                indent=2,
-            ),
-            2,
-            id="pretty-mixed-findings",
-        ),
-        pytest.param(
-            json.dumps(
-                [
-                    json.loads(_nuclei_export(severity))[0]
-                    for severity in ("medium", "high", "critical")
-                ],
-                separators=(",", ":"),
-            ),
-            2,
-            id="minified-mixed-findings",
-        ),
-        pytest.param(
-            _nuclei_export("high").replace('"high"', '"\\u0068igh"'),
-            1,
-            id="json-escaped-high",
-        ),
-    ],
-)
-def test_dast_nuclei_gate_preserves_native_severity_and_json_equivalence(
-    nuclei_gate,
-    export: str,
-    blocking_count: int,
-) -> None:
-    result = nuclei_gate(export)
-    stdout = result.stdout.str()
-    stderr = result.stderr.str()
-    diagnostic = f"exit={result.ret}\nstdout:\n{stdout}\nstderr:\n{stderr}"
-    clean_message = "Nuclei reported no high or critical findings."
-
-    if blocking_count:
-        assert result.ret == 1, diagnostic
-        assert f"Nuclei reported {blocking_count} high or critical" in stderr, (
-            diagnostic
-        )
-        assert clean_message not in stdout + stderr, diagnostic
-    else:
-        assert result.ret == 0, diagnostic
-        assert clean_message in stdout, diagnostic
-
-
-@pytest.mark.parametrize(
-    "export",
-    [
-        pytest.param(" \n\t", id="whitespace-only"),
-        pytest.param("[]\n[]", id="two-array-documents"),
-        pytest.param("{}\n{}", id="jsonl-object-documents"),
-        pytest.param(_nuclei_export("medium") + "\n[]", id="extra-empty-document"),
-        pytest.param("null", id="null-root"),
-        pytest.param("true", id="boolean-root"),
-        pytest.param("1", id="number-root"),
-        pytest.param('"finding"', id="string-root"),
-        pytest.param("[null]", id="null-member"),
-        pytest.param("[[]]", id="array-member"),
-        pytest.param("[true]", id="boolean-member"),
-        pytest.param("[1]", id="number-member"),
-        pytest.param('["finding"]', id="string-member"),
-        pytest.param("[{}]", id="missing-info"),
-        pytest.param('[{"info":null}]', id="null-info"),
-        pytest.param('[{"info":[]}]', id="array-info"),
-        pytest.param('[{"info":{}}]', id="missing-severity"),
-        pytest.param('[{"info":{"severity":null}}]', id="null-severity"),
-        pytest.param('[{"info":{"severity":1}}]', id="numeric-severity"),
-        pytest.param('[{"info":{"severity":true}}]', id="boolean-severity"),
-        pytest.param('[{"info":{"severity":[]}}]', id="array-severity"),
-        pytest.param('[{"info":{"severity":{}}}]', id="object-severity"),
-        pytest.param(_nuclei_export(""), id="undefined-severity"),
-        pytest.param(_nuclei_export("HIGH"), id="noncanonical-severity"),
-        pytest.param(_nuclei_export(" high "), id="padded-severity"),
-        pytest.param(_nuclei_export("unrecognized"), id="unsupported-severity"),
-        pytest.param(
-            json.dumps([json.loads(_nuclei_export("medium"))[0], None]),
-            id="valid-medium-then-malformed-member",
-        ),
-        pytest.param(
-            json.dumps([json.loads(_nuclei_export("high"))[0], {}]),
-            id="validate-whole-array-before-blocking-count",
-        ),
-    ],
-)
-def test_dast_nuclei_gate_rejects_invalid_evidence_before_counting(
-    nuclei_gate,
-    export: str,
-) -> None:
-    result = nuclei_gate(export)
-    stdout = result.stdout.str()
-    stderr = result.stderr.str()
-    diagnostic = f"exit={result.ret}\nstdout:\n{stdout}\nstderr:\n{stderr}"
-
-    assert result.ret == 1, diagnostic
-    assert "Could not validate Nuclei JSON export" in stderr, diagnostic
-    assert "the scan result is unknown" in stderr, diagnostic
-    assert "Nuclei reported no high or critical findings." not in stdout + stderr
-    assert "high or critical finding(s)." not in stdout + stderr
+    assert upload["if"] == condition
+    assert upload["with"]["name"] == artifact_name
+    assert upload["with"]["path"] == path
+    assert upload["with"]["retention-days"] == 90
+    assert upload["with"]["if-no-files-found"] == "error"
 
 
 def test_scorecard_publishes_every_check_then_gates_per_key_floor() -> None:

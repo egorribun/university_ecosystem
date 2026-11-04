@@ -1025,3 +1025,16 @@ def test_security_audit_protects_scorecard_gate_inputs() -> None:
             "quality/scorecard-floors.json",
         ):
             assert f'"{path}"' in run
+
+
+def test_security_audit_protects_nuclei_gate_inputs() -> None:
+    jobs = _workflow(SECURITY_AUDIT)["jobs"]
+    for job_name in ("policy-integrity", "pip-audit"):
+        run = _step(
+            jobs[job_name], "Verify security policy inputs against protected base"
+        )["run"]
+        for path in (
+            "scripts/quality/dast_privacy.py",
+            "scripts/quality/nuclei_findings_gate.py",
+        ):
+            assert f'"{path}"' in run

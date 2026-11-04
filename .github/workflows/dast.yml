@@ -65,10 +65,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: main
-          # Only need templates directory, not full history
+          # The preflight enforces main; the event SHA binds evidence to its source.
+          ref: ${{ github.sha }}
+          # Only the workflow tree and the Nuclei findings gate are needed
           sparse-checkout: |
             .github
+            scripts/quality
           sparse-checkout-cone-mode: false
 
       # MOD-01 (audit 2026-03-08 Wave 5): Previous SHA 9da1d2b...f8a9 was
@@ -84,93 +86,112 @@ jobs:
 
       - name: Validate Nuclei target URL
         env:
-          TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
+          DAST_SECRET_TARGET: ${{ secrets.DAST_TARGET_URL }}
         run: |
-          # TD-W16-05: Mask target URL in CI logs (secrets auto-masked but inputs are not).
-          echo "::add-mask::$TARGET_URL"
-          if [ -z "$TARGET_URL" ]; then
-            echo "::error::No target URL configured. Set DAST_TARGET_URL secret or pass target_url input."
-            exit 1
-          fi
+          set -euo pipefail
+          python3 -m scripts.quality.dast_privacy prepare-target \
+            --output "$RUNNER_TEMP/nuclei-target.txt"
 
       - name: Run Nuclei scan
-        env:
-          TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
+        id: nuclei_scan
+        shell: bash
         run: |
+          set -euo pipefail
           nuclei \
-            -u "$TARGET_URL" \
+            -l "$RUNNER_TEMP/nuclei-target.txt" \
             -t cves/ \
             -t exposures/ \
             -t misconfiguration/ \
             -t vulnerabilities/ \
             -t network/ \
-            -severity critical,high,medium \
+            -severity critical,high,medium,low,info \
             -exclude-tags dos,fuzz \
             -rate-limit 50 \
             -concurrency 10 \
             -timeout 10 \
             -max-host-error 30 \
-            -sarif-export nuclei-results.sarif \
-            -json-export nuclei-results.json \
-            -stats
+            -sarif-export "$RUNNER_TEMP/nuclei-results.sarif" \
+            -json-export "$RUNNER_TEMP/nuclei-results.json" \
+            -trace-log "$RUNNER_TEMP/nuclei-trace.jsonl" \
+            -omit-raw \
+            -no-color \
+            -stats >"$RUNNER_TEMP/nuclei-stdout.log" 2>"$RUNNER_TEMP/nuclei-stderr.log"
 
-      - name: Upload results to GitHub Security
-        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
-        if: always()
-        with:
-          sarif_file: nuclei-results.sarif
-          category: nuclei-dast
+      # Trace and scanner logs may contain target details: keep them private on
+      # the runner. A response establishes execution, not complete coverage.
+      - name: Validate Nuclei scan completion
+        if: ${{ always() }}
+        shell: bash
+        env:
+          SCAN_OUTCOME: ${{ steps.nuclei_scan.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "::error::DAST checkout does not match the event source."
+            exit 1
+          fi
+          DAST_TARGET_FILE="$RUNNER_TEMP/nuclei-target.txt" \
+            python3 -m scripts.quality.dast_privacy verify-scan \
+            --trace-in "$RUNNER_TEMP/nuclei-trace.jsonl" \
+            --log-in "$RUNNER_TEMP/nuclei-stderr.log" \
+            --summary-file "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload raw JSON findings
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: nuclei-results-${{ github.run_id }}
-          path: nuclei-results.json
-          retention-days: 30
+      # Nuclei 3.11.1 emits no SARIF when there are no findings. Require it
+      # for every nonempty export while retaining the original clean JSON.
+      - name: Validate Nuclei report evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/nuclei_findings_gate.py "$RUNNER_TEMP/nuclei-results.json" \
+            --check-sarif "$RUNNER_TEMP/nuclei-results.sarif"
 
-      # AUD-381: findings are published above first. Confirmed high and critical
-      # Nuclei results then fail the run, so a scheduled or manual scan cannot
-      # finish green while a high-severity exposure is present. A missing export
-      # fails closed because the scan result is then unknown.
-      - name: Fail on high or critical Nuclei findings
+      - name: Sanitize Nuclei reports
         if: ${{ always() }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f nuclei-results.json ]]; then
-            echo "::error::Nuclei produced no JSON export; the scan result is unknown." >&2
-            exit 1
-          fi
-          # Native -json-export writes one array, including [] for no findings.
-          # Validate every record before applying the unchanged severity threshold.
-          if ! blocking_count="$(jq -es '
-            if length != 1 or (.[0] | type) != "array" then
-              error("expected exactly one native Nuclei JSON array")
-            else
-              .[0]
-              | if all(.[];
-                  type == "object"
-                  and (.info | type) == "object"
-                  and (.info.severity | IN(
-                    "info", "low", "medium", "high", "critical", "unknown"
-                  )))
-                then
-                  [.[] | select(.info.severity == "high" or .info.severity == "critical")]
-                  | length
-                else
-                  error("invalid native Nuclei finding")
-                end
-            end
-          ' nuclei-results.json)"; then
-            echo "::error::Could not validate Nuclei JSON export; the scan result is unknown." >&2
-            exit 1
-          fi
-          if [[ "$blocking_count" -ne 0 ]]; then
-            echo "::error::Nuclei reported $blocking_count high or critical finding(s)." >&2
-            exit 1
-          fi
-          echo "Nuclei reported no high or critical findings."
+          DAST_TARGET_FILE="$RUNNER_TEMP/nuclei-target.txt" \
+            python3 -m scripts.quality.dast_privacy sanitize \
+            --json-in "$RUNNER_TEMP/nuclei-results.json" \
+            --sarif-in "$RUNNER_TEMP/nuclei-results.sarif" \
+            --json-out nuclei-results.json \
+            --sarif-out nuclei-results.sarif
+
+      - name: Upload results to GitHub Security
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        if: ${{ success() && hashFiles('nuclei-results.sarif') != '' }}
+        with:
+          sarif_file: nuclei-results.sarif
+          category: nuclei-dast
+
+      - name: Upload sanitized JSON findings
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: nuclei-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: nuclei-results.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Upload sanitized SARIF report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() && hashFiles('nuclei-results.sarif') != '' }}
+        with:
+          name: nuclei-sarif-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: nuclei-results.sarif
+          retention-days: 90
+          if-no-files-found: error
+
+      # AUD-381: findings are published above first. Medium, high and critical
+      # Nuclei findings fail the run; info and low are reported only. A missing
+      # or malformed export fails closed because the scan result is then unknown.
+      - name: Fail on medium, high or critical Nuclei findings
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/nuclei_findings_gate.py "$RUNNER_TEMP/nuclei-results.json" \
+            --summary-file "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------------------------
   # MOD-W5-07: OWASP ZAP Full Scan — active scan for dynamic discovery

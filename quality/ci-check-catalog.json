@@ -1976,8 +1976,14 @@
           ],
           "artifacts": [
             {
-              "name_pattern": "nuclei-results-${{ github.run_id }}",
+              "name_pattern": "nuclei-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
               "path_pattern": "nuclei-results.json",
+              "required": false,
+              "provenance": "run_id_attempt"
+            },
+            {
+              "name_pattern": "nuclei-sarif-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "nuclei-results.sarif",
               "required": false,
               "provenance": "run_id_attempt"
             }
