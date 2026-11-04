@@ -375,18 +375,44 @@ def test_scorecard_reports_are_retained_for_ninety_days() -> None:
     assert upload["with"]["if-no-files-found"] == "error"
 
 
-def test_sqlmap_writes_result_logs_and_fails_on_confirmed_injection() -> None:
+def test_sqlmap_captures_the_console_and_gates_on_completion_and_injection() -> None:
     job = _load("sqlmap.yml")["jobs"]["sqlmap"]
-    scan = _step(job, "Run SQLMap Scan on API")["run"]
-    gate = _step(job, "Fail on confirmed SQL injection")
+    scan_step = _step(job, "Run SQLMap Scan on API")
+    gate = _step(job, "Gate SQLMap scan result")
+    publish = _step(job, "Publish sanitized SQLMap evidence")
     upload = _step(job, "Upload SQLMap result logs")
 
-    assert "--output-dir=sqlmap-output" in scan
+    assert scan_step["id"] == "sqlmap-scan"
+    assert "set -o pipefail" in scan_step["run"]
+    assert "--output-dir=sqlmap-output" in scan_step["run"]
+    assert "> sqlmap-output/scan-console.log 2>&1" in scan_step["run"]
+    assert "| tee" not in scan_step["run"]
+    assert gate["id"] == "sqlmap-gate"
     assert gate["if"] == "${{ always() }}"
-    assert "identified the following injection point" in gate["run"]
-    assert "exit 1" in gate["run"]
+    assert gate["env"] == {"SCAN_OUTCOME": "${{ steps.sqlmap-scan.outcome }}"}
+    assert "python3 scripts/quality/sqlmap_scan_gate.py" in gate["run"]
+    assert '--scan-outcome "$SCAN_OUTCOME"' in gate["run"]
+    assert "--output-dir sqlmap-output" in gate["run"]
+    assert "--console-log sqlmap-output/scan-console.log" in gate["run"]
+    assert publish["if"] == "${{ always() }}"
+    assert publish["env"] == {
+        "SCAN_OUTCOME": "${{ steps.sqlmap-scan.outcome }}",
+        "GATE_OUTCOME": "${{ steps.sqlmap-gate.outcome }}",
+        "SOURCE_SHA": "${{ github.sha }}",
+    }
+    assert "scripts/quality/sqlmap_scan_gate.py publish-evidence" in publish["run"]
+    assert "sqlmap-evidence/receipt.json" in publish["run"]
+    assert publish.get("continue-on-error", False) is False
+    names = _names(job)
+    assert (
+        names.index(gate["name"])
+        < names.index(publish["name"])
+        < names.index(upload["name"])
+    )
     assert upload["if"] == "${{ always() }}"
-    assert upload["with"]["path"] == "sqlmap-output/"
+    assert upload["with"]["path"] == "sqlmap-evidence/receipt.json"
+    assert upload["with"]["retention-days"] == 90
+    assert upload["with"]["if-no-files-found"] == "error"
 
 
 def test_pull_request_vulnerability_gate_runs_read_only_osv_inventory() -> None:

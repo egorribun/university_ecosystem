@@ -69,40 +69,131 @@ jobs:
 
       - name: Start FastAPI Backend in Background
         env:
-          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
           ENVIRONMENT: testing
-          SECRET_KEY: "sqlmap-ci-placeholder-key" # pragma: allowlist secret
+          AUTO_CREATE_SCHEMA: "true"
+          CACHE_ENABLED: "false"
+          OTEL_SDK_DISABLED: "true"
+          # Keep the limiter active with a disposable scan-only request budget.
+          RATE_LIMIT_DEFAULT: "100000/minute"
+          RATE_LIMIT_NEWS: "100000/minute"
         run: |
-          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
-          openapi_document="$(mktemp)"
-          # Wait for a successful, nonempty OpenAPI response from the app's real route.
+          set -euo pipefail
+          unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
+          mkdir -p sqlmap-output
+          printf '%s\n' "$GITHUB_SHA" > sqlmap-output/source-sha.txt
+          export DATABASE_URL="sqlite+aiosqlite:///$RUNNER_TEMP/sqlmap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.db"
+          SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          export SECRET_KEY
+          echo "::add-mask::$SECRET_KEY"
+          export SQLMAP_QUERY_EVIDENCE="$GITHUB_WORKSPACE/sqlmap-output/db-query-evidence.log"
+
+          # Create the disposable schema using the same SQLite adaptation as
+          # the repository's test harness, then seed two distinguishable rows.
+          uv run python - <<'PY'
+          import asyncio
+          from sqlalchemy.dialects.postgresql import JSONB
+          from sqlalchemy.ext.asyncio import AsyncSession
+          from sqlalchemy.ext.compiler import compiles
+
+          @compiles(JSONB, "sqlite")
+          def compile_jsonb_sqlite(element, compiler, **kwargs):
+              return "TEXT"
+
+          import app.main
+          from app.core.database import engine
+          from app.core.lifespan import _handle_schema_and_extensions
+          from app.models import News
+
+          async def seed():
+              await _handle_schema_and_extensions()
+              async with AsyncSession(engine) as session:
+                  session.add_all([
+                      News(title="SQLMap seed one", content="First scan article"),
+                      News(title="SQLMap seed two", content="Second scan article"),
+                  ])
+                  await session.commit()
+              await engine.dispose()
+
+          asyncio.run(seed())
+          PY
+
+          export AUTO_CREATE_SCHEMA=false
+          # Count executed news SELECTs without recording query values or secrets.
+          uv run python - <<'PY' > "$RUNNER_TEMP/sqlmap-backend.log" 2>&1 &
+          import os
+          from sqlalchemy import event
+          import uvicorn
+          from app.core.database import engine
+          from app.core.middleware.request_id import request_id_ctx
+          from app.main import app
+
+          @event.listens_for(engine.sync_engine, "after_cursor_execute")
+          def record_news_query(connection, cursor, statement, parameters, context, executemany):
+              normalized = statement.upper()
+              if normalized.lstrip().startswith("SELECT") and "FROM NEWS" in normalized:
+                  marker = "SQLMAP SELECT news" if request_id_ctx.get() == "sqlmap-aud-381" else "SELECT news"
+                  with open(os.environ["SQLMAP_QUERY_EVIDENCE"], "a", encoding="utf-8") as evidence:
+                      evidence.write(marker + "\n")
+
+          uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
+          PY
+          echo "$!" > "$RUNNER_TEMP/sqlmap-backend.pid"
+
+          # Fetch the backend's source schema before deriving the admitted scope.
           for i in {1..30}; do
             if curl --fail --silent --show-error \
-              --output "$openapi_document" \
-              "http://127.0.0.1:8000/api/openapi.json" && test -s "$openapi_document"; then
+              --output sqlmap-output/source-openapi.json \
+              "http://127.0.0.1:8000/api/openapi.json" && test -s sqlmap-output/source-openapi.json; then
               echo "Server and OpenAPI document are ready."
               break
             fi
             echo "Waiting for server..."
             sleep 1
           done
-          if ! test -s "$openapi_document"; then
+          if ! test -s sqlmap-output/source-openapi.json; then
             echo "::error::FastAPI OpenAPI document did not become ready within 30 seconds."
             exit 1
           fi
+          python3 scripts/quality/sqlmap_scan_gate.py scope-openapi \
+            sqlmap-output/source-openapi.json sqlmap-output/scoped-openapi.json
+
+          # Prove that anonymous requests execute the seeded query, with cache
+          # disabled, and that the admitted limit changes the real result set.
+          for limit in 1 2; do
+            curl --fail --silent --show-error \
+              --output "sqlmap-output/readiness-limit-${limit}.json" \
+              "http://127.0.0.1:8000/api/v1/news?limit=${limit}"
+          done
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          one = json.loads(Path("sqlmap-output/readiness-limit-1.json").read_text())
+          two = json.loads(Path("sqlmap-output/readiness-limit-2.json").read_text())
+          if len(one["items"]) != 1 or len(two["items"]) != 2:
+              raise SystemExit("Seeded news pagination did not return the expected rows")
+          if not one["has_more"] or two["has_more"]:
+              raise SystemExit("Seeded news pagination returned inconsistent page state")
+          PY
+          test -s "$SQLMAP_QUERY_EVIDENCE"
+          # Only queries issued after readiness count as scan execution proof.
+          : > "$SQLMAP_QUERY_EVIDENCE"
 
       - name: Run SQLMap Scan on API
+        id: sqlmap-scan
         run: |
+          set -o pipefail
+          unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
+          mkdir -p sqlmap-output
           # --batch: non-interactive mode
-          # The OpenAPI document already enumerates the complete route set;
-          # recrawling it only multiplies requests without increasing coverage.
-          # Exclude time-based probes from this PR smoke gate: the disposable
-          # app deliberately rate-limits repeated requests and those probes
-          # can consume the entire job envelope without improving the
-          # boolean/error/union injection signal.
+          # Scope v1 covers the anonymous news-list operation, not the full API.
+          # Time-based probes are excluded from this bounded BEU scan.
           # --risk=1 --level=1: lightweight scan for CI speed
-          uv run sqlmap --openapi="http://127.0.0.1:8000/api/openapi.json" \
+          uv run sqlmap --openapi="sqlmap-output/scoped-openapi.json" \
             --openapi-base="http://127.0.0.1:8000" \
+            --headers="Accept-Encoding: identity\nX-Request-ID: sqlmap-aud-381" \
+            --ignore-redirects \
+            --answers='refresh=N' \
+            --scope='^http://127[.]0[.]0[.]1:8000/api/v1/news([?]|$)' \
             --batch \
             --crawl=0 \
             --technique=BEU \
@@ -112,31 +203,54 @@ jobs:
             --timeout=5 \
             --retries=0 \
             --output-dir=sqlmap-output \
-            --flush-session
+            --results-file=sqlmap-output/results.csv \
+            --flush-session \
+            > sqlmap-output/scan-console.log 2>&1
 
-      # AUD-381: sqlmap exits 0 even when it confirms an injection point, so the
-      # scan result is read from its own log. Missing or empty output fails
-      # closed, and any confirmed injection fails the job after publication.
-      - name: Fail on confirmed SQL injection
+      # AUD-381: sqlmap exits 0 even when it confirms an injection point, and a
+      # run can stop early while still printing its ending banner. Require the
+      # native post-loop message and results CSV, reject failed or interrupted
+      # targets and injection evidence, and retain the files for review.
+      - name: Gate SQLMap scan result
+        id: sqlmap-gate
         if: ${{ always() }}
         shell: bash
+        env:
+          SCAN_OUTCOME: ${{ steps.sqlmap-scan.outcome }}
         run: |
           set -euo pipefail
-          if [[ ! -d sqlmap-output ]] || [[ -z "$(find sqlmap-output -type f -name log -print -quit)" ]]; then
-            echo "::error::SQLMap produced no result log; the scan result is unknown." >&2
-            exit 1
-          fi
-          if grep -R -l -F "identified the following injection point" sqlmap-output >/dev/null; then
-            echo "::error::SQLMap confirmed SQL injection. The result log is in the sqlmap-output artifact." >&2
-            exit 1
-          fi
-          echo "SQLMap reported no confirmed injection points."
+          python3 scripts/quality/sqlmap_scan_gate.py \
+            --scan-outcome "$SCAN_OUTCOME" \
+            --output-dir sqlmap-output \
+            --console-log sqlmap-output/scan-console.log \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish sanitized SQLMap evidence
+        if: ${{ always() }}
+        env:
+          SCAN_OUTCOME: ${{ steps.sqlmap-scan.outcome }}
+          GATE_OUTCOME: ${{ steps.sqlmap-gate.outcome }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          python3 scripts/quality/sqlmap_scan_gate.py publish-evidence \
+            sqlmap-output "$SCAN_OUTCOME" "$GATE_OUTCOME" "$SOURCE_SHA" \
+            sqlmap-evidence/receipt.json
 
       - name: Upload SQLMap result logs
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sqlmap-output-${{ github.run_id }}-${{ github.run_attempt }}
-          path: sqlmap-output/
-          if-no-files-found: warn
-          retention-days: 30
+          path: sqlmap-evidence/receipt.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Stop disposable backend
+        if: ${{ always() }}
+        run: |
+          if test -f "$RUNNER_TEMP/sqlmap-backend.pid"; then
+            backend_pid="$(cat "$RUNNER_TEMP/sqlmap-backend.pid")"
+            if kill -0 "$backend_pid" 2>/dev/null; then
+              kill "$backend_pid"
+            fi
+          fi

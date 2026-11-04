@@ -102,7 +102,7 @@ def test_sqlmap_scan_uses_the_bounded_openapi_boolean_error_union_profile() -> N
     )
     script = scan["run"]
 
-    assert f'--openapi="{OPENAPI_URL}"' in script
+    assert '--openapi="sqlmap-output/scoped-openapi.json"' in script
     assert f'--openapi-base="{OPENAPI_BASE_URL}"' in script
     for option in (
         "--batch",

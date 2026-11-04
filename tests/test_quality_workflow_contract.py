@@ -5704,9 +5704,14 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
     assert "test -s" in readiness["run"]
     assert "for i in {1..30}; do" in readiness["run"]
     assert "exit 1" in readiness["run"]
+    assert "sqlmap_scan_gate.py scope-openapi" in readiness["run"]
+    assert "sqlmap-output/source-openapi.json" in readiness["run"]
+    assert "sqlmap-output/scoped-openapi.json" in readiness["run"]
+    assert "db-query-evidence.log" in readiness["run"]
+    assert "secrets.token_urlsafe(48)" in readiness["run"]
 
     scan_script = scan["run"]
-    assert f'--openapi="{SQLMAP_OPENAPI_URL}"' in scan_script
+    assert '--openapi="sqlmap-output/scoped-openapi.json"' in scan_script
     assert f'--openapi-base="{SQLMAP_OPENAPI_BASE_URL}"' in scan_script
     for option in (
         "--batch",
@@ -5720,13 +5725,28 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
     ):
         assert option in scan_script
 
-    scan_arguments = shlex.split(scan_script.replace("\\\n", ""), comments=True)
+    # The native console stays private; only the sanitized receipt is uploaded.
+    assert scan_script.count("> sqlmap-output/scan-console.log 2>&1") == 1
+    proxy_unset = (
+        "unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY"
+    )
+    assert proxy_unset in scan_script
+    assert scan_script.index(proxy_unset) < scan_script.index("uv run sqlmap")
+    sqlmap_invocation = scan_script[scan_script.index("uv run sqlmap") :]
+    sqlmap_invocation = sqlmap_invocation.split(
+        "> sqlmap-output/scan-console.log 2>&1", 1
+    )[0]
+    scan_arguments = shlex.split(sqlmap_invocation.replace("\\\n", ""), comments=True)
     assert scan_arguments == [
         "uv",
         "run",
         "sqlmap",
-        f"--openapi={SQLMAP_OPENAPI_URL}",
+        "--openapi=sqlmap-output/scoped-openapi.json",
         f"--openapi-base={SQLMAP_OPENAPI_BASE_URL}",
+        "--headers=Accept-Encoding: identity\\nX-Request-ID: sqlmap-aud-381",
+        "--ignore-redirects",
+        "--answers=refresh=N",
+        "--scope=^http://127[.]0[.]0[.]1:8000/api/v1/news([?]|$)",
         "--batch",
         "--crawl=0",
         "--technique=BEU",
@@ -5736,6 +5756,7 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
         "--timeout=5",
         "--retries=0",
         "--output-dir=sqlmap-output",
+        "--results-file=sqlmap-output/results.csv",
         "--flush-session",
     ]
 

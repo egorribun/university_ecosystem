@@ -4649,7 +4649,7 @@
           "artifacts": [
             {
               "name_pattern": "sqlmap-output-${{ github.run_id }}-${{ github.run_attempt }}",
-              "path_pattern": "sqlmap-output/",
+              "path_pattern": "sqlmap-evidence/receipt.json",
               "required": false,
               "provenance": "run_id_attempt"
             }
