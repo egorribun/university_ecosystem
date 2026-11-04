@@ -94,6 +94,18 @@ def test_top_level_and_job_permissions_are_read_only() -> None:
     assert _job()["permissions"] == {"contents": "read"}
 
 
+def test_concurrency_cancels_only_stale_runs_for_the_same_pull_request() -> None:
+    concurrency = _workflow()["concurrency"]
+    assert concurrency["group"] == (
+        "${{ github.event_name == 'pull_request' "
+        "&& format('aud373-kind-pr-{0}', github.event.pull_request.number) "
+        "|| format('aud373-kind-{0}-{1}-{2}', github.event_name, github.run_id, github.run_attempt) }}"
+    )
+    assert concurrency["cancel-in-progress"] == (
+        "${{ github.event_name == 'pull_request' }}"
+    )
+
+
 def test_job_runner_and_timeout_are_pinned() -> None:
     job = _job()
     assert job["runs-on"] == "ubuntu-24.04"

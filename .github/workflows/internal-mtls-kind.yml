@@ -20,6 +20,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Only runs for the same PR supersede each other. Manual and scheduled runs
+  # have independent groups; the script cleans up only its own named resources.
+  group: >-
+    ${{ github.event_name == 'pull_request'
+    && format('aud373-kind-pr-{0}', github.event.pull_request.number)
+    || format('aud373-kind-{0}-{1}-{2}', github.event_name, github.run_id, github.run_attempt) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   aud373-kind-proof:
     name: AUD-373 kind SPIFFE mTLS proof
