@@ -212,6 +212,14 @@ MinIO to another S3 provider, follow
 and retain the old data until inventory, private-access, URL, and
 backup-restore gates pass.
 
+When `fileProcessor.config.minioEndpoint` names an endpoint outside the release
+namespace, the chart requires owner-verified TCP/443 CIDRs in
+`networkPolicy.fileProcessorHTTPSEgress.egressCIDRs` and refuses to render
+without them (AUD-189). The in-cluster MinIO service must use port 9000. The
+same rule applies to `networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs` when
+`backend.config.elasticsearchURL` is external. CIDR prefixes must be /8 to /32
+for IPv4 and /16 to /128 for IPv6.
+
 JWT consumers share one explicit contract. The backend signs RS256 tokens with
 the audience from `gateway.config.jwtAudience` and the canonical issuer from
 `global.jwtIssuer`; the file processor receives the same values as

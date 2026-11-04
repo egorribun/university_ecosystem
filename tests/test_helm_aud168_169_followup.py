@@ -290,6 +290,8 @@ def test_file_processor_revocation_egress_is_release_scoped(
         (((("app.kubernetes.io/name", "otel-collector"),),), (), (("TCP", 4317),)),
         # AUD-189: no public TCP 443 by default; the file-processor reaches
         # external HTTPS only through owner-declared fileProcessorHTTPSEgress CIDRs.
+        # The staging fixture declares a reserved TEST-NET CIDR for external MinIO.
+        ((), ("192.0.2.0/24",), (("TCP", 443),)),
         (((("k8s-app", "kube-dns"),),), (), (("TCP", 53), ("UDP", 53))),
     }
 

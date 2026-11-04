@@ -193,6 +193,10 @@ def topology() -> tuple[list[dict[str, Any]], dict[str, Endpoint]]:
             _resource(store, "StatefulSet", f"{release}-revocation-redis-master"),
             f"10.34.0.{host_suffix}",
         )
+        endpoints[f"{release}-ws-hub"] = _pod(
+            _resource(app, "Deployment", f"{release}-ws-hub"),
+            f"10.35.1.{host_suffix}",
+        )
     return resources, endpoints
 
 
@@ -444,3 +448,20 @@ def test_backend_listener_args_preserve_image_process_and_configured_port(
                 assert probe["exec"]["command"][-2:] == ["--port", "8181"]
             else:
                 assert probe["httpGet"]["port"] == "http"
+
+
+def test_ws_hub_backend_peer_is_scoped_to_its_own_release(
+    topology: tuple[list[dict[str, Any]], dict[str, Endpoint]],
+) -> None:
+    resources, endpoints = topology
+    backend = endpoints[f"{FIRST}-backend"]
+    own_ws_hub = endpoints[f"{FIRST}-ws-hub"]
+    foreign_ws_hub = endpoints[f"{SECOND}-ws-hub"]
+    assert own_ws_hub.labels["app.kubernetes.io/instance"] == FIRST
+    assert _allowed_side(resources, backend, own_ws_hub, "Ingress", "TCP", 8181)
+    # The ws-hub peer must carry the release labels, not only the component.
+    assert not _allowed_side(resources, backend, foreign_ws_hub, "Ingress", "TCP", 8181)
+    component_only = Endpoint(
+        NAMESPACE, {"app.kubernetes.io/component": "ws-hub"}, "10.35.2.1"
+    )
+    assert not _allowed_side(resources, backend, component_only, "Ingress", "TCP", 8181)

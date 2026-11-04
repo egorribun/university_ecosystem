@@ -35,21 +35,62 @@
   {{- if eq (len .Values.networkPolicy.gatewayJWKS.egressCIDRs) 0 -}}
     {{- fail "networkPolicy.gatewayJWKS.egressCIDRs must contain owner-verified CIDRs for the external HTTPS JWKS issuer in staging/production" -}}
   {{- end -}}
-  {{- range $cidr := .Values.networkPolicy.gatewayJWKS.egressCIDRs -}}
-    {{- $validIPv4 := regexMatch "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/([1-9]|[12][0-9]|3[0-2])$" (toString $cidr) -}}
-    {{- $validIPv6Syntax := regexMatch "^([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){7}|::([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,6})?|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,6}::|[0-9A-Fa-f]{1,4}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){1}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,4}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){2}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,3}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){3}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,2}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){4}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,1}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){5}::[0-9A-Fa-f]{1,4})/([1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$" (toString $cidr) -}}
-    {{- if not (or $validIPv4 $validIPv6Syntax) -}}
-      {{- fail (printf "networkPolicy.gatewayJWKS.egressCIDRs entry %q must be a non-/0 IPv4 or IPv6 CIDR (Kubernetes validates address semantics)" $cidr) -}}
-    {{- end -}}
-  {{- end -}}
+  {{- include "university-ecosystem.validateEgressCIDRs" (dict "path" "networkPolicy.gatewayJWKS.egressCIDRs" "cidrs" .Values.networkPolicy.gatewayJWKS.egressCIDRs) -}}
 {{- end -}}
-{{- range $cidr := .Values.networkPolicy.fileProcessorHTTPSEgress.egressCIDRs -}}
-  {{- if regexMatch "/0$" (toString $cidr) -}}
-    {{- fail (printf "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs entry %q must not be a /0 range" $cidr) -}}
-  {{- end -}}
-{{- end -}}
+{{- include "university-ecosystem.validateEgressCIDRs" (dict "path" "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs" "cidrs" .Values.networkPolicy.fileProcessorHTTPSEgress.egressCIDRs) -}}
+{{- include "university-ecosystem.validateEgressCIDRs" (dict "path" "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs" "cidrs" .Values.networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs) -}}
 {{- if and .Values.fileProcessor.enabled (not $fileProcessorUsesBackendJWKS) (eq (len .Values.networkPolicy.fileProcessorHTTPSEgress.egressCIDRs) 0) -}}
   {{- fail "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs must contain owner-verified CIDRs for an external HTTPS fileProcessor.config.jwksURL (AUD-188)" -}}
+{{- end -}}
+{{- /* AUD-189: file-processor MinIO egress. In-cluster MinIO is reached through the
+       app.kubernetes.io/name=minio peer on port 9000; any other endpoint needs
+       owner-declared TCP 443 CIDRs, otherwise uploads fail at runtime. */ -}}
+{{- $minioClass := include "university-ecosystem.endpointClass" (dict "endpoint" .Values.fileProcessor.config.minioEndpoint "namespace" .Release.Namespace) -}}
+{{- $minioPort := include "university-ecosystem.endpointPort" .Values.fileProcessor.config.minioEndpoint -}}
+{{- if and .Values.fileProcessor.enabled (eq $minioClass "") -}}
+  {{- fail "fileProcessor.config.minioEndpoint must be set when fileProcessor is enabled" -}}
+{{- end -}}
+{{- if and .Values.fileProcessor.enabled (eq $minioClass "in-cluster") (ne $minioPort "9000") -}}
+  {{- fail (printf "fileProcessor.config.minioEndpoint %q names the in-cluster MinIO service and must use port 9000 (AUD-189)" .Values.fileProcessor.config.minioEndpoint) -}}
+{{- end -}}
+{{- if and .Values.fileProcessor.enabled (eq $minioClass "external") (ne $minioPort "") (ne $minioPort "443") -}}
+  {{- fail (printf "fileProcessor.config.minioEndpoint %q is external and must use TCP 443 (the only declared public egress port, AUD-189)" .Values.fileProcessor.config.minioEndpoint) -}}
+{{- end -}}
+{{- if and .Values.fileProcessor.enabled (eq $minioClass "external") (eq (len .Values.networkPolicy.fileProcessorHTTPSEgress.egressCIDRs) 0) -}}
+  {{- fail "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs must contain owner-verified CIDRs when fileProcessor.config.minioEndpoint is external (AUD-189: uploads would be blocked)" -}}
+{{- end -}}
+{{- /* AUD-189: outbox-worker runs event-driven Elasticsearch indexing; an external
+       Elasticsearch endpoint needs owner-declared TCP 443 CIDRs. */ -}}
+{{- $elasticsearchClass := include "university-ecosystem.endpointClass" (dict "endpoint" .Values.backend.config.elasticsearchURL "namespace" .Release.Namespace) -}}
+{{- $elasticsearchPort := include "university-ecosystem.endpointPort" .Values.backend.config.elasticsearchURL -}}
+{{- if and .Values.outboxWorker.enabled (eq $elasticsearchClass "external") (ne $elasticsearchPort "") (ne $elasticsearchPort "443") -}}
+  {{- fail (printf "backend.config.elasticsearchURL %q is external and must use TCP 443 for outbox-worker (AUD-189)" .Values.backend.config.elasticsearchURL) -}}
+{{- end -}}
+{{- if and .Values.outboxWorker.enabled (eq $elasticsearchClass "external") (eq (len .Values.networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs) 0) -}}
+  {{- fail "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs must contain owner-verified CIDRs when backend.config.elasticsearchURL is external (AUD-189: outbox-worker search indexing would be blocked)" -}}
+{{- end -}}
+{{- /* AUD-189: outbox-worker embedding calls. Embeddings run only when an API key
+       is supplied through outboxWorker.env; the default base is an external HTTPS
+       endpoint, so that combination needs owner-declared TCP 443 CIDRs. */ -}}
+{{- $outboxEnv := .Values.outboxWorker.env | default dict -}}
+{{- $embeddingKey := get $outboxEnv "EMBEDDING_API_KEY" -}}
+{{- $embeddingKeyFile := get $outboxEnv "EMBEDDING_API_KEY_FILE" -}}
+{{- $semanticSearch := lower (toString (get $outboxEnv "SEMANTIC_SEARCH_ENABLED")) -}}
+{{- $embeddingActive := and .Values.outboxWorker.enabled (or $embeddingKey $embeddingKeyFile) (not (has $semanticSearch (list "false" "0" "no"))) -}}
+{{- $embeddingBase := default "https://api.openai.com/v1" (get $outboxEnv "EMBEDDING_API_BASE") -}}
+{{- $embeddingClass := include "university-ecosystem.endpointClass" (dict "endpoint" $embeddingBase "namespace" .Release.Namespace) -}}
+{{- $embeddingPort := include "university-ecosystem.endpointPort" $embeddingBase -}}
+{{- if and $embeddingActive (eq $embeddingClass "in-cluster") -}}
+  {{- fail (printf "outboxWorker.env.EMBEDDING_API_BASE %q names an in-cluster service, but this chart has no NetworkPolicy peer for it; use an external HTTPS endpoint (AUD-189)" $embeddingBase) -}}
+{{- end -}}
+{{- if and $embeddingActive (eq $embeddingClass "external") (ne $embeddingPort "") (ne $embeddingPort "443") -}}
+  {{- fail (printf "outboxWorker.env.EMBEDDING_API_BASE %q is external and must use TCP 443 (AUD-189)" $embeddingBase) -}}
+{{- end -}}
+{{- if and $embeddingActive (eq $embeddingClass "external") (eq (len .Values.networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs) 0) -}}
+  {{- fail "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs must contain owner-verified CIDRs when outboxWorker.env enables embeddings against an external EMBEDDING_API_BASE (AUD-189)" -}}
+{{- end -}}
+{{- if and .Values.outboxWorker.enabled (eq $elasticsearchClass "in-cluster") -}}
+  {{- fail (printf "backend.config.elasticsearchURL %q names an in-cluster service, but this chart has no NetworkPolicy peer for it; use an external HTTPS endpoint for outbox-worker (AUD-189)" .Values.backend.config.elasticsearchURL) -}}
 {{- end -}}
 
 ---
@@ -164,6 +205,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
               app.kubernetes.io/component: file-processor
       ports:
         - protocol: TCP
@@ -271,6 +313,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
               app.kubernetes.io/component: backend
       ports:
         - protocol: TCP
@@ -519,6 +562,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
               app.kubernetes.io/component: ws-hub
       ports:
         - protocol: TCP
@@ -624,6 +668,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
               app.kubernetes.io/component: gateway
       ports:
         - protocol: TCP
@@ -727,6 +772,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: frontend
   policyTypes:
     - Ingress
@@ -768,6 +814,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
+              {{- include "university-ecosystem.selectorLabels" . | nindent 14 }}
               app.kubernetes.io/component: backend
       ports:
         - protocol: TCP
@@ -803,6 +850,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: outbox-worker
   policyTypes:
     - Ingress
@@ -844,8 +892,18 @@ spec:
       ports:
         - protocol: TCP
           port: 4317
-    # No public TCP 443: the outbox worker declares no external HTTPS dependency
-    # (AUD-189). Its NATS, PostgreSQL, SpiceDB and OTLP peers are listed above.
+    # TCP 443 only to owner-declared external endpoints (AUD-189), such as an
+    # external Elasticsearch HTTPS endpoint used by search indexing. No public
+    # destination is granted by default; NATS, PostgreSQL, SpiceDB and OTLP
+    # peers are selected by pod labels above.
+    {{- range $cidr := .Values.networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs }}
+    - to:
+        - ipBlock:
+            cidr: {{ $cidr | quote }}
+      ports:
+        - protocol: TCP
+          port: 443
+    {{- end }}
     - to:
         - namespaceSelector:
             matchLabels:

@@ -733,6 +733,9 @@ def test_deploy_renderer_executes_canonical_staging_without_required_markers(
         "TLS_SECRET_NAME": "university-ecosystem-tls",  # pragma: allowlist secret
         "CERT_MANAGER_ISSUER_NAME": "university-staging-issuer",
         "ELASTICSEARCH_URL": "https://elasticsearch.staging.internal",
+        # Reserved TEST-NET fixtures: external endpoints require declared CIDRs.
+        "MINIO_EGRESS_CIDRS": "192.0.2.0/24",
+        "ELASTICSEARCH_EGRESS_CIDRS": "192.0.2.0/24",
         "FLAGD_HOST": "flagd.staging.internal",
         "OTLP_ENDPOINT": "otel-collector.staging.internal:4317",
         "MINIO_ENDPOINT": "minio.staging.internal:443",

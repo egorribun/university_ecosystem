@@ -133,9 +133,25 @@ def test_default_route_private_https_destination_is_rejected() -> None:
     assert "must not be a /0 range" in error.value.stderr
 
 
+def _render_without_declared_external_endpoints(*extra: str) -> list[dict[str, Any]]:
+    # Default-equivalent: no owner-declared CIDRs, in-cluster MinIO, and no
+    # Elasticsearch integration (the chart default is an empty URL).
+    return _render_https_egress(
+        "--set-json",
+        "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs=[]",
+        "--set-json",
+        "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs=[]",
+        "--set-string",
+        "fileProcessor.config.minioEndpoint=minio:9000",
+        "--set-string",
+        "backend.config.elasticsearchURL=",
+        *extra,
+    )
+
+
 @pytest.mark.parametrize("suffix", NO_DEFAULT_HTTPS_EGRESS_POLICIES)
 def test_policy_without_declared_external_endpoints_has_no_tcp_443(suffix: str) -> None:
-    policy = _policy(_render_https_egress(), suffix)
+    policy = _policy(_render_without_declared_external_endpoints(), suffix)
 
     assert [rule for rule in policy["spec"]["egress"] if _allows_port_443(rule)] == []
 
@@ -162,7 +178,7 @@ def test_file_processor_tcp_443_is_limited_to_declared_external_cidrs() -> None:
 def test_outbox_worker_tcp_443_stays_closed_even_with_declared_file_processor_cidrs() -> (
     None
 ):
-    resources = _render_https_egress(
+    resources = _render_without_declared_external_endpoints(
         "--set-json",
         "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs="
         f"{json.dumps([TEST_NET_PRIVATE_CIDR])}",

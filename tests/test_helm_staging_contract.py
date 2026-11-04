@@ -87,6 +87,9 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
     if gateway_jwks_cidr is not None:
         # Reserved TEST-NET fixture only; never use as a deployment CIDR.
         overrides["networkPolicy.gatewayJWKS.egressCIDRs[0]"] = gateway_jwks_cidr
+    # The staging fixture renders external MinIO and Elasticsearch endpoints, which
+    # require owner-declared TCP 443 CIDRs (AUD-189). Reserved TEST-NET-1 fixture
+    # only; never use as a deployment CIDR.
     args: list[str] = []
     for key, value in overrides.items():
         args.extend(("--set-string", f"{key}={value}"))
@@ -99,6 +102,13 @@ def _resolved_staging_args(gateway_jwks_cidr: str | None = "192.0.2.0/24") -> li
     ):
         encoded_peers = json.dumps(peers, separators=(",", ":"))
         args.extend(("--set-json", f"{key}={encoded_peers}"))
+    # --set-json, not --set-string: Helm applies string list indexes after JSON
+    # overrides, which would make these fixture CIDRs impossible to replace.
+    for key in (
+        "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs",
+        "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs",
+    ):
+        args.extend(("--set-json", f"{key}={json.dumps(['192.0.2.0/24'])}"))
     args.extend(("--set", "cwv.deploymentRunID=123"))
     args.extend(("--set", "cwv.deploymentRunAttempt=1"))
     return args
@@ -2153,7 +2163,12 @@ def test_ws_hub_network_policy_is_least_privilege() -> None:
         for rule in backend_policy["spec"]["ingress"]
         for source in rule.get("from", [])
     ]
-    assert {"app.kubernetes.io/component": "ws-hub"} in backend_sources
+    # The ws-hub peer is release-scoped; the release is university-ecosystem here.
+    assert {
+        "app.kubernetes.io/name": "university-ecosystem",
+        "app.kubernetes.io/instance": "university-ecosystem",
+        "app.kubernetes.io/component": "ws-hub",
+    } in backend_sources
 
 
 def test_migration_hook_can_reach_only_its_dedicated_revocation_store() -> None:
@@ -3080,10 +3095,19 @@ def test_file_processor_default_jwks_uses_release_backend_port_and_preserves_dep
         and rule.get("ports") == [{"protocol": "TCP", "port": 6379}]
         for rule in processor_policy["spec"]["egress"]
     )
-    # AUD-189: the default file-processor has no public TCP 443 destination.
-    assert not any(
-        rule.get("ports") == [{"protocol": "TCP", "port": 443}]
+    # AUD-189: the file-processor has no public TCP 443 destination. Staging
+    # declares an external MinIO, so its only 443 rule targets the declared
+    # TEST-NET CIDR and never 0.0.0.0/0.
+    https_rules = [
+        rule
         for rule in processor_policy["spec"]["egress"]
+        if {"protocol": "TCP", "port": 443} in rule.get("ports", [])
+    ]
+    assert [rule.get("to") for rule in https_rules] == [
+        [{"ipBlock": {"cidr": "192.0.2.0/24"}}]
+    ]
+    assert all(
+        rule.get("ports") == [{"protocol": "TCP", "port": 443}] for rule in https_rules
     )
     assert any(
         {("UDP", 53), ("TCP", 53)}
@@ -3202,14 +3226,20 @@ def test_external_https_jwks_override_allows_only_declared_443_cidrs() -> None:
 
 
 def test_external_https_jwks_override_without_declared_cidrs_fails_closed() -> None:
+    # In-cluster MinIO and no declared CIDRs isolate the external JWKS guard.
     with pytest.raises(subprocess.CalledProcessError) as error:
         _render_staging(
             "--set-string",
             "fileProcessor.config.jwksURL=https://issuer.example.invalid/.well-known/jwks.json",
+            "--set-string",
+            "fileProcessor.config.minioEndpoint=minio:9000",
+            "--set-json",
+            "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs=[]",
             release_name="jwks-external-undeclared-contract",
         )
 
     assert "fileProcessorHTTPSEgress.egressCIDRs" in error.value.stderr
+    assert "external HTTPS fileProcessor.config.jwksURL" in error.value.stderr
 
 
 _SERVICE_COMPONENTS = (

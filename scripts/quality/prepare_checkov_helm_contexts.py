@@ -99,6 +99,8 @@ STAGING_OVERRIDES: dict[str, Any] = {
     "cwv.exportOIDC.workflowRef": "example/university-ecosystem/.github/workflows/cwv-field-certification.yml@refs/heads/main",
     "cwv.exportOIDC.subject": "repo:example/university-ecosystem:environment:staging",
     "networkPolicy.gatewayJWKS.egressCIDRs[0]": "192.0.2.0/24",
+    "networkPolicy.fileProcessorHTTPSEgress.egressCIDRs[0]": "192.0.2.0/24",
+    "networkPolicy.outboxWorkerHTTPSEgress.egressCIDRs[0]": "192.0.2.0/24",
     "cwv.deploymentRunID": 0,
     "cwv.deploymentRunAttempt": 0,
 }

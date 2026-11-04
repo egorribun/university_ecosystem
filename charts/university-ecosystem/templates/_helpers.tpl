@@ -410,10 +410,8 @@ added explicitly through networkPolicy.httpsEgress.privateCIDRs.
   ports:
     - protocol: TCP
       port: 443
+{{- include "university-ecosystem.validateEgressCIDRs" (dict "path" "networkPolicy.httpsEgress.privateCIDRs" "cidrs" .Values.networkPolicy.httpsEgress.privateCIDRs) }}
 {{- range $cidr := .Values.networkPolicy.httpsEgress.privateCIDRs }}
-{{- if regexMatch "/0$" (toString $cidr) }}
-{{- fail (printf "networkPolicy.httpsEgress.privateCIDRs entry %q must not be a /0 range" $cidr) }}
-{{- end }}
 - to:
     - ipBlock:
         cidr: {{ $cidr | quote }}
@@ -421,4 +419,54 @@ added explicitly through networkPolicy.httpsEgress.privateCIDRs.
     - protocol: TCP
       port: 443
 {{- end }}
+{{- end -}}
+
+{{/*
+Owner-declared egress CIDR validation (AUD-188/AUD-189). Entries must be IPv4
+CIDRs with prefix /8 to /32 or IPv6 CIDRs with prefix /16 to /128; broader
+ranges would open a large part of the address space by a single typo. Address
+semantics are left to Kubernetes.
+*/}}
+{{- define "university-ecosystem.validateEgressCIDRs" -}}
+{{- range $cidr := .cidrs -}}
+  {{- $value := toString $cidr -}}
+  {{- if regexMatch "/0$" $value -}}
+    {{- fail (printf "%s entry %q must not be a /0 range" $.path $value) -}}
+  {{- end -}}
+  {{- $validIPv4 := regexMatch "^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])/(8|9|[12][0-9]|3[0-2])$" $value -}}
+  {{- $validIPv6 := regexMatch "^([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){7}|::([0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,6})?|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,6}::|[0-9A-Fa-f]{1,4}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,5}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){1}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,4}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){2}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,3}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){3}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,2}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){4}::[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){0,1}|[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){5}::[0-9A-Fa-f]{1,4})/(1[6-9]|[2-9][0-9]|1[01][0-9]|12[0-8])$" $value -}}
+  {{- if not (or $validIPv4 $validIPv6) -}}
+    {{- fail (printf "%s entry %q must be an IPv4 CIDR with prefix /8 to /32 or an IPv6 CIDR with prefix /16 to /128" $.path $value) -}}
+  {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Endpoint classification for NetworkPolicy egress checks (AUD-189). Input dict:
+endpoint (URL or host[:port]) and namespace. Returns "" when the endpoint is
+empty, "in-cluster" for a single-label service name or a name under the release
+namespace (svc or svc.cluster.local), and "external" for everything else.
+*/}}
+{{- define "university-ecosystem.endpointAuthority" -}}
+{{- $value := regexReplaceAll "^[A-Za-z][A-Za-z0-9+.-]*://" (toString .) "" -}}
+{{- $value = regexReplaceAll "[/?#].*$" $value "" -}}
+{{- regexReplaceAll "^.*@" $value "" -}}
+{{- end -}}
+
+{{- define "university-ecosystem.endpointClass" -}}
+{{- $authority := include "university-ecosystem.endpointAuthority" .endpoint -}}
+{{- $host := regexReplaceAll ":[0-9]*$" $authority "" -}}
+{{- if eq $host "" -}}
+{{- else if regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $host -}}
+in-cluster
+{{- else if or (hasSuffix (printf ".%s.svc" .namespace) $host) (hasSuffix (printf ".%s.svc.cluster.local" .namespace) $host) -}}
+in-cluster
+{{- else -}}
+external
+{{- end -}}
+{{- end -}}
+
+{{- define "university-ecosystem.endpointPort" -}}
+{{- $authority := include "university-ecosystem.endpointAuthority" . -}}
+{{- trimPrefix ":" (regexFind ":[0-9]+$" $authority) -}}
 {{- end -}}

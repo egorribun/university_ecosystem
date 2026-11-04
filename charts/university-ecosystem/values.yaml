@@ -557,11 +557,22 @@ networkPolicy:
   # issuer. Populate with owner-verified endpoint CIDRs; there is no open default.
   gatewayJWKS:
     egressCIDRs: []
-  # Required only when file-processor reaches an external HTTPS endpoint (for
-  # example an HTTPS MinIO or a non-default JWKS issuer). Its other dependencies
-  # (MinIO, Temporal, NATS, revocation Redis, backend JWKS, OTLP) are in-cluster
-  # pod selectors and need no TCP 443 (AUD-189). Owner-verified CIDRs only.
+  # Required when file-processor reaches an external HTTPS endpoint: an external
+  # fileProcessor.config.minioEndpoint (any host other than the in-cluster MinIO
+  # service, which must use port 9000) or a non-default JWKS issuer. The chart
+  # fails to render when such an endpoint lacks CIDRs. Its other dependencies
+  # (Temporal, NATS, revocation Redis, backend JWKS, OTLP, in-cluster MinIO) are
+  # pod selectors and need no TCP 443 (AUD-189). Owner-verified CIDRs only; each
+  # prefix must be /8 to /32 (IPv4) or /16 to /128 (IPv6).
   fileProcessorHTTPSEgress:
+    egressCIDRs: []
+  # Required when outbox-worker reaches an external HTTPS endpoint: an external
+  # backend.config.elasticsearchURL (event search indexing), or an embedding API
+  # when outboxWorker.env supplies EMBEDDING_API_KEY (default base is external).
+  # The chart fails to render when either lacks CIDRs; an in-cluster Elasticsearch
+  # or embedding base fails closed because no NetworkPolicy peer exists for it.
+  # Owner-verified CIDRs only, with the same prefix limits as fileProcessorHTTPSEgress.
+  outboxWorkerHTTPSEgress:
     egressCIDRs: []
   # TCP 443 egress for backup and backend only: their declared public
   # dependencies (object storage, HIBP, Spotify OAuth). Public destinations stay
