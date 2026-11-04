@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"net"
 	"os"
 	"runtime"
@@ -109,6 +111,135 @@ type Config struct {
 	// (access_token_expire_minutes, default 60). Pure cache invalidations are never
 	// replayed. Default: 3600.
 	RevocationReplayWindowSeconds int
+	// NATSConsumer holds the durable-contract settings applied to every
+	// cache-invalidation consumer. The Helm chart renders the same values under
+	// wsHub.config.natsConsumer; DefaultNATSConsumerSettings is the code default.
+	NATSConsumer NATSConsumerSettings
+}
+
+// NATS cache-invalidation consumer contract (AUD-478). The consumers are
+// ephemeral push consumers with explicit acknowledgement, so the settings below
+// are the whole durable contract: nothing is left to server defaults.
+const (
+	// NATSAckPolicyExplicit is the only supported ack policy. Handlers rely on
+	// explicit ACK, NAK and TERM to retry or reject each verified event.
+	NATSAckPolicyExplicit = "explicit"
+	// DefaultNATSAckWaitSeconds exceeds the 30 s NATS callback timeout.
+	DefaultNATSAckWaitSeconds = 60
+	// DefaultNATSMaxDeliver bounds redelivery of an event that keeps failing.
+	DefaultNATSMaxDeliver = 20
+	// DefaultNATSInactiveThresholdSeconds removes an ephemeral consumer that has
+	// had no interest for this long. A replica that reconnects re-creates it.
+	DefaultNATSInactiveThresholdSeconds = 300
+
+	minNATSAckWaitSeconds          = 31
+	maxNATSAckWaitSeconds          = 600
+	minNATSMaxDeliver              = 5
+	maxNATSMaxDeliver              = 100
+	minNATSInactiveThresholdSecond = 60
+	maxNATSInactiveThresholdSecond = 86400
+)
+
+// NATSConsumerSettings is the validated consumer contract.
+type NATSConsumerSettings struct {
+	AckPolicy                string
+	AckWaitSeconds           int
+	MaxDeliver               int
+	InactiveThresholdSeconds int
+}
+
+// DefaultNATSConsumerSettings returns the code default that the chart mirrors.
+func DefaultNATSConsumerSettings() NATSConsumerSettings {
+	return NATSConsumerSettings{
+		AckPolicy:                NATSAckPolicyExplicit,
+		AckWaitSeconds:           DefaultNATSAckWaitSeconds,
+		MaxDeliver:               DefaultNATSMaxDeliver,
+		InactiveThresholdSeconds: DefaultNATSInactiveThresholdSeconds,
+	}
+}
+
+// Validate rejects any setting outside the supported contract. Ranges are
+// inclusive: ack wait must exceed the callback timeout so an in-flight event is
+// not redelivered while it is still being applied, and max deliver must allow
+// several transient NAKs before an invalidation is given up.
+func (s NATSConsumerSettings) Validate() error {
+	var errs []error
+	if s.AckPolicy != NATSAckPolicyExplicit {
+		errs = append(errs, fmt.Errorf("NATS ack policy must be %q", NATSAckPolicyExplicit))
+	}
+	if s.AckWaitSeconds < minNATSAckWaitSeconds || s.AckWaitSeconds > maxNATSAckWaitSeconds {
+		errs = append(errs, fmt.Errorf("NATS ack wait must be between %d and %d seconds",
+			minNATSAckWaitSeconds, maxNATSAckWaitSeconds))
+	}
+	if s.MaxDeliver < minNATSMaxDeliver || s.MaxDeliver > maxNATSMaxDeliver {
+		errs = append(errs, fmt.Errorf("NATS max deliver must be between %d and %d",
+			minNATSMaxDeliver, maxNATSMaxDeliver))
+	}
+	if s.InactiveThresholdSeconds < minNATSInactiveThresholdSecond ||
+		s.InactiveThresholdSeconds > maxNATSInactiveThresholdSecond {
+		errs = append(errs, fmt.Errorf("NATS inactive threshold must be between %d and %d seconds",
+			minNATSInactiveThresholdSecond, maxNATSInactiveThresholdSecond))
+	}
+	return errors.Join(errs...)
+}
+
+// buildTrustedProxies splits configured trusted proxies into exact canonical peers and
+// CIDR blocks. P-03 and PERF-04 (audit 2026-03-08 and Wave 11): the map gives O(1)
+// lookup in RealIP(), and the CIDR blocks support multi-hop chain traversal.
+func buildTrustedProxies(trustedProxies []string) (map[string]struct{}, []*net.IPNet) {
+	trustedProxiesSet := make(map[string]struct{}, len(trustedProxies))
+	var trustedCIDRs []*net.IPNet
+	for _, entry := range trustedProxies {
+		if strings.Contains(entry, "/") {
+			if _, cidr, err := net.ParseCIDR(entry); err == nil {
+				trustedCIDRs = append(trustedCIDRs, cidr)
+			}
+			continue
+		}
+		// RealIP compares net.IP.String(), so exact peers need the same
+		// canonical form, including equivalent IPv6 and IPv4-mapped forms.
+		if ip := net.ParseIP(entry); ip != nil {
+			entry = ip.String()
+		}
+		trustedProxiesSet[entry] = struct{}{}
+	}
+	return trustedProxiesSet, trustedCIDRs
+}
+
+// natsConsumerSettingsFromEnv reads the consumer contract strictly. Unlike the
+// lenient getEnvInt helper, an unparsable value is an error, so a typo in the
+// chart cannot silently fall back to a default.
+func natsConsumerSettingsFromEnv() (NATSConsumerSettings, error) {
+	settings := DefaultNATSConsumerSettings()
+	settings.AckPolicy = getEnv("WS_NATS_ACK_POLICY", settings.AckPolicy)
+	var err error
+	if settings.AckWaitSeconds, err = getEnvIntStrict("WS_NATS_ACK_WAIT_SECONDS", settings.AckWaitSeconds); err != nil {
+		return NATSConsumerSettings{}, err
+	}
+	if settings.MaxDeliver, err = getEnvIntStrict("WS_NATS_MAX_DELIVER", settings.MaxDeliver); err != nil {
+		return NATSConsumerSettings{}, err
+	}
+	if settings.InactiveThresholdSeconds, err = getEnvIntStrict("WS_NATS_INACTIVE_THRESHOLD_SECONDS", settings.InactiveThresholdSeconds); err != nil {
+		return NATSConsumerSettings{}, err
+	}
+	if err := settings.Validate(); err != nil {
+		return NATSConsumerSettings{}, fmt.Errorf("invalid NATS consumer settings: %w", err)
+	}
+	return settings, nil
+}
+
+// getEnvIntStrict returns defaultValue when the variable is unset and an error
+// when it is set to anything other than a base-10 integer.
+func getEnvIntStrict(key string, defaultValue int) (int, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return defaultValue, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer", key)
+	}
+	return value, nil
 }
 
 // LoadConfig initializes Config from env vars and fails closed on any configured secret file error.
@@ -157,21 +288,10 @@ func LoadConfig() (*Config, error) {
 	trustedProxies := getEnvSlice("TRUSTED_PROXIES", []string{"127.0.0.1", "::1"})
 	// P-03 (audit 2026-03-08): Pre-build map for O(1) lookup in RealIP().
 	// PERF-04 (audit Wave 11): also parse CIDR blocks for multi-hop chain traversal.
-	trustedProxiesSet := make(map[string]struct{}, len(trustedProxies))
-	var trustedCIDRs []*net.IPNet
-	for _, entry := range trustedProxies {
-		if strings.Contains(entry, "/") {
-			if _, cidr, err := net.ParseCIDR(entry); err == nil {
-				trustedCIDRs = append(trustedCIDRs, cidr)
-			}
-		} else {
-			// RealIP compares net.IP.String(), so exact peers need the same
-			// canonical form, including equivalent IPv6 and IPv4-mapped forms.
-			if ip := net.ParseIP(entry); ip != nil {
-				entry = ip.String()
-			}
-			trustedProxiesSet[entry] = struct{}{}
-		}
+	trustedProxiesSet, trustedCIDRs := buildTrustedProxies(trustedProxies)
+	natsConsumer, err := natsConsumerSettingsFromEnv()
+	if err != nil {
+		return nil, err
 	}
 	return &Config{
 		Port:          getEnv("WS_HUB_PORT", "8081"),
@@ -219,6 +339,7 @@ func LoadConfig() (*Config, error) {
 
 		// Must cover the backend's access_token_expire_minutes (default 60).
 		RevocationReplayWindowSeconds: getEnvInt("WS_REVOCATION_REPLAY_WINDOW_SECONDS", 3600),
+		NATSConsumer:                  natsConsumer,
 	}, nil
 }
 

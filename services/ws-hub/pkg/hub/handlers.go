@@ -129,7 +129,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 
 	// AUD-478: refuse admission until the room-revocation replay has drained. This
 	// runs before the upgrade ticket is consumed, so a refused client keeps its ticket.
-	if h.RevocationCatchingUp() {
+	if h.AdmissionClosed() {
 		h.Logger.WarnContext(setupCtx, "WebSocket connection refused: room revocation replay is still draining")
 		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 		return
@@ -246,7 +246,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 	defer setupCancel()
 
 	// AUD-478: WebTransport admission follows the same replay barrier as WebSocket.
-	if h.RevocationCatchingUp() {
+	if h.AdmissionClosed() {
 		h.Logger.WarnContext(setupCtx, "WebTransport connection refused: room revocation replay is still draining")
 		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 		return

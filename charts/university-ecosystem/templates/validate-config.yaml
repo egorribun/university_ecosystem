@@ -57,6 +57,23 @@
   {{- if gt $replayWindowSeconds 604800 -}}
     {{- fail (printf "wsHub.config.revocationReplayWindowSeconds (%d) must not exceed the 604800-second CACHE_INVALIDATIONS stream retention" $replayWindowSeconds) -}}
   {{- end -}}
+  {{- /* AUD-478: the durable cache-invalidation consumer contract must match ws-hub's validated range. */ -}}
+  {{- $consumer := .Values.wsHub.config.natsConsumer -}}
+  {{- if ne (toString $consumer.ackPolicy) "explicit" -}}
+    {{- fail "wsHub.config.natsConsumer.ackPolicy must be \"explicit\"" -}}
+  {{- end -}}
+  {{- $ackWait := int $consumer.ackWaitSeconds -}}
+  {{- if or (lt $ackWait 31) (gt $ackWait 600) -}}
+    {{- fail (printf "wsHub.config.natsConsumer.ackWaitSeconds (%d) must be between 31 and 600" $ackWait) -}}
+  {{- end -}}
+  {{- $maxDeliver := int $consumer.maxDeliver -}}
+  {{- if or (lt $maxDeliver 5) (gt $maxDeliver 100) -}}
+    {{- fail (printf "wsHub.config.natsConsumer.maxDeliver (%d) must be between 5 and 100" $maxDeliver) -}}
+  {{- end -}}
+  {{- $inactive := int $consumer.inactiveThresholdSeconds -}}
+  {{- if or (lt $inactive 60) (gt $inactive 86400) -}}
+    {{- fail (printf "wsHub.config.natsConsumer.inactiveThresholdSeconds (%d) must be between 60 and 86400" $inactive) -}}
+  {{- end -}}
 {{- end -}}
 {{- if .Values.gatewayApi.enabled -}}
   {{- if .Values.ingress.enabled -}}

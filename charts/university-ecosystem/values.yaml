@@ -379,6 +379,14 @@ wsHub:
     # It must cover backend.config.accessTokenExpireMinutes (3600 s by default), or
     # a revoked token could stay usable on that replica.
     revocationReplayWindowSeconds: 3600
+    # Durable contract for both cache-invalidation consumers (AUD-478). ws-hub
+    # validates these values and fails closed on any other setting. The code
+    # defaults in services/ws-hub/pkg/config are the same numbers.
+    natsConsumer:
+      ackPolicy: "explicit"
+      ackWaitSeconds: 60
+      maxDeliver: 20
+      inactiveThresholdSeconds: 300
     otelEndpoint: "otel-collector:4317"
     otelInsecure: true
     jetstream:

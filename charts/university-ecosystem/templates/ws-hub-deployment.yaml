@@ -148,6 +148,16 @@ spec:
             # validate-config check keeps it at or above the access-token lifetime.
             - name: WS_REVOCATION_REPLAY_WINDOW_SECONDS
               value: {{ .Values.wsHub.config.revocationReplayWindowSeconds | quote }}
+            # Durable consumer contract for the cache-invalidation consumers (AUD-478).
+            # ws-hub rejects any value outside the range that validate-config enforces.
+            - name: WS_NATS_ACK_POLICY
+              value: {{ .Values.wsHub.config.natsConsumer.ackPolicy | quote }}
+            - name: WS_NATS_ACK_WAIT_SECONDS
+              value: {{ .Values.wsHub.config.natsConsumer.ackWaitSeconds | quote }}
+            - name: WS_NATS_MAX_DELIVER
+              value: {{ .Values.wsHub.config.natsConsumer.maxDeliver | quote }}
+            - name: WS_NATS_INACTIVE_THRESHOLD_SECONDS
+              value: {{ .Values.wsHub.config.natsConsumer.inactiveThresholdSeconds | quote }}
           startupProbe:
             httpGet:
               path: /health/live

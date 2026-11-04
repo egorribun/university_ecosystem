@@ -1245,6 +1245,7 @@
             "clientMessageBurst",
             "ticketTTLSeconds",
             "revocationReplayWindowSeconds",
+            "natsConsumer",
             "otelEndpoint",
             "otelInsecure",
             "jetstream"
@@ -1302,6 +1303,39 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 604800
+            },
+            "natsConsumer": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ackPolicy",
+                "ackWaitSeconds",
+                "maxDeliver",
+                "inactiveThresholdSeconds"
+              ],
+              "properties": {
+                "ackPolicy": {
+                  "type": "string",
+                  "enum": [
+                    "explicit"
+                  ]
+                },
+                "ackWaitSeconds": {
+                  "type": "integer",
+                  "minimum": 31,
+                  "maximum": 600
+                },
+                "maxDeliver": {
+                  "type": "integer",
+                  "minimum": 5,
+                  "maximum": 100
+                },
+                "inactiveThresholdSeconds": {
+                  "type": "integer",
+                  "minimum": 60,
+                  "maximum": 86400
+                }
+              }
             },
             "otelEndpoint": {
               "type": "string",

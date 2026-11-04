@@ -60,7 +60,7 @@ var (
 	}
 	healthJWKSReadyFunc = func(h *hub.Hub) bool { return h.HasJWKSCache() }
 	// AUD-478: a replica whose cache.revoke replay is still draining is not ready.
-	healthRevocationCatchingUpFunc = func(h *hub.Hub) bool { return h.RevocationCatchingUp() }
+	healthRevocationCatchingUpFunc = func(h *hub.Hub) bool { return h.AdmissionClosed() }
 	loadTLSCertFunc                = tls.LoadX509KeyPair
 	listenUDPFunc                  = net.ListenUDP
 	closeUDPFunc                   = func(conn *net.UDPConn) error { return conn.Close() }

@@ -51,8 +51,16 @@ type RoomAuthorizationRefresher interface {
 const authCacheTTL = 1 * time.Minute
 
 type cacheEntry struct {
-	allowed   bool
-	expiresAt time.Time
+	allowed    bool
+	expiresAt  time.Time
+	generation uint64
+}
+
+// RoomAuthCacheResetter is implemented by authorization clients that hold local
+// (L1) and shared (L2) cache state. A reset drops every generation the replica
+// can read, so no pre-reset decision can satisfy a join after the reset (AUD-478).
+type RoomAuthCacheResetter interface {
+	ResetAuthorizationCache(ctx context.Context) error
 }
 
 // call represents an in-flight request to the backend.
@@ -69,6 +77,12 @@ type InternalAPIAuthClient struct {
 
 	cache *lru.Cache[string, cacheEntry]
 	redis *redis.Client
+
+	// genMu orders cache reads and writes against generation resets. Readers and
+	// writers hold it shared; a reset holds it exclusively while it bumps the
+	// generation and purges L1 and L2. A write whose generation is stale is dropped.
+	genMu      sync.RWMutex
+	generation uint64
 
 	callMu sync.Mutex
 	calls  map[string]*call
@@ -357,6 +371,30 @@ func (c *InternalAPIAuthClient) RefreshRoomAuthorization(
 	return c.doRequestWithBreakerResult(ctx, userID, roomID)
 }
 
+// ResetAuthorizationCache drops every L1 entry, bumps the generation so that
+// in-flight backend answers from earlier generations are discarded, and removes
+// the shared L2 permission entries. Any failure is returned, and the caller keeps
+// admission closed until a reset succeeds (AUD-478).
+func (c *InternalAPIAuthClient) ResetAuthorizationCache(ctx context.Context) error {
+	c.genMu.Lock()
+	defer c.genMu.Unlock()
+	c.generation++
+	c.cache.Purge()
+	if c.redis == nil {
+		return nil
+	}
+	iter := c.redis.Scan(ctx, 0, "auth:perms:*", 500).Iterator()
+	for iter.Next(ctx) {
+		if err := c.redis.Del(ctx, iter.Val()).Err(); err != nil {
+			return fmt.Errorf("delete shared authorization cache entry: %w", err)
+		}
+	}
+	if err := iter.Err(); err != nil {
+		return fmt.Errorf("scan shared authorization cache: %w", err)
+	}
+	return nil
+}
+
 // CanJoinRoom checks local cache, uses single-flight to prevent thundering herd,
 // and calls the Python backend on cache miss.
 //
@@ -371,13 +409,15 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 
 	key := userID + ":" + roomID
 
-	// 1. Fast path: check local TTL cache
+	// 1 and 2. Fast path (L1) and shared path (L2, PERF-006) under the shared
+	// generation lock. A reset cannot interleave with these reads.
+	c.genMu.RLock()
+	generation := c.generation
 	entry, ok := c.cache.Get(key)
-	if ok && time.Now().Before(entry.expiresAt) {
+	if ok && entry.generation == generation && time.Now().Before(entry.expiresAt) {
+		c.genMu.RUnlock()
 		return entry.allowed
 	}
-
-	// 2. Redis L2 path: check shared cache (PERF-006)
 	if c.redis != nil {
 		redisKey := "auth:perms:" + key
 		val, err := c.redis.Get(ctx, redisKey).Result()
@@ -385,12 +425,15 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 			allowed := val == "1"
 			// Populate L1 from L2 — use same TTL constant so L1 never outlives L2.
 			c.cache.Add(key, cacheEntry{
-				allowed:   allowed,
-				expiresAt: time.Now().Add(authCacheTTL),
+				allowed:    allowed,
+				expiresAt:  time.Now().Add(authCacheTTL),
+				generation: generation,
 			})
+			c.genMu.RUnlock()
 			return allowed
 		}
 	}
+	c.genMu.RUnlock()
 
 	// 3. Slow path: single-flight request
 	c.callMu.Lock()
@@ -411,19 +454,26 @@ func (c *InternalAPIAuthClient) CanJoinRoom(ctx context.Context, userID, roomID 
 	// Backend failures deny this request, but are not cacheable decisions.
 	allowed, authErr := c.doRequestWithBreakerResult(ctx, userID, roomID)
 	if authErr == nil {
-		c.cache.Add(key, cacheEntry{
-			allowed:   allowed,
-			expiresAt: time.Now().Add(authCacheTTL),
-		})
+		// An answer from a generation that a reset has since retired is returned to
+		// this caller but never cached, so it cannot outlive the reset.
+		c.genMu.RLock()
+		if c.generation == generation {
+			c.cache.Add(key, cacheEntry{
+				allowed:    allowed,
+				expiresAt:  time.Now().Add(authCacheTTL),
+				generation: generation,
+			})
 
-		if c.redis != nil {
-			redisKey := "auth:perms:" + key
-			val := "0"
-			if allowed {
-				val = "1"
+			if c.redis != nil {
+				redisKey := "auth:perms:" + key
+				val := "0"
+				if allowed {
+					val = "1"
+				}
+				c.redis.Set(ctx, redisKey, val, authCacheTTL)
 			}
-			c.redis.Set(ctx, redisKey, val, authCacheTTL)
 		}
+		c.genMu.RUnlock()
 	}
 
 	// Resolve in-flight call

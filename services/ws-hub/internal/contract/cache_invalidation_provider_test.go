@@ -90,65 +90,65 @@ func TestRemainingNatsPactMessageShapes(t *testing.T) {
 	handlers := pactMessage.Handlers{
 		"a direct chat message event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return directChatMessage{
-					ChatID:    "chat-uuid-123",
-					MessageID: "msg-uuid-456",
-					Content:   "Hello there!",
-					SenderID:  "user-uuid-789",
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "chat.direct",
-				}, nil
+				ChatID:    "chat-uuid-123",
+				MessageID: "msg-uuid-456",
+				Content:   "Hello there!",
+				SenderID:  "user-uuid-789",
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "chat.direct",
+			}, nil
 		},
 		"a chat message_sent domain event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return chatMessageSent{
-					ChatID:         "chat-uuid-001",
-					MessageID:      "msg-uuid-001",
-					SenderID:       "user-uuid-001",
-					ContentPreview: "Hello world",
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "chat.message_sent",
-				}, nil
+				ChatID:         "chat-uuid-001",
+				MessageID:      "msg-uuid-001",
+				SenderID:       "user-uuid-001",
+				ContentPreview: "Hello world",
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "chat.message_sent",
+			}, nil
 		},
 		"a chat deleted event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return chatDeleted{
-					ChatID:        "chat-uuid-del",
-					ParticipantID: "user-uuid-del",
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "chat.deleted",
-				}, nil
+				ChatID:        "chat-uuid-del",
+				ParticipantID: "user-uuid-del",
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "chat.deleted",
+			}, nil
 		},
 		"a user.created domain event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return userCreated{
-					UserID: "user-uuid-new",
-					Email:  "newuser@university.test",
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "user.created",
-				}, nil
+				UserID: "user-uuid-new",
+				Email:  "newuser@university.test",
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "user.created",
+			}, nil
 		},
 		"a notification.sent event": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return notificationSent{
-					NotificationID:   "notif-uuid-001",
-					UserID:           "user-uuid-001",
-					NotificationType: "push",
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "notification.sent",
-				}, nil
+				NotificationID:   "notif-uuid-001",
+				UserID:           "user-uuid-001",
+				NotificationType: "push",
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "notification.sent",
+			}, nil
 		},
 		"a generic NATS task envelope": func(_ []models.ProviderState) (pactMessage.Body, pactMessage.Metadata, error) {
 			return taskEnvelope{
-					ID:           "task-uuid-999",
-					Name:         "email.send_welcome",
-					Args:         []string{"user@university.test"},
-					Kwargs:       map[string]any{},
-					TraceContext: map[string]any{},
-				}, pactMessage.Metadata{
-					"contentType":  "application/json",
-					"nats_subject": "tasks.email.send_welcome",
-				}, nil
+				ID:           "task-uuid-999",
+				Name:         "email.send_welcome",
+				Args:         []string{"user@university.test"},
+				Kwargs:       map[string]any{},
+				TraceContext: map[string]any{},
+			}, pactMessage.Metadata{
+				"contentType":  "application/json",
+				"nats_subject": "tasks.email.send_welcome",
+			}, nil
 		},
 	}
 

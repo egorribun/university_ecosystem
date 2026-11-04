@@ -342,6 +342,26 @@ type Hub struct {
 	// nil means the connection's own state.
 	revocationWatchdogInterval time.Duration
 	revocationConnected        func(*nats.Conn) bool
+	// AUD-478 authorization-cache admission barrier. authCacheAdmissionClosed is
+	// true from startup until the local and shared authorization cache has been
+	// reset after each NATS (re)connect. authCacheTracked turns on once the NATS
+	// session is observed; observedNATSReconnects is the reconnect count that the
+	// current reset cycle covers. natsReconnectCount overrides the live count in
+	// tests. See aud478_cache_admission.go.
+	authCacheAdmissionClosed atomic.Bool
+	authCacheTracked         atomic.Bool
+	observedNATSReconnects   atomic.Uint64
+	natsReconnectCount       func(*nats.Conn) uint64
+	// reconnectTransitionHook runs between the two stores of a session transition, so
+	// tests can observe the barrier at the exact point a reconnect is recorded.
+	reconnectTransitionHook func()
+	// Durable cache-invalidation consumer contract, resolved from configuration.
+	natsAckWait           time.Duration
+	natsMaxDeliver        int
+	natsInactiveThreshold time.Duration
+	// subsMu guards subs and invalidationSub, which the reconnect path replaces.
+	subsMu          sync.Mutex
+	invalidationSub *nats.Subscription
 }
 
 const (
@@ -620,8 +640,14 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 	streamNotif := "NOTIFICATIONS_EVENTS"
 	enableJS := true
 	revocationReplayWindow := defaultRevocationReplayWindow
+	consumerSettings := config.DefaultNATSConsumerSettings()
 
 	if cfg != nil {
+		resolvedConsumer, err := resolveNATSConsumerSettings(cfg.NATSConsumer)
+		if err != nil {
+			return nil, fmt.Errorf("ws-hub: %w", err)
+		}
+		consumerSettings = resolvedConsumer
 		if cfg.BroadcastBufferSize > 0 {
 			bufSize = cfg.BroadcastBufferSize
 		}
@@ -692,6 +718,9 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		streamNotif:                       streamNotif,
 		enableJetStream:                   enableJS,
 		revocationReplayWindow:            revocationReplayWindow,
+		natsAckWait:                       time.Duration(consumerSettings.AckWaitSeconds) * time.Second,
+		natsMaxDeliver:                    consumerSettings.MaxDeliver,
+		natsInactiveThreshold:             time.Duration(consumerSettings.InactiveThresholdSeconds) * time.Second,
 	}
 	hub.sessionRevocationCheck = hub.checkJTINotRevoked
 	hub.revocationWatchdogInterval = time.Second
@@ -1371,6 +1400,10 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	// AUD-478: the admission barrier starts closed. Only the cache.revoke replay
 	// watcher opens it, so every failure path below leaves admission refused.
 	h.revocationCatchingUp.Store(true)
+	// AUD-478: the authorization-cache barrier also starts closed. It opens only
+	// after the first reset below, which runs after the live invalidation consumer
+	// exists, so no event published in between is missed.
+	h.authCacheAdmissionClosed.Store(true)
 	if h.Nats == nil {
 		err := fmt.Errorf("NATS connection is not configured")
 		if h.Logger != nil {
@@ -1399,6 +1432,7 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	}
 	h.subscribeKeyRotation(appCtx)
 	h.watchRevocationCatchUp(appCtx, revocationSub)
+	h.startAuthCacheAdmission(appCtx)
 
 	if h.chatReplayAvailable.Load() {
 		h.Logger.InfoContext(appCtx, "Subscribed to NATS JetStream streams (CHAT_EVENTS, NOTIFICATIONS_EVENTS)")
@@ -1506,9 +1540,29 @@ func (h *Hub) subscribeCoreChatAndNotifications(appCtx context.Context) (*nats.S
 // seven-day CACHE_INVALIDATIONS retention on every start (AUD-478). Both consumers
 // remain JetStream consumers, so acknowledgements still apply even when Core NATS
 // is selected for chat delivery.
+//
+// Retention: this consumer contract does not depend on the stream's seven-day
+// retention. DeliverNew starts at the first message published after the consumer
+// exists, and the only bounded replay left is the cache.revoke window below.
 func (h *Hub) subscribeCacheInvalidation(appCtx context.Context) error {
+	invSub, err := h.openCacheInvalidationSubscription(appCtx)
+	if err != nil {
+		return err
+	}
+	h.subsMu.Lock()
+	h.invalidationSub = invSub
+	if invSub != nil {
+		h.subs = append(h.subs, invSub)
+	}
+	h.subsMu.Unlock()
+	return nil
+}
+
+// openCacheInvalidationSubscription creates the live pure-invalidation consumer
+// without registering it, so the reconnect path can replace it atomically.
+func (h *Hub) openCacheInvalidationSubscription(appCtx context.Context) (*nats.Subscription, error) {
 	invHandler := h.handleCacheInvalidation(appCtx)
-	invOpts := []nats.SubOpt{nats.DeliverNew(), nats.AckExplicit(), nats.ManualAck()}
+	invOpts := append([]nats.SubOpt{nats.DeliverNew()}, h.invalidationConsumerOpts()...)
 	var invSub *nats.Subscription
 	var err error
 	if h.subscribeCacheInvalidations != nil {
@@ -1518,12 +1572,27 @@ func (h *Hub) subscribeCacheInvalidation(appCtx context.Context) error {
 	}
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "JetStream cache invalidation subscription failed", "err", err)
-		return err
+		return nil, err
 	}
-	if invSub != nil {
-		h.subs = append(h.subs, invSub)
+	return invSub, nil
+}
+
+// invalidationConsumerOpts applies the configured durable contract to both
+// cache-invalidation consumers: explicit ack, the configured ack wait, max
+// deliver and inactive threshold. A zero field is omitted only for hubs that were
+// not built by NewHub; NewHub always resolves every field to a non-zero value.
+func (h *Hub) invalidationConsumerOpts() []nats.SubOpt {
+	opts := []nats.SubOpt{nats.AckExplicit(), nats.ManualAck()}
+	if h.natsAckWait > 0 {
+		opts = append(opts, nats.AckWait(h.natsAckWait))
 	}
-	return nil
+	if h.natsMaxDeliver != 0 {
+		opts = append(opts, nats.MaxDeliver(h.natsMaxDeliver))
+	}
+	if h.natsInactiveThreshold > 0 {
+		opts = append(opts, nats.InactiveThreshold(h.natsInactiveThreshold))
+	}
+	return opts
 }
 
 // subscribeCacheRevocation binds room revocations (evict_room) on cache.revoke.
@@ -1534,11 +1603,9 @@ func (h *Hub) subscribeCacheInvalidation(appCtx context.Context) error {
 // access-token lifetime rather than by stream retention.
 func (h *Hub) subscribeCacheRevocation(appCtx context.Context) (*nats.Subscription, error) {
 	revocationHandler := h.handleCacheInvalidation(appCtx)
-	revocationOpts := []nats.SubOpt{
+	revocationOpts := append([]nats.SubOpt{
 		nats.StartTime(time.Now().Add(-h.revocationReplayWindow)),
-		nats.AckExplicit(),
-		nats.ManualAck(),
-	}
+	}, h.invalidationConsumerOpts()...)
 	var revocationSub *nats.Subscription
 	var err error
 	if h.subscribeCacheInvalidations != nil {
@@ -1551,7 +1618,9 @@ func (h *Hub) subscribeCacheRevocation(appCtx context.Context) (*nats.Subscripti
 		return nil, err
 	}
 	if revocationSub != nil {
+		h.subsMu.Lock()
 		h.subs = append(h.subs, revocationSub)
+		h.subsMu.Unlock()
 	}
 	return revocationSub, nil
 }
@@ -2726,7 +2795,10 @@ func (h *Hub) stop(ctx context.Context) {
 		// WaitGroup entry is registered while lifecycleMu is held, before Stop
 		// can set stopped and begin this join.
 		h.sessionRevocationWG.Wait()
-		for _, sub := range h.subs {
+		h.subsMu.Lock()
+		subs := append([]*nats.Subscription(nil), h.subs...)
+		h.subsMu.Unlock()
+		for _, sub := range subs {
 			if err := sub.Drain(); err != nil {
 				h.Logger.WarnContext(ctx, "NATS subscription drain error", "err", err)
 			}
