@@ -5,9 +5,11 @@ from __future__ import annotations
 import ast
 import errno
 import importlib
+import multiprocessing
 import os
 import subprocess
 import time
+from multiprocessing.connection import Connection
 from pathlib import Path
 
 import pytest
@@ -90,6 +92,77 @@ def _lock_test_worktree(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
     worktree.mkdir()
     monkeypatch.setattr(live_stand, "WORKTREE", worktree)
     monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+
+
+def _native_lock_contender(worktree: Path, in_place: bool, result: Connection) -> None:
+    live_stand.WORKTREE = worktree
+    live_stand.IN_PLACE_MODE = in_place
+    live_stand.LIVE_LIFECYCLE_LOCK_TIMEOUT_SECONDS = 0.15
+    try:
+        with live_stand.stand_lifecycle_lock():
+            result.send("acquired")
+    except live_stand.StandError as error:
+        result.send(str(error))
+    finally:
+        result.close()
+
+
+@pytest.mark.parametrize("in_place", [False, True], ids=["worktree", "in-place"])
+def test_native_lifecycle_lock_contends_and_recovers_after_release(
+    tmp_path: Path, in_place: bool
+) -> None:
+    """The real OS lock serializes separate processes in either owned mode."""
+    worktree = tmp_path / "temporary-owned-worktree"
+    worktree.mkdir()
+    assert worktree.name != live_stand.WORKTREE_NAME
+    lock_name = worktree.name if in_place else live_stand.WORKTREE_NAME
+    lock_path = tmp_path / f".{lock_name}.lifecycle.lock"
+    lock_path.write_bytes(bytes(1))
+
+    def contend() -> str:
+        context = multiprocessing.get_context("spawn")
+        reader, writer = context.Pipe(duplex=False)
+        child = context.Process(
+            target=_native_lock_contender, args=(worktree, in_place, writer)
+        )
+        child.start()
+        writer.close()
+        try:
+            assert reader.poll(20), "native lock contender did not report within 20 s"
+            outcome = reader.recv()
+            child.join(timeout=5)
+            assert child.exitcode == 0
+            assert isinstance(outcome, str)
+            return outcome
+        finally:
+            reader.close()
+            if child.is_alive():
+                child.terminate()
+                child.join(timeout=5)
+                if child.is_alive():
+                    child.kill()
+                    child.join(timeout=5)
+
+    with lock_path.open("r+b") as owner:
+        if os.name == "nt":
+            native_lock = importlib.import_module("msvcrt")
+            native_lock.locking(owner.fileno(), native_lock.LK_NBLCK, 1)
+        else:
+            native_lock = importlib.import_module("fcntl")
+            native_lock.flock(owner.fileno(), native_lock.LOCK_EX | native_lock.LOCK_NB)
+        try:
+            blocked = contend()
+        finally:
+            if os.name == "nt":
+                owner.seek(0)
+                native_lock.locking(owner.fileno(), native_lock.LK_UNLCK, 1)
+            else:
+                native_lock.flock(owner.fileno(), native_lock.LOCK_UN)
+
+    assert blocked == "timed out waiting for the live stand lifecycle lock"
+    assert contend() == "acquired"
+    assert lock_path.read_bytes() == bytes(1)
+    assert list(tmp_path.glob(".*.lifecycle.lock")) == [lock_path]
 
 
 @pytest.mark.skipif(os.name != "nt", reason="native Windows msvcrt lock path")

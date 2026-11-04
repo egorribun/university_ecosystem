@@ -91,7 +91,10 @@ def _safe_bootstrap_sqlstate(output: str | None, exit_code: int) -> str:
 
 
 def _run_roles_bootstrap(
-    server: OwnedPostgres, passwords: dict[str, str]
+    server: OwnedPostgres,
+    passwords: dict[str, str],
+    *,
+    bootstrap_user: str = "baseline_admin",
 ) -> BootstrapResult:
     """Run the production wrapper in the disposable server with safe diagnostics."""
     server._lease.verify(server)
@@ -124,7 +127,7 @@ def _run_roles_bootstrap(
         "PGHOST": "/var/run/postgresql",
         "PGPORT": "5432",
         "PGCONNECT_TIMEOUT": "5",
-        "PGUSER": "baseline_admin",
+        "PGUSER": bootstrap_user,
         "PGPASSWORD": uuid4().hex,
         "POSTGRES_DB": APP_DATABASE,
     }
@@ -367,6 +370,64 @@ def test_legacy_service_relations_follow_the_database_owner(
         "legacy_seq": "ue_spicedb",
         "Unrelated Marker": "unrelated_owner",
     }
+
+
+def test_quoted_bootstrap_login_reassigns_only_its_own_service_relations(
+    service_server: OwnedPostgres,
+) -> None:
+    """Mixed-case and punctuation in the actual login must not change authority."""
+    _create_databases(service_server)
+    bootstrap_user = "Bootstrap-Owner"
+    with _connect(service_server) as admin:
+        admin.execute(
+            sql.SQL("CREATE ROLE {} LOGIN SUPERUSER").format(
+                sql.Identifier(bootstrap_user)
+            )
+        )
+    for database in SERVICE_DATABASES:
+        with psycopg.connect(
+            host=service_server.url.host,
+            port=service_server.url.port,
+            user=service_server.url.username,
+            password=service_server.url.password,
+            dbname=database,
+            autocommit=True,
+        ) as legacy:
+            legacy.execute('CREATE TABLE public."Quoted Owner Table" (id integer)')
+            legacy.execute('CREATE SEQUENCE public."Quoted Owner Sequence"')
+            legacy.execute("CREATE TABLE public.unrelated_owner_marker (id integer)")
+            for relation_type, name in (
+                ("TABLE", "Quoted Owner Table"),
+                ("SEQUENCE", "Quoted Owner Sequence"),
+            ):
+                legacy.execute(
+                    sql.SQL("ALTER {} public.{} OWNER TO {}").format(
+                        sql.SQL(relation_type),
+                        sql.Identifier(name),
+                        sql.Identifier(bootstrap_user),
+                    )
+                )
+    passwords = {role: uuid4().hex + uuid4().hex for role in _PASSWORD_VARIABLES}
+    result = _run_roles_bootstrap(
+        service_server, passwords, bootstrap_user=bootstrap_user
+    )
+    assert result.exit_code == 0, f"bootstrap failed: {result}"
+    for database, owner in SERVICE_DATABASES.items():
+        with _login(service_server, owner, passwords[owner], database) as session:
+            owners: dict[str, str] = dict(
+                session.execute(
+                    "SELECT relname, pg_get_userbyid(relowner) FROM pg_class AS c "
+                    "JOIN pg_namespace AS n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' AND relname IN "
+                    "('Quoted Owner Table', 'Quoted Owner Sequence', "
+                    "'unrelated_owner_marker')"
+                ).fetchall()
+            )
+        assert owners == {
+            "Quoted Owner Table": owner,
+            "Quoted Owner Sequence": owner,
+            "unrelated_owner_marker": "baseline_admin",
+        }
 
 
 def test_rerun_restores_the_owner_database_privilege(

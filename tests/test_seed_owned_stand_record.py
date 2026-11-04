@@ -196,6 +196,97 @@ def test_admin_smoke_target_does_not_read_the_owned_stand_record(
     assert seed_target.require_owned_live_stand_target() == "ci-admin-smoke"
 
 
+@pytest.mark.parametrize(
+    "tamper_after_first_run", [False, True], ids=["before-seed", "between-scripts"]
+)
+def test_seed_rechecks_signed_owner_before_issuing_or_reusing_unsigned_record(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, tamper_after_first_run: bool
+) -> None:
+    repository = tmp_path / "repository"
+    worktree = repository / "stand"
+    worktree.mkdir(parents=True)
+    monkeypatch.setattr(live_stand, "REPO_ROOT", repository)
+    monkeypatch.setattr(live_stand, "WORKTREE", worktree)
+    monkeypatch.setattr(live_stand, "IN_PLACE_MODE", False)
+    monkeypatch.setattr(
+        live_stand, "_owner_signing_key", lambda *, create: bytes(range(32))
+    )
+    monkeypatch.setattr(live_stand, "docker_daemon_fingerprint", lambda: "d" * 64)
+    ports = {
+        name: 30000 + index
+        for index, (name, _service, _target) in enumerate(live_stand.LIVE_PORT_SPECS)
+    }
+    owner = live_stand.create_stand_owner(worktree, published_ports=ports)
+    owner = live_stand._write_stand_owner_update(
+        worktree,
+        replace(
+            owner,
+            compose_resource_fingerprint="e" * 64,
+            service_roots=("backend",),
+            selected_services=("backend",),
+        ),
+    )
+    assert live_stand.load_stand_owner(worktree) == owner
+    marker_path = worktree / live_stand.STAND_FILE
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    assert "signature" in marker
+
+    def tamper_with_signed_project() -> None:
+        changed = dict(marker)
+        changed["project_name"] = (
+            PROJECT if owner.project_name != PROJECT else "ue-live-fedcba9876543210"
+        )
+        marker_path.write_text(json.dumps(changed), encoding="utf-8")
+
+    evidence = live_stand.ComposeResourceEvidence(
+        fingerprint="e" * 64,
+        managed_volumes=(),
+        service_roots=("backend",),
+        selected_services=("backend",),
+    )
+    monkeypatch.setattr(live_stand, "_require_worktree", lambda: None)
+    monkeypatch.setattr(live_stand, "_require_owned_docker_daemon", lambda *_a: None)
+    monkeypatch.setattr(live_stand, "stand_environment", lambda *_a: {})
+    monkeypatch.setattr(live_stand, "load_vapid", lambda _path: {})
+    monkeypatch.setattr(
+        live_stand, "_owner_compose_resource_evidence", lambda *_a, **_kw: evidence
+    )
+    monkeypatch.setattr(
+        live_stand, "_assert_compose_volume_ownership", lambda *_a, **_kw: None
+    )
+    runs: list[list[str]] = []
+
+    def run_seed(command: list[str], **_kwargs: object) -> None:
+        runs.append(command)
+        record_path = worktree / live_stand.SEED_OWNED_STAND_RECORD
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        assert record == _record(project_name=owner.project_name)
+        assert "signature" not in record
+        assert (
+            f"{record_path}:{live_stand.SEED_OWNED_STAND_CONTAINER_PATH}:ro" in command
+        )
+        with monkeypatch.context() as seed:
+            seed.delenv("UE_SEED_TARGET", raising=False)
+            for index, argument in enumerate(command[:-1]):
+                if argument == "--env" and "=" in command[index + 1]:
+                    name, value = command[index + 1].split("=", 1)
+                    seed.setenv(name, value)
+            seed.setattr(seed_target, "OWNED_STAND_RECORD_PATH", record_path)
+            seed.setattr(seed_target, "_configured_database_url", lambda: DATABASE_URL)
+            assert seed_target.require_owned_live_stand_target() == owner.project_name
+        tamper_with_signed_project()
+
+    monkeypatch.setattr(live_stand, "_run", run_seed)
+    if not tamper_after_first_run:
+        tamper_with_signed_project()
+
+    with pytest.raises(live_stand.StandError, match="signature is invalid"):
+        live_stand._seed_locked("fixture-password", owner=owner)
+
+    assert len(runs) == int(tamper_after_first_run)
+    assert not (worktree / live_stand.SEED_OWNED_STAND_RECORD).exists()
+
+
 def test_seed_writes_record_for_each_run_and_removes_it_afterwards(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
