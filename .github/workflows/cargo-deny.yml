@@ -61,9 +61,11 @@ jobs:
     if: ${{ always() }}
     steps:
       - name: Require every crate scan to pass
+        env:
+          CARGO_DENY_CRATES_RESULT: ${{ needs.cargo-deny-crates.result }}
         run: |
-          if [ "${{ needs.cargo-deny-crates.result }}" != "success" ]; then
-            echo "::error::Cargo Deny matrix result was '${{ needs.cargo-deny-crates.result }}'; refusing aggregate success."
+          if [ "$CARGO_DENY_CRATES_RESULT" != "success" ]; then
+            echo "::error::Cargo Deny matrix result was '$CARGO_DENY_CRATES_RESULT'; refusing aggregate success."
             exit 1
           fi
           echo "All three Rust crate dependency scans passed."

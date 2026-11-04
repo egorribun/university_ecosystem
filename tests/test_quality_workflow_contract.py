@@ -3096,9 +3096,51 @@ def test_cargo_deny_scans_all_release_rust_crates_in_parallel() -> None:
     assert aggregate["name"] == "Cargo Deny Scan"
     assert aggregate["needs"] == ["cargo-deny-crates"]
     assert aggregate["if"] == "${{ always() }}"
-    aggregate_run = aggregate["steps"][0]["run"]
-    assert "needs.cargo-deny-crates.result" in aggregate_run
+    assert aggregate["runs-on"] == "ubuntu-24.04"
+    assert workflow.get("defaults", {}).get("run", {}).get("shell") is None
+    assert aggregate.get("defaults", {}).get("run", {}).get("shell") is None
+    aggregate_step = aggregate["steps"][0]
+    assert "shell" not in aggregate_step
+    assert aggregate_step["env"] == {
+        "CARGO_DENY_CRATES_RESULT": "${{ needs.cargo-deny-crates.result }}"
+    }
+    aggregate_run = aggregate_step["run"]
+    assert '"$CARGO_DENY_CRATES_RESULT"' in aggregate_run
     assert '!= "success"' in aggregate_run
+
+
+@pytest.mark.parametrize(
+    ("outcome", "expected"),
+    [
+        ("success", 0),
+        ("failure", 1),
+        ("cancelled", 1),
+        ("skipped", 1),
+        ("", 1),
+        ("success; exit 0", 1),
+    ],
+)
+def test_cargo_deny_aggregate_requires_success(
+    outcome: str, expected: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "cargo-deny.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    aggregate = workflow["jobs"]["cargo-deny"]
+    assert aggregate["needs"] == ["cargo-deny-crates"]
+    assert aggregate["if"] == "${{ always() }}"
+    step = aggregate["steps"][0]
+    assert step["env"] == {
+        "CARGO_DENY_CRATES_RESULT": "${{ needs.cargo-deny-crates.result }}"
+    }
+    monkeypatch.setenv("CARGO_DENY_CRATES_RESULT", outcome)
+    result = _run_coverage_shape_checks(step["run"], REPOSITORY_ROOT)
+    assert result.returncode == expected
+    if expected == 0:
+        assert result.stdout.strip() == "All three Rust crate dependency scans passed."
+    else:
+        assert result.stdout.strip() == (
+            f"::error::Cargo Deny matrix result was '{outcome}'; refusing aggregate success."
+        )
 
 
 def test_rust_fuzz_matrix_covers_every_fuzz_workspace() -> None:
