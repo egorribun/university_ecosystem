@@ -9,9 +9,11 @@ random password, so each assertion exercises a real authenticated session.
 from __future__ import annotations
 
 import io
+import re
 import tarfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import NamedTuple
 from uuid import uuid4
 
 import psycopg
@@ -20,6 +22,7 @@ from psycopg import sql
 
 from tests.fixtures.owned_baseline_postgres import (
     OwnedPostgres,
+    OwnedPostgresError,
     _docker_call,
     owned_postgres_server,
 )
@@ -44,8 +47,6 @@ pytestmark = [pytest.mark.integration, pytest.mark.timeout(300)]
 
 ROOT = Path(__file__).resolve().parents[1]
 _ROLES_DIR = ROOT / "infrastructure" / "postgres-roles"
-_APP_SQL = _ROLES_DIR / "bootstrap-app-roles.sql"
-_SERVICE_SQL = _ROLES_DIR / "bootstrap-service-roles.sql"
 APP_DATABASE = "university_app"
 SERVICE_DATABASES = {
     "spicedb": "ue_spicedb",
@@ -55,11 +56,11 @@ SERVICE_DATABASES = {
 SERVICE_ROLES = ("ue_spicedb", "ue_temporal")
 RUNTIME_ROLES = ("ue_app", "ue_worker", "ue_migrator")
 _PASSWORD_VARIABLES = {
-    "ue_migrator": "migrator_password",
-    "ue_app": "app_password",
-    "ue_worker": "worker_password",
-    "ue_spicedb": "spicedb_password",
-    "ue_temporal": "temporal_password",
+    "ue_migrator": "UE_MIGRATOR_DB_PASSWORD",
+    "ue_app": "UE_APP_DB_PASSWORD",
+    "ue_worker": "UE_WORKER_DB_PASSWORD",
+    "ue_spicedb": "UE_SPICEDB_DB_PASSWORD",
+    "ue_temporal": "UE_TEMPORAL_DB_PASSWORD",
 }
 
 
@@ -70,51 +71,73 @@ def service_server(request: pytest.FixtureRequest) -> Iterator[OwnedPostgres]:
         yield server
 
 
-def _prelude(passwords: dict[str, str]) -> str:
-    lines = [f"\\set db {APP_DATABASE}"]
-    for role, variable in _PASSWORD_VARIABLES.items():
-        lines.append(f"\\getenv {variable} ROLE_TEST_{role.upper()}")
-    return "\n".join(lines) + "\n"
+class BootstrapResult(NamedTuple):
+    exit_code: int
+    sqlstate: str
 
 
-def _run_roles_bootstrap(server: OwnedPostgres, passwords: dict[str, str]) -> int:
-    """Run the application and service bootstrap SQL in one psql session."""
+def _safe_bootstrap_sqlstate(output: str | None, exit_code: int) -> str:
+    """Accept only the wrapper's exact, independently matched SQLSTATE record."""
+    if output is None:
+        return "UNKNOWN"
+    match = re.fullmatch(
+        r"\[postgres-roles-init\] phase=reconcile exit=([0-9]{1,3}) "
+        r"sqlstate=([A-Z0-9]{5}|UNKNOWN)\n?",
+        output,
+    )
+    if match is None or int(match.group(1)) != exit_code:
+        return "UNKNOWN"
+    return match.group(2)
+
+
+def _run_roles_bootstrap(
+    server: OwnedPostgres, passwords: dict[str, str]
+) -> BootstrapResult:
+    """Run the production wrapper in the disposable server with safe diagnostics."""
     server._lease.verify(server)
-    source = (
-        _prelude(passwords)
-        + _APP_SQL.read_text(encoding="utf-8")
-        + "\n"
-        + _SERVICE_SQL.read_text(encoding="utf-8")
-    ).encode("utf-8")
-    filename = f"service-role-bootstrap-{uuid4().hex}.sql"
     archive = io.BytesIO()
     with tarfile.open(fileobj=archive, mode="w") as tar:
-        member = tarfile.TarInfo(filename)
-        member.size = len(source)
-        member.mode = 0o600
-        tar.addfile(member, io.BytesIO(source))
+        directory = tarfile.TarInfo("bootstrap")
+        directory.type = tarfile.DIRTYPE
+        directory.mode = 0o700
+        tar.addfile(directory)
+        for filename in (
+            "bootstrap-from-environment.sql",
+            "bootstrap-app-roles.sql",
+            "bootstrap-service-roles.sql",
+            "run-bootstrap.sh",
+        ):
+            source = (_ROLES_DIR / filename).read_bytes()
+            member = tarfile.TarInfo(f"bootstrap/{filename}")
+            member.size = len(source)
+            member.mode = 0o600
+            tar.addfile(member, io.BytesIO(source))
     client = server._lease.client
     assert _docker_call(
-        lambda: client.put_archive(server.container_id, "/root", archive.getvalue()),
+        lambda: client.put_archive(server.container_id, "/", archive.getvalue()),
         "service role bootstrap source staging",
+    )
+    diagnostic_path = (
+        f"/var/lib/postgresql/service-role-bootstrap-{uuid4().hex}.diagnostic"
     )
     environment = {
         "PGHOST": "/var/run/postgresql",
         "PGPORT": "5432",
         "PGCONNECT_TIMEOUT": "5",
+        "PGUSER": "baseline_admin",
+        "PGPASSWORD": uuid4().hex,
+        "POSTGRES_DB": APP_DATABASE,
     }
     for role, variable in _PASSWORD_VARIABLES.items():
-        environment[f"ROLE_TEST_{role.upper()}"] = passwords.get(role, uuid4().hex)
+        environment[variable] = passwords.get(role, uuid4().hex)
     execution = _docker_call(
         lambda: client.exec_create(
             server.container_id,
             cmd=[
-                "psql",
-                "-X",
-                "--no-password",
-                "--dbname=postgres",
-                "--username=baseline_admin",
-                f"--file=/root/{filename}",
+                "sh",
+                "-c",
+                "umask 022; /bin/sh /bootstrap/run-bootstrap.sh "
+                f">/dev/null 2>{diagnostic_path}; exit $?",
             ],
             environment=environment,
             user="root",
@@ -122,12 +145,39 @@ def _run_roles_bootstrap(server: OwnedPostgres, passwords: dict[str, str]) -> in
         "service role bootstrap exec creation",
     )
     execution_id = execution.get("Id")
-    assert isinstance(execution_id, str)
+    if (
+        not isinstance(execution_id, str)
+        or re.fullmatch(r"[0-9a-f]{64}", execution_id) is None
+    ):
+        raise OwnedPostgresError("Service role bootstrap exec identity unacknowledged")
+    admitted = _docker_call(
+        lambda: client.exec_inspect(execution_id),
+        "service role bootstrap exec admission",
+    )
+    if (
+        admitted.get("ContainerID") != server.container_id
+        or admitted.get("Running") is not False
+    ):
+        raise OwnedPostgresError("Service role bootstrap exec identity mismatch")
+    server._lease.verify(server)
     _docker_call(
         lambda: client.exec_start(execution_id, detach=True),
         "service role bootstrap detached execution",
     )
-    return _wait_for_exec(server, execution_id)
+    exit_code = _wait_for_exec(server, execution_id)
+    if exit_code == 0:
+        return BootstrapResult(exit_code, "UNKNOWN")
+    # The production wrapper projects psql stderr to a SQLSTATE-only record.
+    # Read a bounded prefix through PostgreSQL, and never expose unrecognized text.
+    try:
+        with _connect(server) as admin:
+            row = admin.execute(
+                "SELECT pg_read_file(%s, 0, 512, true)", (diagnostic_path,)
+            ).fetchone()
+    except psycopg.Error:
+        row = None
+    output = row[0] if row is not None and isinstance(row[0], str) else None
+    return BootstrapResult(exit_code, _safe_bootstrap_sqlstate(output, exit_code))
 
 
 def _create_databases(server: OwnedPostgres) -> None:
@@ -142,7 +192,8 @@ def _create_databases(server: OwnedPostgres) -> None:
 def _provision(server: OwnedPostgres) -> dict[str, str]:
     _create_databases(server)
     passwords = {role: uuid4().hex + uuid4().hex for role in _PASSWORD_VARIABLES}
-    assert _run_roles_bootstrap(server, passwords) == 0
+    result = _run_roles_bootstrap(server, passwords)
+    assert result.exit_code == 0, f"bootstrap failed: {result}"
     return passwords
 
 
@@ -294,18 +345,28 @@ def test_legacy_service_relations_follow_the_database_owner(
     ) as legacy:
         legacy.execute("CREATE TABLE public.legacy_marker (id integer)")
         legacy.execute("CREATE SEQUENCE public.legacy_seq")
+        legacy.execute('CREATE ROLE "unrelated_owner" NOLOGIN')
+        legacy.execute('CREATE TABLE public."Unrelated Marker" (id integer)')
+        legacy.execute(
+            'ALTER TABLE public."Unrelated Marker" OWNER TO "unrelated_owner"'
+        )
     passwords = {role: uuid4().hex + uuid4().hex for role in _PASSWORD_VARIABLES}
-    assert _run_roles_bootstrap(service_server, passwords) == 0
+    result = _run_roles_bootstrap(service_server, passwords)
+    assert result.exit_code == 0, f"bootstrap failed: {result}"
     with _login(service_server, "ue_spicedb", passwords["ue_spicedb"], "spicedb") as s:
         owners: dict[str, str] = dict(
             s.execute(
                 "SELECT relname, pg_get_userbyid(relowner) FROM pg_class AS c "
                 "JOIN pg_namespace AS n ON n.oid = c.relnamespace "
                 "WHERE n.nspname = 'public' AND relname IN "
-                "('legacy_marker', 'legacy_seq') ORDER BY relname"
+                "('legacy_marker', 'legacy_seq', 'Unrelated Marker') ORDER BY relname"
             ).fetchall()
         )
-    assert owners == {"legacy_marker": "ue_spicedb", "legacy_seq": "ue_spicedb"}
+    assert owners == {
+        "legacy_marker": "ue_spicedb",
+        "legacy_seq": "ue_spicedb",
+        "Unrelated Marker": "unrelated_owner",
+    }
 
 
 def test_rerun_restores_the_owner_database_privilege(
@@ -315,7 +376,8 @@ def test_rerun_restores_the_owner_database_privilege(
     passwords = _provision(service_server)
     with _connect(service_server) as admin:
         admin.execute("REVOKE CREATE ON DATABASE temporal_visibility FROM ue_temporal")
-    assert _run_roles_bootstrap(service_server, passwords) == 0
+    result = _run_roles_bootstrap(service_server, passwords)
+    assert result.exit_code == 0, f"bootstrap failed: {result}"
     with _login(
         service_server, "ue_temporal", passwords["ue_temporal"], "temporal_visibility"
     ) as session:
@@ -327,7 +389,10 @@ def test_missing_service_database_fails_closed(service_server: OwnedPostgres) ->
     passwords = _provision(service_server)
     with _connect(service_server) as admin:
         admin.execute("DROP DATABASE temporal_visibility")
-    assert _run_roles_bootstrap(service_server, passwords) != 0
+    result = _run_roles_bootstrap(service_server, passwords)
+    assert result.exit_code != 0
+    assert result.sqlstate == "P0001"
     with _connect(service_server) as admin:
         admin.execute("CREATE DATABASE temporal_visibility")
-    assert _run_roles_bootstrap(service_server, passwords) == 0
+    result = _run_roles_bootstrap(service_server, passwords)
+    assert result.exit_code == 0, f"bootstrap failed: {result}"

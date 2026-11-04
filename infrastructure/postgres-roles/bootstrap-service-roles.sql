@@ -15,11 +15,12 @@
 -- application database is revoked from PUBLIC too. Each role is granted CONNECT
 -- only on its own databases. Neither holds any role membership.
 --
--- The superuser remains the bootstrap owner of the cluster. Relations that the
--- superuser created in a service database before this reconciliation (fresh
--- volumes have none) are reassigned to that database's owner, so the service's
--- own schema migrations can alter them. Missing service databases fail closed:
--- postgres-databases-init creates them before this job starts.
+-- The authenticated bootstrap superuser remains the owner of the cluster.
+-- Relations that this login created in a service database before reconciliation
+-- (fresh volumes have none) are reassigned to that database's owner, so the
+-- service's own schema migrations can alter them. Other owners are untouched.
+-- Missing service databases fail closed: postgres-databases-init creates them
+-- before this job starts.
 --
 -- Required psql variables: db, spicedb_password, temporal_password.
 \set ON_ERROR_STOP on
@@ -98,8 +99,10 @@ END
 $owner$;
 COMMIT;
 
--- Relations in each service database follow the database owner. This runs per
--- database because a relation can be altered only from a session connected to it.
+-- Relations owned by the authenticated bootstrap login follow the database owner.
+-- This runs per database because a relation can be altered only from a session
+-- connected to it. session_user supports any configured POSTGRES_USER without
+-- granting authority over objects owned by other roles.
 \c spicedb
 BEGIN;
 SET LOCAL search_path = pg_catalog, pg_temp;
@@ -118,7 +121,7 @@ BEGIN
         FROM pg_class AS class
         JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace
         WHERE namespace.nspname = 'public'
-          AND class.relowner = 'postgres'::regrole
+          AND class.relowner = (SELECT oid FROM pg_roles WHERE rolname = session_user)
           AND class.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')
     LOOP
         IF relation.relkind = 'S' THEN
@@ -155,7 +158,7 @@ BEGIN
         FROM pg_class AS class
         JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace
         WHERE namespace.nspname = 'public'
-          AND class.relowner = 'postgres'::regrole
+          AND class.relowner = (SELECT oid FROM pg_roles WHERE rolname = session_user)
           AND class.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')
     LOOP
         IF relation.relkind = 'S' THEN
@@ -192,7 +195,7 @@ BEGIN
         FROM pg_class AS class
         JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace
         WHERE namespace.nspname = 'public'
-          AND class.relowner = 'postgres'::regrole
+          AND class.relowner = (SELECT oid FROM pg_roles WHERE rolname = session_user)
           AND class.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')
     LOOP
         IF relation.relkind = 'S' THEN

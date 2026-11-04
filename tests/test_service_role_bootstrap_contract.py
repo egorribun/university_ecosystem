@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 ROLES_DIR = ROOT / "infrastructure" / "postgres-roles"
 SERVICE_SQL = ROLES_DIR / "bootstrap-service-roles.sql"
@@ -82,11 +84,40 @@ def test_missing_service_database_is_a_hard_error_not_a_skip() -> None:
     )
 
 
-def test_relation_ownership_is_reassigned_only_from_the_superuser() -> None:
+def test_relation_ownership_is_reassigned_only_from_the_bootstrap_session() -> None:
     source = _service_sql()
-    assert "class.relowner = 'postgres'::regrole" in source
+    assert source.count(
+        "class.relowner = (SELECT oid FROM pg_roles WHERE rolname = session_user)"
+    ) == len(SERVICE_DATABASE_OWNERS)
     for database in SERVICE_DATABASE_OWNERS:
         assert f"\\c {database}\n" in source, database
+
+
+@pytest.mark.parametrize(
+    ("output", "exit_code", "expected"),
+    [
+        ("[postgres-roles-init] phase=reconcile exit=3 sqlstate=42704\n", 3, "42704"),
+        ("[postgres-roles-init] phase=reconcile exit=3 sqlstate=P0001\n", 3, "P0001"),
+        (
+            "[postgres-roles-init] phase=reconcile exit=3 sqlstate=42704 extra\n",
+            3,
+            "UNKNOWN",
+        ),
+        (
+            "[postgres-roles-init] phase=reconcile exit=3 sqlstate=42704\nprivate input",
+            3,
+            "UNKNOWN",
+        ),
+        ("[postgres-roles-init] phase=reconcile exit=2 sqlstate=42704\n", 3, "UNKNOWN"),
+        (None, 3, "UNKNOWN"),
+    ],
+)
+def test_bootstrap_diagnostic_accepts_only_matching_safe_sqlstate(
+    output: str | None, exit_code: int, expected: str
+) -> None:
+    from tests.test_service_role_bootstrap_postgres import _safe_bootstrap_sqlstate
+
+    assert _safe_bootstrap_sqlstate(output, exit_code) == expected
 
 
 def test_service_file_runs_after_the_application_roles_in_the_same_session() -> None:

@@ -317,47 +317,40 @@ def test_database_creation_has_no_semgrep_raw_query_suppression() -> None:
     )
 
 
-def test_websocket_origin_suppression_matches_current_source_anchor(
+@pytest.mark.parametrize("suppressed", [False, True])
+def test_websocket_origin_has_no_semgrep_suppression_exception(
     tmp_path: Path,
+    suppressed: bool,
 ) -> None:
     root = Path(__file__).resolve().parents[1]
-    source_policy = json.loads(
-        (root / "security/semgrep-suppression-policy.json").read_text(encoding="utf-8")
-    )
+    source_path = "services/ws-hub/pkg/hub/handlers.go"
+    source_text = (root / source_path).read_text(encoding="utf-8")
+    policy_path = root / "security/semgrep-suppression-policy.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
     rule_id = (
         "go.gorilla.security.audit.websocket-missing-origin-check."
         "websocket-missing-origin-check"
     )
-    policy = {
-        "version": source_policy["version"],
-        "entries": [
-            entry
-            for entry in source_policy["entries"]
-            if entry["path"] == "services/ws-hub/pkg/hub/handlers.go"
-            and entry["rule_id"] == rule_id
-        ],
-    }
-    assert len(policy["entries"]) == 1
-    entry = policy["entries"][0]
-    source_path = root / entry["path"]
-    source_lines = source_path.read_text(encoding="utf-8").splitlines()
-    assert entry["start_line"] == entry["end_line"] == 207
-    assert "upgrader.Upgrade(w, r, nil)" in source_lines[entry["start_line"] - 1]
+    assert "nosemgrep" not in source_text
+    assert not any(
+        entry["path"] == source_path and entry["rule_id"] == rule_id
+        for entry in policy["entries"]
+    )
 
-    report_path, policy_path = _write_inputs(
+    report_path, _ = _write_inputs(
         tmp_path,
         _report(
             _result(
                 rule_id=rule_id,
-                path=entry["path"],
-                start_line=entry["start_line"],
-                end_line=entry["end_line"],
-                suppressed=True,
+                path=source_path,
+                start_line=207,
+                end_line=207,
+                suppressed=suppressed,
             )
         ),
-        policy,
     )
-    validator.validate_report(report_path, policy_path, scanner_status=1)
+    with pytest.raises(validator.ValidationError, match="not covered"):
+        validator.validate_report(report_path, policy_path, scanner_status=1)
 
 
 def test_unapproved_result_is_rejected(tmp_path: Path) -> None:
