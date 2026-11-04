@@ -494,6 +494,7 @@ jobs:
               "$image_ref" > /dev/null
             gh attestation verify "oci://$image_ref" \
               --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/reusable-build-and-sign.yml" \
               --source-digest "$RELEASE_SHA" \
               --source-ref refs/heads/main \
               --deny-self-hosted-runners \

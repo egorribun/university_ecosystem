@@ -254,6 +254,7 @@ jobs:
             "$IMAGE_REF" > cosign-verification.json
           gh attestation verify "oci://$IMAGE_REF" \
             --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/reusable-build-and-sign.yml" \
             --format json > attestation-verification.json
           test -s cosign-verification.json
           test -s attestation-verification.json
