@@ -1113,6 +1113,73 @@ jobs:
           tests/test_caddy_emitted_log_redaction_docker.py
           -v --tb=short -p no:cacheprovider -rs
 
+  # AUD-332, AUD-436 and the L4 Windows-native proofs. These run on a native Windows
+  # runner so the symlink-privilege and System32 ACL-tool paths execute for
+  # real rather than being skipped on the Linux lanes. Every collected test must
+  # execute: a skipped or empty selection fails the job.
+  windows-live-proofs:
+    name: Windows-only proofs (AUD-332, AUD-436)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    needs: pre-commit-check
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        shell: bash
+        run: uv sync --frozen --group dev
+
+      - name: Run Windows-only proofs
+        shell: bash
+        run: |
+          set -euo pipefail
+          # POSIX-only tests inside these files are deselected by node id; they
+          # run in the Linux backend suite (tests/ pattern). Every other collected
+          # test must execute on this runner: any skip fails the job below.
+          uv run --frozen --no-sync pytest \
+            tests/test_start_docker_live_owner_key_paths.py \
+            tests/test_start_docker_live_stand_state_root.py \
+            tests/test_symlink_privilege_probe_contract.py \
+            tests/test_live_stand_subprocess_timeouts.py \
+            tests/test_seed_owned_stand_record.py \
+            --deselect "tests/test_start_docker_live_stand_state_root.py::test_launcher_rejects_permissive_owned_state_root_before_secret_reads" \
+            --deselect "tests/test_live_stand_subprocess_timeouts.py::test_posix_lifecycle_lock_wait_is_bounded" \
+            -v --tb=short -p no:cacheprovider -rs --junitxml=windows-proofs.xml
+
+      - name: Require every Windows-only proof to execute
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --frozen --no-sync python -c "
+          import sys
+          import xml.etree.ElementTree as ET
+          root = ET.parse('windows-proofs.xml').getroot()
+          suites = [root] if root.tag == 'testsuite' else list(root)
+          total = sum(int(suite.get('tests', '0')) for suite in suites)
+          unexecuted = sum(
+              int(suite.get(key, '0')) for suite in suites for key in ('skipped', 'failures', 'errors')
+          )
+          if total == 0 or unexecuted:
+              print(f'Windows-only proofs: tests={total} not-executed-or-failed={unexecuted}')
+              sys.exit(1)
+          print(f'Windows-only proofs executed {total} test(s) with no skips.')
+          "
+
   alembic-migrations:
     name: Alembic Migrations
     runs-on: ubuntu-24.04
@@ -4567,6 +4634,7 @@ jobs:
       - quality-inventory-check
       - kyverno-test
       - caddy-emitted-log-proof
+      - windows-live-proofs
 
     steps:
       - name: Check all jobs passed
@@ -4627,6 +4695,7 @@ jobs:
             "quality-inventory-check|${{ needs.quality-inventory-check.result }}"
             "kyverno-test|${{ needs.kyverno-test.result }}"
             "caddy-emitted-log-proof|${{ needs.caddy-emitted-log-proof.result }}"
+            "windows-live-proofs|${{ needs.windows-live-proofs.result }}"
           )
 
           # Coverage is allowed to be skipped only when a direct producer

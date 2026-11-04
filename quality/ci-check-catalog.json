@@ -1647,7 +1647,8 @@
             "codecov-upload",
             "quality-inventory-check",
             "kyverno-test",
-            "caddy-emitted-log-proof"
+            "caddy-emitted-log-proof",
+            "windows-live-proofs"
           ],
           "artifacts": [
             {
@@ -1669,6 +1670,23 @@
           "check_name_template": "Caddy emitted-log redaction proof",
           "expected_timeout_minutes": 20,
           "expected_duration_seconds": 1200,
+          "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "windows-live-proofs": {
+          "profile": "required-pr-main",
+          "check_name_template": "Windows-only proofs (AUD-332, AUD-436)",
+          "expected_timeout_minutes": 30,
+          "expected_duration_seconds": 1800,
           "guard": "workflow trigger",
           "needs": [
             "pre-commit-check"
@@ -2441,7 +2459,7 @@
           "profile": "manual",
           "check_name_template": "Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/8",
           "expected_timeout_minutes": 25,
-          "expected_duration_seconds": 1500,
+          "expected_duration_seconds": 1800,
           "guard": "${{ inputs.backend_scope == 'incremental' }}",
           "needs": [],
           "artifacts": [
@@ -3994,7 +4012,7 @@
           "profile": "internal",
           "check_name_template": "Node.js Dependency Audit",
           "expected_timeout_minutes": 25,
-          "expected_duration_seconds": 1500,
+          "expected_duration_seconds": 1800,
           "guard": "${{ inputs.run-npm-audit }}",
           "needs": [
             "policy-integrity"

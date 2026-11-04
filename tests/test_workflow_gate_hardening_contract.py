@@ -75,7 +75,10 @@ def test_nightly_slack_notification_reads_a_step_output_in_its_condition() -> No
     send = _step(job, "Send optional Slack notification")
 
     assert set(detect["env"]) == {"SLACK_WEBHOOK_URL"}
-    assert send["if"] == "${{ steps.slack_config.outputs.configured == 'true' }}"
+    assert send["if"] == (
+        "${{ !cancelled() && steps.trusted_source.outcome == 'success' "
+        "&& steps.slack_config.outputs.configured == 'true' }}"
+    )
     assert "env." not in send["if"]
     assert "secrets." not in send["if"]
 

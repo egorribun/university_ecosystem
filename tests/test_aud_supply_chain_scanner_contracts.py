@@ -16,13 +16,19 @@ WORKFLOWS = REPOSITORY_ROOT / ".github" / "workflows"
 
 
 def _load_workflow(name: str) -> dict[str, Any]:
-    return yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
+    workflow: dict[str, Any] = yaml.safe_load(
+        (WORKFLOWS / name).read_text(encoding="utf-8")
+    )
+    return workflow
 
 
 def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
-    matches = [step for step in job["steps"] if step.get("name") == name]
+    matches: list[dict[str, Any]] = [
+        step for step in job["steps"] if step.get("name") == name
+    ]
     assert len(matches) == 1, name
-    return matches[0]
+    step: dict[str, Any] = matches[0]
+    return step
 
 
 # AUD-380 ---------------------------------------------------------------------
@@ -173,6 +179,36 @@ def test_npm_high_gate_with_allowlist_remains_blocking() -> None:
     )
 
 
+# AUD-480 unfixed Trivy filesystem gate --------------------------------------
+
+
+def test_trivy_filesystem_gate_reports_unfixed_findings_with_exact_dispositions() -> (
+    None
+):
+    job = _load_workflow("reusable-security-audit.yml")["jobs"]["docker-security"]
+    scan = _step(job, "Run Trivy vulnerability scanner (filesystem)")
+
+    assert scan["env"] == {"TRIVY_IGNORE_UNFIXED": "false"}
+    assert scan["with"]["trivyignores"] == ".trivyignore.yaml"
+    assert scan["with"]["severity"] == "CRITICAL,HIGH"
+    assert "ignore-unfixed" not in scan["with"]
+
+
+def test_trivy_vulnerability_dispositions_are_path_and_expiry_bounded() -> None:
+    from datetime import date
+
+    ignores = yaml.safe_load(
+        (REPOSITORY_ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
+    )
+    entries = ignores["vulnerabilities"]
+
+    assert entries, "unfixed findings must be dispositioned exactly, not ignored"
+    for entry in entries:
+        assert set(entry) == {"id", "paths", "expired_at", "statement"}
+        assert entry["paths"] and all("*" not in path for path in entry["paths"])
+        assert date.fromisoformat(str(entry["expired_at"])) <= date(2027, 1, 10)
+
+
 # AUD-429 wiring --------------------------------------------------------------
 
 
@@ -201,3 +237,36 @@ def test_sbom_pr_inventory_remains_read_only_and_validated() -> None:
     assert job["permissions"] == {"contents": "read"}
     assert "::error::OSV scanner exited 0 but reported" in validate["run"]
     assert all("upload" not in str(step.get("uses", "")) for step in job["steps"])
+
+
+# AUD-245 scoped SPIRE KSV dispositions ----------------------------------------
+
+
+def test_spire_ksv_dispositions_are_scoped_to_their_manifests() -> None:
+    from datetime import date
+
+    entries = {
+        entry["id"]: entry
+        for entry in yaml.safe_load(
+            (REPOSITORY_ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
+        )["misconfigurations"]
+    }
+
+    assert entries["KSV-0012"]["paths"] == ["k8s/spire/spire-agent.yaml"]
+    assert entries["KSV-0023"]["paths"] == ["k8s/spire/spire-agent.yaml"]
+    assert entries["KSV-0047"]["paths"] == ["k8s/spire/spire-rbac.yaml"]
+    for rule in ("KSV-0012", "KSV-0023", "KSV-0047"):
+        assert date.fromisoformat(str(entries[rule]["expired_at"])) == date(2027, 1, 10)
+    assert "KSV-0017" not in entries
+
+
+def test_plain_trivyignore_no_longer_globally_suppresses_scoped_spire_rules() -> None:
+    plain = {
+        line.strip()
+        for line in (REPOSITORY_ROOT / ".trivyignore")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip().startswith("KSV-")
+    }
+
+    assert not plain & {"KSV-0012", "KSV-0023", "KSV-0047", "KSV-0017"}

@@ -8720,8 +8720,8 @@
         "path": "scripts/quality/validate_trivy_kyverno_fixture.py",
         "type": "Hex High Entropy String",
         "hashed_secret_bytes": [
-          224, 192, 166, 76, 174, 89, 98, 209, 14, 59, 156, 41, 28, 44, 108,
-          70, 149, 242, 195, 91
+          37, 17, 141, 28, 138, 76, 221, 11, 128, 252, 133, 245, 14, 216, 3,
+          180, 120, 105, 139, 200
         ]
       },
       "category": "public_integrity_digest",

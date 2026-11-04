@@ -789,6 +789,98 @@ def _nov3_public_git_object_records() -> list[dict[str, Any]]:
     return records
 
 
+# Owner-approved 2026-11-04 1:1 rebind of the public SHA-256 digest identity of
+# the complete candidate Trivy ignore policy after that policy file was amended.
+# Only the hashed_secret_bytes of that single record changes; the byte lists are
+# the detect-secrets SHA-1 identities of the old and new hex strings.
+_NOV4_TRIVY_IGNORE_POLICY_PATH = "scripts/quality/validate_trivy_kyverno_fixture.py"
+_NOV4_TRIVY_IGNORE_POLICY_EVIDENCE = "complete candidate Trivy ignore policy"
+_NOV4_TRIVY_IGNORE_POLICY_OLD_BYTES = [
+    224,
+    192,
+    166,
+    76,
+    174,
+    89,
+    98,
+    209,
+    14,
+    59,
+    156,
+    41,
+    28,
+    44,
+    108,
+    70,
+    149,
+    242,
+    195,
+    91,
+]
+_NOV4_TRIVY_IGNORE_POLICY_NEW_BYTES = [
+    37,
+    17,
+    141,
+    28,
+    138,
+    76,
+    221,
+    11,
+    128,
+    252,
+    133,
+    245,
+    14,
+    216,
+    3,
+    180,
+    120,
+    105,
+    139,
+    200,
+]
+
+
+def _nov4_trivy_ignore_policy_digest_rebind(
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    rebound = copy.deepcopy(records)
+    old_holders = [
+        row
+        for row in rebound
+        if row["identity"]["hashed_secret_bytes"] == _NOV4_TRIVY_IGNORE_POLICY_OLD_BYTES
+    ]
+    assert len(old_holders) == 1, "old ignore-policy digest must appear exactly once"
+    row = old_holders[0]
+    assert row["identity"]["path"] == _NOV4_TRIVY_IGNORE_POLICY_PATH
+    assert row["identity"]["type"] == "Hex High Entropy String"
+    assert row["category"] == "public_integrity_digest"
+    assert row["owner"] == "egorribun"
+    assert row["expires_on"] == "2026-11-22"
+    assert _NOV4_TRIVY_IGNORE_POLICY_EVIDENCE in row["evidence"]
+    row["identity"]["hashed_secret_bytes"] = list(_NOV4_TRIVY_IGNORE_POLICY_NEW_BYTES)
+    assert len(rebound) == len(records)
+    return rebound
+
+
+def _nov4_current_view(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return historical records as the live verifier must see them.
+
+    Historical snapshots keep the retired digest so immutable prefix hashes stay
+    exact. A slice holding that digest receives only the reviewed rebind; a slice
+    without it is returned unchanged.
+    """
+    holders = sum(
+        1
+        for row in records
+        if row["identity"]["hashed_secret_bytes"] == _NOV4_TRIVY_IGNORE_POLICY_OLD_BYTES
+    )
+    assert holders <= 1, "retired ignore-policy digest must appear at most once"
+    if holders == 0:
+        return copy.deepcopy(records)
+    return _nov4_trivy_ignore_policy_digest_rebind(records)
+
+
 def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
     historical = _reviewed_pre_retirement_dispositions()
     retired = [
@@ -806,7 +898,7 @@ def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
     assert policy == {
         **historical,
         "records": [
-            *survivors,
+            *_nov4_trivy_ignore_policy_digest_rebind(survivors),
             *_nov2_chart_reference_records(),
             *_nov3_public_git_object_records(),
         ],
@@ -841,11 +933,13 @@ def test_live_disposition_retirement_refuses_other_inventory_changes(
     historical = _reviewed_pre_retirement_dispositions()
     live = {
         **historical,
-        "records": [
-            row
-            for row in historical["records"]
-            if row["identity"]["path"] not in _RETIRED_DISPOSITION_PATHS
-        ],
+        "records": _nov4_trivy_ignore_policy_digest_rebind(
+            [
+                row
+                for row in historical["records"]
+                if row["identity"]["path"] not in _RETIRED_DISPOSITION_PATHS
+            ]
+        ),
     }
     live["records"].extend(_nov2_chart_reference_records())
     live["records"].extend(_nov3_public_git_object_records())
@@ -3225,7 +3319,8 @@ def test_auth_validation_ui_copy_accepts_only_three_exact_identities() -> None:
         for digest in _AUTH_VALIDATION_UI_COPY_DIGEST_BYTES
     }
     assert verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 10, 23)
+        {**policy, "records": _nov4_current_view(policy["records"])},
+        today=verifier.date(2026, 10, 23),
     ) >= {
         verifier.FindingIdentity(
             _AUTH_VALIDATION_UI_COPY_PATH, "Secret Keyword", digest.hex(), 1
@@ -3389,6 +3484,7 @@ def _owner_review_record(
 
 def test_aud253_and_trivy_candidate_records_are_exact_and_finite() -> None:
     policy = _owner_review_candidate_policy()
+    policy = {**policy, "records": _nov4_current_view(policy["records"])}
     aud253 = [
         record
         for record in policy["records"]
@@ -3456,7 +3552,7 @@ def test_aud253_candidate_rejects_identity_category_evidence_and_expiry_changes(
 
 def test_trivy_candidate_stays_exact_in_public_integrity_category() -> None:
     policy = _owner_review_candidate_policy()
-    identity = next(iter(verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES))
+    policy = {**policy, "records": _nov4_current_view(policy["records"])}
     mutations = (
         lambda row: row["identity"].update(path="scripts/quality/other_validator.py"),
         lambda row: row["identity"].update(type="Base64 High Entropy String"),
@@ -3469,13 +3565,15 @@ def test_trivy_candidate_stays_exact_in_public_integrity_category() -> None:
             evidence="Public integrity checksum; not credential material."
         ),
     )
-    for mutate in mutations:
-        candidate = copy.deepcopy(policy)
-        mutate(_owner_review_record(candidate, identity))
-        with pytest.raises(verifier.BaselineArtifactError):
-            verifier.validate_false_positive_dispositions(
-                candidate, today=verifier.date(2026, 10, 23)
-            )
+    # Cover both finite identities deterministically; set order is not stable.
+    for identity in sorted(verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES):
+        for mutate in mutations:
+            candidate = copy.deepcopy(policy)
+            mutate(_owner_review_record(candidate, identity))
+            with pytest.raises(verifier.BaselineArtifactError):
+                verifier.validate_false_positive_dispositions(
+                    candidate, today=verifier.date(2026, 10, 23)
+                )
 
 
 def test_aud253_fixture_digests_are_bound_to_embedded_powershell_literals() -> None:
@@ -3960,7 +4058,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
     validated = verifier.validate_false_positive_dispositions(
         {
             "schema_version": policy["schema_version"],
-            "records": policy["records"][:347],
+            "records": _nov4_current_view(policy["records"][:347]),
         },
         today=verifier.date(2026, 10, 26),
     )
@@ -3972,7 +4070,7 @@ def test_aud495_318_policy_preserves_exact_315_prefix_and_finite_records() -> No
         in validated
     )
 
-    pending = copy.deepcopy(policy)
+    pending = {**policy, "records": _nov4_current_view(policy["records"])}
     for record in pending["records"][315:]:
         record["approval_status"] = "pending_owner_review"
     with pytest.raises(verifier.BaselineArtifactError, match="not approved"):
@@ -5936,7 +6034,7 @@ def test_node_compiler_policy_appends_seven_and_preserves_337_prefix() -> None:
     validated = verifier.validate_false_positive_dispositions(
         {
             "schema_version": policy["schema_version"],
-            "records": policy["records"][:347],
+            "records": _nov4_current_view(policy["records"][:347]),
         },
         today=verifier.date(2026, 10, 26),
     )
@@ -6454,7 +6552,7 @@ def test_aud247_guard_preserves_existing_same_path_type_identities() -> None:
     assert verifier.validate_false_positive_dispositions(
         {
             "schema_version": policy["schema_version"],
-            "records": policy["records"][:347],
+            "records": _nov4_current_view(policy["records"][:347]),
         },
         today=verifier.date(2026, 10, 26),
     )
@@ -6920,7 +7018,7 @@ def test_historical148_integrity_adds_only_58_and_preserves_347_prefix() -> None
     assert (
         len(
             verifier.validate_false_positive_dispositions(
-                {**policy, "records": policy["records"][:405]},
+                {**policy, "records": _nov4_current_view(policy["records"][:405])},
                 today=verifier.date(2026, 10, 29),
             )
         )
@@ -7572,7 +7670,7 @@ def test_oct30_integrity_adds_exact_89_and_preserves_405_prefix() -> None:
     assert (
         len(
             verifier.validate_false_positive_dispositions(
-                {**policy, "records": policy["records"][:494]},
+                {**policy, "records": _nov4_current_view(policy["records"][:494])},
                 today=verifier.date(2026, 10, 30),
             )
         )
@@ -7927,7 +8025,7 @@ def test_aud447_allocation_adds_exact_five_and_preserves_all_prior_records() -> 
     assert (
         len(
             verifier.validate_false_positive_dispositions(
-                {**policy, "records": policy["records"][:499]},
+                {**policy, "records": _nov4_current_view(policy["records"][:499])},
                 today=verifier.date(2026, 10, 31),
             )
         )
@@ -8366,7 +8464,8 @@ def test_nov1_v4_binding_preserves_all_prior_499_records() -> None:
     records = _oct30_policy()["records"][:499]
     assert len(records) == 499
     validated = verifier.validate_false_positive_dispositions(
-        _disposition_document(*records), today=verifier.date(2026, 11, 1)
+        _disposition_document(*_nov4_current_view(records)),
+        today=verifier.date(2026, 11, 1),
     )
     assert len(validated) == 499
 
@@ -8457,7 +8556,8 @@ def test_nov1_v4_policy_appends_only_three_to_the_unchanged_499_prefix() -> None
     _nov1_v4_assert_append_only_population(policy)
     assert len(policy["records"]) == 505
     validated = verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 11, 2)
+        {**policy, "records": _nov4_current_view(policy["records"])},
+        today=verifier.date(2026, 11, 2),
     )
     assert len(validated) == 505
 
@@ -8718,7 +8818,8 @@ def test_nov2_integrity_policy_preserves_502_and_adds_only_two() -> None:
     assert (
         len(
             verifier.validate_false_positive_dispositions(
-                policy, today=verifier.date(2026, 11, 2)
+                {**policy, "records": _nov4_current_view(policy["records"])},
+                today=verifier.date(2026, 11, 2),
             )
         )
         == 505
@@ -8938,6 +9039,74 @@ def test_scanner_history_contract_checkout_is_not_shallow() -> None:
     assert "          persist-credentials: false\n" in checkout[1]
 
 
+# AUD-426 and AUD-447 PostgreSQL proof steps: the reviewed insertion before the
+# integration suite (exact bytes of the two steps in reusable-backend-tests.yml).
+_AUD426_447_PROOF_STEPS = (
+    b"            # AUD-426 and AUD-447: PostgreSQL proofs. The AUD-447 quarantine CAS\n",
+    b"            # test needs a non-superuser, NOBYPASSRLS login with CREATE on the\n",
+    b"            # database; it is built here from the same statements the RLS tests use.\n",
+    b"            - name: Create disposable non-superuser PostgreSQL login for AUD-447\n",
+    b"              shell: bash\n",
+    b"              timeout-minutes: 5\n",
+    b"              env:\n",
+    b"                  PGHOST_URL: ${{ env.DATABASE_URL }}\n",
+    b"              run: |\n",
+    b"                  set -euo pipefail\n",
+    b"                  role_password=\"$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')\"\n",
+    b'                  echo "::add-mask::$role_password"\n',
+    b"                  ROLE_PASSWORD=\"$role_password\" uv run --frozen --no-sync python - <<'PY'\n",
+    b"                  import asyncio\n",
+    b"                  import os\n",
+    b"\n",
+    b"                  import asyncpg\n",
+    b"\n",
+    b"                  from tests.fixtures.rls_runtime_role import runtime_role_statements\n",
+    b"\n",
+    b'                  ROLE = "ue_aud447_probe"\n',
+    b"\n",
+    b"\n",
+    b"                  async def main() -> None:\n",
+    b'                      connection = await asyncpg.connect(os.environ["PGHOST_URL"].replace("+asyncpg", "", 1))\n',
+    b"                      try:\n",
+    b'                          for statement in runtime_role_statements(ROLE, os.environ["ROLE_PASSWORD"]):\n',
+    b"                              await connection.execute(statement)\n",
+    b'                          await connection.execute(f"GRANT CREATE ON DATABASE test TO {ROLE}")\n',
+    b"                      finally:\n",
+    b"                          await connection.close()\n",
+    b"\n",
+    b"\n",
+    b"                  asyncio.run(main())\n",
+    b"                  PY\n",
+    b"                  {\n",
+    b'                    echo "AUD447_DLQ_DISPOSABLE=1"\n',
+    b'                    echo "AUD447_DLQ_DISPOSABLE_PG_URL=postgresql+asyncpg://ue_aud447_probe:${role_password}@127.0.0.1:5432/test"\n',
+    b'                  } >> "$GITHUB_ENV"\n',
+    b"\n",
+    b"            - name: Run PostgreSQL proofs (AUD-426, AUD-447) without skips\n",
+    b"              shell: bash\n",
+    b"              timeout-minutes: 15\n",
+    b"              run: |\n",
+    b"                  set -euo pipefail\n",
+    b"                  uv run --frozen --no-sync pytest \\\n",
+    b"                    tests/security/test_mfa_race.py \\\n",
+    b"                    tests/integration/test_aud447_quarantine_cas_postgres.py \\\n",
+    b"                    -v --tb=short -p no:cacheprovider -rs --junitxml=pg-proofs.xml\n",
+    b'                  uv run --frozen --no-sync python -c "\n',
+    b"                  import sys\n",
+    b"                  import xml.etree.ElementTree as ET\n",
+    b"                  root = ET.parse('pg-proofs.xml').getroot()\n",
+    b"                  suites = [root] if root.tag == 'testsuite' else list(root)\n",
+    b"                  total = sum(int(suite.get('tests', '0')) for suite in suites)\n",
+    b"                  unexecuted = sum(int(suite.get(key, '0')) for suite in suites for key in ('skipped', 'failures', 'errors'))\n",
+    b"                  if total == 0 or unexecuted:\n",
+    b"                      print(f'PostgreSQL proofs: tests={total} not-executed-or-failed={unexecuted}')\n",
+    b"                      sys.exit(1)\n",
+    b"                  print(f'PostgreSQL proofs executed {total} test(s) with no skips.')\n",
+    b'                  "\n',
+    b"\n",
+)
+
+
 def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
     original = _pre_squash_source_bytes(path)
     if path != ".github/workflows/reusable-backend-tests.yml":
@@ -9018,6 +9187,15 @@ def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
         + checkout_comment
         + b"                  fetch-depth: 0\n"
         + b"                  persist-credentials: false\n",
+    )
+    # AUD-426 and AUD-447: the two PostgreSQL proof steps are a counted reviewed
+    # insertion before the integration suite, not a change to the pinned baseline.
+    proof_anchor = b"            - name: Run integration tests\n"
+    assert reviewed.count(proof_anchor) == 1, (
+        "reviewed integration suite anchor changed"
+    )
+    reviewed = reviewed.replace(
+        proof_anchor, b"".join(_AUD426_447_PROOF_STEPS) + proof_anchor
     )
     unit_args = b"                  $pytestArgs = @($env:TEST_PATTERN)\n"
     assert reviewed.count(unit_args) == 1
@@ -9333,7 +9511,8 @@ def test_nov2_workflow_binding_appends_only_one_and_preserves_504() -> None:
     assert (
         len(
             verifier.validate_false_positive_dispositions(
-                policy, today=verifier.date(2026, 11, 2)
+                {**policy, "records": _nov4_current_view(policy["records"])},
+                today=verifier.date(2026, 11, 2),
             )
         )
         == 505
@@ -9454,6 +9633,7 @@ def test_trusted_pre_retirement_policy_keeps_only_exact_live_survivors(
     tmp_path: Path,
 ) -> None:
     policy = _reviewed_pre_retirement_dispositions()
+    policy = {**policy, "records": _nov4_current_view(policy["records"])}
     repository, _ = _new_git_fixture(tmp_path)
     accepted_sha = _commit_dispositions(repository, policy["records"])
     today = verifier.date(2026, 11, 2)

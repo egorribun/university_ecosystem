@@ -1431,7 +1431,6 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
         "KSV-0118",
         "KSV-0014",
         "KSV-0047",
-        "KSV-0017",
         "KSV-0009",
         "KSV-0010",
         "KSV-0008",

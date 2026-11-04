@@ -641,6 +641,12 @@ jobs:
         id: trivy_fs
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # AUD-480: trivy.yaml sets ignore-unfixed for the other scans. Disable
+          # it here (environment overrides the config file) so unfixed HIGH and
+          # CRITICAL filesystem findings are reported and gated. Only exact,
+          # owner-bounded dispositions in .trivyignore.yaml can suppress them.
+          TRIVY_IGNORE_UNFIXED: "false"
         with:
           version: v0.75.0
           scan-type: "fs"
@@ -651,6 +657,7 @@ jobs:
           limit-severities-for-sarif: true
           skip-setup-trivy: true
           exit-code: "1"
+          trivyignores: ".trivyignore.yaml"
 
       - name: Report bounded Trivy filesystem vulnerability metadata
         id: trivy_fs_metadata

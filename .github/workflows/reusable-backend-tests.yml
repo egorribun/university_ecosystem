@@ -719,6 +719,68 @@ jobs:
                     }
                   }
 
+            # AUD-426 and AUD-447: PostgreSQL proofs. The AUD-447 quarantine CAS
+            # test needs a non-superuser, NOBYPASSRLS login with CREATE on the
+            # database; it is built here from the same statements the RLS tests use.
+            - name: Create disposable non-superuser PostgreSQL login for AUD-447
+              shell: bash
+              timeout-minutes: 5
+              env:
+                  PGHOST_URL: ${{ env.DATABASE_URL }}
+              run: |
+                  set -euo pipefail
+                  role_password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+                  echo "::add-mask::$role_password"
+                  ROLE_PASSWORD="$role_password" uv run --frozen --no-sync python - <<'PY'
+                  import asyncio
+                  import os
+
+                  import asyncpg
+
+                  from tests.fixtures.rls_runtime_role import runtime_role_statements
+
+                  ROLE = "ue_aud447_probe"
+
+
+                  async def main() -> None:
+                      connection = await asyncpg.connect(os.environ["PGHOST_URL"].replace("+asyncpg", "", 1))
+                      try:
+                          for statement in runtime_role_statements(ROLE, os.environ["ROLE_PASSWORD"]):
+                              await connection.execute(statement)
+                          await connection.execute(f"GRANT CREATE ON DATABASE test TO {ROLE}")
+                      finally:
+                          await connection.close()
+
+
+                  asyncio.run(main())
+                  PY
+                  {
+                    echo "AUD447_DLQ_DISPOSABLE=1"
+                    echo "AUD447_DLQ_DISPOSABLE_PG_URL=postgresql+asyncpg://ue_aud447_probe:${role_password}@127.0.0.1:5432/test"
+                  } >> "$GITHUB_ENV"
+
+            - name: Run PostgreSQL proofs (AUD-426, AUD-447) without skips
+              shell: bash
+              timeout-minutes: 15
+              run: |
+                  set -euo pipefail
+                  uv run --frozen --no-sync pytest \
+                    tests/security/test_mfa_race.py \
+                    tests/integration/test_aud447_quarantine_cas_postgres.py \
+                    -v --tb=short -p no:cacheprovider -rs --junitxml=pg-proofs.xml
+                  uv run --frozen --no-sync python -c "
+                  import sys
+                  import xml.etree.ElementTree as ET
+                  root = ET.parse('pg-proofs.xml').getroot()
+                  suites = [root] if root.tag == 'testsuite' else list(root)
+                  total = sum(int(suite.get('tests', '0')) for suite in suites)
+                  unexecuted = sum(int(suite.get(key, '0')) for suite in suites for key in ('skipped', 'failures', 'errors'))
+                  if total == 0 or unexecuted:
+                      print(f'PostgreSQL proofs: tests={total} not-executed-or-failed={unexecuted}')
+                      sys.exit(1)
+                  print(f'PostgreSQL proofs executed {total} test(s) with no skips.')
+                  "
+
             - name: Run integration tests
               shell: pwsh
               env:
