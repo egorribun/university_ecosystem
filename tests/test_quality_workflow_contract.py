@@ -7486,7 +7486,7 @@ def _aud481_assert_matrix_contract(
         for step in jobs["ci-success"]["steps"]
         if step.get("name") == "Check all jobs passed"
     )
-    assert f'"{job_id}|{_aud481_gh(f"needs.{job_id}.result")}"' in gate["run"]
+    assert f"'{job_id}|{_aud481_gh(f'needs.{job_id}.result')}'" in gate["run"]
 
     ci_entry = next(
         item

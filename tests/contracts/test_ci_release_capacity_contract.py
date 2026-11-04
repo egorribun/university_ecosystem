@@ -79,7 +79,7 @@ def test_ci_success_is_an_always_on_fail_closed_finalizer() -> None:
     event_gated = {"codecov-upload", "live-realtime-visual"}
     assert event_gated <= required_needs
     for producer in required_needs - {"coverage-policy-gate", *event_gated}:
-        assert f'"{producer}|${{{{ needs.{producer}.result }}}}"' in gate
+        assert f"'{producer}|${{{{ needs.{producer}.result }}}}'" in gate
     assert '"coverage-policy-gate|$COVERAGE_RESULT"' in gate
     assert "coverage_expected_result=success" in gate
     assert "performance_expected_result" not in gate
@@ -89,10 +89,10 @@ def test_ci_success_is_an_always_on_fail_closed_finalizer() -> None:
     assert (
         'if [[ "$EVENT_NAME" == "pull_request" && "$BASE_REF" == "main" ]]; then\n'
         '  assert_event_result "live-realtime-visual" '
-        '"${{ needs.live-realtime-visual.result }}" "success"\n'
+        "'${{ needs.live-realtime-visual.result }}' \"success\"\n"
         "else\n"
         '  assert_event_result "live-realtime-visual" '
-        '"${{ needs.live-realtime-visual.result }}" "skipped"\n'
+        "'${{ needs.live-realtime-visual.result }}' \"skipped\"\n"
         "fi"
     ) in gate
 
@@ -397,10 +397,10 @@ def test_security_and_type_qualification_remain_blocking_after_mutation_migratio
 
     finalizer = _check_step(ci_jobs["ci-success"], "Check all jobs passed")["run"]
     assert (
-        '"pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}"'
+        "'pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}'"
         in finalizer
     )
-    assert '"security-audit|${{ needs.security-audit.result }}"' in finalizer
+    assert "'security-audit|${{ needs.security-audit.result }}'" in finalizer
     assert not any(
         "mutation" in need or "stryker" in need
         for need in ci_jobs["ci-success"]["needs"]

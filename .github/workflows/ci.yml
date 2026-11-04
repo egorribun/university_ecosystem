@@ -4708,49 +4708,49 @@ jobs:
         run: |
           set -euo pipefail
           required_results=(
-            "pre-commit-check|${{ needs.pre-commit-check.result }}"
-            "pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}"
-            "compose-validate|${{ needs.compose-validate.result }}"
-            "backend-tests|${{ needs.backend-tests.result }}"
-            "backend-type-check|${{ needs.backend-type-check.result }}"
-            "go-tests|${{ needs.go-tests.result }}"
-            "go-integration-ws-hub|${{ needs.go-integration-ws-hub.result }}"
-            "go-integration-file-processor|${{ needs.go-integration-file-processor.result }}"
-            "go-integration-gateway|${{ needs.go-integration-gateway.result }}"
-            "frontend-tests|${{ needs.frontend-tests.result }}"
-            "security-audit|${{ needs.security-audit.result }}"
-            "sbom-generate|${{ needs.sbom-generate.result }}"
-            "alembic-migrations|${{ needs.alembic-migrations.result }}"
-            "openapi-verify|${{ needs.openapi-verify.result }}"
-            "verify-runtime-reqs|${{ needs.verify-runtime-reqs.result }}"
-            "docker-security-scan|${{ needs.docker-security-scan.result }}"
-            "docker-security-scan-additional|${{ needs.docker-security-scan-additional.result }}"
-            "helm-validate|${{ needs.helm-validate.result }}"
-            "db-migration-gate|${{ needs.db-migration-gate.result }}"
-            "go-fuzz|${{ needs.go-fuzz.result }}"
-            "contract-tests|${{ needs.contract-tests.result }}"
-            "msw-mock-drift|${{ needs.msw-mock-drift.result }}"
-            "provenance-check|${{ needs.provenance-check.result }}"
-            "e2e-wasm-build|${{ needs.e2e-wasm-build.result }}"
-            "rust-ffi-asan|${{ needs.rust-ffi-asan.result }}"
-            "rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}"
-            "rust-tests|${{ needs.rust-tests.result }}"
-            "db-migration-integrity|${{ needs.db-migration-integrity.result }}"
-            "actionlint|${{ needs.actionlint.result }}"
-            "dockerfile-lint|${{ needs.dockerfile-lint.result }}"
-            "shellcheck|${{ needs.shellcheck.result }}"
-            "graphql-drift-check|${{ needs.graphql-drift-check.result }}"
-            "quality|${{ needs.quality.result }}"
-            "rust-lint|${{ needs.rust-lint.result }}"
+            'pre-commit-check|${{ needs.pre-commit-check.result }}'
+            'pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}'
+            'compose-validate|${{ needs.compose-validate.result }}'
+            'backend-tests|${{ needs.backend-tests.result }}'
+            'backend-type-check|${{ needs.backend-type-check.result }}'
+            'go-tests|${{ needs.go-tests.result }}'
+            'go-integration-ws-hub|${{ needs.go-integration-ws-hub.result }}'
+            'go-integration-file-processor|${{ needs.go-integration-file-processor.result }}'
+            'go-integration-gateway|${{ needs.go-integration-gateway.result }}'
+            'frontend-tests|${{ needs.frontend-tests.result }}'
+            'security-audit|${{ needs.security-audit.result }}'
+            'sbom-generate|${{ needs.sbom-generate.result }}'
+            'alembic-migrations|${{ needs.alembic-migrations.result }}'
+            'openapi-verify|${{ needs.openapi-verify.result }}'
+            'verify-runtime-reqs|${{ needs.verify-runtime-reqs.result }}'
+            'docker-security-scan|${{ needs.docker-security-scan.result }}'
+            'docker-security-scan-additional|${{ needs.docker-security-scan-additional.result }}'
+            'helm-validate|${{ needs.helm-validate.result }}'
+            'db-migration-gate|${{ needs.db-migration-gate.result }}'
+            'go-fuzz|${{ needs.go-fuzz.result }}'
+            'contract-tests|${{ needs.contract-tests.result }}'
+            'msw-mock-drift|${{ needs.msw-mock-drift.result }}'
+            'provenance-check|${{ needs.provenance-check.result }}'
+            'e2e-wasm-build|${{ needs.e2e-wasm-build.result }}'
+            'rust-ffi-asan|${{ needs.rust-ffi-asan.result }}'
+            'rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}'
+            'rust-tests|${{ needs.rust-tests.result }}'
+            'db-migration-integrity|${{ needs.db-migration-integrity.result }}'
+            'actionlint|${{ needs.actionlint.result }}'
+            'dockerfile-lint|${{ needs.dockerfile-lint.result }}'
+            'shellcheck|${{ needs.shellcheck.result }}'
+            'graphql-drift-check|${{ needs.graphql-drift-check.result }}'
+            'quality|${{ needs.quality.result }}'
+            'rust-lint|${{ needs.rust-lint.result }}'
             # The aggregate gate is skipped when one of its four producers is
             # unsuccessful. Use the same value exported above for the actual
             # result so an expression/context mismatch cannot manufacture a
             # second, misleading failure in this finalizer.
             "coverage-policy-gate|$COVERAGE_RESULT"
-            "quality-inventory-check|${{ needs.quality-inventory-check.result }}"
-            "kyverno-test|${{ needs.kyverno-test.result }}"
-            "caddy-emitted-log-proof|${{ needs.caddy-emitted-log-proof.result }}"
-            "windows-live-proofs|${{ needs.windows-live-proofs.result }}"
+            'quality-inventory-check|${{ needs.quality-inventory-check.result }}'
+            'kyverno-test|${{ needs.kyverno-test.result }}'
+            'caddy-emitted-log-proof|${{ needs.caddy-emitted-log-proof.result }}'
+            'windows-live-proofs|${{ needs.windows-live-proofs.result }}'
           )
 
           # Coverage is allowed to be skipped only when a direct producer
@@ -4793,15 +4793,15 @@ jobs:
           }
 
           if [[ "$EVENT_NAME" == "push" && "$EVENT_REF" == "refs/heads/main" ]]; then
-            assert_event_result "codecov-upload" "${{ needs.codecov-upload.result }}" "success"
+            assert_event_result "codecov-upload" '${{ needs.codecov-upload.result }}' "success"
           else
-            assert_event_result "codecov-upload" "${{ needs.codecov-upload.result }}" "skipped"
+            assert_event_result "codecov-upload" '${{ needs.codecov-upload.result }}' "skipped"
           fi
 
           if [[ "$EVENT_NAME" == "pull_request" && "$BASE_REF" == "main" ]]; then
-            assert_event_result "live-realtime-visual" "${{ needs.live-realtime-visual.result }}" "success"
+            assert_event_result "live-realtime-visual" '${{ needs.live-realtime-visual.result }}' "success"
           else
-            assert_event_result "live-realtime-visual" "${{ needs.live-realtime-visual.result }}" "skipped"
+            assert_event_result "live-realtime-visual" '${{ needs.live-realtime-visual.result }}' "skipped"
           fi
 
           if (( failed != 0 )); then

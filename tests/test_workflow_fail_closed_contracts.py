@@ -533,7 +533,7 @@ def test_precommit_split_preserves_every_nonmanual_hook_and_fails_closed() -> No
     assert "pre-commit-security-and-types" in ci_success["needs"]
     result_gate = _step(ci_success, "Check all jobs passed")["run"]
     assert (
-        '"pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}"'
+        "'pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}'"
         in result_gate
     )
 
@@ -550,7 +550,7 @@ def test_semgrep_security_audit_starts_independently() -> None:
     assert job["uses"] == "./.github/workflows/reusable-security-audit.yml"
     assert "security-audit" in jobs["ci-success"]["needs"]
     gate = jobs["ci-success"]["steps"][0]["run"]
-    assert '"security-audit|${{ needs.security-audit.result }}"' in gate
+    assert "'security-audit|${{ needs.security-audit.result }}'" in gate
 
 
 def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
@@ -665,15 +665,15 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert 'if [[ "$EVENT_NAME" == "pull_request" && "$BASE_REF" == "main" ]]' in gate
     assert (
         'assert_event_result "live-realtime-visual" '
-        '"${{ needs.live-realtime-visual.result }}" "success"'
+        "'${{ needs.live-realtime-visual.result }}' \"success\""
     ) in gate
     assert (
         'assert_event_result "live-realtime-visual" '
-        '"${{ needs.live-realtime-visual.result }}" "skipped"'
+        "'${{ needs.live-realtime-visual.result }}' \"skipped\""
     ) in gate
-    assert '"sbom-generate|${{ needs.sbom-generate.result }}"' in gate
-    assert '"db-migration-integrity|${{ needs.db-migration-integrity.result }}"' in gate
-    assert '"security-audit|${{ needs.security-audit.result }}"' in gate
+    assert "'sbom-generate|${{ needs.sbom-generate.result }}'" in gate
+    assert "'db-migration-integrity|${{ needs.db-migration-integrity.result }}'" in gate
+    assert "'security-audit|${{ needs.security-audit.result }}'" in gate
     assert not any(
         token in gate.lower()
         for token in ("mutation", "stryker", "schemathesis", "chaos", "cross-browser")
@@ -1681,7 +1681,7 @@ def test_matrix_trivy_images_upload_bounded_sarif_without_weakening_gate() -> No
     ci_success = workflow["jobs"]["ci-success"]
     assert job_id in ci_success["needs"]
     gate_run = _step(ci_success, "Check all jobs passed")["run"]
-    assert f'"{job_id}|${{{{ needs.{job_id}.result }}}}"' in gate_run
+    assert f"'{job_id}|${{{{ needs.{job_id}.result }}}}'" in gate_run
 
 
 def test_trivy_oci_export_precedes_helm_dependency_mutation_and_preflight(
