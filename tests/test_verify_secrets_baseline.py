@@ -908,6 +908,68 @@ def _nov4_trivy_checksum_renewal(records: list[dict[str, Any]]) -> list[dict[str
     return renewed
 
 
+def _nov4_spire_chart_pin_record() -> dict[str, Any]:
+    path = "scripts/kind/aud373_internal_mtls_proof.sh"
+    source = (Path(__file__).resolve().parents[1] / path).read_text(encoding="utf-8")
+    pins = re.findall(r'(?m)^readonly SPIRE_CHART_SHA256="([0-9a-f]{64})"$', source)
+    assert len(pins) == 1
+    assert "/spire-0.30.4/spire-0.30.4.tgz" in source
+    assert 'download_pinned "$SPIRE_CHART_URL" "$SPIRE_CHART_SHA256"' in source
+    detector_digest = hashlib.sha1(
+        pins[0].encode("ascii"), usedforsecurity=False
+    ).digest()
+    return {
+        "identity": {
+            "path": path,
+            "type": "Hex High Entropy String",
+            "hashed_secret_bytes": list(detector_digest),
+        },
+        "category": "public_integrity_digest",
+        "evidence": (
+            "Public SPIRE chart 0.30.4 archive SHA-256 pin in "
+            "scripts/kind/aud373_internal_mtls_proof.sh; current upstream release "
+            "bytes matched on 2026-11-04 UTC, without an upstream signed checksum; "
+            "the script verifies the archive before use. Identity derived using "
+            "detect-secrets 1.5.0 SHA-1; not credential material."
+        ),
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-04",
+        "expires_on": "2027-01-10",
+        "approval_status": "approved",
+    }
+
+
+def test_spire_chart_pin_matches_the_owner_approved_disposition() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = json.loads(
+        (root / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected = _nov4_spire_chart_pin_record()
+    matches = [
+        record
+        for record in policy["records"]
+        if record["identity"] == expected["identity"]
+    ]
+    assert matches == [expected]
+    identity = expected["identity"]
+    exact = verifier.FindingIdentity(
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        1,
+    )
+    for current in (verifier.date(2026, 11, 4), verifier.date(2027, 1, 10)):
+        assert verifier.validate_false_positive_dispositions(
+            _disposition_document(expected), today=current
+        ) == {exact}
+    with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(expected), today=verifier.date(2027, 1, 11)
+        )
+
+
 def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
     historical = _reviewed_pre_retirement_dispositions()
     retired = [
@@ -924,13 +986,16 @@ def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
     assert len(survivors) == 349
     assert policy == {
         **historical,
-        "records": _nov4_trivy_checksum_renewal(
-            [
-                *_nov4_trivy_ignore_policy_digest_rebind(survivors),
-                *_nov2_chart_reference_records(),
-                *_nov3_public_git_object_records(),
-            ]
-        ),
+        "records": [
+            *_nov4_trivy_checksum_renewal(
+                [
+                    *_nov4_trivy_ignore_policy_digest_rebind(survivors),
+                    *_nov2_chart_reference_records(),
+                    *_nov3_public_git_object_records(),
+                ]
+            ),
+            _nov4_spire_chart_pin_record(),
+        ],
     }, "live disposition inventory changed"
 
 
@@ -948,13 +1013,22 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
         repository_root=root, today=verifier.date(2026, 11, 4)
     )
-    assert len(validated) == 361
+    assert len(validated) == 362
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
 
 
 @pytest.mark.parametrize(
     "mutation",
-    ["reintroduced", "changed", "missing", "unrelated", "expiry", "reordered"],
+    [
+        "reintroduced",
+        "changed",
+        "missing",
+        "unrelated",
+        "expiry",
+        "reordered",
+        "chart_identity",
+        "chart_metadata",
+    ],
 )
 def test_live_disposition_retirement_refuses_other_inventory_changes(
     mutation: str,
@@ -973,6 +1047,7 @@ def test_live_disposition_retirement_refuses_other_inventory_changes(
     live["records"].extend(_nov2_chart_reference_records())
     live["records"].extend(_nov3_public_git_object_records())
     live["records"] = _nov4_trivy_checksum_renewal(live["records"])
+    live["records"].append(_nov4_spire_chart_pin_record())
     _assert_live_disposition_retirement(live)
     changed = copy.deepcopy(live)
     if mutation == "reintroduced":
@@ -991,6 +1066,10 @@ def test_live_disposition_retirement_refuses_other_inventory_changes(
         changed["records"][0]["identity"]["path"] = "tests/unreviewed_removed_source.py"
     elif mutation == "expiry":
         changed["records"][0]["expires_on"] = "2027-01-11"
+    elif mutation == "chart_identity":
+        changed["records"][-1]["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "chart_metadata":
+        changed["records"][-1]["expires_on"] = "2027-01-09"
     else:
         changed["records"][0], changed["records"][1] = (
             changed["records"][1],

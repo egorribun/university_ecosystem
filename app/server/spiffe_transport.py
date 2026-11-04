@@ -22,6 +22,7 @@ from uvicorn.protocols.http.h11_impl import H11Protocol
 from uvicorn.protocols.utils import ClientDisconnected
 from uvicorn.protocols.websockets.websockets_sansio_impl import WebSocketsSansIOProtocol
 
+from app.core.logging import get_logger
 from app.server.spiffe_identity import (
     TLSGeneration,
     WorkloadContexts,
@@ -40,6 +41,7 @@ _FAILURES = (
     x509.UnsupportedGeneralNameType,
 )
 _HEALTH_INTERVAL = 0.25
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,7 +161,7 @@ class TransportGuard:
             peer_deadline = chain_deadline(
                 [x509.load_der_x509_certificate(item) for item in verified_chain], now
             )
-            authorize_verified_leaf(certificate, self.allowed, now)
+            peer_spiffe_id = authorize_verified_leaf(certificate, self.allowed, now)
             expires = min(peer_deadline, generation.expires_at)
             approved = True
         except _FAILURES:
@@ -167,6 +169,8 @@ class TransportGuard:
         finally:
             if not approved:
                 self.reject(transport)
+        # Only the authorized SPIFFE ID is logged: no certificate, header or request data.
+        logger.info("internal_mtls_peer_authorized", peer_spiffe_id=peer_spiffe_id)
         # H11 upgrades call the WS connection_made with this same transport.
         # Replacing its record must not leave a timer referring to the old one.
         self.remove(transport)

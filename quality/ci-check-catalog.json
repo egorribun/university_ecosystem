@@ -4466,6 +4466,49 @@
       }
     },
     {
+      "path": ".github/workflows/internal-mtls-kind.yml",
+      "name": "Internal mTLS kind proof",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "pull_request",
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"charts/**\",\"k8s/spire/**\",\"services/gateway/**\",\"app/server/**\",\"scripts/kind/**\",\".github/workflows/internal-mtls-kind.yml\"]}"
+        },
+        {
+          "event": "schedule",
+          "guard": "[{\"cron\":\"17 3 * * *\"}]"
+        },
+        {
+          "event": "workflow_dispatch",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "aud373-kind-proof": {
+          "profile": "advisory",
+          "check_name_template": "AUD-373 kind SPIFFE mTLS proof",
+          "expected_timeout_minutes": 40,
+          "expected_duration_seconds": 2400,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [
+            {
+              "name_pattern": "aud373-internal-mtls-kind-diagnostics",
+              "path_pattern": "${{ runner.temp }}/aud373-diagnostics",
+              "required": false,
+              "provenance": "none"
+            }
+          ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        }
+      }
+    },
+    {
       "path": ".github/workflows/scorecard.yml",
       "name": "OpenSSF Scorecard",
       "owner": "@egorribun",

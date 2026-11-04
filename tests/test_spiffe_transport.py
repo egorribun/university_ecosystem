@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import ssl
 from datetime import timedelta
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 from cryptography.hazmat.primitives.serialization import Encoding
@@ -110,6 +110,34 @@ def test_rejects_before_protocol_dispatch(
     assert not guard.admit(transport)
     assert transport.aborted
     assert not guard.connections
+
+
+def test_admission_logs_only_the_authorized_peer_spiffe_id_once(
+    setup_guard: tuple[TransportGuard, Mock, Mock, Transport],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard, _source, _loop, transport = setup_guard
+    logger = Mock()
+    monkeypatch.setattr(transport_module, "logger", logger)
+    assert guard.start() is not None
+    assert guard.admit(transport)
+    assert logger.info.call_args_list == [
+        call("internal_mtls_peer_authorized", peer_spiffe_id=IDENTITY)
+    ]
+
+
+def test_rejected_peer_is_never_logged_as_authorized(
+    setup_guard: tuple[TransportGuard, Mock, Mock, Transport],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard, _source, _loop, transport = setup_guard
+    logger = Mock()
+    monkeypatch.setattr(transport_module, "logger", logger)
+    transport.tls.getpeercert.return_value = leaf((IDENTITY + "/other",)).public_bytes(
+        Encoding.DER
+    )
+    assert not guard.admit(transport)
+    logger.info.assert_not_called()
 
 
 def test_rotation_aborts_existing_transport_even_after_ws_upgrade(

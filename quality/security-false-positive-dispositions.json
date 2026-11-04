@@ -10386,6 +10386,40 @@
       "reviewed_on": "2026-11-02",
       "expires_on": "2027-01-10",
       "approval_status": "approved"
+    },
+    {
+      "identity": {
+        "path": "scripts/kind/aud373_internal_mtls_proof.sh",
+        "type": "Hex High Entropy String",
+        "hashed_secret_bytes": [
+          172,
+          194,
+          145,
+          115,
+          206,
+          201,
+          203,
+          157,
+          8,
+          249,
+          53,
+          199,
+          127,
+          69,
+          193,
+          208,
+          5,
+          180,
+          182,
+          221
+        ]
+      },
+      "category": "public_integrity_digest",
+      "evidence": "Public SPIRE chart 0.30.4 archive SHA-256 pin in scripts/kind/aud373_internal_mtls_proof.sh; current upstream release bytes matched on 2026-11-04 UTC, without an upstream signed checksum; the script verifies the archive before use. Identity derived using detect-secrets 1.5.0 SHA-1; not credential material.",
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-04",
+      "expires_on": "2027-01-10",
+      "approval_status": "approved"
     }
   ]
 }

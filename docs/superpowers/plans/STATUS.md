@@ -1,9 +1,19 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-11-03 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-11-04 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
 
-## Текущие инвентари сканеров — 2026-11-02
+## Инвентари сканеров — 2026-11-04 UTC
+
+Baseline **242**, отдельная policy **362**, Gitleaks **27** точных исторических
+fingerprints. Владелец отдельно одобрил ровно одну новую identity публичного
+SHA-256 пина архива SPIRE 0.30.4. Также владелец подтвердил продление двух
+прежних Trivy checksum dispositions; scope и категории не изменены. Все три
+записи действуют до 2027-01-10. Подробности и границы доказательств — в
+[ADR-047](../../adr/ADR-047-risk-based-quality-policy.md). Финальному source
+SHA по-прежнему нужны scanner и required-check receipts; GREEN не заявлен.
+
+## Предыдущий инвентарь сканеров — 2026-11-02
 
 Baseline **242**, отдельная policy **361**, Gitleaks **27** точных исторических
 fingerprints. Владелец `egorribun` 2026-11-02 одобрил ровно десять публичных

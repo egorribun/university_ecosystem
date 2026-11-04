@@ -65,3 +65,23 @@ endpoints through that permission. A narrower `nodes/pods` grant requires
 verified `KubeletFineGrainedAuthz` support on every deployed kubelet. Do not
 remove the compatibility grant or claim least-privilege completion without
 live authorization and workload-attestation proof. See [Kubelet authorization](https://kubernetes.io/docs/reference/access-authn-authz/kubelet-authn-authz/).
+
+## SPIFFE CSI driver socket path
+
+The chart mounts the SPIRE Workload API into pods through the `csi.spiffe.io` driver.
+The driver is not part of these manifests. Operators must install `spiffe-csi-driver`
+with `agentSocketPath=/run/spire/sockets/agent.sock`, which matches the agent
+`socket_path` in `spire-agent.yaml` and its `/run/spire/sockets` hostPath. The upstream
+default (`/run/spire/agent-sockets/spire-agent.sock`) points at a different directory, so
+pods get no SVID when the value is left unset. The kind proof sets the same value at
+install time (`scripts/kind/aud373_internal_mtls_proof.sh`, `AGENT_SOCKET_PATH`);
+`tests/test_spire_csi_driver_contract.py` asserts that both agree.
+
+```sh
+helm upgrade --install spire-csi <spiffe/spire 0.30.4 chart dir> --namespace spire \
+  --set spire-server.enabled=false --set spire-agent.enabled=false \
+  --set spiffe-oidc-discovery-provider.enabled=false --set spire-identity-exchange.enabled=false \
+  --set spike-keeper.enabled=false --set spike-nexus.enabled=false \
+  --set spike-pilot.enabled=false --set tornjak-frontend.enabled=false \
+  --set spiffe-csi-driver.agentSocketPath=/run/spire/sockets/agent.sock
+```

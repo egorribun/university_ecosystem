@@ -1883,3 +1883,18 @@ baseline remains at 242 identities and all 78 required context/app pairs remain
 unchanged. No new finding, baseline entry, category change, wildcard, scanner
 exclusion or bypass is approved. This policy decision does not establish a
 passing scan or hosted check for any source SHA.
+
+## Addendum 2026-11-04 UTC: SPIRE chart archive pin
+
+In a separate decision, the owner approved exactly one
+`public_integrity_digest` disposition for the `Hex High Entropy String` at the
+SPIRE chart archive checksum in `scripts/kind/aud373_internal_mtls_proof.sh`.
+The official SPIRE 0.30.4 release archive bytes fetched on 2026-11-04 UTC
+matched that local SHA-256 pin; the proof verifies downloaded bytes against it
+before use. The upstream release is mutable and this does not claim a signed
+upstream checksum. The detect-secrets identity derives from the exact pin. The
+record is owned by `egorribun`, reviewed on 2026-11-04 UTC and expires on
+2027-01-10. This adds one identity to the 361-record inventory, for a total of
+362. The 242-identity baseline, 27 Gitleaks fingerprints and 78 required
+context/app pairs remain unchanged. These decisions do not establish passing
+scans, tests or hosted checks for any source SHA.
