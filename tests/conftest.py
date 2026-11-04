@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 import types
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
@@ -1141,6 +1141,29 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+def _logical_cpu_budget() -> int:
+    """Return the logical CPUs this process may schedule on (at least one)."""
+
+    # os.process_cpu_count() is affinity-aware on Python 3.13+; the fallbacks
+    # cover older interpreters and platforms without it.
+    count = None
+    process_cpu_count = getattr(os, "process_cpu_count", None)
+    if process_cpu_count is not None:
+        count = process_cpu_count()
+    if not count and hasattr(os, "sched_getaffinity"):
+        count = len(os.sched_getaffinity(0))
+    if not count:
+        count = os.cpu_count()
+    return max(1, count or 1)
+
+
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
+    # pytest-xdist sizes ``-n auto`` from psutil's physical-core count, which
+    # halves the worker count on SMT hosts such as the 4-vCPU hosted runner.
+    # Size it from logical CPUs instead so the runner's real parallelism is used.
+    return _logical_cpu_budget()
+
+
 def pytest_configure(config: pytest.Config) -> None:
     global _require_query_capture, _required_query_log_failed
     global _worker_capture_failed, _worker_captured_query
@@ -1228,6 +1251,31 @@ def _load_historical_test_durations(path: Path) -> tuple[dict[str, float], float
     return durations, float(raw_default)
 
 
+def _planned_file_durations(
+    file_to_items: Mapping[str, Sequence[object]], durations: Mapping[str, float]
+) -> list[tuple[str, float]]:
+    """Estimate each collected file's cost for greedy shard planning.
+
+    The history stores measured seconds per file, not per-item counts, so the
+    per-item cost comes from the files that have both a measurement and a
+    collection in this run.  An unknown file is then priced at its own item
+    count times that per-item cost.  The historical ``default_duration_seconds``
+    is a per-file median and must not be multiplied by item counts.
+    """
+
+    known = [path for path in file_to_items if path in durations]
+    known_items = sum(len(file_to_items[path]) for path in known)
+    known_seconds = sum(durations[path] for path in known)
+    per_item = known_seconds / known_items if known_items else 1.0
+    return [
+        (
+            path,
+            durations[path] if path in durations else len(file_items) * per_item,
+        )
+        for path, file_items in file_to_items.items()
+    ]
+
+
 def pytest_collection_modifyitems(config, items):
     shard_id = config.getoption("--shard-id")
     num_shards = config.getoption("--num-shards")
@@ -1259,17 +1307,13 @@ def pytest_collection_modifyitems(config, items):
         # 2. Load durations
         durations_path = PROJECT_ROOT / "quality" / "test-durations.json"
         durations = {}
-        default_dur = 1.0
         if durations_path.exists():
-            durations, default_dur = _load_historical_test_durations(durations_path)
+            durations, _default_per_file = _load_historical_test_durations(
+                durations_path
+            )
 
         # 3. Estimate duration of each file
-        file_durations = []
-        for file_path, file_items in file_to_items.items():
-            file_dur = durations.get(file_path, None)
-            if file_dur is None:
-                file_dur = len(file_items) * default_dur
-            file_durations.append((file_path, file_dur))
+        file_durations = _planned_file_durations(file_to_items, durations)
 
         # Sort files descending by duration for greedy sharding
         file_durations.sort(key=lambda x: x[1], reverse=True)
