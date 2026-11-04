@@ -61,14 +61,64 @@ def test_modern_minimatch_override_preserves_legacy_api_boundaries() -> None:
     modern_version = overrides["minimatch@>=10"]
     assert tuple(int(part) for part in modern_version.split(".")) >= (11, 0, 2)
     assert packages["node_modules/minimatch"]["version"] == modern_version
-    for consumer in ("eslint-plugin-react", "eslint-plugin-jsx-a11y", "filelist"):
+    for consumer in ("eslint-plugin-react", "eslint-plugin-jsx-a11y"):
         prefix = f"node_modules/{consumer}"
         requested = packages[prefix]["dependencies"]["minimatch"]
         installed = packages[f"{prefix}/node_modules/minimatch"]["version"]
         assert installed.split(".")[0] == requested.lstrip("^").split(".")[0]
+    assert not any(
+        f"/node_modules/{removed}/" in f"/{package_path}/"
+        for package_path in packages
+        for removed in ("jake", "filelist")
+    ), "obsolete Jake/filelist dependency chain must remain absent"
     matcher = "@isaacs/nonrecursive-glob-match"
     assert overrides[matcher] == "1.0.2"
     assert packages[f"node_modules/{matcher}"]["version"] == overrides[matcher]
+
+
+@pytest.mark.parametrize(
+    "package_path",
+    [
+        "node_modules/jake",
+        "node_modules/filelist",
+        "node_modules/ejs/node_modules/jake",
+        "node_modules/jake/node_modules/filelist",
+        "node_modules/filelist/node_modules/minimatch",
+    ],
+)
+def test_removed_jake_filelist_chain_cannot_return(
+    package_path: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    source = REPOSITORY_ROOT / "frontend"
+    (frontend / "package.json").write_bytes((source / "package.json").read_bytes())
+    lock = json.loads((source / "package-lock.json").read_text(encoding="utf-8"))
+    lock["packages"][package_path] = {"version": "1.0.0"}
+    (frontend / "package-lock.json").write_text(json.dumps(lock), encoding="utf-8")
+    monkeypatch.setitem(globals(), "REPOSITORY_ROOT", tmp_path)
+
+    with pytest.raises(AssertionError, match="obsolete Jake/filelist"):
+        test_modern_minimatch_override_preserves_legacy_api_boundaries()
+
+
+@pytest.mark.parametrize("consumer", ["eslint-plugin-react", "eslint-plugin-jsx-a11y"])
+def test_legacy_eslint_minimatch_major_cannot_be_replaced(
+    consumer: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    source = REPOSITORY_ROOT / "frontend"
+    (frontend / "package.json").write_bytes((source / "package.json").read_bytes())
+    lock = json.loads((source / "package-lock.json").read_text(encoding="utf-8"))
+    lock["packages"][f"node_modules/{consumer}/node_modules/minimatch"]["version"] = (
+        lock["packages"]["node_modules/minimatch"]["version"]
+    )
+    (frontend / "package-lock.json").write_text(json.dumps(lock), encoding="utf-8")
+    monkeypatch.setitem(globals(), "REPOSITORY_ROOT", tmp_path)
+
+    with pytest.raises(AssertionError):
+        test_modern_minimatch_override_preserves_legacy_api_boundaries()
 
 
 def test_advisory_allowlist_entry_without_expiry_fails_closed() -> None:
