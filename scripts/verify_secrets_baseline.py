@@ -6299,12 +6299,15 @@ def validate_false_positive_dispositions(
                 f"{artifact}: immutable policy-prefix digest exceeds proposed expiry"
             )
 
-        if (
-            exact_source_identity in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
-            and expires_on > date(2026, 11, 22)
+        if exact_source_identity in _TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES and (
+            expires_on > date(2027, 1, 10)
+            or (
+                expires_on > date(2026, 11, 22)
+                and (owner != "egorribun" or reviewed_on != date(2026, 11, 4))
+            )
         ):
             raise BaselineArtifactError(
-                f"{artifact}: Trivy Kyverno checksum exceeds approved expiry"
+                f"{artifact}: Trivy Kyverno checksum renewal exceeds approval"
             )
 
         if (

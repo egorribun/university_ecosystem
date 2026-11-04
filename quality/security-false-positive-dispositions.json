@@ -8711,8 +8711,8 @@
       "category": "public_integrity_digest",
       "evidence": "Public integrity checksum, not credential material; public SHA-256 checksum of the pinned Kyverno fixture bytes; exact source reference scripts/quality/validate_trivy_kyverno_fixture.py:18.",
       "owner": "egorribun",
-      "reviewed_on": "2026-10-23",
-      "expires_on": "2026-11-22",
+      "reviewed_on": "2026-11-04",
+      "expires_on": "2027-01-10",
       "approval_status": "approved"
     },
     {
@@ -8727,8 +8727,8 @@
       "category": "public_integrity_digest",
       "evidence": "Public integrity checksum, not credential material; public SHA-256 checksum of the complete candidate Trivy ignore policy; exact source reference scripts/quality/validate_trivy_kyverno_fixture.py:19.",
       "owner": "egorribun",
-      "reviewed_on": "2026-10-23",
-      "expires_on": "2026-11-22",
+      "reviewed_on": "2026-11-04",
+      "expires_on": "2027-01-10",
       "approval_status": "approved"
     },
     {

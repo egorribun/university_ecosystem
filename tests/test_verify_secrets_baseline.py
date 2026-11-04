@@ -881,6 +881,33 @@ def _nov4_current_view(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return _nov4_trivy_ignore_policy_digest_rebind(records)
 
 
+def _nov4_trivy_checksum_renewal(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    renewed = copy.deepcopy(records)
+    rows = [
+        row
+        for row in renewed
+        if row["identity"]["path"] == _NOV4_TRIVY_IGNORE_POLICY_PATH
+    ]
+    assert {
+        (
+            row["identity"]["path"],
+            row["identity"]["type"],
+            tuple(row["identity"]["hashed_secret_bytes"]),
+        )
+        for row in rows
+    } == verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES
+    assert len(rows) == 2
+    for row in rows:
+        assert row["category"] == "public_integrity_digest"
+        assert row["owner"] == "egorribun"
+        assert row["reviewed_on"] == "2026-10-23"
+        assert row["expires_on"] == "2026-11-22"
+        assert row["approval_status"] == "approved"
+        row["reviewed_on"] = "2026-11-04"
+        row["expires_on"] = "2027-01-10"
+    return renewed
+
+
 def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
     historical = _reviewed_pre_retirement_dispositions()
     retired = [
@@ -897,11 +924,13 @@ def _assert_live_disposition_retirement(policy: dict[str, Any]) -> None:
     assert len(survivors) == 349
     assert policy == {
         **historical,
-        "records": [
-            *_nov4_trivy_ignore_policy_digest_rebind(survivors),
-            *_nov2_chart_reference_records(),
-            *_nov3_public_git_object_records(),
-        ],
+        "records": _nov4_trivy_checksum_renewal(
+            [
+                *_nov4_trivy_ignore_policy_digest_rebind(survivors),
+                *_nov2_chart_reference_records(),
+                *_nov3_public_git_object_records(),
+            ]
+        ),
     }, "live disposition inventory changed"
 
 
@@ -917,7 +946,7 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     for path in _RETIRED_DISPOSITION_PATHS:
         assert not (root / path).exists(), "retired approval source is live again"
     validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
-        repository_root=root, today=verifier.date(2026, 11, 2)
+        repository_root=root, today=verifier.date(2026, 11, 4)
     )
     assert len(validated) == 361
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
@@ -943,6 +972,7 @@ def test_live_disposition_retirement_refuses_other_inventory_changes(
     }
     live["records"].extend(_nov2_chart_reference_records())
     live["records"].extend(_nov3_public_git_object_records())
+    live["records"] = _nov4_trivy_checksum_renewal(live["records"])
     _assert_live_disposition_retirement(live)
     changed = copy.deepcopy(live)
     if mutation == "reintroduced":
@@ -3574,6 +3604,78 @@ def test_trivy_candidate_stays_exact_in_public_integrity_category() -> None:
                 verifier.validate_false_positive_dispositions(
                     candidate, today=verifier.date(2026, 10, 23)
                 )
+
+
+@pytest.mark.parametrize(
+    "identity", sorted(verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES)
+)
+def test_trivy_checksum_renewal_is_valid_through_approved_expiry(
+    identity: tuple[str, str, tuple[int, ...]],
+) -> None:
+    policy = _owner_review_candidate_policy()
+    policy["records"] = _nov4_current_view(policy["records"])
+    record = _owner_review_record(policy, identity)
+    record.update(reviewed_on="2026-11-04", expires_on="2027-01-10")
+    expected = {
+        verifier.FindingIdentity(identity[0], identity[1], bytes(identity[2]).hex(), 1)
+    }
+    for current in (verifier.date(2026, 11, 4), verifier.date(2027, 1, 10)):
+        assert (
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(record), today=current
+            )
+            == expected
+        )
+    with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2027, 1, 11)
+        )
+    with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 11, 3)
+        )
+
+
+@pytest.mark.parametrize(
+    "identity", sorted(verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES)
+)
+def test_trivy_historical_approval_keeps_its_original_expiry(
+    identity: tuple[str, str, tuple[int, ...]],
+) -> None:
+    policy = _owner_review_candidate_policy()
+    policy["records"] = _nov4_current_view(policy["records"])
+    record = _owner_review_record(policy, identity)
+    assert record["expires_on"] == "2026-11-22"
+    assert verifier.validate_false_positive_dispositions(
+        _disposition_document(record), today=verifier.date(2026, 11, 22)
+    )
+    with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 11, 23)
+        )
+
+
+@pytest.mark.parametrize(
+    "identity", sorted(verifier._TRIVY_KYVERNO_PUBLIC_CHECKSUM_IDENTITIES)
+)
+@pytest.mark.parametrize("mutation", ["expiry", "review", "owner"])
+def test_trivy_checksum_renewal_rejects_unapproved_metadata(
+    identity: tuple[str, str, tuple[int, ...]], mutation: str
+) -> None:
+    policy = _owner_review_candidate_policy()
+    policy["records"] = _nov4_current_view(policy["records"])
+    record = _owner_review_record(policy, identity)
+    record.update(reviewed_on="2026-11-04", expires_on="2027-01-10")
+    if mutation == "expiry":
+        record["expires_on"] = "2027-01-11"
+    elif mutation == "review":
+        record["reviewed_on"] = "2026-11-03"
+    else:
+        record["owner"] = "Another Reviewer"
+    with pytest.raises(verifier.BaselineArtifactError, match="Trivy Kyverno"):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 11, 4)
+        )
 
 
 def test_aud253_fixture_digests_are_bound_to_embedded_powershell_literals() -> None:

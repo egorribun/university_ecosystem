@@ -1856,8 +1856,30 @@ Reasons: the SPIRE rules (KSV-0009, KSV-0010, KSV-0012, KSV-0023, KSV-0047) cove
 
 Expiry: the owner decision of 2026-11-04 sets expiry 2027-01-10 for every path-scoped KSV entry. KSV-0008 and KSV-0024 (host-access fixture) were moved from 2026-11-22 to 2027-01-10 on the owner's direct instruction. `scripts/quality/validate_trivy_kyverno_fixture.py` now pins `EXPECTED_IGNORE_EXPIRY = 2027-01-10` and raises `MAX_IGNORE_DAYS` from 30 to 90 so the live-window check accepts that date. This is an expiry extension for those two fixture entries; it is recorded here as the owner decision.
 
-Policy digest: `scripts/quality/validate_trivy_kyverno_fixture.py` pins `EXPECTED_IGNORE_POLICY_SHA256 = 6f245662816c8e99877d2d8b36567b6bfcffaeb479b4b3310ef5cb519499bf02` (previously `38cc6ca3...`). The 1:1 detect-secrets digest-identity rebind (same path, type and category, total count unchanged) is applied in `scripts/verify_secrets_baseline.py`, `quality/security-false-positive-dispositions.json` and the live NEW constant of `tests/test_verify_secrets_baseline.py`. The historical `4eef1ee1...` snapshot constant is unchanged. The disposition record keeps its existing `expires_on` of 2026-11-22.
+Policy digest: `scripts/quality/validate_trivy_kyverno_fixture.py` pins `EXPECTED_IGNORE_POLICY_SHA256 = 6f245662816c8e99877d2d8b36567b6bfcffaeb479b4b3310ef5cb519499bf02` (previously `38cc6ca3...`). The 1:1 detect-secrets digest-identity rebind (same path, type and category, total count unchanged) is applied in `scripts/verify_secrets_baseline.py`, `quality/security-false-positive-dispositions.json` and the live NEW constant of `tests/test_verify_secrets_baseline.py`. The historical `4eef1ee1...` snapshot constant is unchanged. At this decision, the disposition record retained its existing `expires_on` of 2026-11-22.
 
 Proof (local, Trivy 0.75.0 in Docker, container names `ue-r7-w3-*`):
 - Repository with the new policy, CRITICAL,HIGH, CI-equivalent scope: 0 unignored findings outside the local-only `frontend/node_modules` tree (the same single DS-0002 finding that the previous policy also reports there).
 - Probe (copies outside the scoped paths, same rules, with the new policy): `k8s/spire-elsewhere/spire-agent-probe.yaml` reports KSV-0009 and KSV-0010; `k8s/kyverno/tests/probe-outside/flagd-probe.yaml` reports KSV-0014 and KSV-0118. Positive controls at the scoped paths (`k8s/spire/spire-agent.yaml`, `restrict-image-registries/flagd-pod.yaml`) report nothing.
+
+## Addendum 2026-11-04 UTC: two Trivy validator checksum dispositions
+
+The owner separately confirmed renewing exactly two detect-secrets dispositions
+in `quality/security-false-positive-dispositions.json`: the public fixture
+checksum and the complete Trivy ignore-policy checksum in
+`scripts/quality/validate_trivy_kyverno_fixture.py`. Both retain their exact
+path, `Hex High Entropy String` detector type, digest identity,
+`public_integrity_digest` category, evidence and owner. Their earlier expiry was
+2026-11-22; after the source re-review on 2026-11-04 UTC, their `reviewed_on` is
+2026-11-04 and their new `expires_on` is 2027-01-10. The disposition verifier
+accepts the expiry date itself and fails closed on the following day.
+
+The re-review checked that the fixture and complete policy bytes match the
+validator's respective pinned SHA-256 constants and that each constant matches
+its existing detect-secrets identity. This decision is separate from the KSV
+misconfiguration exceptions above; those and their fixture preflight keep their
+own expiry semantics. The disposition inventory remains at 361 identities, the
+baseline remains at 242 identities and all 78 required context/app pairs remain
+unchanged. No new finding, baseline entry, category change, wildcard, scanner
+exclusion or bypass is approved. This policy decision does not establish a
+passing scan or hosted check for any source SHA.
