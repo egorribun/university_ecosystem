@@ -461,70 +461,33 @@ def test_empty_load_phases_are_never_logged_as_fully_successful(
     assert "No recovery requests" in caplog.text
 
 
-def test_dry_run_keeps_recovery_assertion_live_and_applies_no_fault(
+def test_dry_run_reports_recovery_not_evaluated_without_traffic_or_faults(
     chaos_harness: _ChaosHarness,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    # AUD-346: a dry-run must not disable the recovery assertion. With no
-    # recovery traffic the run fails instead of reporting a green skip.
+    # AUD-346: a dry-run never probes the target, applies no fault and never
+    # records recovery as a pass. Its exit code reflects configuration checks
+    # only. Coverage: tests/test_chaos_dry_run_gate.py (bad-input failures,
+    # real manifests, no-probe subprocess run, in-process no-probe guard).
     chaos_harness.orchestrator.dry_run = True
-    chaos_harness.recovery_successes = 0
-    monkeypatch.setattr(
-        chaos_harness.orchestrator,
-        "_send_http_request",
-        lambda *_args, **_kw: (0, 0.0, "unreachable"),
+    chaos_harness.orchestrator.manifest_path = (
+        Path(__file__).resolve().parents[1] / "k8s" / "chaos" / "redis-chaos.yaml"
     )
-    caplog.set_level(logging.INFO, logger="chaos_loadtest")
 
-    assert asyncio.run(chaos_harness.orchestrator.execute()) == 1
-    assert chaos_harness.commands == []
-    assert "Data loss         : NOT VERIFIED" in caplog.text
-    assert "Recovery availability assertion failed." in caplog.text
-    assert "Recovery availability assertion skipped" not in caplog.text
-    assert "Zero data loss verified" not in caplog.text
-    assert "System health endpoint responded successfully" not in caplog.text
+    def forbidden_probe(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("dry-run must not probe the target")
 
-
-def test_dry_run_recovery_assertion_passes_only_with_recovery_traffic(
-    chaos_harness: _ChaosHarness,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    chaos_harness.orchestrator.dry_run = True
-    chaos_harness.recovery_successes = 10
     monkeypatch.setattr(
-        chaos_harness.orchestrator,
-        "_send_http_request",
-        lambda *_args, **_kw: (200, 1.0, None),
+        chaos_harness.orchestrator, "_send_http_request", forbidden_probe
     )
     caplog.set_level(logging.INFO, logger="chaos_loadtest")
 
     assert asyncio.run(chaos_harness.orchestrator.execute()) == 0
     assert chaos_harness.commands == []
-    assert (
-        "Recovery availability assertion passed (dry-run: no fault was injected)."
-        in caplog.text
-    )
-    assert "skipped" not in caplog.text
-
-
-def test_dry_run_without_recovery_requests_fails_the_assertion(
-    chaos_harness: _ChaosHarness,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    chaos_harness.orchestrator.dry_run = True
-    chaos_harness.request_counts["Phase 6: Recovery Verification"] = 0
-    monkeypatch.setattr(
-        chaos_harness.orchestrator,
-        "_send_http_request",
-        lambda *_args, **_kw: (200, 1.0, None),
-    )
-    caplog.set_level(logging.INFO, logger="chaos_loadtest")
-
-    assert asyncio.run(chaos_harness.orchestrator.execute()) == 1
-    assert "ASSERTION FAILED: No recovery requests were recorded." in caplog.text
+    assert "NOT EVALUATED (dry-run)" in caplog.text
+    assert "Recovery availability assertion passed" not in caplog.text
+    assert "ASSERTION FAILED" not in caplog.text
 
 
 @dataclass

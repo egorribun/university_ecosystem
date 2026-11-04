@@ -148,7 +148,7 @@ allow-dependencies-licenses:
   - "pkg:golang/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
   - "pkg:golang/go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
   - "pkg:golang/go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-  # howett.net/plist v1.0.1 (services/caddy/go.mod) LICENSE is BSD-2-Clause-Views plus the Go BSD-3-Clause clause; the action reports an unmapped LicenseRef. Name-only PURL: the verifier's exact caddy row (PLIST_LICENSE) bounds it. ADR-047 note 2026-11-03, approved by the owner.
+  # howett.net/plist v1.0.1 (services/caddy/go.mod) LICENSE is BSD-2-Clause-Views plus the Go BSD-3-Clause clause; the action reports the composite `BSD-2-Clause-Views AND BSD-3-Clause` (run 41828936659). Name-only PURL: the verifier's exact caddy row (PLIST_LICENSE) bounds it. ADR-047 note 2026-11-03, approved by the owner.
   - "pkg:golang/howett.net/plist"
   - "pkg:golang/github.com/spiffe/go-spiffe/v2"
   - "pkg:golang/github.com/university-ecosystem/services/pkg/spiffe"

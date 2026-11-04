@@ -38,6 +38,8 @@ _DNS_SUBDOMAIN = re.compile(
 _KUBECTL_TIMEOUT = 30.0
 _CLEANUP_SUBPROCESS_BUDGET = 24.0
 _MAX_FAULTS = 16
+_RECOVERY_POLL_BUDGET_SEC = 15.0
+_DRY_RUN_NOT_EVALUATED = "NOT EVALUATED (dry-run)"
 
 
 class _TerminationRequested(BaseException):
@@ -87,6 +89,38 @@ class PhaseMetrics:
         idx = math.ceil(0.95 * len(sorted_lats)) - 1
         idx = max(0, min(idx, len(sorted_lats) - 1))
         return sorted_lats[idx]
+
+
+def _validate_chaos_identity(
+    document: dict[str, Any], namespace_scope: str | None
+) -> tuple[str, str, str]:
+    """Return (kind, namespace, name) for a supported Chaos Mesh resource.
+
+    ``namespace_scope`` is the live context namespace; ``None`` (offline dry-run)
+    skips the equality check because no cluster context is available.
+    """
+    kind = document.get("kind")
+    metadata = document.get("metadata")
+    if (
+        document.get("apiVersion") != _CHAOS_API_VERSION
+        or kind not in _CHAOS_RESOURCES
+        or not isinstance(metadata, dict)
+    ):
+        raise ValueError("Only supported Chaos Mesh resources may be created")
+    name = metadata.get("name")
+    namespace = metadata.get("namespace") or namespace_scope or "default"
+    if (
+        not isinstance(name, str)
+        or len(name) > 253
+        or _DNS_SUBDOMAIN.fullmatch(name) is None
+        or not isinstance(namespace, str)
+        or len(namespace) > 63
+        or _DNS_LABEL.fullmatch(namespace) is None
+        or (namespace_scope is not None and namespace != namespace_scope)
+        or "generateName" in metadata
+    ):
+        raise ValueError("Chaos resource has invalid identity")
+    return str(kind), namespace, name
 
 
 class ChaosLoadTestOrchestrator:
@@ -157,17 +191,21 @@ class ChaosLoadTestOrchestrator:
             datefmt="%Y-%m-%d %H:%M:%S",
         )
 
-    def _send_http_request(
-        self, url: str, timeout: float = 5.0
-    ) -> tuple[int, float, str | None]:
-        start_time = time.monotonic()
+    @staticmethod
+    def _is_supported_target_url(url: str) -> bool:
         parsed = urlsplit(url)
-        if (
+        return not (
             parsed.scheme not in {"http", "https"}
             or not parsed.hostname
             or parsed.username is not None
             or parsed.password is not None
-        ):
+        )
+
+    def _send_http_request(
+        self, url: str, timeout: float = 5.0
+    ) -> tuple[int, float, str | None]:
+        start_time = time.monotonic()
+        if not self._is_supported_target_url(url):
             return 0, 0.0, f"Unsupported URL scheme: {url}"
 
         req = Request(url, headers={"User-Agent": "ChaosLoadTest/1.0"})  # noqa: S310
@@ -255,6 +293,9 @@ class ChaosLoadTestOrchestrator:
                     )
                     return False
 
+        if self.dry_run:
+            return self._validate_dry_run_config()
+
         status, lat, err = self._send_http_request(self.target_url, timeout=3.0)
         logger.info(
             "Target URL health check [%s]: status=%d, latency=%.2fms",
@@ -269,8 +310,57 @@ class ChaosLoadTestOrchestrator:
             )
         return True
 
+    def _validate_dry_run_config(self) -> bool:
+        # Dry-run checks only what needs no cluster and no network. The target
+        # URL is validated but never probed, so whatever listens there is ignored.
+        if self.duration <= 0:
+            logger.error("Duration must be a positive number of seconds.")
+            return False
+        if not self._is_supported_target_url(self.target_url):
+            # Never echo the rejected URL: it may carry userinfo credentials.
+            logger.error("Target URL must be an http(s) URL without credentials.")
+            return False
+        logger.info("[DRY-RUN] Target URL is well-formed and is not probed.")
+        return self._validate_manifest_offline()
+
+    def _validate_manifest_offline(self) -> bool:
+        # Imported lazily so live operator runs keep their dependency footprint.
+        import yaml
+
+        try:
+            text = self.manifest_path.read_text(encoding="utf-8")
+            documents = [doc for doc in yaml.safe_load_all(text) if doc is not None]
+        except (OSError, UnicodeDecodeError, yaml.YAMLError) as err:
+            logger.error("Manifest is not readable YAML (%s)", type(err).__name__)
+            return False
+        if not documents or len(documents) > _MAX_FAULTS:
+            logger.error("Manifest must contain 1 to %d chaos resources.", _MAX_FAULTS)
+            return False
+        identities: set[tuple[str, str, str]] = set()
+        try:
+            for document in documents:
+                if not isinstance(document, dict):
+                    raise ValueError("Manifest document is not a mapping")
+                identity = _validate_chaos_identity(document, namespace_scope=None)
+                if identity in identities:
+                    raise ValueError("Duplicate chaos resource identity")
+                identities.add(identity)
+        except ValueError as err:
+            logger.error("Manifest validation failed: %s", err)
+            return False
+        logger.info(
+            "[DRY-RUN] Manifest validated offline: %d chaos resource(s).",
+            len(documents),
+        )
+        return True
+
     async def phase2_baseline_load(self) -> PhaseMetrics:
         logger.info("=== Phase 2/7: Baseline Load Injection ===")
+        if self.dry_run:
+            logger.info(
+                "[DRY-RUN] Baseline load %s; no traffic sent.", _DRY_RUN_NOT_EVALUATED
+            )
+            return PhaseMetrics(phase_name="Phase 2: Baseline")
         baseline_dur = min(5.0, max(2.0, self.duration / 3.0))
         metrics = await self._run_http_load("Phase 2: Baseline", baseline_dur)
         logger.info(
@@ -392,27 +482,10 @@ class ChaosLoadTestOrchestrator:
         identities: set[tuple[str, str, str]] = set()
         prepared: list[tuple[_FaultIdentity, dict[str, Any]]] = []
         for document in documents:
-            kind = document.get("kind")
-            metadata = document.get("metadata")
-            if (
-                document.get("apiVersion") != _CHAOS_API_VERSION
-                or kind not in _CHAOS_RESOURCES
-                or not isinstance(metadata, dict)
-            ):
-                raise ValueError("Only supported Chaos Mesh resources may be created")
-            name = metadata.get("name")
-            namespace = metadata.get("namespace") or default_namespace
-            if (
-                not isinstance(name, str)
-                or len(name) > 253
-                or _DNS_SUBDOMAIN.fullmatch(name) is None
-                or not isinstance(namespace, str)
-                or len(namespace) > 63
-                or _DNS_LABEL.fullmatch(namespace) is None
-                or namespace != default_namespace
-                or "generateName" in metadata
-            ):
-                raise ValueError("Chaos resource has invalid identity")
+            kind, namespace, name = _validate_chaos_identity(
+                document, namespace_scope=default_namespace
+            )
+            metadata = document["metadata"]
             identity = (kind, namespace, name)
             if identity in identities:
                 raise ValueError("Duplicate chaos resource identity")
@@ -497,6 +570,12 @@ class ChaosLoadTestOrchestrator:
             "=== Phase 4/7: Monitor System Behaviour Under Fault (%ds) ===",
             int(self.duration),
         )
+        if self.dry_run:
+            logger.info(
+                "[DRY-RUN] Fault monitoring %s; no traffic sent.",
+                _DRY_RUN_NOT_EVALUATED,
+            )
+            return PhaseMetrics(phase_name="Phase 4: Fault Injection")
         metrics = await self._run_http_load("Phase 4: Fault Injection", self.duration)
         logger.info(
             "Fault phase completed: %d requests, %s success rate, avg latency: %.2fms",
@@ -575,23 +654,25 @@ class ChaosLoadTestOrchestrator:
 
     async def phase6_verify_recovery(self) -> PhaseMetrics:
         logger.info("=== Phase 6/7: Check Post-Fault Health & Load ===")
+        if self.dry_run:
+            logger.info(
+                "[DRY-RUN] Recovery verification %s; no traffic sent.",
+                _DRY_RUN_NOT_EVALUATED,
+            )
+            return PhaseMetrics(phase_name="Phase 6: Recovery Verification")
         poll_start = time.monotonic()
         recovered = False
-        max_wait = 15.0
+        max_wait = _RECOVERY_POLL_BUDGET_SEC
 
         while (time.monotonic() - poll_start) < max_wait:
             status, _lat, _err = self._send_http_request(self.target_url, timeout=2.0)
             if status in (200, 201, 202, 204):
                 recovered = True
                 break
-            if self.dry_run:
-                break
             await asyncio.sleep(1.0)
 
         if recovered:
             logger.info("System health endpoint responded successfully post-fault.")
-        elif self.dry_run:
-            logger.info("[DRY-RUN] Post-fault health response not required.")
         else:
             logger.warning("System recovery check timed out after %.1fs.", max_wait)
 
@@ -604,8 +685,35 @@ class ChaosLoadTestOrchestrator:
         self.results["phase6"] = metrics
         return metrics
 
+    def _report_dry_run(self) -> bool:
+        # AUD-346: a dry-run cannot evaluate recovery. It reports that status
+        # explicitly and never records it as a pass. The return value covers only
+        # the checks a dry-run performs (phase 1 configuration and manifest checks).
+        summary_lines = [
+            "\n" + "=" * 65,
+            "               CHAOS LOAD TEST SUMMARY REPORT               ",
+            "=" * 65,
+            f" Manifest Target   : {self.manifest_path}",
+            f" Target URL        : {self.target_url} (not probed)",
+            f" Duration          : {self.duration}s",
+            " Mode              : DRY-RUN",
+            "-" * 65,
+            f" Recovery assertion: {_DRY_RUN_NOT_EVALUATED}",
+            " Fault injection   : NOT APPLIED",
+            " Data loss         : NOT VERIFIED",
+            "=" * 65,
+        ]
+        logger.info("\n".join(summary_lines))
+        logger.info(
+            "Recovery availability assertion %s; configuration checks passed.",
+            _DRY_RUN_NOT_EVALUATED,
+        )
+        return True
+
     def phase7_assert_and_report(self) -> bool:
         logger.info("=== Phase 7/7: Assert Recovery Availability & Summary Report ===")
+        if self.dry_run:
+            return self._report_dry_run()
         p2 = self.results.get("phase2", PhaseMetrics("Phase 2"))
         p4 = self.results.get("phase4", PhaseMetrics("Phase 4"))
         p6 = self.results.get("phase6", PhaseMetrics("Phase 6"))

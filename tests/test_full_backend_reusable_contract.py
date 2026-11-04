@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -42,47 +43,66 @@ _REVIEWED_WORKFLOW_PIN_REPLACEMENTS = (
 )
 
 
-# Exact AUD-346 local target addition; all other nightly bytes remain frozen.
-_REVIEWED_CHAOS_TARGET = (
-    b"      # AUD-346: dry-runs apply no faults, but the recovery assertion stays live.\n"
-    b"      # The default target is served locally so the assertion has real traffic\n"
-    b"      # to evaluate. A live execution receipt still requires a cluster.\n"
-    b"      - name: Start local dry-run health target\n"
-    b"        shell: bash\n"
-    b"        run: |\n"
-    b"          set -euo pipefail\n"
-    b'          target_dir="$RUNNER_TEMP/chaos-dry-run-target"\n'
-    b'          mkdir -p "$target_dir"\n'
-    b"          printf 'ok\\n' > \"$target_dir/health\"\n"
-    b'          python3 -m http.server 8000 --bind 127.0.0.1 --directory "$target_dir" \\\n'
-    b'            >"$RUNNER_TEMP/chaos-dry-run-target.log" 2>&1 &\n'
-    b"          for _attempt in {1..15}; do\n"
-    b"            if curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null; then\n"
-    b'              echo "Dry-run health target is serving /health."\n'
-    b"              exit 0\n"
-    b"            fi\n"
-    b"            sleep 1\n"
-    b"          done\n"
-    b'          echo "::error::Dry-run health target did not start." >&2\n'
-    b"          exit 1\n"
-    b"\n"
+# AUD-346 / AUD-384 nightly hunks since the frozen v4 baseline. Each entry maps
+# the reviewed current bytes back to the frozen v4 bytes; the count is exact and
+# the fixture itself stays untouched.
+_REVIEWED_NIGHTLY_HUNKS = (
+    (
+        """      # AUD-346: dry-runs apply no faults and send no target traffic. The
+      # recovery assertion is reported as NOT EVALUATED (never a pass); the
+      # dry-run still validates configuration and every manifest offline.
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Run chaos loadtest dry-runs
+        run: |
+          uv_python() { uv run --no-project --isolated --with pyyaml==6.0.3 python "$@"; }
+          uv_python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/redis-chaos.yaml --duration 5 --verbose
+          uv_python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/nats-chaos.yaml --duration 5
+          uv_python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/gateway-backend-disconnect.yaml --duration 5
+
+""",
+        """      - name: Run chaos loadtest dry-runs
+        run: |
+          python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/redis-chaos.yaml --duration 5 --verbose
+          python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/nats-chaos.yaml --duration 5
+          python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/gateway-backend-disconnect.yaml --duration 5
+
+""",
+    ),
+    (
+        "      - name: Verify trusted main source\n        id: trusted_source\n",
+        "      - name: Verify trusted main source\n",
+    ),
+    (
+        """      # Runs even when the issue step failed, so a failed issue update cannot
+      # silently suppress Slack; trusted-source failure still blocks both.
+      - name: Detect optional Slack notification configuration
+        id: slack_config
+        if: ${{ !cancelled() && steps.trusted_source.outcome == 'success' }}
+""",
+        """      - name: Detect optional Slack notification configuration
+        id: slack_config
+""",
+    ),
+    (
+        "        if: ${{ !cancelled() && steps.trusted_source.outcome == 'success' && steps.slack_config.outputs.configured == 'true' }}\n",
+        "        if: ${{ steps.slack_config.outputs.configured == 'true' }}\n",
+    ),
+    (
+        "curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --request POST",
+        "curl --fail-with-body --silent --show-error --request POST",
+    ),
 )
 
 
 def _normalize_reviewed_workflow_pins(name: str, source: bytes) -> bytes:
     if name == "nightly-full-gate.yml":
-        assert source.count(_REVIEWED_CHAOS_TARGET) == 1, (
-            "reviewed chaos target changed"
-        )
-        assert (
-            source.count(
-                _REVIEWED_CHAOS_TARGET + b"      - name: Run chaos loadtest dry-runs\n"
+        for current, frozen in _REVIEWED_NIGHTLY_HUNKS:
+            assert source.count(current.encode("utf-8")) == 1, (
+                "reviewed nightly hunk changed"
             )
-            == 1
-        ), "reviewed chaos target moved"
-        source = source.replace(_REVIEWED_CHAOS_TARGET, b"", 1)
-    else:
-        assert _REVIEWED_CHAOS_TARGET not in source, "chaos target in wrong workflow"
+            source = source.replace(current.encode("utf-8"), frozen.encode("utf-8"), 1)
     counts = _REVIEWED_WORKFLOW_PIN_COUNTS[name]
     for (current, frozen), count in zip(
         _REVIEWED_WORKFLOW_PIN_REPLACEMENTS, counts, strict=True
@@ -1597,43 +1617,87 @@ def test_reviewed_action_pin_refresh_accepts_no_other_source_change(
         assert hashlib.sha256(normalized).hexdigest() == expected
 
 
-@pytest.mark.parametrize(
-    "mutation", ["missing", "duplicate", "port", "readiness", "comment"]
-)
-def test_reviewed_chaos_target_accepts_only_exact_source(mutation: str) -> None:
+@pytest.mark.parametrize("index", range(len(_REVIEWED_NIGHTLY_HUNKS)))
+def test_reviewed_nightly_hunks_accept_only_exact_current_bytes(index: int) -> None:
+    current, _frozen = _REVIEWED_NIGHTLY_HUNKS[index]
     source = NIGHTLY.read_bytes()
-    assert source.count(_REVIEWED_CHAOS_TARGET) == 1
-    if mutation == "missing":
-        changed = source.replace(_REVIEWED_CHAOS_TARGET, b"", 1)
-    elif mutation == "duplicate":
-        changed = source + _REVIEWED_CHAOS_TARGET
-    elif mutation == "port":
-        changed = source.replace(
-            _REVIEWED_CHAOS_TARGET,
-            _REVIEWED_CHAOS_TARGET.replace(b"http.server 8000", b"http.server 8001"),
-            1,
+    assert source.count(current.encode("utf-8")) == 1
+    drifted = source.replace(current.encode("utf-8"), b"# drifted reviewed hunk\n", 1)
+    with pytest.raises(AssertionError, match="reviewed nightly hunk changed"):
+        _normalize_reviewed_workflow_pins(NIGHTLY.name, drifted)
+
+
+# AUD-346: the chaos dry-run gate must never be satisfied by a fake target.
+# These checks parse the job and assert behaviour instead of workflow bytes.
+_CHAOS_SCRIPT_MARKER = "run_chaos_loadtest.py"
+
+
+def _live_chaos_job() -> dict[str, object]:
+    return _jobs(yaml.safe_load(NIGHTLY.read_text(encoding="utf-8")))[
+        "chaos-loadtest-orchestrator"
+    ]
+
+
+def _chaos_dry_run_violations(job: dict[str, object]) -> list[str]:
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        return ["job has no steps"]
+    violations: list[str] = []
+    invocations = 0
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        name = str(step.get("name", ""))
+        run = str(step.get("run", ""))
+        if "http.server" in run or "dry-run health target" in name.lower():
+            violations.append(f"local fake target step: {name}")
+        for line in run.splitlines():
+            if _CHAOS_SCRIPT_MARKER not in line:
+                continue
+            invocations += 1
+            if "--dry-run" not in line:
+                violations.append(f"live invocation in dry-run gate: {line.strip()}")
+            if "--target-url" in line or "8000" in line:
+                violations.append(f"dry-run target override: {line.strip()}")
+    if invocations == 0:
+        violations.append("no chaos dry-run invocation")
+    return violations
+
+
+def test_nightly_chaos_dry_run_gate_has_no_fake_target() -> None:
+    job = _live_chaos_job()
+
+    assert _chaos_dry_run_violations(job) == []
+
+
+@pytest.mark.parametrize(
+    "mutation", ["fake_target", "live", "target_override", "absent"]
+)
+def test_chaos_dry_run_gate_checker_rejects_fake_or_live_gates(mutation: str) -> None:
+    job = copy.deepcopy(_live_chaos_job())
+    steps = job["steps"]
+    assert isinstance(steps, list)
+    dry_index = next(
+        index
+        for index, step in enumerate(steps)
+        if isinstance(step, dict) and _CHAOS_SCRIPT_MARKER in str(step.get("run", ""))
+    )
+    if mutation == "fake_target":
+        steps.insert(
+            0,
+            {
+                "name": "Start local dry-run health target",
+                "run": "python3 -m http.server 8000 --bind 127.0.0.1",
+            },
         )
-    elif mutation == "readiness":
-        changed = source.replace(
-            _REVIEWED_CHAOS_TARGET,
-            _REVIEWED_CHAOS_TARGET.replace(b"curl --fail --silent", b"curl --silent"),
-            1,
+    elif mutation == "live":
+        steps[dry_index]["run"] = steps[dry_index]["run"].replace("--dry-run ", "", 1)
+    elif mutation == "target_override":
+        steps[dry_index]["run"] += (
+            "\npython scripts/chaos/run_chaos_loadtest.py --dry-run "
+            "--target-url http://127.0.0.1:8000/health\n"
         )
     else:
-        changed = source.replace(b"# AUD-346: dry-runs", b"# changed: dry-runs", 1)
-    with pytest.raises(AssertionError, match="reviewed chaos target changed"):
-        _normalize_reviewed_workflow_pins(NIGHTLY.name, changed)
+        del steps[dry_index]
 
-
-@pytest.mark.parametrize("name", [MANUAL.name, FULL_BACKEND.name])
-def test_reviewed_chaos_target_rejects_other_workflow(name: str) -> None:
-    source = (WORKFLOWS / name).read_bytes() + _REVIEWED_CHAOS_TARGET
-    with pytest.raises(AssertionError, match="chaos target in wrong workflow"):
-        _normalize_reviewed_workflow_pins(name, source)
-
-
-def test_reviewed_chaos_target_cannot_move_away_from_dry_runs() -> None:
-    source = NIGHTLY.read_bytes()
-    changed = source.replace(_REVIEWED_CHAOS_TARGET, b"", 1) + _REVIEWED_CHAOS_TARGET
-    with pytest.raises(AssertionError, match="reviewed chaos target moved"):
-        _normalize_reviewed_workflow_pins(NIGHTLY.name, changed)
+    assert _chaos_dry_run_violations(job) != []

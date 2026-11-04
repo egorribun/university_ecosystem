@@ -72,20 +72,21 @@ def test_slsa_attestation_verification_retries_boundedly_and_fails_closed() -> N
 # AUD-346 ---------------------------------------------------------------------
 
 
-def test_nightly_chaos_dry_run_serves_a_health_target_before_asserting() -> None:
+def test_nightly_chaos_dry_run_probes_no_target_and_serves_none() -> None:
     job = _load_workflow("nightly-full-gate.yml")["jobs"]["chaos-loadtest-orchestrator"]
     names = [step.get("name") for step in job["steps"]]
-    start = _step(job, "Start local dry-run health target")
-    dry_run = _step(job, "Run chaos loadtest dry-runs")
+    runs = [str(step.get("run", "")) for step in job["steps"]]
 
-    assert names.index("Start local dry-run health target") < names.index(
-        "Run chaos loadtest dry-runs"
-    )
-    assert "continue-on-error" not in start
+    assert not any("health target" in str(name).lower() for name in names)
+    assert not any("http.server" in run for run in runs)
+    assert not any("8000" in run or "127.0.0.1:8000" in run for run in runs)
+    dry_run = _step(job, "Run chaos loadtest dry-runs")
     assert "continue-on-error" not in dry_run
-    assert "http://127.0.0.1:8000/health" in start["run"]
-    assert "::error::Dry-run health target did not start." in start["run"]
-    assert "--dry-run" in dry_run["run"]
+    invocations = [
+        line for line in dry_run["run"].splitlines() if "run_chaos_loadtest.py" in line
+    ]
+    assert invocations and all("--dry-run" in line for line in invocations)
+    assert all("--target-url" not in line for line in invocations)
 
 
 # AUD-384 ---------------------------------------------------------------------
@@ -105,8 +106,13 @@ def test_slack_notification_configuration_precedes_output_guard() -> None:
     assert 'if [[ -n "$SLACK_WEBHOOK_URL" ]]; then' in detect["run"]
     assert 'echo "configured=true" >> "$GITHUB_OUTPUT"' in detect["run"]
     assert 'echo "configured=false" >> "$GITHUB_OUTPUT"' in detect["run"]
-    assert send["if"] == "${{ steps.slack_config.outputs.configured == 'true' }}"
-    assert "if" not in detect
+    assert send["if"] == (
+        "${{ !cancelled() && steps.trusted_source.outcome == 'success' "
+        "&& steps.slack_config.outputs.configured == 'true' }}"
+    )
+    assert detect["if"] == (
+        "${{ !cancelled() && steps.trusted_source.outcome == 'success' }}"
+    )
     assert "continue-on-error" not in detect
 
 
@@ -114,6 +120,7 @@ def test_slack_notification_retains_trusted_main_and_failure_admission() -> None
     job = _load_workflow("nightly-full-gate.yml")["jobs"]["notify-failure"]
     verify = _step(job, "Verify trusted main source")
     detect = _step(job, "Detect optional Slack notification configuration")
+    assert verify["id"] == "trusted_source"
 
     assert job["if"] == (
         "${{ github.ref == 'refs/heads/main' && always() "
@@ -133,7 +140,10 @@ def test_configured_slack_delivery_remains_fail_closed() -> None:
     assert send["env"]["SLACK_WEBHOOK_URL"] == "${{ secrets.SLACK_WEBHOOK_URL }}"
     assert "continue-on-error" not in job
     assert "continue-on-error" not in send
-    assert "curl --fail-with-body --silent --show-error --request POST" in send["run"]
+    assert (
+        "curl --fail-with-body --silent --show-error --connect-timeout 10 "
+        "--max-time 30 --request POST"
+    ) in send["run"]
     assert '"$SLACK_WEBHOOK_URL"' in send["run"]
     assert "|| true" not in send["run"]
 

@@ -4,6 +4,7 @@ import copy
 import importlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -342,9 +343,11 @@ class CaddyReportTests(unittest.TestCase):
         step = next(s for s in steps if s["name"] == "Scan isolated Caddy module")
         with tempfile.TemporaryDirectory() as directory:
             temp = Path(directory)
-            scanner = temp / "govulncheck"
-            scanner.write_text(
-                "#!/usr/bin/env python3\nimport json, os, sys\n"
+            # The double is a POSIX launcher that re-execs the current interpreter,
+            # so it runs under bash on Linux and Git Bash on Windows alike.
+            scanner_py = temp / "govulncheck_double.py"
+            scanner_py.write_text(
+                "import json, os, sys\n"
                 'assert os.environ["GOWORK"] == "off"\n'
                 'assert os.environ["GOTOOLCHAIN"] == "local"\n'
                 'assert os.environ["GOFLAGS"] == "-mod=readonly"\n'
@@ -352,20 +355,43 @@ class CaddyReportTests(unittest.TestCase):
                 'assert sys.argv[1:] == ["-C", "services/caddy", "-format=json", '
                 '"-mode=source", "-scan=symbol", "-tags=nobadger,nomysql,nopgx", "./..."]\n'
                 'print(os.environ["FAKE_REPORT"])\n'
-                'sys.exit(int(os.environ["FAKE_STATUS"]))\n'
+                'sys.exit(int(os.environ["FAKE_STATUS"]))\n',
+                encoding="utf-8",
+            )
+            interpreter = Path(sys.executable).as_posix()
+            scanner = temp / "govulncheck"
+            scanner.write_text(
+                f"#!/bin/sh\nexec '{interpreter}' '{scanner_py.as_posix()}' \"$@\"\n",
+                encoding="utf-8",
+                newline="\n",
             )
             scanner.chmod(0o700)
+            # The step's report parser is invoked as `python3`; bind that name to
+            # the interpreter running this test (the Windows Store alias is not one).
+            python3 = temp / "python3"
+            python3.write_text(
+                f"#!/bin/sh\nexec '{interpreter}' \"$@\"\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            python3.chmod(0o700)
+            bash = shutil.which("bash")
+            if bash is None:
+                self.fail(
+                    "bash is required to execute the reviewed Caddy scan step; "
+                    "install bash (Git Bash on Windows) and retry"
+                )
             for status, expected in ((0, 0), (1, 1), (124, 1)):
                 with self.subTest(status=status):
                     env = {
-                        "PATH": f"{temp}:{os.environ['PATH']}",
+                        "PATH": f"{temp}{os.pathsep}{os.environ['PATH']}",
                         "RUNNER_TEMP": directory,
                         "FAKE_STATUS": str(status),
                         "FAKE_REPORT": "\n".join(map(json.dumps, messages())),
                     }
                     env.update(step["env"])
-                    result = subprocess.run(  # Execute reviewed workflow with a local scanner double.
-                        ["/bin/bash", "-e"],
+                    result = subprocess.run(  # noqa: S603  # fixed argv: resolved bash runs the reviewed workflow step
+                        [bash, "-e"],
                         input=step["run"],
                         cwd=ROOT,
                         env=env,
