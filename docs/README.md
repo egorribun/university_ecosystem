@@ -40,16 +40,21 @@ handoffs are intentionally not part of the canonical index.
   current roadmap, product acceptance for `v1.0.0`, retained work checkpoints
   and the certification backlog for `v1.1`.
 - [ADR-047: risk-based quality policy](adr/ADR-047-risk-based-quality-policy.md)
-  — Tier 0 keeps 100% coverage, with the owner-approved finite no-decrease
-  baseline for exactly 131 unchanged migrations through 2026-11-13. Mutation
-  testing is a nightly signal after Q1; other coverage floors remain until Q3.
+  — Tier 0 requires 100% for every applicable coverage metric; all migrations
+  require 100% line, statement, branch and function coverage. The 131-file
+  migration exception was retired on 2026-11-02. Full mutation testing runs in
+  nightly/manual lanes outside the MVP release gate; other coverage floors
+  remain until Q3.
 - [ADR-051: MVP migration baseline squash](adr/ADR-051-mvp-migration-baseline-squash.md)
   — the 143 historical Alembic revisions are replaced by one irreversible
   baseline, accepted 2026-11-02; pre-squash databases must be recreated.
 - [ADR-052: Backend SPIFFE identity at the HTTP transport boundary](adr/ADR-052-backend-spiffe-transport.md)
-  — proposed, not enabled; not evidence of closure of AUD-373.
+  — proposed and unaccepted. The transport exists in source; the Helm chart
+  defaults it off and requires it in production. SPIRE issuance/rotation proof
+  and AUD-373 acceptance remain outstanding.
 - [ADR-053: Operator-scoped single-organization MVP authentication](adr/ADR-053-operator-scoped-mvp-authentication.md)
-  — scope accepted 2026-11-02; implementation and hosted acceptance pending.
+  — scope accepted 2026-11-02 and implemented in source; full source-bound
+  hosted acceptance remains pending.
 - [Active MVP closure status](superpowers/plans/STATUS.md) — the single current
   operational status. Historical handoffs are not continuation instructions.
 - [Quality dashboard](testing/dashboard.md)

@@ -65,13 +65,12 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
 
 ## Переход качества: решение и фактический CI
 
-- Tier 0 сохраняет 100% всех применимых coverage-метрик. Единственное конечное
-  исключение — решение владельца от 2026-10-14 UTC о source-bound baseline ровно
-  для 131 неизменённых файлов Alembic из alembic/versions, привязанной к base
-  ac74e915 и истекающей 2026-11-13. Per-file
-  evidence и provenance сохранены в quality contract. Новые, изменённые или
-  unmatched migrations, включая затронутые PR миграции, и все остальные Tier 0
-  файлы сохраняют 100% всех метрик.
+- Tier 0 сохраняет 100% по каждой применимой coverage-метрике. Все миграции,
+  включая `alembic/versions/202611020000_mvp_baseline.py`, требуют 100% line,
+  statement, branch и function coverage. Владелец отменил исключение для 131
+  прежнего migration-файла 2026-11-02; действующих исключений по покрытию
+  миграций нет. Историческая fixture сохраняет negative controls без
+  восстановления исключения.
 - До Q3 все прочие нынешние per-component floors из quality/quality-contract.json
   и текущий 100% patch coverage остаются обязательными; unsupported метрики не
   становятся требованиями. Ratchet и 90% non-Tier-0 patch coverage остаются
@@ -100,6 +99,11 @@ RPO/RTO, глобальный mutation score и три сопоставимых 
   пороге до Q2; они не дают основания подменять результат или считать регрессию
   реализованной. Equivalent exclusions — только доказанные, с owner/evidence и
   сроком до 90 дней; quarantine и ручной `Killed` запрещены.
+
+Следующие датированные решения за 14–16 октября и приведённые в них количества
+описывают состояние на дату каждого решения. Текущая политика и инвентарь
+зафиксированы в [AGENTS.md](../../../AGENTS.md), ADR-047 и quality contracts.
+
 - Решение владельца 2026-10-14 UTC: утверждены ровно 17 дополнительных
   exact-match detect-secrets dispositions: 15 findings в
   quality/quality-contract.json и 2 в
@@ -956,7 +960,7 @@ ownership вместе с проверками:
 | Направление | Сохранённая область и обязательная будущая приёмка |
 | --- | --- |
 | Q2/mutation debt | Nightly regression >1 п.п., dashboard, полный canonical inventory и разбор слабых поведенческих тестов; рабочие цели ADR-047, без ручного Killed. |
-| Q3/coverage | Доверенная main baseline, no-decrease ratchet и 90% non-Tier-0 patch coverage; Tier 0 остаётся 100%, кроме конечного baseline для ровно 131 неизменённого migration-файла выше. Новые/изменённые/unmatched migrations остаются 100%; Q3 остаётся v1.1. |
+| Q3/coverage | Доверенная main baseline, no-decrease ratchet и 90% non-Tier-0 patch coverage; Tier 0 остаётся на 100% по каждой применимой метрике, все миграции — на 100% по четырём метрикам выше без исключения. Q3 остаётся v1.1. |
 | O1–O8 | Три comparable полных green runs, population/source provenance, timing/cost/critical path и operability report; начатые инструменты сохраняются. |
 | Release certification/kind | Опубликованные шесть GHCR digests, их полный kind deploy, TLS/routes/policies, Kyverno/ExternalSecrets/HPA, failure recovery/rollback; подписи/SBOM/provenance уже сохраняются в MVP producer. |
 | Storage/DR/observability | RPO24h/RTO30m, согласованный paired restore по документированному набору, реальные targets/logs/traces, dashboards/alerts; MVP one-time restore не исключает DB/S3 consistency. |

@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted scope by the owner on 2026-11-02. Implementation and hosted acceptance
-remain pending; this document is not evidence of a deployed or verified fix.
+Scope accepted by the owner on 2026-11-02 and implemented in source. The full
+source-bound hosted acceptance below remains pending; this document is not
+evidence of a deployed or verified fix.
 
 ## Context
 

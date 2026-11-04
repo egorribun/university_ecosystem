@@ -2,8 +2,10 @@
 
 ## Status
 
-Proposed. Not accepted, not enabled, and not evidence of closure of AUD-373.
-The number must be rechecked against the destination branch before publication.
+Proposed and not accepted. The transport and its client integrations exist in
+source. The Helm chart defaults internal HTTP mTLS off, while production chart
+rendering requires it. The required SPIRE issuance and rotation proof remains
+outstanding; neither the source nor the chart requirement closes AUD-373.
 
 ## Context
 
@@ -20,8 +22,10 @@ We use the real `spiffe==0.3.2` SDK in each Gunicorn worker, created after fork.
 A bounded initial Workload API fetch must succeed before accepting HTTP. We read
 `X509Source.get_x509_context()` for coherent SVID and trust-bundle snapshots;
 we do not use deprecated separate properties or a fabricated SDK facade.
-We reject whitespace/control characters before the0.3.2 identity parser, whose
-trailing-newline defect is fixed in0.4.0 (not yet cooldown-eligible).
+We reject whitespace/control characters before the 0.3.2 identity parser, whose
+trailing-newline defect is fixed in 0.4.0. That version was not yet
+cooldown-eligible when this proposal was recorded on 2026-11-02, and remains
+outside the currently pinned dependency range.
 Only the expected backend identity and its own trust-domain bundle are accepted.
 Federated bundles are not pooled into the local-domain trust store.
 
@@ -53,11 +57,12 @@ bundle authorities, not only leaf expiry. Expired unused local bundle authoritie
 are rejected conservatively; SPIRE must remove them during rollover.
 Enabled transport requires public verified-chain access (Python >=3.13); the
 canonical runtime remains Python 3.14 and package metadata is not narrowed.
-Terminal SDK closure is additionally polled every250ms for idle connections;
+Terminal SDK closure is additionally polled every 250ms for idle connections;
 every inbound dispatch checks the source directly. Already-authorized application
 transactions are not rolled back by connection teardown.
-The production profile eventually requires this flag, but we do not enable it
-until the complete Go/backend chain and the proof below have passed.
+The production Helm profile requires this flag, while the chart default and
+staging overlay leave it off. The complete Go/backend chain and the proof below
+must pass before acceptance or enablement.
 
 ## Validation required before acceptance or enablement
 
@@ -69,7 +74,8 @@ worker restart, CA overlap followed by old-root removal, and rejected stale
 connections. Include missing/invalid update, unavailable agent at startup,
 reconnection, expiry, no-SNI clients and TLS 1.3 retry/resumption negative controls.
 Static generated certificates and mocked SDK snapshots cannot replace this proof.
-No proof has been run for this proposal.
+No completed source-bound SPIRE issuance and rotation proof is recorded for
+acceptance of this proposal.
 
 We retain all existing hooks, 78 required contexts, coverage floors and scanner
 policies. Lock resolution with pinned uv, warnings-as-errors, strict typing,
@@ -83,7 +89,7 @@ waiver is introduced. Classification is not evidence that those floors pass.
 
 We add a worker-local gRPC watcher and a TLS transport adapter. This avoids a
 spoofable header boundary, but its fork, rotation and connection-lifetime
-semantics require careful tests. The source draft recomputes the public-material
+semantics require careful tests. The implementation recomputes the public-material
 fingerprint on each snapshot read; throughput and memory are unmeasured. A future
 optimization may cache updates only if callback failure remains fail-closed.
 We do not raise the existing memory limits.
