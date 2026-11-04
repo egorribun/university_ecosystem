@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react"
+import { renderToStaticMarkup } from "react-dom/server"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const { mediaMock } = vi.hoisted(() => ({ mediaMock: vi.fn() }))
@@ -208,6 +209,31 @@ Inline ---
     expect(body?.querySelector("svg, math, maction, custom-active")).not.toBeInTheDocument()
     expect(body?.innerHTML).not.toMatch(/xlink:href|javascript:/i)
     expect(body?.querySelector("strong")).toHaveTextContent("editorial")
+  })
+
+  it.each([
+    ["with a DOM parser", true],
+    ["without a DOM parser", false],
+  ])("renders encoded article payloads as text during server rendering %s", (_label, hasParser) => {
+    const PageParser = DOMParser
+    vi.stubGlobal("document", undefined)
+    vi.stubGlobal("window", undefined)
+    if (!hasParser) vi.stubGlobal("DOMParser", undefined)
+    let markup: string
+    try {
+      markup = renderToStaticMarkup(
+        <NewsDetailBody content={"# Notice\n\n&lt;img src=x onerror=alert(1)&gt;"} />
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
+
+    const page = new PageParser().parseFromString(markup, "text/html")
+    const body = page.querySelector(".news-article-body")
+    expect(body).not.toBeNull()
+    expect(body?.querySelector("img, script")).toBeNull()
+    expect(body?.textContent).toContain("img src=x onerror=alert(1)")
+    if (hasParser) expect(body?.textContent).toContain("<img src=x onerror=alert(1)>")
   })
 
   it("renders nothing in the body for empty content without throwing", () => {

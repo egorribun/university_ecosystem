@@ -79,17 +79,17 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
   const headings = useArticleHeadings(content)
   const showToc = headings.length >= 3
 
-  const html = useMemo(() => {
+  const { html, textOnly } = useMemo(() => {
     if (hasMarkdownSyntax(content)) {
       const raw = articleMarked.parse(content) as string
-      return sanitizeArticleHtml(raw)
+      return { html: sanitizeArticleHtml(raw), textOnly: typeof document === "undefined" }
     }
 
-    return renderPlainText(content)
+    return { html: renderPlainText(content), textOnly: false }
   }, [content])
 
-  // Every branch is sanitized: Markdown passes through sanitizeArticleHtml;
-  // legacy text is HTML-escaped before tags are constructed.
+  // The server's Markdown fallback may contain decoded HTML entities and is
+  // rendered as text below. Browser Markdown is sanitized; legacy text escaped.
   // prettier-ignore
   const articleBody = <div className="news-article-body text-body leading-relaxed text-(--text-secondary)" dangerouslySetInnerHTML={{ __html: html }} /> // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
 
@@ -113,7 +113,13 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
           </div>
         )}
 
-        {articleBody}
+        {textOnly ? (
+          <div className="news-article-body text-body leading-relaxed text-(--text-secondary)">
+            {html}
+          </div>
+        ) : (
+          articleBody
+        )}
       </div>
     </section>
   )
