@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import ts from "typescript"
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
 import {
   ASSERTION_ROOTS,
   collectFunctionBodies,
@@ -246,13 +246,21 @@ describe("census on temporary repositories", () => {
 })
 
 describe("AUD-428 TypeScript test result census", () => {
+  // One whole-repository parse is shared by both assertions. It takes about
+  // 30 s on a coverage-instrumented CI shard, so the hook gets its own budget
+  // instead of re-parsing every source inside each 20 s test.
+  const WHOLE_REPO_CENSUS_TIMEOUT_MS = 180_000
+  let result: ReturnType<ReturnType<typeof createAssertionCensus>["run"]>
+
+  beforeAll(() => {
+    result = createAssertionCensus(FRONTEND_ROOT).run()
+  }, WHOLE_REPO_CENSUS_TIMEOUT_MS)
+
   it("finds the frontend test sources", () => {
-    const result = createAssertionCensus(FRONTEND_ROOT).run()
     expect(result.files).toBeGreaterThan(500)
   })
 
   it("has no unasserted test block in frontend test sources", () => {
-    const result = createAssertionCensus(FRONTEND_ROOT).run()
     expect(result.flagged).toStrictEqual([])
   })
 })
