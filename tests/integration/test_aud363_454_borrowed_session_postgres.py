@@ -1,7 +1,8 @@
 """Owned PostgreSQL proof for borrowed WebSocket authorization sessions.
 
 Run only against the dedicated disposable database and restricted role
-created by the private launcher after the resource coordinator grants a slot.
+created by the private launcher after the resource coordinator grants a slot,
+or by the isolated PostgreSQL service owned by the CI job.
 """
 
 from __future__ import annotations
@@ -43,15 +44,18 @@ async def owned_postgres() -> AsyncIterator[SimpleNamespace]:
         url.drivername != "postgresql+asyncpg"
         or url.host != "127.0.0.1"
         or url.port is None
+        or not 1 <= url.port <= 65535
         or url.port == 5432
         or url.database != "audit_ws_borrowed"
         or url.username != "audit_ws_reader"
+        or bool(url.query)
     ):
         pytest.fail("AUD-363 disposable PostgreSQL identity does not match")
 
     schema = "aud363_ws_" + uuid.uuid4().hex
     bootstrap = create_async_engine(url, pool_size=1, max_overflow=0)
     engine = None
+    schema_created = False
     try:
         async with bootstrap.begin() as connection:
             role = (
@@ -61,9 +65,14 @@ async def owned_postgres() -> AsyncIterator[SimpleNamespace]:
                     )
                 )
             ).one()
-            assert tuple(role) == ("audit_ws_borrowed", "audit_ws_reader", False, False)
+            if tuple(role) != ("audit_ws_borrowed", "audit_ws_reader", False, False):
+                pytest.fail(
+                    "AUD-363 disposable PostgreSQL server identity does not match"
+                )
             await connection.execute(text(f'CREATE SCHEMA "{schema}"'))
 
+        # A successful transaction commit is what grants cleanup ownership.
+        schema_created = True
         engine = create_async_engine(
             url,
             pool_size=3,
@@ -137,15 +146,18 @@ async def owned_postgres() -> AsyncIterator[SimpleNamespace]:
             chat_id=chat_id,
         )
     finally:
-        if engine is not None:
-            await engine.dispose()
         try:
-            async with bootstrap.begin() as connection:
-                await connection.execute(
-                    text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
-                )
+            if engine is not None:
+                await engine.dispose()
         finally:
-            await bootstrap.dispose()
+            try:
+                if schema_created:
+                    async with bootstrap.begin() as connection:
+                        await connection.execute(
+                            text(f'DROP SCHEMA "{schema}" CASCADE')
+                        )
+            finally:
+                await bootstrap.dispose()
 
 
 def _revocation_store(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -9300,6 +9300,37 @@ _AUD426_447_PROOF_STEPS = (
 )
 
 
+# Exact insertions for the separately owned reviewed-byte binding.
+_AUD363_SERVICE = (
+    b"            aud363:\n"
+    b"                # Dedicated runner-owned PostgreSQL; PGDATA uses only tmpfs.\n"
+    b"                image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d\n"
+    b"                env:\n"
+    b"                    POSTGRES_USER: aud363_admin\n"
+    b"                    POSTGRES_PASSWORD: test\n"
+    b"                    POSTGRES_DB: postgres\n"
+    b"                options: >-\n"
+    b"                    --memory 768m\n"
+    b"                    --memory-swap 768m\n"
+    b"                    --tmpfs /var/lib/postgresql/data:rw,size=268435456\n"
+    b'                    --health-cmd "pg_isready -U aud363_admin -d postgres"\n'
+    b"                    --health-interval 10s\n"
+    b"                    --health-timeout 5s\n"
+    b"                    --health-retries 5\n"
+    b"                ports:\n"
+    b'                    - "127.0.0.1:15432:5432"\n'
+    b"\n"
+)
+_AUD363_STEP = (
+    b"            - name: Verify borrowed-session PostgreSQL proofs (AUD-363 and AUD-454)\n"
+    b"              timeout-minutes: 5\n"
+    b"              env:\n"
+    b"                  AUD363_POSTGRES_CONTAINER_ID: ${{ job.services.aud363.id }}\n"
+    b"              run: uv run --frozen --no-sync python scripts/quality/run_aud363_borrowed_postgres.py\n"
+    b"\n"
+)
+
+
 def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
     original = _pre_squash_source_bytes(path)
     if path != ".github/workflows/reusable-backend-tests.yml":
@@ -9390,6 +9421,19 @@ def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
     reviewed = reviewed.replace(
         proof_anchor, b"".join(_AUD426_447_PROOF_STEPS) + proof_anchor
     )
+    service_anchor = b"                    - 5432:5432\n            redis:\n"
+    assert reviewed.count(service_anchor) == 1, (
+        "reviewed PostgreSQL service anchor changed"
+    )
+    reviewed = reviewed.replace(
+        service_anchor,
+        b"                    - 5432:5432\n"
+        + _AUD363_SERVICE
+        + b"            redis:\n",
+    )
+    step_anchor = b"            - name: Wait for PostgreSQL\n"
+    assert reviewed.count(step_anchor) == 1, "reviewed PostgreSQL step anchor changed"
+    reviewed = reviewed.replace(step_anchor, _AUD363_STEP + step_anchor)
     unit_args = b"                  $pytestArgs = @($env:TEST_PATTERN)\n"
     assert reviewed.count(unit_args) == 1
     return reviewed.replace(
@@ -10029,3 +10073,40 @@ def test_nov2_removed_backend_secret_reference_is_not_approved() -> None:
         verifier.validate_false_positive_dispositions(
             _disposition_document(record), today=verifier.date(2026, 11, 2)
         )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing-service",
+        "missing-step",
+        "changed-port",
+        "changed-command",
+        "duplicate-service",
+        "duplicate-step",
+        "unrelated",
+    ],
+)
+def test_live_aud363_binding_refuses_other_changes(mutation: str) -> None:
+    path = ".github/workflows/reusable-backend-tests.yml"
+    expected = _reviewed_live_scanner_source_bytes(path)
+    assert expected.count(_AUD363_SERVICE) == expected.count(_AUD363_STEP) == 1
+    _assert_live_scanner_source_bytes(path, expected)
+    if mutation == "missing-service":
+        invalid = expected.replace(_AUD363_SERVICE, b"", 1)
+    elif mutation == "missing-step":
+        invalid = expected.replace(_AUD363_STEP, b"", 1)
+    elif mutation == "changed-port":
+        invalid = expected.replace(b"127.0.0.1:15432:5432", b"127.0.0.1:15433:5432", 1)
+    elif mutation == "changed-command":
+        invalid = expected.replace(
+            b"run_aud363_borrowed_postgres.py", b"unexpected.py", 1
+        )
+    elif mutation == "duplicate-service":
+        invalid = expected.replace(_AUD363_SERVICE, _AUD363_SERVICE * 2, 1)
+    elif mutation == "duplicate-step":
+        invalid = expected.replace(_AUD363_STEP, _AUD363_STEP * 2, 1)
+    else:
+        invalid = expected + b"# unrelated workflow change\n"
+    with pytest.raises(AssertionError, match="exact reviewed bytes"):
+        _assert_live_scanner_source_bytes(path, invalid)

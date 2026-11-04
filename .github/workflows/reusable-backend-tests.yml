@@ -453,6 +453,24 @@ jobs:
                     --health-retries 5
                 ports:
                     - 5432:5432
+            aud363:
+                # Dedicated runner-owned PostgreSQL; PGDATA uses only tmpfs.
+                image: pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d
+                env:
+                    POSTGRES_USER: aud363_admin
+                    POSTGRES_PASSWORD: test
+                    POSTGRES_DB: postgres
+                options: >-
+                    --memory 768m
+                    --memory-swap 768m
+                    --tmpfs /var/lib/postgresql/data:rw,size=268435456
+                    --health-cmd "pg_isready -U aud363_admin -d postgres"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+                ports:
+                    - "127.0.0.1:15432:5432"
+
             redis:
                 image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
                 ports:
@@ -500,6 +518,12 @@ jobs:
               shell: pwsh
               run: |
                   uv sync --frozen
+
+            - name: Verify borrowed-session PostgreSQL proofs (AUD-363 and AUD-454)
+              timeout-minutes: 5
+              env:
+                  AUD363_POSTGRES_CONTAINER_ID: ${{ job.services.aud363.id }}
+              run: uv run --frozen --no-sync python scripts/quality/run_aud363_borrowed_postgres.py
 
             - name: Wait for PostgreSQL
               shell: pwsh
