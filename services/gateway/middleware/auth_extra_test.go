@@ -187,9 +187,12 @@ func TestListenForRevocations_ConnFailure(t *testing.T) {
 	m := newRedisMiddleware(t, url)
 	stop() // close redis to trigger connection refused
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	m.l1cache.Add("cached-session", cacheEntry{exists: true, storedAt: time.Now()})
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Should run and return or retry without panicking
 	m.ListenForRevocations(ctx)
+	require.Eventually(t, func() bool { return m.l1cache.Len() == 0 },
+		5*time.Second, 10*time.Millisecond,
+		"a failed revocation connection must purge cached session decisions")
 }

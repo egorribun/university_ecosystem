@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -67,25 +68,36 @@ func generateRSAKeyPair() (*rsa.PrivateKey, *rsa.PublicKey, string) {
 }
 
 func TestStartJWKSRefresher_SuccessAndFailureAndCancel(t *testing.T) {
-
-	// 1. Success endpoint
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"keys": []}`)) //nolint:errcheck // Empty but valid json to hit fallback / error
+	privateKey, pubPEM := rsaTestKeys(t)
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		body := pubPEM
+		if requests.Add(1) == 1 {
+			w.Header().Set("Content-Type", "application/json")
+			body = `{"keys": []}`
+		}
+		if _, err := io.WriteString(w, body); err != nil {
+			t.Errorf("write JWKS test response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
 	middleware := NewJWTMiddlewareWithConfig("secret", "", nil, DefaultL1CacheConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
+	const interval = 50 * time.Millisecond
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	middleware.StartJWKSRefresher(ctx, srv.URL, 50*time.Millisecond, logger)
+	middleware.StartJWKSRefresher(ctx, srv.URL, interval, logger)
 
-	// Wait a bit to let refresher initialize
-	time.Sleep(100 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		key := middleware.rsaPublicKey.Load()
+		return key != nil && key.N.Cmp(privateKey.N) == 0
+	}, 2*time.Second, 5*time.Millisecond, "the refresher must recover from an invalid initial key set")
+	require.GreaterOrEqual(t, requests.Load(), int32(2))
 	cancel()
-	time.Sleep(50 * time.Millisecond) // wait for loop shutdown
+	requestCount := requests.Load()
+	require.Never(t, func() bool { return requests.Load() > requestCount },
+		3*interval, 5*time.Millisecond, "cancelled refresher must stop polling")
 }
 
 func TestFetchJWKSKeySet_ErrorsAndPEMFallback(t *testing.T) {

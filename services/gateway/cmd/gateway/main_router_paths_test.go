@@ -13,7 +13,11 @@ import (
 
 	"github.com/getsentry/sentry-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/gateway/internal/config"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 // TestSetupRouterOptionalIntegrations covers Sentry, rate-limit, and JWKS paths.
@@ -51,35 +55,43 @@ func TestInitTracer_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	cfg := &config.Config{
-		OtelEndpoint: "localhost:4317",
-		GrpcUseTLS:   false,
+	hooksMu.Lock()
+	previousExporter := newOTLPTraceExporterFunc
+	var observedErr error
+	newOTLPTraceExporterFunc = func(exportCtx context.Context, _ ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+		observedErr = exportCtx.Err()
+		return nil, context.Canceled
 	}
+	hooksMu.Unlock()
+	t.Cleanup(func() {
+		hooksMu.Lock()
+		newOTLPTraceExporterFunc = previousExporter
+		hooksMu.Unlock()
+	})
 
-	tp, err := initTracer(ctx, cfg)
-	if err == nil && tp != nil {
-		if shutErr := tp.Shutdown(context.Background()); shutErr != nil {
-			t.Logf("tracer shutdown: %v", shutErr)
-		}
-	}
+	tp, err := initTracer(ctx, &config.Config{OtelEndpoint: "localhost:4317"})
+	require.ErrorIs(t, observedErr, context.Canceled, "the exporter must receive the cancelled context")
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, tp)
 }
 
-// TestInitTracerTLSConfig verifies initTracer with TLS configuration.
+// TestInitTracerTLSConfig verifies a TLS-configured tracer is initialized and shut down.
 func TestInitTracerTLSConfig(t *testing.T) {
-	cfg := &config.Config{
-		OtelEndpoint: "localhost:4317",
-		GrpcUseTLS:   true,
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	previousProvider := otel.GetTracerProvider()
+	previousPropagator := otel.GetTextMapPropagator()
+	t.Cleanup(func() {
+		otel.SetTracerProvider(previousProvider)
+		otel.SetTextMapPropagator(previousPropagator)
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	tp, err := initTracer(ctx, cfg)
-	if err == nil && tp != nil {
-		if shutErr := tp.Shutdown(context.Background()); shutErr != nil {
-			t.Logf("tracer shutdown: %v", shutErr)
-		}
-	}
+	tp, err := initTracer(ctx, &config.Config{OtelEndpoint: "localhost:4317", GrpcUseTLS: true})
+	require.NoError(t, err)
+	require.NotNil(t, tp)
+	require.Contains(t, otel.GetTextMapPropagator().Fields(), "traceparent")
+	require.Contains(t, otel.GetTextMapPropagator().Fields(), "baggage")
+	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
 func TestInitSentry_ValidDSN(t *testing.T) {

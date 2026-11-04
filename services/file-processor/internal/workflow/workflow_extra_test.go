@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/file-processor/internal/config"
+	"go.temporal.io/sdk/temporal"
 )
 
 func init() {
@@ -235,24 +236,24 @@ func TestGetValidatedDimension_Float64Value(t *testing.T) {
 // ── downloadAndDecodeImage — context cancellation ─────────────────────────────
 
 func TestDownloadAndDecodeImage_ContextCancelledDuringFetch(t *testing.T) {
-	// Use a fakeS3 that returns a valid image body; immediately cancel the context
-	// so the select in downloadAndDecodeImage fires the ctx.Done() arm before the
-	// decode goroutine finishes.  The image is large enough that the race is
-	// won by the cancel in most runs; the test is structured to accept either the
-	// decode success OR the cancellation error without being flaky.
 	fs := &fakeS3{getBody: makeRGBAPNG(t, 200, 200)}
 	srv := httptest.NewServer(fs.handler())
 	defer srv.Close()
 
 	a := &FileActivities{MinioClient: minioClientFor(t, srv.URL), Bucket: "bucket"}
-
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel immediately
+	cancel()
 
-	// The call may return a ContextCancelled error or succeed (if decode wins the
-	// race); both are acceptable — the key assertion is that it does not panic or hang.
-	//nolint:errcheck // We explicitly don't care about the return value or error here
-	_, _, _ = a.downloadAndDecodeImage(ctx, "in/img.png")
+	img, format, err := a.downloadAndDecodeImage(ctx, "in/img.png")
+	require.Error(t, err, "a pre-cancelled fetch must not report success")
+	require.Nil(t, img)
+	require.Empty(t, format)
+	var applicationErr *temporal.ApplicationError
+	if errors.As(err, &applicationErr) {
+		require.Equal(t, "ContextCancelled", applicationErr.Type())
+	} else {
+		require.ErrorIs(t, err, context.Canceled)
+	}
 }
 
 func TestResizeImageActivity_InvalidSourceKey(t *testing.T) {

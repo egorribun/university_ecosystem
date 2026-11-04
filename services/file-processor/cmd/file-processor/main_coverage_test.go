@@ -955,7 +955,31 @@ func TestMain_SuccessLifecycle(t *testing.T) {
 }
 
 func TestInitSentry_ValidDSNSucceeds(t *testing.T) {
-	initSentry(context.Background(), &config.Config{SentryDSN: "http://pubkey@127.0.0.1/1", Environment: "test"}, discardLogger())
+	hub := sentry.CurrentHub()
+	previousClient := hub.Client()
+	t.Cleanup(func() {
+		createdClient := hub.Client()
+		hub.BindClient(previousClient)
+		if createdClient != nil && createdClient != previousClient {
+			createdClient.Close()
+		}
+	})
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	const dsn = "http://pubkey@127.0.0.1/1"
+
+	initSentry(context.Background(), &config.Config{SentryDSN: dsn, Environment: "test"}, logger)
+
+	client := hub.Client()
+	require.NotNil(t, client)
+	require.True(t, previousClient != client, "valid DSN must replace the Sentry client")
+	require.Equal(t, dsn, client.Options().Dsn)
+	require.Equal(t, "test", client.Options().Environment)
+	require.Equal(t, "file-processor@1.0.0", client.Options().Release)
+	var record map[string]any
+	require.NoError(t, json.Unmarshal(output.Bytes(), &record))
+	require.Equal(t, "INFO", record["level"])
+	require.Equal(t, "Sentry initialized", record["msg"])
 }
 
 func TestParseRSAPublicKey_InvalidPEM(t *testing.T) {

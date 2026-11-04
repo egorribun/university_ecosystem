@@ -114,11 +114,16 @@ func TestRateLimiter_StartFallbackCleanup_Cancel(t *testing.T) {
 		fallbackWindow:   1,
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	rl.startFallbackCleanup(ctx)
+	require.NotNil(t, rl.cleanupDone)
 
-	// Cancel context to stop the goroutine
 	cancel()
-	time.Sleep(10 * time.Millisecond)
+	select {
+	case <-rl.cleanupDone:
+	case <-time.After(time.Second):
+		t.Fatal("fallback cleanup worker did not stop after cancellation")
+	}
 }
 
 func TestRateLimiter_GetClientKey_NonStringUserID(t *testing.T) {

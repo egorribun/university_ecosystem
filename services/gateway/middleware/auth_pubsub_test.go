@@ -180,8 +180,19 @@ func TestListenOnce_HealthyRedisKeepsListenerRunning(t *testing.T) {
 
 func TestListenForRevocations_NilRedisIsNoOp(t *testing.T) {
 	m := NewJWTMiddlewareWithConfig(testSecret, "", nil, DefaultL1CacheConfig())
-	// m.redis == nil guard returns immediately and spawns no goroutine.
-	m.ListenForRevocations(context.Background())
+	m.l1cache.Add("cached-session", cacheEntry{exists: true, storedAt: time.Now()})
+	listenerCalled := make(chan struct{}, 1)
+	m.listenOnceFunc = func(context.Context) { listenerCalled <- struct{}{} }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	m.ListenForRevocations(ctx)
+	select {
+	case <-listenerCalled:
+		t.Fatal("a nil Redis client must not start the revocation listener")
+	case <-time.After(100 * time.Millisecond):
+	}
+	require.Equal(t, 1, m.l1cache.Len(), "the no-op must preserve the cache")
 }
 
 func TestListenOnce_ReportsPubSubCloseFailure(t *testing.T) {

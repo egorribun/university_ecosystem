@@ -31,6 +31,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis_rate/v10"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,7 +47,22 @@ func TestConfigureGinPrometheus(t *testing.T) {
 	oldMode := gin.Mode()
 	gin.SetMode(gin.ReleaseMode)
 	t.Cleanup(func() { gin.SetMode(oldMode) })
-	setupGinPrometheusFunc(gin.New())
+	t.Setenv("GIN_MODE", "release")
+	previousRegisterer := prometheus.DefaultRegisterer
+	registry := prometheus.NewRegistry()
+	prometheus.DefaultRegisterer = registry
+	t.Cleanup(func() { prometheus.DefaultRegisterer = previousRegisterer })
+	router := gin.New()
+	setupGinPrometheusFunc(router)
+	router.GET("/audit428-metrics", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/audit428-metrics", nil))
+	require.Equal(t, http.StatusNoContent, response.Code)
+
+	metrics := httptest.NewRecorder()
+	promhttp.HandlerFor(registry, promhttp.HandlerOpts{}).ServeHTTP(metrics, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
+	require.Equal(t, http.StatusOK, metrics.Code)
+	require.Regexp(t, `gin_requests_total\{code="204",handler="[^"]*",host="[^"]*",method="GET",url="/audit428-metrics"\} 1(?:\.0+)?\n`, metrics.Body.String())
 }
 
 func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
