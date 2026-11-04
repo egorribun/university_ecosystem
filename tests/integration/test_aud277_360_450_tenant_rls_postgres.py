@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import os
 import uuid
 from collections.abc import Iterator
@@ -11,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.db.listeners import set_pg_tenant_context
 from app.core.tenant import bypass_rls_ctx, tenant_id_ctx
@@ -97,6 +99,12 @@ def rls_schema(request: pytest.FixtureRequest) -> Iterator[SimpleNamespace]:
                         f'GRANT SELECT ON public.chat_participants TO "{role}"'
                     )
                 connection.exec_driver_sql(f'GRANT ue_rls_bypass TO "{bypass_role}"')
+                connection.exec_driver_sql(
+                    f'GRANT SELECT ON public.groups, public.schedule, public.users, public.tenants, public.user_push_topics TO "{bypass_role}"'
+                )
+                connection.exec_driver_sql(
+                    f'GRANT SELECT, INSERT ON public.stored_events TO "{bypass_role}"'
+                )
                 for table in _CORE_TABLES:
                     connection.exec_driver_sql(
                         f'ALTER TABLE public.{table} OWNER TO "{ordinary_role}"'
@@ -156,6 +164,7 @@ def rls_schema(request: pytest.FixtureRequest) -> Iterator[SimpleNamespace]:
                         },
                     )
             state = SimpleNamespace(
+                admin=baseline.url,
                 ordinary=baseline.url.set(username=ordinary_role, password=credential),
                 bypass=baseline.url.set(username=bypass_role, password=credential),
             )
@@ -481,3 +490,173 @@ def test_worker_bypass_producer_must_write_its_tenant_explicitly(
     # Recorded residual: a bypass write without tenant_id stays unowned, and the
     # tenant-scoped policy hides it from every tenant. Producers must write it.
     assert owners[unowned] is None
+
+
+@pytest.mark.asyncio
+async def test_bypass_scheduler_persists_owned_reminders_and_outbox_events(
+    rls_schema: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exercise the actual worker against two tenants and invalid ownership."""
+    from app.core.config import settings
+    from app.core.db.listeners import register_tenant_listeners
+    from app.services.notifications import delivery, schedule_reminders
+    from app.workers import notifications as worker
+
+    inactive = uuid.uuid4()
+    groups = [uuid.uuid4() for _ in range(5)]
+    users = [uuid.uuid4() for _ in range(7)]
+    lessons = [uuid.uuid4() for _ in range(5)]
+    stale = [uuid.uuid4(), uuid.uuid4()]
+    fixed_now = dt.datetime(2026, 1, 4, 23, 55, tzinfo=dt.UTC)
+    group_tenants = (_TENANT_A, _TENANT_B, None, _TENANT_B, inactive)
+    lesson_tenants = (_TENANT_A, _TENANT_B, None, _TENANT_A, inactive)
+    user_assignments = (
+        (groups[0], _TENANT_A),
+        (groups[1], _TENANT_B),
+        (groups[0], _TENANT_B),
+        (groups[0], None),
+        (groups[2], _TENANT_A),
+        (groups[3], _TENANT_A),
+        (groups[4], inactive),
+    )
+
+    admin = _engine(rls_schema.admin)
+    try:
+        with admin.begin() as connection:
+            connection.execute(
+                sa.text(
+                    "INSERT INTO tenants (id, name, slug, is_active) VALUES (:id, 'inactive', :slug, false)"
+                ),
+                {"id": inactive, "slug": inactive.hex},
+            )
+            for group, tenant in zip(groups, group_tenants, strict=True):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO groups (id, name, tenant_id) VALUES (:id, 'group', :tenant)"
+                    ),
+                    {"id": group, "tenant": tenant},
+                )
+            for user, (group, tenant) in zip(users, user_assignments, strict=True):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO users (id, email, hashed_password, group_id, tenant_id) "
+                        "VALUES (:id, :email, '!', :group_id, :tenant)"
+                    ),
+                    {
+                        "id": user,
+                        "email": f"{user.hex}@example.invalid",
+                        "group_id": group,
+                        "tenant": tenant,
+                    },
+                )
+            for lesson, group, tenant in zip(
+                lessons, groups, lesson_tenants, strict=True
+            ):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO schedule (id, group_id, tenant_id, subject, weekday, start_time, end_time) "
+                        "VALUES (:id, :group_id, :tenant, 'lesson', 'monday', "
+                        "'1970-01-05 03:00:00+00', '1970-01-05 04:00:00+00')"
+                    ),
+                    {"id": lesson, "group_id": group, "tenant": tenant},
+                )
+            # These are the same user/key pairs as the due reminders, but one
+            # row is unowned and the other belongs to the wrong tenant.
+            for identifier, user, lesson, tenant in zip(
+                stale, users[:2], lessons[:2], (None, _TENANT_A), strict=True
+            ):
+                connection.execute(
+                    sa.text(
+                        "INSERT INTO notifications "
+                        "(id, user_id, tenant_id, title, url, dedupe_key, created_at) "
+                        "VALUES (:id, :user_id, :tenant, 'stale', '/schedule', :key, :created)"
+                    ),
+                    {
+                        "id": identifier,
+                        "user_id": user,
+                        "tenant": tenant,
+                        "key": f"schedule-reminder:{lesson}",
+                        "created": fixed_now,
+                    },
+                )
+
+        class FixedDateTime(dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return (
+                    fixed_now.replace(tzinfo=None)
+                    if tz is None
+                    else fixed_now.astimezone(tz)
+                )
+
+        clock = SimpleNamespace(**vars(dt))
+        clock.datetime = FixedDateTime
+        monkeypatch.setattr(schedule_reminders, "dt", clock)
+        monkeypatch.setattr(delivery, "dt", clock)
+        monkeypatch.setattr(delivery, "_is_push_configured", lambda: False)
+        monkeypatch.setattr(settings, "campus_timezone", "Europe/Istanbul")
+        monkeypatch.setattr(settings, "mvp_tenant_id", _TENANT_B)
+        register_tenant_listeners()
+
+        worker_url = rls_schema.bypass.set(drivername="postgresql+asyncpg", query={})
+        engine = create_async_engine(
+            worker_url, poolclass=sa.pool.NullPool, hide_parameters=True
+        )
+        try:
+            monkeypatch.setattr(
+                worker,
+                "async_session",
+                async_sessionmaker(engine, expire_on_commit=False),
+            )
+            scheduler = worker.NotificationsScheduler(
+                poll_seconds=1, window_minutes=10, max_backoff_seconds=1
+            )
+            assert await scheduler.run_once() == 2
+            assert await scheduler.run_once() == 0
+        finally:
+            await engine.dispose()
+
+        with admin.connect() as connection:
+            rows = connection.execute(
+                sa.text(
+                    "SELECT id, user_id, tenant_id, dedupe_key FROM notifications WHERE user_id = ANY(:ids)"
+                ),
+                {"ids": users},
+            ).all()
+            new_rows = [row for row in rows if row.id not in stale]
+            assert len(rows) == 4
+            assert {(row.user_id, row.tenant_id) for row in new_rows} == {
+                (users[0], _TENANT_A),
+                (users[1], _TENANT_B),
+            }
+            assert {row.dedupe_key for row in new_rows} == {
+                row.dedupe_key for row in rows if row.id in stale
+            }
+            events = connection.execute(
+                sa.text(
+                    "SELECT payload, metadata FROM stored_events WHERE event_type = 'notification.delivery_requested'"
+                )
+            ).all()
+        assert len(events) == 2
+        owners_by_notification = {str(row.id): str(row.tenant_id) for row in new_rows}
+        assert {
+            (event.payload["notification_ids"][0], event.metadata["tenant_id"])
+            for event in events
+        } == set(owners_by_notification.items())
+
+        for tenant, expected_user in ((_TENANT_A, users[0]), (_TENANT_B, users[1])):
+            with _rolled_back(rls_schema.ordinary) as connection:
+                with _application_context(connection, tenant=tenant):
+                    visible = (
+                        connection.execute(
+                            sa.text(
+                                "SELECT user_id FROM notifications WHERE id = ANY(:ids)"
+                            ),
+                            {"ids": [row.id for row in new_rows]},
+                        )
+                        .scalars()
+                        .all()
+                    )
+            assert visible == [expected_user]
+    finally:
+        admin.dispose()

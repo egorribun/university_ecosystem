@@ -630,10 +630,16 @@ async def test_scheduler_ticks_commit_one_campus_reminder_and_outbox(
     monkeypatch.setattr(settings, "campus_timezone", "Europe/Istanbul")
     monkeypatch.setattr(notifications_delivery, "_is_push_configured", lambda: False)
 
+    tenant = Tenant(id=uuid.uuid4(), name="Scheduler tenant", slug=uuid.uuid4().hex)
     group = Group(name="Scheduler PostgreSQL reminder")
-    db_session.add(group)
+    db_session.add_all([tenant, group])
     await db_session.flush()
-    user = await user_factory(group_id=group.id)
+    # Group and schedule ownership are migration-owned physical columns.
+    await db_session.execute(
+        text("UPDATE groups SET tenant_id = :tenant WHERE id = :group_id"),
+        {"tenant": tenant.id, "group_id": group.id},
+    )
+    user = await user_factory(group_id=group.id, tenant_id=tenant.id)
     user_id = user.id
     db_session.add_all(
         [
@@ -665,6 +671,11 @@ async def test_scheduler_ticks_commit_one_campus_reminder_and_outbox(
                 end_time=dt.datetime(1970, 1, 6, 4, 0, tzinfo=dt.UTC),
             ),
         ]
+    )
+    await db_session.flush()
+    await db_session.execute(
+        text("UPDATE schedule SET tenant_id = :tenant WHERE group_id = :group_id"),
+        {"tenant": tenant.id, "group_id": group.id},
     )
     await db_session.commit()
 
@@ -706,6 +717,7 @@ async def test_scheduler_ticks_commit_one_campus_reminder_and_outbox(
     assert "05.01 · 03:00" in notifications[0].body
     assert len(outbox_events) == 1
     assert outbox_events[0].payload["notification_ids"] == [str(notifications[0].id)]
+    assert outbox_events[0].metadata_["tenant_id"] == str(tenant.id)
 
 
 @pytest.fixture

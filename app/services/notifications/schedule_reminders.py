@@ -7,17 +7,28 @@ for upcoming lessons.
 from __future__ import annotations
 
 import datetime as dt
+import sys
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from functools import partial
+from typing import TYPE_CHECKING, Any, cast
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import UUID, literal_column, select, text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession as SQLAlchemyAsyncSession
 
 from app.core.config import settings
 from app.core.localization import SUPPORTED_LOCALES, translate, translate_lesson_type
-from app.models import Notification, Schedule, User
+from app.core.tenant import (
+    bypass_rls_ctx,
+    get_bypass_rls,
+    get_current_tenant,
+    tenant_id_ctx,
+)
+from app.models import Group, Notification, Schedule, User
+from app.models.tenant import Tenant
 from app.services.notification_templates import render_notification_template
 from app.services.notifications.core import (
     _ROOM_LABEL_PREFIXES,
@@ -30,6 +41,8 @@ from app.services.notifications.delivery import (
 
 if TYPE_CHECKING:
     import uuid
+
+    from sqlalchemy.sql import Select
 
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
@@ -95,6 +108,15 @@ def _schedule_occurrence_in_window(
         if now_utc <= occurrence_utc <= window_end_utc:
             return occurrence
     return None
+
+
+def _active_users_in_scope(
+    stmt: Select[Any], *, tenant: uuid.UUID | None, group_id: uuid.UUID
+) -> Select[Any]:
+    """Recheck recipient ownership when the notification producer filters users."""
+    return only_active_users(stmt).where(
+        User.tenant_id == tenant, User.group_id == group_id
+    )
 
 
 def build_schedule_reminder_message(
@@ -282,6 +304,58 @@ async def generate_schedule_reminders(
     db: AsyncSession, *, window_minutes: int = 6
 ) -> int:
     """Generate schedule reminder notifications for upcoming lessons."""
+    dialect_name: str | None
+    if isinstance(cast(Any, db), SQLAlchemyAsyncSession):
+        dialect_name = db.get_bind().dialect.name
+        if dialect_name not in {"postgresql", "sqlite"}:
+            raise RuntimeError("Unsupported reminder database dialect")
+    else:
+        # Lightweight test doubles do not all expose a bound dialect.
+        bind = getattr(db, "bind", None)
+        dialect_name = getattr(getattr(bind, "dialect", None), "name", None)
+    tenant_scoped = dialect_name == "postgresql"
+    if not tenant_scoped:
+        return await _generate_schedule_reminders(db, window_minutes=window_minutes)
+
+    # A privileged worker can inherit unrelated context, and its bypass role sees
+    # every row regardless of the GUC. Individual writes establish ownership
+    # from the database rows, never from that inherited bypass context.
+    previous_tenant = "" if get_bypass_rls() else get_current_tenant()
+    tenant_token = tenant_id_ctx.set(previous_tenant)
+    bypass_token = bypass_rls_ctx.set(False)
+    try:
+        previous_setting = await db.execute(
+            text("SELECT current_setting('app.current_tenant', true)")
+        )
+        previous_database_tenant = previous_setting.scalar_one_or_none() or ""
+        try:
+            return await _generate_schedule_reminders(
+                db, window_minutes=window_minutes, tenant_scoped=True
+            )
+        finally:
+            # The session may remain in use after this function, even when a
+            # non-database error interrupts the scan. Preserve the original
+            # exception if a failed transaction prevents GUC restoration.
+            pending_error = sys.exception()
+            try:
+                await db.execute(
+                    text("SELECT set_config('app.current_tenant', :tenant_id, true)"),
+                    {"tenant_id": previous_database_tenant},
+                )
+            except (SQLAlchemyError, OSError):
+                if pending_error is None:
+                    raise
+                pending_error.add_note(
+                    "Tenant context restoration failed; roll back the transaction"
+                )
+    finally:
+        bypass_rls_ctx.reset(bypass_token)
+        tenant_id_ctx.reset(tenant_token)
+
+
+async def _generate_schedule_reminders(
+    db: AsyncSession, *, window_minutes: int, tenant_scoped: bool = False
+) -> int:
     now_utc = dt.datetime.now(UTC)
     window_end_utc = now_utc + dt.timedelta(minutes=window_minutes)
     campus_timezone = ZoneInfo(settings.campus_timezone)
@@ -297,11 +371,31 @@ async def generate_schedule_reminders(
     # Schedule rows store one reference-week wall time, not a dated occurrence.
     # Filter by relevant campus weekdays in SQL, then resolve recurrence and
     # parity against each concrete local date below.
-    q = select(Schedule).where(Schedule.weekday.in_(weekday_values))
-    schedules = (await db.execute(q)).scalars().all()
+    if tenant_scoped:
+        # The tenant columns on schedule and groups belong to the baseline
+        # migration, not the ORM model. Read them without changing metadata.
+        schedule_tenant = literal_column("schedule.tenant_id", UUID(as_uuid=True))
+        group_tenant = literal_column("groups.tenant_id", UUID(as_uuid=True))
+        owned_query = (
+            select(Schedule, schedule_tenant, group_tenant)
+            .join(Group, Group.id == Schedule.group_id)
+            .join(Tenant, Tenant.id == schedule_tenant)
+            .where(Schedule.weekday.in_(weekday_values), Tenant.is_active.is_(True))
+        )
+        schedule_rows = await db.execute(owned_query)
+        owned_schedules = [
+            (schedule, tenant)
+            for schedule, tenant, group_owner in schedule_rows
+            if tenant is not None and tenant == group_owner
+        ]
+    else:
+        q = select(Schedule).where(Schedule.weekday.in_(weekday_values))
+        owned_schedules = [
+            (schedule, None) for schedule in (await db.execute(q)).scalars().all()
+        ]
     occurrences_by_id: dict[uuid.UUID, dt.datetime] = {}
-    matching_schedules: list[Schedule] = []
-    for schedule in schedules:
+    matching_schedules: list[tuple[Schedule, uuid.UUID | None]] = []
+    for schedule, tenant in owned_schedules:
         occurrence = _schedule_occurrence_in_window(
             schedule,
             now_utc=now_utc,
@@ -310,13 +404,15 @@ async def generate_schedule_reminders(
         )
         if occurrence is None:
             continue
-        matching_schedules.append(schedule)
+        matching_schedules.append((schedule, tenant))
         occurrences_by_id[schedule.id] = occurrence
     schedules = matching_schedules
     if not schedules:
         return 0
 
-    schedules_by_group: dict[uuid.UUID, list[Schedule]] = defaultdict(list)
+    schedules_by_group: dict[tuple[uuid.UUID, uuid.UUID | None], list[Schedule]] = (
+        defaultdict(list)
+    )
     message_payloads: dict[
         uuid.UUID,
         tuple[
@@ -329,8 +425,8 @@ async def generate_schedule_reminders(
             str,
         ],
     ] = {}
-    for schedule in schedules:
-        schedules_by_group[schedule.group_id].append(schedule)
+    for schedule, tenant in schedules:
+        schedules_by_group[(schedule.group_id, tenant)].append(schedule)
         payload = build_schedule_reminder_message(
             schedule, occurrence_at=occurrences_by_id[schedule.id]
         )
@@ -344,31 +440,53 @@ async def generate_schedule_reminders(
         if key not in (None, "")
     }
 
-    group_ids = list(schedules_by_group.keys())
+    group_ids = list({group_id for group_id, _tenant in schedules_by_group.keys()})
     if not group_ids:
         return 0
 
+    user_columns = (
+        (User.id, User.group_id, User.tenant_id)
+        if tenant_scoped
+        else (User.id, User.group_id)
+    )
     users_stmt = (
-        select(User.id, User.group_id)
+        select(*user_columns)
         .where(User.group_id.in_(group_ids))
         .where(User.is_active.is_(True))
     )
     user_rows = await db.execute(users_stmt)
-    group_users: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
-    for user_id, group_id in user_rows:
+    group_users: dict[tuple[uuid.UUID, uuid.UUID | None], set[uuid.UUID]] = defaultdict(
+        set
+    )
+    for row in user_rows:
+        user_id, group_id = row[:2]
+        tenant = row[2] if tenant_scoped else None
         if user_id is None or group_id is None:
             continue
-        group_users[group_id].add(user_id)
+        if tenant_scoped and tenant is None:
+            continue
+        group_users[(group_id, tenant)].add(user_id)
 
     if not any(group_users.values()):
         return 0
 
     dup_since = now_utc - dt.timedelta(minutes=30)
     all_user_ids = {uid for users in group_users.values() for uid in users}
-    existing_by_dedupe: dict[str, set[uuid.UUID]] = defaultdict(set)
+    existing_by_dedupe: dict[tuple[str, uuid.UUID | None], set[uuid.UUID]] = (
+        defaultdict(set)
+    )
     if dedupe_keys and all_user_ids:
+        notification_columns = (
+            (
+                Notification.user_id,
+                Notification.dedupe_key,
+                literal_column("notifications.tenant_id", UUID(as_uuid=True)),
+            )
+            if tenant_scoped
+            else (Notification.user_id, Notification.dedupe_key)
+        )
         existing_stmt = (
-            select(Notification.user_id, Notification.dedupe_key)
+            select(*notification_columns)
             .where(
                 Notification.user_id.in_(all_user_ids),
                 Notification.url == "/schedule",
@@ -378,15 +496,17 @@ async def generate_schedule_reminders(
             .distinct()
         )
         existing_rows = await db.execute(existing_stmt)
-        for user_id, dedupe_key in existing_rows:
+        for row in existing_rows:
+            user_id, dedupe_key = row[:2]
             if user_id is None or dedupe_key is None:
                 continue
-            existing_by_dedupe[str(dedupe_key)].add(user_id)
+            existing_tenant = row[2] if tenant_scoped else None
+            existing_by_dedupe[(str(dedupe_key), existing_tenant)].add(user_id)
 
     action_title = translate("notifications.actions.open_schedule", locale=None)
     total_created = 0
-    for group_id, group_schedules in schedules_by_group.items():
-        user_ids = group_users.get(group_id)
+    for (group_id, tenant), group_schedules in schedules_by_group.items():
+        user_ids = group_users.get((group_id, tenant))
         if not user_ids:
             continue
         for schedule in group_schedules:
@@ -400,31 +520,52 @@ async def generate_schedule_reminders(
                 dedupe_key,
             ) = message_payloads[schedule.id]
             key_for_dedupe = dedupe_key or tag or title
-            already_notified = existing_by_dedupe.get(key_for_dedupe, set())
+            already_notified = existing_by_dedupe.get((key_for_dedupe, tenant), set())
             to_notify = [uid for uid in user_ids if uid not in already_notified]
             if not to_notify:
                 continue
-            total_created += await create_notifications_for_users(
-                db,
-                title=title,
-                body=body,
-                title_translations=title_translations,
-                body_translations=body_translations,
-                type="schedule.reminder",
-                url="/schedule",
-                tag=tag,
-                dedupe_key=key_for_dedupe,
-                actions=[
-                    {
-                        "action": "open-schedule",
-                        "title": action_title,
-                        "url": "/schedule",
-                    }
-                ],
-                payload_data=data_payload,
-                user_ids=to_notify,
-                topic="schedule.changed",
-                user_filter=only_active_users,
+            tenant_token = (
+                tenant_id_ctx.set(str(tenant)) if tenant is not None else None
             )
-            existing_by_dedupe[key_for_dedupe].update(to_notify)
+            try:
+                if tenant_scoped:
+                    await db.execute(
+                        text(
+                            "SELECT set_config('app.current_tenant', :tenant_id, true)"
+                        ),
+                        {"tenant_id": str(tenant)},
+                    )
+
+                total_created += await create_notifications_for_users(
+                    db,
+                    title=title,
+                    body=body,
+                    title_translations=title_translations,
+                    body_translations=body_translations,
+                    type="schedule.reminder",
+                    url="/schedule",
+                    tag=tag,
+                    dedupe_key=key_for_dedupe,
+                    actions=[
+                        {
+                            "action": "open-schedule",
+                            "title": action_title,
+                            "url": "/schedule",
+                        }
+                    ],
+                    payload_data=data_payload,
+                    user_ids=to_notify,
+                    topic="schedule.changed",
+                    user_filter=(
+                        partial(
+                            _active_users_in_scope, tenant=tenant, group_id=group_id
+                        )
+                        if tenant_scoped
+                        else only_active_users
+                    ),
+                )
+            finally:
+                if tenant_token is not None:
+                    tenant_id_ctx.reset(tenant_token)
+            existing_by_dedupe[(key_for_dedupe, tenant)].update(to_notify)
     return total_created
