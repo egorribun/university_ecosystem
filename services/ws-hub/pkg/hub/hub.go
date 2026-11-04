@@ -1420,9 +1420,11 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 	if err := h.subscribeChatAndNotifications(appCtx); err != nil {
 		return err
 	}
-	if err := h.subscribeCacheInvalidation(appCtx); err != nil {
+	invSub, err := h.subscribeCacheInvalidation(appCtx)
+	if err != nil {
 		return err
 	}
+	h.setInvalidationSubscription(invSub)
 	revocationSub, err := h.subscribeCacheRevocation(appCtx)
 	if err != nil {
 		return err
@@ -1544,23 +1546,11 @@ func (h *Hub) subscribeCoreChatAndNotifications(appCtx context.Context) (*nats.S
 // Retention: this consumer contract does not depend on the stream's seven-day
 // retention. DeliverNew starts at the first message published after the consumer
 // exists, and the only bounded replay left is the cache.revoke window below.
-func (h *Hub) subscribeCacheInvalidation(appCtx context.Context) error {
-	invSub, err := h.openCacheInvalidationSubscription(appCtx)
-	if err != nil {
-		return err
-	}
-	h.subsMu.Lock()
-	h.invalidationSub = invSub
-	if invSub != nil {
-		h.subs = append(h.subs, invSub)
-	}
-	h.subsMu.Unlock()
-	return nil
-}
-
-// openCacheInvalidationSubscription creates the live pure-invalidation consumer
-// without registering it, so the reconnect path can replace it atomically.
-func (h *Hub) openCacheInvalidationSubscription(appCtx context.Context) (*nats.Subscription, error) {
+//
+// The subscription is returned unregistered. SubscribeToNATS and the reconnect path
+// register it with setInvalidationSubscription, so a consumer opened during shutdown
+// is never added to the drain list.
+func (h *Hub) subscribeCacheInvalidation(appCtx context.Context) (*nats.Subscription, error) {
 	invHandler := h.handleCacheInvalidation(appCtx)
 	invOpts := append([]nats.SubOpt{nats.DeliverNew()}, h.invalidationConsumerOpts()...)
 	var invSub *nats.Subscription
@@ -1575,6 +1565,17 @@ func (h *Hub) openCacheInvalidationSubscription(appCtx context.Context) (*nats.S
 		return nil, err
 	}
 	return invSub, nil
+}
+
+// setInvalidationSubscription records the live pure-invalidation consumer for drain
+// on shutdown. It is the only writer of invalidationSub outside the reconnect path.
+func (h *Hub) setInvalidationSubscription(sub *nats.Subscription) {
+	h.subsMu.Lock()
+	defer h.subsMu.Unlock()
+	h.invalidationSub = sub
+	if sub != nil {
+		h.subs = append(h.subs, sub)
+	}
 }
 
 // invalidationConsumerOpts applies the configured durable contract to both

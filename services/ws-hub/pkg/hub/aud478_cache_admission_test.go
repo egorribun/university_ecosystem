@@ -575,10 +575,9 @@ func TestAUD478SessionTransitionsCloseAdmissionAtEveryObservablePoint(t *testing
 	}
 
 	require.NoError(t, h.SubscribeToNATS(ctx))
-	flags, admissions := snapshot()
-	require.Len(t, flags, 1, "startup records the session once, synchronously")
-	require.True(t, flags[0], "the barrier must be closed before the startup session is recorded")
-	require.True(t, admissions[0])
+	startupFlags, startupAdmissions := snapshot()
+	require.Equal(t, []bool{true}, startupFlags, "startup records the session once, with the barrier closed before recording")
+	require.Equal(t, []bool{true}, startupAdmissions, "admission must read closed at the startup recording point")
 	require.Eventually(t, func() bool { return !h.AdmissionClosed() }, 5*time.Second, 5*time.Millisecond)
 
 	reconnects.Add(1)
@@ -588,10 +587,7 @@ func TestAUD478SessionTransitionsCloseAdmissionAtEveryObservablePoint(t *testing
 	}, 5*time.Second, time.Millisecond, "the reconnect transition must be observed")
 	require.Eventually(t, func() bool { return !h.AdmissionClosed() }, 5*time.Second, 5*time.Millisecond)
 
-	flags, admissions = snapshot()
-	require.Len(t, flags, 2)
-	for i := range flags {
-		require.True(t, flags[i], "transition %d: the closed flag must be set before the count is recorded", i)
-		require.True(t, admissions[i], "transition %d: admission must read closed at the recording point", i)
-	}
+	allFlags, allAdmissions := snapshot()
+	require.Equal(t, []bool{true, true}, allFlags, "the closed flag must be set before each count is recorded")
+	require.Equal(t, []bool{true, true}, allAdmissions, "admission must read closed at each recording point")
 }

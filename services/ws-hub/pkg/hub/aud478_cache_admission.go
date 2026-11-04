@@ -175,7 +175,7 @@ func (h *Hub) resubscribeCacheInvalidation(ctx context.Context) error {
 	previous := h.invalidationSub
 	h.subsMu.Unlock()
 
-	fresh, err := h.openCacheInvalidationSubscription(ctx)
+	fresh, err := h.subscribeCacheInvalidation(ctx)
 	if err != nil {
 		return fmt.Errorf("resubscribe cache invalidation: %w", err)
 	}
