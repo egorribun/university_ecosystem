@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -467,6 +468,7 @@ def format_dependency_identity_diagnostics(rows: Any) -> str:
             "Apache-2.0",
             LICENSE_REF,
             KLAUSPOST_LICENSE,
+            OTLP_CADDY_LICENSE,
         }
     )
     selected: dict[str, list[tuple[tuple[bool, bool, bool, str], dict[str, Any]]]] = {
@@ -518,6 +520,29 @@ def format_dependency_identity_diagnostics(rows: Any) -> str:
                 identity[field] = value
             else:
                 identity[field] = "<redacted>"
+        # Fingerprint only a bounded unknown license on an otherwise exact
+        # reviewed Caddy identity. Never log its raw value or use this evidence
+        # in acceptance decisions. Non-license mismatches remain redacted.
+        license_value = row.get("license")
+        exact_target = any(
+            all(
+                row.get(field) == expected[index]
+                for index, field in enumerate(FIELDS[:-1])
+            )
+            for expected in EXPECTED_ROWS
+        )
+        if (
+            exact_target
+            and row.get("manifest") == "services/caddy/go.mod"
+            and identity["license"] == "<redacted>"
+            and isinstance(license_value, str)
+            and 0 < len(license_value) <= 160
+            and license_value.isascii()
+            and license_value.isprintable()
+        ):
+            identity["license_sha256"] = hashlib.sha256(
+                license_value.encode("ascii")
+            ).hexdigest()
         encoded_identity = json.dumps(
             identity, ensure_ascii=True, sort_keys=True, separators=(",", ":")
         )

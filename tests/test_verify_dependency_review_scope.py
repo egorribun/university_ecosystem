@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import ssl
@@ -1596,6 +1597,88 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
         self.assertNotIn("withheld-", encoded)
         self.assertNotIn("source_repository_url", encoded)
         self.assertNotIn("vulnerabilities", encoded)
+
+    def test_approved_caddy_otel_license_is_visible_without_changing_verdict(self):
+        row = self.rows()[3]
+        rendered = json.loads(self.render([row]))["rows"][0]
+        self.assertEqual(rendered["license"], row["license"])
+        self.assertNotIn("license_sha256", rendered)
+        self.assertEqual(verify_dependency_changes([row], set()), 1)
+
+    def test_unknown_license_digest_is_exact_bounded_and_not_an_exception(self):
+        row = self.rows()[1]
+        row["license"] = "withheld-license-canary"
+        snapshot = json.dumps(row, sort_keys=True)
+        encoded = self.render([row])
+        rendered = json.loads(encoded)["rows"][0]
+        self.assertEqual(rendered["license"], "<redacted>")
+        self.assertEqual(
+            rendered["license_sha256"],
+            hashlib.sha256(row["license"].encode("ascii")).hexdigest(),
+        )
+        self.assertNotIn(row["license"], encoded)
+        self.assertEqual(json.dumps(row, sort_keys=True), snapshot)
+        with self.assertRaisesRegex(ValueError, "unexpected package"):
+            verify_dependency_changes([row], set())
+        changed = {**row, "license": row["license"] + " "}
+        changed_digest = json.loads(self.render([changed]))["rows"][0]["license_sha256"]
+        self.assertNotEqual(changed_digest, rendered["license_sha256"])
+
+    def test_license_digest_requires_exact_reviewed_non_license_identity(self):
+        for field in ("change_type", "manifest", "ecosystem", "version", "package_url"):
+            with self.subTest(field=field):
+                row = {**self.rows()[1], "license": "withheld-license-canary"}
+                row[field] = "withheld-identity-canary"
+                rendered = json.loads(self.render([row]))["rows"][0]
+                self.assertNotIn("license_sha256", rendered)
+
+    def test_license_digest_does_not_expand_to_other_reviewed_manifests(self):
+        row = self.rows()[2]
+        row["manifest"] = "services/gateway/go.mod"
+        row["license"] = "withheld-license-canary"
+        rendered = json.loads(self.render([row]))["rows"][0]
+        self.assertEqual(rendered["manifest"], "<redacted>")
+        self.assertNotIn("license_sha256", rendered)
+
+    def test_license_digest_inclusive_boundaries_and_output_cap(self):
+        for size in (1, 160):
+            with self.subTest(size=size):
+                row = {**self.rows()[1], "license": "x" * size}
+                encoded = self.render([row])
+                rendered = json.loads(encoded)["rows"][0]
+                self.assertEqual(
+                    rendered["license_sha256"],
+                    hashlib.sha256(row["license"].encode("ascii")).hexdigest(),
+                )
+        rows = [
+            {**row, "license": "withheld-license-canary"} for row in self.rows()[1:]
+        ] * 5
+        encoded = self.render(rows)
+        self.assertEqual(encoded, self.render(list(reversed(rows))))
+        self.assertLessEqual(len(encoded), 4096)
+        self.assertTrue(encoded.isascii())
+        self.assertTrue(json.loads(encoded)["truncated"])
+        self.assertNotIn("withheld-", encoded)
+
+    def test_license_digest_rejects_unbounded_or_unsafe_values(self):
+        for value in (
+            None,
+            "",
+            "x" * 161,
+            "bad\nvalue",
+            "bad\x00value",
+            "é",
+            [],
+            {},
+            True,
+        ):
+            with self.subTest(value=value):
+                row = {**self.rows()[1], "license": value}
+                rendered = json.loads(self.render([row]))["rows"][0]
+                self.assertNotIn("license_sha256", rendered)
+        row = self.rows()[1]
+        del row["license"]
+        self.assertNotIn("license_sha256", json.loads(self.render([row]))["rows"][0])
 
     def test_null_license_is_not_conflated_with_missing_or_unreviewed_license(self):
         for value, present, expected in (
