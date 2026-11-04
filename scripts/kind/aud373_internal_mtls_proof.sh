@@ -54,7 +54,7 @@ readonly WS_HUB_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE
 readonly FILE_PROCESSOR_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/${RELEASE}-file-processor"
 readonly IMAGE_TAG="ue-r9-aud373-${RUN_SUFFIX}"
 readonly LOCAL_REGISTRY_NAME="ue-r9-aud373-registry-${RUN_SUFFIX}"
-LOCAL_REGISTRY_PORT=""
+LOCAL_REGISTRY_ADDRESS=""
 BACKEND_IMAGE=""
 GATEWAY_IMAGE=""
 
@@ -152,7 +152,7 @@ write_values_file() {
   backend_fields="$(cat <<EOF
 backend:
   image:
-    repository: "localhost:${LOCAL_REGISTRY_PORT}/university-backend"
+    repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend"
   config:
     internalHMACSecret: "$(random_hex)"
     wsHubInternalSecret: "$(random_hex)"
@@ -194,11 +194,11 @@ internalHttpMTLS:
   fileProcessorSpiffeID: "${FILE_PROCESSOR_SPIFFE_ID}"
 gateway:
   image:
-    repository: "localhost:${LOCAL_REGISTRY_PORT}/university-gateway"
+    repository: "${LOCAL_REGISTRY_ADDRESS}/university-gateway"
 redis:
   metrics:
     passwordFileInitImage:
-      repository: "localhost:${LOCAL_REGISTRY_PORT}/university-backend"
+      repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend"
 ${backend_fields}
 EOF
 }
@@ -254,16 +254,17 @@ start_local_registry() {
     log "registry did not publish a single loopback port"
     return 1
   fi
-  LOCAL_REGISTRY_PORT="${BASH_REMATCH[1]}"
-  BACKEND_IMAGE="localhost:${LOCAL_REGISTRY_PORT}/university-backend:${IMAGE_TAG}"
-  GATEWAY_IMAGE="localhost:${LOCAL_REGISTRY_PORT}/university-gateway:${IMAGE_TAG}"
+  # Reuse the actual IPv4 binding: localhost may resolve to an unbound ::1.
+  LOCAL_REGISTRY_ADDRESS="$endpoint"
+  BACKEND_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-backend:${IMAGE_TAG}"
+  GATEWAY_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-gateway:${IMAGE_TAG}"
   docker network connect kind "$LOCAL_REGISTRY_NAME"
   nodes="$(kind get nodes --name "$CLUSTER_NAME")" || return 1
   [[ -n "$nodes" ]] || return 1
   while read -r node; do
-    docker exec "$node" mkdir -p "/etc/containerd/certs.d/localhost:${LOCAL_REGISTRY_PORT}"
+    docker exec "$node" mkdir -p "/etc/containerd/certs.d/${LOCAL_REGISTRY_ADDRESS}"
     printf '[host."http://%s:5000"]\n  capabilities = ["pull", "resolve"]\n' "$LOCAL_REGISTRY_NAME" |
-      docker exec --interactive "$node" sh -c "cat > /etc/containerd/certs.d/localhost:${LOCAL_REGISTRY_PORT}/hosts.toml"
+      docker exec --interactive "$node" sh -c "cat > /etc/containerd/certs.d/${LOCAL_REGISTRY_ADDRESS}/hosts.toml"
   done <<<"$nodes"
 }
 

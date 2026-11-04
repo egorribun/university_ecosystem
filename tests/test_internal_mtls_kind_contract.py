@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import socket
 import ssl
@@ -194,6 +195,92 @@ def _shell_function(name: str) -> str:
     start = script.index(f"{name}() {{")
     end = script.index("\n}\n", start) + 3
     return script[start:end]
+
+
+def test_registry_push_and_pull_addresses_use_the_published_ipv4_endpoint() -> None:
+    command = f"""set -euo pipefail
+{_shell_function("start_local_registry")}
+{_shell_function("write_values_file")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+TRACE="$work/docker-trace"
+HOSTS="$work/hosts.toml"
+LOCAL_REGISTRY_NAME=owned-registry
+REGISTRY_IMAGE=fixture
+CLUSTER_NAME=owned-cluster
+IMAGE_TAG=proof
+RELEASE=ue
+TRUST_DOMAIN=university.ecosystem
+BACKEND_SPIFFE_ID=backend
+GATEWAY_SPIFFE_ID=gateway
+WS_HUB_SPIFFE_ID=ws-hub
+FILE_PROCESSOR_SPIFFE_ID=file-processor
+docker() {{
+  case "$1" in
+    inspect) return 1 ;;
+    port) printf '127.0.0.1:32768\\n' ;;
+    exec)
+      printf '%s\\n' "$*" >> "$TRACE"
+      if [[ "$*" == *--interactive* ]]; then cat > "$HOSTS"; fi ;;
+  esac
+}}
+kind() {{ printf 'kind-node\\n'; }}
+log() {{ printf '%s\\n' "$*" >&2; }}
+random_hex() {{ printf fixture; }}
+random_fernet() {{ printf fixture; }}
+write_secret_file() {{ :; }}
+openssl() {{ :; }}
+start_local_registry
+write_values_file
+printf 'BACKEND=%s\\nGATEWAY=%s\\n' "$BACKEND_IMAGE" "$GATEWAY_IMAGE"
+cat "$TRACE"
+cat "$HOSTS"
+printf '%s\\n' '===VALUES==='
+cat "$WORK_DIR/values.yaml"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    trace, values_source = result.stdout.decode().split("===VALUES===\n", 1)
+    values = yaml.safe_load(values_source)
+    address = "127.0.0.1:32768"
+    backend = f"{address}/university-backend"
+    gateway = f"{address}/university-gateway"
+    assert f"BACKEND={backend}:proof" in trace
+    assert f"GATEWAY={gateway}:proof" in trace
+    assert f"/etc/containerd/certs.d/{address}/hosts.toml" in trace
+    assert 'host."http://owned-registry:5000"' in trace
+    assert values["backend"]["image"]["repository"] == backend
+    assert values["gateway"]["image"]["repository"] == gateway
+    assert values["redis"]["metrics"]["passwordFileInitImage"]["repository"] == backend
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["localhost:32768", "[::1]:32768", "127.0.0.2:32768", "127.0.0.1:", ""],
+)
+def test_registry_rejects_an_unexpected_published_endpoint(endpoint: str) -> None:
+    command = f"""set -euo pipefail
+{_shell_function("start_local_registry")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+LOCAL_REGISTRY_NAME=owned-registry
+REGISTRY_IMAGE=fixture
+REGISTRY_CREATED=0
+docker() {{
+  case "$1" in
+    inspect) return 1 ;;
+    port) printf '%s' {shlex.quote(endpoint)} ;;
+    network|exec) touch "$work/unexpected-network-call" ;;
+  esac
+}}
+log() {{ :; }}
+if start_local_registry; then exit 1; fi
+test "$REGISTRY_CREATED" = 1
+test ! -e "$work/unexpected-network-call"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
 
 
 def test_image_pins_are_read_exactly_once_from_tracked_sources() -> None:

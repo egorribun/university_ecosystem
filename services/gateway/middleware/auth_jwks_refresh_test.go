@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"io"
@@ -98,6 +99,104 @@ func TestStartJWKSRefresher_SuccessAndFailureAndCancel(t *testing.T) {
 	requestCount := requests.Load()
 	require.Never(t, func() bool { return requests.Load() > requestCount },
 		3*interval, 5*time.Millisecond, "cancelled refresher must stop polling")
+}
+
+type jwksRetryLogQueue chan []byte
+
+func (q jwksRetryLogQueue) Write(p []byte) (int, error) {
+	entry := append([]byte(nil), p...)
+	select {
+	case q <- entry:
+	default:
+	}
+	return len(p), nil
+}
+
+func TestStartJWKSRefresherRetainsKeyAndCapsBackoffAfterRepeatedFailures(t *testing.T) {
+	_, originalPEM := rsaTestKeys(t)
+	rotatedKey, rotatedPEM := rsaTestKeys(t)
+	thirdRequest := make(chan struct{})
+	releaseSuccess := make(chan struct{})
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch requests.Add(1) {
+		case 1, 2:
+			http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		case 3:
+			close(thirdRequest)
+			select {
+			case <-releaseSuccess:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		if _, err := io.WriteString(w, rotatedPEM); err != nil {
+			t.Errorf("write JWKS response: %v", err)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	middleware := NewJWTMiddlewareWithConfig(testSecret, originalPEM, nil, DefaultL1CacheConfig())
+	bootstrap := middleware.jwksSnapshot.Load()
+	require.NotNil(t, bootstrap)
+	logs := make(jwksRetryLogQueue, 8)
+	logger := slog.New(slog.NewJSONHandler(logs, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	const interval = 10 * time.Millisecond
+	middleware.StartJWKSRefresher(ctx, server.URL, interval, logger)
+	t.Cleanup(func() {
+		cancel()
+		stopped := make(chan struct{})
+		go func() {
+			jwksRefreshWG.Wait()
+			close(stopped)
+		}()
+		select {
+		case <-stopped:
+		case <-time.After(2 * time.Second):
+			t.Error("JWKS refresher did not stop after cancellation")
+		}
+	})
+
+	select {
+	case <-thirdRequest:
+	case <-time.After(2 * time.Second):
+		t.Fatal("refresher did not retry the second failure")
+	}
+	require.EqualValues(t, 3, requests.Load())
+	require.Same(t, bootstrap, middleware.jwksSnapshot.Load(), "failed fetches must retain the last known good key")
+
+	type logEntry struct {
+		Message   string        `json:"msg"`
+		Attempt   int           `json:"attempt"`
+		NextRetry time.Duration `json:"next_retry_in"`
+	}
+	readLog := func() logEntry {
+		t.Helper()
+		select {
+		case raw := <-logs:
+			var entry logEntry
+			require.NoError(t, json.Unmarshal(raw, &entry))
+			return entry
+		case <-time.After(2 * time.Second):
+			t.Fatal("missing JWKS retry log")
+			return logEntry{}
+		}
+	}
+	initial := readLog()
+	require.Equal(t, "Initial JWKS fetch failed, retrying soon", initial.Message)
+	require.Equal(t, interval, initial.NextRetry)
+	retry := readLog()
+	require.Equal(t, "JWKS refresh failed, retrying", retry.Message)
+	require.Equal(t, 2, retry.Attempt)
+	require.Equal(t, interval, retry.NextRetry, "backoff is capped at the configured refresh interval")
+
+	close(releaseSuccess)
+	require.Eventually(t, func() bool {
+		key := middleware.rsaPublicKey.Load()
+		return key != nil && key.N.Cmp(rotatedKey.N) == 0
+	}, 2*time.Second, 5*time.Millisecond, "a successful retry must publish the rotated key")
 }
 
 func TestFetchJWKSKeySet_ErrorsAndPEMFallback(t *testing.T) {

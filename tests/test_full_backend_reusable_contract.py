@@ -43,10 +43,25 @@ _REVIEWED_WORKFLOW_PIN_REPLACEMENTS = (
 )
 
 
-# AUD-346 / AUD-384 nightly hunks since the frozen v4 baseline. Each entry maps
-# the reviewed current bytes back to the frozen v4 bytes; the count is exact and
-# the fixture itself stays untouched.
+# AUD-346 / AUD-384 / AUD-429 nightly hunks since the frozen v4 baseline. Each
+# entry maps the reviewed current bytes back to the frozen v4 bytes; the count
+# is exact and the fixture itself stays untouched.
 _REVIEWED_NIGHTLY_HUNKS = (
+    (
+        """  live-realtime-visual:
+    name: Full-stand realtime and visual E2E
+    if: ${{ github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-live-realtime-visual.yml
+
+""",
+        "",
+    ),
+    (
+        "      - browser-matrix\n      - live-realtime-visual\n      - schemathesis-api-tests\n",
+        "      - browser-matrix\n      - schemathesis-api-tests\n",
+    ),
     (
         """      # AUD-346: dry-runs apply no faults and send no target traffic. The
       # recovery assertion is reported as NOT EVALUATED (never a pass); the
