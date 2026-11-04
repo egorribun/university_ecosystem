@@ -59,15 +59,15 @@ class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     search_vector: Mapped[Any] = mapped_column(
         Text().with_variant(TSVECTOR(), "postgresql"),
         Computed(
-            "to_tsvector('simple', "
-            "coalesce(title, '') || ' ' || "
-            "coalesce(description, '') || ' ' || "
-            "coalesce(location, '') || ' ' || "
-            "coalesce(title_en, '') || ' ' || "
-            "coalesce(description_en, '') || ' ' || "
-            "coalesce(location_en, '') || ' ' || "
-            "coalesce(about, '') || ' ' || "
-            "coalesce(about_en, '') "
+            "to_tsvector('simple'::regconfig, "
+            "coalesce(title, ''::character varying)::text || ' '::text || "
+            "coalesce(description, ''::text) || ' '::text || "
+            "coalesce(location, ''::character varying)::text || ' '::text || "
+            "coalesce(title_en, ''::character varying)::text || ' '::text || "
+            "coalesce(description_en, ''::text) || ' '::text || "
+            "coalesce(location_en, ''::character varying)::text || ' '::text || "
+            "coalesce(about, ''::text) || ' '::text || "
+            "coalesce(about_en, ''::text) "
             ")",
             persisted=True,
         ),
