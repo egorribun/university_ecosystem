@@ -4812,11 +4812,16 @@ jobs:
 
       - name: Report integration and migration quality results
         shell: bash
+        env:
+          WS_RESULT: ${{ needs.go-integration-ws-hub.result }}
+          FILE_PROCESSOR_RESULT: ${{ needs.go-integration-file-processor.result }}
+          GATEWAY_RESULT: ${{ needs.go-integration-gateway.result }}
+          DB_MIGRATION_RESULT: ${{ needs.db-migration-integrity.result }}
         run: |
-          ws=${{ needs.go-integration-ws-hub.result }}
-          fp=${{ needs.go-integration-file-processor.result }}
-          gw=${{ needs.go-integration-gateway.result }}
-          dbmig=${{ needs.db-migration-integrity.result }}
+          ws="$WS_RESULT"
+          fp="$FILE_PROCESSOR_RESULT"
+          gw="$GATEWAY_RESULT"
+          dbmig="$DB_MIGRATION_RESULT"
           {
             echo "## Go integration tests (required)";
             echo "";
