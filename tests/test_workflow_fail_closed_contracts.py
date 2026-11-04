@@ -646,6 +646,7 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert check_step["env"] == {
         "EVENT_NAME": "${{ github.event_name }}",
         "EVENT_REF": "${{ github.ref }}",
+        "BASE_REF": "${{ github.base_ref }}",
         "PRE_COMMIT_RESULT": "${{ needs.pre-commit-check.result }}",
         "PRE_COMMIT_SECURITY_RESULT": "${{ needs.pre-commit-security-and-types.result }}",
         "FRONTEND_TESTS_RESULT": "${{ needs.frontend-tests.result }}",
@@ -661,6 +662,15 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert 'expected_result="$coverage_expected_result"' in gate
     assert '"coverage-policy-gate|$COVERAGE_RESULT"' in gate
     assert 'assert_event_result "codecov-upload"' in gate
+    assert 'if [[ "$EVENT_NAME" == "pull_request" && "$BASE_REF" == "main" ]]' in gate
+    assert (
+        'assert_event_result "live-realtime-visual" '
+        '"${{ needs.live-realtime-visual.result }}" "success"'
+    ) in gate
+    assert (
+        'assert_event_result "live-realtime-visual" '
+        '"${{ needs.live-realtime-visual.result }}" "skipped"'
+    ) in gate
     assert '"sbom-generate|${{ needs.sbom-generate.result }}"' in gate
     assert '"db-migration-integrity|${{ needs.db-migration-integrity.result }}"' in gate
     assert '"security-audit|${{ needs.security-audit.result }}"' in gate

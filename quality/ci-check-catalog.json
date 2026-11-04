@@ -1648,7 +1648,8 @@
             "quality-inventory-check",
             "kyverno-test",
             "caddy-emitted-log-proof",
-            "windows-live-proofs"
+            "windows-live-proofs",
+            "live-realtime-visual"
           ],
           "artifacts": [
             {
@@ -1691,6 +1692,21 @@
           "needs": [
             "pre-commit-check"
           ],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "live-realtime-visual": {
+          "profile": "required-pr",
+          "check_name_template": "live-realtime-visual",
+          "expected_timeout_minutes": 180,
+          "expected_duration_seconds": 10800,
+          "guard": "${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3130,6 +3146,7 @@
             "go-integration",
             "container-integration-cells",
             "browser-matrix",
+            "live-realtime-visual",
             "schemathesis-api-tests",
             "chaos-tests",
             "chaos-loadtest-orchestrator",
@@ -3138,6 +3155,21 @@
             "kyverno-test",
             "miri"
           ],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "live-realtime-visual": {
+          "profile": "nightly",
+          "check_name_template": "Full-stand realtime and visual E2E",
+          "expected_timeout_minutes": 180,
+          "expected_duration_seconds": 10800,
+          "guard": "${{ github.ref == 'refs/heads/main' }}",
+          "needs": [],
           "artifacts": [],
           "retry_policy": {
             "mode": "none",
@@ -3961,6 +3993,48 @@
             "first_failure_preserved": true,
             "classifier": "not_applicable",
             "review_required": false
+          }
+        }
+      }
+    },
+    {
+      "path": ".github/workflows/reusable-live-realtime-visual.yml",
+      "name": "Full-stand realtime and visual E2E",
+      "owner": "@egorribun",
+      "events": [
+        {
+          "event": "workflow_call",
+          "guard": "any"
+        }
+      ],
+      "jobs": {
+        "live-realtime-visual": {
+          "profile": "internal",
+          "check_name_template": "Full-stand realtime and visual E2E",
+          "expected_timeout_minutes": 180,
+          "expected_duration_seconds": 10800,
+          "guard": "workflow trigger",
+          "needs": [],
+          "artifacts": [
+            {
+              "name_pattern": "full-stand-realtime-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/aud429-realtime-summary.txt",
+              "required": false,
+              "provenance": "sha"
+            },
+            {
+              "name_pattern": "full-stand-visual-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ env.VISUAL_OUT_DIR }}/**/*.png",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
+          "retry_policy": {
+            "mode": "review-required",
+            "first_failure_preserved": false,
+            "classifier": "not-yet-classified",
+            "review_required": true,
+            "notes": "Retry marker appears in the no-retries diagnostic; review source behavior before changing this conservative classification."
           }
         }
       }

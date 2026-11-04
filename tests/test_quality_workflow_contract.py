@@ -6985,6 +6985,7 @@ _FOCUSED_BASELINE_SELECTORS = (
     "tests/test_mvp_baseline_migration.py::test_downgrade_is_irreversible_and_refuses_before_changing_schema",
     "tests/test_mvp_baseline_migration.py::test_upgrade_requires_postgresql_and_executes_nothing_elsewhere",
     "tests/test_mvp_baseline_migration.py::test_upgrade_creates_the_restored_and_delivery_once_objects",
+    "tests/test_mvp_baseline_migration.py::test_upgrade_omits_the_redundant_attempt_keyed_delivery_constraint",
     "tests/test_mvp_baseline_migration.py::test_upgrade_schedules_pg_cron_jobs_only_when_the_extension_is_available",
     "tests/test_aud274_user_quiet_hours_retained.py",
     "tests/test_aud278_events_search_index_kept.py",

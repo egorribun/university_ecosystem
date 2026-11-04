@@ -961,6 +961,12 @@ jobs:
       python-version: "3.14"
       node-version: "24.21.0"
 
+  live-realtime-visual:
+    if: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-live-realtime-visual.yml
+
   # MOD-21-04 (audit 2026-03-25 Wave 21): Generate Software Bill of Materials
   # for supply chain security compliance (CycloneDX/SPDX).  Uploads as a build
   # artifact so downstream tools (Dependabot, Grype, etc.) can consume it.
@@ -2060,6 +2066,7 @@ jobs:
             tests/test_mvp_baseline_migration.py::test_downgrade_is_irreversible_and_refuses_before_changing_schema \
             tests/test_mvp_baseline_migration.py::test_upgrade_requires_postgresql_and_executes_nothing_elsewhere \
             tests/test_mvp_baseline_migration.py::test_upgrade_creates_the_restored_and_delivery_once_objects \
+            tests/test_mvp_baseline_migration.py::test_upgrade_omits_the_redundant_attempt_keyed_delivery_constraint \
             tests/test_mvp_baseline_migration.py::test_upgrade_schedules_pg_cron_jobs_only_when_the_extension_is_available \
             tests/test_aud274_user_quiet_hours_retained.py \
             tests/test_aud278_events_search_index_kept.py \
@@ -4635,6 +4642,7 @@ jobs:
       - kyverno-test
       - caddy-emitted-log-proof
       - windows-live-proofs
+      - live-realtime-visual
 
     steps:
       - name: Check all jobs passed
@@ -4642,6 +4650,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_REF: ${{ github.ref }}
+          BASE_REF: ${{ github.base_ref }}
           PRE_COMMIT_RESULT: ${{ needs.pre-commit-check.result }}
           PRE_COMMIT_SECURITY_RESULT: ${{ needs.pre-commit-security-and-types.result }}
           FRONTEND_TESTS_RESULT: ${{ needs.frontend-tests.result }}
@@ -4741,6 +4750,12 @@ jobs:
             assert_event_result "codecov-upload" "${{ needs.codecov-upload.result }}" "success"
           else
             assert_event_result "codecov-upload" "${{ needs.codecov-upload.result }}" "skipped"
+          fi
+
+          if [[ "$EVENT_NAME" == "pull_request" && "$BASE_REF" == "main" ]]; then
+            assert_event_result "live-realtime-visual" "${{ needs.live-realtime-visual.result }}" "success"
+          else
+            assert_event_result "live-realtime-visual" "${{ needs.live-realtime-visual.result }}" "skipped"
           fi
 
           if (( failed != 0 )); then

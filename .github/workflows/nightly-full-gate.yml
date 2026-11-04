@@ -659,6 +659,13 @@ jobs:
       wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
       wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
+  live-realtime-visual:
+    name: Full-stand realtime and visual E2E
+    if: ${{ github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/reusable-live-realtime-visual.yml
+
   schemathesis-api-tests-shard:
     name: Schemathesis - API Schema Conformance / shard ${{ matrix.shard }}/8
     if: ${{ github.ref == 'refs/heads/main' }}
@@ -1097,6 +1104,7 @@ jobs:
       - go-integration
       - container-integration-cells
       - browser-matrix
+      - live-realtime-visual
       - schemathesis-api-tests
       - chaos-tests
       - chaos-loadtest-orchestrator

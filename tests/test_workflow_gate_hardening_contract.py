@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -641,3 +642,89 @@ def test_weekly_duration_writer_authenticates_only_the_guarded_push(
     else:
         assert status != 0
         assert events == []
+
+
+def test_live_e2e_catalog_matches_the_pr_only_aggregate_dependency() -> None:
+    jobs = _load("ci.yml")["jobs"]
+    job = jobs["live-realtime-visual"]
+    assert job["if"] == (
+        "${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}"
+    )
+    assert job["uses"] == "./.github/workflows/reusable-live-realtime-visual.yml"
+    assert "live-realtime-visual" in jobs["ci-success"]["needs"]
+
+    catalog = yaml.safe_load((ROOT / "quality/ci-check-catalog.json").read_text())
+    ci = next(
+        workflow
+        for workflow in catalog["workflows"]
+        if workflow["path"] == ".github/workflows/ci.yml"
+    )
+    assert ci["jobs"]["live-realtime-visual"]["profile"] == "required-pr"
+    assert ci["jobs"]["live-realtime-visual"]["guard"] == job["if"]
+    assert "live-realtime-visual" in ci["jobs"]["ci-success"]["needs"]
+
+
+@pytest.mark.parametrize(
+    ("event", "base_ref", "live_result", "expected_status"),
+    [
+        ("pull_request", "main", "success", 0),
+        ("pull_request", "main", "failure", 1),
+        ("pull_request", "main", "skipped", 1),
+        ("pull_request", "main", "cancelled", 1),
+        ("pull_request", "other", "skipped", 0),
+        ("push", "", "skipped", 0),
+        ("push", "", "success", 1),
+    ],
+)
+def test_ci_success_executes_pr_live_e2e_result_policy(
+    pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    event: str,
+    base_ref: str,
+    live_result: str,
+    expected_status: int,
+) -> None:
+    step = _step(_load("ci.yml")["jobs"]["ci-success"], "Check all jobs passed")
+    assert step["shell"] == "bash"
+    results = {
+        "live-realtime-visual": live_result,
+        "codecov-upload": "success" if event == "push" else "skipped",
+    }
+
+    def substitute(match: re.Match[str]) -> str:
+        return results.get(match.group(1), "success")
+
+    script = re.sub(
+        r"\$\{\{\s*needs\.([a-z0-9-]+)\.result\s*\}\}", substitute, step["run"]
+    )
+    assert "${{" not in script
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    bash = (
+        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
+    )
+    assert bash, "Real Bash is required to execute the CI Success aggregate"
+    monkeypatch.chdir(pytester.path)
+    monkeypatch.delenv("BASH_ENV", raising=False)
+    monkeypatch.setenv("EVENT_NAME", event)
+    monkeypatch.setenv(
+        "EVENT_REF", "refs/heads/main" if event == "push" else "refs/pull/1/merge"
+    )
+    monkeypatch.setenv("BASE_REF", base_ref)
+    for name in step["env"]:
+        if name.endswith("_RESULT"):
+            monkeypatch.setenv(name, "success")
+    Path("ci-success.sh").write_text(script, encoding="utf-8", newline="\n")
+
+    result = pytester.run(
+        bash,
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        "ci-success.sh",
+        timeout=20,
+    )
+    assert result.ret == expected_status
+    if expected_status:
+        assert "Event-gated CI job 'live-realtime-visual'" in result.stdout.str()

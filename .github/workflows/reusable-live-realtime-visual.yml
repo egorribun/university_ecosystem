@@ -1,0 +1,189 @@
+name: Full-stand realtime and visual E2E
+
+# Called by CI for pull requests targeting main and by the nightly gate.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  live-realtime-visual:
+    name: Full-stand realtime and visual E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the exact event commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the checked-out source
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]]
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: false
+
+      - name: Install locked Python runtime dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Install locked Chromium and browser dependencies
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Select an owned state and private visual output directory
+        run: |
+          set -euo pipefail
+          state_root="$(python -c 'import tempfile; print(tempfile.gettempdir())')"
+          printf 'LIVE_STATE_DIR=%s/ue-live-acceptance/run-%s-%s-realtime-visual\n' \
+            "$state_root" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          printf 'VISUAL_OUT_DIR=%s/aud429-visual-%s-%s\n' \
+            "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+
+      - name: Start the owned full live stand
+        id: start-stand
+        env:
+          STAND_REF: ${{ github.sha }}
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand up
+          --in-place --state-dir "$LIVE_STATE_DIR" --ref "$STAND_REF" --stack full
+
+      - name: Exercise real realtime sessions without skips
+        id: realtime
+        run: |
+          set -euo pipefail
+          if uv run --frozen --no-sync python -m scripts.live_stand e2e \
+            --in-place --state-dir "$LIVE_STATE_DIR" --mode full \
+            --spec tests/e2e-live/messenger-realtime.live.spec.ts \
+            --spec tests/e2e-live/messenger-reconnect-ordering.live.spec.ts \
+            --spec tests/e2e-live/messenger-unread-read.live.spec.ts \
+            | tee "$RUNNER_TEMP/aud429-realtime-raw.txt"; then
+            run_result=0
+          else
+            run_result=$?
+          fi
+          # Eight real scenarios must execute on each of desktop and mobile.
+          # Seed output is not part of the uploaded, allowlisted summary.
+          python - "$RUNNER_TEMP/aud429-realtime-raw.txt" \
+            "$RUNNER_TEMP/aud429-realtime-summary.txt" "$run_result" <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          lines = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace").splitlines()
+          counts = [line for line in lines if line.startswith("live E2E counts ")]
+          outcomes = [line for line in lines if line.startswith("live E2E outcome=")]
+          count_pattern = r"live E2E counts (?:(?:passed|failed|skipped|flaky|interrupted|did_not_run)=[0-9]{1,5})(?: (?:passed|failed|skipped|flaky|interrupted|did_not_run)=[0-9]{1,5})*"
+          outcome_pattern = r"live E2E outcome=(?:passed|failed) exit_code=[0-9]{1,5}"
+          safe = [line for line in counts if len(line) <= 256 and re.fullmatch(count_pattern, line)]
+          safe += [line for line in outcomes if len(line) <= 256 and re.fullmatch(outcome_pattern, line)]
+          safe = safe[:16]
+          Path(sys.argv[2]).write_text("\n".join(safe) + "\n", encoding="utf-8")
+          if sys.argv[3] != "0" or counts != ["live E2E counts passed=16"] or outcomes != ["live E2E outcome=passed exit_code=0"]:
+              raise SystemExit("realtime E2E did not execute all 16 cases without skips or retries")
+          PY
+
+      - name: Upload redacted realtime execution summary
+        if: ${{ !cancelled() && steps.realtime.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: full-stand-realtime-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/aud429-realtime-summary.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Capture and audit authenticated visual matrix on the full stand
+        id: visual
+        if: ${{ !cancelled() && steps.start-stand.outcome == 'success' }}
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          stand_status="$(uv run --frozen --no-sync python -m scripts.live_stand status --in-place --state-dir "$LIVE_STATE_DIR")"
+          mapfile -t base_urls < <(printf '%s\n' "$stand_status" | sed -n 's/^LIVE_BASE_URL=//p')
+          mapfile -t mailpit_urls < <(printf '%s\n' "$stand_status" | sed -n 's/^LIVE_MAILPIT_URL=//p')
+          [[ "${#base_urls[@]}" == 1 && "${#mailpit_urls[@]}" == 1 ]]
+          uv run --frozen --no-sync python -m scripts.live_stand verify-endpoints \
+            --in-place --state-dir "$LIVE_STATE_DIR" \
+            --base-url "${base_urls[0]}" --mailpit-url "${mailpit_urls[0]}"
+          export ORIGIN="${base_urls[0]}" OUT_DIR="$VISUAL_OUT_DIR"
+          export VISUAL_CAPTURE_MATRIX=1 VISUAL_LOCALES=en,ru VISUAL_THEMES=light,dark
+          export VISUAL_WIDTHS=390,1440 VISUAL_HEIGHT=900 ROUTES=/dashboard,/events,/news
+          cd frontend
+          # Use the audit's existing disposable seeded account defaults, without
+          # duplicating credential-shaped values in another source file.
+          env -u TEST_EMAIL -u TEST_PASSWORD node --input-type=module <<'NODE'
+          import { spawnSync } from "node:child_process"
+          import { TEST_EMAIL, TEST_PASSWORD } from "./scripts/authenticated-visual-audit.mjs"
+
+          const result = spawnSync(process.execPath, ["./scripts/authenticated-visual-audit.mjs"], {
+            env: { ...process.env, TEST_EMAIL, TEST_PASSWORD },
+            stdio: "inherit",
+            timeout: 3_600_000,
+          })
+          if (result.error || result.status !== 0) process.exit(1)
+          NODE
+          # Check the complete matrix, not merely a non-empty artifact.
+          python - "$VISUAL_OUT_DIR" <<'PY'
+          from itertools import product
+          from pathlib import Path
+          import sys
+
+          expected = {
+              f"{route}_{locale}_{theme}_w{width}.png"
+              for route, locale, theme, width in product(
+                  ("dashboard", "events", "news"),
+                  ("en", "ru"), ("light", "dark"), (390, 1440),
+              )
+          }
+          images = list(Path(sys.argv[1]).rglob("*.png"))
+          if len(images) != len(expected) or {image.name for image in images} != expected:
+              raise SystemExit("visual E2E did not capture the complete requested matrix")
+          if any(image.read_bytes()[:8] != b"\x89PNG\r\n\x1a\n" for image in images):
+              raise SystemExit("visual E2E produced an invalid screenshot")
+          PY
+
+      - name: Upload synthetic visual screenshots
+        if: ${{ !cancelled() && steps.visual.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: full-stand-visual-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.VISUAL_OUT_DIR }}/**/*.png
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Stop only the owned stand containers
+        id: stop-stand
+        if: ${{ always() && steps.start-stand.outcome != 'skipped' }}
+        run: >-
+          uv run --frozen --no-sync python -m scripts.live_stand stop
+          --in-place --state-dir "$LIVE_STATE_DIR"

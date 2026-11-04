@@ -85,8 +85,8 @@ const { chromium } = requireFromProject("playwright")
 const AXE_SOURCE_PATH = path.join(PROJECT_ROOT, "node_modules", "axe-core", "axe.min.js")
 
 const ORIGIN = process.env.ORIGIN ?? "http://localhost"
-const TEST_EMAIL = process.env.TEST_EMAIL ?? "test@university.dev"
-const TEST_PASSWORD = process.env.TEST_PASSWORD ?? "TestPass@2024x"
+export const TEST_EMAIL = process.env.TEST_EMAIL ?? "test@university.dev"
+export const TEST_PASSWORD = process.env.TEST_PASSWORD ?? "TestPass@2024x"
 const OUT_DIR = path.resolve(
   PROJECT_ROOT,
   process.env.OUT_DIR ?? ".screenshots/authenticated-visual-audit"

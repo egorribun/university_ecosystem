@@ -1,4 +1,4 @@
-import { devices, type Locator, type Page } from "@playwright/test"
+import { devices, type Locator, type Page, type WebSocket } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures"
 import { reportLiveHttpStatus } from "./http-status-diagnostic"
 
@@ -143,6 +143,12 @@ function findReactionMutationFrames(value: unknown): ReactionMutationFrame[] {
 
 type CreatedLiveMessage = { id: string; content: string }
 type ReceiverSocketSession = { joinedChat: boolean; closed: boolean }
+type TypingObservation = {
+  text: string | null
+  appearedAt: number | null
+  removedAt: number | null
+}
+type TypingObservationWindow = Window & { __liveTypingObservation?: TypingObservation }
 
 async function sendLiveMessage(
   page: Page,
@@ -1766,6 +1772,207 @@ test.describe("live messenger delivery", () => {
           await receiverContext.close()
         }
       }
+    }
+  })
+
+  test("a peer typing indicator appears and expires over the live socket", async ({
+    browser,
+    page,
+  }, testInfo) => {
+    // One natural 30-second heartbeat after the room join confirms that the
+    // hub processed the join before the sender produces the ephemeral event.
+    test.setTimeout(120_000)
+    const mobile = testInfo.project.name === "mobile"
+    const receiverContext = await browser.newContext({
+      ...(mobile ? devices["Pixel 7"] : devices["Desktop Chrome"]),
+      baseURL: LIVE_BASE_URL,
+      locale: "ru-RU",
+      viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+    })
+
+    try {
+      const receiverPage = await receiverContext.newPage()
+      await loginAs(page, "student")
+      await loginAs(receiverPage, "teacher")
+      const studentResponse = await page.request.get("/api/v1/users/me")
+      const teacherResponse = await receiverPage.request.get("/api/v1/users/me")
+      expect(studentResponse.ok()).toBe(true)
+      expect(teacherResponse.ok()).toBe(true)
+      const student = (await studentResponse.json()) as { id: string; role: string }
+      const teacher = (await teacherResponse.json()) as {
+        id: string
+        full_name: string | null
+        role: string
+      }
+      expect(student.role).toBe("student")
+      expect(teacher.role).toBe("teacher")
+      expect(teacher.id).not.toBe(student.id)
+      expect(teacher.full_name).toBeTruthy()
+
+      await page.goto("/messenger")
+      await page.getByRole("button", { name: "Новый чат", exact: true }).click()
+      await page.getByRole("textbox", { name: "Поиск пользователей" }).fill(teacher.full_name!)
+      const teacherOption = page.getByRole("option").filter({ hasText: teacher.full_name! })
+      await expect(teacherOption).toHaveCount(1)
+      await teacherOption.click()
+      await expect(page).toHaveURL(/\/messenger\/[^/]+\/?$/)
+      const activeChatId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1)
+      if (!activeChatId) throw new Error("Direct chat route did not contain a chat id")
+
+      const receiverSessions: Array<{
+        socket: WebSocket
+        joined: boolean
+        acknowledged: boolean
+        closed: boolean
+        heartbeats: Set<string>
+        typingFrames: Array<{ user_name: string; socketOpenAtReceipt: boolean }>
+      }> = []
+      receiverPage.on("websocket", (socket) => {
+        const session = {
+          socket,
+          joined: false,
+          acknowledged: false,
+          closed: false,
+          heartbeats: new Set<string>(),
+          typingFrames: [] as Array<{ user_name: string; socketOpenAtReceipt: boolean }>,
+        }
+        receiverSessions.push(session)
+        socket.on("close", () => {
+          session.closed = true
+        })
+        socket.on("framesent", (payload) => {
+          const frame = parseFrame(payload)
+          if (hasRoomJoin(frame, activeChatId)) session.joined = true
+          if (session.joined && isRecord(frame) && frame.type === "heartbeat_ping") {
+            if (typeof frame.nonce === "string") session.heartbeats.add(frame.nonce)
+          }
+        })
+        socket.on("framereceived", (payload) => {
+          const frame = parseFrame(payload)
+          if (
+            isRecord(frame) &&
+            frame.type === "heartbeat_pong" &&
+            typeof frame.nonce === "string" &&
+            session.heartbeats.has(frame.nonce)
+          ) {
+            session.acknowledged = true
+          }
+          const event = isRecord(frame) && isRecord(frame.payload) ? frame.payload : frame
+          if (
+            isRecord(event) &&
+            event.type === "typing" &&
+            event.chat_id === activeChatId &&
+            event.user_id === student.id &&
+            typeof event.user_name === "string" &&
+            event.user_name.length > 0
+          ) {
+            session.typingFrames.push({
+              user_name: event.user_name,
+              socketOpenAtReceipt: !socket.isClosed(),
+            })
+          }
+        })
+      })
+
+      await receiverPage.goto(`/messenger/${activeChatId}`)
+      await receiverPage.bringToFront()
+      await expect(receiverPage.getByRole("log", { name: /Сообщения чата/i })).toBeVisible()
+      await expect
+        .poll(() => receiverSessions.some((session) => session.acknowledged && !session.closed), {
+          timeout: 35_000,
+        })
+        .toBe(true)
+      const receiverSession = receiverSessions.find(
+        (session) => session.acknowledged && !session.closed && !session.socket.isClosed()
+      )
+      if (!receiverSession) throw new Error("Peer room socket did not remain open")
+
+      const typingIndicator = receiverPage
+        .getByRole("status")
+        .filter({ hasText: /печатает\.\.\./u })
+      await expect(typingIndicator).toHaveCount(0)
+      await receiverPage.evaluate(() => {
+        const root = document.querySelector("#main-content")
+        if (!root) throw new Error("Messenger main region is unavailable")
+        const observation: TypingObservation = { text: null, appearedAt: null, removedAt: null }
+        ;(window as TypingObservationWindow).__liveTypingObservation = observation
+        const observer = new MutationObserver(() => {
+          const indicator = [...root.querySelectorAll('[role="status"][aria-live="polite"]')].find(
+            (element) => /печатает\.\.\./u.test(element.textContent ?? "")
+          )
+          if (indicator && observation.appearedAt === null) {
+            const style = window.getComputedStyle(indicator)
+            const bounds = indicator.getBoundingClientRect()
+            if (
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              Number.parseFloat(style.opacity) > 0 &&
+              bounds.width > 0 &&
+              bounds.height > 0
+            ) {
+              observation.text = indicator.textContent
+              observation.appearedAt = performance.now()
+            }
+          } else if (!indicator && observation.appearedAt !== null) {
+            observation.removedAt = performance.now()
+            observer.disconnect()
+          }
+        })
+        observer.observe(root, { childList: true, subtree: true, characterData: true })
+      })
+      const typingResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === `/api/v1/chats/${activeChatId}/typing`
+      )
+      const draft = `live-typing-${crypto.randomUUID()}`
+      await page.locator("#chat-message-input").fill(draft)
+      const [response] = await Promise.all([
+        typingResponse,
+        expect.poll(() => receiverSession.typingFrames.length).toBeGreaterThan(0),
+        expect
+          .poll(
+            () =>
+              receiverPage.evaluate(
+                () => (window as TypingObservationWindow).__liveTypingObservation?.appearedAt
+              ),
+            { timeout: 10_000 }
+          )
+          .toEqual(expect.any(Number)),
+      ])
+      expect(response.ok()).toBe(true)
+      const received = receiverSession.typingFrames[0]
+      if (!received) throw new Error("Peer typing frame was not observed")
+      expect(received.socketOpenAtReceipt).toBe(true)
+      expect(receiverSession.closed).toBe(false)
+      expect(receiverSession.socket.isClosed()).toBe(false)
+
+      // Leave the draft untouched: the recipient must remove the indicator
+      // after the real typing event expires, with no synthetic stop frame.
+      await expect
+        .poll(
+          () =>
+            receiverPage.evaluate(
+              () => (window as TypingObservationWindow).__liveTypingObservation?.removedAt
+            ),
+          { timeout: 10_000 }
+        )
+        .toEqual(expect.any(Number))
+      const observation = await receiverPage.evaluate(
+        () => (window as TypingObservationWindow).__liveTypingObservation
+      )
+      expect(observation?.text).toContain(`${received.user_name} печатает...`)
+      expect(typeof observation?.appearedAt).toBe("number")
+      expect(typeof observation?.removedAt).toBe("number")
+      if (observation?.appearedAt == null || observation.removedAt == null) {
+        throw new Error("Peer typing appearance or removal was not observed")
+      }
+      expect(observation.removedAt).toBeGreaterThan(observation.appearedAt)
+      expect(receiverSession.closed).toBe(false)
+      expect(receiverSession.socket.isClosed()).toBe(false)
+      await expect(page.locator("#chat-message-input")).toHaveValue(draft)
+    } finally {
+      await receiverContext.close()
     }
   })
 })
