@@ -384,6 +384,11 @@ test.describe("live messenger delivery", () => {
         .locator(
           "xpath=ancestor::div[contains(concat(' ', normalize-space(@class), ' '), ' group ')][1]"
         )
+      await expect(
+        sentMessageRow.getByRole("img", {
+          name: /^(Отправлено|Прочитано получателем|Sent|Read by recipient)$/u,
+        })
+      ).toBeVisible()
       await sentMessageRow.getByRole("button", { name: "Изменить сообщение", exact: true }).click()
       await page
         .getByRole("textbox", { name: "Изменить сообщение", exact: true })

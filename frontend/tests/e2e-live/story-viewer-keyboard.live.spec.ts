@@ -164,21 +164,48 @@ storyVisibilityTest(
           }
         })
       }
+      const readClock = () =>
+        page.evaluate(() => ({ wallTime: Date.now(), monotonicTime: performance.now() }))
+      const frozenClock = await readClock()
+      await flushScheduledWork()
+      expect(await readClock()).toEqual(frozenClock)
+
       const openAtKnownProgress = async () => {
         await trigger.click()
         await expect(dialog).toBeVisible()
         await expect(dialog).toHaveAccessibleName(SEEDED_STORY_TITLE)
         await flushScheduledWork()
         await page.clock.runFor(VISIBLE_WARMUP_MS)
+        await flushScheduledWork()
         await expect.poll(readProgress).toBeGreaterThan(15)
         expect(await readProgress()).toBeLessThan(25)
       }
 
       await openAtKnownProgress()
       const backgroundPage = await openStoryBackgroundTab(page)
+      expect(await page.evaluate(() => document.visibilityState)).toBe("visible")
+      const visibilityObservation = await page.evaluateHandle(() => {
+        const changes = { hidden: 0, visible: 0 }
+        const recordVisibility = () => {
+          if (document.visibilityState === "hidden") changes.hidden += 1
+          if (document.visibilityState === "visible") changes.visible += 1
+        }
+        document.addEventListener("visibilitychange", recordVisibility, true)
+        return {
+          read: () => ({ ...changes }),
+          disconnect: () =>
+            document.removeEventListener("visibilitychange", recordVisibility, true),
+        }
+      })
+      const readVisibilityChanges = () =>
+        page.evaluate((observation) => observation.read(), visibilityObservation)
       try {
+        const beforeHidden = await readVisibilityChanges()
         await backgroundPage.bringToFront()
         await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("hidden")
+        await expect
+          .poll(async () => (await readVisibilityChanges()).hidden)
+          .toBeGreaterThan(beforeHidden.hidden)
         await flushScheduledWork()
         const pausedProgress = await readProgress()
         expect(pausedProgress).toBeGreaterThan(15)
@@ -186,6 +213,15 @@ storyVisibilityTest(
 
         const progressObservation = await activeProgress.evaluateHandle((element) => {
           let changes = 0
+          let frames = 0
+          let hiddenFrames = 0
+          let frameId: number
+          const probeFrame = () => {
+            frames += 1
+            if (document.visibilityState === "hidden") hiddenFrames += 1
+            frameId = requestAnimationFrame(probeFrame)
+          }
+          frameId = requestAnimationFrame(probeFrame)
           const observer = new MutationObserver((records) => {
             changes += records.length
           })
@@ -195,16 +231,33 @@ storyVisibilityTest(
               changes += observer.takeRecords().length
               return changes
             },
-            disconnect: () => observer.disconnect(),
+            readFrames: () => ({ frames, hiddenFrames }),
+            disconnect: () => {
+              observer.disconnect()
+              cancelAnimationFrame(frameId)
+            },
           }
         })
         try {
-          // A full story duration elapses in two checks while the real tab is
-          // hidden. The negative control below checks that fake RAF can run.
+          // Each checkpoint advances both clocks and runs an independent RAF
+          // in the hidden tab while the story's own progress stays frozen.
+          const hiddenClockStart = await readClock()
+          let previousHiddenFrames = 0
           for (let checkpoint = 0; checkpoint < 2; checkpoint += 1) {
             await page.clock.fastForward(STORY_HIDDEN_DURATION_MS / 2)
             await flushScheduledWork()
             await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("hidden")
+            const hiddenClock = await readClock()
+            const elapsed = ((checkpoint + 1) * STORY_HIDDEN_DURATION_MS) / 2
+            expect(hiddenClock.wallTime - hiddenClockStart.wallTime).toBe(elapsed)
+            expect(hiddenClock.monotonicTime - hiddenClockStart.monotonicTime).toBe(elapsed)
+            const hiddenFrameCounts = await page.evaluate(
+              (observation) => observation.readFrames(),
+              progressObservation
+            )
+            expect(hiddenFrameCounts.frames).toBeGreaterThan(previousHiddenFrames)
+            expect(hiddenFrameCounts.hiddenFrames).toBe(hiddenFrameCounts.frames)
+            previousHiddenFrames = hiddenFrameCounts.frames
             await expect(dialog).toHaveAccessibleName(SEEDED_STORY_TITLE)
             expect(await readProgress()).toBe(pausedProgress)
             const hiddenProgressChanges = await page.evaluate(
@@ -221,10 +274,15 @@ storyVisibilityTest(
           }
         }
 
+        const beforeVisible = await readVisibilityChanges()
         await page.bringToFront()
         await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("visible")
+        await expect
+          .poll(async () => (await readVisibilityChanges()).visible)
+          .toBeGreaterThan(beforeVisible.visible)
         await flushScheduledWork()
         await page.clock.runFor(VISIBLE_RESUME_MS)
+        await flushScheduledWork()
         await expect.poll(readProgress).toBeGreaterThan(pausedProgress + MIN_RESUMED_ADVANCE)
         expect(await readProgress()).toBeLessThan(pausedProgress + MAX_RESUMED_ADVANCE)
         await expect(dialog).toHaveAccessibleName(SEEDED_STORY_TITLE)
@@ -244,10 +302,15 @@ storyVisibilityTest(
         try {
           await openAtKnownProgress()
           const unpausedProgress = await readProgress()
+          const beforeBlockedHidden = await readVisibilityChanges()
           await backgroundPage.bringToFront()
           await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("hidden")
+          await expect
+            .poll(async () => (await readVisibilityChanges()).hidden)
+            .toBeGreaterThan(beforeBlockedHidden.hidden)
           await flushScheduledWork()
           await page.clock.fastForward(1_000)
+          await flushScheduledWork()
           await expect.poll(readProgress).toBeGreaterThan(unpausedProgress + 10)
           await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("hidden")
           await expect(dialog).toHaveAccessibleName(SEEDED_STORY_TITLE)
@@ -259,7 +322,15 @@ storyVisibilityTest(
           }
         }
       } finally {
-        await backgroundPage.close()
+        try {
+          await page.evaluate((observation) => observation.disconnect(), visibilityObservation)
+        } finally {
+          try {
+            await visibilityObservation.dispose()
+          } finally {
+            await backgroundPage.close()
+          }
+        }
       }
     } finally {
       await page.clock.resume()
