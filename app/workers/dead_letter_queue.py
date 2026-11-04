@@ -12,12 +12,14 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import random
 import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
+from urllib.parse import quote, unquote
 
 from sqlalchemy import (
     delete,
@@ -105,11 +107,67 @@ _PLAINTEXT_TOKEN_LINK = re.compile(
 )
 
 
-def _scrub_error_text(error: str) -> str:
-    """Return the error text unless it echoes a plaintext token link."""
+# The token parameter of a reset or verification link, plain or percent-encoded.
+_LINK_TOKEN_VALUE = re.compile(r"[#?&]token=([^&#\s]+)", re.IGNORECASE)
+
+
+class DeadLetterPlaintextLinkError(ValueError):
+    """A retained job would store a reset or verification link in plaintext."""
+
+    def __init__(self) -> None:
+        super().__init__("Dead-letter payload carries a plaintext token link")
+
+
+def _auth_link_tokens(job_type: str, stored_payload: str) -> tuple[str, ...]:
+    """Return the token values carried by a stored auth payload's link.
+
+    Only the error scrub uses these values, so a token that an error repeats
+    outside a link is removed as well. Any unreadable payload yields no values.
+    The payload itself is protected separately, and this never returns the link.
+    """
+    if job_type != _AUTH_EMAIL_JOB_TYPE:
+        return ()
+    try:
+        from app.services.auth_service import _token_hmac_secret
+        from app.tasks.email import _read_auth_email_link, send_auth_email
+
+        payload = json.loads(stored_payload)
+        bound = inspect.signature(send_auth_email).bind(
+            *payload["args"], **payload["kwargs"]
+        )
+        link = bound.arguments["link"]
+        if bound.arguments.get("encrypted_link", False) is True:
+            link = _read_auth_email_link(link, _token_hmac_secret())[0]
+    except Exception:  # RZ-22-01-JUSTIFIED: unreadable row yields no extra scrub values
+        return ()
+    if not isinstance(link, str):
+        return ()
+    return tuple(
+        sorted(
+            {unquote(match.group(1)) for match in _LINK_TOKEN_VALUE.finditer(link)}
+            - {""}
+        )
+    )
+
+
+def _scrub_error_text(error: str, tokens: tuple[str, ...] = ()) -> str:
+    """Return the error text unless it echoes a token link or a known token."""
     if _PLAINTEXT_TOKEN_LINK.search(error):
         return _QUARANTINED_AUTH_PAYLOAD
+    for token in tokens:
+        if token in error or quote(token, safe="") in error:
+            return _QUARANTINED_AUTH_PAYLOAD
     return error
+
+
+def _reject_plaintext_link(stored_payload: str) -> None:
+    """Refuse to persist a payload that still carries a plaintext token link.
+
+    Auth payloads are sealed before this check, so it only fails for another
+    job type that carries such a link, or for an auth payload that was not sealed.
+    """
+    if _PLAINTEXT_TOKEN_LINK.search(stored_payload):
+        raise DeadLetterPlaintextLinkError()
 
 
 class DeadLetterQueue:
@@ -148,6 +206,16 @@ class DeadLetterQueue:
         # Calculate next retry time with exponential backoff
         next_retry = datetime.now(UTC) + timedelta(seconds=self.BASE_BACKOFF_SECONDS)
 
+        # The stored form is the only form written below. Its error text is scrubbed
+        # with the tokens that this payload carries.
+        stored_payload = json.dumps(payload)
+        tokens = _auth_link_tokens(job_type, stored_payload)
+        # A non-auth payload that still carries a plaintext link is recorded as a
+        # quarantined row: the failure stays on record, and it is never replayed.
+        quarantine = job_type != _AUTH_EMAIL_JOB_TYPE and bool(
+            _PLAINTEXT_TOKEN_LINK.search(stored_payload)
+        )
+
         # Duplicate check: skip only while a retry for this payload is queued.
         statement = select(DeadLetterJob).where(DeadLetterJob.job_hash == job_hash)
         if job_type == "app.tasks.email.send_auth_email":
@@ -166,7 +234,10 @@ class DeadLetterQueue:
             # The retained row keeps its own earlier error text; a link that an
             # earlier failure stored must not survive a later duplicate either.
             if existing.error_message is not None:
-                existing.error_message = _scrub_error_text(existing.error_message)
+                existing.error_message = _scrub_error_text(
+                    existing.error_message,
+                    _auth_link_tokens(job_type, existing.payload),
+                )
             logger.debug(
                 "Duplicate job detected, skipping: type=%s, hash=%s",
                 job_type,
@@ -174,24 +245,37 @@ class DeadLetterQueue:
             )
             return None
 
+        # A new or reopened row persists this payload, so refuse a plaintext auth
+        # link before any write. A duplicate above writes nothing and returns early.
+        if quarantine:
+            logger.warning("dlq_plaintext_link_quarantined: task=%s", job_type)
+            row_payload = _QUARANTINED_AUTH_PAYLOAD
+            row_status = JobStatus.FAILED.value
+            row_retry_at = None
+        else:
+            _reject_plaintext_link(stored_payload)
+            row_payload = stored_payload
+            row_status = JobStatus.PENDING.value
+            row_retry_at = next_retry
         if existing is not None:
             # job_hash is unique, so a finished row (completed or exhausted)
             # describes an earlier run; a new failure reopens it instead.
             job = existing
-            job.status = JobStatus.PENDING.value
+            job.status = row_status
             job.retry_count = 0
             job.max_retries = max_retries
-            job.payload = json.dumps(payload)
-            job.error_message = _scrub_error_text(error_message)
-            job.next_retry_at = next_retry
+            job.payload = row_payload
+            job.error_message = _scrub_error_text(error_message, tokens)
+            job.next_retry_at = row_retry_at
         else:
             job = DeadLetterJob(
                 job_type=job_type,
                 job_hash=job_hash,
-                payload=json.dumps(payload),
-                error_message=_scrub_error_text(error_message),
+                payload=row_payload,
+                error_message=_scrub_error_text(error_message, tokens),
+                status=row_status,
                 max_retries=max_retries,
-                next_retry_at=next_retry,
+                next_retry_at=row_retry_at,
             )
             self.session.add(job)
         # TD-012 (audit 2026-03-04): commit removed — callers own the Unit of Work
@@ -423,7 +507,10 @@ class DeadLetterQueue:
 
                                 # A handler error can echo a retained link; store and log
                                 # only the scrubbed text.
-                                error_msg = _scrub_error_text(str(exc))
+                                error_msg = _scrub_error_text(
+                                    str(exc),
+                                    _auth_link_tokens(job.job_type, job.payload),
+                                )
                                 retry_count = int(getattr(job, "retry_count", 0))
                                 max_retries = int(getattr(job, "max_retries", 3))
 

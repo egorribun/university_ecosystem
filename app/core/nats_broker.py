@@ -607,13 +607,17 @@ class NatsTaskBroker:
         from sqlalchemy.exc import SQLAlchemyError
 
         from app.core.database import async_session
-        from app.workers.dead_letter_queue import DeadLetterQueue
+        from app.workers.dead_letter_queue import (
+            DeadLetterPlaintextLinkError,
+            DeadLetterQueue,
+        )
 
+        is_auth = payload.name == "app.tasks.email.send_auth_email"
         protection_errors: tuple[type[Exception], ...] = ()
-        if payload.name == "app.tasks.email.send_auth_email":
+        if is_auth:
             from app.tasks.email import AuthEmailPayloadError
 
-            protection_errors = (AuthEmailPayloadError,)
+            protection_errors = (AuthEmailPayloadError, DeadLetterPlaintextLinkError)
         try:
             async with async_session() as session:
                 await DeadLetterQueue(session).add_failed_job(
