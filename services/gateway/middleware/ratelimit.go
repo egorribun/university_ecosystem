@@ -213,7 +213,7 @@ func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
 		// PERF-23-02 (audit 2026-03-25 Wave 23): Exempt health/readiness probes
 		// from rate limiting. During Redis outage the 3 req/60s fallback would
 		// block Kubernetes liveness probes → pod restarts → cascading failure.
-		if isHealthPath(c.Request.URL.Path) {
+		if isHealthPath(c.Request.URL.Path) || isPublicStaticRead(c.Request) {
 			c.Next()
 			return
 		}
@@ -298,6 +298,18 @@ func (rl *RateLimiter) allow(c *gin.Context, ctx context.Context, key string) {
 	}
 
 	c.Next()
+}
+
+// isPublicStaticRead reports whether a request is an anonymous GET or HEAD for the
+// backend's public static tree. The backend exempts the same reads from its own
+// limiter (app/core/ratelimit: _is_static_like_path), and the gateway now relays
+// them for AUD-373. Without this exemption a campus NAT sharing one client IP
+// would throttle image loads that the backend itself never limits.
+func isPublicStaticRead(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	return strings.HasPrefix(r.URL.Path, "/static/")
 }
 
 // isHealthPath returns true for Kubernetes probe and monitoring paths that must

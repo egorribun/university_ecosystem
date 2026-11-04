@@ -251,6 +251,9 @@ def test_cli_writes_only_hash_bound_plan(
         b"x" * (MAX_RENDER_BYTES + 1),
         b"secret: [private-value",
     ],
+    # Explicit short ids keep the oversized case within the OS environment limit
+    # that pytest uses for PYTEST_CURRENT_TEST.
+    ids=["multi-document", "non-utf8", "oversized", "malformed-yaml"],
 )
 def test_cli_rejects_unsafe_input_without_echoing_source(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], content: bytes

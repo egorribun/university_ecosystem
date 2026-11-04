@@ -451,6 +451,22 @@ def test_render_rejects_non_canonical_environment_names(environment: str) -> Non
     assert "global/environment" in normalized_error
 
 
+_PRODUCTION_INTERNAL_MTLS_ARGS = (
+    "--set",
+    "internalHttpMTLS.enabled=true",
+    "--set-string",
+    "internalHttpMTLS.trustDomain=university.ecosystem",
+    "--set-string",
+    "internalHttpMTLS.backendSpiffeID=spiffe://university.ecosystem/ns/university-ecosystem/sa/app",
+    "--set-string",
+    "internalHttpMTLS.gatewaySpiffeID=spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway",
+    "--set-string",
+    "internalHttpMTLS.wsHubSpiffeID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ws-hub",
+    "--set-string",
+    "internalHttpMTLS.fileProcessorSpiffeID=spiffe://university.ecosystem/ns/university-ecosystem/sa/file-processor",
+)
+
+
 @pytest.mark.parametrize("environment", ["staging", "production"])
 @pytest.mark.parametrize(
     "config_field",
@@ -475,6 +491,8 @@ def test_non_development_render_rejects_inline_mfa_key_material(
             "gateway.config.grpcUseTLS=true",
             "--set-string",
             f"backend.config.{config_field}=active:inline-material",
+            # AUD-373: production requires SPIFFE mTLS; keep the MFA assertion reachable.
+            *(_PRODUCTION_INTERNAL_MTLS_ARGS if environment == "production" else ()),
         ],
         check=False,
         capture_output=True,

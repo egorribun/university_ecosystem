@@ -2,6 +2,10 @@
 {{- if not (has $environment (list "development" "staging" "production")) -}}
   {{- fail "global.environment must be one of: development, staging, production" -}}
 {{- end -}}
+{{- /* AUD-373 owner decision: production runs internal backend hops over SPIFFE/SPIRE mTLS. Staging stays opt-in. */ -}}
+{{- if and (eq $environment "production") (not .Values.internalHttpMTLS.enabled) -}}
+  {{- fail "internalHttpMTLS.enabled=true is required in production: internal backend HTTP carries tokens and must use SPIFFE mTLS (AUD-373)" -}}
+{{- end -}}
 {{- /* The migration Job runs DDL as the schema owner; runtime workloads must never receive that URL. */ -}}
 {{- if eq (toString .Values.connections.databaseURLKey) (toString .Values.connections.migrationDatabaseURLKey) -}}
   {{- fail "connections.migrationDatabaseURLKey must differ from connections.databaseURLKey" -}}
@@ -36,7 +40,7 @@
   {{- end -}}
   {{- range $host := .Values.ingress.hosts -}}
     {{- range $path := $host.paths -}}
-      {{- if eq $path.service "backend" -}}
+      {{- if eq (include "university-ecosystem.publicRouteService" (dict "root" $ "service" $path.service "path" $path.path)) "backend" -}}
         {{- fail (printf "ingress path %s on host %s targets the backend Service; route it through the gateway before enabling internalHttpMTLS" $path.path $host.host) -}}
       {{- end -}}
     {{- end -}}

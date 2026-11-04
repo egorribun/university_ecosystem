@@ -257,6 +257,19 @@ NATS chart mounts the existing `data` claim at `/data`; values therefore set
 JetStream files at their existing path on the retained PVC. The chart uses an
 existing Secret so the token never enters Helm release state.
 
+Internal backend HTTP (AUD-373) uses SPIFFE/SPIRE mTLS behind
+`internalHttpMTLS.enabled`. The flag is off by default. `global.environment=production`
+refuses to render unless it is `true`; staging stays opt-in. When enabled, the
+values file must supply `internalHttpMTLS.trustDomain` and the four canonical
+workload SPIFFE IDs in that trust domain. The gateway, ws-hub and file-processor
+then call the backend over `https://` with their SVIDs, and the backend admits only
+the exact client IDs. The public `/static` and `/.well-known` routes move from the
+backend Service to the gateway, which relays them over mTLS. Any other public route
+that still targets the backend makes the render fail. The gateway exempts anonymous
+GET/HEAD reads under `/static/` from its per-IP limiter, as the backend does.
+Closing AUD-373 still needs a SPIRE staging run (SVID issuance and rotation, mTLS
+handshake on each hop, and probe behaviour); render and unit proof do not replace it.
+
 The internal gateway-to-file-processor gRPC boundary uses conventional mTLS.
 `university-internal-grpc-gateway-client`,
 and `university-internal-grpc-file-processor-server` must each contain `tls.crt`,

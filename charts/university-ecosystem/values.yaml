@@ -125,6 +125,8 @@ internalGrpcMTLS:
 # Every backend client verifies backendSpiffeID; the backend authorizes exact
 # client IDs at the TLS/HTTP boundary. Probes use the backend's issued identity.
 # Off until ADR-052 issuance/rotation proof and complete-chain checks pass.
+# global.environment=production requires enabled=true (AUD-373 owner decision);
+# staging remains opt-in. Public /static and /.well-known route through the gateway.
 internalHttpMTLS:
   enabled: false
   trustDomain: ""

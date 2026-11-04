@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -502,7 +503,7 @@ async def test_seed_target_rejects_a_database_outside_compose_postgres(
 
 
 async def test_seed_target_accepts_the_verified_compose_postgres_service(
-    monkeypatch,
+    monkeypatch, tmp_path
 ) -> None:
     project = "ue-live-0123456789abcdef"
     monkeypatch.setenv("LIVE_STAND_SEED_PROJECT", project)
@@ -513,6 +514,14 @@ async def test_seed_target_accepts_the_verified_compose_postgres_service(
         "_configured_database_url",
         lambda: "postgresql+asyncpg://tester@postgres:5432/demo",
     )
+    record = tmp_path / "owned-stand.json"
+    record.write_text(
+        json.dumps(
+            {"schema_version": 1, "project_name": project, "database_host": "postgres"}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(seed_target, "OWNED_STAND_RECORD_PATH", record)
 
     assert seed_target.require_owned_live_stand_target() == project
 

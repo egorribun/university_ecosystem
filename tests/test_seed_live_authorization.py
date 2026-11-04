@@ -6,6 +6,7 @@ The in-memory channel exercises protobuf requests, not a real SpiceDB server.
 from __future__ import annotations
 
 import importlib
+import json
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -108,6 +109,20 @@ class AuthorizationChannel:
 
     def _unexpected_stream(self, *args, **kwargs):
         pytest.fail("authorization bootstrap must not enumerate or import grants")
+
+
+@pytest.fixture(autouse=True)
+def owner_issued_stand_record(monkeypatch, tmp_path):
+    """The owned-stand gate requires the owner-issued record for PROJECT (AUD-313)."""
+    record = tmp_path / "owned-stand.json"
+    record.write_text(
+        json.dumps(
+            {"schema_version": 1, "project_name": PROJECT, "database_host": "postgres"}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(seed_target, "OWNED_STAND_RECORD_PATH", record)
+    return record
 
 
 @pytest.fixture
@@ -324,6 +339,7 @@ async def test_empty_canonical_schema_fails_before_any_connection(
 @pytest.fixture
 def stand_seed_runner(monkeypatch, tmp_path):
     worktree = tmp_path / "stand"
+    worktree.mkdir()
     source_root = tmp_path / "checkout"
     owner = live_stand.StandOwner(
         repository=str(source_root),

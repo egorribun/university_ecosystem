@@ -5,6 +5,9 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -89,4 +92,51 @@ func TestInitSentry_ValidDSN(t *testing.T) {
 	}, logger)
 
 	assert.True(t, sentry.Flush(100*time.Millisecond))
+}
+
+// TestSetupRouterRelaysPublicStaticAndWellKnownToBackend pins the AUD-373 edge
+// contract: with the chart routing /static and /.well-known through the gateway,
+// the gateway's catch-all relays them unchanged to the backend origin, and an
+// anonymous request to them is not answered by the gateway itself.
+func TestSetupRouterRelaysPublicStaticAndWellKnownToBackend(t *testing.T) {
+	var (
+		mu    sync.Mutex
+		paths []string
+	)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(backend.Close)
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := &config.Config{
+		Port:               "0",
+		BackendURL:         backend.URL,
+		RedisURL:           "redis://invalid-address-to-trigger-ratelimit-error:6379",
+		RevocationRedisURL: "redis://invalid-address-to-trigger-ratelimit-error:6380",
+		JWTSecret:          "test-secret-at-least-32-characters-long",
+		AllowedOrigins:     []string{"http://localhost:3000"},
+		InternalHMACSecret: "test-secret",
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	//nolint:contextcheck
+	router, err := setupRouter(cfg, logger, nil, nil, ctx)
+	if err != nil {
+		t.Fatalf("setupRouter: %v", err)
+	}
+	for _, route := range []string{"/static/img/logo.png", "/.well-known/jwks.json"} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequestWithContext(ctx, http.MethodGet, route, nil)
+		router.ServeHTTP(recorder, request)
+		assert.Equal(t, http.StatusOK, recorder.Code, route)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"/static/img/logo.png", "/.well-known/jwks.json"}, paths)
 }

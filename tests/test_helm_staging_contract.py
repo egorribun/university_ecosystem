@@ -500,6 +500,9 @@ def _existing_secret_command(environment: str, *extra: str) -> list[str]:
             "ingress.issuer.kind=ClusterIssuer",
             "--set-string",
             "ingress.issuer.name=letsencrypt-prod",
+            # AUD-373: production requires SPIFFE mTLS on internal backend hops.
+            "--set",
+            "internalHttpMTLS.enabled=true",
         ]
     return [
         _helm(),
@@ -2843,6 +2846,8 @@ def test_staging_uses_namespaced_issuer_and_production_cluster_issuer() -> None:
         "ingress.issuer.kind=ClusterIssuer",
         "--set-string",
         "ingress.issuer.name=letsencrypt-prod",
+        "--set",
+        "internalHttpMTLS.enabled=true",
         release_name="university-ecosystem",
     )
     production_ingress = next(

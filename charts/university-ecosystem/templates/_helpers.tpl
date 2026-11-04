@@ -353,6 +353,21 @@ If release name contains chart name it will be used as a full name.
 Keep first-party Service names within 63 characters without losing the component.
 Already-valid short names and the root fullname remain unchanged.
 */}}
+{{/*
+AUD-373: with internalHttpMTLS enabled the backend listener requires a SPIFFE client
+certificate, so the two public backend routes that remain (/static and /.well-known)
+are served through the gateway, which reaches the backend over mTLS. Every other path
+keeps its configured service. With the flag off this returns the configured service
+unchanged, so the flag-off render is unaffected.
+*/}}
+{{- define "university-ecosystem.publicRouteService" -}}
+{{- $service := .service -}}
+{{- if and .root.Values.internalHttpMTLS.enabled (eq .service "backend") (or (eq .path "/static") (eq .path "/.well-known")) -}}
+{{- $service = "gateway" -}}
+{{- end -}}
+{{- $service -}}
+{{- end -}}
+
 {{- define "university-ecosystem.componentName" -}}
 {{- $suffix := printf "-%s" .component -}}
 {{- $budget := int (sub 63 (len $suffix)) -}}

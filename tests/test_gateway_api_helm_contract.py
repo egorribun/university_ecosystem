@@ -477,9 +477,15 @@ def test_gateway_api_template_preserves_tls_redirect_and_route_dispatch() -> Non
         'type: {{ if eq $path.pathType "Exact" }}Exact{{ else }}PathPrefix{{ end }}'
         in template
     )
+    # AUD-373: the effective service comes from the public-route helper, which
+    # keeps /static and /.well-known on the gateway only when mTLS is enabled.
     assert (
         'name: {{ include "university-ecosystem.componentName" '
-        '(dict "root" $root "component" $path.service) }}' in template
+        '(dict "root" $root "component" $pathService) }}' in template
+    )
+    assert (
+        '$pathService := include "university-ecosystem.publicRouteService" '
+        '(dict "root" $root "service" $path.service "path" $path.path)' in template
     )
     service_port_keys = {
         "backend": "backend",
@@ -489,7 +495,7 @@ def test_gateway_api_template_preserves_tls_redirect_and_route_dispatch() -> Non
     }
     for service, values_key in service_port_keys.items():
         expected_mapping = (
-            f'eq $path.service "{service}" '
+            f'eq $pathService "{service}" '
             + "}}{{ "
             + f"$root.Values.{values_key}.service.port"
         )

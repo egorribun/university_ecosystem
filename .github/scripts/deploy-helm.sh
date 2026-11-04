@@ -83,6 +83,12 @@ if [[ "$DEPLOY_ENVIRONMENT" == "staging" || "$DEPLOY_ENVIRONMENT" == "production
     --set-string "nats.image.digest=$NATS_IMAGE_DIGEST"
     --set-string "nats.container.image.digest=$NATS_IMAGE_DIGEST"
   )
+  # AUD-373 owner decision: production runs internal backend HTTP over SPIFFE/SPIRE
+  # mTLS. The chart fails the render unless the values file also supplies the trust
+  # domain and the workload SPIFFE IDs, so no production render can omit them silently.
+  if [[ "$DEPLOY_ENVIRONMENT" == "production" ]]; then
+    release_args+=(--set "internalHttpMTLS.enabled=true")
+  fi
   # AUD-189: external MinIO and Elasticsearch endpoints need owner-declared TCP 443
   # CIDRs. Fail closed here with a clear message; never default to public egress.
   endpoint_is_external() {

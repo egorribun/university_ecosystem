@@ -4918,6 +4918,31 @@ def _new_test_password() -> str:
     return secrets.token_urlsafe(32) + "!Aa0"
 
 
+SEED_OWNED_STAND_RECORD = Path(".secrets") / "owned-stand-seed.json"
+SEED_OWNED_STAND_CONTAINER_PATH = "/run/live-stand/owned-stand.json"
+SEED_OWNED_STAND_DATABASE_HOST = "postgres"
+
+
+def _write_seed_owned_stand_record(owner: StandOwner) -> Path:
+    """Write the owner-issued seed record that the seed gate verifies (AUD-313)."""
+    _assert_worktree_paths_safe(WORKTREE, (SEED_OWNED_STAND_RECORD,))
+    destination = WORKTREE / SEED_OWNED_STAND_RECORD
+    destination.parent.mkdir(mode=0o700, exist_ok=True)
+    _assert_worktree_paths_safe(WORKTREE, (SEED_OWNED_STAND_RECORD,))
+    record = {
+        "schema_version": 1,
+        "project_name": owner.project_name,
+        "database_host": SEED_OWNED_STAND_DATABASE_HOST,
+    }
+    temporary = destination.with_name(f"{destination.name}.{secrets.token_hex(8)}.tmp")
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(temporary, flags, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+        json.dump(record, handle, sort_keys=True)
+    os.replace(temporary, destination)
+    return destination
+
+
 def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> None:
     _require_worktree()
     current_owner = load_stand_owner(WORKTREE)
@@ -4931,43 +4956,49 @@ def _seed_locked(admin_password: str, *, owner: StandOwner | None = None) -> Non
     env.pop("TEST_PASSWORD", None)
     source_root = REPO_ROOT if IN_PLACE_MODE else WORKTREE
     scripts_mount = f"{source_root / 'scripts'}:/app/scripts:ro"
-    for script in SEED_SCRIPTS:
-        run_env = env
-        run_options = [
-            "run",
-            "--rm",
-            "--no-deps",
-            "-v",
-            scripts_mount,
-            "--env",
-            f"COMPOSE_PROJECT_NAME={owner.project_name}",
-            "--env",
-            "LIVE_STAND_OWNER_VERIFIED=1",
-            "--env",
-            f"LIVE_STAND_SEED_PROJECT={owner.project_name}",
-        ]
-        if script == "scripts/seed_admin_data.py":
-            run_env = {**env, "TEST_PASSWORD": admin_password}
-            run_options.extend(("-e", "TEST_PASSWORD"))
-        if script == "scripts/seed_live_authorization.py":
-            run_options.extend(
-                ("-v", f"{source_root / 'schema.zed'}:/app/schema.zed:ro")
-            )
-        run_options.extend(("backend", "python", script))
-        try:
-            _verify_stand_owner_compose_resources(WORKTREE, owner)
-            _require_owned_docker_daemon(owner)
-            _run(
-                compose_command(
-                    *run_options,
-                    project_name=owner.project_name,
-                ),
-                cwd=WORKTREE,
-                env=run_env,
-            )
-        finally:
+    record_path = _write_seed_owned_stand_record(owner)
+    try:
+        for script in SEED_SCRIPTS:
+            run_env = env
+            run_options = [
+                "run",
+                "--rm",
+                "--no-deps",
+                "-v",
+                scripts_mount,
+                "-v",
+                f"{record_path}:{SEED_OWNED_STAND_CONTAINER_PATH}:ro",
+                "--env",
+                f"COMPOSE_PROJECT_NAME={owner.project_name}",
+                "--env",
+                "LIVE_STAND_OWNER_VERIFIED=1",
+                "--env",
+                f"LIVE_STAND_SEED_PROJECT={owner.project_name}",
+            ]
             if script == "scripts/seed_admin_data.py":
-                run_env.pop("TEST_PASSWORD", None)
+                run_env = {**env, "TEST_PASSWORD": admin_password}
+                run_options.extend(("-e", "TEST_PASSWORD"))
+            if script == "scripts/seed_live_authorization.py":
+                run_options.extend(
+                    ("-v", f"{source_root / 'schema.zed'}:/app/schema.zed:ro")
+                )
+            run_options.extend(("backend", "python", script))
+            try:
+                _verify_stand_owner_compose_resources(WORKTREE, owner)
+                _require_owned_docker_daemon(owner)
+                _run(
+                    compose_command(
+                        *run_options,
+                        project_name=owner.project_name,
+                    ),
+                    cwd=WORKTREE,
+                    env=run_env,
+                )
+            finally:
+                if script == "scripts/seed_admin_data.py":
+                    run_env.pop("TEST_PASSWORD", None)
+    finally:
+        record_path.unlink(missing_ok=True)
 
 
 def seed() -> None:

@@ -111,11 +111,77 @@ def test_flag_off_keeps_plaintext_backend_contract() -> None:
     assert "SPIFFE_ENABLED" not in ws_hub_env
 
 
-def test_flag_on_is_refused_while_public_routes_target_the_plaintext_backend() -> None:
+def test_flag_off_keeps_public_static_and_well_known_on_the_plaintext_backend() -> None:
+    ingress = next(
+        resource for resource in _render_staging() if resource["kind"] == "Ingress"
+    )
+    services = {
+        path["path"]: path["backend"]["service"]["name"]
+        for path in ingress["spec"]["rules"][0]["http"]["paths"]
+    }
+    assert services["/static"].endswith("-backend")
+    assert services["/.well-known"].endswith("-backend")
+
+
+def test_flag_on_routes_public_static_and_well_known_through_the_gateway() -> None:
+    # The flag alone is enough: no per-path overrides are needed any more.
+    ingress = next(
+        resource
+        for resource in _render_staging("--set", "internalHttpMTLS.enabled=true")
+        if resource["kind"] == "Ingress"
+    )
+    services = {
+        path["path"]: path["backend"]["service"]["name"]
+        for path in ingress["spec"]["rules"][0]["http"]["paths"]
+    }
+    assert services["/static"].endswith("-gateway")
+    assert services["/.well-known"].endswith("-gateway")
+    assert not any(name.endswith("-backend") for name in services.values())
+
+
+def test_flag_on_refuses_any_other_public_route_on_the_plaintext_backend() -> None:
     with pytest.raises(subprocess.CalledProcessError) as error:
-        _render_staging("--set", "internalHttpMTLS.enabled=true")
+        _render_staging(
+            *_enabled_args(),
+            "--set",
+            "ingress.hosts[0].paths[0].service=backend",
+        )
 
     assert "targets the backend Service" in error.value.stderr
+    assert "/api" in error.value.stderr
+
+
+def test_production_requires_internal_http_mtls_enabled() -> None:
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        _render_staging(
+            "--set-string",
+            "global.environment=production",
+            "--set-string",
+            "ingress.issuer.kind=ClusterIssuer",
+            "--set-string",
+            "ingress.issuer.name=letsencrypt-prod",
+        )
+
+    assert "internalHttpMTLS.enabled=true is required in production" in (
+        error.value.stderr
+    )
+
+
+def test_production_renders_with_internal_http_mtls_enabled() -> None:
+    resources = _render_staging(
+        *_enabled_args(),
+        "--set-string",
+        "global.environment=production",
+        "--set-string",
+        "ingress.issuer.kind=ClusterIssuer",
+        "--set-string",
+        "ingress.issuer.name=letsencrypt-prod",
+    )
+
+    backend = _deployment(resources, "-backend")
+    assert _env(_main_container(backend))["INTERNAL_HTTP_MTLS_ENABLED"] == "true"
+    gateway_env = _env(_main_container(_deployment(resources, "-gateway")))
+    assert gateway_env["BACKEND_URL"].startswith("https://")
 
 
 def test_flag_on_wires_backend_listener_probes_and_spiffe_clients() -> None:
@@ -417,3 +483,17 @@ def test_values_schema_rejects_unknown_internal_http_mtls_keys() -> None:
         _render_staging(*_enabled_args("--set", "internalHttpMTLS.unexpected=true"))
 
     assert "unexpected" in error.value.stderr
+
+
+def test_production_deploy_branch_turns_internal_mtls_on() -> None:
+    """The production Helm release sets the flag; staging remains opt-in."""
+    script = (CHART.parents[1] / ".github" / "scripts" / "deploy-helm.sh").read_text(
+        encoding="utf-8"
+    )
+    assert script.count("internalHttpMTLS.enabled=true") == 1
+    production_block = (
+        'if [[ "$DEPLOY_ENVIRONMENT" == "production" ]]; then\n'
+        '    release_args+=(--set "internalHttpMTLS.enabled=true")\n'
+        "  fi\n"
+    )
+    assert production_block in script

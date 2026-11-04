@@ -108,6 +108,9 @@ def _render_release(
                 "cwv.rumEnabled=false",
                 "--set",
                 "cwv.exportOIDC.enabled=false",
+                # AUD-373: production requires SPIFFE mTLS on internal backend hops.
+                "--set",
+                "internalHttpMTLS.enabled=true",
             )
         )
     if isolate_template:
