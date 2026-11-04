@@ -1450,6 +1450,13 @@ services:
   temporal-jwks-ca:
     image: temporalio/admin-tools:1.30.7@sha256:bbdf5fe91b288c17442efbbfb42daa3668d09cfa8ebeb078d6fd475a97f66b81
     network_mode: none
+    # Caddy stores the public root under owner-only PKI directories. This
+    # isolated one-shot needs read/search permission, not write access there.
+    user: "0:0"
+    read_only: true
+    cap_drop: ["ALL"]
+    cap_add: ["DAC_READ_SEARCH"]
+    security_opt: ["no-new-privileges:true"]
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |

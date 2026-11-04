@@ -7459,6 +7459,31 @@ def test_in_place_compose_override_does_not_store_secret_contents(
     assert state_root.as_posix() in content
     assert "jwt_rs256.pem" in content
     assert "temporal_api_key" in content
+    temporal_mounts = yaml.safe_load(content.replace("!override", ""))["services"][
+        "temporal"
+    ]["volumes"]
+    assert temporal_mounts == [
+        {
+            "type": "bind",
+            "source": (temporal_root / "config.yaml").as_posix(),
+            "target": "/etc/temporal/config/docker.yaml",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        },
+        {
+            "type": "bind",
+            "source": (temporal_root / "entrypoint.sh").as_posix(),
+            "target": "/etc/temporal/wave144-entrypoint.sh",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        },
+        {
+            "type": "volume",
+            "source": "temporal-jwks-ca",
+            "target": "/etc/temporal/jwks-ca",
+            "read_only": True,
+        },
+    ]
 
 
 def test_in_place_status_stop_and_teardown_preserve_runroot_and_source(

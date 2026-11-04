@@ -700,6 +700,10 @@ def _write_in_place_compose_override(state_root: Path) -> Path:
         "    volumes: !override\n"
         f"{temporal_config_mount}"
         f"{temporal_entrypoint_mount}"
+        "      - type: volume\n"
+        "        source: temporal-jwks-ca\n"
+        "        target: /etc/temporal/jwks-ca\n"
+        "        read_only: true\n"
     )
     override = state_root / IN_PLACE_OVERLAY
     _assert_worktree_paths_safe(state_root, (Path(IN_PLACE_OVERLAY),))

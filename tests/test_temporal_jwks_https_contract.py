@@ -10,6 +10,7 @@ so Temporal must never mount it.
 
 from __future__ import annotations
 
+import copy
 import os
 import shutil
 import subprocess
@@ -49,6 +50,47 @@ def _dependency_conditions(service: dict) -> dict[str, str]:
         name: (spec or {}).get("condition", "")
         for name, spec in service.get("depends_on", {}).items()
     }
+
+
+def _assert_ca_exporter_confinement(exporter: dict) -> None:
+    """Keep permission to read Caddy's private directory narrowly bounded."""
+    assert exporter["user"] == "0:0"
+    assert exporter["network_mode"] == "none"
+    assert exporter["read_only"] is True
+    assert exporter["cap_drop"] == ["ALL"]
+    assert exporter["cap_add"] == ["DAC_READ_SEARCH"]
+    assert exporter["security_opt"] == ["no-new-privileges:true"]
+
+
+@pytest.mark.parametrize("relative_path", COMPOSE_STACKS)
+def test_ca_exporter_has_only_the_read_search_capability(relative_path: str) -> None:
+    _assert_ca_exporter_confinement(
+        _compose(relative_path)["services"]["temporal-jwks-ca"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("user", "1000:1000"),
+        ("network_mode", "bridge"),
+        ("read_only", False),
+        ("cap_drop", []),
+        ("cap_add", []),
+        ("cap_add", ["DAC_OVERRIDE"]),
+        ("cap_add", ["DAC_READ_SEARCH", "SYS_ADMIN"]),
+        ("security_opt", []),
+    ],
+)
+def test_ca_exporter_confinement_rejects_missing_or_extra_privilege(
+    key: str, value: object
+) -> None:
+    exporter = copy.deepcopy(
+        _compose("docker-compose.full.yml")["services"]["temporal-jwks-ca"]
+    )
+    exporter[key] = value
+    with pytest.raises(AssertionError):
+        _assert_ca_exporter_confinement(exporter)
 
 
 def test_temporal_config_fetches_keys_from_rendered_url_and_uses_default_authorizer() -> (
