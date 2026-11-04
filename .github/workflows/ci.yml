@@ -1208,6 +1208,9 @@ jobs:
             tests/test_start_docker_live_stand_state_root.py \
             tests/test_symlink_privilege_probe_contract.py \
             tests/test_live_stand_subprocess_timeouts.py \
+            tests/test_windows_live_native_subprocess.py \
+            tests/test_windows_named_proofs_gate.py \
+            tests/test_windows_named_proof_workflow_contract.py \
             tests/test_seed_owned_stand_record.py \
             --deselect "tests/test_start_docker_live_stand_state_root.py::test_launcher_rejects_permissive_owned_state_root_before_secret_reads" \
             --deselect "tests/test_live_stand_subprocess_timeouts.py::test_posix_lifecycle_lock_wait_is_bounded" \
@@ -1231,6 +1234,7 @@ jobs:
               sys.exit(1)
           print(f'Windows-only proofs executed {total} test(s) with no skips.')
           "
+          uv run --frozen --no-sync python scripts/quality/windows_named_proofs_gate.py windows-proofs.xml
 
   alembic-migrations:
     name: Alembic Migrations
