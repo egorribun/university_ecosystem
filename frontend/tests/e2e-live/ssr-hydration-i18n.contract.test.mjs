@@ -7,6 +7,7 @@ import { fileURLToPath, URL } from "node:url"
 import test from "node:test"
 import { createInstance } from "i18next"
 import sharp from "sharp"
+import { createServer } from "vite"
 import { applyNodeCspToHtmlResponse } from "../../scripts/server-csp.mjs"
 import { extractSeoMetadata, matchesRequestedCatalogTitle } from "./seo-metadata.mjs"
 import { matchesMainSkipLinkLocale } from "./ssr-common-locale.mjs"
@@ -137,9 +138,6 @@ test("executable locale probes accept the requested catalog text and reject the 
     }
   }
 })
-
-const i18nConfigUrl = new URL("../../src/i18n/config.ts", import.meta.url)
-const i18nMetadataUrl = new URL("../../src/i18n/metadata.ts", import.meta.url)
 
 async function readJson(url) {
   return JSON.parse(await readFile(url, "utf8"))
@@ -310,39 +308,38 @@ test("static shell social images reference a decodable public PNG", async () => 
 })
 
 test("SSR locale probe catches ordinary fallback that raw-key scanning misses", async () => {
-  const [enNews, ruNews, i18nConfig, i18nMetadata] = await Promise.all([
+  const [enNews, ruNews] = await Promise.all([
     readJson(newsCatalogUrls.en),
     readJson(newsCatalogUrls.ru),
-    readFile(i18nConfigUrl, "utf8"),
-    readFile(i18nMetadataUrl, "utf8"),
   ])
-  assert.match(i18nConfig, /fallbackLng,/u)
-  assert.match(i18nMetadata, /fallbackLng.*"ru"/u)
-
-  const catalogs = { en: enNews, ru: ruNews }
-  const missingEnglishPlaceholder = globalThis.structuredClone(catalogs)
-  delete missingEnglishPlaceholder.en.search.placeholder
-  const fallbackInstance = createInstance()
-  await fallbackInstance.init({
-    lng: "en",
-    fallbackLng: "ru",
-    supportedLngs: ["en", "ru"],
-    load: "currentOnly",
-    resources: {
-      en: { news: missingEnglishPlaceholder.en },
-      ru: { news: missingEnglishPlaceholder.ru },
-    },
-    ns: ["news"],
-    defaultNS: "common",
-    initAsync: false,
-    returnNull: false,
-    interpolation: { escapeValue: false },
+  // Load the application's actual TypeScript/JSON graph with Vite, as SSR does.
+  // A source match for a fallback variable cannot establish how it is configured.
+  const vite = await createServer({
+    root: fileURLToPath(new URL("../../", import.meta.url)),
+    configFile: false,
+    logLevel: "silent",
+    server: { middlewareMode: true },
+    appType: "custom",
   })
+  try {
+    const { createI18nInstance } = await vite.ssrLoadModule("/src/i18n/config.ts")
+    const fallbackInstance = createI18nInstance("en")
+    assert.equal(fallbackInstance.t("news:search.placeholder"), enNews.search.placeholder)
+    assert.notEqual(enNews.search.placeholder, ruNews.search.placeholder)
 
-  const fallbackPlaceholder = fallbackInstance.t("news:search.placeholder")
-  assert.equal(fallbackPlaceholder, ruNews.search.placeholder)
-  assert.equal(fallbackPlaceholder.includes(":"), false)
-  assert.notEqual(fallbackPlaceholder, enNews.search.placeholder)
+    // The resource store is isolated before removing a key, so this negative
+    // cannot mutate shared app catalogs or leak into other tests.
+    fallbackInstance.store.data = globalThis.structuredClone(fallbackInstance.store.data)
+    delete fallbackInstance.store.data.en.news.search.placeholder
+    const fallbackPlaceholder = fallbackInstance.t("news:search.placeholder")
+    assert.equal(fallbackPlaceholder, ruNews.search.placeholder)
+    assert.equal(fallbackPlaceholder.includes(":"), false)
+    const fallbackMarkup = `<div id="root"><div class="news-theme"><header><input placeholder="${fallbackPlaceholder}" aria-label="${fallbackPlaceholder}"></header></div></div>`
+    assert.equal(matchesNewsSearchLocale(fallbackMarkup, ruNews.search.placeholder), true)
+    assert.equal(matchesNewsSearchLocale(fallbackMarkup, enNews.search.placeholder), false)
+  } finally {
+    await vite.close()
+  }
 })
 
 test("production document suite is collected without skips and rejects preview or unmanaged servers", () => {
@@ -392,10 +389,10 @@ test("production document suite is collected without skips and rejects preview o
     for (const child of suite.suites ?? []) walk(child, file)
   }
   for (const suite of report.suites) walk(suite, suite.file)
-  assert.equal(collected.length, 5, "the production SSR suite must collect exactly five tests")
+  assert.equal(collected.length, 7, "the production SSR suite must collect exactly seven tests")
   assert.deepEqual(
     new Set(collected.map((test) => test.file)),
-    new Set(["ssr-document-render.spec.ts"])
+    new Set(["ssr-document-render.spec.ts", "ssr-csp-browser-negative.spec.ts"])
   )
   for (const test of collected) {
     assert.equal(test.status, "passed", "every production SSR test must be collected to run")

@@ -1,8 +1,12 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
 import { readFile } from "node:fs/promises"
-import { URL } from "node:url"
+import process from "node:process"
+import { fileURLToPath, URL } from "node:url"
 import test from "node:test"
+import { runInNewContext, runInThisContext } from "node:vm"
+import typescript from "typescript"
 import {
   REGISTRATION_STEP_ORDER,
   registrationTraceViolations,
@@ -15,7 +19,67 @@ import {
 
 const specUrl = new URL("./register-double-submit.live.spec.ts", import.meta.url)
 
-test("live registration double-submit acceptance is an executable ordering decision", async () => {
+test("Playwright collects registration and SSR acceptance in both live projects without skips", () => {
+  const cwd = fileURLToPath(new URL("../../", import.meta.url))
+  const cli = fileURLToPath(new URL("../../node_modules/@playwright/test/cli.js", import.meta.url))
+  // --list only loads the fixtures; the placeholders never connect to a stand.
+  const result = spawnSync(
+    process.execPath,
+    [
+      cli,
+      "test",
+      "--config=playwright.live.config.ts",
+      "tests/e2e-live/register-double-submit.live.spec.ts",
+      "tests/e2e-live/ssr-hydration-i18n.live.spec.ts",
+      "--list",
+      "--forbid-only",
+      "--reporter=json",
+    ],
+    {
+      cwd,
+      env: {
+        ...process.env,
+        TEST_PASSWORD: "p".repeat(24),
+        LIVE_MAILPIT_URL: "http://127.0.0.1:25000",
+      },
+      encoding: "utf8",
+      timeout: 30_000,
+    }
+  )
+  assert.equal(result.error, undefined)
+  assert.equal(result.status, 0)
+  const report = JSON.parse(result.stdout)
+  const collected = []
+  const walk = (suite, file) => {
+    for (const spec of suite.specs ?? []) {
+      for (const entry of spec.tests) {
+        collected.push({
+          file,
+          project: entry.projectName,
+          status: entry.expectedStatus,
+          annotations: entry.annotations,
+        })
+      }
+    }
+    for (const child of suite.suites ?? []) walk(child, file)
+  }
+  for (const suite of report.suites) walk(suite, suite.file)
+  for (const [file, minimum] of [
+    ["register-double-submit.live.spec.ts", 1],
+    ["ssr-hydration-i18n.live.spec.ts", 3],
+  ]) {
+    for (const project of ["desktop", "mobile"]) {
+      const tests = collected.filter((entry) => entry.file === file && entry.project === project)
+      assert.ok(tests.length >= minimum, `${file} must collect in ${project}`)
+      for (const entry of tests) {
+        assert.equal(entry.status, "passed")
+        assert.deepEqual(entry.annotations, [])
+      }
+    }
+  }
+})
+
+test("live registration acceptance keeps its artifact and real-stack policy", async () => {
   assert.equal(
     existsSync(specUrl),
     true,
@@ -34,15 +98,7 @@ test("live registration double-submit acceptance is an executable ordering decis
     assert.equal(use.video, "off", `${name} must not record video`)
   }
 
-  // The live spec records each step into a trace and asserts the trace with this validator.
-  // Wiring: every step of the decision must be recorded by the spec.
   const spec = await readFile(specUrl, "utf8")
-  assert.ok(spec.includes('from "./register-double-submit.decisions.mjs"'))
-  for (const step of REGISTRATION_STEP_ORDER) {
-    assert.ok(spec.includes(`trace.push("${step}")`), `the spec must record ${step}`)
-  }
-  assert.ok(spec.includes("registrationTraceViolations(trace, registerPostCount)"))
-
   // Static policy guards kept deliberately: the acceptance must reach the real registration
   // API (no route mocking or direct API posts) and must not embed a literal password. Only a
   // live run can exercise the behaviour itself.
@@ -51,6 +107,405 @@ test("live registration double-submit acceptance is an executable ordering decis
     /page\.route|routeWebSocket|page\.request\.(?:post|put|patch|delete)\(|fulfill\(/u
   )
   assert.doesNotMatch(spec, /password\s*[:=]\s*["'][^"']+/iu)
+})
+
+// Execute the actual Playwright callback against a controlled browser adapter. This
+// checks the scenario's wiring and failure decisions; only a live run can establish
+// what the real application or backend does in response to the two inputs.
+async function registrationScenario(options = {}) {
+  const source = await readFile(specUrl, "utf8")
+  const compiled = typescript.transpileModule(source, {
+    compilerOptions: {
+      module: typescript.ModuleKind.CommonJS,
+      target: typescript.ScriptTarget.ES2022,
+    },
+  }).outputText
+  const events = []
+  const deletionRequests = []
+  const decisions = []
+  const fields = new Map()
+  const origin = "https://owned.example.invalid"
+  const password = "p".repeat(24)
+  const account = { email: "owned@example.invalid", fullName: "Owned Test" }
+  let callback
+  let cleanup
+  let listener
+  let responsePredicate
+  let resolveResponse
+  let responseSent = false
+  let interactions = 0
+  let postCount = 0
+  let finishResponse
+  const completion = options.pendingCompletion
+    ? new Promise((resolve) => {
+        finishResponse = resolve
+      })
+    : undefined
+
+  function fakeExpect(actual, message) {
+    return {
+      toBe(expected) {
+        assert.equal(actual, expected, message)
+      },
+      toEqual(expected) {
+        assert.deepEqual(actual, expected, message)
+      },
+      async toBeVisible() {
+        assert.equal(actual.visible, true, message)
+      },
+      async toBeEnabled() {
+        assert.equal(actual.enabled, true, message)
+      },
+      async toHaveURL(expected) {
+        assert.match(actual.url, expected, message)
+      },
+    }
+  }
+
+  function emitRequest(method, url) {
+    const request = {
+      method: () => method,
+      url: () => url,
+      response: async () => response,
+    }
+    const response = {
+      request: () => request,
+      status: () => options.status ?? 200,
+      json: async () => (Object.hasOwn(options, "receipt") ? options.receipt : { status: "ok" }),
+      finished: async () => completion ?? (options.incomplete ? new Error("unfinished") : null),
+    }
+    if (method === "POST" && url === `${origin}/api/v1/auth/register`) postCount += 1
+    listener?.(request)
+    if (!responseSent && responsePredicate?.(response)) {
+      responseSent = true
+      page.url = `${origin}/login`
+      resolveResponse(response)
+    }
+  }
+
+  function sendInput() {
+    events.push("input")
+    interactions += 1
+    assert.equal(typeof cleanup, "function", "cleanup must be registered before input")
+    // Unrelated requests must not contribute to the registration count.
+    emitRequest("GET", `${origin}/api/v1/auth/register`)
+    emitRequest("POST", `${origin}/api/v1/other`)
+    emitRequest("POST", "https://other.example.invalid/api/v1/auth/register")
+    if (!options.missing && (interactions === 1 || options.duplicate === "input")) {
+      emitRequest("POST", `${origin}/api/v1/auth/register`)
+    }
+  }
+
+  const submitButton = {
+    visible: true,
+    enabled: true,
+    async scrollIntoViewIfNeeded() {},
+    async boundingBox() {
+      return { x: 0, y: 0, width: 100, height: 44 }
+    },
+    async dblclick(options) {
+      assert.equal(options.delay, 0)
+      events.push("double-click")
+      sendInput()
+      sendInput()
+    },
+  }
+  const page = {
+    url: "",
+    request: {},
+    touchscreen: {
+      async tap(x, y) {
+        events.push(["tap", x, y])
+        sendInput()
+      },
+    },
+    async setViewportSize(size) {
+      events.push(["viewport", size.width, size.height])
+    },
+    async addInitScript() {},
+    async goto(path) {
+      events.push("navigated")
+      this.url = `${origin}${path}`
+    },
+    async waitForFunction(predicate) {
+      const expression = `(${predicate.toString()})()`
+      assert.equal(runInNewContext(expression, { window: { __APP_HYDRATED: false } }), false)
+      assert.equal(runInNewContext(expression, { window: { __APP_HYDRATED: true } }), true)
+      events.push("hydrated")
+    },
+    locator(selector) {
+      if (selector === "#register-submit") return submitButton
+      if (selector === "section.auth-shell--login") return { visible: true }
+      return {
+        async fill(value) {
+          fields.set(selector, value)
+        },
+      }
+    },
+    on(name, fn) {
+      assert.equal(name, "request")
+      listener = fn
+      events.push("listener-attached")
+    },
+    off(name, fn) {
+      assert.equal(name, "request")
+      assert.equal(fn, listener)
+      listener = undefined
+      events.push("listener-detached")
+    },
+    waitForResponse(predicate) {
+      if (options.missing) return Promise.reject(new Error("request timed out"))
+      responsePredicate = predicate
+      return new Promise((resolve) => {
+        resolveResponse = resolve
+      })
+    },
+    async close() {
+      if (options.duplicate === "close") emitRequest("POST", `${origin}/api/v1/auth/register`)
+      events.push("page-closed")
+      if (options.closeFails) throw new Error("page close failed")
+    },
+  }
+  const context = {
+    async addCookies() {},
+    async newCDPSession() {
+      return {
+        async send(method, parameters) {
+          if (method === "Network.emulateNetworkConditions")
+            events.push(["network", parameters.latency])
+        },
+        async detach() {
+          events.push("cdp-detached")
+        },
+      }
+    },
+  }
+  const adminPage = {
+    request: {},
+    async evaluate(fn, args) {
+      const fetch = async (url, init) => {
+        deletionRequests.push({
+          url,
+          method: init.method,
+          csrf: init.headers["X-CSRF-Token"],
+          credentials: init.credentials,
+          redirect: init.redirect,
+        })
+        return { status: 200, json: async () => ({ deleted: true }) }
+      }
+      return runInNewContext(`(${fn.toString()})(args)`, {
+        args,
+        document: { cookie: "csrf_token=owned%20csrf" },
+        window: { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout },
+        AbortController: globalThis.AbortController,
+        fetch,
+        encodeURIComponent,
+        decodeURIComponent,
+      })
+    },
+  }
+  const cleanupBrowser = {
+    async newContext() {
+      return {
+        async newPage() {
+          return adminPage
+        },
+        async close() {
+          events.push("cleanup-context-closed")
+        },
+      }
+    },
+  }
+  const fixtures = {
+    test(_name, fn) {
+      assert.equal(callback, undefined, "expected one registration scenario")
+      callback = fn
+    },
+    expect: fakeExpect,
+    freshPassword: () => password,
+    ownedSessionOrigin: () => origin,
+    liveDeadlineBoundedTimeoutMs: () => 500,
+    liveTestSlotDeadlineAtMs: () => Date.now() + 1000,
+    registerOwnedSessionCleanup(fn) {
+      cleanup = fn
+      events.push("cleanup-registered")
+    },
+    async stubBreachedPasswordLookup() {},
+    async withLiveRegistrationAdmission(_page, count, fn) {
+      assert.equal(count, 2)
+      return fn()
+    },
+    async loginWith(_page, email, suppliedPassword) {
+      assert.equal(email, account.email)
+      assert.equal(suppliedPassword, password)
+      events.push("login")
+      if (options.duplicate === "login") emitRequest("POST", `${origin}/api/v1/auth/register`)
+    },
+    async loginAs(_page, role) {
+      assert.equal(role, "admin")
+      events.push("cleanup-admin-login")
+    },
+  }
+  const modules = {
+    "./fixtures": fixtures,
+    "./password-reset-account-identity": {
+      createOwnedResetAccount: () => account,
+      async readOwnedResetUserId() {
+        if (options.failIdentity) throw new Error("identity lookup failed")
+        return "owned-user"
+      },
+      async findOwnedResetUserId() {
+        events.push("cleanup-identity-lookup")
+        return "owned-user"
+      },
+    },
+    "./register-double-submit-lifecycle.mjs": {
+      isOpaqueRegistrationReceipt,
+      waitForRegistrationCompletion,
+      withRegistrationDetach,
+    },
+    "./register-double-submit.decisions.mjs": {
+      registrationTraceViolations(trace, count) {
+        decisions.push({ trace: [...trace], count })
+        return options.forceTraceViolation
+          ? ["injected violation"]
+          : registrationTraceViolations(trace, count)
+      },
+    },
+  }
+  const load = runInThisContext(`(function(exports, require, process) {\n${compiled}\n})`, {
+    filename: fileURLToPath(specUrl),
+  })
+  load(
+    {},
+    (id) => {
+      assert.ok(Object.hasOwn(modules, id), `unexpected scenario dependency: ${id}`)
+      return modules[id]
+    },
+    { env: { LIVE_BASE_URL: origin } }
+  )
+  assert.equal(typeof callback, "function")
+  return {
+    events,
+    deletionRequests,
+    decisions,
+    fields,
+    get postCount() {
+      return postCount
+    },
+    run: () =>
+      callback(
+        { page, context },
+        { project: { name: options.project ?? "mobile" }, annotations: [] }
+      ),
+    cleanup: async () => {
+      assert.equal(typeof cleanup, "function")
+      return cleanup(cleanupBrowser, Date.now() + 1000)
+    },
+    finishResponse: () => {
+      assert.equal(typeof finishResponse, "function")
+      finishResponse(null)
+    },
+  }
+}
+
+test("the real registration scenario drives two inputs and validates its recorded trace", async () => {
+  for (const project of ["desktop", "mobile"]) {
+    const scenario = await registrationScenario({ project })
+    await scenario.run()
+    assert.deepEqual(scenario.events[0], ["viewport", 360, 800])
+    assert.equal(scenario.events.filter((event) => event === "input").length, 2)
+    const taps = scenario.events.filter((event) => Array.isArray(event) && event[0] === "tap")
+    if (project === "mobile") {
+      assert.deepEqual(taps, [
+        ["tap", 50, 22],
+        ["tap", 50, 22],
+      ])
+      assert.equal(scenario.events.includes("double-click"), false)
+    } else {
+      assert.deepEqual(taps, [])
+      assert.equal(scenario.events.filter((event) => event === "double-click").length, 1)
+    }
+    assert.equal(scenario.postCount, 1)
+    assert.equal(scenario.fields.get("#email"), "owned@example.invalid")
+    assert.deepEqual(scenario.decisions, [{ trace: [...REGISTRATION_STEP_ORDER], count: 1 }])
+    assert.ok(scenario.events.indexOf("cleanup-registered") < scenario.events.indexOf("input"))
+    assert.ok(scenario.events.indexOf("listener-attached") < scenario.events.indexOf("input"))
+    assert.ok(scenario.events.indexOf("page-closed") < scenario.events.indexOf("listener-detached"))
+    const slowNetwork = scenario.events.findIndex(
+      (event) => Array.isArray(event) && event[0] === "network" && event[1] > 0
+    )
+    const restoredNetwork = scenario.events.findIndex(
+      (event) => Array.isArray(event) && event[0] === "network" && event[1] === 0
+    )
+    assert.ok(slowNetwork >= 0 && slowNetwork < scenario.events.indexOf("input"))
+    assert.ok(restoredNetwork > scenario.events.lastIndexOf("input"))
+    await scenario.cleanup()
+    assert.deepEqual(scenario.deletionRequests, [
+      {
+        url: "/api/v1/users/owned-user",
+        method: "DELETE",
+        csrf: "owned csrf",
+        credentials: "same-origin",
+        redirect: "error",
+      },
+    ])
+    assert.ok(scenario.events.includes("cleanup-context-closed"))
+  }
+})
+
+test("the real registration scenario rejects missing, duplicate and invalid responses", async () => {
+  for (const [options, failure] of [
+    [{ missing: true }, /Registration request did not receive a response/u],
+    [{ duplicate: "input" }, /2 !== 1/u],
+    [{ duplicate: "login" }, /no extra registration request during navigation/u],
+    [{ duplicate: "close" }, /no extra registration request before the page closed/u],
+    [{ status: 500 }, /500 !== 200/u],
+    [{ receipt: null }, /false !== true/u],
+    [{ receipt: { status: "ok", id: "unexpected-public-identifier" } }, /false !== true/u],
+    [{ forceTraceViolation: true }, /registration steps ran out of order or more than once/u],
+  ]) {
+    const scenario = await registrationScenario(options)
+    await assert.rejects(scenario.run(), failure, JSON.stringify(options))
+    assert.ok(scenario.events.includes("cdp-detached"))
+    assert.ok(scenario.events.includes("page-closed"))
+  }
+})
+
+test("registration cleanup finds the account after identity failure and rejects incomplete requests", async () => {
+  const failedIdentity = await registrationScenario({ failIdentity: true })
+  await assert.rejects(failedIdentity.run(), /identity lookup failed/u)
+  await failedIdentity.cleanup()
+  assert.ok(failedIdentity.events.includes("cleanup-identity-lookup"))
+  assert.equal(failedIdentity.deletionRequests.length, 1)
+
+  const incomplete = await registrationScenario({ incomplete: true })
+  await incomplete.run()
+  await assert.rejects(incomplete.cleanup(), /request completion could not be verified/u)
+  assert.equal(incomplete.deletionRequests.length, 1)
+  assert.ok(incomplete.events.includes("cleanup-context-closed"))
+
+  const closeFails = await registrationScenario({ closeFails: true })
+  await assert.rejects(closeFails.run(), /Registration browser cleanup failed/u)
+  await assert.rejects(closeFails.cleanup(), /request completion could not be verified/u)
+  assert.equal(closeFails.deletionRequests.length, 1)
+  assert.ok(closeFails.events.includes("cleanup-context-closed"))
+})
+
+test("the live scenario waits for the observed request before deleting its account", async () => {
+  const scenario = await registrationScenario({ pendingCompletion: true })
+  await scenario.run()
+  let completed = false
+  const cleanup = scenario.cleanup().then(() => {
+    completed = true
+  })
+  await new Promise((resolve) => globalThis.setImmediate(resolve))
+  assert.equal(completed, false)
+  assert.equal(scenario.deletionRequests.length, 0)
+  scenario.finishResponse()
+  await cleanup
+  assert.equal(completed, true)
+  assert.equal(scenario.deletionRequests.length, 1)
 })
 
 test("the ordering decision accepts the legal sequence with exactly one registration POST", () => {
