@@ -163,10 +163,30 @@ jobs:
         id: osv_scan
         shell: bash
         run: |
+          set -euo pipefail
+          manifest_list="$(mktemp "${RUNNER_TEMP%/}/osv-go-manifests.XXXXXXXX")"
+          trap 'rm -f -- "$manifest_list"' EXIT
+          git ls-files -z -- ':(glob)services/**/go.mod' > "$manifest_list"
+          mapfile -d '' -t manifests < "$manifest_list"
+          if ((${#manifests[@]} == 0)); then
+            echo "::error::No tracked Go service manifests were discovered." >&2
+            exit 1
+          fi
+          seen_manifests=()
+          manifest_args=()
+          for manifest in "${manifests[@]}"; do
+            [[ -f "$manifest" && ! -L "$manifest" ]] || exit 1
+            for prior in "${seen_manifests[@]}"; do
+              [[ "$prior" != "$manifest" ]] || exit 1
+            done
+            seen_manifests+=("$manifest")
+            manifest_args+=(--lockfile "$manifest")
+          done
           set +e
-          # osv-scanner checks go.sum files against the OSV vulnerability database.
-          # --recursive discovers all go.mod files under services/.
+          # Keep the recursive scan while requiring every tracked Go manifest to
+          # be extracted explicitly by the pinned scanner.
           "$OSV_SCANNER_BIN" scan source --recursive --format sarif \
+            "${manifest_args[@]}" \
             --output go-vuln.sarif \
             ./services/
           scanner_status=$?
@@ -223,6 +243,140 @@ jobs:
             exit 1
           fi
           echo "Validated OSV SARIF with $finding_count module-level finding(s)."
+
+
+      # OSV v2.6.0 applies GoVersionOverride after matching. Scan an isolated
+      # manifest containing the actual builder version, with no ignored findings.
+      - name: Gate the pinned Go builder standard library
+        shell: bash
+        run: |
+          set -euo pipefail
+          scope_dir="$(mktemp -d "${RUNNER_TEMP%/}/osv-go-stdlib.XXXXXXXX")"
+          cleanup() {
+            rm -f -- "$scope_dir/manifests" "$scope_dir/go.mod" "$scope_dir/osv-scanner.toml" "$scope_dir/stdlib.json"
+            rmdir -- "$scope_dir"
+          }
+          trap cleanup EXIT
+
+          git ls-files -z -- ':(glob)services/**/go.mod' > "$scope_dir/manifests"
+          mapfile -d '' -t manifests < "$scope_dir/manifests"
+          if ((${#manifests[@]} == 0)); then
+            echo "::error::No tracked Go service manifests were discovered." >&2
+            exit 1
+          fi
+          seen=()
+          for manifest in "${manifests[@]}"; do
+            [[ -f "$manifest" && ! -L "$manifest" ]] || exit 1
+            for prior in "${seen[@]}"; do
+              [[ "$prior" != "$manifest" ]] || exit 1
+            done
+            seen+=("$manifest")
+          done
+
+          toolchain="$(GOTOOLCHAIN=local go env GOVERSION)"
+          if [[ ! "$toolchain" =~ ^go([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+            echo "::error::Go builder toolchain is not an exact patch release." >&2
+            exit 1
+          fi
+          version="${toolchain#go}"
+          major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}" patch="${BASH_REMATCH[3]}"
+
+          # Every Docker Go build stage must use the same digest-pinned version.
+          for dockerfile in services/{caddy,gateway,ws-hub,file-processor}/Dockerfile; do
+            [[ -f "$dockerfile" && ! -L "$dockerfile" ]] || exit 1
+            builders=0
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              if [[ "$line" =~ ^[[:space:]]*FROM[[:space:]]+.*golang: ]]; then
+                read -r _ image _ <<< "$line"
+                if [[ ! "$image" =~ ^golang:([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})-alpine[0-9.]*@sha256:[0-9a-f]{64}$ ]] ||
+                   [[ "${BASH_REMATCH[1]}" != "$version" ]]; then
+                  echo "::error::A Go builder is unpinned or differs from the scanner toolchain." >&2
+                  exit 1
+                fi
+                builders=$((builders + 1))
+              fi
+            done < "$dockerfile"
+            if ((builders == 0)); then
+              echo "::error::A service Dockerfile has no checked Go builder." >&2
+              exit 1
+            fi
+          done
+
+          # Reject a higher minimum or an explicit toolchain until the actual
+          # builder version has been rechecked.
+          for manifest in go.mod gen/go/go.mod "${manifests[@]}"; do
+            [[ -f "$manifest" && ! -L "$manifest" ]] || exit 1
+            directives=0
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              if [[ "$line" =~ ^[[:space:]]*toolchain[[:space:]] ]]; then
+                echo "::error::An explicit Go toolchain directive needs review." >&2
+                exit 1
+              fi
+              if [[ "$line" =~ ^[[:space:]]*go[[:space:]] ]]; then
+                if [[ ! "$line" =~ ^[[:space:]]*go[[:space:]]+([0-9]{1,3})\.([0-9]{1,3})(\.([0-9]{1,3}))?([[:space:]]*(//.*)?)?$ ]]; then
+                  echo "::error::A Go manifest has an invalid version directive." >&2
+                  exit 1
+                fi
+                module_major="${BASH_REMATCH[1]}" module_minor="${BASH_REMATCH[2]}" module_patch="${BASH_REMATCH[4]:-0}"
+                if ((10#$module_major > 10#$major ||
+                     (10#$module_major == 10#$major && 10#$module_minor > 10#$minor) ||
+                     (10#$module_major == 10#$major && 10#$module_minor == 10#$minor && 10#$module_patch > 10#$patch))); then
+                  echo "::error::A Go manifest requires a newer toolchain than the builder." >&2
+                  exit 1
+                fi
+                directives=$((directives + 1))
+              fi
+            done < "$manifest"
+            if ((directives != 1)); then
+              echo "::error::A Go manifest must have exactly one version directive." >&2
+              exit 1
+            fi
+          done
+
+          printf 'module example.invalid/osv-stdlib\n\ngo %s\n' "$version" > "$scope_dir/go.mod"
+          printf 'ScanGoModVersion = true\n' > "$scope_dir/osv-scanner.toml"
+          "$OSV_SCANNER_BIN" scan source --no-call-analysis=go --all-packages --all-vulns \
+            --format json --config "$scope_dir/osv-scanner.toml" \
+            --lockfile "$scope_dir/go.mod" --output-file "$scope_dir/stdlib.json"
+
+          # A zero exit alone is insufficient: require the exact stdlib
+          # inventory and no vulnerability records.
+          python3 - "$scope_dir/stdlib.json" "$scope_dir/go.mod" "$version" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          def reject_duplicates(pairs):
+              data = {}
+              for key, value in pairs:
+                  if key in data:
+                      raise ValueError("duplicate JSON key")
+                  data[key] = value
+              return data
+
+          report_path, manifest_path, version = sys.argv[1:]
+          path = pathlib.Path(report_path)
+          if path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= 4 * 1024 * 1024:
+              raise ValueError("missing or oversized stdlib inventory")
+          report = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicates)
+          results = report["results"]
+          if not isinstance(results, list) or len(results) != 1:
+              raise ValueError("stdlib inventory must contain one source")
+          result = results[0]
+          source = result["source"]
+          if source.get("type") != "lockfile" or pathlib.Path(source["path"]).resolve() != pathlib.Path(manifest_path).resolve():
+              raise ValueError("stdlib inventory source mismatch")
+          packages = result["packages"]
+          if not isinstance(packages, list) or len(packages) != 1:
+              raise ValueError("stdlib inventory must contain one package")
+          record = packages[0]
+          if record["package"] != {"name": "stdlib", "version": version, "ecosystem": "Go"}:
+              raise ValueError("stdlib inventory version or package mismatch")
+          if record.get("vulnerabilities", []) != [] or record.get("groups", []) != []:
+              raise ValueError("stdlib inventory contains vulnerability findings")
+          print("Verified Go builder stdlib inventory: " + version)
+          PY
+
 
   sbom-rust:
     name: Rust SBOM (cargo-audit)
@@ -565,10 +719,30 @@ jobs:
         id: osv_scan
         shell: bash
         run: |
+          set -euo pipefail
+          manifest_list="$(mktemp "${RUNNER_TEMP%/}/osv-go-manifests.XXXXXXXX")"
+          trap 'rm -f -- "$manifest_list"' EXIT
+          git ls-files -z -- ':(glob)services/**/go.mod' > "$manifest_list"
+          mapfile -d '' -t manifests < "$manifest_list"
+          if ((${#manifests[@]} == 0)); then
+            echo "::error::No tracked Go service manifests were discovered." >&2
+            exit 1
+          fi
+          seen_manifests=()
+          manifest_args=()
+          for manifest in "${manifests[@]}"; do
+            [[ -f "$manifest" && ! -L "$manifest" ]] || exit 1
+            for prior in "${seen_manifests[@]}"; do
+              [[ "$prior" != "$manifest" ]] || exit 1
+            done
+            seen_manifests+=("$manifest")
+            manifest_args+=(--lockfile "$manifest")
+          done
           set +e
-          # osv-scanner checks go.sum files against the OSV vulnerability database.
-          # --recursive discovers all go.mod files under services/.
+          # Keep the recursive scan while requiring every tracked Go manifest to
+          # be extracted explicitly by the pinned scanner.
           "$OSV_SCANNER_BIN" scan source --recursive --format sarif \
+            "${manifest_args[@]}" \
             --output go-vuln.sarif \
             ./services/
           scanner_status=$?
@@ -610,6 +784,140 @@ jobs:
             exit 1
           fi
           echo "Validated OSV SARIF with $finding_count module-level finding(s)."
+
+
+      # OSV v2.6.0 applies GoVersionOverride after matching. Scan an isolated
+      # manifest containing the actual builder version, with no ignored findings.
+      - name: Gate the pinned Go builder standard library
+        shell: bash
+        run: |
+          set -euo pipefail
+          scope_dir="$(mktemp -d "${RUNNER_TEMP%/}/osv-go-stdlib.XXXXXXXX")"
+          cleanup() {
+            rm -f -- "$scope_dir/manifests" "$scope_dir/go.mod" "$scope_dir/osv-scanner.toml" "$scope_dir/stdlib.json"
+            rmdir -- "$scope_dir"
+          }
+          trap cleanup EXIT
+
+          git ls-files -z -- ':(glob)services/**/go.mod' > "$scope_dir/manifests"
+          mapfile -d '' -t manifests < "$scope_dir/manifests"
+          if ((${#manifests[@]} == 0)); then
+            echo "::error::No tracked Go service manifests were discovered." >&2
+            exit 1
+          fi
+          seen=()
+          for manifest in "${manifests[@]}"; do
+            [[ -f "$manifest" && ! -L "$manifest" ]] || exit 1
+            for prior in "${seen[@]}"; do
+              [[ "$prior" != "$manifest" ]] || exit 1
+            done
+            seen+=("$manifest")
+          done
+
+          toolchain="$(GOTOOLCHAIN=local go env GOVERSION)"
+          if [[ ! "$toolchain" =~ ^go([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+            echo "::error::Go builder toolchain is not an exact patch release." >&2
+            exit 1
+          fi
+          version="${toolchain#go}"
+          major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}" patch="${BASH_REMATCH[3]}"
+
+          # Every Docker Go build stage must use the same digest-pinned version.
+          for dockerfile in services/{caddy,gateway,ws-hub,file-processor}/Dockerfile; do
+            [[ -f "$dockerfile" && ! -L "$dockerfile" ]] || exit 1
+            builders=0
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              if [[ "$line" =~ ^[[:space:]]*FROM[[:space:]]+.*golang: ]]; then
+                read -r _ image _ <<< "$line"
+                if [[ ! "$image" =~ ^golang:([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})-alpine[0-9.]*@sha256:[0-9a-f]{64}$ ]] ||
+                   [[ "${BASH_REMATCH[1]}" != "$version" ]]; then
+                  echo "::error::A Go builder is unpinned or differs from the scanner toolchain." >&2
+                  exit 1
+                fi
+                builders=$((builders + 1))
+              fi
+            done < "$dockerfile"
+            if ((builders == 0)); then
+              echo "::error::A service Dockerfile has no checked Go builder." >&2
+              exit 1
+            fi
+          done
+
+          # Reject a higher minimum or an explicit toolchain until the actual
+          # builder version has been rechecked.
+          for manifest in go.mod gen/go/go.mod "${manifests[@]}"; do
+            [[ -f "$manifest" && ! -L "$manifest" ]] || exit 1
+            directives=0
+            while IFS= read -r line || [[ -n "$line" ]]; do
+              if [[ "$line" =~ ^[[:space:]]*toolchain[[:space:]] ]]; then
+                echo "::error::An explicit Go toolchain directive needs review." >&2
+                exit 1
+              fi
+              if [[ "$line" =~ ^[[:space:]]*go[[:space:]] ]]; then
+                if [[ ! "$line" =~ ^[[:space:]]*go[[:space:]]+([0-9]{1,3})\.([0-9]{1,3})(\.([0-9]{1,3}))?([[:space:]]*(//.*)?)?$ ]]; then
+                  echo "::error::A Go manifest has an invalid version directive." >&2
+                  exit 1
+                fi
+                module_major="${BASH_REMATCH[1]}" module_minor="${BASH_REMATCH[2]}" module_patch="${BASH_REMATCH[4]:-0}"
+                if ((10#$module_major > 10#$major ||
+                     (10#$module_major == 10#$major && 10#$module_minor > 10#$minor) ||
+                     (10#$module_major == 10#$major && 10#$module_minor == 10#$minor && 10#$module_patch > 10#$patch))); then
+                  echo "::error::A Go manifest requires a newer toolchain than the builder." >&2
+                  exit 1
+                fi
+                directives=$((directives + 1))
+              fi
+            done < "$manifest"
+            if ((directives != 1)); then
+              echo "::error::A Go manifest must have exactly one version directive." >&2
+              exit 1
+            fi
+          done
+
+          printf 'module example.invalid/osv-stdlib\n\ngo %s\n' "$version" > "$scope_dir/go.mod"
+          printf 'ScanGoModVersion = true\n' > "$scope_dir/osv-scanner.toml"
+          "$OSV_SCANNER_BIN" scan source --no-call-analysis=go --all-packages --all-vulns \
+            --format json --config "$scope_dir/osv-scanner.toml" \
+            --lockfile "$scope_dir/go.mod" --output-file "$scope_dir/stdlib.json"
+
+          # A zero exit alone is insufficient: require the exact stdlib
+          # inventory and no vulnerability records.
+          python3 - "$scope_dir/stdlib.json" "$scope_dir/go.mod" "$version" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          def reject_duplicates(pairs):
+              data = {}
+              for key, value in pairs:
+                  if key in data:
+                      raise ValueError("duplicate JSON key")
+                  data[key] = value
+              return data
+
+          report_path, manifest_path, version = sys.argv[1:]
+          path = pathlib.Path(report_path)
+          if path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= 4 * 1024 * 1024:
+              raise ValueError("missing or oversized stdlib inventory")
+          report = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicates)
+          results = report["results"]
+          if not isinstance(results, list) or len(results) != 1:
+              raise ValueError("stdlib inventory must contain one source")
+          result = results[0]
+          source = result["source"]
+          if source.get("type") != "lockfile" or pathlib.Path(source["path"]).resolve() != pathlib.Path(manifest_path).resolve():
+              raise ValueError("stdlib inventory source mismatch")
+          packages = result["packages"]
+          if not isinstance(packages, list) or len(packages) != 1:
+              raise ValueError("stdlib inventory must contain one package")
+          record = packages[0]
+          if record["package"] != {"name": "stdlib", "version": version, "ecosystem": "Go"}:
+              raise ValueError("stdlib inventory version or package mismatch")
+          if record.get("vulnerabilities", []) != [] or record.get("groups", []) != []:
+              raise ValueError("stdlib inventory contains vulnerability findings")
+          print("Verified Go builder stdlib inventory: " + version)
+          PY
+
 
       # AUD-483: every pull-request OSV Go result must be an exact, unexpired
       # owner disposition (GHSA alias, manifest, module, version). Stdlib, GO-only

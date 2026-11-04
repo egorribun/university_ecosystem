@@ -162,7 +162,10 @@ def test_npm_gate_blocks_moderate_and_low_without_allowlist_or_omission() -> Non
     gate = _step(job, "Block moderate and low npm advisories")
 
     assert "continue-on-error" not in gate
-    assert gate["run"].strip().splitlines()[-1].strip() == "npm audit --audit-level=low"
+    assert gate["run"].strip().splitlines()[-1].strip() == (
+        "npm audit --audit-level=info --include=prod --include=dev "
+        "--include=optional --include=peer"
+    )
     assert "--omit" not in gate["run"]
     assert "allowlist" not in gate["run"]
     assert "audit_dependencies" not in gate["run"]

@@ -1,7 +1,9 @@
 """Behavioral tests for the isolated Caddy vulnerability gate."""
 
+import contextlib
 import copy
 import importlib
+import io
 import json
 import os
 import shutil
@@ -11,11 +13,23 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = "github.com/university-ecosystem/caddy"
+CADDY = "github.com/caddyserver/caddy/v2"
+PLUGIN = "github.com/mholt/caddy-ratelimit"
+JOSE = "github.com/go-jose/go-jose/v3"
+TEXT = "golang.org/x/text"
+
+# The Go list contains one row per imported package, so modules can repeat.
+# The standard library is represented by the toolchain version in the report.
+GRAPH = (
+    f"{MODULE} \n\n{CADDY} v2.11.7\n{CADDY} v2.11.7\n"
+    f"{PLUGIN} v0.1.0\n{JOSE} v3.0.5\n{TEXT} v0.42.0\n"
+)
 
 
 def messages():
@@ -35,7 +49,14 @@ def messages():
             "SBOM": {
                 "go_version": "go1.26.10",
                 "roots": [MODULE],
-                "modules": [{"path": MODULE}],
+                "modules": [
+                    {"path": MODULE},
+                    {"path": CADDY, "version": "v2.11.7"},
+                    {"path": PLUGIN, "version": "v0.1.0"},
+                    {"path": JOSE, "version": "v3.0.5"},
+                    {"path": TEXT, "version": "v0.42.0"},
+                    {"path": "stdlib", "version": "v1.26.10"},
+                ],
             }
         },
     ]
@@ -64,10 +85,10 @@ class CaddyReportTests(unittest.TestCase):
         )
         return importlib.import_module("scripts.quality.check_caddy_govulncheck")
 
-    def check(self, records=None, status=0, today=date(2026, 11, 4)):
+    def check(self, records=None, status=0, today=date(2026, 11, 4), graph=GRAPH):
         gate = self.validator()
         text = "\n".join(json.dumps(record) for record in records or messages())
-        return gate.validate_report(text, status, today=today)
+        return gate.validate_report(text, status, graph=graph, today=today)
 
     def reject(self, records, status=0):
         gate = self.validator()
@@ -105,6 +126,16 @@ class CaddyReportTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs):
                 self.reject(messages() + finding(**kwargs))
 
+    def test_excepted_finding_must_match_the_scanned_module_version(self):
+        records = messages() + finding()
+        next(entry for entry in records[1]["SBOM"]["modules"] if entry["path"] == JOSE)[
+            "version"
+        ] = "v3.0.6"
+        graph = GRAPH.replace(f"{JOSE} v3.0.5\n", f"{JOSE} v3.0.6\n")
+        gate = self.validator()
+        with self.assertRaises(gate.ReportError):
+            self.check(records, graph=graph)
+
     def test_unreachable_module_finding_is_not_a_symbol_failure(self):
         self.assertEqual(
             self.check(
@@ -137,7 +168,7 @@ class CaddyReportTests(unittest.TestCase):
         gate = self.validator()
         for raw in ("", " ", "{", '{"config":', "null", "[]"):
             with self.subTest(raw=raw), self.assertRaises(gate.ReportError):
-                gate.validate_report(raw, 0)
+                gate.validate_report(raw, 0, graph=GRAPH)
 
     def test_config_only_report_blocks(self):
         self.reject(messages()[:1])
@@ -152,6 +183,53 @@ class CaddyReportTests(unittest.TestCase):
         for key, value in (("modules", []), ("go_version", "go1.25")):
             records = messages()
             records[1]["SBOM"][key] = value
+            self.reject(records)
+
+    def test_incomplete_or_different_compiled_module_graph_blocks(self):
+        for mutation in ("missing", "wrong_version", "wrong_replacement", "extra"):
+            records = messages()
+            modules = records[1]["SBOM"]["modules"]
+            if mutation == "missing":
+                modules[:] = [entry for entry in modules if entry["path"] != JOSE]
+            elif mutation == "wrong_version":
+                next(entry for entry in modules if entry["path"] == JOSE)["version"] = (
+                    "v3.0.4"
+                )
+            elif mutation == "wrong_replacement":
+                # The Go requirement is v0.43.0; the replacement compiled by
+                # this graph and emitted by govulncheck is v0.42.0.
+                next(entry for entry in modules if entry["path"] == TEXT)["version"] = (
+                    "v0.43.0"
+                )
+            else:
+                modules.append({"path": "example.com/unexpected", "version": "v1.0.0"})
+            with self.subTest(mutation=mutation):
+                self.reject(records)
+
+    def test_missing_invalid_or_conflicting_graph_blocks(self):
+        gate = self.validator()
+        for graph in (
+            "",
+            MODULE + "\n",
+            GRAPH + f"{JOSE} v3.0.4\n",
+            GRAPH + f"{JOSE} v3.0.5 unexpected\n",
+            GRAPH + "stdlib v1.26.10\n",
+            GRAPH.replace(f"{PLUGIN} v0.1.0\n", ""),
+            GRAPH.replace(f"{MODULE} \n", f"{MODULE} v1.0.0\n"),
+            GRAPH.replace(f"{JOSE} v3.0.5\n", f"{JOSE} \n"),
+            "x" * (gate.MAX_GRAPH_BYTES + 1),
+        ):
+            with self.subTest(graph=graph[:200]), self.assertRaises(gate.ReportError):
+                self.check(graph=graph)
+
+    def test_duplicate_or_malformed_reported_modules_block(self):
+        for entry in (
+            {"path": JOSE, "version": "v3.0.5"},
+            {"path": JOSE, "version": 3},
+            {"path": 1, "version": "v3.0.5"},
+        ):
+            records = messages()
+            records[1]["SBOM"]["modules"].append(entry)
             self.reject(records)
 
     def test_missing_or_conflicting_osv_blocks(self):
@@ -236,7 +314,7 @@ class CaddyReportTests(unittest.TestCase):
     def test_duplicate_json_keys_block(self):
         gate = self.validator()
         with self.assertRaises(gate.ReportError):
-            gate.validate_report('{"config": {}, "config": {}}', 0)
+            gate.validate_report('{"config": {}, "config": {}}', 0, graph=GRAPH)
 
     def test_wrong_message_payload_and_order_block(self):
         self.reject(messages()[::-1])
@@ -267,7 +345,7 @@ class CaddyReportTests(unittest.TestCase):
     def test_oversized_report_is_not_accepted(self):
         gate = self.validator()
         with self.assertRaises(gate.ReportError):
-            gate.validate_report(" " * (gate.MAX_REPORT_BYTES + 1), 0)
+            gate.validate_report(" " * (gate.MAX_REPORT_BYTES + 1), 0, graph=GRAPH)
 
     def test_all_trace_frames_are_validated(self):
         records = messages() + finding()
@@ -292,7 +370,7 @@ class CaddyReportTests(unittest.TestCase):
             text = "\n".join(map(json.dumps, messages()))
             text += '\n{"progress": {"time": ' + constant + "}}"
             with self.subTest(constant=constant), self.assertRaises(gate.ReportError):
-                gate.validate_report(text, 0)
+                gate.validate_report(text, 0, graph=GRAPH)
 
     def test_failure_diagnostics_are_useful_bounded_and_redacted(self):
         gate = self.validator()
@@ -323,6 +401,8 @@ class CaddyReportTests(unittest.TestCase):
                 "scripts.quality.check_caddy_govulncheck",
                 "--report",
                 "does-not-exist.json",
+                "--graph",
+                "does-not-exist.graph",
                 "--scanner-status",
                 "0",
             ],
@@ -334,6 +414,32 @@ class CaddyReportTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 1)
         self.assertIn("Caddy vulnerability gate failed", result.stdout)
+
+    def test_cli_checks_graph_size_and_compares_the_real_files(self):
+        gate = self.validator()
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "report.json"
+            graph = Path(directory) / "graph.txt"
+            report.write_text("\n".join(map(json.dumps, messages())), encoding="utf-8")
+            graph.write_text(GRAPH, encoding="utf-8")
+            argv = [
+                "caddy-gate",
+                "--report",
+                str(report),
+                "--graph",
+                str(graph),
+                "--scanner-status",
+                "0",
+            ]
+            with (
+                mock.patch.object(sys, "argv", argv),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(gate.main(), 0)
+                graph.write_text("x" * (gate.MAX_GRAPH_BYTES + 1), encoding="utf-8")
+                self.assertEqual(gate.main(), 1)
+                with mock.patch.object(gate, "MAX_REPORT_BYTES", 1):
+                    self.assertEqual(gate.main(), 1)
 
     def test_workflow_runs_isolated_gate_and_preserves_operational_failure(self):
         workflow_path = ROOT / ".github/workflows/reusable-security-audit.yml"
@@ -366,6 +472,32 @@ class CaddyReportTests(unittest.TestCase):
                 newline="\n",
             )
             scanner.chmod(0o700)
+            go_py = temp / "go_double.py"
+            go_py.write_text(
+                "import os, sys\n"
+                'assert os.environ["GOWORK"] == "off"\n'
+                'assert os.environ["GOTOOLCHAIN"] == "local"\n'
+                'assert os.environ["GOFLAGS"] == "-mod=readonly"\n'
+                'assert os.environ["CGO_ENABLED"] == "0"\n'
+                'assert os.environ["GOOS"] == "linux"\n'
+                'assert os.environ["GOARCH"] == "amd64"\n'
+                'assert os.environ["GOPROXY"] == "off"\n'
+                'assert os.environ["GOSUMDB"] == "off"\n'
+                'assert sys.argv[1:5] == ["list", "-C", "services/caddy", "-deps"]\n'
+                'assert sys.argv[5] == "-tags=nobadger,nomysql,nopgx"\n'
+                'assert sys.argv[6] == "-f" and sys.argv[8] == "./..."\n'
+                'assert ".Replace" in sys.argv[7]\n'
+                'print(os.environ["FAKE_GRAPH"], end="")\n'
+                'sys.exit(int(os.environ["FAKE_GRAPH_STATUS"]))\n',
+                encoding="utf-8",
+            )
+            go = temp / "go"
+            go.write_text(
+                f"#!/bin/sh\nexec '{interpreter}' '{go_py.as_posix()}' \"$@\"\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            go.chmod(0o700)
             # The step's report parser is invoked as `python3`; bind that name to
             # the interpreter running this test (the Windows Store alias is not one).
             python3 = temp / "python3"
@@ -381,13 +513,21 @@ class CaddyReportTests(unittest.TestCase):
                     "bash is required to execute the reviewed Caddy scan step; "
                     "install bash (Git Bash on Windows) and retry"
                 )
-            for status, expected in ((0, 0), (1, 1), (124, 1)):
-                with self.subTest(status=status):
+            for status, graph_status, graph_output, expected in (
+                (0, 0, GRAPH, 0),
+                (0, 0, GRAPH.replace(f"{JOSE} v3.0.5\n", ""), 1),
+                (0, 1, GRAPH, 1),
+                (1, 0, GRAPH, 1),
+                (124, 0, GRAPH, 1),
+            ):
+                with self.subTest(status=status, graph_status=graph_status):
                     env = {
                         "PATH": f"{temp}{os.pathsep}{os.environ['PATH']}",
                         "RUNNER_TEMP": directory,
                         "FAKE_STATUS": str(status),
                         "FAKE_REPORT": "\n".join(map(json.dumps, messages())),
+                        "FAKE_GRAPH": graph_output,
+                        "FAKE_GRAPH_STATUS": str(graph_status),
                     }
                     env.update(step["env"])
                     result = subprocess.run(  # noqa: S603  # fixed argv: resolved bash runs the reviewed workflow step

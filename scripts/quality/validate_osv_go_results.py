@@ -90,7 +90,7 @@ def validate(report: dict[str, Any], scanner_status: int, today: date) -> list[s
                     f"unexcepted finding {alias} in {match.group('name')} "
                     f"{match.group('version')} at {manifest}"
                 )
-            if today > record["expires"]:
+            if today >= record["expires"]:
                 raise OsvResultError(f"disposition for {alias} expired")
             accepted.append(f"{alias} {manifest}")
     if scanner_status == 0 and findings:

@@ -85,6 +85,12 @@ def test_expired_disposition_is_rejected() -> None:
         validate(_report(_result(CADDY_GOJOSE)), 1, date(2027, 1, 11))
 
 
+def test_disposition_expires_on_its_recorded_date() -> None:
+    assert validate(_report(_result(CADDY_GOJOSE)), 1, date(2027, 1, 9))
+    with pytest.raises(OsvResultError, match="expired"):
+        validate(_report(_result(CADDY_GOJOSE)), 1, date(2027, 1, 10))
+
+
 def test_scanner_operational_failure_is_rejected() -> None:
     with pytest.raises(OsvResultError, match="operationally"):
         validate(_report(_result(CADDY_GOJOSE)), 2, TODAY)

@@ -19,6 +19,7 @@ from scripts.quality.verify_dependency_review_scope import GHSA_EXCEPTIONS
 CADDY_MODULE = "github.com/university-ecosystem/caddy"
 CADDY_MANIFEST = "services/caddy/go.mod"
 MAX_REPORT_BYTES = 32 * 1024 * 1024
+MAX_GRAPH_BYTES = 4 * 1024 * 1024
 
 
 class ReportError(ValueError):
@@ -91,8 +92,39 @@ def _messages(text: str) -> list[dict[str, Any]]:
     return result
 
 
+def _expected_modules(graph: str) -> dict[str, str]:
+    """Read the successfully generated, production-tagged Go package graph."""
+    if not graph.strip() or len(graph.encode("utf-8")) > MAX_GRAPH_BYTES:
+        raise ReportError("Empty or oversized Caddy module graph")
+    modules: dict[str, str] = {}
+    for line in graph.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        if len(fields) not in (1, 2):
+            raise ReportError("Malformed Caddy module graph")
+        path, version = fields[0], fields[1] if len(fields) == 2 else ""
+        if (path == CADDY_MODULE) != (version == "") or path == "stdlib":
+            raise ReportError("Malformed Caddy module graph")
+        if path in modules and modules[path] != version:
+            raise ReportError("Conflicting Caddy module versions")
+        modules[path] = version
+    if (
+        not {
+            CADDY_MODULE,
+            "github.com/caddyserver/caddy/v2",
+            "github.com/mholt/caddy-ratelimit",
+        }
+        <= modules.keys()
+    ):
+        raise ReportError("Incomplete Caddy module graph")
+    # Go's dependency list omits standard-library packages' module metadata.
+    modules["stdlib"] = "v1.26.10"
+    return modules
+
+
 def validate_report(
-    text: str, scanner_status: int, *, today: date | None = None
+    text: str, scanner_status: int, *, graph: str, today: date | None = None
 ) -> dict[str, int]:
     """Validate source identity, completion status and bounded reachable findings."""
     if type(scanner_status) is not int or scanner_status != 0:
@@ -122,11 +154,19 @@ def validate_report(
         or sbom.get("go_version") != expected["go_version"]
         or not isinstance(modules, list)
         or not all(
-            isinstance(m, dict) and isinstance(m.get("path"), str) for m in modules
+            isinstance(m, dict)
+            and isinstance(m.get("path"), str)
+            and isinstance(m.get("version", ""), str)
+            for m in modules
         )
         or sum(m["path"] == CADDY_MODULE for m in modules) != 1
     ):
         raise ReportError("Report does not describe the Caddy source root")
+    scanned_modules = {m["path"]: m.get("version", "") for m in modules}
+    if len(scanned_modules) != len(modules) or scanned_modules != _expected_modules(
+        graph
+    ):
+        raise ReportError("Scanned modules do not match the Caddy build graph")
 
     advisories: dict[str, dict[str, Any]] = {}
     advisory_payloads: dict[str, str] = {}
@@ -191,6 +231,8 @@ def validate_report(
             continue
         if not first.get("package"):
             raise ReportError("Symbol finding lacks its package")
+        if scanned_modules.get(first["module"]) != first.get("version", ""):
+            raise ReportError("Finding does not match the scanned module graph")
         reachable += 1
         aliases = {
             alias
@@ -216,13 +258,18 @@ def validate_report(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--graph", type=Path, required=True)
     parser.add_argument("--scanner-status", type=int, required=True)
     args = parser.parse_args()
     try:
         if args.report.stat().st_size > MAX_REPORT_BYTES:
             raise ReportError("Oversized report")
+        if args.graph.stat().st_size > MAX_GRAPH_BYTES:
+            raise ReportError("Oversized Caddy module graph")
         result = validate_report(
-            args.report.read_text(encoding="utf-8"), args.scanner_status
+            args.report.read_text(encoding="utf-8"),
+            args.scanner_status,
+            graph=args.graph.read_text(encoding="utf-8"),
         )
     except (OSError, UnicodeError, ReportError) as exc:
         print(f"Caddy vulnerability gate failed: {exc}")

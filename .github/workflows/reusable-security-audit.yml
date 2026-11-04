@@ -484,6 +484,15 @@ jobs:
           Set-Location ..
           uv sync --frozen
 
+      - name: Verify npm audit scope with a local registry
+        shell: bash
+        working-directory: .
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          uv run --frozen --no-sync python -m pytest -q -o addopts= --no-cov -p no:cacheprovider \
+            tests/aud480_npm_scope_proof.py
+
       - name: Run npm audit with allowlist
         shell: pwsh
         run: |
@@ -492,17 +501,16 @@ jobs:
             --allowlist security/audit-allowlist.yaml `
             --npm frontend
 
-      # AUD-480: the allowlisted gate above blocks only high and critical npm
-      # advisories. This step blocks every moderate and low advisory in the
-      # frontend tree. npm audit includes devDependencies unless --omit=dev is
-      # given, and this step never passes it. It has no allowlist: fix or pin the
-      # advisory instead of adding an ignore.
+      # AUD-480: block every npm advisory, including informational findings.
+      # Explicit includes keep production, development, optional and peer
+      # dependencies in scope even when npm inherits an omit setting. This step
+      # has no allowlist: fix or pin the advisory instead of adding an ignore.
       - name: Block moderate and low npm advisories
         shell: bash
         timeout-minutes: 10
         run: |
           set -euo pipefail
-          npm audit --audit-level=low
+          npm audit --audit-level=info --include=prod --include=dev --include=optional --include=peer
 
       # The audit above remains blocking. This optional report only identifies
       # public advisory metadata when its numeric IDs are insufficient to triage.
@@ -1308,12 +1316,22 @@ jobs:
         run: |
           set -euo pipefail
           report="$(mktemp "${RUNNER_TEMP%/}/caddy-govulncheck.XXXXXXXX")"
-          trap 'rm -f -- "$report"' EXIT
+          graph="$(mktemp "${RUNNER_TEMP%/}/caddy-go-graph.XXXXXXXX")"
+          trap 'rm -f -- "$report" "$graph"' EXIT
           scanner_status=0
           govulncheck -C services/caddy -format=json -mode=source -scan=symbol \
             -tags=nobadger,nomysql,nopgx ./... > "$report" || scanner_status=$?
+          if (( scanner_status == 0 )); then
+            # Reproduce the builder's selected module versions from packages in
+            # this scan. An unavailable dependency fails offline and cannot be
+            # silently fetched or accepted as a partial graph.
+            GOPROXY=off GOSUMDB=off go list -C services/caddy -deps \
+              -tags=nobadger,nomysql,nopgx \
+              -f '{{with .Module}}{{with .Replace}}{{.Path}} {{.Version}}{{else}}{{.Path}} {{.Version}}{{end}}{{end}}' \
+              ./... > "$graph"
+          fi
           python3 -m scripts.quality.check_caddy_govulncheck \
-            --report "$report" --scanner-status "$scanner_status"
+            --report "$report" --graph "$graph" --scanner-status "$scanner_status"
 
 
   # ── SBOM generation ────────────────────────────────────────────────────────

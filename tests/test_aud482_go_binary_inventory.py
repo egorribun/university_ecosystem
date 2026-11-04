@@ -983,10 +983,39 @@ CADDY_BUILD = ROOT / "services/caddy"
 
 
 def _required_module_versions(go_mod: str) -> set[tuple[str, str]]:
-    """Return every module version named in the committed require block."""
-    block = re.search(r"^require \(\n(.*?)^\)", go_mod, re.M | re.S)
-    assert block is not None, "the Caddy build module must require its graph"
-    return set(re.findall(r"^\t(\S+) (v\S+?)(?: // indirect)?$", block.group(1), re.M))
+    """Return every module version named in the committed require blocks."""
+    blocks = re.findall(r"^require \(\n(.*?)^\)", go_mod, re.M | re.S)
+    assert blocks, "the Caddy build module must require its graph"
+    return {
+        required
+        for block in blocks
+        for required in re.findall(r"^\t(\S+) (v\S+?)(?: // indirect)?$", block, re.M)
+    }
+
+
+def test_caddy_required_module_versions_include_both_require_blocks() -> None:
+    go_mod = (CADDY_BUILD / "go.mod").read_text(encoding="utf-8")
+    required = _required_module_versions(go_mod)
+
+    assert ("github.com/caddyserver/caddy/v2", "v2.11.7") in required
+    assert ("cel.dev/cel-go", "v0.32.0") in required
+
+
+def test_caddy_graph_test_rejects_a_missing_indirect_checksum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("Dockerfile", "go.mod", "main.go"):
+        shutil.copyfile(CADDY_BUILD / name, tmp_path / name)
+    sums = (CADDY_BUILD / "go.sum").read_text(encoding="utf-8")
+    sums, removed = re.subn(
+        r"^cel\.dev/cel-go v0\.32\.0 h1:[^\n]+\n", "", sums, flags=re.M
+    )
+    assert removed == 1
+    (tmp_path / "go.sum").write_text(sums, encoding="utf-8")
+    monkeypatch.setitem(globals(), "CADDY_BUILD", tmp_path)
+
+    with pytest.raises(AssertionError, match=re.escape("cel.dev/cel-go")):
+        test_caddy_build_graph_is_committed_and_read_only_during_the_image_build()
 
 
 def test_caddy_build_graph_is_committed_and_read_only_during_the_image_build() -> None:
@@ -1011,14 +1040,12 @@ def test_caddy_build_graph_is_committed_and_read_only_during_the_image_build() -
     assert ("github.com/caddyserver/caddy/v2", "v2.11.7") in required
     assert ("github.com/mholt/caddy-ratelimit", "v0.1.0") in required
 
-    # Every module the build resolves needs a checksum: the zip hash and the
-    # go.mod hash for the version that is built, and the go.mod hash for a
-    # requirement that a replacement takes over.
+    # Every module the build resolves needs a zip and go.mod hash. Replacements
+    # use their target checksums; the superseded requirement is not fetched.
     replacements = dict(re.findall(r"^\t(\S+) => \S+ (v\S+)$", go_mod, re.M))
     assert replacements["golang.org/x/net"] == "v0.62.0"
     for module, version in sorted(required):
         if module in replacements:
-            assert f"{module} {version}/go.mod h1:" in go_sum, module
             continue
         assert f"{module} {version} h1:" in go_sum, module
         assert f"{module} {version}/go.mod h1:" in go_sum, module
