@@ -10,13 +10,36 @@ It records no new audit acceptance: the accepted lower bound stays as stated in
 
 1. Read [AGENTS.md](../../../AGENTS.md) in full. Work only on branch `egorribun`
    (PR #1343 against `main`). `git fetch` first.
-2. The branch tip is one **unfinished** commit,
-   `wip(audit): checkpoint unfinished lanes L1, L2, L4, L5 and L6`. Its hooks
-   passed, but the lane agents were stopped mid-edit and nothing in it is
-   verified. Finish it with new commits on top. Never amend or force-push.
-3. Then continue the lanes in [2026-11-03-audit63-lanes.md](2026-11-03-audit63-lanes.md)
-   (the old "WIP commit" in that file is finished). Per-lane evidence notes
-   from this session are in [2026-11-03-audit-evidence/](2026-11-03-audit-evidence/).
+2. Read "State on 2026-11-04" below first: the WIP commit and steps 1-2 of
+   this file are finished. Never amend or force-push.
+3. Then continue the lanes in [2026-11-03-audit63-lanes.md](2026-11-03-audit63-lanes.md).
+   Per-lane evidence notes are in [2026-11-03-audit-evidence/](2026-11-03-audit-evidence/)
+   (`round5-*.md` are the newest).
+
+## State on 2026-11-04
+
+- A cloud agent finished the WIP lanes and both owner items (AUD-208 Squawk
+  exception, now 5 rules, owner-confirmed 2026-11-04; AUD-482 go-jose and
+  x/crypto) in `2d3ee026f..e2a322e34`. A full review found and fixed in
+  `6c460ee3d..811747bc9`: the Alembic job seeded the schema before the
+  empty-schema guard; npm audit (minimatch via eslint plugins, now a
+  first-party adapter); dead Workbox generateSW tests; per-user rate-limit
+  keying limited to access tokens with UUID subjects; a chaos dry-run that
+  faked a healthy target; the plist license label rebind (ADR-047); chart
+  egress that silently broke external MinIO/Elasticsearch.
+- Round 5 (`a7f1a573b..a17b0944e`) code for 360, 392, 426, 447, 454, 313,
+  309, 332/436 (Windows CI job), 373 (production requires internal mTLS;
+  public /static and /.well-known via the gateway when it is on), 480, 483
+  (Go x/crypto and x/net patched in every module, OSV gate on PRs), 245, 384,
+  334, 428 (TypeScript census), 432 (partial). See `round5-*.md` for each ID's
+  status and the hosted job that must prove it.
+- Owner items: set repository variables `MINIO_EGRESS_CIDRS` and
+  `ELASTICSEARCH_EGRESS_CIDRS` before any staging/production deploy with an
+  external MinIO or Elasticsearch; production now needs SPIRE and internal
+  mTLS. AUD-272 needs owner acceptance (the ledger enforces delivery-once; the
+  old redundant `uq_notification_delivery_once` stays in the baseline under
+  ADR-051). AUD-373 needs a SPIRE staging run. AUD-381 thresholds and the
+  AUD-429 live realtime job are owner decisions.
 
 ## Done and pushed this session (89e1f90e7..WIP)
 
