@@ -611,6 +611,19 @@ jobs:
           fi
           echo "Validated OSV SARIF with $finding_count module-level finding(s)."
 
+      # AUD-483: every pull-request OSV Go result must be an exact, unexpired
+      # owner disposition (GHSA alias, manifest, module, version). Stdlib, GO-only
+      # and unrecorded findings fail the job; see
+      # scripts/quality/validate_osv_go_results.py.
+      - name: Gate OSV Go results by exact disposition (pull request)
+        if: always()
+        shell: bash
+        env:
+          SCANNER_STATUS: ${{ steps.osv_scan.outputs.scanner_status }}
+        run: |
+          set -euo pipefail
+          python3 -m scripts.quality.validate_osv_go_results             --sarif go-vuln.sarif             --scanner-status "$SCANNER_STATUS"
+
       - name: Install cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
 
