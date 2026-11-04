@@ -1,4 +1,5 @@
 import fs from "node:fs"
+import { createHash, createHmac, pbkdf2Sync, scryptSync } from "node:crypto"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
@@ -103,8 +104,9 @@ function fail(failures, label, detail) {
 }
 
 /** Records a failure when `fn` does not throw; invalid parameters must be rejected. */
-function expectRejection(failures, label, fn) {
+function expectRejection(failures, progress, label, fn) {
   try {
+    progress.executed += 1
     fn()
   } catch {
     return
@@ -137,49 +139,60 @@ async function loadInitializedModule(jsPath, wasmPath) {
   return moduleNamespace
 }
 
-async function fuzzSanitizer(wasmPath, random, iterations, failures) {
+async function fuzzSanitizer(wasmPath, random, iterations, failures, progress) {
   const sanitizer = await loadInitializedModule(
     path.join(path.dirname(wasmPath), "wasm_sanitizer.js"),
     wasmPath
   )
   const { sanitize_html_basic, sanitize_rich_text, strip_html } = sanitizer
-  let executed = 0
   for (let iteration = 0; iteration < iterations; iteration += 1) {
-    const input = generateText(random)
+    const generated = generateText(random)
+    // Exercise text preservation without spending another WASM call or changing
+    // the random stream used by later iterations.
+    const marker =
+      iteration === 0 ? `fuzz${createHash("sha256").update(generated).digest("hex")}` : null
+    const input = marker === null ? generated : `<p>${marker}</p>${generated}`
     for (const [label, sanitize] of [
       ["sanitize_rich_text", sanitize_rich_text],
       ["sanitize_html_basic", sanitize_html_basic],
     ]) {
+      progress.executed += 1
       const output = sanitize(input)
       checkSanitizedMarkup(failures, label, input, output)
+      if (marker !== null && typeof output === "string" && !output.includes(marker)) {
+        fail(failures, label, "did not preserve safe text")
+      }
+      progress.executed += 1
       if (sanitize(input) !== output) fail(failures, label, "is not deterministic")
-      executed += 2
     }
-    if (typeof strip_html(input) !== "string")
-      fail(failures, "strip_html", "did not return a string")
-    executed += 1
+    progress.executed += 1
+    const stripped = strip_html(input)
+    if (typeof stripped !== "string") fail(failures, "strip_html", "did not return a string")
+    else if (marker !== null && !stripped.includes(marker))
+      fail(failures, "strip_html", "did not preserve safe text")
   }
-  return executed
 }
 
-async function fuzzCrypto(wasmPath, random, iterations, failures) {
+async function fuzzCrypto(wasmPath, random, iterations, failures, progress) {
   const crypto = await loadInitializedModule(
     path.join(path.dirname(wasmPath), "uni_wasm_crypto.js"),
     wasmPath
   )
   const { hmac_sha256_sign, hmac_sha256_sign_base64, pbkdf2_derive, scrypt_derive } = crypto
-  let executed = 0
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     const key = generateText(random)
     const message = generateText(random)
+    progress.executed += 1
     const hex = hmac_sha256_sign(key, message)
     if (!LOWER_HEX_64.test(hex))
       fail(failures, "hmac_sha256_sign", "is not 64 lowercase hex digits")
+    progress.executed += 1
     const encoded = hmac_sha256_sign_base64(key, message)
     if (!BASE64_44.test(encoded)) fail(failures, "hmac_sha256_sign_base64", "is not padded base64")
 
     const keySize = 1 + Math.floor(random() * 64)
     const pbkdf2Iterations = 1_000 + Math.floor(random() * 3)
+    progress.executed += 1
     const derived = pbkdf2_derive(key, message, pbkdf2Iterations, keySize)
     if (derived.length !== keySize * 2 || !/^[0-9a-f]+$/.test(derived)) {
       fail(failures, "pbkdf2_derive", `returned ${derived.length} chars for key_size ${keySize}`)
@@ -190,36 +203,66 @@ async function fuzzCrypto(wasmPath, random, iterations, failures) {
     const scryptR = 1 + Math.floor(random() * 2)
     const salt = generateBytes(random, 32)
     const password = generateBytes(random, 64)
+    progress.executed += 1
     const dk = scrypt_derive(password, salt, scryptN, scryptR, 1, dkLen)
     if (dk.length !== dkLen)
       fail(failures, "scrypt_derive", `returned ${dk.length} bytes for ${dkLen}`)
-    executed += 6
+    if (iteration === 0) {
+      // Independent native references validate the already-executed exports.
+      const expectedHmac = createHmac("sha256", key).update(message).digest()
+      if (hex !== expectedHmac.toString("hex"))
+        fail(failures, "hmac_sha256_sign", "digest mismatch")
+      if (encoded !== expectedHmac.toString("base64"))
+        fail(failures, "hmac_sha256_sign_base64", "digest mismatch")
+      if (derived !== pbkdf2Sync(key, message, pbkdf2Iterations, keySize, "sha256").toString("hex"))
+        fail(failures, "pbkdf2_derive", "derived key mismatch")
+      const expectedScrypt = scryptSync(password, salt, dkLen, { N: scryptN, r: scryptR, p: 1 })
+      if (!Buffer.from(dk).equals(expectedScrypt))
+        fail(failures, "scrypt_derive", "derived key mismatch")
+    }
   }
 
   // Each invalid parameter must be rejected; acceptance is a validation failure.
   const probe = new Uint8Array([1, 2, 3])
-  expectRejection(failures, "pbkdf2_derive(iterations=0)", () => pbkdf2_derive("p", "s", 0, 32))
-  expectRejection(failures, "pbkdf2_derive(iterations=1)", () => pbkdf2_derive("p", "s", 1, 32))
-  expectRejection(failures, "pbkdf2_derive(iterations=999)", () => pbkdf2_derive("p", "s", 999, 32))
-  expectRejection(failures, "pbkdf2_derive(iterations=1000001)", () =>
+  expectRejection(failures, progress, "pbkdf2_derive(iterations=0)", () =>
+    pbkdf2_derive("p", "s", 0, 32)
+  )
+  expectRejection(failures, progress, "pbkdf2_derive(iterations=1)", () =>
+    pbkdf2_derive("p", "s", 1, 32)
+  )
+  expectRejection(failures, progress, "pbkdf2_derive(iterations=999)", () =>
+    pbkdf2_derive("p", "s", 999, 32)
+  )
+  expectRejection(failures, progress, "pbkdf2_derive(iterations=1000001)", () =>
     pbkdf2_derive("p", "s", 1_000_001, 32)
   )
-  expectRejection(failures, "pbkdf2_derive(key_size=0)", () => pbkdf2_derive("p", "s", 1_000, 0))
-  expectRejection(failures, "pbkdf2_derive(key_size=1025)", () =>
+  expectRejection(failures, progress, "pbkdf2_derive(key_size=0)", () =>
+    pbkdf2_derive("p", "s", 1_000, 0)
+  )
+  expectRejection(failures, progress, "pbkdf2_derive(key_size=1025)", () =>
     pbkdf2_derive("p", "s", 1_000, 1025)
   )
-  expectRejection(failures, "scrypt_derive(N=0)", () => scrypt_derive(probe, probe, 0, 8, 1, 32))
-  expectRejection(failures, "scrypt_derive(N=3)", () => scrypt_derive(probe, probe, 3, 8, 1, 32))
-  expectRejection(failures, "scrypt_derive(N=1)", () => scrypt_derive(probe, probe, 1, 1, 1, 32))
-  expectRejection(failures, "scrypt_derive(N=8)", () => scrypt_derive(probe, probe, 8, 1, 1, 32))
-  expectRejection(failures, "scrypt_derive(r=0)", () => scrypt_derive(probe, probe, 16, 0, 1, 32))
-  expectRejection(failures, "scrypt_derive(dk_len=9)", () =>
+  expectRejection(failures, progress, "scrypt_derive(N=0)", () =>
+    scrypt_derive(probe, probe, 0, 8, 1, 32)
+  )
+  expectRejection(failures, progress, "scrypt_derive(N=3)", () =>
+    scrypt_derive(probe, probe, 3, 8, 1, 32)
+  )
+  expectRejection(failures, progress, "scrypt_derive(N=1)", () =>
+    scrypt_derive(probe, probe, 1, 1, 1, 32)
+  )
+  expectRejection(failures, progress, "scrypt_derive(N=8)", () =>
+    scrypt_derive(probe, probe, 8, 1, 1, 32)
+  )
+  expectRejection(failures, progress, "scrypt_derive(r=0)", () =>
+    scrypt_derive(probe, probe, 16, 0, 1, 32)
+  )
+  expectRejection(failures, progress, "scrypt_derive(dk_len=9)", () =>
     scrypt_derive(probe, probe, 16, 1, 1, 9)
   )
-  expectRejection(failures, "scrypt_derive(dk_len=65)", () =>
+  expectRejection(failures, progress, "scrypt_derive(dk_len=65)", () =>
     scrypt_derive(probe, probe, 16, 1, 1, 65)
   )
-  return executed + 13
 }
 
 /** Why the campaign parameters are unusable, or null when they are valid. */
@@ -257,10 +300,12 @@ export async function runFuzzCampaign({
   }
   if (failures.length > 0) return { ok: false, executed: 0, failures }
 
-  let executed = 0
+  // Count every attempted export, including one that throws, so a failed
+  // campaign retains the progress made before the exception.
+  const progress = { executed: 0 }
   try {
-    executed += await fuzzSanitizer(sanitizerPath, createRandom(seed), iterations, failures)
-    executed += await fuzzCrypto(cryptoPath, createRandom(seed ^ 0x9e3779b9), iterations, failures)
+    await fuzzSanitizer(sanitizerPath, createRandom(seed), iterations, failures, progress)
+    await fuzzCrypto(cryptoPath, createRandom(seed ^ 0x9e3779b9), iterations, failures, progress)
   } catch (error) {
     fail(
       failures,
@@ -268,7 +313,11 @@ export async function runFuzzCampaign({
       `threw ${error instanceof Error ? error.message : String(error)}`
     )
   }
-  return { ok: failures.length === 0 && executed > 0, executed, failures }
+  return {
+    ok: failures.length === 0 && progress.executed > 0,
+    executed: progress.executed,
+    failures,
+  }
 }
 
 async function main() {

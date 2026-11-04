@@ -12,6 +12,7 @@ export interface FuzzCampaignOptions {
 
 export interface FuzzCampaignResult {
   ok: boolean
+  /** Attempted fuzz and rejection export calls, including a call that throws. */
   executed: number
   failures: string[]
 }

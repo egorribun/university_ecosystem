@@ -29,7 +29,13 @@ fn pbkdf2_parity_rfc7914() {
 #[wasm_bindgen_test]
 fn pbkdf2_public_api_enforces_the_cost_boundary() {
     for iterations in [0, 1, 2, 999, 1_000_001] {
-        assert!(pbkdf2_derive("pw", "salt", iterations, 32).is_err());
+        let error = pbkdf2_derive("pw", "salt", iterations, 32)
+            .expect_err("out-of-range PBKDF2 cost must be rejected");
+        assert_eq!(
+            error.as_string().as_deref(),
+            Some("PBKDF2 iterations must be between 1,000 and 1,000,000"),
+            "unexpected error for iterations={iterations}"
+        );
     }
     let mut expected = [0_u8; 32];
     pbkdf2::pbkdf2_hmac::<sha2::Sha256>(b"pw", b"salt", 1_000, &mut expected);
@@ -110,7 +116,19 @@ fn scrypt_invalid_r_returns_err() {
 
 #[wasm_bindgen_test]
 fn scrypt_rejects_degenerate_costs_without_panicking() {
-    for n in [0, 1, 2, 4, 8] {
-        assert!(scrypt_derive(b"pw", b"salt", n, 1, 1, 32).is_err());
+    let error =
+        scrypt_derive(b"pw", b"salt", 0, 1, 1, 32).expect_err("zero scrypt cost must be rejected");
+    assert_eq!(
+        error.as_string().as_deref(),
+        Some("Invalid scrypt params: N must be a non-zero power of two")
+    );
+    for n in [1, 2, 4, 8] {
+        let error = scrypt_derive(b"pw", b"salt", n, 1, 1, 32)
+            .expect_err("scrypt cost below the floor must be rejected");
+        assert_eq!(
+            error.as_string().as_deref(),
+            Some("Invalid scrypt params: N must be at least 16"),
+            "unexpected error for N={n}"
+        );
     }
 }
