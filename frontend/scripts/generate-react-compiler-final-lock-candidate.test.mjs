@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url"
 import {
   assertFinalInstalledGraph,
   assertFinalLockScope,
+  assertFinalLocalInputs,
   assertFinalNpmCommand,
   assertFinalSourcePrerequisites,
   assertArchiveOverrideTarget,
@@ -526,6 +527,46 @@ test("committed final graph and strict fixture use the same current ESLint artif
     true
   )
   assert.deepEqual({ committedManifest, committedLock }, snapshot)
+})
+
+test("local input preflight accepts every committed local dependency without widening its scope", () => {
+  const committedManifest = JSON.parse(readFileSync(join(TEST_FRONTEND, "package.json"), "utf8"))
+  const localPaths = ["dependencies", "devDependencies", "optionalDependencies"].flatMap(
+    (section) =>
+      Object.values(committedManifest[section] ?? {})
+        .filter((value) => typeof value === "string" && value.startsWith("file:"))
+        .map((value) => value.slice(5).replace(/^\.\//, ""))
+  )
+  const directories = localPaths.filter((value) => value !== ARCHIVE)
+  const files = localPaths.filter((value) => value === ARCHIVE)
+  assert.equal(assertFinalLocalInputs(directories, files), true)
+  for (const directory of directories) {
+    assert.throws(
+      () =>
+        assertFinalLocalInputs(
+          directories.filter((value) => value !== directory),
+          files
+        ),
+      {
+        name: "AssertionError",
+      }
+    )
+  }
+  for (const extra of ["scripts/unreviewed", "../outside", "/outside", directories[0]]) {
+    assert.throws(() => assertFinalLocalInputs([...directories, extra], files), {
+      name: "AssertionError",
+    })
+  }
+  for (const alteredFiles of [
+    [],
+    [ARCHIVE, ARCHIVE],
+    ["vendor/unreviewed.tgz"],
+    [...files, directories[0]],
+  ]) {
+    assert.throws(() => assertFinalLocalInputs(directories, alteredFiles), {
+      name: "AssertionError",
+    })
+  }
 })
 
 test("current ESLint guards reject stale, unreviewed and broadened source versions", () => {

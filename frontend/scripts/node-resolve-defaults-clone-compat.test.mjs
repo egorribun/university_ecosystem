@@ -4,7 +4,7 @@ import { createRequire } from "node:module"
 import test from "node:test"
 
 const require = createRequire(import.meta.url)
-const clone = require("./node-resolve-defaults-clone-compat/index.cjs")
+const clone = require("@university-ecosystem/node-resolve-defaults-clone-compat")
 const defaults = () => ({
   dedupe: [],
   extensions: [".mjs", ".js", ".json", ".node"],
@@ -71,18 +71,24 @@ test("actual CJS and ESM consumers retain the scoped clone contract", async () =
   assert.equal(packages["node_modules/@rollup/plugin-node-resolve"].version, "16.0.3")
   const consumerPath = "node_modules/@rollup/plugin-node-resolve"
   assert.deepEqual(
-    Object.keys(packages).filter((path) => path === consumerPath || path.endsWith(`/${consumerPath}`)),
-    [consumerPath],
+    Object.keys(packages).filter(
+      (path) => path === consumerPath || path.endsWith(`/${consumerPath}`)
+    ),
+    [consumerPath]
   )
   assert.deepEqual(
-    Object.entries(packages).filter(([, pkg]) =>
-      ["dependencies", "optionalDependencies", "peerDependencies"].some((field) =>
-        Object.hasOwn(pkg[field] ?? {}, "deepmerge"),
-      ),
-    ).map(([path]) => path),
-    [consumerPath],
+    Object.entries(packages)
+      .filter(([, pkg]) =>
+        ["dependencies", "optionalDependencies", "peerDependencies"].some((field) =>
+          Object.hasOwn(pkg[field] ?? {}, "deepmerge")
+        )
+      )
+      .map(([path]) => path),
+    [consumerPath]
   )
   const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"))
+  assert.equal(manifest.devDependencies["@rollup/plugin-node-resolve"], "16.0.3")
+  assert.equal(packages[""].devDependencies["@rollup/plugin-node-resolve"], "16.0.3")
   assert.equal(manifest.overrides.deepmerge, undefined)
   assert.deepEqual(manifest.overrides["@rollup/plugin-node-resolve@16.0.3"], {
     deepmerge: "file:../../../scripts/node-resolve-defaults-clone-compat",
@@ -94,8 +100,11 @@ test("actual CJS and ESM consumers retain the scoped clone contract", async () =
   assert.equal(packages[target].name, "@university-ecosystem/node-resolve-defaults-clone-compat")
   const scopedName = "@university-ecosystem/node-resolve-defaults-clone-compat"
   assert.deepEqual(packages[`node_modules/${scopedName}`], edge)
-  const expectedEntry = realpathSync(new URL("./node-resolve-defaults-clone-compat/index.cjs", import.meta.url))
+  const expectedEntry = realpathSync(
+    new URL("./node-resolve-defaults-clone-compat/index.cjs", import.meta.url)
+  )
   assert.equal(realpathSync(require.resolve(scopedName)), expectedEntry)
+  assert.equal(clone, require(expectedEntry))
   assert.equal(realpathSync(require.resolve("deepmerge")), expectedEntry)
   const entry = require.resolve("@rollup/plugin-node-resolve")
   const source = readFileSync(entry, "utf8")

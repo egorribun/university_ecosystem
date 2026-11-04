@@ -214,7 +214,8 @@
     "workbox-strategies": "^7.4.0",
     "workbox-window": "^7.3.0",
     "@university-ecosystem/react-compiler-zod-compat": "file:./vendor/react-compiler-zod-compat-1.0.0.tgz",
-    "@university-ecosystem/node-resolve-defaults-clone-compat": "file:./scripts/node-resolve-defaults-clone-compat"
+    "@university-ecosystem/node-resolve-defaults-clone-compat": "file:./scripts/node-resolve-defaults-clone-compat",
+    "@rollup/plugin-node-resolve": "16.0.3"
   },
   "description": "",
   "lint-staged": {

@@ -1316,6 +1316,16 @@ export function assertFinalInstalledGraph(frontend, mode, controls) {
   return true
 }
 
+export function assertFinalLocalInputs(localDirectories, localFiles) {
+  assert.deepEqual(localDirectories.sort(), [
+    "scripts/boundary-micromatch-compat",
+    "scripts/node-resolve-defaults-clone-compat",
+    "wasm-sanitizer/pkg",
+  ])
+  assert.deepEqual(localFiles.sort(), [ARCHIVE])
+  return true
+}
+
 export async function runFinalCompilerGenerator() {
   let stage = "preflight"
   let scratch
@@ -1441,11 +1451,7 @@ export async function runFinalCompilerGenerator() {
         else assert.fail("Unsupported local package input")
       }
     }
-    assert.deepEqual(localDirectories.sort(), [
-      "scripts/boundary-micromatch-compat",
-      "wasm-sanitizer/pkg",
-    ])
-    assert.deepEqual(localFiles.sort(), [ARCHIVE])
+    assertFinalLocalInputs(localDirectories, localFiles)
     // The unpacked source remains an explicit integrity input even though the
     // npm graph consumes only its already-reviewed archive.
     localDirectories.push(LOCAL)
