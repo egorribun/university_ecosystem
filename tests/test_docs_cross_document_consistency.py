@@ -13,6 +13,8 @@ import ast
 import re
 from pathlib import Path
 
+import yaml
+
 from app.core.config import Settings
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,6 +124,32 @@ def test_access_point_endpoints_match_between_the_english_and_russian_readmes() 
 
     assert english
     assert english == russian
+
+
+def test_readme_access_point_ports_match_full_compose_bindings() -> None:
+    source = (
+        _text("docker-compose.full.yml").replace("!override", "").replace("!reset", "")
+    )
+    services = yaml.safe_load(source)["services"]
+    documented = (
+        set(_access_point_endpoints("README.md", _ACCESS_POINT_HEADINGS[0])),
+        set(_access_point_endpoints("README.ru.md", _ACCESS_POINT_HEADINGS[1])),
+    )
+    for service, target_port, suffix in (
+        ("caddy", "80", ""),
+        ("backend", "8000", "/api/docs"),
+        ("gateway", "8080", ""),
+        ("ws-hub", "8081", "/ws"),
+        ("grafana", "3000", ""),
+        ("prometheus", "9090", ""),
+        ("pyroscope", "4040", ""),
+    ):
+        mappings = [str(port).split(":") for port in services[service]["ports"]]
+        host_ports = [parts[-2] for parts in mappings if parts[-1] == target_port]
+        assert len(host_ports) == 1, service
+        host_port = host_ports[0]
+        endpoint = f"localhost{':' + host_port if host_port != '80' else ''}{suffix}"
+        assert all(endpoint in document for document in documented), service
 
 
 def _repository_path_tokens(document: str) -> set[str]:

@@ -97,7 +97,7 @@ corresponding plaintext variable.
 | `CACHE_BACKEND` | `redis`, `memory`, `tiered`, `none`, `nats` | `redis` |
 | `CACHE_ENABLED` | Enable caching | `true` |
 | `CACHE_REDIS_URL` | Redis URL | `redis://127.0.0.1:6379/0` |
-| `REVOCATION_REDIS_URL` | Dedicated persistent/noeviction Redis URL for session revocation | Required outside development |
+| `REVOCATION_REDIS_URL` | Dedicated persistent/noeviction Redis URL for session revocation. The Go gateway defaults to `redis://redis:6379/0`, while ws-hub defaults to `redis://revocation-redis:6379/0`; deployment configuration must supply the intended store. | Required outside development |
 | `NATS_URL` | NATS message bus endpoint | `nats://127.0.0.1:4222` |
 | `NATS_AUTH_TOKEN` | NATS authentication token | Empty locally; required in production |
 | `NATS_TASK_MAX_DELIVERIES` | Delivery attempts of a background task before it is parked in the dead-letter queue (`/admin/dlq`) | `5` |
@@ -219,7 +219,7 @@ local-key operations and S3 behavior are unchanged.
 | `ENVIRONMENT` | `dev`, `development`, `local`, `test`, `testing`, `staging`, or `production` | `development` |
 | `FRONTEND_ORIGIN` | Primary frontend URL for CORS | `http://localhost:5173` |
 | `ENABLE_OTEL` | Enable OpenTelemetry tracing | `true` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint | `http://localhost:4317` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OpenTelemetry collector endpoint. The Go gateway defaults to `tempo:4317`. | `http://localhost:4317` (backend) |
 | `LOG_LEVEL` | Logging verbosity | `INFO` |
 
 > **Tip**: `_FILE` loading is limited to the explicit secret-field allowlist in
@@ -457,7 +457,7 @@ and are not part of this inventory.
 | `SENTRY_DSN` | Sentry DSN. Defined in `app/core/config/observability.py`. | Empty |
 | `SENTRY_ENVIRONMENT` | Sentry environment. Defined in `app/core/config/observability.py`. | Empty |
 | `SENTRY_PROFILES_SAMPLE_RATE` | Sentry profiles sample rate. Defined in `app/core/config/observability.py`. | `0.0` |
-| `SENTRY_TRACES_SAMPLE_RATE` | Sentry traces sample rate. Defined in `app/core/config/observability.py`. | `0.0` |
+| `SENTRY_TRACES_SAMPLE_RATE` | Sentry traces sample rate. The Go gateway defaults to `1.0`; the backend field is defined in `app/core/config/observability.py`. | `0.0` (backend) |
 | `SERVICE_VERSION` | Service version. Defined in `app/core/config/observability.py`. | Empty |
 
 ### `app/core/config/security.py`
@@ -509,8 +509,8 @@ and are not part of this inventory.
 
 These names are read directly from the process environment by the `app` package,
 not through the `Settings` model. `tests/test_configuration_outside_settings_drift.py`
-derives the set from the code and fails when a literal `os.environ` or `os.getenv`
-read has no row here with a documented default.
+derives the set from literal keys and simple module constants used in `os.environ`
+or `os.getenv` reads, and fails when a name has no row with a documented default.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -525,15 +525,21 @@ read has no row here with a documented default.
 | `NATS_TASK_TIMEOUT_SECONDS` | Per-task timeout for the NATS task worker in `app/core/nats_broker.py`. | `30` |
 | `NATS_FETCH_BATCH_SIZE` | Messages fetched per NATS task-worker batch, clamped to 1 through 100. | `20` |
 | `SPICEDB_INSECURE` | Permits a plaintext SpiceDB connection when `true`; TLS is otherwise forced. Local development only. Read in `app/core/spicedb.py`. | `false` |
+| `INTERNAL_HTTP_MTLS_SERVER_SPIFFE_ID` | Exact backend workload identity; required when internal HTTP mTLS is enabled. | Unset |
+| `INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS` | Comma-separated, unique client identities in the server trust domain; must include the backend's own probe identity when internal HTTP mTLS is enabled. | Unset |
 
 ### Go services (gateway, ws-hub, file-processor)
 
 These names are read by the Go services under `services/gateway`, `services/ws-hub` and
 `services/file-processor`. `tests/test_configuration_outside_settings_drift.py` derives
-the set from the literal names passed to `os.Getenv`, `os.LookupEnv`, the `getEnv*`
-helpers, `readSecretEnv` and the file-processor secret table, and fails when one has no row
-here with a documented default. A secret-capable name also accepts a `<NAME>_FILE` mount
-where the Go code reads it through `readSecretEnv` or the `_FILE` lookup.
+the set from literal names passed to `os.Getenv`, `os.LookupEnv`, the `getEnv*`
+helpers, secret readers and the file-processor secret table. It separately checks the
+file-processor's `FP_`-prefixed Viper struct fields. A secret-capable name also accepts
+a `<NAME>_FILE` mount where the Go code reads it through `readSecretEnv` or the `_FILE` lookup.
+Among environment variables for file-processor fields explicitly bound in
+`bindConfigEnvironment`, Viper checks the `FP_` name first and falls back to the
+bound unprefixed name when it is absent. An explicitly empty `FP_` value takes
+precedence over the unprefixed name.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -559,7 +565,7 @@ where the Go code reads it through `readSecretEnv` or the `_FILE` lookup.
 | `GRPC_CLIENT_KEY_FILE` | Private key for `GRPC_CLIENT_CERT_FILE`. | Unset |
 | `GRPC_CLIENT_IDENTITY_URI` | Expected SPIFFE URI SAN of the gRPC client identity. | Unset |
 | `GRPC_SERVER_NAME` | Server name used to verify the gRPC TLS certificate. | Unset |
-| `INTERNAL_HTTP_MTLS_ENABLED` | Enables mutual TLS for internal HTTP calls; must parse as a boolean. | `false` |
+| `INTERNAL_HTTP_MTLS_ENABLED` | Enables mutual TLS for internal HTTP calls in the gateway and backend; must parse as a boolean. The backend requires its server identity, allowed clients and Workload API socket when enabled. | `false` |
 | `TLS_CERT_FILE` | Certificate file for the gateway's own TLS listener. | Unset |
 | `TLS_KEY_FILE` | Private key file for `TLS_CERT_FILE`. | Unset |
 | `JWT_SECRET` | Gateway JWT verification secret (`_FILE` supported). | Validated at startup |
@@ -568,7 +574,7 @@ where the Go code reads it through `readSecretEnv` or the `_FILE` lookup.
 | `JWKS_REFRESH_INTERVAL` | JWKS refresh interval in seconds. | `300` |
 | `JWKS_URL` | ws-hub JWKS URL used to verify tokens. | `http://backend:8000/.well-known/jwks.json` |
 | `JWT_SECRETS` | ws-hub ring of JWT verification secrets for rotation (`_FILE` supported). | Unset (single-secret mode) |
-| `REDIS_URL` | Redis URL read by the gateway and ws-hub (`_FILE` supported). | Unset |
+| `REDIS_URL` | Redis URL read by the gateway and ws-hub (`_FILE` supported). | Gateway: `redis://redis:6379/3`; ws-hub: `redis:6379` |
 | `REDIS_DB` | Redis logical database index for ws-hub. | `0` |
 | `REDIS_PASSWORD` | Redis password for ws-hub (`_FILE` supported). | Unset |
 | `NATS_USER` | NATS user for ws-hub (`_FILE` supported). | Unset |
@@ -594,13 +600,43 @@ where the Go code reads it through `readSecretEnv` or the `_FILE` lookup.
 | `RATE_LIMIT_RPS` | Gateway rate limit, requests per second per instance. | `100` |
 | `RATE_LIMIT_BURST` | Gateway rate-limit burst size. | `200` |
 | `SPIFFE_ENABLED` | Enables SPIFFE identity in the gateway; only the exact value `true` enables it. | `false` |
-| `SPIFFE_ENDPOINT_SOCKET` | SPIFFE Workload API socket path. | `unix:///run/spire/sockets/agent.sock` |
+| `SPIFFE_ENDPOINT_SOCKET` | SPIFFE Workload API socket path. The backend has no default and requires an absolute Unix socket when internal HTTP mTLS is enabled. | `unix:///run/spire/sockets/agent.sock` (Go gateway and ws-hub) |
 | `SPIFFE_TRUST_DOMAIN` | SPIFFE trust domain. | `university.ecosystem` |
 | `SPIFFE_MY_ID` | SPIFFE ID of the gateway workload. | `spiffe://university.ecosystem/ns/default/sa/gateway` |
-| `FP_JWT_SECRET` | file-processor JWT verification secret (`_FILE` supported). | Validated at startup |
-| `FP_MINIO_ACCESS_KEY` | file-processor MinIO access key (`_FILE` supported). | Validated at startup |
-| `FP_MINIO_SECRET_KEY` | file-processor MinIO secret key (`_FILE` supported). | Validated at startup |
-| `FP_NATS_URL` | file-processor NATS URL (`_FILE` supported). | Validated at startup |
-| `FP_PROCESSING_CAPABILITY_SECRET` | file-processor secret that verifies processing capabilities (`_FILE` supported). | Validated at startup |
-| `FP_REVOCATION_REDIS_URL` | file-processor revocation Redis URL (`_FILE` supported). | Validated at startup |
+| `FP_JWT_SECRET` | file-processor JWT verification secret (`_FILE` supported); startup requires this, an RSA public key or a JWKS URL. | Unset |
+| `FP_MINIO_ACCESS_KEY` | file-processor MinIO access key (`_FILE` supported); startup requires a nonempty value. | Bundled development credential in `configureViper` |
+| `FP_MINIO_SECRET_KEY` | file-processor MinIO secret key (`_FILE` supported); startup requires a nonempty value. | Bundled development credential in `configureViper` |
+| `FP_NATS_URL` | file-processor NATS URL (`_FILE` supported). | `nats://nats:4222` |
+| `FP_PROCESSING_CAPABILITY_SECRET` | file-processor secret that verifies processing capabilities (`_FILE` supported); validated in staging and production. | Unset |
+| `FP_REVOCATION_REDIS_URL` | file-processor revocation Redis URL (`_FILE` supported). | Unset |
 | `FP_SCHEMA_PATH` | Path to a GraphQL schema file that replaces the bundled `schema.graphql`. | Unset (bundled schema) |
+| `FP_GRPC_PORT` | file-processor gRPC listen port. | `50051` |
+| `FP_GRAPHQL_PORT` | file-processor GraphQL listen port. | `8080` |
+| `FP_TEMPORAL_HOST` | Temporal server address. | `temporal:7233` |
+| `FP_TEMPORAL_TLS_DISABLED` | Disables TLS for the local Temporal connection; staging and production require `false`. | `true` |
+| `FP_TEMPORAL_API_KEY_FILE` | Path to the Temporal service token file. | Unset |
+| `FP_MINIO_BUCKET` | S3-compatible storage bucket. | `uploads` |
+| `FP_MINIO_ENDPOINT` | S3-compatible storage endpoint. | `minio:9000` |
+| `FP_MINIO_SECURE` | Enables TLS to S3-compatible storage; staging and production require `true`. | `false` |
+| `FP_JWT_AUDIENCE` | JWT audience accepted by the file-processor. | `university-ecosystem-api` |
+| `FP_JWT_ISSUER` | JWT issuer accepted by the file-processor. | `university-ecosystem` |
+| `FP_JWKS_URL` | Backend JWKS endpoint. HTTPS is required when internal HTTP mTLS is enabled. | Unset |
+| `FP_JWKS_REFRESH_INTERVAL` | JWKS refresh interval in seconds; nonpositive values fall back to the default. | `300` |
+| `FP_JWT_ACTIVE_KID` | Key identifier for the static PEM fallback. | `primary` |
+| `FP_RSA_PUBLIC_KEY_PEM` | Inline RSA public key for JWT verification. | Unset |
+| `FP_RSA_PUBLIC_KEY_FILE` | Path to an RSA public key for JWT verification. | Unset |
+| `FP_SENTRY_DSN` | Sentry DSN for the file-processor. | Unset |
+| `FP_ENVIRONMENT` | Runtime mode: development, test, testing, staging or production. | `development` |
+| `FP_OTLP_ENDPOINT` | OpenTelemetry collector gRPC endpoint. | `tempo:4317` |
+| `FP_OTLP_INSECURE` | Disables TLS for the OpenTelemetry exporter; staging and production require `false`. | `true` |
+| `FP_SPIFFE_ENABLED` | Enables SPIFFE identity on the gRPC listener. | `false` |
+| `FP_SPIFFE_ENDPOINT_SOCKET` | SPIFFE Workload API socket path. | `unix:///run/spire/sockets/agent.sock` |
+| `FP_SPIFFE_TRUST_DOMAIN` | SPIFFE trust domain. | `university.ecosystem` |
+| `FP_SPIFFE_MY_ID` | SPIFFE identity of the file-processor. | `spiffe://university.ecosystem/ns/default/sa/file-processor` |
+| `FP_ALLOWED_CLIENT_SPIFFE_IDS` | Exact SPIFFE client identities permitted by the gRPC listener. | `spiffe://university.ecosystem/ns/default/sa/gateway` |
+| `FP_INTERNAL_HTTP_MTLS_ENABLED` | Enables SPIFFE mTLS for HTTP requests to the backend, independently of the gRPC listener. | `false` |
+| `FP_BACKEND_SPIFFE_ID` | Exact backend identity required when internal HTTP mTLS is enabled. | Unset |
+| `FP_GRPC_TLS_CERT_FILE` | Server certificate for conventional gRPC mTLS; required in staging/production when SPIFFE is disabled. | Unset |
+| `FP_GRPC_TLS_KEY_FILE` | Server key for conventional gRPC mTLS; required in staging/production when SPIFFE is disabled. | Unset |
+| `FP_GRPC_CLIENT_CA_FILE` | Client CA for conventional gRPC mTLS; required in staging/production when SPIFFE is disabled. | Unset |
+| `FP_GRPC_ALLOWED_CLIENT_URIS` | Exact client URI SAN allowlist for conventional gRPC mTLS; required in staging/production when SPIFFE is disabled. | Empty |

@@ -1,14 +1,15 @@
-"""AUD-422: every backend environment read outside ``Settings`` is documented.
+"""AUD-422: inventory supported backend and service environment reads.
 
 The variable set is derived from the code: the ``app`` package is parsed and each
-literal ``os.environ.get``, ``os.getenv`` or ``os.environ[...]`` read with an
-uppercase name is collected. A read without a CONFIGURATION.md row that names a
-documented default fails here, so a new knob cannot ship undocumented.
+``os.environ.get``, ``os.getenv`` or ``os.environ[...]`` read with a literal or
+module-constant uppercase name is collected. A read without a CONFIGURATION.md
+row that names a documented default fails here.
 """
 
 from __future__ import annotations
 
 import ast
+import json
 import re
 from pathlib import Path
 
@@ -19,9 +20,26 @@ _ENV_OBJECTS = frozenset({"os.environ", "environ"})
 
 
 def _literal_env_reads(source: str) -> set[str]:
-    """Uppercase names read from the process environment with a literal key."""
+    """Collect literal keys and simple module constants used as environment keys."""
+    tree = ast.parse(source)
+    constants: dict[str, str] = {}
+    for statement in tree.body:
+        targets: list[ast.expr]
+        value: ast.expr | None
+        if isinstance(statement, ast.Assign):
+            targets, value = statement.targets, statement.value
+        elif isinstance(statement, ast.AnnAssign):
+            targets, value = [statement.target], statement.value
+        else:
+            continue
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id.isupper():
+                constants[target.id] = value.value
+
     names: set[str] = set()
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(tree):
         key: ast.expr | None = None
         if (
             isinstance(node, ast.Call)
@@ -33,9 +51,14 @@ def _literal_env_reads(source: str) -> set[str]:
             isinstance(node, ast.Subscript) and ast.unparse(node.value) in _ENV_OBJECTS
         ):
             key = node.slice
-        if isinstance(key, ast.Constant) and isinstance(key.value, str):
-            if _ENV_NAME.fullmatch(key.value):
-                names.add(key.value)
+        if isinstance(key, ast.Name):
+            name = constants.get(key.id)
+        elif isinstance(key, ast.Constant) and isinstance(key.value, str):
+            name = key.value
+        else:
+            name = None
+        if name is not None and _ENV_NAME.fullmatch(name):
+            names.add(name)
     return names
 
 
@@ -100,12 +123,41 @@ def test_scan_detects_an_undocumented_read_in_a_snippet() -> None:
     }
 
 
+def test_scan_detects_module_constant_environment_names() -> None:
+    snippet = (
+        "from typing import Final\n"
+        'FIRST: Final = "CONST_ANNOTATED_KNOB"\n'
+        'SECOND = "CONST_ASSIGNED_KNOB"\n'
+        'UNUSED = "NOT_AN_ENVIRONMENT_READ"\n'
+        'third = "LOWERCASE_IDENTIFIER"\n'
+        "value = environ.get(FIRST)\n"
+        "other = os.environ[SECOND]\n"
+        "ignored = environ.get(third)\n"
+    )
+
+    assert _literal_env_reads(snippet) == {
+        "CONST_ANNOTATED_KNOB",
+        "CONST_ASSIGNED_KNOB",
+    }
+
+
+def test_backend_mtls_constant_names_are_discovered() -> None:
+    reads = _code_env_reads()
+
+    assert {
+        "INTERNAL_HTTP_MTLS_ENABLED",
+        "INTERNAL_HTTP_MTLS_SERVER_SPIFFE_ID",
+        "INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS",
+        "SPIFFE_ENDPOINT_SOCKET",
+    } <= set(reads)
+
+
 # AUD-422: the Go services read their own environment. Names come from the literal first
 # argument of the environment helpers, from the file-processor secret table, and from
 # SecretFile items, so a new Go knob without a CONFIGURATION.md row fails here.
 _GO_SERVICE_ROOTS = ("gateway", "ws-hub", "file-processor")
 _GO_ENV_CALL = re.compile(
-    r"(?:os\.Getenv|os\.LookupEnv|getEnv\w*|readSecretEnv|readSecret\w*)"
+    r"(?:os\.Getenv|os\.LookupEnv|getEnv\w*|readSecretEnv|readSecret\w*|secretEnvOrDefault)"
     r'\(\s*"([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)"'
 )
 _GO_ENV_FIELD = re.compile(r'\benv:\s*"([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)"')
@@ -161,6 +213,7 @@ def test_go_scan_detects_an_undocumented_read_in_a_snippet() -> None:
         'raw := os.Getenv("ANOTHER_KNOB")\n'
         'v, ok := os.LookupEnv("LOOKED_UP_KNOB")\n'
         'secret, _, err := readSecretEnv("READ_SECRET_KNOB")\n'
+        'fallback, err := secretEnvOrDefault("SECRET_DEFAULT_KNOB", "fallback")\n'
         '{key: "x", env: "SECRET_FIELD_KNOB"}\n'
         'name := "FP_NAMED_KNOB"\n'
         'kind := getEnv("lower_case", "x")\n'
@@ -172,6 +225,52 @@ def test_go_scan_detects_an_undocumented_read_in_a_snippet() -> None:
         "ANOTHER_KNOB",
         "LOOKED_UP_KNOB",
         "READ_SECRET_KNOB",
+        "SECRET_DEFAULT_KNOB",
         "SECRET_FIELD_KNOB",
         "FP_NAMED_KNOB",
     }
+
+
+def test_file_processor_viper_settings_have_documented_defaults() -> None:
+    source = (ROOT / "services/file-processor/internal/config/config.go").read_text(
+        encoding="utf-8"
+    )
+    assert 'viper.SetEnvPrefix("FP")' in source
+    assert "viper.AutomaticEnv()" in source
+    config = re.search(r"(?ms)^type Config struct \{(.*?)^\}", source)
+    assert config is not None
+    fields = re.findall(r'mapstructure:"([a-z][a-z0-9_]*)"', config.group(1))
+    assert len(fields) >= 30
+    names = {f"FP_{field.upper()}" for field in fields}
+    documented = _documented_defaults()
+
+    assert sorted(name for name in names if name not in documented) == []
+    assert (
+        sorted(name for name in names if not _has_real_default(documented, name)) == []
+    )
+
+
+def test_file_processor_literal_defaults_match_reference() -> None:
+    source = (ROOT / "services/file-processor/internal/config/config.go").read_text(
+        encoding="utf-8"
+    )
+    defaults = re.findall(
+        r'viper\.SetDefault\("([a-z][a-z0-9_]*)",\s*("(?:[^"\\]|\\.)*"|true|false|\d+)\)',
+        source,
+    )
+    assert len(defaults) >= 20
+    documented = _documented_defaults()
+    for key, value in defaults:
+        # The reference points operators to the source for bundled credentials;
+        # don't copy credential-shaped defaults into assertion output.
+        if key in {"minio_access_key", "minio_secret_key"}:
+            continue
+        cell = documented[f"FP_{key.upper()}"][0]
+        if value.startswith('"'):
+            expected = json.loads(value)
+            if expected:
+                assert f"`{expected}`" in cell
+            else:
+                assert "Unset" in cell or "Empty" in cell
+        else:
+            assert f"`{value}`" in cell
