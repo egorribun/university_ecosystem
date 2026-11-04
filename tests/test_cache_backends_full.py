@@ -187,11 +187,10 @@ class TestRedisClusterCache:
     @pytest.mark.asyncio
     async def test_invalidate_empty(self, cluster_cache):
         """Empty invalidation is a noop."""
-        fake_client = AsyncMock()
-        cluster_cache._client = fake_client
+        with patch.object(cluster_cache, "_get_client") as get_client:
+            await cluster_cache.invalidate()
 
-        await cluster_cache.invalidate()
-        # Should not even get client
+        get_client.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_invalidate_redis_error(self, cluster_cache):
@@ -202,8 +201,19 @@ class TestRedisClusterCache:
         fake_client.delete = AsyncMock(side_effect=RedisError("fail"))
         cluster_cache._client = fake_client
 
-        # Should not raise
-        await cluster_cache.invalidate("key1")
+        with (
+            patch("app.deps.cache.logger.warning") as warning,
+            patch("app.deps.cache.record_redis_command") as record_command,
+        ):
+            await cluster_cache.invalidate("key1")
+
+        fake_client.delete.assert_awaited_once_with("key1")
+        warning.assert_called_once()
+        assert warning.call_args.args == ("Redis cluster invalidate failed",)
+        assert warning.call_args.kwargs["error_type"] == "RedisError"
+        record_command.assert_called_once()
+        assert record_command.call_args.args[0] == "invalidate"
+        assert record_command.call_args.kwargs["success"] is False
 
     @pytest.mark.asyncio
     async def test_close(self, cluster_cache):
@@ -219,7 +229,11 @@ class TestRedisClusterCache:
     @pytest.mark.asyncio
     async def test_close_no_client(self, cluster_cache):
         """Close with no client is a noop."""
-        await cluster_cache.close()  # Should not raise
+        with patch.object(cluster_cache, "_get_client") as get_client:
+            await cluster_cache.close()
+
+        assert cluster_cache._client is None
+        get_client.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_close_error(self, cluster_cache):
@@ -374,8 +388,14 @@ class TestTieredCacheEdgeCases:
         l2 = MemoryCache()
         tiered = TieredCache(l1, l2)
 
-        # Should not raise
-        await tiered.close()
+        with (
+            patch.object(l1, "close") as close_l1,
+            patch.object(l2, "close") as close_l2,
+        ):
+            await tiered.close()
+
+        close_l1.assert_awaited_once_with()
+        close_l2.assert_awaited_once_with()
 
 
 # ---------------------------------------------------------------------------
@@ -407,10 +427,15 @@ class TestRedisCachePatternInvalidation:
     @pytest.mark.asyncio
     async def test_empty_invalidation(self):
         cache = RedisCache(url="redis://localhost:6379/0", default_ttl=60)
-        cache._client = fakeredis.aioredis.FakeRedis(decode_responses=True)
+        fake_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+        cache._client = fake_redis
+        await fake_redis.set("retained:key", "value")
 
-        # Should not raise
-        await cache.invalidate()
+        with patch.object(cache, "_get_client") as get_client:
+            await cache.invalidate()
+
+        get_client.assert_not_awaited()
+        assert await fake_redis.get("retained:key") == "value"
         await cache.close()
 
     @pytest.mark.asyncio
@@ -463,7 +488,11 @@ class TestRedisCacheClose:
     @pytest.mark.asyncio
     async def test_close_no_client(self):
         cache = RedisCache(url="redis://localhost:6379/0", default_ttl=60)
-        await cache.close()  # noop
+        with patch.object(cache, "_get_client") as get_client:
+            await cache.close()
+
+        assert cache._client is None
+        get_client.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_close_with_error(self):

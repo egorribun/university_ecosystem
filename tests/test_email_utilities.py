@@ -6,8 +6,10 @@ build_lockout_email_content, send_reset_email, send_lockout_email.
 
 from __future__ import annotations
 
+import logging
 import smtplib
 from unittest.mock import MagicMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 from app.utils.email import (
     _redact_sensitive_query,
@@ -149,9 +151,14 @@ def test_build_lockout_email_content_with_locale():
 # ---------------------------------------------------------------------------
 
 
-def test_send_reset_email_no_host_logs_warning():
-    """When SMTP host is not configured, falls back silently."""
-    with patch("app.utils.email.settings") as mock_settings:
+def test_send_reset_email_no_host_logs_warning(caplog):
+    """Missing SMTP configuration emits a redacted fallback without connecting."""
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch("app.utils.email.smtplib.SMTP") as mock_smtp,
+        patch("app.utils.email.smtplib.SMTP_SSL") as mock_smtp_ssl,
+        caplog.at_level(logging.WARNING),
+    ):
         mock_settings.smtp_host = ""
         mock_settings.smtp_port = 0
         mock_settings.smtp_user = ""
@@ -161,13 +168,32 @@ def test_send_reset_email_no_host_logs_warning():
         mock_settings.smtp_starttls = False
         mock_settings.is_development = False
 
-        # Should return without raising
-        send_reset_email("user@example.com", "https://example.com/r")
+        send_reset_email(
+            "user@example.com", "https://example.com/r?token=abc123&foo=bar"
+        )
+
+        mock_smtp.assert_not_called()
+        mock_smtp_ssl.assert_not_called()
+
+    records = [r for r in caplog.records if r.msg == "password.reset_email.fallback"]
+    assert len(records) == 1
+    assert records[0].levelno == logging.WARNING
+    assert records[0].email == "[REDACTED]"
+    assert parse_qs(urlsplit(records[0].link).query) == {
+        "token": ["***redacted***"],
+        "foo": ["bar"],
+    }
+    assert "abc123" not in repr(vars(records[0]))
 
 
-def test_send_reset_email_insecure_smtp_not_dev_logs_error():
+def test_send_reset_email_insecure_smtp_not_dev_logs_error(caplog):
     """User + no security + not development → reject and log error."""
-    with patch("app.utils.email.settings") as mock_settings:
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch("app.utils.email.smtplib.SMTP") as mock_smtp,
+        patch("app.utils.email.smtplib.SMTP_SSL") as mock_smtp_ssl,
+        caplog.at_level(logging.ERROR),
+    ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 25
         mock_settings.smtp_user = "user"
@@ -179,7 +205,18 @@ def test_send_reset_email_insecure_smtp_not_dev_logs_error():
         mock_settings.environment = "production"
 
         send_reset_email("user@example.com", "https://example.com/r")
-        # No SMTP connection should be established — just returns after logging
+
+        mock_smtp.assert_not_called()
+        mock_smtp_ssl.assert_not_called()
+
+    records = [
+        r for r in caplog.records if r.msg == "password.reset_email.insecure_smtp"
+    ]
+    assert len(records) == 1
+    assert records[0].levelno == logging.ERROR
+    assert records[0].email == "[REDACTED]"
+    assert records[0].smtp_security == "none"
+    assert records[0].environment == "production"
 
 
 def test_send_reset_email_via_ssl():
@@ -259,15 +296,17 @@ def test_send_reset_email_via_plain_smtp_with_login():
         mock_smtp.login.assert_called_once_with("admin", "secret")
 
 
-def test_send_reset_email_catches_smtp_exception():
+def test_send_reset_email_catches_smtp_exception(caplog):
     """SMTP errors are caught and logged without re-raising."""
+    error = smtplib.SMTPException("fail")
     with (
         patch("app.utils.email.settings") as mock_settings,
         patch(
             "app.utils.email.smtplib.SMTP_SSL",
-            side_effect=smtplib.SMTPException("fail"),
-        ),
-        patch("app.utils.email.ssl.create_default_context"),
+            side_effect=error,
+        ) as mock_smtp_ssl,
+        patch("app.utils.email.ssl.create_default_context") as mock_context,
+        caplog.at_level(logging.ERROR),
     ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 465
@@ -278,18 +317,28 @@ def test_send_reset_email_catches_smtp_exception():
         mock_settings.smtp_starttls = False
         mock_settings.is_development = False
 
-        # Should not raise
         send_reset_email("user@example.com", "https://example.com/r")
 
+        mock_smtp_ssl.assert_called_once_with(
+            "smtp.example.com", 465, context=mock_context.return_value, timeout=10
+        )
 
-def test_send_reset_email_catches_os_error():
+    records = [r for r in caplog.records if r.msg == "password.reset_email.error"]
+    assert len(records) == 1
+    assert records[0].levelno == logging.ERROR
+    assert records[0].email == "[REDACTED]"
+    assert records[0].exc_info is not None
+    assert records[0].exc_info[1] is error
+
+
+def test_send_reset_email_catches_os_error(caplog):
     """OS errors are caught and logged without re-raising."""
+    error = OSError("connection refused")
     with (
         patch("app.utils.email.settings") as mock_settings,
-        patch(
-            "app.utils.email.smtplib.SMTP", side_effect=OSError("connection refused")
-        ),
+        patch("app.utils.email.smtplib.SMTP", side_effect=error) as mock_smtp,
         patch("app.utils.email.ssl.create_default_context"),
+        caplog.at_level(logging.ERROR),
     ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 587
@@ -302,15 +351,29 @@ def test_send_reset_email_catches_os_error():
 
         send_reset_email("user@example.com", "https://example.com/r")
 
+        mock_smtp.assert_called_once_with("smtp.example.com", 587, timeout=10)
+
+    records = [r for r in caplog.records if r.msg == "password.reset_email.error"]
+    assert len(records) == 1
+    assert records[0].levelno == logging.ERROR
+    assert records[0].email == "[REDACTED]"
+    assert records[0].exc_info is not None
+    assert records[0].exc_info[1] is error
+
 
 # ---------------------------------------------------------------------------
 # send_lockout_email
 # ---------------------------------------------------------------------------
 
 
-def test_send_lockout_email_no_host_logs_warning():
-    """When SMTP is not configured, falls back silently."""
-    with patch("app.utils.email.settings") as mock_settings:
+def test_send_lockout_email_no_host_logs_warning(caplog):
+    """Missing SMTP configuration emits a fallback without connecting."""
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch("app.utils.email.smtplib.SMTP") as mock_smtp,
+        patch("app.utils.email.smtplib.SMTP_SSL") as mock_smtp_ssl,
+        caplog.at_level(logging.WARNING),
+    ):
         mock_settings.smtp_host = ""
         mock_settings.smtp_port = 0
         mock_settings.smtp_user = ""
@@ -321,6 +384,14 @@ def test_send_lockout_email_no_host_logs_warning():
         mock_settings.is_development = False
 
         send_lockout_email("user@example.com", "Alice")
+
+        mock_smtp.assert_not_called()
+        mock_smtp_ssl.assert_not_called()
+
+    records = [r for r in caplog.records if r.msg == "auth.lockout_email.fallback"]
+    assert len(records) == 1
+    assert records[0].levelno == logging.WARNING
+    assert records[0].email == "[REDACTED]"
 
 
 def test_send_lockout_email_via_ssl():
@@ -348,14 +419,14 @@ def test_send_lockout_email_via_ssl():
         mock_smtp.send_message.assert_called_once()
 
 
-def test_send_lockout_email_catches_smtp_exception():
-    """SMTP errors are caught without re-raising."""
+def test_send_lockout_email_catches_smtp_exception(caplog):
+    """SMTP errors are caught and logged without re-raising."""
+    error = smtplib.SMTPException("fail")
     with (
         patch("app.utils.email.settings") as mock_settings,
-        patch(
-            "app.utils.email.smtplib.SMTP", side_effect=smtplib.SMTPException("fail")
-        ),
+        patch("app.utils.email.smtplib.SMTP", side_effect=error) as mock_smtp,
         patch("app.utils.email.ssl.create_default_context"),
+        caplog.at_level(logging.ERROR),
     ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 587
@@ -368,10 +439,24 @@ def test_send_lockout_email_catches_smtp_exception():
 
         send_lockout_email("user@example.com")
 
+        mock_smtp.assert_called_once_with("smtp.example.com", 587, timeout=10)
 
-def test_send_lockout_email_insecure_not_dev_logs_error():
+    records = [r for r in caplog.records if r.msg == "auth.lockout_email.error"]
+    assert len(records) == 1
+    assert records[0].levelno == logging.ERROR
+    assert records[0].email == "[REDACTED]"
+    assert records[0].exc_info is not None
+    assert records[0].exc_info[1] is error
+
+
+def test_send_lockout_email_insecure_not_dev_logs_error(caplog):
     """User + no security + not development → reject."""
-    with patch("app.utils.email.settings") as mock_settings:
+    with (
+        patch("app.utils.email.settings") as mock_settings,
+        patch("app.utils.email.smtplib.SMTP") as mock_smtp,
+        patch("app.utils.email.smtplib.SMTP_SSL") as mock_smtp_ssl,
+        caplog.at_level(logging.ERROR),
+    ):
         mock_settings.smtp_host = "smtp.example.com"
         mock_settings.smtp_port = 25
         mock_settings.smtp_user = "user"
@@ -383,6 +468,16 @@ def test_send_lockout_email_insecure_not_dev_logs_error():
         mock_settings.environment = "production"
 
         send_lockout_email("user@example.com", "Bob")
+
+        mock_smtp.assert_not_called()
+        mock_smtp_ssl.assert_not_called()
+
+    records = [r for r in caplog.records if r.msg == "auth.lockout_email.insecure_smtp"]
+    assert len(records) == 1
+    assert records[0].levelno == logging.ERROR
+    assert records[0].email == "[REDACTED]"
+    assert records[0].smtp_security == "none"
+    assert records[0].environment == "production"
 
 
 def test_send_lockout_email_via_plain_smtp_no_user():
