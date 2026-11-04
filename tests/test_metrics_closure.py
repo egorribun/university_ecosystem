@@ -79,25 +79,32 @@ def test_metric_factory_reuses_existing_collectors_and_reraises_unknown_duplicat
 def test_optional_event_metric_recorders_swallow_backend_errors() -> None:
     from app.core import metrics
 
-    failing = MagicMock()
-    failing.labels.side_effect = RuntimeError("metric backend unavailable")
+    watch = MagicMock()
+    revocations = MagicMock()
+    denials = MagicMock()
+    for collector in (watch, revocations, denials):
+        collector.labels.side_effect = RuntimeError("metric backend unavailable")
     with (
-        patch.object(metrics, "_SPICEDB_WATCH_EVENTS", failing),
-        patch.object(metrics, "_WS_HUB_SESSIONS_REVOKED", failing),
-        patch.object(metrics, "_ABAC_ACCESS_DENIED", failing),
+        patch.object(metrics, "_SPICEDB_WATCH_EVENTS", watch),
+        patch.object(metrics, "_WS_HUB_SESSIONS_REVOKED", revocations),
+        patch.object(metrics, "_ABAC_ACCESS_DENIED", denials),
     ):
         metrics.record_spicedb_watch_event()
         metrics.record_ws_hub_session_revoked()
         metrics.record_abac_access_denied()
+
+    watch.labels.assert_called_once_with(event_type="update")
+    revocations.labels.assert_called_once_with(reason="access_revoked")
+    denials.labels.assert_called_once_with(rule="unknown")
 
     with (
         patch.object(metrics, "_SPICEDB_WATCH_EVENTS", None),
         patch.object(metrics, "_WS_HUB_SESSIONS_REVOKED", None),
         patch.object(metrics, "_ABAC_ACCESS_DENIED", None),
     ):
-        metrics.record_spicedb_watch_event()
-        metrics.record_ws_hub_session_revoked()
-        metrics.record_abac_access_denied()
+        assert metrics.record_spicedb_watch_event() is None
+        assert metrics.record_ws_hub_session_revoked() is None
+        assert metrics.record_abac_access_denied() is None
 
 
 def test_metric_recorders_fail_closed_when_prometheus_is_unavailable() -> None:
@@ -123,25 +130,25 @@ def test_metric_recorders_fail_closed_when_prometheus_is_unavailable() -> None:
         "_CIRCUIT_BREAKER_TRIPS",
     )
     with patch.multiple(metrics, **{name: None for name in names}):
-        metrics.record_background_task_error("worker")
-        metrics.record_login_success()
-        metrics.record_login_failure()
-        metrics.record_notification_delivered("email")
-        metrics.record_notification_failed("email", "timeout")
-        metrics.record_event_registration()
-        metrics.set_active_users(1)
-        metrics.set_mfa_adoption(1)
-        metrics.record_presence_event("online", "web")
-        metrics.record_presence_throttled("online", "web")
-        metrics.record_csp_report("blocked")
-        metrics.record_chat_message("direct")
-        metrics.set_ws_connections_active("/ws", 1)
-        metrics.inc_ws_connections("/ws")
-        metrics.dec_ws_connections("/ws")
-        metrics.record_cache_hit()
-        metrics.record_cache_miss()
-        metrics.record_circuit_breaker_state("redis", "open")
-        metrics.record_circuit_breaker_trip("redis")
+        assert metrics.record_background_task_error("worker") is None
+        assert metrics.record_login_success() is None
+        assert metrics.record_login_failure() is None
+        assert metrics.record_notification_delivered("email") is None
+        assert metrics.record_notification_failed("email", "timeout") is None
+        assert metrics.record_event_registration() is None
+        assert metrics.set_active_users(1) is None
+        assert metrics.set_mfa_adoption(1) is None
+        assert metrics.record_presence_event("online", "web") is None
+        assert metrics.record_presence_throttled("online", "web") is None
+        assert metrics.record_csp_report("blocked") is None
+        assert metrics.record_chat_message("direct") is None
+        assert metrics.set_ws_connections_active("/ws", 1) is None
+        assert metrics.inc_ws_connections("/ws") is None
+        assert metrics.dec_ws_connections("/ws") is None
+        assert metrics.record_cache_hit() is None
+        assert metrics.record_cache_miss() is None
+        assert metrics.record_circuit_breaker_state("redis", "open") is None
+        assert metrics.record_circuit_breaker_trip("redis") is None
 
 
 def test_metric_recorders_emit_positive_events_and_values() -> None:
@@ -152,12 +159,18 @@ def test_metric_recorders_emit_positive_events_and_values() -> None:
         callback,
         expected: dict[str, object],
         operation: str = "inc",
+        value: float | None = None,
     ) -> None:
         collector = MagicMock()
         with patch.object(metrics, name, collector):
             callback()
         collector.labels.assert_called_once_with(**expected)
-        getattr(collector.labels.return_value, operation).assert_called_once()
+        if value is None:
+            getattr(collector.labels.return_value, operation).assert_called_once_with()
+        else:
+            getattr(collector.labels.return_value, operation).assert_called_once_with(
+                value
+            )
 
     exercise_labels(
         "_BACKGROUND_TASK_ERRORS",
@@ -189,6 +202,7 @@ def test_metric_recorders_emit_positive_events_and_values() -> None:
         lambda: metrics.set_active_users(3, period="weekly"),
         {"period": "weekly"},
         "set",
+        3.0,
     )
     exercise_labels(
         "_PRESENCE_EVENTS",
@@ -215,6 +229,7 @@ def test_metric_recorders_emit_positive_events_and_values() -> None:
         lambda: metrics.set_ws_connections_active("/ws", 4),
         {"path": "/ws"},
         "set",
+        4.0,
     )
     exercise_labels(
         "_CACHE_HITS",
@@ -249,12 +264,14 @@ def test_metric_recorders_emit_positive_events_and_values() -> None:
     circuit_state = MagicMock()
     with patch.object(metrics, "_CIRCUIT_BREAKER_STATE", circuit_state):
         metrics.record_circuit_breaker_state("redis", "half_open")
+    circuit_state.labels.assert_called_once_with(service="redis")
     circuit_state.labels.return_value.set.assert_called_once_with(2.0)
 
     circuit_trips = MagicMock()
     with patch.object(metrics, "_CIRCUIT_BREAKER_TRIPS", circuit_trips):
         metrics.record_circuit_breaker_trip("redis")
-    circuit_trips.labels.return_value.inc.assert_called_once()
+    circuit_trips.labels.assert_called_once_with(service="redis")
+    circuit_trips.labels.return_value.inc.assert_called_once_with()
 
 
 def test_metrics_authorization_rejects_malformed_and_wrong_credentials(
@@ -384,9 +401,17 @@ async def test_request_metrics_middleware_records_success_error_and_noop() -> No
         )
 
     assert result is response
-    counter.labels.assert_called_once()
-    duration.labels.assert_called_once()
-    router_duration.labels.assert_called_once()
+    call_next.assert_awaited_once_with(request)
+    counter.labels.assert_called_once_with(method="GET", path="unmatched", status="200")
+    counter.labels.return_value.inc.assert_called_once_with()
+    duration.labels.assert_called_once_with(method="GET", path="unmatched")
+    duration.labels.return_value.observe.assert_called_once_with(pytest.approx(0.2))
+    router_duration.labels.assert_called_once_with(
+        router="root", method="GET", path="unmatched"
+    )
+    router_duration.labels.return_value.observe.assert_called_once_with(
+        pytest.approx(0.2)
+    )
     router_errors.labels.assert_not_called()
 
     async def raise_error(_request):
@@ -404,7 +429,10 @@ async def test_request_metrics_middleware_records_success_error_and_noop() -> No
                 request, raise_error
             )
 
-    router_errors.labels.assert_called()
+    router_errors.labels.assert_called_once_with(
+        router="root", method="GET", path="unmatched", status="500"
+    )
+    router_errors.labels.return_value.inc.assert_called_once_with()
 
     no_count = AsyncMock(return_value=response)
     with (
@@ -416,7 +444,11 @@ async def test_request_metrics_middleware_records_success_error_and_noop() -> No
                 request, no_count
             )
         ) is response
+    no_count.assert_awaited_once_with(request)
 
+    counter.reset_mock()
+    duration.reset_mock()
+    router_errors.reset_mock()
     with (
         patch.object(metrics, "_REQUEST_COUNT", counter),
         patch.object(metrics, "_REQUEST_DURATION", duration),
@@ -424,9 +456,15 @@ async def test_request_metrics_middleware_records_success_error_and_noop() -> No
         patch.object(metrics, "_ROUTER_ERRORS", router_errors),
         patch.object(metrics.time, "perf_counter", side_effect=[3.0, 3.1]),
     ):
-        await metrics.PrometheusRequestMetricsMiddleware(MagicMock()).dispatch(
+        result = await metrics.PrometheusRequestMetricsMiddleware(MagicMock()).dispatch(
             request, call_next
         )
+    assert result is response
+    counter.labels.assert_called_once_with(method="GET", path="unmatched", status="200")
+    counter.labels.return_value.inc.assert_called_once_with()
+    duration.labels.assert_called_once_with(method="GET", path="unmatched")
+    duration.labels.return_value.observe.assert_called_once_with(pytest.approx(0.1))
+    router_errors.labels.assert_not_called()
 
 
 def test_metrics_route_and_router_fallbacks() -> None:
@@ -508,19 +546,30 @@ def test_request_metrics_use_route_templates_and_bound_unmatched_paths(
 def test_metric_recorders_swallow_backend_errors() -> None:
     from app.core import metrics
 
-    failing = MagicMock()
-    failing.labels.side_effect = RuntimeError("metric backend unavailable")
-    with (
-        patch.object(metrics, "_HEALTH_CHECK_DURATION", failing),
-        patch.object(metrics, "_HEALTH_CHECK_STATUS", failing),
-        patch.object(metrics, "_REDIS_COMMAND_DURATION", failing),
-        patch.object(metrics, "_REDIS_COMMAND_ERRORS", failing),
-        patch.object(metrics, "_DB_OPERATION_DURATION", failing),
-        patch.object(metrics, "_DB_OPERATION_ERRORS", failing),
-    ):
+    names = (
+        "_HEALTH_CHECK_DURATION",
+        "_HEALTH_CHECK_STATUS",
+        "_REDIS_COMMAND_DURATION",
+        "_REDIS_COMMAND_ERRORS",
+        "_DB_OPERATION_DURATION",
+        "_DB_OPERATION_ERRORS",
+    )
+    failing = {name: MagicMock() for name in names}
+    for collector in failing.values():
+        collector.labels.side_effect = RuntimeError("metric backend unavailable")
+    with patch.multiple(metrics, **failing):
         metrics.record_health_probe("db", "error", -1.0)
         metrics.record_redis_command("GET", -1.0, success=False)
         metrics.record_db_operation("select", -1.0, success=False)
+
+    failing["_HEALTH_CHECK_DURATION"].labels.assert_called_once_with(component="db")
+    failing["_HEALTH_CHECK_STATUS"].labels.assert_called_once_with(
+        component="db", status="error"
+    )
+    failing["_REDIS_COMMAND_DURATION"].labels.assert_called_once_with(command="GET")
+    failing["_REDIS_COMMAND_ERRORS"].labels.assert_called_once_with(command="GET")
+    failing["_DB_OPERATION_DURATION"].labels.assert_called_once_with(operation="select")
+    failing["_DB_OPERATION_ERRORS"].labels.assert_called_once_with(operation="select")
 
     duration = MagicMock()
     errors = MagicMock()
@@ -529,7 +578,9 @@ def test_metric_recorders_swallow_backend_errors() -> None:
         patch.object(metrics, "_DB_OPERATION_ERRORS", errors),
     ):
         metrics.record_db_operation("insert", 0.1, success=False)
+    duration.labels.assert_called_once_with(operation="insert")
     duration.labels.return_value.observe.assert_called_once_with(0.1)
+    errors.labels.assert_called_once_with(operation="insert")
     errors.labels.return_value.inc.assert_called_once()
 
 
@@ -568,10 +619,11 @@ async def test_record_cache_metrics_covers_nonredis_success_and_failure() -> Non
     ):
         await metrics._record_cache_metrics()
 
+    entries_only = MagicMock()
     with (
         patch.object(cache_module, "RedisCache", redis_type),
         patch.object(cache_module, "get_cache", return_value=backend),
-        patch.object(metrics, "_CACHE_ENTRIES", MagicMock()),
+        patch.object(metrics, "_CACHE_ENTRIES", entries_only),
         patch.object(metrics, "_CACHE_MEMORY_BYTES", None),
         patch.object(metrics, "_REDIS_HEALTH", None),
     ):
@@ -579,6 +631,7 @@ async def test_record_cache_metrics_covers_nonredis_success_and_failure() -> Non
     entries.set.assert_called_with(4.0)
     memory.set.assert_called_with(12.0)
     health.set.assert_called_with(1)
+    entries_only.set.assert_called_once_with(4.0)
 
     client.ping.side_effect = RuntimeError("redis down")
     with (
@@ -597,13 +650,16 @@ async def test_record_cache_metrics_covers_nonredis_success_and_failure() -> Non
 @pytest.mark.asyncio
 async def test_record_cache_metrics_returns_when_all_metrics_disabled() -> None:
     from app.core import metrics
+    from app.deps import cache as cache_module
 
     with (
         patch.object(metrics, "_CACHE_ENTRIES", None),
         patch.object(metrics, "_CACHE_MEMORY_BYTES", None),
         patch.object(metrics, "_REDIS_HEALTH", None),
+        patch.object(cache_module, "get_cache") as get_cache,
     ):
-        await metrics._record_cache_metrics()
+        assert await metrics._record_cache_metrics() is None
+    get_cache.assert_not_called()
 
 
 def test_record_pool_metrics_handles_complete_partial_and_broken_pools() -> None:
@@ -616,33 +672,49 @@ def test_record_pool_metrics_handles_complete_partial_and_broken_pools() -> None
         checkedin=lambda: 3,
     )
     engine = SimpleNamespace(sync_engine=SimpleNamespace(pool=pool))
+    size = MagicMock()
+    checkedout = MagicMock()
+    overflow = MagicMock()
+    checkedin = MagicMock()
     with (
         patch.object(metrics, "engine", engine),
-        patch.object(metrics, "_DB_POOL_SIZE", MagicMock()),
-        patch.object(metrics, "_DB_POOL_CHECKEDOUT", MagicMock()),
-        patch.object(metrics, "_DB_POOL_OVERFLOW", MagicMock()),
-        patch.object(metrics, "_DB_POOL_CHECKEDIN", MagicMock()),
+        patch.object(metrics, "_DB_POOL_SIZE", size),
+        patch.object(metrics, "_DB_POOL_CHECKEDOUT", checkedout),
+        patch.object(metrics, "_DB_POOL_OVERFLOW", overflow),
+        patch.object(metrics, "_DB_POOL_CHECKEDIN", checkedin),
     ):
         metrics._record_pool_metrics()
+    size.set.assert_called_once_with(5.0)
+    checkedout.set.assert_called_once_with(2.0)
+    overflow.set.assert_called_once_with(1.0)
+    checkedin.set.assert_called_once_with(3.0)
 
-    with patch.object(
-        metrics,
-        "engine",
-        SimpleNamespace(
-            sync_engine=SimpleNamespace(pool=SimpleNamespace(size=lambda: 1))
+    size.reset_mock()
+    with (
+        patch.object(
+            metrics,
+            "engine",
+            SimpleNamespace(
+                sync_engine=SimpleNamespace(pool=SimpleNamespace(size=lambda: 1))
+            ),
         ),
+        patch.object(metrics, "_DB_POOL_SIZE", size),
     ):
         metrics._record_pool_metrics()
+    size.set.assert_called_once_with(1.0)
 
-    broken_pool = SimpleNamespace(
-        size=lambda: (_ for _ in ()).throw(RuntimeError("pool"))
-    )
-    with patch.object(
-        metrics,
-        "engine",
-        SimpleNamespace(sync_engine=SimpleNamespace(pool=broken_pool)),
+    broken_pool = SimpleNamespace(size=MagicMock(side_effect=RuntimeError("pool")))
+    with (
+        patch.object(
+            metrics,
+            "engine",
+            SimpleNamespace(sync_engine=SimpleNamespace(pool=broken_pool)),
+        ),
+        patch.object(metrics.logger, "debug") as log_debug,
     ):
         metrics._record_pool_metrics()
+    broken_pool.size.assert_called_once_with()
+    log_debug.assert_called_once_with("Failed to collect pool metrics", exc_info=True)
 
 
 @pytest.mark.asyncio
@@ -659,37 +731,44 @@ async def test_record_db_metrics_records_success_and_failure() -> None:
         async def execute(self, _statement):
             return None
 
-    class Engine:
-        def connect(self):
-            return Connection()
-
+    connection = Connection()
+    connection.execute = AsyncMock()
+    health = MagicMock()
     with (
-        patch.object(metrics, "_DB_HEALTH", MagicMock()),
+        patch.object(metrics, "_DB_HEALTH", health),
         patch.object(metrics, "_DB_OPERATION_DURATION", MagicMock()),
-        patch.object(metrics, "_record_pool_metrics"),
-        patch.object(metrics, "engine", Engine()),
+        patch.object(metrics, "_record_pool_metrics") as record_pool,
+        patch.object(metrics, "engine", SimpleNamespace(connect=lambda: connection)),
         patch.object(metrics, "record_db_operation") as record_operation,
     ):
         await metrics._record_db_metrics()
+    record_pool.assert_called_once_with()
+    connection.execute.assert_awaited_once()
+    assert str(connection.execute.await_args.args[0]) == "SELECT 1"
+    health.set.assert_called_once_with(1)
     record_operation.assert_called_once()
+    assert record_operation.call_args.args[0] == "healthcheck"
     assert record_operation.call_args.kwargs["success"] is True
 
-    class FailingConnection(Connection):
-        async def execute(self, _statement):
-            raise RuntimeError("database down")
-
-    class FailingEngine:
-        def connect(self):
-            return FailingConnection()
-
+    failing_connection = Connection()
+    failing_connection.execute = AsyncMock(side_effect=RuntimeError("database down"))
+    health = MagicMock()
     with (
-        patch.object(metrics, "_DB_HEALTH", MagicMock()),
+        patch.object(metrics, "_DB_HEALTH", health),
         patch.object(metrics, "_DB_OPERATION_DURATION", MagicMock()),
-        patch.object(metrics, "_record_pool_metrics"),
-        patch.object(metrics, "engine", FailingEngine()),
+        patch.object(metrics, "_record_pool_metrics") as record_pool,
+        patch.object(
+            metrics, "engine", SimpleNamespace(connect=lambda: failing_connection)
+        ),
         patch.object(metrics, "record_db_operation") as record_operation,
     ):
         await metrics._record_db_metrics()
+    record_pool.assert_called_once_with()
+    failing_connection.execute.assert_awaited_once()
+    assert str(failing_connection.execute.await_args.args[0]) == "SELECT 1"
+    health.set.assert_called_once_with(0)
+    record_operation.assert_called_once()
+    assert record_operation.call_args.args[0] == "healthcheck"
     assert record_operation.call_args.kwargs["success"] is False
 
 
@@ -738,8 +817,10 @@ def test_record_system_metrics_covers_cpu_gpu_and_missing_gpu() -> None:
     ):
         psutil.cpu_percent.return_value = 10.0
         metrics._record_system_metrics()
-    cpu.set.assert_called_with(10.0)
+    cpu.set.assert_called_once_with(10.0)
     gpu.labels.assert_called_once_with(index="1", name="gpu")
+    gpu.labels.return_value.set.assert_called_once_with(50.0)
+    gpu.clear.assert_called_once_with()
 
     with (
         patch.object(metrics, "_CPU_LOAD", None),
@@ -747,7 +828,7 @@ def test_record_system_metrics_covers_cpu_gpu_and_missing_gpu() -> None:
         patch.object(metrics, "_load_gputil", return_value=None),
     ):
         metrics._record_system_metrics()
-    gpu.clear.assert_called()
+    assert gpu.clear.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -755,12 +836,14 @@ async def test_refresh_runtime_metrics_orchestrates_all_sources() -> None:
     from app.core import metrics
 
     with (
-        patch.object(metrics, "_record_cache_metrics", new_callable=AsyncMock),
-        patch.object(metrics, "_record_db_metrics", new_callable=AsyncMock),
+        patch.object(metrics, "_record_cache_metrics", new_callable=AsyncMock) as cache,
+        patch.object(metrics, "_record_db_metrics", new_callable=AsyncMock) as database,
         patch.object(metrics, "_record_system_metrics") as record_system,
     ):
         await metrics.refresh_runtime_metrics()
-    record_system.assert_called_once()
+    cache.assert_awaited_once_with()
+    database.assert_awaited_once_with()
+    record_system.assert_called_once_with()
 
 
 @pytest.mark.asyncio
@@ -798,9 +881,11 @@ async def test_metrics_endpoint_security_and_success_paths(monkeypatch) -> None:
 
     monkeypatch.setattr(settings, "metrics_allowlist", "")
     with (
-        patch.object(metrics, "_ensure_notification_queue_metrics_registry"),
-        patch.object(metrics, "refresh_runtime_metrics", new_callable=AsyncMock),
-        patch.object(metrics, "generate_latest", return_value=b"metrics"),
+        patch.object(metrics, "_ensure_notification_queue_metrics_registry") as ensure,
+        patch.object(
+            metrics, "refresh_runtime_metrics", new_callable=AsyncMock
+        ) as refresh,
+        patch.object(metrics, "generate_latest", return_value=b"metrics") as generate,
     ):
         response = await metrics.metrics_endpoint(
             _request(headers={"Authorization": f"Basic {valid}"})
@@ -808,6 +893,9 @@ async def test_metrics_endpoint_security_and_success_paths(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.body == b"metrics"
     assert response.headers["cache-control"] == "no-store"
+    ensure.assert_called_once_with()
+    refresh.assert_awaited_once_with()
+    generate.assert_called_once_with(metrics.REGISTRY)
 
     with (
         patch.object(metrics, "_ensure_notification_queue_metrics_registry"),
@@ -868,34 +956,52 @@ def test_metrics_branch_matrix_for_optional_guards(monkeypatch) -> None:
     request.scope["route"] = route
     assert metrics._resolve_router_label(request) == "/owner"
 
+    duration_only = MagicMock()
     with (
-        patch.object(metrics, "_HEALTH_CHECK_DURATION", MagicMock()),
+        patch.object(metrics, "_HEALTH_CHECK_DURATION", duration_only),
         patch.object(metrics, "_HEALTH_CHECK_STATUS", None),
     ):
         metrics.record_health_probe("db", "ok", 0.1)
+    duration_only.labels.assert_called_once_with(component="db")
+    duration_only.labels.return_value.observe.assert_called_once_with(0.1)
+
+    status_only = MagicMock()
     with (
         patch.object(metrics, "_HEALTH_CHECK_DURATION", None),
-        patch.object(metrics, "_HEALTH_CHECK_STATUS", MagicMock()),
+        patch.object(metrics, "_HEALTH_CHECK_STATUS", status_only),
     ):
         metrics.record_health_probe("db", "ok", 0.1)
+    status_only.labels.assert_called_once_with(component="db", status="ok")
+    status_only.labels.return_value.inc.assert_called_once_with()
 
+    redis_errors = MagicMock()
     with (
         patch.object(metrics, "_REDIS_COMMAND_DURATION", None),
-        patch.object(metrics, "_REDIS_COMMAND_ERRORS", MagicMock()),
+        patch.object(metrics, "_REDIS_COMMAND_ERRORS", redis_errors),
     ):
         metrics.record_redis_command("GET", 0.1, success=False)
+    redis_errors.labels.assert_called_once_with(command="GET")
+    redis_errors.labels.return_value.inc.assert_called_once_with()
+
+    db_errors = MagicMock()
     with (
         patch.object(metrics, "_DB_OPERATION_DURATION", None),
-        patch.object(metrics, "_DB_OPERATION_ERRORS", MagicMock()),
+        patch.object(metrics, "_DB_OPERATION_ERRORS", db_errors),
     ):
         metrics.record_db_operation("select", 0.1, success=False)
+    db_errors.labels.assert_called_once_with(operation="select")
+    db_errors.labels.return_value.inc.assert_called_once_with()
 
-    with patch.object(
-        metrics,
-        "engine",
-        SimpleNamespace(sync_engine=SimpleNamespace(pool=object())),
+    with (
+        patch.object(
+            metrics,
+            "engine",
+            SimpleNamespace(sync_engine=SimpleNamespace(pool=object())),
+        ),
+        patch.object(metrics.logger, "debug") as log_debug,
     ):
         metrics._record_pool_metrics()
+    log_debug.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -910,14 +1016,19 @@ async def test_cache_and_pool_optional_metric_combinations() -> None:
     client.info.return_value = {"used_memory": "not-a-number"}
     client.dbsize.return_value = 3
     backend._get_client = AsyncMock(return_value=client)
+    invalid_memory = MagicMock()
     with (
         patch.object(cache_module, "RedisCache", redis_type),
         patch.object(cache_module, "get_cache", return_value=backend),
         patch.object(metrics, "_CACHE_ENTRIES", None),
-        patch.object(metrics, "_CACHE_MEMORY_BYTES", MagicMock()),
+        patch.object(metrics, "_CACHE_MEMORY_BYTES", invalid_memory),
         patch.object(metrics, "_REDIS_HEALTH", None),
     ):
         await metrics._record_cache_metrics()
+    client.ping.assert_awaited_once_with()
+    client.info.assert_awaited_once_with(section="memory")
+    client.dbsize.assert_awaited_once_with()
+    invalid_memory.set.assert_not_called()
 
     memory = MagicMock()
     with (
@@ -930,14 +1041,16 @@ async def test_cache_and_pool_optional_metric_combinations() -> None:
         memory.set.assert_called_once_with(0)
 
     health = MagicMock()
+    entries = MagicMock()
     with (
         patch.object(cache_module, "get_cache", return_value=object()),
-        patch.object(metrics, "_CACHE_ENTRIES", MagicMock()),
+        patch.object(metrics, "_CACHE_ENTRIES", entries),
         patch.object(metrics, "_CACHE_MEMORY_BYTES", None),
         patch.object(metrics, "_REDIS_HEALTH", health),
     ):
         await metrics._record_cache_metrics()
-    health.set.assert_called_with(0)
+    entries.set.assert_called_once_with(0)
+    health.set.assert_called_once_with(0)
 
     pool = SimpleNamespace(
         size=lambda: 1,
@@ -945,6 +1058,8 @@ async def test_cache_and_pool_optional_metric_combinations() -> None:
         overflow=lambda: 3,
         checkedin=lambda: 4,
     )
+    checkedout = MagicMock()
+    checkedin = MagicMock()
     with (
         patch.object(
             metrics,
@@ -952,57 +1067,81 @@ async def test_cache_and_pool_optional_metric_combinations() -> None:
             SimpleNamespace(sync_engine=SimpleNamespace(pool=pool)),
         ),
         patch.object(metrics, "_DB_POOL_SIZE", None),
-        patch.object(metrics, "_DB_POOL_CHECKEDOUT", MagicMock()),
+        patch.object(metrics, "_DB_POOL_CHECKEDOUT", checkedout),
         patch.object(metrics, "_DB_POOL_OVERFLOW", None),
-        patch.object(metrics, "_DB_POOL_CHECKEDIN", MagicMock()),
+        patch.object(metrics, "_DB_POOL_CHECKEDIN", checkedin),
     ):
         metrics._record_pool_metrics()
+    checkedout.set.assert_called_once_with(2.0)
+    checkedin.set.assert_called_once_with(4.0)
 
+    size = MagicMock()
+    overflow = MagicMock()
     with (
         patch.object(
             metrics,
             "engine",
             SimpleNamespace(sync_engine=SimpleNamespace(pool=pool)),
         ),
-        patch.object(metrics, "_DB_POOL_SIZE", MagicMock()),
+        patch.object(metrics, "_DB_POOL_SIZE", size),
         patch.object(metrics, "_DB_POOL_CHECKEDOUT", None),
-        patch.object(metrics, "_DB_POOL_OVERFLOW", MagicMock()),
+        patch.object(metrics, "_DB_POOL_OVERFLOW", overflow),
         patch.object(metrics, "_DB_POOL_CHECKEDIN", None),
     ):
         metrics._record_pool_metrics()
+    size.set.assert_called_once_with(1.0)
+    overflow.set.assert_called_once_with(3.0)
 
 
 @pytest.mark.asyncio
 async def test_db_system_and_registry_guard_branches(monkeypatch) -> None:
     from app.core import metrics, observability
     from app.core.config import settings
+    from app.services import notification_queue
 
     with (
         patch.object(metrics, "_DB_HEALTH", None),
         patch.object(metrics, "_DB_OPERATION_DURATION", None),
-        patch.object(metrics, "_record_pool_metrics"),
+        patch.object(metrics, "_record_pool_metrics") as record_pool,
+        patch.object(metrics, "engine") as engine,
     ):
         await metrics._record_db_metrics()
+    record_pool.assert_not_called()
+    engine.connect.assert_not_called()
 
+    connection = MagicMock()
+    connection.__aenter__.return_value.execute = AsyncMock()
+    engine = SimpleNamespace(connect=MagicMock(return_value=connection))
     with (
         patch.object(metrics, "_DB_HEALTH", None),
         patch.object(metrics, "_DB_OPERATION_DURATION", MagicMock()),
-        patch.object(metrics, "_record_pool_metrics"),
+        patch.object(metrics, "_record_pool_metrics") as record_pool,
+        patch.object(metrics, "engine", engine),
         patch.object(metrics, "record_db_operation") as record_operation,
     ):
         await metrics._record_db_metrics()
+    record_pool.assert_called_once_with()
+    connection.__aenter__.return_value.execute.assert_awaited_once()
+    record_operation.assert_called_once()
     assert record_operation.call_args.kwargs["success"] is True
 
+    cpu = MagicMock()
     with (
-        patch.object(metrics, "_CPU_LOAD", MagicMock()),
+        patch.object(metrics, "_CPU_LOAD", cpu),
         patch.object(metrics, "_GPU_LOAD", None),
         patch.object(metrics, "psutil") as psutil,
     ):
         psutil.cpu_percent.return_value = 1.0
         metrics._record_system_metrics()
+    psutil.cpu_percent.assert_called_once_with(interval=None)
+    cpu.set.assert_called_once_with(1.0)
 
-    with patch.object(metrics, "REGISTRY", None):
+    with (
+        patch.object(metrics, "REGISTRY", None),
+        patch.object(observability, "get_notification_queue_metrics") as get_metrics,
+    ):
         metrics._ensure_notification_queue_metrics_registry()
+    get_metrics.assert_not_called()
 
     same_registry = object()
     with (
@@ -1011,24 +1150,32 @@ async def test_db_system_and_registry_guard_branches(monkeypatch) -> None:
             observability,
             "get_notification_queue_metrics",
             return_value=SimpleNamespace(registry=same_registry),
-        ),
+        ) as get_metrics,
         patch.object(
             observability,
             "reinitialize_notification_queue_metrics",
         ) as reinitialize,
     ):
         metrics._ensure_notification_queue_metrics_registry()
+    get_metrics.assert_called_once_with()
     reinitialize.assert_not_called()
 
-    with patch.object(
-        observability,
-        "get_notification_queue_metrics",
-        side_effect=RuntimeError("metrics not initialized"),
+    with (
+        patch.object(metrics, "REGISTRY", object()),
+        patch.object(
+            observability,
+            "get_notification_queue_metrics",
+            side_effect=RuntimeError("metrics not initialized"),
+        ) as get_metrics,
+        patch.object(observability, "reinitialize_notification_queue_metrics") as reset,
     ):
         metrics._ensure_notification_queue_metrics_registry()
+    get_metrics.assert_called_once_with()
+    reset.assert_not_called()
 
     fresh = object()
     foreign = object()
+    registry = object()
     with (
         patch.object(
             observability,
@@ -1039,10 +1186,13 @@ async def test_db_system_and_registry_guard_branches(monkeypatch) -> None:
             observability,
             "reinitialize_notification_queue_metrics",
             return_value=fresh,
-        ),
-        patch.object(metrics, "REGISTRY", metrics.REGISTRY),
+        ) as reset,
+        patch.object(metrics, "REGISTRY", registry),
+        patch.object(notification_queue, "_queue_metrics", None),
     ):
         metrics._ensure_notification_queue_metrics_registry()
+        assert notification_queue._queue_metrics is fresh
+    reset.assert_called_once_with(registry=registry)
 
     app = FastAPI()
     monkeypatch.setattr(settings, "enable_metrics_endpoint", True)

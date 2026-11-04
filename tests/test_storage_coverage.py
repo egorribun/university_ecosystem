@@ -11,7 +11,7 @@ Targets uncovered paths in:
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -57,8 +57,18 @@ class TestStaticFSStorage:
         from app.services.storage import StaticFSStorage
 
         storage = StaticFSStorage(base_dir=tmp_path, base_url="/static")
-        # Should not raise
-        await storage.delete_file("/static/nonexistent.txt")
+        target = tmp_path / "nonexistent.txt"
+        with (
+            patch.object(
+                Path, "unlink", autospec=True, side_effect=Path.unlink
+            ) as unlink,
+            patch("app.services.storage.logger") as logger,
+        ):
+            await storage.delete_file("/static/nonexistent.txt")
+
+        unlink.assert_called_once_with(target.resolve())
+        logger.warning.assert_not_called()
+        assert not target.exists()
 
     @pytest.mark.asyncio
     async def test_read_nonexistent(self, tmp_path):
@@ -384,28 +394,39 @@ class TestStaticFSStorageSecurityPaths:
 
     @pytest.mark.asyncio
     async def test_delete_file_empty_url(self, tmp_path):
-        """Line 145: delete_file with empty/invalid URL returns without error."""
+        """Empty URLs leave local files untouched."""
         from app.services.storage import StaticFSStorage
 
         storage = StaticFSStorage(base_dir=tmp_path)
-        # Empty URL - should return without raising (key extraction returns None)
-        await storage.delete_file("")
-        await storage.delete_file("   ")
+        existing = tmp_path / "existing.txt"
+        existing.write_bytes(b"data")
+        with patch.object(Path, "unlink", autospec=True) as unlink:
+            await storage.delete_file("")
+            await storage.delete_file("   ")
+
+        unlink.assert_not_called()
+        assert existing.read_bytes() == b"data"
 
     @pytest.mark.asyncio
     async def test_delete_file_oserror(self, tmp_path):
         """Lines 139-140: OSError in _unlink_ignore_missing is handled gracefully."""
-        from unittest.mock import patch
-
         from app.services.storage import StaticFSStorage
 
         storage = StaticFSStorage(base_dir=tmp_path)
         await storage.save_file("target.txt", b"data")
+        target = (tmp_path / "target.txt").resolve()
 
-        # Patch unlink to raise OSError (not FileNotFoundError) to trigger line 139-140
-        with patch.object(Path, "unlink", side_effect=OSError("Permission denied")):
-            # Should not raise - logs warning
+        with (
+            patch.object(
+                Path, "unlink", autospec=True, side_effect=OSError("Permission denied")
+            ) as unlink,
+            patch("app.services.storage.logger") as logger,
+        ):
             await storage.delete_file("/target.txt")
+
+        unlink.assert_called_once_with(target)
+        logger.warning.assert_called_once_with("static_delete_failed")
+        assert target.read_bytes() == b"data"
 
     @pytest.mark.asyncio
     async def test_exists_raw_path_fallback(self, tmp_path):
@@ -499,8 +520,13 @@ class TestS3StorageMissingBranches:
             bucket="test", client=mock_client, endpoint_url="http://minio:9000"
         )
 
-        # Should not raise - delete is best-effort
-        await s3.delete_file("http://minio:9000/test/file.txt")
+        with patch("app.services.storage.logger") as logger:
+            await s3.delete_file("http://minio:9000/test/file.txt")
+
+        mock_client.delete_object.assert_awaited_once_with(
+            Bucket="test", Key="file.txt"
+        )
+        logger.warning.assert_called_once_with("s3_delete_failed")
 
     @pytest.mark.asyncio
     async def test_exists_with_raw_key(self):

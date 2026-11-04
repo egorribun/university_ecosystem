@@ -6,6 +6,7 @@ import asyncio
 import builtins
 import importlib
 import sys
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -222,8 +223,14 @@ async def test_storage_delete_file_connection_error() -> None:
         client=mock_client,
     )
 
-    # Must not raise — fire-and-forget pattern
-    await backend.delete_file("http://localhost:9000/test-bucket/key.png")
+    with patch("app.services.storage.logger.warning") as warning:
+        result = await backend.delete_file("http://localhost:9000/test-bucket/key.png")
+
+    assert result is None
+    mock_client.delete_object.assert_awaited_once_with(
+        Bucket="test-bucket", Key="key.png"
+    )
+    warning.assert_called_once_with("s3_delete_failed")
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +243,7 @@ async def test_storage_delete_file_connection_error() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_webpush_cleanup_dispose_os_error() -> None:
+def test_webpush_cleanup_dispose_os_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """cleanup() must swallow OSError during engine.dispose (line 127)."""
     import app.services.webpush as webpush_mod
     from app.services.webpush import cleanup
@@ -245,16 +252,15 @@ def test_webpush_cleanup_dispose_os_error() -> None:
     fake_engine.dispose.side_effect = OSError("connection reset")
     fake_session = MagicMock()
 
-    original_engine = webpush_mod._sync_engine
-    original_session = webpush_mod._Session
-    try:
-        webpush_mod._sync_engine = fake_engine
-        webpush_mod._Session = fake_session
-        # Must not raise
-        cleanup()
-    finally:
-        webpush_mod._sync_engine = original_engine
-        webpush_mod._Session = original_session
+    monkeypatch.setattr(webpush_mod, "_sync_engine", fake_engine)
+    monkeypatch.setattr(webpush_mod, "_Session", fake_session)
+    with patch.object(webpush_mod.logger, "exception") as log_exception:
+        assert cleanup() is None
+
+    fake_engine.dispose.assert_called_once_with()
+    assert webpush_mod._sync_engine is None
+    assert webpush_mod._Session is None
+    log_exception.assert_called_once_with("Failed to dispose webpush engine")
 
 
 # ---------------------------------------------------------------------------
@@ -386,15 +392,21 @@ def test_metrics_ensure_notification_queue_metrics_runtime_error() -> None:
     from app.core import observability as obs_mod
     from app.core.metrics import _ensure_notification_queue_metrics_registry
 
-    with patch.object(
-        obs_mod,
-        "get_notification_queue_metrics",
-        side_effect=RuntimeError("prometheus not configured"),
+    with (
+        patch.object(
+            obs_mod,
+            "get_notification_queue_metrics",
+            side_effect=RuntimeError("prometheus not configured"),
+        ) as get_metrics,
+        patch.object(
+            obs_mod, "reinitialize_notification_queue_metrics"
+        ) as reinitialize,
+        patch("app.core.metrics.REGISTRY", new=MagicMock()),
     ):
-        # patch REGISTRY to something non-None so the guard doesn't short-circuit
-        with patch("app.core.metrics.REGISTRY", new=MagicMock()):
-            # Must not raise
-            _ensure_notification_queue_metrics_registry()
+        assert _ensure_notification_queue_metrics_registry() is None
+
+    get_metrics.assert_called_once_with()
+    reinitialize.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -404,26 +416,35 @@ def test_metrics_ensure_notification_queue_metrics_runtime_error() -> None:
 
 def test_metrics_configure_metrics_runtime_error() -> None:
     """configure_metrics must swallow RuntimeError from get_notification_queue_metrics (line 1089)."""
-    from app.core.metrics import configure_metrics
+    from app.core import metrics, observability
 
     fake_app = MagicMock()
-    fake_app.state = MagicMock()
-    # Make getattr(app.state, _CONFIGURED_ATTR, False) return False.
-    type(fake_app.state).__getattr__ = lambda self, name: False
-
-    from app.core import observability as obs_mod
-
-    with patch.object(
-        obs_mod,
-        "get_notification_queue_metrics",
-        side_effect=RuntimeError("no prometheus"),
+    fake_app.state = SimpleNamespace()
+    with (
+        patch.object(
+            metrics, "settings", SimpleNamespace(enable_metrics_endpoint=False)
+        ),
+        patch.dict(sys.modules, {"opentelemetry.exporter.prometheus": None}),
+        patch.object(
+            observability,
+            "get_notification_queue_metrics",
+            side_effect=RuntimeError("no prometheus"),
+        ) as get_metrics,
     ):
-        with patch("app.core.metrics.REGISTRY", new=None):
-            try:
-                configure_metrics(fake_app)
-            except RuntimeError:
-                # Acceptable — some startup paths fail in mock context
-                pass
+        assert metrics.configure_metrics(fake_app) is None
+
+    get_metrics.assert_called_once_with()
+    fake_app.add_middleware.assert_called_once_with(
+        metrics.PrometheusRequestMetricsMiddleware
+    )
+    fake_app.add_api_route.assert_called_once_with(
+        "/metrics",
+        metrics.metrics_endpoint,
+        methods=["GET"],
+        include_in_schema=False,
+        name="metrics",
+    )
+    assert fake_app.state._metrics_configured is True
 
 
 # ---------------------------------------------------------------------------

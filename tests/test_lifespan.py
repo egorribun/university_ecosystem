@@ -272,10 +272,14 @@ async def test_verify_database_readiness_reads_revision_inside_run_sync() -> Non
 
 @pytest.mark.asyncio
 async def test_handle_schema_and_extensions_disabled() -> None:
-    with patch("app.core.lifespan.settings") as mock_settings:
+    with (
+        patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.engine") as mock_engine,
+    ):
         mock_settings.auto_create_schema = False
-        # If disabled, function should return early without doing anything
         await _handle_schema_and_extensions()
+
+    mock_engine.begin.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -549,65 +553,68 @@ async def test_periodic_scheduler_loop_jitter_stop() -> None:
 
 
 @pytest.mark.asyncio
-async def test_periodic_scheduler_loop_hours() -> None:
-    # Test cleanup task branch additions for hour 6, hour 2, and normal hour 3
-    mock_task = MagicMock()
-    mock_task.kick = AsyncMock()
+@pytest.mark.parametrize(
+    ("hour", "iterations", "extra_tasks"),
+    [
+        (6, 1, {"cleanup_sessions_task"}),
+        (
+            2,
+            2,
+            {
+                "cleanup_notifications_task",
+                "cleanup_dead_letter_jobs_task",
+                "cleanup_privacy_artifacts_task",
+            },
+        ),
+        (3, 1, set()),
+    ],
+)
+async def test_periodic_scheduler_loop_hours(
+    hour: int, iterations: int, extra_tasks: set[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.tasks import cleanups
 
-    # 1. Test hour 6
+    always = {
+        "cleanup_stories_task",
+        "cleanup_password_reset_tokens_task",
+        "cleanup_email_change_tokens_task",
+        "cleanup_mfa_challenges_task",
+        "refresh_business_gauges_task",
+    }
+    optional = {
+        "cleanup_sessions_task",
+        "cleanup_notifications_task",
+        "cleanup_dead_letter_jobs_task",
+        "cleanup_privacy_artifacts_task",
+    }
+    tasks = {name: MagicMock(kick=AsyncMock()) for name in always | optional}
+    for name, task in tasks.items():
+        monkeypatch.setattr(cleanups, name, task)
+
+    now = datetime.datetime(2026, 7, 4, hour, 0, tzinfo=datetime.UTC)
+    timeouts = []
+
+    async def elapse(awaitable, timeout=None):
+        timeouts.append(timeout)
+        awaitable.close()
+        raise TimeoutError
+
     with (
         patch("app.core.lifespan._SCHEDULER_STOP") as mock_stop,
         patch("datetime.datetime") as mock_datetime,
-        patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait_for,
+        patch("asyncio.wait_for", elapse),
+        patch("app.core.lifespan.random.uniform", return_value=0.0),
     ):
-        mock_stop.is_set.side_effect = [False, True]
-        mock_now = datetime.datetime(2026, 7, 4, 6, 0, 0, tzinfo=datetime.UTC)
-        mock_datetime.now.return_value = mock_now
-        mock_wait_for.side_effect = [TimeoutError(), True]
+        mock_stop.is_set.side_effect = [False] * iterations + [True]
+        mock_datetime.now.return_value = now
+        await _periodic_scheduler_loop()
 
-        with (
-            patch("app.tasks.cleanups.cleanup_stories_task", mock_task),
-            patch("app.tasks.cleanups.cleanup_sessions_task", mock_task),
-            patch("app.core.lifespan.random.uniform", return_value=0.0),
-        ):
-            await _periodic_scheduler_loop()
-
-    # 2. Test already ran this hour (skip branch)
-    with (
-        patch("app.core.lifespan._SCHEDULER_STOP") as mock_stop,
-        patch("datetime.datetime") as mock_datetime,
-        patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait_for,
-    ):
-        # Run loop twice: first time it runs tasks, second time it skips because current_key == _last_ran
-        mock_stop.is_set.side_effect = [False, False, True]
-        mock_now = datetime.datetime(2026, 7, 4, 2, 0, 0, tzinfo=datetime.UTC)
-        mock_datetime.now.return_value = mock_now
-        mock_wait_for.side_effect = [TimeoutError(), TimeoutError(), True]
-
-        with (
-            patch("app.tasks.cleanups.cleanup_stories_task", mock_task),
-            patch("app.tasks.cleanups.cleanup_sessions_task", mock_task),
-            patch("app.tasks.cleanups.cleanup_notifications_task", mock_task),
-            patch("app.core.lifespan.random.uniform", return_value=0.0),
-        ):
-            await _periodic_scheduler_loop()
-
-    # 3. Test normal hour 3 (neither % 6 == 0 nor == 2)
-    with (
-        patch("app.core.lifespan._SCHEDULER_STOP") as mock_stop,
-        patch("datetime.datetime") as mock_datetime,
-        patch("asyncio.wait_for", new_callable=AsyncMock) as mock_wait_for,
-    ):
-        mock_stop.is_set.side_effect = [False, True]
-        mock_now = datetime.datetime(2026, 7, 4, 3, 0, 0, tzinfo=datetime.UTC)
-        mock_datetime.now.return_value = mock_now
-        mock_wait_for.side_effect = [TimeoutError(), True]
-
-        with (
-            patch("app.tasks.cleanups.cleanup_stories_task", mock_task),
-            patch("app.core.lifespan.random.uniform", return_value=0.0),
-        ):
-            await _periodic_scheduler_loop()
+    assert timeouts == [0.0] + [3600] * iterations
+    for name, task in tasks.items():
+        if name in always | extra_tasks:
+            task.kick.assert_awaited_once_with()
+        else:
+            task.kick.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1193,14 +1200,23 @@ async def test_prewarm_jwt_public_key_cache_error() -> None:
 async def test_startup_background_workers_partition_disabled() -> None:
     with (
         patch("app.core.lifespan.settings") as mock_settings,
+        patch("app.core.lifespan.ensure_partitions_exist") as ensure_partitions,
+        patch(
+            "app.core.lifespan.start_partition_management_scheduler"
+        ) as start_partition_scheduler,
     ):
         mock_settings.environment = "testing"
         mock_settings.embedded_cdc_outbox_worker_enabled = False
         mock_settings.partition_management_enabled = False
-        mock_app = MagicMock()
-        mock_app.state = MagicMock()
+        mock_app = FastAPI()
+        mock_app.state.dishka_container = AsyncMock()
 
         await _startup_background_workers(mock_app)
+
+    assert mock_app.state.background_tasks == set()
+    ensure_partitions.assert_not_awaited()
+    start_partition_scheduler.assert_not_awaited()
+    mock_app.state.dishka_container.get.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1269,14 +1285,17 @@ async def test_startup_background_workers_production_env() -> None:
 
 
 @pytest.mark.asyncio
-async def test_periodic_scheduler_loop_immediate_exit() -> None:
-    from app.core.lifespan import _SCHEDULER_STOP
-
-    _SCHEDULER_STOP.clear()
+async def test_periodic_scheduler_loop_immediate_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduler_stop = asyncio.Event()
+    monkeypatch.setattr("app.core.lifespan._SCHEDULER_STOP", scheduler_stop)
 
     orig_wait_for = asyncio.wait_for
+    timeouts = []
 
     async def mock_wait_for(fut, timeout=None):
+        timeouts.append(timeout)
         if timeout == 0.0:
             fut.close()
             raise TimeoutError()
@@ -1285,21 +1304,28 @@ async def test_periodic_scheduler_loop_immediate_exit() -> None:
     with (
         patch("random.uniform", return_value=0.0),
         patch("asyncio.wait_for", mock_wait_for),
+        patch("app.tasks.cleanups.cleanup_stories_task") as cleanup_stories,
     ):
-        _SCHEDULER_STOP.set()
+        cleanup_stories.kick = AsyncMock()
+        scheduler_stop.set()
         await _periodic_scheduler_loop()
+
+    assert timeouts == [0.0]
+    cleanup_stories.kick.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_periodic_scheduler_loop_all_hours() -> None:
-    from app.core.lifespan import _SCHEDULER_STOP
-
+async def test_periodic_scheduler_loop_all_hours(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _SCHEDULER_STOP = asyncio.Event()
+    monkeypatch.setattr("app.core.lifespan._SCHEDULER_STOP", _SCHEDULER_STOP)
     mock_task = MagicMock()
 
     async def mock_kick():
         _SCHEDULER_STOP.set()
 
-    mock_task.kick = mock_kick
+    mock_task.kick = AsyncMock(side_effect=mock_kick)
 
     mock_dt = MagicMock()
     mock_dt.now.return_value = datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC)
@@ -1333,8 +1359,11 @@ async def test_periodic_scheduler_loop_all_hours() -> None:
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
     ):
         await _periodic_scheduler_loop()
+    mock_task.kick.assert_awaited_once_with()
+    assert _SCHEDULER_STOP.is_set()
 
     _SCHEDULER_STOP.clear()
+    mock_task.kick.reset_mock()
     with (
         patch("random.uniform", return_value=0.0),
         patch("asyncio.wait_for", mock_wait_for),
@@ -1350,6 +1379,8 @@ async def test_periodic_scheduler_loop_all_hours() -> None:
         patch("app.tasks.cleanups.cleanup_privacy_artifacts_task", AsyncMock()),
     ):
         await _periodic_scheduler_loop()
+    mock_task.kick.assert_awaited_once_with()
+    assert _SCHEDULER_STOP.is_set()
 
 
 @pytest.mark.asyncio
