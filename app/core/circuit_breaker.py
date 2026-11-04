@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from app.core import metrics as app_metrics
 from app.core.logging import get_logger
 
 if TYPE_CHECKING:
@@ -217,11 +218,6 @@ class CircuitBreaker:
 
     def _transition_to(self, new_state: CircuitBreakerState) -> None:
         """Transition to a new state with logging and callback."""
-        from app.core.metrics import (
-            record_circuit_breaker_state,
-            record_circuit_breaker_trip,
-        )
-
         old_state = self._internal_state.state
         if old_state == new_state:
             return
@@ -231,9 +227,9 @@ class CircuitBreaker:
         self._metrics.state_transitions += 1
 
         # Record metrics
-        record_circuit_breaker_state(self._service_name, new_state.value)
+        app_metrics.record_circuit_breaker_state(self._service_name, new_state.value)
         if new_state == CircuitBreakerState.OPEN:
-            record_circuit_breaker_trip(self._service_name)
+            app_metrics.record_circuit_breaker_trip(self._service_name)
 
         logger.info(
             "Circuit breaker state transition",

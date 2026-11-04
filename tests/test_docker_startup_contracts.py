@@ -2762,6 +2762,8 @@ def _production_render_command(helm: str) -> list[str]:
         *_resolved_staging_args(),
         "--set-string",
         "backend.config.mfaTotpActiveEncryptionKeyId=totp-active-contract",
+        "--set",
+        "internalHttpMTLS.enabled=true",
         "--set-string",
         "global.environment=production",
         "--set-string",

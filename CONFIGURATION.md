@@ -575,6 +575,10 @@ where the Go code reads it through `readSecretEnv` or the `_FILE` lookup.
 | `NATS_PASSWORD` | NATS password for ws-hub (`_FILE` supported). | Unset |
 | `NATS_STREAM_CHAT` | JetStream stream name for chat events. | `CHAT_EVENTS` |
 | `NATS_STREAM_NOTIFICATIONS` | JetStream stream name for notification events. | `NOTIFICATIONS_EVENTS` |
+| `WS_NATS_ACK_POLICY` | ws-hub NATS consumer ack policy. Only `explicit` is accepted; any other value fails startup (AUD-478). | `explicit` |
+| `WS_NATS_ACK_WAIT_SECONDS` | ws-hub durable consumer ack wait in seconds. Must be an integer from 31 through 600 and exceed the 30 s callback timeout. | `60` |
+| `WS_NATS_MAX_DELIVER` | ws-hub durable consumer maximum redeliveries of one invalidation. Must be an integer from 5 through 100. | `20` |
+| `WS_NATS_INACTIVE_THRESHOLD_SECONDS` | ws-hub ephemeral consumer inactive threshold in seconds. Must be an integer from 60 through 86400. Helm mirrors these four keys under `wsHub.config.natsConsumer`. | `300` |
 | `ENABLE_JETSTREAM` | Enables JetStream consumers in ws-hub. | `true` |
 | `WS_HUB_PORT` | ws-hub HTTP and WebSocket listen port. | `8081` |
 | `WS_HUB_WT_PORT` | ws-hub WebTransport port; falls back to `WT_PORT`. | `8443` |
