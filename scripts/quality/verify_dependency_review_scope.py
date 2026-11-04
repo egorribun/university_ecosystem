@@ -65,11 +65,12 @@ EXPECTED_MODULES = {
 
 # Dependency Review license identifications observed for the reviewed rows.
 # OTLP_CADDY_LICENSE is the upstream composite reported for the caddy graph.
-# PLIST_LICENSE is the marker for howett.net/plist v1.0.1, whose LICENSE file
+# PLIST_LICENSE is the exact GitHub composite for howett.net/plist v1.0.1.
+# Its upstream LICENSE file
 # combines BSD-2-Clause-Views (FreeBSD-style text) with the Go-license
 # BSD-3-Clause clause. See ADR-047 note 2026-11-03 (owner-approved).
 OTLP_CADDY_LICENSE = "Apache-2.0 AND BSD-3-Clause"
-PLIST_LICENSE = "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause"
+PLIST_LICENSE = "BSD-2-Clause-Views AND BSD-3-Clause"
 
 
 def _identity(
@@ -464,7 +465,7 @@ def format_dependency_identity_diagnostics(rows: Any) -> str:
     displayed_licenses = frozenset(
         {
             "AGPL-3.0",
-            "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause",
+            PLIST_LICENSE,
             "Apache-2.0",
             LICENSE_REF,
             KLAUSPOST_LICENSE,

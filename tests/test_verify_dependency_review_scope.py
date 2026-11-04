@@ -141,7 +141,7 @@ class DependencyLicenseGuardTests(unittest.TestCase):
             identity[1:5],
             ("services/caddy/go.mod", "gomod", "howett.net/plist", "1.0.1"),
         )
-        self.assertEqual(identity[6], "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause")
+        self.assertEqual(identity[6], "BSD-2-Clause-Views AND BSD-3-Clause")
         self.assertEqual(
             verify_dependency_changes([action_row(identity)], {identity}), 1
         )
@@ -151,6 +151,11 @@ class DependencyLicenseGuardTests(unittest.TestCase):
             {"version": "1.0.2", "purl": "pkg:golang/howett.net/plist@1.0.2"},
             {"manifest": "services/gateway/go.mod"},
             {"license": "BSD-3-Clause"},
+            {"license": "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause"},
+            {"license": "BSD-2-Clause AND BSD-3-Clause"},
+            {"license": "BSD-3-Clause AND BSD-2-Clause-Views"},
+            {"license": "BSD-2-Clause-Views OR BSD-3-Clause"},
+            {"license": "BSD-2-Clause-Views AND BSD-3-Clause "},
             {"license": None},
         )
         for changes in mutations:
@@ -1492,7 +1497,7 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
                     "howett.net/plist",
                     "1.0.1",
                     "pkg:golang/howett.net/plist@1.0.1",
-                    "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause",
+                    "BSD-2-Clause-Views AND BSD-3-Clause",
                 )
             ),
             action_row(
@@ -1571,7 +1576,7 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
                 "name": "howett.net/plist",
                 "version": "1.0.1",
                 "package_url": "pkg:golang/howett.net/plist@1.0.1",
-                "license": "LicenseRef-bad-bsd-2-clause-views-bsd-3-clause",
+                "license": "BSD-2-Clause-Views AND BSD-3-Clause",
             },
         )
         self.assertEqual(
