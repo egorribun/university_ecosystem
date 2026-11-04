@@ -80,11 +80,61 @@ test.describe("Rate limit UX", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    const requests: { url: string; at: number }[] = []
+    // Measure in the browser: delays in the Playwright route handler must not
+    // make a prematurely dispatched retry look as though it respected the limit.
+    await page.addInitScript(() => {
+      const urls = new WeakMap<XMLHttpRequest, string>()
+      const timings: {
+        url: string
+        sentAt: number
+        sentWallAt: number
+        responseAt: number
+        responseWallAt: number
+        status: number
+      }[] = []
+      Object.defineProperty(window, "__audit321XhrTimings", { value: timings })
+
+      XMLHttpRequest.prototype.open = new Proxy(XMLHttpRequest.prototype.open, {
+        apply(target, xhr: XMLHttpRequest, args: unknown[]) {
+          if (typeof args[0] === "string" && args[0].toUpperCase() === "GET") {
+            if (typeof args[1] === "string") urls.set(xhr, args[1])
+          }
+          return Reflect.apply(target, xhr, args)
+        },
+      })
+      XMLHttpRequest.prototype.send = new Proxy(XMLHttpRequest.prototype.send, {
+        apply(target, xhr: XMLHttpRequest, args: unknown[]) {
+          const url = urls.get(xhr)
+          if (url) {
+            const entry = {
+              url,
+              sentAt: performance.now(),
+              sentWallAt: Date.now(),
+              responseAt: -1,
+              responseWallAt: 0,
+              status: 0,
+            }
+            timings.push(entry)
+            xhr.addEventListener(
+              "load",
+              () => {
+                entry.responseAt = performance.now()
+                entry.responseWallAt = Date.now()
+                entry.status = xhr.status
+              },
+              { once: true }
+            )
+          }
+          return Reflect.apply(target, xhr, args)
+        },
+      })
+    })
+
+    const requests: string[] = []
     await page.route(isNewsCollection, async (route) => {
       if (!isNewsPageRequest(route)) return route.fallback()
       const url = new URL(route.request().url())
-      requests.push({ url: url.pathname + url.search, at: Date.now() })
+      requests.push(url.pathname + url.search)
       if (requests.length === 1) {
         return route.fulfill({
           status: 429,
@@ -98,7 +148,45 @@ test.describe("Rate limit UX", () => {
     await page.goto("/news", { waitUntil: "domcontentloaded" })
     await expect.poll(() => requests.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(2)
     await expect(page.getByText(RETRIED_TITLE, { exact: true })).toBeVisible({ timeout: 20_000 })
-    expect(requests[1]!.url).toBe(requests[0]!.url)
-    expect(requests[1]!.at - requests[0]!.at).toBeGreaterThanOrEqual(2_700)
+    expect(requests).toHaveLength(2)
+    expect(requests[1]).toBe(requests[0])
+    const observed = await page.evaluate(
+      () =>
+        (
+          window as typeof window & {
+            __audit321XhrTimings: {
+              url: string
+              sentAt: number
+              sentWallAt: number
+              responseAt: number
+              responseWallAt: number
+              status: number
+            }[]
+          }
+        ).__audit321XhrTimings
+    )
+    const newsRequests = observed.filter((entry) =>
+      isNewsCollection(new URL(entry.url, page.url()))
+    )
+    expect(newsRequests).toHaveLength(2)
+    expect(newsRequests.map((entry) => entry.status)).toEqual([429, 200])
+    expect(newsRequests[0]!.responseAt).toBeGreaterThanOrEqual(0)
+    expect(newsRequests[0]!.responseWallAt).toBeGreaterThan(0)
+    const monotonicRetryDelayMs = newsRequests[1]!.sentAt - newsRequests[0]!.responseAt
+    const wallClockRetryDelayMs = newsRequests[1]!.sentWallAt - newsRequests[0]!.responseWallAt
+    await test.info().attach("retry-after-timing", {
+      body: JSON.stringify({
+        retryAfterSeconds: 3,
+        monotonicRetryDelayMs,
+        wallClockRetryDelayMs,
+        statuses: newsRequests.map((entry) => entry.status),
+      }),
+      contentType: "application/json",
+    })
+    // The limiter computes its deadline from Date.now(), so compare the
+    // timestamps in that same (possibly quantized) clock. The independent
+    // monotonic check bounds a wall-clock jump and allows 100 ms of precision.
+    expect(wallClockRetryDelayMs).toBeGreaterThanOrEqual(3_000)
+    expect(monotonicRetryDelayMs).toBeGreaterThanOrEqual(2_900)
   })
 })
