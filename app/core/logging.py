@@ -42,10 +42,13 @@ _configured = False
 # This is a defense-in-depth measure; application code should avoid logging
 # PII in the first place, but this processor catches accidental leaks.
 # ---------------------------------------------------------------------------
-# RZ-30-03: Tighter email regex — require ≥2-char TLD, word boundaries.
-# Prevents false positives on `redis@10.0.0.1`, `user@host`, version strings.
-_EMAIL_RE = re.compile(
-    r"\b[a-zA-Z0-9_.+-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
+# RZ-30-03: Require ≥2-char TLD and word boundaries to avoid masking
+# `redis@10.0.0.1`, `user@host`, and version strings.
+_EMAIL_LOCAL_CHARACTERS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.+-"
+)
+_EMAIL_DOMAIN_RE = re.compile(
+    r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?"
     r"(?:\.[a-zA-Z]{2,})+\b"
 )
 # RZ-30-04: Anchored phone regex — negative lookbehind/lookahead reject
@@ -70,12 +73,11 @@ _PHONE_RE = re.compile(
 )
 _NON_PHONE_CONTEXT_RE = re.compile(
     r"(?:\b(?:version|ver|build|release|id|identifier|ticket|record)\b|"
-    r"(?<![A-Za-z0-9])v)\s*[:=#-]?\s*$",
+    r"(?<![A-Za-z0-9])v)$",
     re.IGNORECASE,
 )
 _PHONE_CONTEXT_RE = re.compile(
-    r"\b(?:call|phone|telephone|tel|mobile|cell|contact|dial)\b"
-    r"\s*[:=#-]?\s*$",
+    r"\b(?:call|phone|telephone|tel|mobile|cell|contact|dial)\b$",
     re.IGNORECASE,
 )
 _PII_FIELD_NAMES = frozenset(
@@ -181,15 +183,64 @@ _UUID_RE = re.compile(
 )
 
 
+def _redact_emails(text: str) -> str:
+    """Match each local-part run once, including runs after an address."""
+
+    parts: list[str] = []
+    cursor = 0
+    position = 0
+    while position < len(text):
+        if text[position] not in _EMAIL_LOCAL_CHARACTERS:
+            position += 1
+            continue
+
+        previous = text[position - 1] if position else ""
+        previous_is_word = previous.isalnum() or previous == "_"
+        boundary: int | None = None
+        while position < len(text) and text[position] in _EMAIL_LOCAL_CHARACTERS:
+            character = text[position]
+            is_word = character.isalnum() or character == "_"
+            if boundary is None and previous_is_word != is_word:
+                boundary = position
+            previous_is_word = is_word
+            position += 1
+
+        if boundary is None or position == len(text) or text[position] != "@":
+            continue
+        domain = _EMAIL_DOMAIN_RE.match(text, position + 1)
+        if domain is not None:
+            parts.append(text[cursor:boundary])
+            parts.append(_PII_REPLACEMENT)
+            position = domain.end()
+            cursor = position
+    parts.append(text[cursor:])
+    return "".join(parts)
+
+
+def _has_phone_context(text: str, end: int, pattern: re.Pattern[str]) -> bool:
+    """Inspect only the bounded keyword immediately before a phone number."""
+
+    while end and text[end - 1].isspace():
+        end -= 1
+    if end and text[end - 1] in ":=#-":
+        end -= 1
+        while end and text[end - 1].isspace():
+            end -= 1
+    # The longest context keyword is "identifier" (10 characters). The regex
+    # still checks the preceding character for a word boundary or lookbehind.
+    return pattern.search(text, max(0, end - 10), end) is not None
+
+
 def _mask_phone_numbers(text: str) -> str:
     """Redact phone numbers in one UUID-free segment."""
 
     def replace_phone(match: re.Match[str]) -> str:
-        prefix = text[: match.start()]
-        explicit_non_phone_context = _NON_PHONE_CONTEXT_RE.search(prefix) is not None
+        explicit_non_phone_context = _has_phone_context(
+            text, match.start(), _NON_PHONE_CONTEXT_RE
+        )
         dotted_without_phone_context = "." in match.group() and not (
             match.group().startswith("+")
-            or _PHONE_CONTEXT_RE.search(prefix) is not None
+            or _has_phone_context(text, match.start(), _PHONE_CONTEXT_RE)
         )
         if explicit_non_phone_context or dotted_without_phone_context:
             return match.group()
@@ -206,7 +257,7 @@ def _redact_free_text(value: str) -> str:
     number placed next to a UUID is still redacted.
     """
 
-    redacted = _EMAIL_RE.sub(_PII_REPLACEMENT, value)
+    redacted = _redact_emails(value)
     parts: list[str] = []
     cursor = 0
     for uuid_match in _UUID_RE.finditer(redacted):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 import os
 import secrets
@@ -10,6 +11,7 @@ import signal
 import subprocess
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -414,3 +416,61 @@ def test_verify_new_rejects_reused_old_challenge(smoke: dict[str, object]) -> No
     )
     assert result.returncode != 0
     _assert_no_transient_requests(smoke)
+
+
+@pytest.mark.parametrize("linked_directory", [".github", ".github/deployment-smoke"])
+def test_smoke_path_rejects_symlinked_allowed_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    linked_directory: str,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = root / ".github" / "scripts" / "validate_mfa_smoke_path.py"
+    spec = importlib.util.spec_from_file_location("mfa_smoke_path_aud380", script)
+    assert spec is not None and spec.loader is not None
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+
+    target_directory = tmp_path / "elsewhere"
+    target_directory.mkdir()
+    if linked_directory == ".github":
+        (target_directory / "deployment-smoke").mkdir()
+        (target_directory / "deployment-smoke" / "reviewed.sh").write_text("reviewed")
+    else:
+        (target_directory / "reviewed.sh").write_text("reviewed")
+        (tmp_path / ".github").mkdir()
+
+    link = tmp_path / linked_directory
+    try:
+        link.symlink_to(target_directory, target_is_directory=True)
+    except OSError:
+        if os.name != "nt":
+            raise
+        # Directory junctions need no symbolic-link privilege on Windows and
+        # still exercise the validator's real filesystem resolution.
+        import _winapi
+
+        _winapi.CreateJunction(str(target_directory), str(link))
+        assert link.is_junction()
+
+    git_calls: list[object] = []
+
+    def run_git(*args: object, **kwargs: object) -> SimpleNamespace:
+        git_calls.append(args)
+        return SimpleNamespace(returncode=0, stdout="matching-object-id\n")
+
+    monkeypatch.setattr(validator, "which", lambda _name: "git")
+    monkeypatch.setattr(validator.subprocess, "run", run_git)
+    monkeypatch.setattr(
+        validator.sys,
+        "argv",
+        [str(script), ".github/deployment-smoke/reviewed.sh"],
+    )
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+
+    with pytest.raises(SystemExit) as error:
+        validator.main()
+    assert error.value.code == 1
+    assert "root must not contain symbolic links" in capsys.readouterr().err
+    assert not git_calls
