@@ -50,9 +50,9 @@ test("live acceptance projects record no traces, screenshots or video, and the e
   // Policy guards with no behavioural equivalent without the live stack: the live acceptance
   // must reach the real stack (no route, websocket or request mocking) and must not leave
   // console diagnostics that could carry account data.
+  // The production document suite's no-skip guarantee is checked on Playwright's own
+  // collected status in the production-suite test below, not by scanning its source.
   const spec = await readFile(specUrl, "utf8")
-  const documentSpec = await readFile(ssrDocumentSpecUrl, "utf8")
-  assert.doesNotMatch(documentSpec, /\b(?:test|describe)\.(?:skip|fixme)\s*\(/u)
   assert.doesNotMatch(spec, /page\.route|routeWebSocket|useMockApi|page\.request/u)
   assert.doesNotMatch(spec, /console\.(?:log|info|warn|error)/u)
 })
@@ -351,7 +351,14 @@ test("production document suite is collected without skips and rejects preview o
   const collect = (production, unmanaged) =>
     spawnSync(
       process.execPath,
-      [cli, "test", "--config=playwright.ssr.config.ts", "--project=chromium", "--list"],
+      [
+        cli,
+        "test",
+        "--config=playwright.ssr.config.ts",
+        "--project=chromium",
+        "--list",
+        "--reporter=json",
+      ],
       {
         cwd,
         env: {
@@ -372,5 +379,26 @@ test("production document suite is collected without skips and rejects preview o
   const production = collect("true", "false")
   assert.equal(production.error, undefined)
   assert.equal(production.status, 0)
-  assert.match(production.stdout, /Total: 5 tests in 1 file/u)
+  // Behaviour: Playwright's collected status for every production SSR test. A test.skip or
+  // test.fixme becomes a non-"passed" expectedStatus here, so no source scan is needed.
+  const report = JSON.parse(production.stdout)
+  const collected = []
+  const walk = (suite, file) => {
+    for (const spec of suite.specs ?? []) {
+      for (const test of spec.tests) {
+        collected.push({ file, status: test.expectedStatus, annotations: test.annotations })
+      }
+    }
+    for (const child of suite.suites ?? []) walk(child, file)
+  }
+  for (const suite of report.suites) walk(suite, suite.file)
+  assert.equal(collected.length, 5, "the production SSR suite must collect exactly five tests")
+  assert.deepEqual(
+    new Set(collected.map((test) => test.file)),
+    new Set(["ssr-document-render.spec.ts"])
+  )
+  for (const test of collected) {
+    assert.equal(test.status, "passed", "every production SSR test must be collected to run")
+    assert.deepEqual(test.annotations, [], "production SSR tests must carry no skip annotations")
+  }
 })

@@ -881,3 +881,51 @@ it.each(["manual", "online"])("retires old backoff on a %s restart", async (rest
   }
   expect(vi.getTimerCount()).toBe(0)
 })
+
+it("keeps observed rejection debt through a transient disconnect before a stable pong", async () => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible")
+  const session = await connect()
+  try {
+    writeReplayCheckpoint(USER, ROOM, 12, "debt-cursor", ROOM)
+    act(() => session.result.current.sendJoin(ROOM))
+    act(() => session.socket.receive({ type: "error", room: ROOM, code: "replay_unavailable" }))
+    await act(() => vi.advanceTimersByTimeAsync(500))
+    expect(AuditSocket.instances).toHaveLength(2)
+    const second = AuditSocket.instances[1]!
+    act(() => second.onopen?.())
+
+    // A transient drop runs the controller cleanup before any ACK. The rejected
+    // cursor is unchanged, so its recovery debt must survive that cleanup.
+    act(() => second.close(1006))
+    await act(() => vi.advanceTimersByTimeAsync(999))
+    expect(AuditSocket.instances).toHaveLength(2)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(AuditSocket.instances).toHaveLength(3)
+    const third = AuditSocket.instances[2]!
+    act(() => third.onopen?.())
+    expect(sentJoins(third)).toStrictEqual([
+      { type: "join", room: ROOM, resume_token: "debt-cursor" },
+    ])
+
+    // A healthy pong after the stable window must not reset the budget while
+    // the same rejected cursor is still unrecovered.
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+    const pings = third.send.mock.calls
+      .map(([frame]) => JSON.parse(frame) as { type: string; nonce?: string })
+      .filter((frame) => frame.type === "heartbeat_ping")
+    expect(pings).toHaveLength(1)
+    act(() => third.receive({ type: "heartbeat_pong", nonce: pings[0]!.nonce }))
+    await act(() => vi.advanceTimersByTimeAsync(10_001))
+    expect(third.close).not.toHaveBeenCalled()
+
+    // The second-attempt backoff is 2000 ms; a reset would have produced 500 ms.
+    act(() => third.close(1006))
+    await act(() => vi.advanceTimersByTimeAsync(1_999))
+    expect(AuditSocket.instances).toHaveLength(3)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(AuditSocket.instances).toHaveLength(4)
+  } finally {
+    session.unmount()
+  }
+  expect(vi.getTimerCount()).toBe(0)
+})
