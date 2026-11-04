@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import ssl
 import uuid
 from datetime import UTC, datetime
 from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
@@ -19,6 +20,8 @@ from typing import (  # TD-23-04 (audit 2026-03-25 Wave 23)
     Protocol,
     cast,
 )
+
+import redis.exceptions as redis_errors
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -89,6 +92,29 @@ logger = get_logger(__name__)
 
 _MEMBERSHIP_CACHE_BATCH_SIZE = 128
 _MEMBERSHIP_FAST_PATH_SECONDS = 2.0
+# redis-py 8.1.0 exports this class, but its installed type stubs omit it.
+_REDIS_AUTH_ERRORS = (
+    redis_errors.AuthenticationError,
+    redis_errors.AuthorizationError,
+    cast(Any, redis_errors).ExternalAuthProviderError,
+)
+
+
+def _redis_security_error(error: BaseException) -> bool:
+    """Recognize TLS and auth errors even when redis-py wraps their cause."""
+    pending: list[BaseException] = [error]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, (*_REDIS_AUTH_ERRORS, ssl.SSLError)):
+            return True
+        for related in (current.__cause__, current.__context__):
+            if related is not None:
+                pending.append(related)
+    return False
 
 
 def _make_idempotency_key(
@@ -294,11 +320,15 @@ class ChatMessageDispatcher:
         DB receipt replays the original message within a fixed 24-hour window.
         Current membership is required before any replay. A live uncommitted
         Redis lease returns HTTP 409 with Retry-After; retry the same key later.
-        Redis admission is only an optimization. Historical cache-only sends
-        and mixed old/new writers are outside the durable replay guarantee.
+        Redis admission is only an optimization: a transport outage leaves
+        concurrent sends to the receipt's database uniqueness constraint.
+        Historical cache-only sends and mixed old/new writers are outside the
+        durable replay guarantee.
         """
         _idempotency_cache_key: str | None = None
         _pending_value: str | None = None
+        _possible_lease_key: str | None = None
+        _possible_lease_value: str | None = None
         _receipt_digest: str | None = None
         _receipt_expires_at: datetime | None = None
         # Rollback expires ORM attributes even when expire_on_commit is disabled.
@@ -329,11 +359,19 @@ class ChatMessageDispatcher:
             if receipt is not None and receipt.expires_at > receipt.observed_at:
                 return await self._send_receipt_response(chat_id, user_id, receipt)
 
-            _cache = await get_cache_client()
-            _idempotency_cache_key = _make_idempotency_key(
-                chat_id, user_id, idempotency_key
-            )
-            _cached = await _cache.get(_idempotency_cache_key)
+            cache_key = _make_idempotency_key(chat_id, user_id, idempotency_key)
+            try:
+                _cache = await get_cache_client()
+                _cached = await _cache.get(cache_key)
+            except _REDIS_AUTH_ERRORS:
+                raise
+            except (RedisConnectionError, RedisTimeoutError, OSError) as cache_error:
+                if _redis_security_error(cache_error):
+                    raise
+                logger.warning("chat_message_idempotency_cache_unavailable")
+                _cached = None
+            else:
+                _idempotency_cache_key = cache_key
             if _cached:
                 try:
                     _hit = json.loads(_cached)
@@ -351,9 +389,19 @@ class ChatMessageDispatcher:
                             if isinstance(_cached, bytes)
                             else _cached
                         )
-                        await _change_idempotency_slot(
-                            _idempotency_cache_key, cached_text
-                        )
+                        try:
+                            await _change_idempotency_slot(cache_key, cached_text)
+                        except _REDIS_AUTH_ERRORS:
+                            raise
+                        except (
+                            RedisConnectionError,
+                            RedisTimeoutError,
+                            OSError,
+                        ) as cache_error:
+                            if _redis_security_error(cache_error):
+                                raise
+                            logger.warning("chat_message_idempotency_cache_unavailable")
+                            _idempotency_cache_key = None
                     else:
                         # Bounded compatibility for pre-receipt deployments.
                         # There is no historical key mapping to backfill safely.
@@ -409,17 +457,32 @@ class ChatMessageDispatcher:
         # surface genuine infrastructure failures quickly.
         _UPLOAD_TIMEOUT_SECONDS = 30.0
 
-        # Reserve before uploads. A losing request returns a retryable conflict;
-        # only the owner may write or release/promote the scoped client key.
+        # Reserve before uploads when Redis is reachable. Its lease reduces
+        # duplicate uploads; database receipt ownership remains authoritative.
         if _idempotency_cache_key:
             _pending_value = json.dumps(
                 {"status": "pending", "owner": uuid.uuid4().hex}
             )
-            acquired = await _cache.set(
-                _idempotency_cache_key, _pending_value, nx=True, ex=300
-            )
-            if not acquired:
-                _idempotency_in_progress()
+            # SET may take effect even if its acknowledgement is lost. Retain
+            # the candidate only for compare-and-mutate cleanup, never as proof
+            # that admission was acquired.
+            _possible_lease_key = _idempotency_cache_key
+            _possible_lease_value = _pending_value
+            try:
+                acquired = await _cache.set(
+                    _idempotency_cache_key, _pending_value, nx=True, ex=300
+                )
+            except _REDIS_AUTH_ERRORS:
+                raise
+            except (RedisConnectionError, RedisTimeoutError, OSError) as cache_error:
+                if _redis_security_error(cache_error):
+                    raise
+                logger.warning("chat_message_idempotency_cache_unavailable")
+                _idempotency_cache_key = None
+                _pending_value = None
+            else:
+                if not acquired:
+                    _idempotency_in_progress()
 
         # ── Phase 1 + Phase 2 wrapped together ───────────────────────────────
         # Both phases share the same exception handler so that a Phase-2 failure
@@ -483,8 +546,13 @@ class ChatMessageDispatcher:
             # Phase 1 failure: clean up any partial uploads and release slot.
             if saved_urls:
                 await self.attachment_service.cleanup_files(saved_urls)
-            if _idempotency_cache_key and _pending_value:
-                await _change_idempotency_slot(_idempotency_cache_key, _pending_value)
+            if _possible_lease_key and _possible_lease_value:
+                try:
+                    await _change_idempotency_slot(
+                        _possible_lease_key, _possible_lease_value
+                    )
+                except (RedisConnectionError, RedisTimeoutError, OSError):
+                    logger.warning("chat_message_idempotency_cleanup_failed")
             raise
 
         # ── Phase 2: Atomic DB write ─────────────────────────────────────────
@@ -496,12 +564,27 @@ class ChatMessageDispatcher:
         message_event_emitter: EventEmitterMixin | None = None
         try:
             if _idempotency_cache_key and _pending_value:
-                # Uploads may outlive the lease. Verify and renew ownership before
-                # entering the DB mutation, so an old uploader cannot insert.
-                if not await _change_idempotency_slot(
-                    _idempotency_cache_key, _pending_value, _pending_value
-                ):
-                    _idempotency_in_progress()
+                # Uploads may outlive the lease. Reject an observed replacement;
+                # if Redis is unreachable, the receipt constraint decides instead.
+                try:
+                    renewed = await _change_idempotency_slot(
+                        _idempotency_cache_key, _pending_value, _pending_value
+                    )
+                except _REDIS_AUTH_ERRORS:
+                    raise
+                except (
+                    RedisConnectionError,
+                    RedisTimeoutError,
+                    OSError,
+                ) as cache_error:
+                    if _redis_security_error(cache_error):
+                        raise
+                    logger.warning("chat_message_idempotency_cache_unavailable")
+                    _idempotency_cache_key = None
+                    _pending_value = None
+                else:
+                    if not renewed:
+                        _idempotency_in_progress()
             message = Message(
                 chat_id=chat_id,
                 sender_id=user_id,
@@ -616,18 +699,20 @@ class ChatMessageDispatcher:
                     await self._cleanup_unreferenced_uploaded_files(saved_urls)
                 except Exception:  # RZ-22-01-JUSTIFIED: best-effort cleanup must preserve the transaction failure
                     logger.warning("chat_message_attachment_cleanup_failed")
-            if _idempotency_cache_key and _pending_value:
+            if _possible_lease_key and _possible_lease_value:
                 try:
                     if commit_attempted:
                         # Compare-and-renew only our still-live lease. If commit
                         # acknowledgement was lost, this blocks immediate retries
                         # for one bounded TTL without claiming durable idempotency.
                         await _change_idempotency_slot(
-                            _idempotency_cache_key, _pending_value, _pending_value
+                            _possible_lease_key,
+                            _possible_lease_value,
+                            _possible_lease_value,
                         )
                     else:
                         await _change_idempotency_slot(
-                            _idempotency_cache_key, _pending_value
+                            _possible_lease_key, _possible_lease_value
                         )
                 except Exception:  # RZ-22-01-JUSTIFIED: cache cleanup must preserve the transaction failure
                     logger.warning("chat_message_idempotency_cleanup_failed")
@@ -674,7 +759,11 @@ class ChatMessageDispatcher:
                     await _change_idempotency_slot(
                         _idempotency_cache_key, _pending_value
                     )
-            except (RedisConnectionError, RedisTimeoutError, OSError):
+            except _REDIS_AUTH_ERRORS:
+                raise
+            except (RedisConnectionError, RedisTimeoutError, OSError) as cache_error:
+                if _redis_security_error(cache_error):
+                    raise
                 # A committed receipt replays even if completion remains pending.
                 logger.warning("chat_message_idempotency_completion_failed")
 
