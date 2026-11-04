@@ -270,3 +270,87 @@ def test_plain_trivyignore_no_longer_globally_suppresses_scoped_spire_rules() ->
     }
 
     assert not plain & {"KSV-0012", "KSV-0023", "KSV-0047", "KSV-0017"}
+
+
+# AUD-245 every KSV exception is exact-path scoped (ADR-047 addendum 2026-11-04) -
+
+
+_AUD245_KSV_EXPIRY = "2027-01-10"
+_AUD245_GLOB_CHARACTERS = frozenset("*?[]")
+
+
+def _aud245_ksv_entries() -> list[dict[str, Any]]:
+    policy = yaml.safe_load(
+        (REPOSITORY_ROOT / ".trivyignore.yaml").read_text(encoding="utf-8")
+    )
+    entries: list[dict[str, Any]] = policy["misconfigurations"]
+    return [entry for entry in entries if str(entry["id"]).startswith("KSV-")]
+
+
+def _aud245_ignored(rule: str, target: str) -> bool:
+    """Model Trivy's exact-path matching for the policy entries (no globs)."""
+    return any(
+        entry["id"] == rule and target in entry["paths"]
+        for entry in _aud245_ksv_entries()
+    )
+
+
+def test_every_ksv_exception_is_path_scoped_with_reason_and_expiry() -> None:
+    entries = _aud245_ksv_entries()
+    assert entries, "KSV exceptions must be path-scoped, not removed silently"
+    for entry in entries:
+        assert set(entry) == {"id", "paths", "expired_at", "statement"}, entry["id"]
+        paths = entry["paths"]
+        assert isinstance(paths, list) and paths, f"{entry['id']} has no paths"
+        for path in paths:
+            assert not _AUD245_GLOB_CHARACTERS & set(path), f"{entry['id']}: {path}"
+            assert (REPOSITORY_ROOT / path).is_file(), f"{entry['id']}: stale {path}"
+        assert str(entry["statement"]).strip(), entry["id"]
+
+        assert str(entry["expired_at"]) == _AUD245_KSV_EXPIRY, entry["id"]
+
+
+def test_ksv_policy_has_no_global_or_plain_format_entries() -> None:
+    plain = {
+        line.strip()
+        for line in (REPOSITORY_ROOT / ".trivyignore")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+
+    assert not {line for line in plain if line.startswith("KSV-")}
+    assert {str(entry["id"]) for entry in _aud245_ksv_entries()} == {
+        "KSV-0012",
+        "KSV-0104",
+        "KSV-0023",
+        "KSV-0001",
+        "KSV-0118",
+        "KSV-0014",
+        "KSV-0047",
+        "KSV-0009",
+        "KSV-0010",
+        "KSV-0008",
+        "KSV-0024",
+    }
+
+
+def test_ksv_exceptions_do_not_match_manifests_outside_their_scope() -> None:
+    # Probe: a manifest outside the scoped paths that triggers the same rule
+    # (the AUD-245 local probe copied the SPIRE agent and a kyverno fixture to
+    # paths outside the scope; Trivy reported KSV-0009, KSV-0010, KSV-0014 and
+    # KSV-0118 there). Positive controls must still match.
+    outside_spire = "k8s/spire-elsewhere/spire-agent-probe.yaml"
+    outside_kyverno = "k8s/kyverno/tests/probe-outside/flagd-probe.yaml"
+
+    for rule in ("KSV-0009", "KSV-0010"):
+        assert _aud245_ignored(rule, "k8s/spire/spire-agent.yaml")
+        assert not _aud245_ignored(rule, outside_spire)
+    for rule in ("KSV-0014", "KSV-0118"):
+        assert not _aud245_ignored(rule, outside_kyverno)
+        assert not _aud245_ignored(rule, outside_spire)
+    assert _aud245_ignored(
+        "KSV-0014",
+        "k8s/kyverno/tests/restrict-image-registries/flagd-pod.yaml",
+    )
+    assert not _aud245_ignored("KSV-0047", "k8s/spire/spire-agent.yaml")

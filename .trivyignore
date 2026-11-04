@@ -3,13 +3,6 @@
 # here: each needs an owner and an expiry in .trivyignore.yaml, and CI reads that
 # file. The filesystem gate reports unfixed CVEs (TRIVY_IGNORE_UNFIXED=false); only exact
 # dispositions in .trivyignore.yaml suppress them. Misconfiguration rules live in the YAML file.
-
-# Accepted SPIRE daemonset node-attestation & architectural rules
-# SPIRE agent/server require hostNetwork, hostPID, root filesystem access, privileged container capabilities,
-# and node proxy privileges by design for node attestation and SPIFFE workload identity issuing.
-KSV-0104
-KSV-0001
-KSV-0118
-KSV-0014
-KSV-0009
-KSV-0010
+#
+# AUD-245: no KSV rule is kept here. Every KSV misconfiguration exception is path-scoped
+# in .trivyignore.yaml with a reason and an expiry (ADR-047 addendum, 2026-11-04).

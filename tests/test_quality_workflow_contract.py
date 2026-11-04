@@ -1447,8 +1447,8 @@ def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
         [fixture_path],
     ]
     assert [str(entry["expired_at"]) for entry in scoped_fixture_entries] == [
-        "2026-11-22",
-        "2026-11-22",
+        "2027-01-10",
+        "2027-01-10",
     ]
     assert all(
         set(entry) == {"id", "paths", "expired_at", "statement"}

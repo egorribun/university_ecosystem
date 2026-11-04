@@ -68,12 +68,13 @@ class TrivyFixtureValidatorTests(unittest.TestCase):
     def test_exact_source_policy_and_report_pass(self) -> None:
         self.validate()
 
-    def test_expiry_must_be_live_and_within_30_days(self) -> None:
+    def test_expiry_must_be_live_and_within_90_days(self) -> None:
         validator.validate_expiry(date(2026, 10, 23))
+        validator.validate_expiry(date(2026, 10, 12))
         with self.assertRaisesRegex(validator.ValidationError, "expired"):
-            validator.validate_expiry(date(2026, 11, 22))
-        with self.assertRaisesRegex(validator.ValidationError, "30 days"):
-            validator.validate_expiry(date(2026, 10, 22))
+            validator.validate_expiry(date(2027, 1, 10))
+        with self.assertRaisesRegex(validator.ValidationError, "90 days"):
+            validator.validate_expiry(date(2026, 10, 11))
 
     def test_malformed_json_fails(self) -> None:
         self.report.write_text("{not-json", encoding="utf-8")

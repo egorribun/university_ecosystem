@@ -20,16 +20,21 @@ EXPECTED_FIXTURE_SHA256 = (
     "866376024f7d68dc94ffa11e3ad010f5edbcd610af7f61342c46f33b7400cd45"
 )
 EXPECTED_IGNORE_POLICY_SHA256 = (
-    "38cc6ca323ecaa67acf97557ba47451858ba9611a6ff2eca7e4b0d945b87a165"
+    "6f245662816c8e99877d2d8b36567b6bfcffaeb479b4b3310ef5cb519499bf02"
 )
-EXPECTED_IGNORE_EXPIRY = date(2026, 11, 22)
-MAX_IGNORE_DAYS = 30
+# Owner decision 2026-11-04: every path-scoped KSV exception expires 2027-01-10.
+EXPECTED_IGNORE_EXPIRY = date(2027, 1, 10)
+MAX_IGNORE_DAYS = 90
 EXPECTED_REPORT_TARGET = "host-access.yaml"
 
-# These are the only existing global ignore identities that occur in this
-# fixture's unfiltered report. The policy-file digest below binds their exact
-# unchanged baseline entries as well as the two proposed path-scoped entries.
-EXISTING_GLOBAL_IGNORE_IDS = frozenset({"KSV-0009", "KSV-0010", "KSV-0014", "KSV-0118"})
+# These are the only KSV identities that occur in this fixture's unfiltered
+# report and that the policy suppresses at the fixture path. AUD-245 (2026-11-04)
+# scoped them from global entries to exact paths that include this fixture. The
+# policy-file digest below binds those path-scoped entries and the KSV-0008 and
+# KSV-0024 fixture entries.
+EXISTING_FIXTURE_SCOPED_IGNORE_IDS = frozenset(
+    {"KSV-0009", "KSV-0010", "KSV-0014", "KSV-0118"}
+)
 
 Finding = tuple[str, str, int, int]
 
@@ -215,7 +220,7 @@ def validate_report(report_path: Path) -> None:
     residual = Counter(
         finding
         for finding in raw.elements()
-        if finding[0] not in EXISTING_GLOBAL_IGNORE_IDS
+        if finding[0] not in EXISTING_FIXTURE_SCOPED_IGNORE_IDS
     )
     if residual != EXPECTED_RESIDUAL_FINDINGS:
         raise ValidationError(

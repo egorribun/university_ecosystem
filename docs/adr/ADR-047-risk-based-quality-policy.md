@@ -1829,3 +1829,35 @@ OpenPGP packages into a separate vulnerable module; this is not a repair to
 OpenPGP. The Caddy graph must not reintroduce that separate module. Module
 verification, readonly build and final-source vulnerability scanning remain
 required before acceptance.
+
+## Addendum 2026-11-04: AUD-245 path-scoped KSV misconfiguration exceptions
+
+Owner decision (2026-11-04): every KSV misconfiguration exception in `.trivyignore.yaml` is scoped to the exact manifests it applies to, with a reason and an expiry of 2027-01-10. Rules that no longer fire are removed. The plain `.trivyignore` carries no KSV rule. Changes are tighten-only: no identity was added and no path was widened.
+
+Trivy ignore entries match file paths only; Trivy 0.75.0 has no resource-level field for misconfiguration entries. Paths are exact file paths, with no globs.
+
+Evidence: `aquasec/trivy:0.75.0` (the CI version) ran `trivy config --config security/trivy-university-config.yaml --skip-dirs charts/revocation-store,charts/university-ecosystem,charts/redis-compat` on the repository with no ignore file, to map where each rule fires. The local-only `mutants/` and `frontend/node_modules/` trees are excluded.
+
+| Rule | Gate severity | Before | After (exact paths in `.trivyignore.yaml`) | Expiry |
+| --- | --- | --- | --- | --- |
+| KSV-0001 | MEDIUM | global (YAML and plain) | scoped to 19 Kyverno negative-test fixtures; plain entry removed | 2027-01-10 |
+| KSV-0104 | MEDIUM | global (YAML) | scoped to 19 Kyverno negative-test fixtures | 2027-01-10 |
+| KSV-0014 | HIGH | global (YAML and plain) | scoped to 19 Kyverno negative-test fixtures; plain entry removed | 2027-01-10 |
+| KSV-0118 | HIGH | global (YAML and plain) | scoped to 18 Kyverno negative-test fixtures; plain entry removed | 2027-01-10 |
+| KSV-0009 | HIGH | global (YAML and plain) | scoped to `k8s/spire/spire-agent.yaml` and two Kyverno fixtures (`disallow-host-access/host-access.yaml`, `ephemeral-container-subresource/resources.yaml`); plain entry removed | 2027-01-10 |
+| KSV-0010 | HIGH | global (YAML and plain) | scoped to `k8s/spire/spire-agent.yaml` and `disallow-host-access/host-access.yaml`; plain entry removed | 2027-01-10 |
+| KSV-0012 | MEDIUM | scoped to `k8s/spire/spire-agent.yaml` | unchanged | 2027-01-10 |
+| KSV-0023 | MEDIUM | scoped to `k8s/spire/spire-agent.yaml` | unchanged | 2027-01-10 |
+| KSV-0047 | HIGH | scoped to `k8s/spire/spire-rbac.yaml` | unchanged | 2027-01-10 |
+| KSV-0008 | HIGH | scoped to `disallow-host-access/host-access.yaml` | unchanged path; expiry extended by owner instruction (2026-11-04) | 2027-01-10 |
+| KSV-0024 | HIGH | scoped to `disallow-host-access/host-access.yaml` | unchanged path; expiry extended by owner instruction (2026-11-04) | 2027-01-10 |
+
+Reasons: the SPIRE rules (KSV-0009, KSV-0010, KSV-0012, KSV-0023, KSV-0047) cover the documented SPIRE node-agent and RBAC architecture. The Kyverno rules (KSV-0001, KSV-0014, KSV-0104, KSV-0118) cover negative-test fixtures that intentionally violate a policy so the policy is shown to fire. KSV-0017 was removed earlier because no manifest triggers it.
+
+Expiry: the owner decision of 2026-11-04 sets expiry 2027-01-10 for every path-scoped KSV entry. KSV-0008 and KSV-0024 (host-access fixture) were moved from 2026-11-22 to 2027-01-10 on the owner's direct instruction. `scripts/quality/validate_trivy_kyverno_fixture.py` now pins `EXPECTED_IGNORE_EXPIRY = 2027-01-10` and raises `MAX_IGNORE_DAYS` from 30 to 90 so the live-window check accepts that date. This is an expiry extension for those two fixture entries; it is recorded here as the owner decision.
+
+Policy digest: `scripts/quality/validate_trivy_kyverno_fixture.py` pins `EXPECTED_IGNORE_POLICY_SHA256 = 6f245662816c8e99877d2d8b36567b6bfcffaeb479b4b3310ef5cb519499bf02` (previously `38cc6ca3...`). The 1:1 detect-secrets digest-identity rebind (same path, type and category, total count unchanged) is applied in `scripts/verify_secrets_baseline.py`, `quality/security-false-positive-dispositions.json` and the live NEW constant of `tests/test_verify_secrets_baseline.py`. The historical `4eef1ee1...` snapshot constant is unchanged. The disposition record keeps its existing `expires_on` of 2026-11-22.
+
+Proof (local, Trivy 0.75.0 in Docker, container names `ue-r7-w3-*`):
+- Repository with the new policy, CRITICAL,HIGH, CI-equivalent scope: 0 unignored findings outside the local-only `frontend/node_modules` tree (the same single DS-0002 finding that the previous policy also reports there).
+- Probe (copies outside the scoped paths, same rules, with the new policy): `k8s/spire-elsewhere/spire-agent-probe.yaml` reports KSV-0009 and KSV-0010; `k8s/kyverno/tests/probe-outside/flagd-probe.yaml` reports KSV-0014 and KSV-0118. Positive controls at the scoped paths (`k8s/spire/spire-agent.yaml`, `restrict-image-registries/flagd-pod.yaml`) report nothing.
