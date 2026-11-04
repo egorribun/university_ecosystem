@@ -105,7 +105,7 @@ _REVIEWED_NIGHTLY_HUNKS = (
         "        if: ${{ steps.slack_config.outputs.configured == 'true' }}\n",
     ),
     (
-        "curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --request POST",
+        "curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --output /dev/null --request POST",
         "curl --fail-with-body --silent --show-error --request POST",
     ),
 )

@@ -1175,7 +1175,7 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --request POST \
+          curl --fail-with-body --silent --show-error --connect-timeout 10 --max-time 30 --output /dev/null --request POST \
             --header 'Content-Type: application/json' \
             --data "{\"text\":\"Nightly full quality gate failed: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" \
             "$SLACK_WEBHOOK_URL"

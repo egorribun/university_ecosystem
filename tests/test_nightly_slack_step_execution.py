@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -33,6 +34,8 @@ SEND_IF = (
     "${{ !cancelled() && steps.trusted_source.outcome == 'success' "
     "&& steps.slack_config.outputs.configured == 'true' }}"
 )
+DETECT_IF = "${{ !cancelled() && steps.trusted_source.outcome == 'success' }}"
+SECRET_ENV = {"SLACK_WEBHOOK_URL": "${{ secrets.SLACK_WEBHOOK_URL }}"}
 RUN_URL = "https://github.example.invalid/owner/repo/actions/runs/1"
 
 
@@ -76,8 +79,8 @@ class Context:
     slack_configured: str
 
 
-def _evaluate_send_condition(expression: str, context: Context) -> bool:
-    """Evaluate exactly the clauses used by the notification step's ``if``.
+def _evaluate_condition(expression: str, context: Context) -> bool:
+    """Evaluate the workflow's notification-step ``if`` clauses locally.
 
     Unknown clauses fail the test instead of being guessed, so the evaluator
     cannot silently accept a changed condition.
@@ -100,7 +103,12 @@ def _evaluate_send_condition(expression: str, context: Context) -> bool:
 @pytest.fixture
 def receiver() -> Iterator[dict[str, Any]]:
     """A loopback webhook that records each POST and answers with a status."""
-    state: dict[str, Any] = {"status": 200, "requests": []}
+    state: dict[str, Any] = {
+        "status": 200,
+        "requests": [],
+        "response_body": b"",
+        "disconnect": False,
+    }
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
@@ -113,9 +121,13 @@ def receiver() -> Iterator[dict[str, Any]]:
                     "type": self.headers.get("Content-Type"),
                 }
             )
+            if state["disconnect"]:
+                self.close_connection = True
+                return
             self.send_response(state["status"])
-            self.send_header("Content-Length", "0")
+            self.send_header("Content-Length", str(len(state["response_body"])))
             self.end_headers()
+            self.wfile.write(state["response_body"])
 
         def log_message(self, *_args: object) -> None:
             return
@@ -133,9 +145,15 @@ def receiver() -> Iterator[dict[str, Any]]:
         thread.join(timeout=5)
 
 
-def _run_detect(tmp_path: Path, webhook: str) -> str:
-    job = _notify_job()
-    detect = _step(job, DETECT_NAME)
+def _assert_loopback_webhook(webhook: str) -> None:
+    # These tests must never accept an actual webhook or make an external call.
+    if not re.fullmatch(r"http://127\.0\.0\.1:[0-9]+/hooks/loopback-receiver", webhook):
+        pytest.fail("Only the synthetic loopback webhook is permitted")
+
+
+def _run_detect(tmp_path: Path, webhook: str, detect: dict[str, Any]) -> str:
+    if webhook:
+        _assert_loopback_webhook(webhook)
     output = tmp_path / "github_output.txt"
     output.write_text("", encoding="utf-8")
     env = {
@@ -153,15 +171,18 @@ def _run_detect(tmp_path: Path, webhook: str) -> str:
         check=False,
     )
     assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == ""
+    assert completed.stderr == ""
     lines = output.read_text(encoding="utf-8").splitlines()
-    values = dict(line.split("=", 1) for line in lines if "=" in line)
-    assert set(values) == {"configured"}, lines
-    return values["configured"]
+    configured = "true" if webhook else "false"
+    assert lines == [f"configured={configured}"]
+    return configured
 
 
-def _run_send(tmp_path: Path, webhook: str) -> subprocess.CompletedProcess[str]:
-    job = _notify_job()
-    send = _step(job, SEND_NAME)
+def _run_send(
+    tmp_path: Path, webhook: str, send: dict[str, Any]
+) -> subprocess.CompletedProcess[str]:
+    _assert_loopback_webhook(webhook)
     env = {
         "PATH": os.environ.get("PATH", ""),
         "SLACK_WEBHOOK_URL": webhook,
@@ -180,52 +201,68 @@ def _run_send(tmp_path: Path, webhook: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _run_optional_notification(
+    tmp_path: Path,
+    webhook: str,
+    *,
+    cancelled: bool = False,
+    trusted_source: str = "success",
+) -> tuple[str, subprocess.CompletedProcess[str] | None]:
+    """Run each real body only when its actual workflow condition permits it.
+
+    This deliberately models only the listed clauses, not the hosted runner.
+    """
+    job = _notify_job()
+    detect = _step(job, DETECT_NAME)
+    send = _step(job, SEND_NAME)
+    configured = ""
+    context = Context(cancelled, trusted_source, configured)
+    if _evaluate_condition(detect["if"], context):
+        configured = _run_detect(tmp_path, webhook, detect)
+    context = Context(cancelled, trusted_source, configured)
+    if _evaluate_condition(send["if"], context):
+        return configured, _run_send(tmp_path, webhook, send)
+    return configured, None
+
+
 def test_send_condition_has_no_env_or_secrets_reference() -> None:
     send = _step(_notify_job(), SEND_NAME)
 
     assert send["if"] == SEND_IF
     assert "env." not in send["if"]
     assert "secrets." not in send["if"]
+    assert "--connect-timeout 10" in send["run"]
+    assert "--max-time 30" in send["run"]
 
 
-def test_unconfigured_path_records_false_and_the_send_condition_is_false(
-    tmp_path: Path,
+def test_unconfigured_path_records_false_and_does_not_attempt_send(
+    tmp_path: Path, receiver: dict[str, Any]
 ) -> None:
-    configured = _run_detect(tmp_path, webhook="")
-    decision = _evaluate_send_condition(
-        SEND_IF,
-        Context(cancelled=False, trusted_source="success", slack_configured=configured),
-    )
+    configured, completed = _run_optional_notification(tmp_path, webhook="")
 
     assert configured == "false"
-    assert decision is False
+    assert completed is None
+    assert receiver["state"]["requests"] == []
 
 
 def test_configured_path_records_true_and_delivers_a_failure_notice(
     tmp_path: Path, receiver: dict[str, Any]
 ) -> None:
-    configured = _run_detect(tmp_path, webhook=receiver["url"])
-    decision = _evaluate_send_condition(
-        SEND_IF,
-        Context(cancelled=False, trusted_source="success", slack_configured=configured),
+    configured, completed = _run_optional_notification(
+        tmp_path, webhook=receiver["url"]
     )
     assert configured == "true"
-    assert decision is True
-
-    completed = _run_send(tmp_path, webhook=receiver["url"])
+    assert completed is not None
 
     assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == ""
+    assert completed.stderr == ""
     requests = receiver["state"]["requests"]
     assert len(requests) == 1
     assert requests[0]["path"] == "/hooks/loopback-receiver"
     assert requests[0]["type"] == "application/json"
     payload = json.loads(requests[0]["body"])
-    assert payload == {
-        "text": (
-            "Nightly full quality gate failed: https://github.example.invalid/"
-            "owner/repo/actions/runs/1"
-        )
-    }
+    assert payload == {"text": f"Nightly full quality gate failed: {RUN_URL}"}
 
 
 def test_rejected_notification_fails_the_step(
@@ -233,10 +270,71 @@ def test_rejected_notification_fails_the_step(
 ) -> None:
     receiver["state"]["status"] = 500
 
-    completed = _run_send(tmp_path, webhook=receiver["url"])
+    configured, completed = _run_optional_notification(
+        tmp_path, webhook=receiver["url"]
+    )
 
+    assert configured == "true"
+    assert completed is not None
     assert completed.returncode != 0
     assert len(receiver["state"]["requests"]) == 1
+    assert receiver["url"] not in completed.stdout
+    assert receiver["url"] not in completed.stderr
+
+
+@pytest.mark.parametrize("status", [200, 400, 500])
+def test_notification_discards_reflected_response_body(
+    tmp_path: Path, receiver: dict[str, Any], status: int
+) -> None:
+    receiver["state"]["status"] = status
+    marker = "response-body-must-not-be-logged"
+    receiver["state"]["response_body"] = f"{marker} {receiver['url']}".encode()
+
+    configured, completed = _run_optional_notification(tmp_path, receiver["url"])
+
+    assert configured == "true"
+    assert completed is not None
+    assert (completed.returncode == 0) is (status == 200)
+    assert len(receiver["state"]["requests"]) == 1
+    if completed.stdout:
+        pytest.fail("The webhook response body was written to stdout")
+    if receiver["url"] in completed.stderr or marker in completed.stderr:
+        pytest.fail("The webhook response body was written to stderr")
+
+
+def test_transport_failure_does_not_echo_the_webhook(
+    tmp_path: Path, receiver: dict[str, Any]
+) -> None:
+    receiver["state"]["disconnect"] = True
+
+    configured, completed = _run_optional_notification(tmp_path, receiver["url"])
+
+    assert configured == "true"
+    assert completed is not None
+    assert completed.returncode != 0
+    assert len(receiver["state"]["requests"]) == 1
+    assert completed.stdout == ""
+    assert completed.stderr
+    if receiver["url"] in completed.stderr:
+        pytest.fail("A transport error wrote the webhook to stderr")
+
+
+@pytest.mark.parametrize(
+    ("cancelled", "trusted_source"), [(True, "success"), (False, "failure")]
+)
+def test_cancelled_or_untrusted_run_skips_detection_and_send(
+    tmp_path: Path,
+    receiver: dict[str, Any],
+    cancelled: bool,
+    trusted_source: str,
+) -> None:
+    configured, completed = _run_optional_notification(
+        tmp_path, receiver["url"], cancelled=cancelled, trusted_source=trusted_source
+    )
+
+    assert configured == ""
+    assert completed is None
+    assert receiver["state"]["requests"] == []
 
 
 @pytest.mark.parametrize(
@@ -251,16 +349,22 @@ def test_rejected_notification_fails_the_step(
     ],
 )
 def test_send_condition_truth_table(context: Context, expected: bool) -> None:
-    assert _evaluate_send_condition(SEND_IF, context) is expected
+    assert (
+        _evaluate_condition(_step(_notify_job(), SEND_NAME)["if"], context) is expected
+    )
 
 
 def test_configuration_detection_is_gated_only_on_the_trusted_source() -> None:
     job = _notify_job()
     detect = _step(job, DETECT_NAME)
+    send = _step(job, SEND_NAME)
+    trusted = [step for step in job["steps"] if step.get("id") == "trusted_source"]
 
-    assert (
-        detect["if"]
-        == "${{ !cancelled() && steps.trusted_source.outcome == 'success' }}"
-    )
+    assert len(trusted) == 1
+    assert job["steps"].index(trusted[0]) < job["steps"].index(detect)
+    assert job["steps"].index(detect) < job["steps"].index(send)
+    assert detect["if"] == DETECT_IF
+    assert detect["id"] == "slack_config"
     assert "continue-on-error" not in detect
-    assert "env" in detect and set(detect["env"]) == {"SLACK_WEBHOOK_URL"}
+    assert detect["env"] == SECRET_ENV
+    assert send["env"] == SECRET_ENV

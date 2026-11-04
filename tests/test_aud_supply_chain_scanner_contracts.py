@@ -148,7 +148,7 @@ def test_configured_slack_delivery_remains_fail_closed() -> None:
     assert "continue-on-error" not in send
     assert (
         "curl --fail-with-body --silent --show-error --connect-timeout 10 "
-        "--max-time 30 --request POST"
+        "--max-time 30 --output /dev/null --request POST"
     ) in send["run"]
     assert '"$SLACK_WEBHOOK_URL"' in send["run"]
     assert "|| true" not in send["run"]
