@@ -95,6 +95,25 @@ def test_upgrade_requires_postgresql_and_executes_nothing_elsewhere(
     assert op.executed == []
 
 
+def test_upgrade_omits_the_redundant_attempt_keyed_delivery_constraint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AUD-272: the attempt-timestamp UNIQUE is absent; the claim ledger is the guard."""
+    module = _load_baseline()
+    op = _Op(_Bind("postgresql", pg_cron_available=False))
+    monkeypatch.setattr(module, "op", op)
+
+    module.upgrade()
+
+    executed = "\n".join(op.executed)
+    assert "ADD CONSTRAINT uq_notification_delivery_once UNIQUE" not in executed
+    assert "public.uq_notification_delivery_once ATTACH PARTITION" not in executed
+    assert "uq_notification_delivery_once_claim UNIQUE NULLS NOT DISTINCT" in executed
+    assert not any(
+        "public.notification_deliveries" in s and " UNIQUE " in s for s in op.executed
+    )
+
+
 def test_upgrade_creates_the_restored_and_delivery_once_objects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -398,6 +417,58 @@ _PROOF_PARTITION_SUFFIXES = (
     "default",
 )
 
+# Owner decision, 2026-11-04 (AUD-272), recorded independently of the equivalence module:
+# the redundant attempt-keyed UNIQUE on notification_deliveries and its 26 partition
+# constraints and attachments disappear from the pre-squash side of the proof.
+_PROOF_DELIVERY_ONCE_REMOVED_PARTITIONS = (
+    ("2026_05", "notification_deliveries_2026__notification_id_channel_subsc_key"),
+    ("2026_06", "notification_deliveries_2026__notification_id_channel_subs_key1"),
+    ("2026_07", "notification_deliveries_2026__notification_id_channel_subs_key2"),
+    ("2026_08", "notification_deliveries_2026__notification_id_channel_subs_key3"),
+    ("2026_09", "notification_deliveries_2026__notification_id_channel_subs_key4"),
+    ("2026_10", "notification_deliveries_2026__notification_id_channel_subs_key5"),
+    ("2026_11", "notification_deliveries_2026__notification_id_channel_subs_key6"),
+    ("2026_12", "notification_deliveries_2026__notification_id_channel_subs_key7"),
+    ("2027_01", "notification_deliveries_2027__notification_id_channel_subsc_key"),
+    ("2027_02", "notification_deliveries_2027__notification_id_channel_subs_key1"),
+    ("2027_03", "notification_deliveries_2027__notification_id_channel_subs_key2"),
+    ("2027_04", "notification_deliveries_2027__notification_id_channel_subs_key3"),
+    ("2027_05", "notification_deliveries_2027__notification_id_channel_subs_key4"),
+    ("2027_06", "notification_deliveries_2027__notification_id_channel_subs_key5"),
+    ("2027_07", "notification_deliveries_2027__notification_id_channel_subs_key6"),
+    ("2027_08", "notification_deliveries_2027__notification_id_channel_subs_key7"),
+    ("2027_09", "notification_deliveries_2027__notification_id_channel_subs_key8"),
+    ("2027_10", "notification_deliveries_2027__notification_id_channel_subs_key9"),
+    ("2027_11", "notification_deliveries_2027_notification_id_channel_subs_key10"),
+    ("2027_12", "notification_deliveries_2027_notification_id_channel_subs_key11"),
+    ("2028_01", "notification_deliveries_2028__notification_id_channel_subsc_key"),
+    ("2028_02", "notification_deliveries_2028__notification_id_channel_subs_key1"),
+    ("2028_03", "notification_deliveries_2028__notification_id_channel_subs_key2"),
+    ("2028_04", "notification_deliveries_2028__notification_id_channel_subs_key3"),
+    ("2028_05", "notification_deliveries_2028__notification_id_channel_subs_key4"),
+    ("default", "notification_deliveries_defau_notification_id_channel_subsc_key"),
+)
+_PROOF_DELIVERY_ONCE_REMOVED_STATEMENTS = (
+    "ALTER TABLE ONLY public.notification_deliveries\n"
+    "    ADD CONSTRAINT uq_notification_delivery_once UNIQUE (notification_id, "
+    "channel, subscription_id, attempted_at)",
+    *(
+        statement
+        for suffix, child in _PROOF_DELIVERY_ONCE_REMOVED_PARTITIONS
+        for statement in (
+            f"ALTER TABLE ONLY public.notification_deliveries_{suffix}\n"
+            f"    ADD CONSTRAINT {child} UNIQUE (notification_id, channel, "
+            "subscription_id, attempted_at)",
+            "ALTER INDEX public.uq_notification_delivery_once ATTACH PARTITION "
+            f"public.{child}",
+        )
+    ),
+)
+_PROOF_DELIVERY_ONCE_REMOVED_ROWS = tuple(
+    repr((child, "uq_notification_delivery_once", None))
+    for _suffix, child in _PROOF_DELIVERY_ONCE_REMOVED_PARTITIONS
+)
+
 
 def _proof_statement_inputs() -> tuple[list[str], list[str]]:
     additions = [*_PROOF_CLAIM_STATEMENTS, *_PROOF_PARENT_INDEXES]
@@ -421,6 +492,7 @@ def _proof_statement_inputs() -> tuple[list[str], list[str]]:
         _PROOF_RETAINED_STATEMENT,
         _PROOF_REMOVED_INDEX,
         _PROOF_MESSAGES_STATEMENT_BEFORE,
+        *_PROOF_DELIVERY_ONCE_REMOVED_STATEMENTS,
     ]
     after = [
         _PROOF_RETAINED_STATEMENT,
@@ -616,6 +688,7 @@ def _proof_catalog_inputs() -> tuple[dict[str, list[str]], dict[str, list[str]]]
     before: dict[str, list[str]] = {name: [] for name in schema_proof.CATALOG_PROBES}
     before["relations"] = [repr(("users", "r", True, True, False, "p", "d", ""))]
     before["policies"] = [_PROOF_MESSAGES_ROW_BEFORE]
+    before["partition_bounds"] = list(_PROOF_DELIVERY_ONCE_REMOVED_ROWS)
     after = deepcopy(before)
     after["policies"] = [_PROOF_MESSAGES_ROW_AFTER]
     after["relations"].append(

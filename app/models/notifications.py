@@ -211,22 +211,15 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
             ondelete="CASCADE",
         ),
         Index("ix_notification_deliveries_notif_channel", "notification_id", "channel"),
-        # DEBT-03: Dedup index for fast duplicate detection.
-        # On PostgreSQL (partitioned table) this is non-unique; deduplication
-        # is enforced at the application layer via INSERT ... ON CONFLICT DO NOTHING.
-        # On SQLite (CI) the UniqueConstraint below enforces the invariant in tests.
+        # DEBT-03: Dedup index for fast duplicate detection. It is non-unique on
+        # every dialect. Delivery-once is enforced by NotificationDeliveryOnce
+        # (AUD-272), keyed on (notification_id, subscription_id, channel), not by
+        # a constraint that includes attempted_at.
         Index(
             "ix_notification_deliveries_dedup",
             "notification_id",
             "channel",
             "subscription_id",
-        ),
-        UniqueConstraint(
-            "notification_id",
-            "channel",
-            "subscription_id",
-            "attempted_at",
-            name="uq_notification_delivery_once",
         ),
         {"postgresql_partition_by": "RANGE (attempted_at)"},
     )

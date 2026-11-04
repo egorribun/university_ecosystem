@@ -4,7 +4,8 @@ The pre-squash chain (``alembic/`` and ``app/`` at commit 3ff5375fb, extracted w
 ``git archive`` and never checked out) and the baseline revision run against two
 PostgreSQL databases. Only the statements and catalog rows listed below may differ,
 compared exactly: the AUD-269 restored indexes, the AUD-272 claim ledger, the partition
-children of the restored index, and the owner-decided removal of ``ix_users_email_lower``.
+children of the restored index, the owner-decided removal of ``ix_users_email_lower``, and
+the AUD-272 removal of the redundant ``uq_notification_delivery_once`` constraint.
 Statements are compared after collapsing unquoted layout, since ``pg_dump`` wraps
 long statements; quoted values and function bodies remain byte-sensitive. Other catalog facts that ``pg_dump`` omits must be identical, and
 ``alembic_version`` is the only other allowed difference. The baseline is then
@@ -208,12 +209,64 @@ APPROVED_ADDED_STATEMENTS: Final = (
     ),
     _MESSAGES_PARTICIPANT_STATEMENT_AFTER,
 )
+# Owner decision, 2026-11-04 (approved in chat), AUD-272: the redundant
+# uq_notification_delivery_once UNIQUE (notification_id, channel, subscription_id,
+# attempted_at) constraint is removed from notification_deliveries. Delivery-once is
+# enforced by the claim ledger keyed on (notification_id, subscription_id, channel).
+# PostgreSQL built the constraint on the parent and on each partition (suffix, generated
+# child constraint name) and attached each child index to the parent index. Those are the
+# only statements that disappear for this change, in the pre-squash dump form.
+_DELIVERY_ONCE_REMOVED_PARTITIONS: Final = (
+    ("2026_05", "notification_deliveries_2026__notification_id_channel_subsc_key"),
+    ("2026_06", "notification_deliveries_2026__notification_id_channel_subs_key1"),
+    ("2026_07", "notification_deliveries_2026__notification_id_channel_subs_key2"),
+    ("2026_08", "notification_deliveries_2026__notification_id_channel_subs_key3"),
+    ("2026_09", "notification_deliveries_2026__notification_id_channel_subs_key4"),
+    ("2026_10", "notification_deliveries_2026__notification_id_channel_subs_key5"),
+    ("2026_11", "notification_deliveries_2026__notification_id_channel_subs_key6"),
+    ("2026_12", "notification_deliveries_2026__notification_id_channel_subs_key7"),
+    ("2027_01", "notification_deliveries_2027__notification_id_channel_subsc_key"),
+    ("2027_02", "notification_deliveries_2027__notification_id_channel_subs_key1"),
+    ("2027_03", "notification_deliveries_2027__notification_id_channel_subs_key2"),
+    ("2027_04", "notification_deliveries_2027__notification_id_channel_subs_key3"),
+    ("2027_05", "notification_deliveries_2027__notification_id_channel_subs_key4"),
+    ("2027_06", "notification_deliveries_2027__notification_id_channel_subs_key5"),
+    ("2027_07", "notification_deliveries_2027__notification_id_channel_subs_key6"),
+    ("2027_08", "notification_deliveries_2027__notification_id_channel_subs_key7"),
+    ("2027_09", "notification_deliveries_2027__notification_id_channel_subs_key8"),
+    ("2027_10", "notification_deliveries_2027__notification_id_channel_subs_key9"),
+    ("2027_11", "notification_deliveries_2027_notification_id_channel_subs_key10"),
+    ("2027_12", "notification_deliveries_2027_notification_id_channel_subs_key11"),
+    ("2028_01", "notification_deliveries_2028__notification_id_channel_subsc_key"),
+    ("2028_02", "notification_deliveries_2028__notification_id_channel_subs_key1"),
+    ("2028_03", "notification_deliveries_2028__notification_id_channel_subs_key2"),
+    ("2028_04", "notification_deliveries_2028__notification_id_channel_subs_key3"),
+    ("2028_05", "notification_deliveries_2028__notification_id_channel_subs_key4"),
+    ("default", "notification_deliveries_defau_notification_id_channel_subsc_key"),
+)
+_DELIVERY_ONCE_REMOVED_STATEMENTS: Final = (
+    "ALTER TABLE ONLY public.notification_deliveries\n"
+    "    ADD CONSTRAINT uq_notification_delivery_once UNIQUE (notification_id, "
+    "channel, subscription_id, attempted_at)",
+    *(
+        statement
+        for suffix, child in _DELIVERY_ONCE_REMOVED_PARTITIONS
+        for statement in (
+            f"ALTER TABLE ONLY public.notification_deliveries_{suffix}\n"
+            f"    ADD CONSTRAINT {child} UNIQUE (notification_id, channel, "
+            "subscription_id, attempted_at)",
+            "ALTER INDEX public.uq_notification_delivery_once ATTACH PARTITION "
+            f"public.{child}",
+        )
+    ),
+)
 # Owner decision: keep exactly one unique lower(email) index. The pre-squash
 # ix_users_email_lower is dropped; the restored ux_users_lower_email replaces it.
 APPROVED_REMOVED_STATEMENTS: Final = (
     "CREATE UNIQUE INDEX ix_users_email_lower ON public.users USING btree "
     "(lower((email)::text))",
     _MESSAGES_PARTICIPANT_STATEMENT_BEFORE,
+    *_DELIVERY_ONCE_REMOVED_STATEMENTS,
 )
 
 _DELIVERY_ONCE_RELATION: Final = (
@@ -265,9 +318,14 @@ APPROVED_CATALOG_ADDITIONS: Final[Mapping[str, tuple[str, ...]]] = {
     ),
 }
 
-# Catalog rows the replacement above removes. Only this one fact may disappear.
+# Catalog rows the replacement above removes, and the AUD-272 constraint removal.
+# The constraint's index inheritance rows disappear from pg_inherits as well.
 APPROVED_CATALOG_REMOVALS: Final[Mapping[str, tuple[str, ...]]] = {
     "policies": (_MESSAGES_PARTICIPANT_ROW_BEFORE,),
+    "partition_bounds": tuple(
+        repr((child, "uq_notification_delivery_once", None))
+        for _suffix, child in _DELIVERY_ONCE_REMOVED_PARTITIONS
+    ),
 }
 
 CATALOG_PROBES: dict[str, str] = {

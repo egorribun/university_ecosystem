@@ -629,3 +629,103 @@ async def test_notification_pair_claims_commit_conflict_and_rollback_on_owned_po
                 }
         finally:
             await engine.dispose()
+
+
+async def test_notification_pair_ledger_is_unique_without_attempt_constraint(
+    request: pytest.FixtureRequest,
+) -> None:
+    """AUD-272: the attempt-keyed UNIQUE is gone; the claim ledger rejects a repeat pair."""
+    server = request.getfixturevalue("owned_baseline_server")
+    pair = (uuid4(), uuid4())
+    with owned.committed_baseline(server) as baseline:
+        engine = create_async_engine(
+            baseline.url.set(drivername="postgresql+asyncpg", query={}),
+            poolclass=sa.pool.NullPool,
+            connect_args={
+                "timeout": 5,
+                "command_timeout": 65,
+                "server_settings": {
+                    "lock_timeout": "10s",
+                    "statement_timeout": "60s",
+                    "idle_in_transaction_session_timeout": "60s",
+                },
+            },
+        )
+        insert_claim = sa.text(
+            "INSERT INTO notification_delivery_once "
+            "(id, notification_id, subscription_id, channel) "
+            "VALUES (:id, :notification_id, :subscription_id, 'webpush')"
+        )
+        try:
+            async with engine.connect() as connection:
+                constraints = (
+                    (
+                        await connection.execute(
+                            sa.text(
+                                "SELECT conname FROM pg_constraint "
+                                "WHERE conname LIKE 'uq_notification_delivery_once%'"
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                assert sorted(constraints) == ["uq_notification_delivery_once_claim"]
+                indexes = (
+                    (
+                        await connection.execute(
+                            sa.text(
+                                "SELECT relname FROM pg_class "
+                                "WHERE relname LIKE 'uq_notification_delivery_once%'"
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                assert "uq_notification_delivery_once" not in indexes
+
+            async with engine.begin() as connection:
+                await connection.execute(
+                    insert_claim,
+                    {
+                        "id": uuid4(),
+                        "notification_id": pair[0],
+                        "subscription_id": pair[1],
+                    },
+                )
+            async with engine.connect() as connection:
+                with pytest.raises(sa.exc.IntegrityError):
+                    await connection.execute(
+                        insert_claim,
+                        {
+                            "id": uuid4(),
+                            "notification_id": pair[0],
+                            "subscription_id": pair[1],
+                        },
+                    )
+                await connection.rollback()
+
+            # NULLS NOT DISTINCT: an anonymous (NULL subscription) pair is also once-only.
+            async with engine.begin() as connection:
+                await connection.execute(
+                    insert_claim,
+                    {
+                        "id": uuid4(),
+                        "notification_id": pair[0],
+                        "subscription_id": None,
+                    },
+                )
+            async with engine.connect() as connection:
+                with pytest.raises(sa.exc.IntegrityError):
+                    await connection.execute(
+                        insert_claim,
+                        {
+                            "id": uuid4(),
+                            "notification_id": pair[0],
+                            "subscription_id": None,
+                        },
+                    )
+                await connection.rollback()
+        finally:
+            await engine.dispose()

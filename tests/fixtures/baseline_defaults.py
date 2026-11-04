@@ -270,11 +270,6 @@ _COLUMN_REFERENCES = (
         "(chat_id, created_at DESC)"
     ),
     (
-        "ALTER TABLE ONLY public.notification_deliveries\n    ADD CONSTRAINT "
-        "uq_notification_delivery_once UNIQUE (notification_id, channel, "
-        "subscription_id, attempted_at)"
-    ),
-    (
         "CREATE INDEX ix_notification_deliveries_channel ON ONLY "
         "public.notification_deliveries USING btree (channel)"
     ),

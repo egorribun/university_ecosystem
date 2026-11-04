@@ -912,11 +912,6 @@ _CONSTRAINTS: tuple[str, ...] = (
         "    ADD CONSTRAINT mfa_email_deliveries_message_id_key UNIQUE (message_id)"
     ),
     (
-        "ALTER TABLE ONLY public.notification_deliveries\n"
-        "    ADD CONSTRAINT uq_notification_delivery_once UNIQUE (notification_id, "
-        "channel, subscription_id, attempted_at)"
-    ),
-    (
         "ALTER TABLE ONLY public.chat_read_receipts\n"
         "    ADD CONSTRAINT uq_chat_read_receipts_chat_user UNIQUE (chat_id, user_id)"
     ),

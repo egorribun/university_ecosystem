@@ -8,12 +8,17 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy import func, insert, select
+from sqlalchemy import Table, UniqueConstraint, func, insert, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.models import Notification, NotificationDeliveryOnce, PushSubscription
+from app.models import (
+    Notification,
+    NotificationDelivery,
+    NotificationDeliveryOnce,
+    PushSubscription,
+)
 from app.services import webpush as webpush_module
 from app.services.notifications import delivery as notifications_delivery
 from app.services.webpush import WebPushResult
@@ -102,6 +107,35 @@ def _stub_sender(
 
     monkeypatch.setattr(webpush_module, "_send_push_async", _send)
     return attempts
+
+
+def test_attempt_keyed_unique_constraint_is_gone_and_the_claim_ledger_keys_the_pair() -> (
+    None
+):
+    """AUD-272: delivery-once is the ledger's (notification, subscription, channel) key.
+
+    notification_deliveries keeps only its non-unique dedup index; the constraint that
+    also keyed on attempted_at no longer exists in the ORM metadata.
+    """
+    delivery_table = typing.cast(Table, NotificationDelivery.__table__)
+    delivery_constraints = {
+        constraint.name for constraint in delivery_table.constraints
+    }
+    assert "uq_notification_delivery_once" not in delivery_constraints
+
+    ledger = typing.cast(Table, NotificationDeliveryOnce.__table__)
+    unique_ledger = [
+        constraint
+        for constraint in ledger.constraints
+        if isinstance(constraint, UniqueConstraint)
+        and constraint.name == "uq_notification_delivery_once_claim"
+    ]
+    assert len(unique_ledger) == 1
+    assert [column.name for column in unique_ledger[0].columns] == [
+        "notification_id",
+        "subscription_id",
+        "channel",
+    ]
 
 
 @pytest.mark.asyncio

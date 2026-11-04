@@ -159,3 +159,36 @@ after hosted CI identified `prefer-text-field` and `prefer-bigint-over-int`
 on the baseline. Changing those types would change the approved schema. This
 permission preserves the schema and applies only to the same baseline path; it
 does not authorize any further rule exclusion, global exception or schema drift.
+
+## Addendum: AUD-272 constraint replacement and retired populated-database criteria (2026-11-04)
+
+Two owner decisions were given in chat on 2026-11-04. This addendum records them. It
+does not change the Status section above, and it is not a passing check.
+
+1. Second approved replacement in the schema-equivalence proof. The owner approved
+   the removal of the redundant `uq_notification_delivery_once UNIQUE (notification_id,
+   channel, subscription_id, attempted_at)` constraint from `notification_deliveries`.
+   It is removed from the baseline `202611020000` and from the ORM model. The
+   pre-squash chain (`3ff5375fb`) still creates it, so the equivalence proof lists
+   exactly this removal as its second approved replacement, after the
+   `messages_participant_isolation` NULLIF form approved on 2026-11-03. The removal is
+   the parent constraint, the constraint and index-attachment statements of each of the
+   26 partitions, and the 26 inherited partition-index catalog rows. No other statement
+   or catalog row is allowed to differ.
+   The AUD-272 delivery-once guarantee is the claim ledger `notification_delivery_once`,
+   keyed on `(notification_id, subscription_id, channel)` with `NULLS NOT DISTINCT`.
+   The 2026-11-03 bullet above, which describes the replacement as the only approved
+   statement and catalog removal, is superseded by this item. The baseline still adds
+   the ledger and the eight restored indexes. It no longer contains the redundant
+   attempt-keyed constraint that the pre-squash chain created.
+
+2. Populated-database criteria retired for the MVP baseline. The owner stated in chat on
+   2026-11-04 that no populated pre-squash database exists anywhere: not in production,
+   staging or with testers. The platform has never been deployed, and the baseline
+   has no upgrade path from a pre-squash database (see Consequences above). The
+   upgrade-of-populated-database criteria of AUD-275, AUD-327, AUD-348, AUD-350,
+   AUD-393 and AUD-433 are therefore retired for the MVP baseline. Closure for those
+   IDs is the removal of the defective historical code together with the
+   schema-equivalence receipt described in the Evidence section. No populated-data
+   migration test or runbook is required for them. This addendum does not change
+   their status in `docs/audits/`.
