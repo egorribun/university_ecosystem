@@ -1281,6 +1281,29 @@ jobs:
           fi
           exit $exit_code
 
+      # Caddy is intentionally outside go.work. Keep its locked build graph
+      # isolated and match the production build tags, without changing discovery
+      # or the existing workspace-wide gate above.
+      - name: Scan isolated Caddy module
+        timeout-minutes: 10
+        env:
+          GOWORK: "off"
+          GOTOOLCHAIN: local
+          GOFLAGS: "-mod=readonly"
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$(mktemp "${RUNNER_TEMP%/}/caddy-govulncheck.XXXXXXXX")"
+          trap 'rm -f -- "$report"' EXIT
+          scanner_status=0
+          govulncheck -C services/caddy -format=json -mode=source -scan=symbol \
+            -tags=nobadger,nomysql,nopgx ./... > "$report" || scanner_status=$?
+          python3 -m scripts.quality.check_caddy_govulncheck \
+            --report "$report" --scanner-status "$scanner_status"
+
 
   # ── SBOM generation ────────────────────────────────────────────────────────
   sbom:
