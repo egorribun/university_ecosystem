@@ -7,6 +7,7 @@ import typer
 from sqlalchemy import and_, select
 
 from app.auth.security import get_password_hash
+from app.core.config import settings
 from app.core.database import async_session
 from app.models import ActiveSession, InviteCode, User
 from app.services.session_cleanup import revoke_sessions_matching
@@ -69,8 +70,11 @@ def create_admin(
                     "Error: Password required for new account.", fg=typer.colors.RED
                 )
                 raise typer.Exit(1)
+            # AUD-360: an operator-created account belongs to the configured MVP
+            # tenant; an unowned row would be invisible to every tenant session.
             admin = User(
                 email=email,
+                tenant_id=settings.mvp_tenant_id,
                 hashed_password=await get_password_hash(password),
                 profile=UserProfile(full_name=full_name, status="active"),
                 role="admin",

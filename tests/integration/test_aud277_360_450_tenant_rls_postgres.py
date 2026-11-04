@@ -46,6 +46,18 @@ _TENANT_B = uuid.UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
 _USER_A = uuid.UUID("11111111-1111-4111-8111-111111111111")
 _CHAT_A = uuid.UUID("22222222-2222-4222-8222-222222222222")
 _CHAT_B = uuid.UUID("33333333-3333-4333-8333-333333333333")
+# Every baseline table that carries tenant_id under forced RLS and the stamping trigger.
+_TENANT_TABLES = (
+    "chats",
+    "events",
+    "groups",
+    "messages",
+    "news",
+    "notifications",
+    "schedule",
+    "stories",
+    "users",
+)
 
 
 def _engine(url: sa.URL) -> sa.Engine:
@@ -79,7 +91,7 @@ def rls_schema(request: pytest.FixtureRequest) -> Iterator[SimpleNamespace]:
                         f'GRANT USAGE ON SCHEMA public TO "{role}"'
                     )
                     connection.exec_driver_sql(
-                        f'GRANT SELECT, INSERT, UPDATE, DELETE ON public.news, public.messages TO "{role}"'
+                        f'GRANT SELECT, INSERT, UPDATE, DELETE ON public.news, public.messages, public.notifications TO "{role}"'
                     )
                     connection.exec_driver_sql(
                         f'GRANT SELECT ON public.chat_participants TO "{role}"'
@@ -377,3 +389,95 @@ def test_messages_need_both_participation_and_the_session_tenant(
             # Participant of chat A and tenant A: only 11. Row 12 is tenant B,
             # row 13 has a NULL tenant, and row 14 belongs to chat B.
             assert _ids(connection, "messages") == {11}
+
+
+def test_every_tenant_table_forces_rls_and_stamps_unowned_inserts(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """AUD-360: each tenant-scoped table is forced under RLS and fills NULL tenants."""
+    with _rolled_back(rls_schema.ordinary) as connection:
+        rows = connection.execute(
+            sa.text(
+                "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, "
+                "EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = c.oid "
+                "AND t.tgname = 'ue_rls_assign_tenant' AND NOT t.tgisinternal "
+                "AND t.tgenabled = 'O') AS stamps "
+                "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'public' AND c.relname = ANY(:tables)"
+            ),
+            {"tables": list(_TENANT_TABLES)},
+        ).all()
+    assert {row.relname for row in rows} == set(_TENANT_TABLES)
+    assert all(
+        row.relrowsecurity and row.relforcerowsecurity and row.stamps for row in rows
+    )
+
+
+def test_notification_producer_rows_are_owned_by_the_session_tenant(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """AUD-360: a producer insert without tenant is stamped; an unscoped one is refused."""
+    notification = uuid.UUID(int=40)
+    with _rolled_back(rls_schema.ordinary) as connection:
+        with _application_context(connection, tenant=_TENANT_A):
+            connection.execute(
+                sa.text(
+                    "INSERT INTO notifications (id, user_id, title, read, created_at) "
+                    "VALUES (:id, :u, 'stamp', false, now())"
+                ),
+                {"id": notification, "u": _USER_A},
+            )
+            assert (
+                connection.execute(
+                    sa.text("SELECT tenant_id FROM notifications WHERE id = :id"),
+                    {"id": notification},
+                ).scalar()
+                == _TENANT_A
+            )
+    with _rolled_back(rls_schema.ordinary) as connection:
+        with _application_context(connection, tenant=None):
+            with pytest.raises(sa.exc.DBAPIError) as rejected:
+                with connection.begin_nested():
+                    connection.execute(
+                        sa.text(
+                            "INSERT INTO notifications (id, user_id, title, read, created_at) "
+                            "VALUES (:id, :u, 'deny', false, now())"
+                        ),
+                        {"id": uuid.UUID(int=41), "u": _USER_A},
+                    )
+            assert rejected.value.orig.sqlstate == "42501"
+
+
+def test_worker_bypass_producer_must_write_its_tenant_explicitly(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """AUD-360: under bypass no session tenant exists, so the producer's tenant_id is the owner."""
+    explicit, unowned = uuid.UUID(int=42), uuid.UUID(int=43)
+    with _rolled_back(rls_schema.bypass) as connection:
+        with _application_context(connection, tenant=None, bypass=True):
+            connection.execute(
+                sa.text(
+                    "INSERT INTO notifications (id, user_id, title, read, created_at, tenant_id) "
+                    "VALUES (:id, :u, 'owned', false, now(), :t)"
+                ),
+                {"id": explicit, "u": _USER_A, "t": _TENANT_B},
+            )
+            connection.execute(
+                sa.text(
+                    "INSERT INTO notifications (id, user_id, title, read, created_at) "
+                    "VALUES (:id, :u, 'orphan', false, now())"
+                ),
+                {"id": unowned, "u": _USER_A},
+            )
+            owners = dict(
+                connection.execute(
+                    sa.text(
+                        "SELECT id, tenant_id FROM notifications WHERE id = ANY(:ids)"
+                    ),
+                    {"ids": [explicit, unowned]},
+                ).all()
+            )
+    assert owners[explicit] == _TENANT_B
+    # Recorded residual: a bypass write without tenant_id stays unowned, and the
+    # tenant-scoped policy hides it from every tenant. Producers must write it.
+    assert owners[unowned] is None

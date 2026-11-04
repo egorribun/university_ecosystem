@@ -181,3 +181,48 @@ async def test_removal_committed_after_broadcast_starts_is_honored_before_fanout
     targets = [call.args[0] for call in manager.send_to_user.await_args_list]
     assert targets == [owner_id]
     assert events == ["prepare", "roster"]
+
+
+@pytest.mark.asyncio
+async def test_roster_read_precedes_every_room_semaphore_acquisition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AUD-454: no recipient slot is taken before the authoritative roster is read."""
+    chat_id, owner_id, peer_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    events: list[str] = []
+
+    class RecordingSemaphore:
+        async def __aenter__(self) -> None:
+            events.append("acquire")
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+    async def recording_room_semaphore(_room_key: str) -> RecordingSemaphore:
+        return RecordingSemaphore()
+
+    class Repository:
+        def __init__(self, _session: object) -> None:
+            pass
+
+        async def get_participants(self, _chat_id: uuid.UUID) -> list[uuid.UUID]:
+            events.append("roster")
+            return [owner_id, peer_id]
+
+    @asynccontextmanager
+    async def open_session() -> AsyncIterator[object]:
+        yield object()
+
+    monkeypatch.setattr(
+        connection_manager, "_get_room_semaphore", recording_room_semaphore
+    )
+    monkeypatch.setattr(connection_manager, "ChatRepository", Repository)
+    monkeypatch.setattr(nats_broker.broker, "publish_core", AsyncMock())
+    manager = connection_manager.ConnectionManager(session_factory=open_session)
+    manager.send_to_user = AsyncMock(return_value=1)
+
+    await manager.broadcast_to_chat(chat_id, {"type": "ordered"})
+
+    assert events[0] == "roster"
+    assert events[1:] == ["acquire", "acquire"]
+    assert manager.send_to_user.await_count == 2
