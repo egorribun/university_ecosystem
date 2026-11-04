@@ -568,25 +568,11 @@ async def test_database_cleanup_skips_only_allowlisted_parser_after_body_error(
     assert len(clear_calls) == expected_clear_calls
 
 
-@pytest.mark.parametrize(
-    ("relative_path", "node_name", "expected_gc_calls"),
-    [
-        *((path, name, 0) for path, name in _TARGET_CASES),
-        *((path, name, 1) for path, name in _NEAR_MISS_CASES),
-        (None, _TARGET_NAME, 1),
-        ("tests/test_verify_secrets_baseline.py", _POLICY_TEST_NAMES[0], 1),
-    ],
-)
-@pytest.mark.asyncio
-async def test_async_task_cleanup_runs_after_body_error_and_limits_gc_to_allowlist(
-    monkeypatch: pytest.MonkeyPatch,
-    relative_path: str | None,
-    node_name: str,
-    expected_gc_calls: int,
-) -> None:
-    gc_calls: list[None] = []
-    monkeypatch.setattr(gc, "collect", lambda: gc_calls.append(None))
-    request = SimpleNamespace(node=_node(relative_path=relative_path, name=node_name))
+_FULL_GC_FAKE_RSS_BASE = 1024 * 1024 * 1024
+_FULL_GC_RSS_GROWTH = 256 * 1024 * 1024
+
+
+async def _run_cleanup_fixture_with_body_error(request: SimpleNamespace) -> None:
     fixture = project_conftest.cleanup_asyncio_tasks.__wrapped__(request)
     await fixture.__anext__()
 
@@ -600,7 +586,83 @@ async def test_async_task_cleanup_runs_after_body_error_and_limits_gc_to_allowli
                 await fixture.__anext__()
 
     assert owned_task.cancelled()
-    assert len(gc_calls) == expected_gc_calls
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "node_name", "expected_collect_runs"),
+    [
+        *((path, name, ()) for path, name in _TARGET_CASES),
+        *((path, name, (50,)) for path, name in _NEAR_MISS_CASES),
+        (None, _TARGET_NAME, (50,)),
+        ("tests/test_verify_secrets_baseline.py", _POLICY_TEST_NAMES[0], (50,)),
+    ],
+)
+@pytest.mark.asyncio
+async def test_async_task_cleanup_runs_after_body_error_and_limits_gc_to_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+    relative_path: str | None,
+    node_name: str,
+    expected_collect_runs: tuple[int, ...],
+) -> None:
+    # Pin the exact amortization rule: a full collection after 50 eligible
+    # tests (RSS constant here), never for the exact parser allowlist, and
+    # task cleanup after every body error.
+    assert project_conftest._FULL_GC_TEST_INTERVAL == 50
+    assert project_conftest._FULL_GC_RSS_GROWTH_BYTES == _FULL_GC_RSS_GROWTH
+    current_run = {"number": 0}
+    collected_runs: list[int] = []
+    monkeypatch.setattr(
+        gc, "collect", lambda: collected_runs.append(current_run["number"])
+    )
+    monkeypatch.setattr(
+        project_conftest, "_FULL_GC_STATE", project_conftest._FullGcState()
+    )
+    monkeypatch.setattr(
+        project_conftest, "_resident_set_bytes", lambda: _FULL_GC_FAKE_RSS_BASE
+    )
+    request = SimpleNamespace(node=_node(relative_path=relative_path, name=node_name))
+    for run_number in range(1, 51):
+        current_run["number"] = run_number
+        await _run_cleanup_fixture_with_body_error(request)
+
+    assert tuple(collected_runs) == expected_collect_runs
+
+
+@pytest.mark.parametrize(
+    ("growth_bytes", "expected_collect_runs"),
+    [
+        (_FULL_GC_RSS_GROWTH - 1, (50,)),
+        (_FULL_GC_RSS_GROWTH, (3,)),
+    ],
+)
+@pytest.mark.asyncio
+async def test_full_gc_rss_growth_trigger_is_exact_and_resets_the_count(
+    monkeypatch: pytest.MonkeyPatch,
+    growth_bytes: int,
+    expected_collect_runs: tuple[int, ...],
+) -> None:
+    # Growth since the last full collection triggers at the exact byte bound.
+    # The first RSS growth is injected at run 3; with growth below the bound,
+    # only the 50-test bound collects.
+    rss = {"bytes": _FULL_GC_FAKE_RSS_BASE}
+    monkeypatch.setattr(project_conftest, "_resident_set_bytes", lambda: rss["bytes"])
+    monkeypatch.setattr(
+        project_conftest, "_FULL_GC_STATE", project_conftest._FullGcState()
+    )
+    current_run = {"number": 0}
+    collected_runs: list[int] = []
+    monkeypatch.setattr(
+        gc, "collect", lambda: collected_runs.append(current_run["number"])
+    )
+    relative_path, node_name = _NEAR_MISS_CASES[0]
+    request = SimpleNamespace(node=_node(relative_path=relative_path, name=node_name))
+    for run_number in range(1, 51):
+        current_run["number"] = run_number
+        if run_number == 3:
+            rss["bytes"] = _FULL_GC_FAKE_RSS_BASE + growth_bytes
+        await _run_cleanup_fixture_with_body_error(request)
+
+    assert tuple(collected_runs) == expected_collect_runs
 
 
 @pytest.mark.asyncio

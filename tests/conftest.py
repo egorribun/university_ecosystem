@@ -1070,10 +1070,51 @@ async def cleanup_asyncio_tasks(
             pass
 
     # Reclaim memory to prevent OOM-killer termination in CI. Only the exact
-    # allowlisted parser matrices avoid a full GC per parameter; task scanning
-    # and cancellation above remain unconditional.
+    # allowlisted parser matrices skip the full GC; task scanning and
+    # cancellation above remain unconditional. Other tests amortize full
+    # collections: one runs after _FULL_GC_TEST_INTERVAL tests or once the RSS
+    # has grown by _FULL_GC_RSS_GROWTH_BYTES since the previous collection.
     if not _is_pure_parser_profile_case(request.node):
-        gc.collect()
+        if _record_test_for_full_gc(_FULL_GC_STATE, _resident_set_bytes()):
+            gc.collect()
+            _mark_full_gc(_FULL_GC_STATE, _resident_set_bytes())
+
+
+# Full-collection amortization rule for cleanup_asyncio_tasks (owner decision
+# 2026-11-04): a full gc.collect() runs when either bound is reached first.
+_FULL_GC_TEST_INTERVAL = 50
+_FULL_GC_RSS_GROWTH_BYTES = 256 * 1024 * 1024
+
+
+@dataclass
+class _FullGcState:
+    tests_since_collect: int = 0
+    rss_at_collect: int | None = None
+
+
+_FULL_GC_STATE = _FullGcState()
+
+
+def _resident_set_bytes() -> int:
+    import psutil
+
+    return int(psutil.Process().memory_info().rss)
+
+
+def _record_test_for_full_gc(state: _FullGcState, rss_bytes: int) -> bool:
+    """Count one eligible test and return whether a full collection is due."""
+    if state.rss_at_collect is None:
+        state.rss_at_collect = rss_bytes
+    state.tests_since_collect += 1
+    return (
+        state.tests_since_collect >= _FULL_GC_TEST_INTERVAL
+        or rss_bytes - state.rss_at_collect >= _FULL_GC_RSS_GROWTH_BYTES
+    )
+
+
+def _mark_full_gc(state: _FullGcState, rss_bytes: int) -> None:
+    state.tests_since_collect = 0
+    state.rss_at_collect = rss_bytes
 
 
 def _is_async_test_framework_task(task: Any) -> bool:

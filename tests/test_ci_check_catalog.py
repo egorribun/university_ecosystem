@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -24,6 +25,25 @@ from scripts.quality.validate_ci_check_catalog import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+_UNCACHED_LOAD_WORKFLOW = catalog_validator._load_workflow
+# Parsed YAML is a pure function of the file bytes. Key by content so every test
+# that reads an unchanged workflow reuses one parse; each caller receives a deep
+# copy, so tests that mutate a loaded document stay isolated, and any changed
+# bytes produce a new key and a fresh parse.
+_PARSED_WORKFLOWS: dict[bytes, Any] = {}
+
+
+def _cached_load_workflow(path: Path) -> Any:
+    digest = hashlib.sha256(path.read_bytes()).digest()
+    if digest not in _PARSED_WORKFLOWS:
+        _PARSED_WORKFLOWS[digest] = _UNCACHED_LOAD_WORKFLOW(path)
+    return copy.deepcopy(_PARSED_WORKFLOWS[digest])
+
+
+@pytest.fixture(autouse=True)
+def _content_keyed_workflow_parses(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(catalog_validator, "_load_workflow", _cached_load_workflow)
 
 
 def _catalog() -> dict[str, object]:
@@ -68,7 +88,7 @@ def test_catalog_is_a_complete_current_workflow_inventory() -> None:
 def test_every_catalog_job_declares_exact_source_needs() -> None:
     value = _catalog()
     for entry in value["workflows"]:
-        workflow = yaml.safe_load((ROOT / entry["path"]).read_text(encoding="utf-8"))
+        workflow = _cached_load_workflow(ROOT / entry["path"])
         for job_id, job in entry["jobs"].items():
             source_needs = workflow["jobs"][job_id].get("needs", [])
             expected = [source_needs] if isinstance(source_needs, str) else source_needs
@@ -119,7 +139,7 @@ def test_source_job_needs_drift_is_rejected(tmp_path: Path) -> None:
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     source["jobs"]["go-fuzz"]["needs"] = ["pre-commit-check", "ci-diagnostic"]
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
 
@@ -141,7 +161,7 @@ def test_invalid_source_needs_edges_fail_closed(
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     source["jobs"]["go-fuzz"]["needs"] = new_needs
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
@@ -172,7 +192,7 @@ def test_undeclared_or_dynamic_needs_expression_fails_closed(
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     job = source["jobs"]["go-fuzz"]
     job["if"] = f"${{{{ {reference} == 'success' }}}}"
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
@@ -192,7 +212,7 @@ def test_quoted_expression_delimiter_does_not_hide_needs_reference(
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     job = source["jobs"]["go-fuzz"]
     job["if"] = (
         f"${{{{ contains('{literal}', 'x') && needs.no-such-job.result == 'success' }}}}"
@@ -211,7 +231,7 @@ def test_nested_needs_key_expression_is_validated(tmp_path: Path) -> None:
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     source["jobs"]["go-fuzz"]["steps"][0]["with"]["needs"] = (
         "${{ needs.no-such-job.result }}"
     )
@@ -225,7 +245,7 @@ def test_unterminated_actions_expression_fails_closed(tmp_path: Path) -> None:
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     source["jobs"]["go-fuzz"]["if"] = "${{ github.event_name == 'pull_request'"
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
@@ -243,7 +263,7 @@ def test_whitespace_around_needs_dot_cannot_bypass_source_validation(
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     source["jobs"]["go-fuzz"]["if"] = "${{ needs . no-such-job.result == 'success' }}"
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
     ci_catalog = next(
@@ -275,7 +295,7 @@ def test_catalog_declares_matrix_governance_for_every_source_matrix() -> None:
     catalog_by_path = {entry["path"]: entry for entry in workflows}
 
     for workflow_path in (ROOT / ".github" / "workflows").glob("*.y*ml"):
-        source = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        source = _cached_load_workflow(workflow_path)
         relative_path = workflow_path.relative_to(ROOT).as_posix()
         catalog_workflow = catalog_by_path[relative_path]
         catalog_jobs = catalog_workflow["jobs"]
@@ -856,7 +876,7 @@ def test_catalog_parses_each_source_workflow_once_per_call_and_reloads_changes(
     assert_source_workflows_loaded_once()
 
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     # Preserve the GitHub Actions trigger key after PyYAML YAML 1.1 loading.
     if True in source:
         source["on"] = source.pop(True)
@@ -1016,7 +1036,7 @@ def test_real_retry_alongside_reviewed_node_still_violates_none_policy(
     value = _catalog()
     workflow_dir = _source_repo(tmp_path, value)
     ci_path = workflow_dir / "ci.yml"
-    source = yaml.safe_load(ci_path.read_text(encoding="utf-8"))
+    source = _cached_load_workflow(ci_path)
     job = source["jobs"]["contract-tests"]
     job["steps"].append({"name": "Additional operation", "run": retry_command})
     ci_path.write_text(yaml.safe_dump(source, sort_keys=False), encoding="utf-8")
