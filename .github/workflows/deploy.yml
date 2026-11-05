@@ -1534,7 +1534,7 @@ jobs:
               # The store init container uses shell command substitution, which
               # removes trailing LF bytes before hashing the mounted password.
               with fdopen(3, "rb") as credential_input:
-                  expected_password = b64decode(
+                  expected_credential = b64decode(
                       credential_input.read().strip(), validate=True
                   ).rstrip(b"\n")
               valid = (
@@ -1549,10 +1549,10 @@ jobs:
                   and parsed.username is not None
                   and unquote_to_bytes(parsed.username) in (b"", b"default")
                   and parsed.password is not None
-                  and bool(expected_password)
-                  and b"\0" not in expected_password
+                  and bool(expected_credential)
+                  and b"\0" not in expected_credential
                   and compare_digest(
-                      unquote_to_bytes(parsed.password), expected_password
+                      unquote_to_bytes(parsed.password), expected_credential
                   )
               )
           except (OSError, UnicodeError, ValueError):
