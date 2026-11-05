@@ -3487,6 +3487,46 @@ function global:docker { throw "private-$privateMarker" }
 $summary = @(Write-TemporalStartupDiagnostic -ComposeArgs @("-p", "owned-test") -EnvFile "synthetic")
 if ($summary -notcontains "temporal_diagnostic=unavailable") { throw "docker failure not contained" }
 if (($summary -join "`n").Contains($privateMarker)) { throw "exception text leaked" }
+
+$scannerCategory = "temporal_worker_scanner_auth=denied"
+$scannerLine = 'temporal-1 | {"level":"error","msg":"error starting workflow","error":"Request unauthorized.","logging-call-at":"service/worker/scanner/scanner.go:270","stacktrace":"PRIVATE-MARKER-DO-NOT-EMIT"}'
+$fatalLine = 'temporal-1 | {"level":"fatal","msg":"error starting scanner","error":"Request unauthorized.","logging-call-at":"service/worker/service.go:314","stacktrace":"PRIVATE-MARKER-DO-NOT-EMIT"}'
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($scannerLine, $fatalLine, $scannerLine) -LogsAvailable $true)
+if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic,$scannerCategory") { throw "scanner category or existing category order incorrect" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "scanner record leaked" }
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($fatalLine) -LogsAvailable $true)
+if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic") { throw "fatal-only classification changed" }
+$reordered = 'temporal-1 | { "logging-call-at": "github.com/temporalio/temporal/service/worker/scanner/scanner.go:270", "error": "Request unauthorized." }'
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($reordered) -LogsAvailable $true)
+if ($summary -notcontains $scannerCategory) { throw "reordered scanner fields not classified" }
+
+$negativeControls = @(
+    [PSCustomObject]@{ name = "source only in stacktrace"; lines = @('{"error":"Request unauthorized.","logging-call-at":"service/worker/service.go:314","stacktrace":"service/worker/scanner/scanner.go:270 PRIVATE-MARKER-DO-NOT-EMIT"}') }
+    [PSCustomObject]@{ name = "denial only in stacktrace"; lines = @('{"error":"different","logging-call-at":"service/worker/scanner/scanner.go:270","stacktrace":"Request unauthorized. PRIVATE-MARKER-DO-NOT-EMIT"}') }
+    [PSCustomObject]@{ name = "different line"; lines = @('{"error":"Request unauthorized.","logging-call-at":"service/worker/scanner/scanner.go:2700"}') }
+    [PSCustomObject]@{ name = "different denial"; lines = @('{"error":"Request unauthorized. extra","logging-call-at":"service/worker/scanner/scanner.go:270"}') }
+    [PSCustomObject]@{ name = "split records"; lines = @('{"error":"different","logging-call-at":"service/worker/scanner/scanner.go:270"}', '{"error":"Request unauthorized.","logging-call-at":"service/worker/service.go:314"}') }
+    [PSCustomObject]@{ name = "nested fields"; lines = @('{"nested":{"error":"Request unauthorized.","logging-call-at":"service/worker/scanner/scanner.go:270"}}') }
+    [PSCustomObject]@{ name = "malformed"; lines = @('{"error":"Request unauthorized.","logging-call-at":"service/worker/scanner/scanner.go:270" PRIVATE-MARKER-DO-NOT-EMIT') }
+)
+foreach ($control in $negativeControls) {
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines $control.lines -LogsAvailable $true)
+    if ($summary -contains $scannerCategory) { throw "scanner negative control matched: $($control.name)" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "negative control leaked" }
+}
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($scannerLine) -LogsAvailable $false)
+if ($summary -contains $scannerCategory) { throw "unavailable logs were classified" }
+
+function global:docker {
+    $global:LASTEXITCODE = 0
+    if ($args -contains "ps") { return ("a" * 64) }
+    if ($args -contains "inspect") { return "exited|false|2|false|3|none|0" }
+    if ($args -contains "logs") { return $scannerLine }
+    $global:LASTEXITCODE = 1
+}
+$summary = @(Write-TemporalStartupDiagnostic -ComposeArgs @("-p", "owned-test") -EnvFile "synthetic")
+if ($summary -notcontains $scannerCategory) { throw "scanner category missing from bounded Docker diagnostic" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "Docker scanner record leaked" }
 "synthetic diagnostic checks passed"
 """
 

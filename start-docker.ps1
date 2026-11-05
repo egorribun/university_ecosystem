@@ -145,6 +145,20 @@ function Get-TemporalDiagnosticSummary {
             }
         }
     }
+    # Match only Temporal's structured scanner record, never its stacktrace.
+    foreach ($line in $LogLines) {
+        $start = $line.IndexOf('{')
+        if ($start -lt 0) { continue }
+        try { $record = $line.Substring($start) | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+        if ($record -is [pscustomobject] -and
+            $record.'logging-call-at' -is [string] -and
+            $record.'logging-call-at' -cmatch '(^|/)service/worker/scanner/scanner\.go:270$' -and
+            $record.error -is [string] -and $record.error -ceq 'Request unauthorized.') {
+            "temporal_worker_scanner_auth=denied"
+            $found = $true
+            break
+        }
+    }
     if (-not $found) { "temporal_logs=unrecognized" }
 }
 
