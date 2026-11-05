@@ -1898,3 +1898,22 @@ record is owned by `egorribun`, reviewed on 2026-11-04 UTC and expires on
 362. The 242-identity baseline, 27 Gitleaks fingerprints and 78 required
 context/app pairs remain unchanged. These decisions do not establish passing
 scans, tests or hosted checks for any source SHA.
+
+## Addendum 2026-11-05 UTC - Gitleaks lockfile basename scope
+
+Recorded 2026-11-05 UTC. Owner `egorribun` explicitly approved tightening
+the three existing Gitleaks path expressions to `(^|/)uv[.]lock$`, `(^|/)package-lock[.]json$`
+and `(^|/)go[.]sum$`. These repository-specific expressions match only those final path components
+at any directory depth. They no longer match lookalike full paths such as
+`app/goXsum.py`. The scanner continues to extend its existing defaults. Those
+defaults can suppress other paths, including `app/notgo.sum`, and directory
+scans also prune directories whose names match an allowlist. This decision
+does not claim to eliminate those separate skips.
+
+This decision adds no scanner exclusion, fingerprint, baseline entry,
+disposition, reclassification or bypass. It preserves the 27 historical
+Gitleaks fingerprints, the 242 baseline identities, the existing finite
+disposition inventory, all 78 required context/app pairs, blocking CodeQL and
+the hooks. Any newly exposed finding remains blocking under the existing
+policy. Each published source SHA still requires its own scans, tests and
+required hosted checks. This approval establishes no passing result.

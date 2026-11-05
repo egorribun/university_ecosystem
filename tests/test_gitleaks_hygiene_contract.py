@@ -6,6 +6,7 @@ import asyncio
 import errno
 import json
 import os
+import re
 import selectors
 import shutil
 import signal
@@ -192,9 +193,49 @@ def test_gitleaks_allowlist_contains_only_existing_lockfile_paths() -> None:
     with GITLEAKS_CONFIG_PATH.open("rb") as config_file:
         allowlist = tomllib.load(config_file)["allowlist"]
 
-    assert set(allowlist["paths"]) == {"uv.lock", "package-lock.json", "go.sum"}
+    assert set(allowlist["paths"]) == {
+        "(^|/)uv[.]lock$",
+        "(^|/)package-lock[.]json$",
+        "(^|/)go[.]sum$",
+    }
     assert "files" not in allowlist
     assert "regexes" not in allowlist
+
+
+@pytest.mark.parametrize(
+    ("path", "is_lockfile"),
+    [
+        ("uv.lock", True),
+        ("nested/uv.lock", True),
+        ("frontend/package-lock.json", True),
+        ("services/gateway/go.sum", True),
+        (r"C:\workspace\services\gateway\go.sum", True),
+        ("app/uvXlock.py", False),
+        ("app/uv.lock.txt", False),
+        ("app/uv.lock/keys.py", False),
+        ("app/package-lockXjson.py", False),
+        ("app/package-lock.json.py", False),
+        ("app/package-lock.json/keys.py", False),
+        ("app/goXsum.py", False),
+        ("app/go.sum.py", False),
+        ("app/go.sum/keys.py", False),
+        ("app/notgo.sum", False),
+        (r"C:\workspace\app\goXsum.py", False),
+    ],
+)
+def test_gitleaks_allowlist_matches_only_exact_lockfile_basenames(
+    path: str, is_lockfile: bool
+) -> None:
+    """Repository path expressions must not match lookalike full paths."""
+    import tomllib
+
+    with GITLEAKS_CONFIG_PATH.open("rb") as config_file:
+        paths = tomllib.load(config_file)["allowlist"]["paths"]
+
+    # Gitleaks normalizes Windows paths to forward slashes before matching.
+    # Inherited defaults and directory traversal can still skip other paths.
+    normalized = path.replace("\\", "/")
+    assert any(re.search(pattern, normalized) for pattern in paths) is is_lockfile
 
 
 def test_gitleaks_configuration_extends_default_detection_rules() -> None:
