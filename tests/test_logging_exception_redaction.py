@@ -185,7 +185,7 @@ def test_traceback_snapshot_never_reads_source_lines_or_frame_locals(
     source = tmp_path / "exception_probe.py"
     source.write_text(
         "def fail():\n"
-        "    local_secret = 'synthetic-value'\n"
+        "    local_payload = 'synthetic-value'\n"
         "    raise ValueError('safe message')  # synthetic-value\n",
         encoding="utf-8",
     )
@@ -197,7 +197,7 @@ def test_traceback_snapshot_never_reads_source_lines_or_frame_locals(
         _, error, traceback = sys.exc_info()
         details = _safe_exception_snapshot(error, traceback, seen=set())
     assert "synthetic-value" not in json.dumps(attributes)
-    assert "local_secret" not in json.dumps(attributes)
+    assert "local_payload" not in json.dumps(attributes)
     frames = details["frames"]
     assert frames[-1] == {"file": str(source), "line": 3, "function": "fail"}
     assert all(set(frame) == {"file", "line", "function"} for frame in frames)
