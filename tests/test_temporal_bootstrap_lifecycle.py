@@ -28,7 +28,7 @@ $ErrorActionPreference = 'Stop'
 $tokens = $null; $errors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($Launcher, [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw 'candidate launcher failed to parse' }
-foreach ($name in @('ConvertTo-Base64Url', 'Assert-EnvironmentFileLeafPath')) {
+foreach ($name in @('ConvertTo-Base64Url', 'Assert-EnvironmentFileLeafPath', 'Get-TemporalDiagnosticSummary', 'Write-TemporalStartupDiagnostic')) {
     $node = $ast.Find({param($v) $v -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $v.Name -eq $name}, $true)
     if ($null -eq $node) { throw 'candidate helper not found' }
     Invoke-Expression $node.Extent.Text
@@ -39,6 +39,8 @@ $script:realExit = (Get-Item function:Exit-TemporalBootstrapLease).ScriptBlock
 $script:realMint = (Get-Item function:New-TemporalBootstrapProfile).ScriptBlock
 $script:realIdentity = (Get-Item function:Assert-TemporalBootstrapIdentity).ScriptBlock
 $script:events = [System.Collections.Generic.List[object]]::new()
+$script:diagnostics = [System.Collections.Generic.List[string]]::new()
+$script:privateMarker = 'PRIVATE-MARKER-DO-NOT-EMIT'
 $script:StateRoot = $State
 $script:ProjectRoot = $State
 $script:ComposeArgs = @('-p', 'synthetic-owner', '-f', 'synthetic-compose.yml')
@@ -141,9 +143,24 @@ function Invoke-TemporalBootstrapDockerBounded {
 }
 function docker {
     $arguments = @($args | ForEach-Object { [string]$_ })
-    if ($arguments[-1] -eq 'temporal') {
+    if ($arguments[0] -eq 'inspect') {
+        Add-Event 'docker_diagnostic_inspect' $arguments
+        $global:LASTEXITCODE = if ($Scenario -eq 'dependency_inspect_fail') { 11 } else { 0 }
+        if ($Scenario -in @('dependency_inspect_fail', 'dependency_bad_state')) { return "exited|false|2|false|3|none|0|$script:privateMarker" }
+        return 'exited|false|2|false|3|none|0'
+    } elseif ($arguments -contains 'ps') {
+        Add-Event 'docker_diagnostic_ps' $arguments
+        if ($Scenario -eq 'dependency_diagnostic_exception') { throw "private exception $script:privateMarker" }
+        $global:LASTEXITCODE = 0
+        if ($Scenario -eq 'dependency_invalid_id') { return "invalid-$script:privateMarker" }
+        return ('a' * 64)
+    } elseif ($arguments -contains 'logs') {
+        Add-Event 'docker_diagnostic_logs' $arguments
+        $global:LASTEXITCODE = if ($Scenario -eq 'dependency_logs_fail') { 12 } else { 0 }
+        return "password authentication failed $script:privateMarker"
+    } elseif ($arguments[-1] -eq 'temporal') {
         Add-Event 'docker_dependency' $arguments
-        $global:LASTEXITCODE = if ($Scenario -eq 'dependency_fail') { 8 } else { 0 }
+        $global:LASTEXITCODE = if ($Scenario -like 'dependency_*') { 8 } else { 0 }
     } elseif ($arguments[-1] -eq 'temporal-namespace-init') {
         Add-Event 'docker_create' $arguments
         $global:LASTEXITCODE = if ($Scenario -eq 'create_fail') { 9 } else { 0 }
@@ -170,10 +187,10 @@ try {
         Invoke-Expression $assignment.Extent.Text
         Invoke-Expression $prepareGuard.Extent.Text
     } else {
-        Invoke-Expression $blocks[0].Extent.Text
+        Invoke-Expression $blocks[0].Extent.Text | ForEach-Object { [void]$script:diagnostics.Add([string]$_) }
     }
 } catch { $script:failure = $true; $script:failure_reason = $_.Exception.Message }
-$payload = [PSCustomObject]@{ failed = $script:failure; reason = $script:failure_reason; events = @($script:events) } | ConvertTo-Json -Depth 6 -Compress
+$payload = [PSCustomObject]@{ failed = $script:failure; reason = $script:failure_reason; events = @($script:events); diagnostics = @($script:diagnostics) } | ConvertTo-Json -Depth 6 -Compress
 [System.IO.File]::WriteAllText($Receipt, $payload, [System.Text.UTF8Encoding]::new($false))
 """
 
@@ -256,6 +273,7 @@ class LauncherLifecycle(unittest.TestCase):
     def test_success_orders_creation_inspection_mint_start_and_wait(self):
         data = self.run_block("success")
         self.assertFalse(data["failed"], data)
+        self.assertEqual(data["diagnostics"], [])
         events = data["events"]
         names = [event["name"] for event in events]
         self.assertEqual(
@@ -323,6 +341,81 @@ class LauncherLifecycle(unittest.TestCase):
                 data = self.run_block(scenario)
                 self.assertTrue(data["failed"])
                 self.assertNotIn("enter", [e["name"] for e in data["events"]])
+                self.assertFalse(self.profile.exists())
+
+    def test_dependency_failure_reports_only_scoped_safe_diagnostic(self):
+        data = self.run_block("dependency_fail")
+        self.assertTrue(data["failed"])
+        self.assertEqual(
+            data["reason"],
+            "Temporal dependency startup failed; namespace bootstrap was not issued.",
+        )
+        names = [event["name"] for event in data["events"]]
+        self.assertEqual(
+            names,
+            [
+                "source",
+                "docker_dependency",
+                "docker_diagnostic_ps",
+                "docker_diagnostic_inspect",
+                "docker_diagnostic_logs",
+            ],
+        )
+        self.assertEqual(
+            data["diagnostics"],
+            [
+                "temporal_state=exited|false|2|false|3|none|0",
+                "temporal_signature=database_auth",
+            ],
+        )
+        expected_prefix = [
+            "compose",
+            "-p",
+            "synthetic-owner",
+            "-f",
+            "synthetic-compose.yml",
+            "--env-file",
+            "synthetic.env",
+        ]
+        self.assertEqual(
+            data["events"][names.index("docker_diagnostic_ps")]["arguments"],
+            [*expected_prefix, "ps", "--all", "-q", "temporal"],
+        )
+        self.assertEqual(
+            data["events"][names.index("docker_diagnostic_logs")]["arguments"],
+            [*expected_prefix, "logs", "--no-color", "--tail=50", "temporal"],
+        )
+        self.assertNotIn("PRIVATE-MARKER", json.dumps(data))
+        self.assertFalse(self.profile.exists())
+
+    def test_dependency_diagnostic_failures_preserve_original_failure_and_privacy(self):
+        cases = {
+            "dependency_invalid_id": ["temporal_diagnostic=container_unavailable"],
+            "dependency_diagnostic_exception": ["temporal_diagnostic=unavailable"],
+            "dependency_inspect_fail": [
+                "temporal_state=unavailable",
+                "temporal_signature=database_auth",
+            ],
+            "dependency_bad_state": [
+                "temporal_state=unavailable",
+                "temporal_signature=database_auth",
+            ],
+            "dependency_logs_fail": [
+                "temporal_state=exited|false|2|false|3|none|0",
+                "temporal_logs=unavailable",
+            ],
+        }
+        for scenario, expected in cases.items():
+            with self.subTest(scenario=scenario):
+                data = self.run_block(scenario)
+                self.assertTrue(data["failed"])
+                self.assertEqual(
+                    data["reason"],
+                    "Temporal dependency startup failed; namespace bootstrap was not issued.",
+                )
+                self.assertEqual(data["diagnostics"], expected)
+                self.assertNotIn("PRIVATE-MARKER", json.dumps(data))
+                self.assertNotIn("enter", [event["name"] for event in data["events"]])
                 self.assertFalse(self.profile.exists())
 
     def test_pre_mint_failures_scrub_and_do_not_start(self):

@@ -3419,7 +3419,10 @@ if ($inPlaceFullBootstrap) {
     Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
     Write-Status 'Starting the signed Temporal dependency closure...'
     docker compose @ComposeArgs --env-file $EnvFile up --wait --wait-timeout 300 temporal
-    if ($LASTEXITCODE -ne 0) { throw 'Temporal dependency startup failed; namespace bootstrap was not issued.' }
+    if ($LASTEXITCODE -ne 0) {
+        Write-TemporalStartupDiagnostic -ComposeArgs $ComposeArgs -EnvFile $EnvFile
+        throw 'Temporal dependency startup failed; namespace bootstrap was not issued.'
+    }
 
     $bootstrapLease = Enter-TemporalBootstrapLease -StateRoot $StateRoot
     $initializerStarted = $false

@@ -3383,10 +3383,21 @@ def test_migrations_disable_inherited_backend_runtime_healthcheck(
     assert migrations.get("healthcheck") == {"disable": True}
 
 
-def test_temporal_startup_diagnostic_is_scoped_to_full_start_failure() -> None:
+def test_temporal_startup_diagnostic_is_scoped_to_full_start_failures() -> None:
     script = _read("start-docker.ps1")
     call = "Write-TemporalStartupDiagnostic -ComposeArgs $ComposeArgs -EnvFile $EnvFile"
-    assert script.count(call) == 1
+    assert script.count(call) == 2
+    bootstrap_start = script.index("# -- Start services")
+    bootstrap_end = script.index(
+        "    $bootstrapLease = Enter-TemporalBootstrapLease", bootstrap_start
+    )
+    bootstrap_branch = script[bootstrap_start:bootstrap_end]
+    assert bootstrap_branch.index("if ($LASTEXITCODE -ne 0)") < bootstrap_branch.index(
+        call
+    )
+    assert bootstrap_branch.index(call) < bootstrap_branch.index(
+        "throw 'Temporal dependency startup failed"
+    )
     start = script.index('    Write-Status "Starting containers..."')
     end = script.index("# -- Health check loop", start)
     branch = script[start:end]
