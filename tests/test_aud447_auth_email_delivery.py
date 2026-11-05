@@ -1961,8 +1961,10 @@ async def test_aud447_active_historical_duplicates_protect_payload_without_reset
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("outcome", ["completed", "pending", "failed"])
+@pytest.mark.parametrize("stored_form", ["legacy", "protected"])
+@pytest.mark.parametrize("error_shape", ["link", "raw", "safe", "missing"])
 async def test_aud447_historical_auto_replay_protects_the_retained_row(
-    monkeypatch: pytest.MonkeyPatch, outcome: str
+    monkeypatch: pytest.MonkeyPatch, outcome: str, stored_form: str, error_shape: str
 ) -> None:
     import hashlib
 
@@ -1975,6 +1977,14 @@ async def test_aud447_historical_auto_replay_protects_the_retained_row(
     monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: secret)
     name = "app.tasks.email.send_auth_email"
     payload = {"args": ["student@example.test", link], "kwargs": {}}
+    protected = email_tasks.prepare_auth_email_payload(payload)[0]
+    stored_payload = json.dumps(payload if stored_form == "legacy" else protected)
+    historical_error = {
+        "link": f"upstream rejected {link}",
+        "raw": f"upstream rejected {marker}",
+        "safe": "Historical delivery failure",
+        "missing": None,
+    }[error_shape]
     logical_hash = hashlib.sha256(
         json.dumps({"type": name, "payload": payload}, sort_keys=True).encode()
     ).hexdigest()
@@ -1993,8 +2003,8 @@ async def test_aud447_historical_auto_replay_protects_the_retained_row(
         id=448,
         job_type=name,
         job_hash=logical_hash,
-        payload=json.dumps(payload),
-        error_message="Historical delivery failure",
+        payload=stored_payload,
+        error_message=historical_error,
         retry_count=1,
         max_retries=max_retries,
         status="pending",
@@ -2004,6 +2014,13 @@ async def test_aud447_historical_auto_replay_protects_the_retained_row(
     )
     session = _Session()
     session.jobs.append(existing)
+    persisted = {"payload": existing.payload, "error_message": existing.error_message}
+
+    async def capture_commit() -> None:
+        persisted.update(payload=existing.payload, error_message=existing.error_message)
+
+    commit = AsyncMock(side_effect=capture_commit)
+    monkeypatch.setattr(session, "commit", commit)
     ready_result = SimpleNamespace(
         scalars=lambda: SimpleNamespace(all=lambda: [existing])
     )
@@ -2020,7 +2037,7 @@ async def test_aud447_historical_auto_replay_protects_the_retained_row(
         AsyncMock(side_effect=AssertionError("unexpected broker connection")),
     )
     seeded_plaintext = marker in existing.payload
-    assert seeded_plaintext
+    assert seeded_plaintext is (stored_form == "legacy")
 
     # Exercise the real lifecycle, real ready-job query builder and real broker
     # replay handler. The session is a transport sink, not a DB transaction proof.
@@ -2075,6 +2092,28 @@ async def test_aud447_historical_auto_replay_protects_the_retained_row(
     assert stored_payload_safe, (
         "auto replay retained the synthetic marker in the historical DLQ row"
     )
+    if stored_form == "protected":
+        assert existing.payload == stored_payload
+
+    # Model the caller's commit boundary without a database. The queue does not
+    # commit; a transport double captures the row bytes only when the caller does.
+    assert persisted["payload"] == stored_payload
+    assert persisted["error_message"] == historical_error
+    commit.assert_not_awaited()
+    await session.commit()
+    commit.assert_awaited_once()
+    assert persisted["payload"] == existing.payload
+    safe_error = marker not in str(persisted["error_message"])
+    assert safe_error, "replay retained the synthetic token in the stored error"
+    if outcome == "completed":
+        expected_error = (
+            dlq_module._QUARANTINED_AUTH_PAYLOAD
+            if error_shape in ("link", "raw")
+            else historical_error
+        )
+    else:
+        expected_error = "Synthetic NATS transport failure"
+    assert persisted["error_message"] == expected_error
 
 
 @pytest.mark.asyncio

@@ -321,6 +321,11 @@ class DeadLetterQueue:
 
     async def mark_job_completed(self, job: DeadLetterJob) -> None:
         """Mark a job as successfully completed after retry."""
+        if job.job_type == _AUTH_EMAIL_JOB_TYPE and job.error_message is not None:
+            # A successful replay otherwise leaves the earlier error on the row.
+            job.error_message = _scrub_error_text(
+                job.error_message, _auth_link_tokens(job.job_type, job.payload)
+            )
         job.status = JobStatus.COMPLETED.value
         job.updated_at = datetime.now(UTC)
         await self.session.flush()
