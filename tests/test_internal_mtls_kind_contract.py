@@ -614,3 +614,135 @@ def test_script_proves_spire_installation_and_registration_from_repo_manifests()
     assert "internal_mtls_peer_authorized" in script
     assert "entry create" in script
     assert "k8s:sa:${service_account}" in script
+
+
+def _generated_proof_values() -> dict[str, Any]:
+    command = f"""set -euo pipefail
+{_shell_function("random_hex")}
+{_shell_function("random_fernet")}
+{_shell_function("write_values_file")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+LOCAL_REGISTRY_ADDRESS=127.0.0.1:32768
+IMAGE_TAG=ue-r9-aud373-0123456789ab
+RELEASE=ue
+TRUST_DOMAIN=university.ecosystem
+BACKEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-backend
+GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway
+WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub
+FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor
+write_secret_file() {{ :; }}
+openssl() {{
+  if [[ "$1" == genrsa ]]; then :; else command openssl "$@"; fi
+}}
+write_values_file
+cat "$WORK_DIR/values.yaml"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, "proof value generation failed"
+    try:
+        return yaml.safe_load(result.stdout)
+    except yaml.YAMLError:
+        raise AssertionError("generated proof values are not valid YAML") from None
+
+
+def test_generated_proof_settings_validate_real_spotify_and_totp_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from secrets import token_urlsafe
+
+    from cryptography.fernet import Fernet
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("ENVIRONMENT", "testing")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+    monkeypatch.setenv("SECRET_KEY", token_urlsafe(48))
+    from app.core.config import Settings
+    from app.core.config.mixins.mfa_settings import _parse_totp_encryption_keyring
+
+    config = _generated_proof_values()["backend"]["config"]
+    try:
+        settings = Settings(
+            _env_file=None,
+            environment="development",
+            secret_key=token_urlsafe(48),
+            spotify_token_secret=config["spotifyTokenSecret"],
+            mfa_totp_encryption_keys=config["mfaTotpEncryptionKeys"],
+            mfa_totp_active_encryption_key_id=config["mfaTotpActiveEncryptionKeyId"],
+            mfa_email_otp_hmac_keys=config["mfaEmailOtpHMACKeys"],
+            mfa_email_otp_active_hmac_key_id=config["mfaEmailOtpActiveHMACKeyId"],
+            mfa_email_delivery_keks=config["mfaEmailDeliveryKEKs"],
+            mfa_email_delivery_active_kek_id=config["mfaEmailDeliveryActiveKEKId"],
+            mfa_trusted_device_hmac_keys=config["mfaTrustedDeviceHMACKeys"],
+            mfa_trusted_device_active_hmac_key_id=config[
+                "mfaTrustedDeviceActiveHMACKeyId"
+            ],
+        )
+    except ValidationError:
+        raise AssertionError("generated proof settings failed validation") from None
+    ring = _parse_totp_encryption_keyring(settings.mfa_totp_encryption_keys)
+    totp_key = ring[settings.mfa_totp_active_encryption_key_id]
+    spotify_key = settings.spotify_token_secret
+    keys_are_independent = totp_key != spotify_key
+    assert keys_are_independent, "proof keys must be independent"
+    for key in (totp_key, spotify_key):
+        cipher = Fernet(key.encode())
+        assert cipher.decrypt(cipher.encrypt(b"proof")) == b"proof"
+    try:
+        Settings(
+            _env_file=None,
+            environment="development",
+            secret_key=token_urlsafe(48),
+            spotify_token_secret=totp_key,
+            mfa_totp_encryption_keys=config["mfaTotpEncryptionKeys"],
+            mfa_totp_active_encryption_key_id=config["mfaTotpActiveEncryptionKeyId"],
+        )
+    except ValidationError as error:
+        rejected_reuse = any(
+            "must be independent" in item["msg"]
+            for item in error.errors(include_input=False)
+        )
+    else:
+        rejected_reuse = False
+    assert rejected_reuse, "application must reject key reuse"
+    from app.auth.mfa import trusted_device
+
+    monkeypatch.setattr(trusted_device, "settings", settings)
+    trusted_keys, active_id = trusted_device._configured_keyring()
+    trusted_key_is_long_enough = len(trusted_keys[active_id]) >= 32
+    assert trusted_key_is_long_enough
+
+
+def test_generated_proof_mfa_email_keyrings_match_real_parser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from secrets import token_urlsafe
+
+    monkeypatch.setenv("ENVIRONMENT", "testing")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+    monkeypatch.setenv("SECRET_KEY", token_urlsafe(48))
+    from app.auth.mfa.email_otp import (
+        EmailOtpService,
+        MfaSecurityUnavailable,
+        _DeliveryOnlyRateLimiter,
+        _parse_key_ring,
+    )
+
+    config = _generated_proof_values()["backend"]["config"]
+    try:
+        hmac_keys = _parse_key_ring(config["mfaEmailOtpHMACKeys"])
+        delivery_keys = _parse_key_ring(config["mfaEmailDeliveryKEKs"])
+        EmailOtpService(
+            hmac_keys=hmac_keys,
+            active_hmac_key_id=config["mfaEmailOtpActiveHMACKeyId"],
+            delivery_keks=delivery_keys,
+            active_kek_id=config["mfaEmailDeliveryActiveKEKId"],
+            rate_limiter=_DeliveryOnlyRateLimiter(),
+        )
+    except MfaSecurityUnavailable:
+        raise AssertionError(
+            "generated proof MFA email keys failed validation"
+        ) from None
+    with pytest.raises(MfaSecurityUnavailable):
+        _parse_key_ring(config["mfaEmailDeliveryKEKs"] + "=")
