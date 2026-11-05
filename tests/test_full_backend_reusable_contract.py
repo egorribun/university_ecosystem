@@ -58,6 +58,24 @@ _REVIEWED_NIGHTLY_HUNKS = (
 """,
         "",
     ),
+    # AUD-347: reverse only the reviewed S3 receipt delta.
+    (
+        """          uv run pytest tests/chaos/ -v -m chaos --tb=short --junitxml="$RUNNER_TEMP/chaos-s3.xml"
+          uv run python scripts/quality/validate_chaos_s3_junit.py "$RUNNER_TEMP/chaos-s3.xml"
+
+      - name: Upload S3 chaos receipt
+        if: ${{ success() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-s3-chaos-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/chaos-s3.xml
+          if-no-files-found: error
+
+""",
+        """          uv run pytest tests/chaos/ -v -m chaos --tb=short
+
+""",
+    ),
     (
         "      - browser-matrix\n      - live-realtime-visual\n      - schemathesis-api-tests\n",
         "      - browser-matrix\n      - schemathesis-api-tests\n",

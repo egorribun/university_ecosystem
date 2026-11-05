@@ -803,7 +803,16 @@ jobs:
         run: |
           export MINIO_ACCESS_KEY="$STORAGE_S3_ACCESS_KEY_ID"
           export MINIO_SECRET_KEY="$STORAGE_S3_SECRET_ACCESS_KEY"
-          uv run pytest tests/chaos/ -v -m chaos --tb=short
+          uv run pytest tests/chaos/ -v -m chaos --tb=short --junitxml="$RUNNER_TEMP/chaos-s3.xml"
+          uv run python scripts/quality/validate_chaos_s3_junit.py "$RUNNER_TEMP/chaos-s3.xml"
+
+      - name: Upload S3 chaos receipt
+        if: ${{ success() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-s3-chaos-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/chaos-s3.xml
+          if-no-files-found: error
 
   chaos-loadtest-orchestrator:
     name: Chaos Loadtest Orchestrator

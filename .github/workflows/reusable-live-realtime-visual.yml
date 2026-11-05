@@ -60,6 +60,11 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
 
+      - name: Verify CSRF cookie observation in a browser
+        working-directory: frontend
+        timeout-minutes: 2
+        run: node --test tests/e2e-live/profile-csrf-observation.contract.test.mjs
+
       - name: Select an owned state and private visual output directory
         run: |
           set -euo pipefail

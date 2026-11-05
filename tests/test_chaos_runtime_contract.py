@@ -97,7 +97,7 @@ def test_chaos_configures_proxy_before_fail_closed_tests_and_keeps_reset_safety(
         == job["services"]["minio"]["env"]["AWS_SECRET_ACCESS_KEY"]
     )
     run_lines = tests["run"].splitlines()
-    assert len(run_lines) == 3
+    assert len(run_lines) == 4
     assert run_lines[:2] == [
         'export MINIO_ACCESS_KEY="$STORAGE_S3_ACCESS_KEY_ID"',
         'export MINIO_SECRET_KEY="$STORAGE_S3_SECRET_ACCESS_KEY"',
@@ -111,6 +111,14 @@ def test_chaos_configures_proxy_before_fail_closed_tests_and_keeps_reset_safety(
         "-m",
         "chaos",
         "--tb=short",
+        "--junitxml=$RUNNER_TEMP/chaos-s3.xml",
+    ]
+    assert shlex.split(run_lines[3]) == [
+        "uv",
+        "run",
+        "python",
+        "scripts/quality/validate_chaos_s3_junit.py",
+        "$RUNNER_TEMP/chaos-s3.xml",
     ]
     assert steps.index(configure) < steps.index(tests)
     assert tests["env"]["UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"] == "1"

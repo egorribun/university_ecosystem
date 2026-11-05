@@ -1165,6 +1165,60 @@ jobs:
           tests/test_caddy_emitted_log_redaction_docker.py
           -v --tb=short -p no:cacheprovider -rs
 
+      # The POSIX Gunicorn worker proof shares the existing required Caddy job.
+      # The unsafe positive control contains synthetic credential-shaped values;
+      # neither pytest diagnostics nor the JUnit receipt is published.
+      - name: Run Gunicorn emitted-log redaction proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          proof_root="$(mktemp -d -- "${RUNNER_TEMP:?}/aud178-449.XXXXXXXX")"
+          trap 'rm -rf -- "$proof_root"' EXIT
+          if ! uv run --frozen --no-sync pytest --noconftest \
+            tests/aud178_449_gunicorn_proof.py::test_real_gunicorn_worker_emitted_logs_exclude_reset_and_oauth_targets \
+            -n 0 -q --tb=no --show-capture=no -p no:cacheprovider \
+            --basetemp="$proof_root/pytest" --junitxml="$proof_root/receipt.xml" \
+            >/dev/null 2>&1; then
+            echo "::error::Gunicorn emitted-log proof failed" >&2
+            exit 1
+          fi
+          if ! python3 - "$proof_root/receipt.xml" >/dev/null 2>&1 <<'PY'
+          from pathlib import Path
+          import sys
+          from xml.etree import ElementTree as ET
+
+          receipt = Path(sys.argv[1])
+          if receipt.is_symlink() or not receipt.is_file() or receipt.stat().st_size > 131072:
+              raise SystemExit(1)
+          root = ET.parse(receipt).getroot()
+          if root.tag != "testsuites" or len(root) != 1:
+              raise SystemExit(1)
+          suite = root[0]
+          if suite.tag != "testsuite" or any(
+              suite.get(key) != value
+              for key, value in {
+                  "tests": "1", "failures": "0", "errors": "0", "skipped": "0"
+              }.items()
+          ):
+              raise SystemExit(1)
+          cases = list(root.iter("testcase"))
+          if len(cases) != 1 or (
+              cases[0].get("classname"), cases[0].get("name")
+          ) != (
+              "tests.aud178_449_gunicorn_proof",
+              "test_real_gunicorn_worker_emitted_logs_exclude_reset_and_oauth_targets",
+          ):
+              raise SystemExit(1)
+          if any(list(root.iter(tag)) for tag in ("failure", "error", "skipped")):
+              raise SystemExit(1)
+          PY
+          then
+            echo "::error::Gunicorn emitted-log proof receipt rejected" >&2
+            exit 1
+          fi
+          echo "Gunicorn emitted-log proof passed with no skips."
+
   # AUD-332, AUD-436 and the L4 Windows-native proofs. These run on a native Windows
   # runner so the symlink-privilege and System32 ACL-tool paths execute for
   # real rather than being skipped on the Linux lanes. Every collected test must
