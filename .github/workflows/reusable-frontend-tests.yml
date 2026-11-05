@@ -673,26 +673,22 @@ jobs:
       - name: Check differential frontend coverage
         if: ${{ github.event_name == 'pull_request' }}
         working-directory: ${{ github.workspace }}
-        shell: pwsh
+        shell: bash
         env:
           COMPARE_BRANCH: ${{ github.base_ref }}
         run: |
-          uv sync --frozen
-          if ($LASTEXITCODE -ne 0) { throw "Frontend diff coverage dependency sync failed." }
-          node --test tests/verify_frontend_diff_coverage.test.mjs
-          if ($LASTEXITCODE -ne 0) { throw "Frontend diff coverage contract tests failed." }
-          git fetch origin $env:COMPARE_BRANCH
-          if ($LASTEXITCODE -ne 0) { throw "Failed to fetch frontend diff coverage comparison branch." }
-          $normalizedLcov = Join-Path $env:RUNNER_TEMP ("frontend-diff-lcov-{0}-{1}-{2}.info" -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT, ([guid]::NewGuid().ToString("N")))
-          if (Test-Path -LiteralPath $normalizedLcov) { throw "Refusing to overwrite a pre-existing normalized LCOV path." }
-          try {
-            node scripts/quality/verify_frontend_diff_coverage.mjs --repo-root "$env:GITHUB_WORKSPACE" --base-ref "origin/$env:COMPARE_BRANCH" --output "$normalizedLcov"
-            if ($LASTEXITCODE -ne 0) { throw "Frontend diff coverage preflight failed." }
-            uv run diff-cover "$normalizedLcov" --compare-branch=origin/$env:COMPARE_BRANCH --fail-under=100
-            if ($LASTEXITCODE -ne 0) { throw "Frontend differential coverage is below 100%." }
-          } finally {
-            if (Test-Path -LiteralPath $normalizedLcov) { Remove-Item -LiteralPath $normalizedLcov -Force }
-          }
+          set -euo pipefail
+          uv sync --frozen || { echo "Frontend diff coverage dependency sync failed." >&2; exit 1; }
+          node --test tests/verify_frontend_diff_coverage.test.mjs || { echo "Frontend diff coverage contract tests failed." >&2; exit 1; }
+          git fetch origin "$COMPARE_BRANCH" || { echo "Failed to fetch frontend diff coverage comparison branch." >&2; exit 1; }
+          normalizedLcov="$RUNNER_TEMP/frontend-diff-lcov-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$(node -p 'require("node:crypto").randomUUID().replaceAll("-", "")').info"
+          if [[ -e "$normalizedLcov" ]]; then
+            echo "Refusing to overwrite a pre-existing normalized LCOV path." >&2
+            exit 1
+          fi
+          trap 'if [[ -e "$normalizedLcov" ]]; then rm -f -- "$normalizedLcov"; fi' EXIT
+          node scripts/quality/verify_frontend_diff_coverage.mjs --repo-root "$GITHUB_WORKSPACE" --base-ref "origin/$COMPARE_BRANCH" --output "$normalizedLcov" || { echo "Frontend diff coverage preflight failed." >&2; exit 1; }
+          uv run diff-cover "$normalizedLcov" "--compare-branch=origin/$COMPARE_BRANCH" --fail-under=100 || { echo "Frontend differential coverage is below 100%." >&2; exit 1; }
 
       - name: Write frontend coverage provenance
         working-directory: ${{ github.workspace }}
@@ -931,8 +927,7 @@ jobs:
         timeout-minutes: 1
         run: |
           set -euo pipefail
-          node --input-type=module <<'MAPLIBRE_INVENTORY'
-          import { execFileSync } from "node:child_process"
+          node --input-type=module -e 'import { execFileSync } from "node:child_process"
           import { createHash } from "node:crypto"
           import { constants } from "node:fs"
           import { open, realpath } from "node:fs/promises"
@@ -1169,7 +1164,7 @@ jobs:
             process.stderr.write("MAPLIBRE_BUILD_INVENTORY_REJECTED\n")
             process.exitCode = 1
           }
-          MAPLIBRE_INVENTORY
+          '
           metadata="$RUNNER_TEMP/maplibre-inventory-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_SHA.json"
           metadata_sha="$(sha256sum -- "$metadata" 2>/dev/null)" || {
             printf '%s\n' 'MAPLIBRE_METADATA_RECEIPT_REJECTED' >&2
@@ -1196,8 +1191,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --input-type=module <<'FINAL_HTML_INVENTORY'
-          import { execFileSync } from "node:child_process"
+          node --input-type=module -e 'import { execFileSync } from "node:child_process"
           import { createHash } from "node:crypto"
           import { constants } from "node:fs"
           import { lstat, open, realpath, unlink } from "node:fs/promises"
@@ -1520,7 +1514,7 @@ jobs:
             process.stderr.write("FINAL_HTML_INVENTORY_CAPTURE_REJECTED\n")
             process.exitCode = 1
           }
-          FINAL_HTML_INVENTORY
+          '
           report="$RUNNER_TEMP/final-html-inventory-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_SHA.json"
           report_sha="$(sha256sum -- "$report" 2>/dev/null)" || {
             printf '%s\n' 'FINAL_HTML_RECEIPT_REJECTED' >&2
@@ -1616,8 +1610,7 @@ jobs:
           HTML_SHA256: ${{ needs.build.outputs.html-sha256 }}
           BUILD_TREE_SHA: ${{ needs.build.outputs.tree-sha }}
         run: |
-          node --input-type=module <<'BUNDLE_RECEIPTS'
-          const ids = [
+          node --input-type=module -e 'const ids = [
             process.env.BUNDLE_ARTIFACT_ID,
             process.env.METADATA_ARTIFACT_ID,
             process.env.HTML_ARTIFACT_ID,
@@ -1638,7 +1631,7 @@ jobs:
             process.stderr.write("BUNDLE_ARTIFACT_RECEIPTS_REJECTED\n")
             process.exitCode = 1
           }
-          BUNDLE_RECEIPTS
+          '
 
       - name: Download production bundle
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

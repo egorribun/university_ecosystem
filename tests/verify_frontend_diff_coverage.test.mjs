@@ -513,7 +513,7 @@ test("CI runs the preflight before strict diff-cover and keeps provenance on raw
   assert.match(workflow, /frontend\/coverage\/coverage-final\.json/u);
   assert.match(
     workflow,
-    /finally \{[\s\S]*Remove-Item -LiteralPath \$normalizedLcov/u,
+    /trap 'if \[\[ -e "\$normalizedLcov" \]\]; then rm -f -- "\$normalizedLcov"; fi' EXIT/u,
   );
 });
 
@@ -553,24 +553,21 @@ test("checks dependency and fetch status and reserves a fresh normalized path be
   );
   assert.match(
     coverageStep,
-    /uv sync --frozen\r?\n\s+if \(\$LASTEXITCODE -ne 0\) \{ throw "Frontend diff coverage dependency sync failed\." \}/u,
+    /uv sync --frozen \|\| \{ echo "Frontend diff coverage dependency sync failed\." >&2; exit 1; \}/u,
   );
-  const fetch = workflow.indexOf("git fetch origin $env:COMPARE_BRANCH");
+  const fetch = workflow.indexOf('git fetch origin "$COMPARE_BRANCH"');
   const fetchCheck = workflow.indexOf(
-    'if ($LASTEXITCODE -ne 0) { throw "Failed to fetch frontend diff coverage comparison branch." }',
+    '|| { echo "Failed to fetch frontend diff coverage comparison branch." >&2; exit 1; }',
     fetch,
   );
-  const target = workflow.indexOf("$normalizedLcov = Join-Path", fetchCheck);
-  const guid = workflow.indexOf('[guid]::NewGuid().ToString("N")', target);
+  const target = workflow.indexOf('normalizedLcov="$RUNNER_TEMP/', fetchCheck);
+  const guid = workflow.indexOf('randomUUID().replaceAll("-", "")', target);
   const collisionCheck = workflow.indexOf(
-    'if (Test-Path -LiteralPath $normalizedLcov) { throw "Refusing to overwrite a pre-existing normalized LCOV path." }',
+    'if [[ -e "$normalizedLcov" ]]; then',
     target,
   );
-  const cleanupScope = workflow.indexOf("try {", collisionCheck);
-  const cleanup = workflow.indexOf(
-    "Remove-Item -LiteralPath $normalizedLcov -Force",
-    cleanupScope,
-  );
+  const cleanupScope = workflow.indexOf("trap '", collisionCheck);
+  const cleanup = workflow.indexOf('rm -f -- "$normalizedLcov"', cleanupScope);
   assert.notEqual(fetch, -1);
   assert.ok(fetchCheck > fetch);
   assert.ok(target > fetchCheck);

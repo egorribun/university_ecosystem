@@ -234,10 +234,12 @@ test("final inventory hashes both final documents and actual UTF-8 root bytes", 
     }
     const changed = basicHtml.replace("Привет</body>", "Другой</body>")
     await writeFile(path.join(item.clientDir, "index.html"), changed)
+    const originalDigest = digest(basicHtml)
+    const changedDigest = digest(changed)
     const different = receipt(inspect(item))
     assert.equal(different.documentsMatch, false)
-    assert.equal(different.documents[0].sha256, digest(basicHtml))
-    assert.equal(different.documents[1].sha256, digest(changed))
+    assert.equal(different.documents[0].sha256, originalDigest)
+    assert.equal(different.documents[1].sha256, changedDigest)
   })
 })
 
@@ -316,12 +318,16 @@ test("HTML root classification does not execute inline JavaScript", async () => 
 })
 
 test("AST edges exclude strings and comments while computed imports stay incomplete", async () => {
-  const source = [
-    'const text = "import(\\"https://example.invalid/' + privateCanary + '\\")";',
-    '// import("/assets/fake-A.js")',
-    'import("/assets/index-A.js");',
-    "import(globalThis.hiddenPath);",
-  ].join("\n")
+  const source =
+    'const text = "import(\\"https://example.invalid/' +
+    privateCanary +
+    '\\")";' +
+    "\n" +
+    '// import("/assets/fake-A.js")' +
+    "\n" +
+    'import("/assets/index-A.js");' +
+    "\n" +
+    "import(globalThis.hiddenPath);"
   await withFixture(
     async (item) => {
       const value = receipt(inspect(item))
@@ -357,12 +363,13 @@ test("repeated root occurrences retain computed-import counts per document", asy
     await writeFile(path.join(item.clientDir, "_shell.html"), shellHtml)
     await writeFile(path.join(item.clientDir, "index.html"), indexHtml)
 
+    const expectedDocumentHashes = [digest(shellHtml), digest(indexHtml)]
     const normalized = inspect(item)
     const value = receipt(normalized)
     assert.equal(value.documentsMatch, false)
     assert.deepEqual(
       value.documents.map((document) => document.sha256),
-      [digest(shellHtml), digest(indexHtml)]
+      expectedDocumentHashes
     )
     assert.deepEqual(
       normalized.documents.map((document) => document.roots.map((root) => root.scriptIndex)),
@@ -465,8 +472,9 @@ const rejectedCases = [
   [
     "html-symlink",
     async (item) => {
+      const htmlBytes = Buffer.from(basicHtml, "utf8")
       const target = path.join(item.root, privateCanary + ".html")
-      await writeFile(target, basicHtml)
+      await writeFile(target, htmlBytes)
       await rm(path.join(item.clientDir, "index.html"))
       await symlink(target, path.join(item.clientDir, "index.html"))
     },
@@ -518,13 +526,15 @@ const rejectedCases = [
     "too-many-roots",
     async (item) => {
       const tag = '<script type="module" src="/assets/index-A.js"></script>'
+      const htmlAtLimit = Buffer.from(tag.repeat(128), "utf8")
+      const htmlOverLimit = Buffer.from(tag.repeat(129), "utf8")
       const document = path.join(item.clientDir, "index.html")
-      await writeFile(document, tag.repeat(128))
+      await writeFile(document, htmlAtLimit)
       const control = receipt(inspect(item))
       assert.equal(control.documents[0].roots.length, 1)
       assert.equal(control.documents[1].roots.length, 128)
       assert.equal(control.documents[1].complete, true)
-      await writeFile(document, tag.repeat(129))
+      await writeFile(document, htmlOverLimit)
     },
   ],
   ["ast-node-cap", (item) => setHtml(item, "<script>" + "0;".repeat(60_000) + "</script>")],
@@ -648,20 +658,23 @@ function captureStep(workflow, name) {
 async function captureProgram() {
   const workflow = await readFile(captureWorkflowUrl, "utf8")
   const step = captureStep(workflow, captureStepName)
-  const opening = "          node --input-type=module <<'FINAL_HTML_INVENTORY'\n"
-  const closing = "          FINAL_HTML_INVENTORY"
+  const opening = "          node --input-type=module -e '"
+  const closing = "\n          '\n"
+  assert.equal(step.split(opening).length, 2)
   const start = step.indexOf(opening)
   const end = step.indexOf(closing, start + opening.length)
   assert.ok(start >= 0 && end > start)
-  return step
-    .slice(start + opening.length, end)
-    .split("\n")
-    .filter((line) => line !== "")
-    .map((line) => {
-      assert.ok(line.startsWith("          "))
-      return line.slice(10)
-    })
-    .join("\n")
+  return (
+    step
+      .slice(start + opening.length, end)
+      .split("\n")
+      .map((line, index) => {
+        if (index === 0 || line === "") return line
+        assert.ok(line.startsWith("          "))
+        return line.slice(10)
+      })
+      .join("\n") + "\n"
+  )
 }
 
 async function captureFixture() {

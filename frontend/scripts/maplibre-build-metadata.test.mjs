@@ -277,6 +277,26 @@ const inventoryStepName = "      - name: Report bounded MapLibre build inventory
 const inventoryPrefix = "MAPLIBRE_BUILD_INVENTORY "
 const privateCanary = "PRIVATE_MAP_INVENTORY_CANARY"
 
+function inlineNodeProgram(step) {
+  const opening = "          node --input-type=module -e '"
+  const closing = "\n          '\n"
+  assert.equal(step.split(opening).length, 2)
+  const start = step.indexOf(opening) + opening.length
+  const end = step.indexOf(closing, start)
+  assert.ok(end > start)
+  return (
+    step
+      .slice(start, end)
+      .split("\n")
+      .map((line, index) => {
+        if (index === 0 || line === "") return line
+        assert.ok(line.startsWith("          "))
+        return line.slice(10)
+      })
+      .join("\n") + "\n"
+  )
+}
+
 async function diagnosticProgram() {
   const workflow = await readFile(inventoryWorkflowUrl, "utf8")
   assert.equal(workflow.split(inventoryStepName).length, 2)
@@ -286,20 +306,7 @@ async function diagnosticProgram() {
   const step = workflow.slice(start, end)
   assert.match(step, /timeout-minutes: 1/u)
   assert.doesNotMatch(step, /continue-on-error|permissions:/u)
-  const opening = "          node --input-type=module <<'MAPLIBRE_INVENTORY'\n"
-  const closing = "          MAPLIBRE_INVENTORY"
-  const bodyStart = step.indexOf(opening)
-  const bodyEnd = step.indexOf(closing, bodyStart + opening.length)
-  assert.ok(bodyStart >= 0 && bodyEnd > bodyStart)
-  return step
-    .slice(bodyStart + opening.length, bodyEnd)
-    .split("\n")
-    .filter((line) => line !== "")
-    .map((line) => {
-      assert.ok(line.startsWith("          "))
-      return line.slice(10)
-    })
-    .join("\n")
+  return inlineNodeProgram(step)
 }
 
 async function makeDiagnosticFixture() {
@@ -1283,21 +1290,12 @@ async function makePolicyFixture(change = () => {}) {
       bundle
     )
     const workflow = await readFile(inventoryWorkflowUrl, "utf8")
-    const opening = "          node --input-type=module <<'FINAL_HTML_INVENTORY'\n"
-    const closing = "          FINAL_HTML_INVENTORY"
-    assert.equal(workflow.split(opening).length, 2)
-    const start = workflow.indexOf(opening) + opening.length
-    const end = workflow.indexOf(closing, start)
+    const stepName = "      - name: Capture bounded final HTML inventory\n"
+    assert.equal(workflow.split(stepName).length, 2)
+    const start = workflow.indexOf(stepName)
+    const end = workflow.indexOf("\n      - name:", start + stepName.length)
     assert.ok(end > start)
-    const program = workflow
-      .slice(start, end)
-      .split("\n")
-      .filter((line) => line !== "")
-      .map((line) => {
-        assert.ok(line.startsWith("          "))
-        return line.slice(10)
-      })
-      .join("\n")
+    const program = inlineNodeProgram(workflow.slice(start, end))
     const result = spawnSync(process.execPath, ["--input-type=module"], {
       cwd: frontend,
       input: program,

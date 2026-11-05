@@ -3660,8 +3660,8 @@ def _assert_maplibre_budget_artifact_transport(workflow: dict[str, object]) -> N
     }
     metadata = producers["capture-maplibre-metadata"]["run"]
     html = producers["capture-final-html-inventory"]["run"]
-    assert metadata.index("\nMAPLIBRE_INVENTORY\n") < metadata.index("metadata_sha=")
-    assert html.index("\nFINAL_HTML_INVENTORY\n") < html.index("report_sha=")
+    assert metadata.index("\n'\n") < metadata.index("metadata_sha=")
+    assert html.index("\n'\n") < html.index("report_sha=")
     assert "sha256sum --" in metadata and "sha256sum --" in html
     assert "metadata-sha256=%s" in metadata
     assert "html-sha256=%s" in html and "tree-sha=%s" in html
