@@ -802,7 +802,21 @@ def test_start_script_waits_for_the_full_stack_without_auto_removing_containers(
     selection_end = script.index("do {", selection_start)
     selection_block = script[selection_start:selection_end]
 
-    assert "--force-recreate" not in script
+    start_services = script[script.index("# -- Start services") : services_start]
+    initializer_start = start_services.index("if ($inPlaceFullBootstrap) {")
+    long_lived_start = start_services.index(
+        "\nif ($script:LiveAcceptanceCore) {", initializer_start
+    )
+    recreate_lines = [
+        line.strip() for line in script.splitlines() if "--force-recreate" in line
+    ]
+    assert recreate_lines == [
+        "docker compose @ComposeArgs --env-file $EnvFile up --no-start "
+        "--no-deps --no-build --pull never --force-recreate temporal-namespace-init"
+    ]
+    assert recreate_lines[0] in start_services[initializer_start:long_lived_start]
+    assert "--force-recreate" not in start_services[long_lived_start:]
+    assert "--remove-orphans" not in start_services
     assert "ps --all" in script
     assert (
         "logs --tail=50 migrations postgres-databases-init minio-init "

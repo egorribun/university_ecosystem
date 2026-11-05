@@ -7219,10 +7219,14 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
     temporal_root.mkdir(parents=True)
     (temporal_root / "config.yaml").write_text("global: {}\n", encoding="utf-8")
     (temporal_root / "entrypoint.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    namespace_script = repository / "scripts" / "temporal" / "namespace-init.sh"
+    namespace_script.parent.mkdir(parents=True)
+    namespace_script.write_text("#!/bin/sh\n", encoding="utf-8")
     temporary_root = tmp_path / "temp"
     temporary_root.mkdir()
     state_parent = temporary_root / "ue-live-acceptance"
     state_root = state_parent / "run-36854541120"
+    bootstrap_profile = state_root / ".temporal-bootstrap" / "profile.toml"
     resolved_sha = "a" * 40
     git_calls: list[tuple[str, ...]] = []
     commands: list[tuple[list[str], Path, dict[str, str] | None]] = []
@@ -7299,6 +7303,7 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
     def capture(
         command: list[str], *, cwd: Path, env: dict[str, str] | None = None
     ) -> None:
+        assert not bootstrap_profile.exists()
         commands.append((command, cwd, env))
 
     monkeypatch.setattr(live_stand, "_run", capture)
@@ -7361,7 +7366,28 @@ def test_in_place_up_uses_owned_temp_state_without_git_checkout(
         (state_root / ".secrets" / "temporal_api_key").as_posix(),
         (repository / "services" / "temporal" / "config.yaml").as_posix(),
         (repository / "services" / "temporal" / "entrypoint.sh").as_posix(),
+        namespace_script.as_posix(),
+        bootstrap_profile.as_posix(),
     }
+    services = yaml.safe_load(
+        state_override.replace("!override", "").replace("!reset", "")
+    )["services"]
+    mounts = services["temporal-namespace-init"]["volumes"]
+    for target, source in (
+        ("/etc/temporal/namespace-init.sh", namespace_script),
+        ("/run/temporal-bootstrap/profile.toml", bootstrap_profile),
+    ):
+        assert [mount for mount in mounts if mount["target"] == target] == [
+            {
+                "type": "bind",
+                "source": source.as_posix(),
+                "target": target,
+                "read_only": True,
+                "bind": {"create_host_path": False},
+            }
+        ]
+    assert not bootstrap_profile.exists()
+    assert namespace_script.read_text(encoding="utf-8") == "#!/bin/sh\n"
     assert not (repository / ".env").exists()
     assert not (repository / ".env.docker").exists()
     assert not (repository / ".secrets").exists()
