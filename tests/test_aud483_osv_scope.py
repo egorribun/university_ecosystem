@@ -45,21 +45,34 @@ printf '%s\n' "$@" > "$AUD_SCAN_LOG"
 output=''
 manifest=''
 config=''
+stdlib=false
 while (($#)); do
   case "$1" in
     --output|--output-file) output="$2"; shift 2 ;;
     --lockfile) manifest="$2"; shift 2 ;;
     --config) config="$2"; shift 2 ;;
+    --all-packages) stdlib=true; shift ;;
     *) shift ;;
   esac
 done
+if [[ "$AUD_MODE" == config-suppression ]]; then
+  if [[ -z "$config" ]]; then
+    # Model the pinned scanner loading the adjacent suppression and exiting clean.
+    grep -Fq 'id = "GO-2099-9999"' services/gateway/osv-scanner.toml || exit 94
+    exit 0
+  fi
+  # A configuration override must not itself contain an ignore or override.
+  [[ -f "$config" && ! -s "$config" ]] || exit 95
+  exit 1
+fi
 case "$AUD_MODE" in
   scanner-error) exit 17 ;;
   finding) exit 1 ;;
   missing-report) exit 0 ;;
   malformed-report) printf '{' > "$output"; exit 0 ;;
 esac
-if [[ -n "$config" ]]; then
+if [[ "$stdlib" == true ]]; then
+  [[ -n "$config" ]] || exit 91
   [[ "$(cat "$config")" == 'ScanGoModVersion = true' ]] || exit 92
   grep -Fqx 'go 1.26.10' "$manifest" || exit 93
   version=1.26.10
@@ -128,6 +141,10 @@ def _fixture(pytester: pytest.Pytester, mode: str) -> dict[str, str]:
     if mode == "missing-builder":
         (pytester.path / "services/gateway/Dockerfile").write_text(
             "FROM scratch\n", encoding="utf-8"
+        )
+    if mode == "config-suppression":
+        (pytester.path / "services/gateway/osv-scanner.toml").write_text(
+            '[[IgnoredVulns]]\nid = "GO-2099-9999"\n', encoding="utf-8"
         )
     scanner = pytester.path / "fake-osv-scanner"
     scanner.write_text(FAKE_SCANNER, encoding="utf-8")
@@ -224,6 +241,17 @@ def test_module_scan_preserves_the_scanner_status(
     assert result.ret == 0, result.stderr.str()
     assert (pytester.path / "github-output").read_text(encoding="utf-8").strip() == (
         f"scanner_status={status}"
+    )
+
+
+@pytest.mark.parametrize(("job", "name"), SCAN_STEPS)
+def test_module_scan_cannot_hide_findings_with_adjacent_config(
+    pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch, job: str, name: str
+) -> None:
+    result = _run(pytester, monkeypatch, job, name, "config-suppression")
+    assert result.ret == 0, result.stderr.str()
+    assert (pytester.path / "github-output").read_text(encoding="utf-8").strip() == (
+        "scanner_status=1"
     )
 
 

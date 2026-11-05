@@ -166,6 +166,8 @@ jobs:
           set -euo pipefail
           manifest_list="$(mktemp "${RUNNER_TEMP%/}/osv-go-manifests.XXXXXXXX")"
           trap 'rm -f -- "$manifest_list"' EXIT
+          config_file="$(mktemp "${RUNNER_TEMP%/}/osv-go-config.XXXXXXXX")"
+          trap 'rm -f -- "$manifest_list" "$config_file"' EXIT
           git ls-files -z -- ':(glob)services/**/go.mod' > "$manifest_list"
           mapfile -d '' -t manifests < "$manifest_list"
           if ((${#manifests[@]} == 0)); then
@@ -184,8 +186,10 @@ jobs:
           done
           set +e
           # Keep the recursive scan while requiring every tracked Go manifest to
-          # be extracted explicitly by the pinned scanner.
+          # be extracted explicitly by the pinned scanner. The empty override
+          # prevents adjacent scanner configs from suppressing findings.
           "$OSV_SCANNER_BIN" scan source --recursive --format sarif \
+            --config "$config_file" \
             "${manifest_args[@]}" \
             --output go-vuln.sarif \
             ./services/
@@ -722,6 +726,8 @@ jobs:
           set -euo pipefail
           manifest_list="$(mktemp "${RUNNER_TEMP%/}/osv-go-manifests.XXXXXXXX")"
           trap 'rm -f -- "$manifest_list"' EXIT
+          config_file="$(mktemp "${RUNNER_TEMP%/}/osv-go-config.XXXXXXXX")"
+          trap 'rm -f -- "$manifest_list" "$config_file"' EXIT
           git ls-files -z -- ':(glob)services/**/go.mod' > "$manifest_list"
           mapfile -d '' -t manifests < "$manifest_list"
           if ((${#manifests[@]} == 0)); then
@@ -740,8 +746,10 @@ jobs:
           done
           set +e
           # Keep the recursive scan while requiring every tracked Go manifest to
-          # be extracted explicitly by the pinned scanner.
+          # be extracted explicitly by the pinned scanner. The empty override
+          # prevents adjacent scanner configs from suppressing findings.
           "$OSV_SCANNER_BIN" scan source --recursive --format sarif \
+            --config "$config_file" \
             "${manifest_args[@]}" \
             --output go-vuln.sarif \
             ./services/
