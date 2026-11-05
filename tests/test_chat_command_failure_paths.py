@@ -411,6 +411,283 @@ async def test_send_message_phase1_failure_cleans_partial_uploads_and_slot(
     uow.chats.create_message.assert_not_called()
 
 
+@pytest.mark.parametrize("idempotency_key", [None, "cancelled-upload"])
+@pytest.mark.parametrize("completed_upload", [False, True])
+async def test_send_message_phase1_cancellation_cleans_partial_uploads_and_slot(
+    monkeypatch, tmp_path, idempotency_key, completed_upload
+):
+    """Cancelling the parent send cannot strand uploaded bytes or its own lease."""
+    monkeypatch.setattr(cs_module.settings, "chat_attachment_max_files", 5)
+    cache = await _patch_cache(monkeypatch)
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+
+    good_file, slow_file = MagicMock(size=10), MagicMock(size=10)
+    saved_file = tmp_path / "completed-upload.bin"
+    slow_started = asyncio.Event()
+    slow_cancelled = asyncio.Event()
+
+    async def process_upload(upload, _chat_id, *, locale):
+        if upload is good_file:
+            if not completed_upload:
+                await asyncio.Future()
+            saved_file.write_bytes(b"uploaded")
+            return {
+                "url": "/static/chat_uploads/completed-upload.bin",
+                "file_type": "file",
+                "filename": saved_file.name,
+                "size": 8,
+            }
+        slow_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            slow_cancelled.set()
+            raise
+
+    async def cleanup_files(urls):
+        assert urls == ["/static/chat_uploads/completed-upload.bin"]
+        saved_file.unlink()
+
+    attachment_service = _mock_attachment_service()
+    attachment_service.process_upload = AsyncMock(side_effect=process_upload)
+    attachment_service.cleanup_files = AsyncMock(side_effect=cleanup_files)
+    dispatcher = ChatMessageDispatcher(uow, attachment_service, MagicMock())
+    send_task = asyncio.create_task(
+        dispatcher.send_message(
+            chat.id,
+            user,
+            "with files",
+            [good_file, slow_file],
+            "en",
+            idempotency_key=idempotency_key,
+        )
+    )
+    try:
+        await asyncio.wait_for(slow_started.wait(), timeout=2)
+        assert saved_file.exists() is completed_upload
+        if idempotency_key:
+            assert len(await cache.keys("idm:msg:*")) == 1
+        send_task.cancel("cancelled during upload")
+        with pytest.raises(asyncio.CancelledError) as raised:
+            await send_task
+
+        assert raised.value.args == ("cancelled during upload",)
+        assert slow_cancelled.is_set()
+        assert not saved_file.exists()
+        assert not await cache.keys("idm:msg:*")
+        uow.chats.create_message.assert_not_called()
+        uow.commit.assert_not_awaited()
+    finally:
+        if not send_task.done():
+            send_task.cancel()
+            try:
+                await send_task
+            except asyncio.CancelledError:
+                pass
+        await cache.aclose()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "none",
+        "repeated_cancel",
+        "replacement_owner",
+        "replacement_invalid_bytes",
+        "redis_unavailable",
+        "redis_unexpected",
+        "cleanup_unexpected",
+        "cleanup_cancelled",
+        "storage_failure",
+        "storage_timeout",
+        "release_timeout",
+    ],
+)
+async def test_cancelled_upload_cleanup_finishes_before_propagating_cancellation(
+    monkeypatch, tmp_path, caplog, failure
+):
+    import app.services.chat.attachment_service as attachment_module
+
+    cache = await _patch_cache(monkeypatch)
+    uow = _mock_uow()
+    user = _mock_user()
+    chat = _mock_chat(user.id)
+    uow.chats.get_by_id = AsyncMock(return_value=chat)
+    uow.chats.check_participant = AsyncMock(return_value=True)
+    good_file, slow_file = MagicMock(size=10), MagicMock(size=10)
+    saved_file = tmp_path / "completed-upload.bin"
+    upload_started = asyncio.Event()
+    deletion_started = asyncio.Event()
+    resume_deletion = asyncio.Event()
+    resume_release = asyncio.Event()
+    deletion_finished = asyncio.Event()
+    release_finished = asyncio.Event()
+    cleanup_tasks = set()
+    deletion_tasks = set()
+    release_tasks = set()
+    private_error = "private-cleanup-error-must-not-be-logged"
+    key = cs_module._make_idempotency_key(chat.id, user.id, "cancel-boundaries")
+    if failure in {"storage_timeout", "release_timeout"}:
+        monkeypatch.setattr(
+            cs_module, "_CANCELLED_UPLOAD_CLEANUP_TIMEOUT_SECONDS", 0.02
+        )
+
+    async def process_upload(upload, _chat_id, *, locale):
+        if upload is good_file:
+            saved_file.write_bytes(b"uploaded")
+            return {
+                "url": "/static/chat_uploads/completed-upload.bin",
+                "file_type": "file",
+                "filename": saved_file.name,
+                "size": 8,
+            }
+        upload_started.set()
+        await asyncio.Future()
+
+    async def delete_file(url):
+        assert url == "/static/chat_uploads/completed-upload.bin"
+        deletion_tasks.add(asyncio.current_task())
+        deletion_started.set()
+        try:
+            if failure == "repeated_cancel":
+                await resume_deletion.wait()
+            if failure == "storage_timeout":
+                try:
+                    await resume_deletion.wait()
+                finally:
+                    # Cancellation must drain this real gather child before the
+                    # request returns or any lease release can start.
+                    await asyncio.sleep(0)
+                    assert await cache.get(key) is not None
+            if failure == "storage_failure":
+                raise OSError(private_error)
+            saved_file.unlink()
+        finally:
+            deletion_finished.set()
+
+    monkeypatch.setattr(attachment_module, "delete_static_file", delete_file)
+    attachment_service = attachment_module.ChatAttachmentService()
+    attachment_service.process_upload = AsyncMock(side_effect=process_upload)
+    real_cleanup = attachment_service.cleanup_files
+
+    async def cleanup_files(urls):
+        cleanup_tasks.add(asyncio.current_task())
+        if failure == "cleanup_unexpected":
+            raise RuntimeError(private_error)
+        if failure == "cleanup_cancelled":
+            raise asyncio.CancelledError("cleanup cancellation")
+        await real_cleanup(urls)
+
+    monkeypatch.setattr(attachment_service, "cleanup_files", cleanup_files)
+    real_change_slot = cs_module._change_idempotency_slot
+
+    async def release_slot(*args, **kwargs):
+        release_tasks.add(asyncio.current_task())
+        try:
+            if failure not in {"cleanup_unexpected", "cleanup_cancelled"}:
+                assert deletion_finished.is_set()
+            if failure == "redis_unavailable":
+                raise OSError(private_error)
+            if failure == "redis_unexpected":
+                raise RuntimeError(private_error)
+            if failure == "release_timeout":
+                await resume_release.wait()
+            return await real_change_slot(*args, **kwargs)
+        finally:
+            release_finished.set()
+
+    monkeypatch.setattr(cs_module, "_change_idempotency_slot", release_slot)
+    dispatcher = ChatMessageDispatcher(uow, attachment_service, MagicMock())
+    send_task = asyncio.create_task(
+        dispatcher.send_message(
+            chat.id,
+            user,
+            "with files",
+            [good_file, slow_file],
+            "en",
+            idempotency_key="cancel-boundaries",
+        )
+    )
+    try:
+        await asyncio.wait_for(upload_started.wait(), timeout=2)
+        assert saved_file.exists()
+        assert await cache.get(key) is not None
+        if failure == "replacement_owner":
+            await cache.set(key, "replacement-owner", ex=300)
+        elif failure == "replacement_invalid_bytes":
+            await cache.set(key, b"\xff", ex=300)
+        stored_lease = await cache.dump(key)
+
+        send_task.cancel("original cancellation")
+        if failure == "repeated_cancel":
+            await asyncio.wait_for(deletion_started.wait(), timeout=2)
+            send_task.cancel("second cancellation")
+            await asyncio.sleep(0)
+            send_task.cancel("third cancellation")
+            await asyncio.sleep(0)
+            assert not send_task.done()
+            assert not release_finished.is_set()
+            assert await cache.dump(key) == stored_lease
+            resume_deletion.set()
+        done, _ = await asyncio.wait({send_task}, timeout=2)
+        assert send_task in done, "cleanup exceeded its cooperative deadline"
+        with pytest.raises(asyncio.CancelledError) as raised:
+            await send_task
+
+        assert raised.value.args == ("original cancellation",)
+        assert send_task.cancelled()
+        assert len(cleanup_tasks) == 1
+        if failure not in {"cleanup_unexpected", "cleanup_cancelled"}:
+            assert len(deletion_tasks) == 1
+            assert deletion_started.is_set()
+            assert deletion_finished.is_set()
+        assert all(task is not None and task.done() for task in cleanup_tasks)
+        assert all(task is not None and task.done() for task in deletion_tasks)
+        assert all(task is not None and task.done() for task in release_tasks)
+        assert saved_file.exists() is (
+            failure
+            in {
+                "cleanup_unexpected",
+                "cleanup_cancelled",
+                "storage_failure",
+                "storage_timeout",
+            }
+        )
+        retained_lease = failure in {
+            "replacement_owner",
+            "replacement_invalid_bytes",
+            "redis_unavailable",
+            "redis_unexpected",
+            "storage_timeout",
+            "release_timeout",
+        }
+        assert (await cache.dump(key) is not None) is retained_lease
+        if retained_lease:
+            assert await cache.dump(key) == stored_lease
+            assert 0 < await cache.ttl(key) <= 300
+        if failure == "storage_timeout":
+            assert not release_finished.is_set()
+        else:
+            assert release_finished.is_set()
+        assert private_error not in caplog.text
+        uow.chats.create_message.assert_not_called()
+        uow.commit.assert_not_awaited()
+    finally:
+        resume_deletion.set()
+        resume_release.set()
+        if not send_task.done():
+            send_task.cancel()
+            try:
+                await send_task
+            except asyncio.CancelledError:
+                pass
+        await cache.aclose()
+
+
 # ---------------------------------------------------------------------------
 # send_message — Phase 2 (DB write) failure cleanup (L359-372)
 # ---------------------------------------------------------------------------
