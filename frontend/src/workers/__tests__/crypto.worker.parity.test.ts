@@ -10,11 +10,12 @@
 import { pbkdf2Sync, scryptSync } from "node:crypto"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
+type WasmCryptoModule = typeof import("../../../rust-crypto/pkg/uni_wasm_crypto.js")
+
 // Load the actual generated module; only its web-specific initializer is replaced.
 vi.mock("../../../rust-crypto/pkg/uni_wasm_crypto.js", async (importOriginal) => {
   const { readFileSync } = await import("node:fs")
-  const actual =
-    await importOriginal<typeof import("../../../rust-crypto/pkg/uni_wasm_crypto.js")>()
+  const actual = await importOriginal<WasmCryptoModule>()
   const wasm = readFileSync(
     new URL("../../../rust-crypto/pkg/uni_wasm_crypto_bg.wasm", import.meta.url)
   )
