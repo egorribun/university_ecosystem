@@ -16,7 +16,10 @@ from redis.asyncio.connection import SSLConnection
 from redis.exceptions import (
     AuthenticationError,
     AuthorizationError,
+    ClusterDownError,
     ExternalAuthProviderError,
+    MasterDownError,
+    ReadOnlyError,
     ResponseError,
 )
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -68,7 +71,15 @@ async def _fail_cache_at(
 
 @pytest.mark.parametrize("phase", ["client", "get", "set", "stale-clear", "renew"])
 @pytest.mark.parametrize(
-    "failure_type", [RedisConnectionError, RedisTimeoutError, OSError]
+    "failure_type",
+    [
+        RedisConnectionError,
+        RedisTimeoutError,
+        OSError,
+        ReadOnlyError,
+        MasterDownError,
+        ClusterDownError,
+    ],
 )
 async def test_transport_outage_sends_once_and_replays_real_receipt(
     db_session, user_factory, monkeypatch, phase, failure_type

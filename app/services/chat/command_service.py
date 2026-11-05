@@ -92,11 +92,25 @@ logger = get_logger(__name__)
 
 _MEMBERSHIP_CACHE_BATCH_SIZE = 128
 _MEMBERSHIP_FAST_PATH_SECONDS = 2.0
-# redis-py 8.1.0 exports this class, but its installed type stubs omit it.
+# redis-py 7.4.0 (the pyproject lower bound) defines this class; installed type stubs omit it.
 _REDIS_AUTH_ERRORS = (
     redis_errors.AuthenticationError,
     redis_errors.AuthorizationError,
     cast(Any, redis_errors).ExternalAuthProviderError,
+)
+# Failover replies (demoted replica, Sentinel/cluster master down) are ResponseError
+# subclasses. Only these named classes degrade to the receipt constraint; other
+# ResponseError replies (WRONGTYPE, syntax, NOAUTH) keep propagating.
+_REDIS_FAILOVER_ERRORS = (
+    redis_errors.ReadOnlyError,
+    redis_errors.ClusterDownError,
+    redis_errors.MasterDownError,
+)
+_REDIS_DEGRADABLE_ERRORS = (
+    RedisConnectionError,
+    RedisTimeoutError,
+    OSError,
+    *_REDIS_FAILOVER_ERRORS,
 )
 
 
@@ -365,7 +379,7 @@ class ChatMessageDispatcher:
                 _cached = await _cache.get(cache_key)
             except _REDIS_AUTH_ERRORS:
                 raise
-            except (RedisConnectionError, RedisTimeoutError, OSError) as cache_error:
+            except _REDIS_DEGRADABLE_ERRORS as cache_error:
                 if _redis_security_error(cache_error):
                     raise
                 logger.warning("chat_message_idempotency_cache_unavailable")
@@ -393,11 +407,7 @@ class ChatMessageDispatcher:
                             await _change_idempotency_slot(cache_key, cached_text)
                         except _REDIS_AUTH_ERRORS:
                             raise
-                        except (
-                            RedisConnectionError,
-                            RedisTimeoutError,
-                            OSError,
-                        ) as cache_error:
+                        except _REDIS_DEGRADABLE_ERRORS as cache_error:
                             if _redis_security_error(cache_error):
                                 raise
                             logger.warning("chat_message_idempotency_cache_unavailable")
@@ -474,7 +484,7 @@ class ChatMessageDispatcher:
                 )
             except _REDIS_AUTH_ERRORS:
                 raise
-            except (RedisConnectionError, RedisTimeoutError, OSError) as cache_error:
+            except _REDIS_DEGRADABLE_ERRORS as cache_error:
                 if _redis_security_error(cache_error):
                     raise
                 logger.warning("chat_message_idempotency_cache_unavailable")
@@ -551,7 +561,7 @@ class ChatMessageDispatcher:
                     await _change_idempotency_slot(
                         _possible_lease_key, _possible_lease_value
                     )
-                except (RedisConnectionError, RedisTimeoutError, OSError):
+                except _REDIS_DEGRADABLE_ERRORS:
                     logger.warning("chat_message_idempotency_cleanup_failed")
             raise
 
@@ -572,11 +582,7 @@ class ChatMessageDispatcher:
                     )
                 except _REDIS_AUTH_ERRORS:
                     raise
-                except (
-                    RedisConnectionError,
-                    RedisTimeoutError,
-                    OSError,
-                ) as cache_error:
+                except _REDIS_DEGRADABLE_ERRORS as cache_error:
                     if _redis_security_error(cache_error):
                         raise
                     logger.warning("chat_message_idempotency_cache_unavailable")
@@ -761,7 +767,7 @@ class ChatMessageDispatcher:
                     )
             except _REDIS_AUTH_ERRORS:
                 raise
-            except (RedisConnectionError, RedisTimeoutError, OSError) as cache_error:
+            except _REDIS_DEGRADABLE_ERRORS as cache_error:
                 if _redis_security_error(cache_error):
                     raise
                 # A committed receipt replays even if completion remains pending.
