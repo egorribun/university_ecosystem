@@ -449,6 +449,7 @@ spec:
     metadata:
       labels:
         app: ue-postgres
+        app.kubernetes.io/name: postgresql
     spec:
       automountServiceAccountToken: false
       containers:

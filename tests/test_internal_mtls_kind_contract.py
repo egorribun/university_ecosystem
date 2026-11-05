@@ -13,6 +13,7 @@ import shlex
 import shutil
 import socket
 import ssl
+import struct
 import subprocess
 import sys
 import threading
@@ -502,6 +503,26 @@ def _server_tls_context(tmp_path: Path) -> ssl.SSLContext:
     return context
 
 
+def test_tls_reset_before_an_alert_does_not_count_as_rejection() -> None:
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+
+        def reset() -> None:
+            with listener.accept()[0] as connection:
+                linger = struct.pack("hh" if os.name == "nt" else "ii", 1, 0)
+                connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger)
+
+        server = threading.Thread(target=reset)
+        server.start()
+        try:
+            assert _probe("NO_SVID_TLS_PY", "127.0.0.1", port) == "NO_SVID_TLS=ERROR"
+        finally:
+            server.join(timeout=5)
+        assert not server.is_alive()
+
+
 def test_tls_response_without_client_certificate_does_not_count_as_rejection(
     tmp_path: Path,
 ) -> None:
@@ -550,12 +571,20 @@ def test_missing_client_certificate_requires_a_specific_tls13_alert(
         server_errors: list[str | None] = []
 
         def reject_missing_certificate() -> None:
-            with listener.accept()[0] as connection:
+            # Keep the TCP socket open after OpenSSL rejects the handshake so
+            # the client can observe the alert before the server closes it.
+            with listener.accept()[0] as connection, connection.dup() as alert_socket:
                 try:
                     with context.wrap_socket(connection, server_side=True):
                         pass
                 except ssl.SSLError as error:
                     server_errors.append(error.reason)
+                alert_socket.settimeout(3)
+                try:
+                    while alert_socket.recv(4096):
+                        pass
+                except (ConnectionAbortedError, ConnectionResetError, TimeoutError):
+                    pass
 
         server = threading.Thread(target=reject_missing_certificate)
         server.start()
@@ -746,3 +775,54 @@ def test_generated_proof_mfa_email_keyrings_match_real_parser(
         ) from None
     with pytest.raises(MfaSecurityUnavailable):
         _parse_key_ring(config["mfaEmailDeliveryKEKs"] + "=")
+
+
+def test_postgres_fixture_matches_backend_egress_policy() -> None:
+    command = f"""set -euo pipefail
+{_shell_function("deploy_stack")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+ROOT_DIR=unused
+NAMESPACE=university-ecosystem
+RELEASE=ue
+BACKEND_SVC=ue-backend
+GATEWAY_SVC=ue-gateway
+read_tracked_pin() {{ printf image; }}
+write_values_file() {{ :; }}
+register_workloads() {{ :; }}
+helm() {{ :; }}
+kubectl() {{
+  case "$*" in
+    *"apply -f -"*) cat > /dev/null ;;
+    *"--dry-run=client"*) printf fixture ;;
+    *) : ;;
+  esac
+}}
+deploy_stack
+cat "$WORK_DIR/postgres.yaml"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, "failed to render the PostgreSQL fixture"
+    deployment, service = list(yaml.safe_load_all(result.stdout))
+    pod_labels = deployment["spec"]["template"]["metadata"]["labels"]
+    assert deployment["spec"]["selector"]["matchLabels"] == {"app": "ue-postgres"}
+    assert service["spec"]["selector"] == {"app": "ue-postgres"}
+
+    template = (
+        ROOT / "charts/university-ecosystem/templates/network-policy.yaml"
+    ).read_text(encoding="utf-8")
+    backend = template.split("name: {{ .Release.Name }}-backend-policy", 1)[1]
+    postgres_rule = backend.split("    # PostgreSQL.\n", 1)[1].split("    # Redis", 1)[
+        0
+    ]
+    rule = yaml.safe_load("egress:\n" + postgres_rule)["egress"][0]
+    assert {"protocol": "TCP", "port": 5432} in rule["ports"]
+    peer = rule["to"][0]["podSelector"]["matchLabels"]
+
+    def matches(labels: dict[str, str]) -> bool:
+        return all(labels.get(key) == value for key, value in peer.items())
+
+    assert matches(pod_labels), "fixture must be an allowed PostgreSQL peer"
+    assert not matches({"app": "ue-postgres"})
+    assert not matches({"app.kubernetes.io/name": "other"})
