@@ -217,11 +217,13 @@ jobs:
       - name: Run manual incremental mutmut (blocking, stats-derived budget)
         id: run_manual_incremental_mutmut
         if: steps.mutation_scope.outputs.has_python == 'true'
+        env:
+          SHARD_ID: ${{ matrix.shard }}
         run: |
           uv run python scripts/plan_mutmut_shards.py \
             --changed-files /tmp/changed_py.txt \
             --changed-diff /tmp/changed_py.diff \
-            --shard-id "${{ matrix.shard }}" \
+            --shard-id "${SHARD_ID}" \
             --num-shards 128 \
             --max-children 3 \
             --control-cycle-reserve-seconds 5 \
@@ -230,12 +232,12 @@ jobs:
             --output /tmp/mutmut-shard.txt
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
-            echo "No changed mutants assigned to manual mutation shard ${{ matrix.shard }}/128."
+            echo "No changed mutants assigned to manual mutation shard ${SHARD_ID}/128."
             echo "has_mutants=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "has_mutants=true" >> "$GITHUB_OUTPUT"
-          echo "Mutating manual shard ${{ matrix.shard }}/128: ${#MUTANT_NAMES[@]} exact mutants"
+          echo "Mutating manual shard ${SHARD_ID}/128: ${#MUTANT_NAMES[@]} exact mutants"
           MUTMUT_EVIDENCE_DIR=mutants/mutmut-exact-evidence
           mkdir -p "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_EVIDENCE_FINALIZED=false

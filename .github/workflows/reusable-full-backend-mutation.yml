@@ -958,20 +958,22 @@ jobs:
 
       - name: Plan and run exact full mutation shard
         id: run_full_mutmut
+        env:
+          SHARD_ID: ${{ matrix.shard }}
         run: |
           find app -type f -name '*.py' | sort -u > /tmp/all_py.txt
           test -s /tmp/all_py.txt
           uv run python scripts/plan_mutmut_shards.py \
             --reuse-generated-universe \
             --changed-files /tmp/all_py.txt \
-            --shard-id "${{ matrix.shard }}" \
+            --shard-id "${SHARD_ID}" \
             --num-shards 128 \
             --max-children 8 \
             --control-cycle-reserve-seconds 1 \
             --metadata-startup-reserve-seconds 120 \
             --max-timeout-seconds 20970 \
             --output /tmp/mutmut-shard.txt
-          printf -v preflight_shard_file 'shard-%02d.txt' "${{ matrix.shard }}"
+          printf -v preflight_shard_file 'shard-%02d.txt' "${SHARD_ID}"
           test -s "mutants/mutmut-full-plan/$preflight_shard_file"
           if ! cmp --silent \
             "mutants/mutmut-full-plan/$preflight_shard_file" \
@@ -981,10 +983,10 @@ jobs:
           fi
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
-            echo "No mutants assigned to full mutation shard ${{ matrix.shard }}/128."
+            echo "No mutants assigned to full mutation shard ${SHARD_ID}/128."
             exit 1
           fi
-          echo "Mutating full shard ${{ matrix.shard }}/128: ${#MUTANT_NAMES[@]} exact mutants"
+          echo "Mutating full shard ${SHARD_ID}/128: ${#MUTANT_NAMES[@]} exact mutants"
           MUTMUT_EVIDENCE_DIR=mutants/mutmut-exact-evidence
           mkdir -p "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_EVIDENCE_FINALIZED=false

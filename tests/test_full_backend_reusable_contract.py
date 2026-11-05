@@ -111,7 +111,85 @@ _REVIEWED_NIGHTLY_HUNKS = (
 )
 
 
+# AUD-380: only the exact two step-local shard environment changes are
+# normalized to the immutable v4 source. The original source and step digests
+# still cover every other byte and every original execution step.
+_REVIEWED_MUTATION_SHARD_HUNKS = {
+    "manual-mutation-evidence.yml": (
+        (
+            """      - name: Run manual incremental mutmut (blocking, stats-derived budget)
+        id: run_manual_incremental_mutmut
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        env:
+          SHARD_ID: ${{ matrix.shard }}
+        run: |
+""",
+            """      - name: Run manual incremental mutmut (blocking, stats-derived budget)
+        id: run_manual_incremental_mutmut
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        run: |
+""",
+        ),
+        (
+            '            --shard-id "${SHARD_ID}" \\\n',
+            '            --shard-id "${{ matrix.shard }}" \\\n',
+        ),
+        (
+            '            echo "No changed mutants assigned to manual mutation '
+            'shard ${SHARD_ID}/128."\n',
+            '            echo "No changed mutants assigned to manual mutation '
+            'shard ${{ matrix.shard }}/128."\n',
+        ),
+        (
+            '          echo "Mutating manual shard ${SHARD_ID}/128: '
+            '${#MUTANT_NAMES[@]} exact mutants"\n',
+            '          echo "Mutating manual shard ${{ matrix.shard }}/128: '
+            '${#MUTANT_NAMES[@]} exact mutants"\n',
+        ),
+    ),
+    "reusable-full-backend-mutation.yml": (
+        (
+            """      - name: Plan and run exact full mutation shard
+        id: run_full_mutmut
+        env:
+          SHARD_ID: ${{ matrix.shard }}
+        run: |
+""",
+            """      - name: Plan and run exact full mutation shard
+        id: run_full_mutmut
+        run: |
+""",
+        ),
+        (
+            '            --shard-id "${SHARD_ID}" \\\n',
+            '            --shard-id "${{ matrix.shard }}" \\\n',
+        ),
+        (
+            "          printf -v preflight_shard_file 'shard-%02d.txt' \"${SHARD_ID}\"\n",
+            "          printf -v preflight_shard_file 'shard-%02d.txt' \"${{ matrix.shard }}\"\n",
+        ),
+        (
+            '            echo "No mutants assigned to full mutation shard ${SHARD_ID}/128."\n',
+            '            echo "No mutants assigned to full mutation shard ${{ '
+            'matrix.shard }}/128."\n',
+        ),
+        (
+            '          echo "Mutating full shard ${SHARD_ID}/128: '
+            '${#MUTANT_NAMES[@]} exact mutants"\n',
+            '          echo "Mutating full shard ${{ matrix.shard }}/128: '
+            '${#MUTANT_NAMES[@]} exact mutants"\n',
+        ),
+    ),
+}
+
+
 def _normalize_reviewed_workflow_pins(name: str, source: bytes) -> bytes:
+    for current, frozen in _REVIEWED_MUTATION_SHARD_HUNKS.get(name, ()):
+        current_bytes, frozen_bytes = current.encode("utf-8"), frozen.encode("utf-8")
+        assert source.count(current_bytes) == 1 and frozen_bytes not in source, (
+            "reviewed mutation shard hunk changed"
+        )
+        source = source.replace(current_bytes, frozen_bytes, 1)
     if name == "nightly-full-gate.yml":
         for current, frozen in _REVIEWED_NIGHTLY_HUNKS:
             assert source.count(current.encode("utf-8")) == 1, (
@@ -1716,3 +1794,69 @@ def test_chaos_dry_run_gate_checker_rejects_fake_or_live_gates(mutation: str) ->
         del steps[dry_index]
 
     assert _chaos_dry_run_violations(job) != []
+
+
+@pytest.mark.parametrize(
+    ("name", "index"),
+    [
+        (name, index)
+        for name, hunks in _REVIEWED_MUTATION_SHARD_HUNKS.items()
+        for index in range(len(hunks))
+    ],
+)
+@pytest.mark.parametrize("defect", ["missing", "duplicate", "reverted", "modified"])
+def test_reviewed_mutation_shard_hunks_accept_only_exact_current_bytes(
+    name: str, index: int, defect: str
+) -> None:
+    current, frozen = _REVIEWED_MUTATION_SHARD_HUNKS[name][index]
+    current_bytes, frozen_bytes = current.encode("utf-8"), frozen.encode("utf-8")
+    source = (WORKFLOWS / name).read_bytes()
+    assert source.count(current_bytes) == 1
+    if defect == "missing":
+        changed = source.replace(current_bytes, b"", 1)
+    elif defect == "duplicate":
+        changed = source + current_bytes
+    elif defect == "reverted":
+        changed = source.replace(current_bytes, frozen_bytes, 1)
+    else:
+        changed = source.replace(
+            current_bytes, current_bytes.replace(b"SHARD_ID", b"OTHER_ID", 1), 1
+        )
+    with pytest.raises(AssertionError, match="reviewed mutation shard hunk changed"):
+        _normalize_reviewed_workflow_pins(name, changed)
+
+
+@pytest.mark.parametrize("name", list(_REVIEWED_MUTATION_SHARD_HUNKS))
+def test_reviewed_mutation_shard_hunks_do_not_allow_other_source_changes(
+    name: str,
+) -> None:
+    identity = (
+        "manual"
+        if name == "manual-mutation-evidence.yml"
+        else "reusable_full_backend_mutation"
+    )
+    source = (WORKFLOWS / name).read_bytes()
+    current = b"--max-timeout-seconds 20970"
+    assert current in source
+    changed = source.replace(current, b"--max-timeout-seconds 20969", 1)
+    normalized = _normalize_reviewed_workflow_pins(name, changed)
+    baseline = yaml.safe_load(BASELINE.read_text(encoding="utf-8"))
+    assert hashlib.sha256(normalized).hexdigest() != baseline["source_files"][identity]
+
+
+def test_reviewed_full_shard_step_digest_rejects_other_run_changes() -> None:
+    baseline = _baseline()
+    expected = baseline["full_mutation_steps"]["mutation-tests-full"]
+    source = FULL_BACKEND.read_bytes()
+    current = (
+        b'            --shard-id "${SHARD_ID}" \\\n'
+        b"            --num-shards 128 \\\n"
+        b"            --max-children 8 \\\n"
+    )
+    assert source.count(current) == 1
+    changed = source.replace(current, current.replace(b"128", b"127", 1), 1)
+    normalized = _normalize_reviewed_workflow_pins(FULL_BACKEND.name, changed)
+    workflow = _jobs(yaml.safe_load(normalized))
+    steps = {step.get("name"): step for step in _steps(workflow["mutation-tests-full"])}
+    pairs = sorted((name, steps[name].get("run")) for name in expected["step_names"])
+    assert _digest(pairs) != expected["sha256"]
