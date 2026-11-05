@@ -13,6 +13,40 @@ SHA-256 пина архива SPIRE 0.30.4. Также владелец подт
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md). Финальному source
 SHA по-прежнему нужны scanner и required-check receipts; GREEN не заявлен.
 
+## Hosted checkpoint 2dc / d1 — 2026-11-05
+
+Срез на 03:35 Europe/Istanbul. Реестр без изменений: **449 / 512 приняты,
+63 открыты**. Приведённые результаты ограничены указанным source и не являются
+новой приёмкой находок.
+
+PR merge `b66b2a2bb21d67ddc4eb1ca3dab16ffe3a8b2514` имеет дерево
+`d69df499c822477846bffbb15bc101c82453c91e`, идентичное source `2dc652f67`.
+[Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41934313574):
+77 SUCCESS / 3 FAILURE / 14 SKIPPED. Full-stand realtime/visual не дошёл до
+сценариев из-за unhealthy Temporal; quality normalization отклонил frontend
+branch 260/261 в ResetPassword при floor 100% (parsed counters, provenance не
+подтверждена); CI Success FAIL, Trusted Codecov SKIPPED. Отдельно [kind](https://github.com/egorribun/university_ecosystem/actions/runs/41934313557)
+и [Nilaway](https://github.com/egorribun/university_ecosystem/actions/runs/41934313353)
+FAIL: registry connection refused и nil flows в тестах соответственно.
+
+На том же source [migration gate](https://github.com/egorribun/university_ecosystem/actions/runs/41934313574/job/126941325221)
+измерил 100% по 64 statements и 6 branches baseline. [Owned PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/41934313574/job/126941325555)
+дал шесть именованных borrowed-session AUD-363/454 PASS в отдельном прогоне и
+38 проверенных JUnit cases baseline/schema, tenant RLS, receipts и DLQ; шесть
+SKIP в последующем общем наборе не подменяют отдельный PASS. Эти receipts не
+доказывают deployed состояние или полное закрытие исходных критериев.
+
+На опубликованном `d1c7d667e`, PR merge `0b3538a9261fa2345c099b4e8104803e1933318f`
+имеет то же дерево `821a3e8ff67922ccd33515c7514aae5be564dc1d`, [Core](https://github.com/egorribun/university_ecosystem/actions/runs/41939309455/job/126955705749)
+завершился 52 PASS / 2 SKIP с owned NATS step PASS; [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/41939309454)
+и [Nilaway](https://github.com/egorribun/university_ecosystem/actions/runs/41939309473)
+SUCCESS. Full-stand остановился на unhealthy Temporal с диагностикой
+`temporal_signature=fatal_or_panic`; его сценарии не выполнялись. [Kind](https://github.com/egorribun/university_ecosystem/actions/runs/41939309517)
+успешно загрузил оба image в registry, но завершился по timeout readiness SPIRE,
+не доказав issuance/rotation. [Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41939309768)
+ещё выполняется; итоговые required checks для текущего source и общий GREEN не
+установлены.
+
 ## Предыдущий инвентарь сканеров — 2026-11-02
 
 Baseline **242**, отдельная policy **361**, Gitleaks **27** точных исторических
