@@ -1,8 +1,7 @@
-{{- include "revocation-store.validate" . -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Release.Name }}-deployment-contract
+  name: {{ printf "%s%s-deployment-contract" (include "revocation-store.validate" .) .Release.Name }}
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: revocation-store

@@ -767,3 +767,81 @@ def test_revocation_store_template_defense_in_depth_rejects_schema_bypasses(
 
     assert result.returncode != 0
     assert "revocation-store" in result.stderr
+
+
+def _isolated_revocation_chart(tmp_path: Path, *template_names: str) -> Path:
+    chart = tmp_path / "revocation-store"
+    templates = chart / "templates"
+    templates.mkdir(parents=True)
+    for name in ("Chart.yaml", "values.yaml", "values.schema.json"):
+        shutil.copyfile(CHART / name, chart / name)
+    for name in ("_helpers.tpl", *template_names):
+        shutil.copyfile(CHART / "templates" / name, templates / name)
+    return chart
+
+
+def test_deployment_contract_validates_when_rendered_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chart = _isolated_revocation_chart(tmp_path, "deployment-contract.yaml")
+    # No other template may call the validator on this template's behalf.
+    monkeypatch.setitem(globals(), "CHART", chart)
+    resources = _render()
+    assert len(resources) == 1
+    contract = resources[0]
+    assert contract["kind"] == "ConfigMap"
+    assert contract["metadata"]["name"] == (
+        "revocation-security-contract-deployment-contract"
+    )
+    assert contract["data"]["master-service-host"] == (
+        "revocation-security-contract-revocation-redis-master"
+    )
+
+    # The valid schema permits another full name; the chart helper rejects it.
+    template_command = _template_command
+    monkeypatch.setitem(
+        globals(),
+        "_template_command",
+        lambda: template_command("--set-string", "redis.fullnameOverride=other-redis"),
+    )
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        _render()
+    assert "revocation-store release identity and labels are immutable" in (
+        caught.value.stderr
+    )
+
+
+@pytest.mark.parametrize(("flag", "override"), SECURITY_BYPASSES)
+def test_deployment_contract_alone_rejects_schema_bypasses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, flag: str, override: str
+) -> None:
+    chart = _isolated_revocation_chart(tmp_path, "deployment-contract.yaml")
+    monkeypatch.setitem(globals(), "CHART", chart)
+    template_command = _template_command
+    monkeypatch.setitem(
+        globals(),
+        "_template_command",
+        lambda: template_command(flag, override, skip_schema_validation=True),
+    )
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        _render()
+    assert "revocation-store" in caught.value.stderr
+
+
+def test_revocation_validation_helper_is_empty_on_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chart = _isolated_revocation_chart(tmp_path)
+    (chart / "templates" / "helper-probe.yaml").write_text(
+        "apiVersion: v1\n"
+        "kind: ConfigMap\n"
+        "metadata:\n"
+        "  name: helper-probe\n"
+        "data:\n"
+        '  output: {{ include "revocation-store.validate" . | quote }}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(globals(), "CHART", chart)
+    resources = _render()
+    assert len(resources) == 1
+    assert resources[0]["data"]["output"] == ""
