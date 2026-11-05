@@ -160,6 +160,53 @@ mTLS probes не выполнялись.
 на время среза ещё выполнялись. Receipts предыдущих source не заменяют остальные
 проверки `385`, общий GREEN не установлен.
 
+## Hosted checkpoint 385 / 07d — 2026-11-05
+
+Срез на 05:42 Europe/Istanbul. Реестр остаётся на **449 / 512 принятых**
+и **63 открытых** находках.
+
+[Matrix 385](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148)
+завершился с 78 успешными заданиями, 2 ошибками и 14 пропусками. [Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148/job/127002109917)
+прошёл, но [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148/job/127002929799)
+завершился с ошибкой из-за full-stand realtime/visual. [Core](https://github.com/egorribun/university_ecosystem/actions/runs/41951015044/job/126994687775)
+завершился с 52 PASS и 2 SKIP. Owned NATS step прошёл, [receipt](https://github.com/egorribun/university_ecosystem/actions/runs/41951015044/artifacts/13381139758)
+сохранён.
+
+Логи [kind 385](https://github.com/egorribun/university_ecosystem/actions/runs/41951015117/job/126994688091)
+сообщили о недоступности базы. Статическое сравнение показывает, что тестовый
+PostgreSQL pod имел label `app: ue-postgres`, а backend egress policy выбирала
+`app.kubernetes.io/name: postgresql`. Сетевых packet receipts нет, поэтому
+причина отказа не установлена и mTLS probes не доказаны. [Dependency Review 385](https://github.com/egorribun/university_ecosystem/actions/runs/41951015161/job/126994688678)
+отклонил строку TruffleHog с AGPL-3.0 в существующем расхождении с защищённым
+base. [Review 07d](https://github.com/egorribun/university_ecosystem/actions/runs/41955431087/job/127009098296)
+повторил тот же результат. Решение владельца по этому вопросу остаётся открытым.
+
+Опубликован source `07d38644d50b1d3ebfc09bde1a60ea3c9b136610`. Его PR merge
+`f335247a06dac4710290f18d7881b96c2a749d4f` имеет такое же дерево
+`05d47a4065d9f154950f170e5309bb79e1e7bea7`. Source добавляет ограниченную
+диагностику отказа авторизации Temporal worker scanner и изменения изолированного
+kind proof. В подготовленном локальном snapshot `tests/test_internal_mtls_kind_contract.py`
+дал 62 PASS, а SHA-256 тестового файла совпал с `07d`. Это синтетические
+контракты, а не Kubernetes или live mTLS proof.
+
+На `07d` прошли [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/41955431142),
+[Gitleaks](https://github.com/egorribun/university_ecosystem/actions/runs/41955431384),
+[Nilaway](https://github.com/egorribun/university_ecosystem/actions/runs/41955431104),
+[Pact](https://github.com/egorribun/university_ecosystem/actions/runs/41955431135),
+[Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127009102076)
+и [ShellCheck](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127010738471).
+[Windows proofs](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127010738713)
+завершились с 113 PASS и 2 DESELECTED. [detect-secrets Baseline Integrity](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127010105954)
+завершился ошибкой на одном `Secret Keyword` в `.github/workflows/deploy.yml:1375`.
+Разбор и исправление в работе. [Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198)
+и [kind](https://github.com/egorribun/university_ecosystem/actions/runs/41955431126/job/127009098884)
+на время среза ещё не завершились. Общий GREEN не установлен.
+
+В локальном source `56314486b` офлайн-инвентарь Trivy 0.75.0 для native fuzz
+увидел 16 из 73 зависимостей до правки и 73 из 73 после неё. `Cargo.lock`
+и текущий разрешённый набор пакетов не изменились, ограничение версии стало
+точным. Восемь контрактных тестов прошли. Уязвимости и hosted CI этим не проверялись.
+
 ## Предыдущий инвентарь сканеров — 2026-11-02
 
 Baseline **242**, отдельная policy **361**, Gitleaks **27** точных исторических
