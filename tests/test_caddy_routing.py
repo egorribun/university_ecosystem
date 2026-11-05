@@ -342,7 +342,7 @@ def test_oauth_callback_uri_redacts_code_and_state_in_access_logs() -> None:
     from uuid import uuid4
 
     marker = f"oauth-redaction-{uuid4().hex}"
-    path = "/api/v1/integrations/spotify/callback"
+    path = "/api/v1/spotify/callback"
     cases = (
         (
             f"{path}?code={marker}&state={marker}&scope=user-read",

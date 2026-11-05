@@ -43,6 +43,14 @@ async def gunicorn_probe_app(scope: dict[str, Any], receive: Any, send: Any) -> 
         await send({"type": "http.response.body", "body": b"ok"})
 
 
+def _probe_targets(oauth: str, query: str, path: str) -> tuple[str, str, str]:
+    return (
+        f"/api/v1/spotify/callback?code={oauth}",
+        f"/reset-password?token={query}",
+        f"/reset-password/{path}",
+    )
+
+
 def _assert_real_gunicorn_worker_emitted_logs_exclude_reset_and_oauth_targets(
     tmp_path: Path, pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -124,10 +132,8 @@ def _assert_real_gunicorn_worker_emitted_logs_exclude_reset_and_oauth_targets(
                             time.sleep(0.05)
                         finally:
                             connection.close()
-                    for target in (
-                        f"/api/v1/integrations/spotify/callback?code={oauth_marker}",
-                        f"/reset-password?token={query_marker}",
-                        f"/reset-password/{path_marker}",
+                    for target in _probe_targets(
+                        oauth_marker, query_marker, path_marker
                     ):
                         connection = http.client.HTTPConnection(
                             "127.0.0.1", port, timeout=10

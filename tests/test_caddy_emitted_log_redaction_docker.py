@@ -222,7 +222,7 @@ def _probe_edge(
     _request(
         scheme,
         port,
-        "/api/v1/integrations/spotify/callback"
+        "/api/v1/spotify/callback"
         f"?code={spotify_code}&state={spotify_state}&scope=user-read-email",
     )
 
@@ -232,9 +232,9 @@ def _probe_edge(
     for marker in _REDACTION_MARKERS:
         assert marker in logs, f"the edge log is missing the {marker!r} marker"
     assert "/login?" in logs, "the probe request was not logged at all"
-    assert (
-        "/api/v1/integrations/spotify/callback?code=REDACTED&state=REDACTED" in logs
-    ), "the Spotify callback row was not logged with its redacted URI"
+    assert "/api/v1/spotify/callback?code=REDACTED&state=REDACTED" in logs, (
+        "the Spotify callback row was not logged with its redacted URI"
+    )
     return logs
 
 
