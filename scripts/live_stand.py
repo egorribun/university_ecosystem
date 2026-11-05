@@ -300,6 +300,10 @@ STAND_PATHS_TO_PROTECT = (
     Path(".secrets/jwt_rs256.pem"),
     Path(".secrets/jwt_rs256.pub.pem"),
     Path(".secrets/temporal_api_key"),
+    Path(".temporal-bootstrap"),
+    Path(".temporal-bootstrap/profile.toml"),
+    Path(".temporal-bootstrap/owner.marker"),
+    Path(".temporal-bootstrap/profile.lock"),
     Path(".secrets/s3-cutover-attestation.txt"),
 )
 
@@ -679,6 +683,17 @@ def _write_in_place_compose_override(state_root: Path) -> Path:
         repository / "services" / "temporal" / "entrypoint.sh",
         "/etc/temporal/wave144-entrypoint.sh",
     )
+    namespace_script_mount = readonly_bind(
+        repository / "scripts" / "temporal" / "namespace-init.sh",
+        "/etc/temporal/namespace-init.sh",
+    )
+    namespace_admin_mount = readonly_bind(
+        resolved_root / ".temporal-bootstrap" / "profile.toml",
+        "/run/temporal-bootstrap/profile.toml",
+    )
+    namespace_worker_mount = readonly_bind(
+        runtime_bind_directory / "temporal_api_key", "/run/temporal-worker/token"
+    )
     content = (
         "services:\n"
         "  backend:\n"
@@ -704,6 +719,23 @@ def _write_in_place_compose_override(state_root: Path) -> Path:
         "        source: temporal-jwks-ca\n"
         "        target: /etc/temporal/jwks-ca\n"
         "        read_only: true\n"
+        "  temporal-namespace-init:\n"
+        '    user: "1000:1000"\n'
+        "    read_only: true\n"
+        '    cap_drop: ["ALL"]\n'
+        '    security_opt: ["no-new-privileges:true"]\n'
+        "    network_mode: service:temporal\n"
+        "    networks: !reset null\n"
+        "    environment: !reset {}\n"
+        '    entrypoint: !override ["/bin/sh", "/etc/temporal/namespace-init.sh"]\n'
+        "    command: !reset []\n"
+        "    tmpfs: !override\n"
+        "      - /tmp:uid=1000,gid=1000,mode=0700,noexec,nosuid,nodev\n"
+        "      - /run/temporal-bootstrap-runtime:uid=1000,gid=1000,mode=0700,noexec,nosuid,nodev\n"
+        "    volumes: !override\n"
+        f"{namespace_script_mount}"
+        f"{namespace_admin_mount}"
+        f"{namespace_worker_mount}"
     )
     override = state_root / IN_PLACE_OVERLAY
     _assert_worktree_paths_safe(state_root, (Path(IN_PLACE_OVERLAY),))

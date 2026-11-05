@@ -604,10 +604,11 @@ def test_temporal_service_token_grants_the_permissions_the_default_authorizer_re
 
     payload_start = minter.index("$payloadObj = [PSCustomObject]@{")
     payload = minter[payload_start : minter.index("}", payload_start)]
-    assert "permissions = @('system:reader', 'default:writer')" in payload
+    assert "permissions = @('default:write')" in payload
+    assert "$payload.permissions -isnot [array]" in validator
     assert "$permissions = @($payload.permissions)" in validator
-    assert "$permissions -notcontains 'system:reader'" in validator
-    assert "$permissions -notcontains 'default:writer'" in validator
+    assert "$permissions.Count -ne 1" in validator
+    assert "$permissions[0] -cne 'default:write'" in validator
 
 
 def test_nightly_gate_mints_a_signed_temporal_service_jwt() -> None:

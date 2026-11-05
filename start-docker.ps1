@@ -717,8 +717,31 @@ function Resolve-StatePath {
     return [System.IO.Path]::GetFullPath((Join-Path $StateRoot $Path))
 }
 
+function Assert-InPlaceTemporalBootstrapSource {
+    param([Parameter(Mandatory=$true)][string]$SourceSha, [Parameter(Mandatory=$true)][string]$Repository)
+    if ($SourceSha -cnotmatch '^[0-9a-f]{40}$') { throw 'Temporal bootstrap source identity is invalid.' }
+    $paths = @(
+        'start-docker.ps1', 'docker-compose.full.yml', 'docker-compose.live.yml',
+        'infrastructure/Caddyfile', 'services/temporal/config.yaml', 'services/temporal/entrypoint.sh',
+        'scripts/temporal/bootstrap-functions.ps1', 'scripts/temporal/namespace-init.sh'
+    )
+    $git = Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    foreach ($path in $paths) {
+        $null = & $git.Source --no-optional-locks -C $Repository cat-file -e "${SourceSha}:$path" 2>$null
+        if ($LASTEXITCODE -ne 0) { throw 'Temporal bootstrap source is missing from the signed commit.' }
+    }
+    $null = & $git.Source --no-optional-locks -C $Repository diff --quiet --no-ext-diff --no-textconv $SourceSha -- @paths 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'Temporal bootstrap source differs from the signed commit.' }
+}
+
 if ($LiveStateMode) {
     $StateRoot = Resolve-OwnedLiveStandStateRoot -Path $LiveStandStateRoot
+    $inPlaceBootstrapOwner = $script:LiveStandOwner.version -eq 7 -or
+        [string]$script:LiveStandOwner.stack -ceq 'full'
+    if ($inPlaceBootstrapOwner -and -not $Down -and -not $Logs -and -not $Core -and -not $RefreshTrustedProxyPeers) {
+        Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        . (Join-Path $ProjectRoot 'scripts/temporal/bootstrap-functions.ps1')
+    }
 }
 Set-Location $StateRoot
 
@@ -1973,8 +1996,9 @@ function Test-TemporalServiceToken {
 
         if ($header.alg -ne 'RS256' -or $header.kid -ne 'primary') { return $false }
         if ($payload.sub -ne $Subject -or $payload.aud -ne $Audience) { return $false }
+        if ($payload.permissions -isnot [array]) { return $false }
         $permissions = @($payload.permissions)
-        if ($permissions -notcontains 'system:reader' -or $permissions -notcontains 'default:writer') { return $false }
+        if ($permissions.Count -ne 1 -or $permissions[0] -cne 'default:write') { return $false }
         if (-not $payload.jti -or $null -eq $payload.iat -or $null -eq $payload.exp) { return $false }
         if ([long]$payload.iat -gt ($now + 60)) { return $false }
         if ([long]$payload.exp -le ($now + $MinimumValiditySeconds)) { return $false }
@@ -2060,10 +2084,10 @@ function New-TemporalServiceToken {
         iat = $now
         exp = $exp
         jti = $jti
-        # Temporal's default claim mapper reads roles only from this claim, and the
-        # default authorizer denies every token without them (AUD-506). Scope the
-        # file-processor to cluster reads (GetSystemInfo) and default-namespace writes.
-        permissions = @('system:reader', 'default:writer')
+        # The file processor starts workflows and polls tasks in the default
+        # namespace. Temporal's default authorizer also permits this role to
+        # read that namespace; GetSystemInfo is a public health check (AUD-506).
+        permissions = @('default:write')
     }
 
     $headerJson  = $headerObj  | ConvertTo-Json -Compress
@@ -3224,6 +3248,12 @@ if ((Test-Path $EnvFile) -and (Test-Path $EnvCompose)) {
 }
 
 if ($PrepareOnly) {
+    if ($LiveStateMode -and $inPlaceBootstrapOwner) {
+        # Bind an empty, identity-recorded file before the live owner signs the
+        # resolved model. The later launch reopens and verifies this same file.
+        $bootstrapLease = Enter-TemporalBootstrapLease -StateRoot $StateRoot
+        try { } finally { Exit-TemporalBootstrapLease -Lease $bootstrapLease }
+    }
     if ($InitializeTrustedProxyBootstrap) {
         $bootstrap = ConvertFrom-TrustedProxyPeers `
             -Json '{"GATEWAY_TRUSTED_PROXIES":[],"TRUSTED_PROXIES":[],"WS_HUB_TRUSTED_PROXIES":[]}' `
@@ -3239,6 +3269,11 @@ $resolvedComposeModel = Assert-ComposeConfiguration
 $hasLiveAcceptanceSelection = Assert-LiveAcceptanceSelection -ComposeModel $resolvedComposeModel
 $script:LiveAcceptanceCore = $hasLiveAcceptanceSelection -and
     $LiveAcceptanceStack -ceq "core"
+$inPlaceFullBootstrap = $LiveStateMode -and $hasLiveAcceptanceSelection -and
+    $LiveAcceptanceStack -ceq 'full'
+if ($inPlaceFullBootstrap) {
+    Assert-InPlaceTemporalBootstrapModel -ComposeModel $resolvedComposeModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
+}
 if ($script:LiveAcceptanceCore -and $Core) {
     throw "Live acceptance Core and legacy Core selections cannot be combined."
 }
@@ -3377,6 +3412,54 @@ if ($Rebuild) {
 }
 
 # -- Start services -----------------------------------------------------------
+
+if ($inPlaceFullBootstrap) {
+    # Pull/start Temporal's dependency closure before issuing the five-minute
+    # admin credential. This also pulls the initializer's pinned image.
+    Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+    Write-Status 'Starting the signed Temporal dependency closure...'
+    docker compose @ComposeArgs --env-file $EnvFile up --wait --wait-timeout 300 temporal
+    if ($LASTEXITCODE -ne 0) { throw 'Temporal dependency startup failed; namespace bootstrap was not issued.' }
+
+    $bootstrapLease = Enter-TemporalBootstrapLease -StateRoot $StateRoot
+    $initializerStarted = $false
+    $initializerExited = $false
+    $initializerId = ''
+    try {
+        # Create the pinned initializer while its leased profile is empty. This
+        # lets us inspect the actual container before it can read the bearer.
+        $bootstrapModel = Assert-ComposeConfiguration
+        $null = Assert-LiveAcceptanceSelection -ComposeModel $bootstrapModel
+        Assert-InPlaceTemporalBootstrapModel -ComposeModel $bootstrapModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
+        docker compose @ComposeArgs --env-file $EnvFile up --no-start --no-deps --no-build --pull never --force-recreate temporal-namespace-init
+        if ($LASTEXITCODE -ne 0) { throw 'Temporal initializer preparation failed; namespace bootstrap was not issued.' }
+
+        # Recheck source, model, actual local image/container IDs and physical
+        # volume backing immediately before mint; do not print inspect output.
+        Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        $bootstrapModel = Assert-ComposeConfiguration
+        $null = Assert-LiveAcceptanceSelection -ComposeModel $bootstrapModel
+        Assert-InPlaceTemporalBootstrapModel -ComposeModel $bootstrapModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
+        Assert-InPlaceTemporalBootstrapVolumeSafety -ComposeModel $bootstrapModel
+        Assert-TemporalBootstrapIdentity -Lease $bootstrapLease -RequirePath -RequireSingleLink
+        Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        Assert-TemporalBootstrapIdentity -Lease $bootstrapLease -RequirePath -RequireSingleLink
+        $initializerId = Assert-InPlaceTemporalBootstrapRuntime -ComposeModel $bootstrapModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
+        New-TemporalBootstrapProfile -PrivateKeyPath (Resolve-StatePath '.secrets/jwt_rs256.pem') -Lease $bootstrapLease
+        # Start and wait by the inspected ID. Never attach to container output.
+        $initializerStarted = $true
+        $startedId = Invoke-TemporalBootstrapDockerBounded -Arguments @('start', $initializerId) -TimeoutSeconds 15
+        if ($startedId -cne $initializerId) { throw 'Temporal initializer start returned an unexpected identity.' }
+        $exitCode = Invoke-TemporalBootstrapDockerBounded -Arguments @('wait', $initializerId) -TimeoutSeconds 240
+        $initializerExited = $true
+        if ($exitCode -cne '0') { throw 'Temporal namespace bootstrap did not complete successfully.' }
+    } finally {
+        if ($initializerStarted -and -not $initializerExited) {
+            try { $null = Invoke-TemporalBootstrapDockerBounded -Arguments @('kill', $initializerId) -TimeoutSeconds 10 } catch { }
+        }
+        Exit-TemporalBootstrapLease -Lease $bootstrapLease
+    }
+}
 
 if ($script:LiveAcceptanceCore) {
     Write-Status "Starting the signed live Core roots with normal Compose dependencies..."

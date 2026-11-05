@@ -7455,13 +7455,20 @@ def test_in_place_compose_override_does_not_store_secret_contents(
     override = live_stand._write_in_place_compose_override(state_root)
 
     content = override.read_text(encoding="utf-8")
+    assert {
+        Path(".temporal-bootstrap"),
+        Path(".temporal-bootstrap/profile.toml"),
+        Path(".temporal-bootstrap/owner.marker"),
+        Path(".temporal-bootstrap/profile.lock"),
+    }.issubset(live_stand.STAND_PATHS_TO_PROTECT)
     assert all(sentinel not in content for sentinel in sentinels)
     assert state_root.as_posix() in content
     assert "jwt_rs256.pem" in content
     assert "temporal_api_key" in content
-    temporal_mounts = yaml.safe_load(content.replace("!override", ""))["services"][
-        "temporal"
-    ]["volumes"]
+    services = yaml.safe_load(content.replace("!override", "").replace("!reset", ""))[
+        "services"
+    ]
+    temporal_mounts = services["temporal"]["volumes"]
     assert temporal_mounts == [
         {
             "type": "bind",
@@ -7482,6 +7489,39 @@ def test_in_place_compose_override_does_not_store_secret_contents(
             "source": "temporal-jwks-ca",
             "target": "/etc/temporal/jwks-ca",
             "read_only": True,
+        },
+    ]
+    initializer = services["temporal-namespace-init"]
+    assert initializer["network_mode"] == "service:temporal"
+    assert initializer["networks"] is None
+    assert initializer["user"] == "1000:1000"
+    assert initializer["read_only"] is True
+    assert initializer["cap_drop"] == ["ALL"]
+    assert initializer["security_opt"] == ["no-new-privileges:true"]
+    assert initializer["entrypoint"] == ["/bin/sh", "/etc/temporal/namespace-init.sh"]
+    assert initializer["command"] == []
+    assert initializer["environment"] == {}
+    assert initializer["volumes"] == [
+        {
+            "type": "bind",
+            "source": (repository / "scripts/temporal/namespace-init.sh").as_posix(),
+            "target": "/etc/temporal/namespace-init.sh",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        },
+        {
+            "type": "bind",
+            "source": (state_root / ".temporal-bootstrap/profile.toml").as_posix(),
+            "target": "/run/temporal-bootstrap/profile.toml",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        },
+        {
+            "type": "bind",
+            "source": (secrets_root / "temporal_api_key").as_posix(),
+            "target": "/run/temporal-worker/token",
+            "read_only": True,
+            "bind": {"create_host_path": False},
         },
     ]
 
