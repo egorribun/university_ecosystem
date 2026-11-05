@@ -13,21 +13,23 @@ SHA-256 пина архива SPIRE 0.30.4. Также владелец подт
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md). Финальному source
 SHA по-прежнему нужны scanner и required-check receipts; GREEN не заявлен.
 
-## Hosted checkpoint 2dc / d1 — 2026-11-05
+## Hosted checkpoint 2dc / d1 / aae3 / a55d — 2026-11-05
 
-Срез на 03:35 Europe/Istanbul. Реестр без изменений: **449 / 512 приняты,
+Срез на 04:24 Europe/Istanbul. В реестре по-прежнему **449 / 512 приняты,
 63 открыты**. Приведённые результаты ограничены указанным source и не являются
 новой приёмкой находок.
 
 PR merge `b66b2a2bb21d67ddc4eb1ca3dab16ffe3a8b2514` имеет дерево
 `d69df499c822477846bffbb15bc101c82453c91e`, идентичное source `2dc652f67`.
-[Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41934313574):
-77 SUCCESS / 3 FAILURE / 14 SKIPPED. Full-stand realtime/visual не дошёл до
+[Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41934313574)
+завершился с 77 успешными заданиями, 3 ошибками и 14 пропусками. Full-stand
+realtime/visual не дошёл до
 сценариев из-за unhealthy Temporal; quality normalization отклонил frontend
 branch 260/261 в ResetPassword при floor 100% (parsed counters, provenance не
 подтверждена); CI Success FAIL, Trusted Codecov SKIPPED. Отдельно [kind](https://github.com/egorribun/university_ecosystem/actions/runs/41934313557)
 и [Nilaway](https://github.com/egorribun/university_ecosystem/actions/runs/41934313353)
-FAIL: registry connection refused и nil flows в тестах соответственно.
+завершились с ошибками из-за недоступного registry и nil flows в тестах
+соответственно.
 
 На том же source [migration gate](https://github.com/egorribun/university_ecosystem/actions/runs/41934313574/job/126941325221)
 измерил 100% по 64 statements и 6 branches baseline. [Owned PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/41934313574/job/126941325555)
@@ -38,14 +40,69 @@ SKIP в последующем общем наборе не подменяют �
 
 На опубликованном `d1c7d667e`, PR merge `0b3538a9261fa2345c099b4e8104803e1933318f`
 имеет то же дерево `821a3e8ff67922ccd33515c7514aae5be564dc1d`, [Core](https://github.com/egorribun/university_ecosystem/actions/runs/41939309455/job/126955705749)
-завершился 52 PASS / 2 SKIP с owned NATS step PASS; [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/41939309454)
+завершился с 52 PASS и 2 SKIP, а owned NATS step прошёл; [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/41939309454)
 и [Nilaway](https://github.com/egorribun/university_ecosystem/actions/runs/41939309473)
 SUCCESS. Full-stand остановился на unhealthy Temporal с диагностикой
 `temporal_signature=fatal_or_panic`; его сценарии не выполнялись. [Kind](https://github.com/egorribun/university_ecosystem/actions/runs/41939309517)
 успешно загрузил оба image в registry, но завершился по timeout readiness SPIRE,
 не доказав issuance/rotation. [Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41939309768)
-ещё выполняется; итоговые required checks для текущего source и общий GREEN не
-установлены.
+завершился с 78 успешными заданиями, 2 ошибками и 14 пропусками. [Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/41939309768/job/126966804703)
+прошёл нормализацию и проверку политики, а diff-cover показал 100% по изменённым
+Python-строкам. В [артефакте покрытия](https://github.com/egorribun/university_ecosystem/actions/runs/41939309768/artifacts/13375929382)
+ветви `ResetPassword.tsx` покрыты полностью (261/261); результаты Istanbul и LCOV
+совпадают, SHA-256 обоих отчётов соответствует provenance. [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/41939309768/job/126967668315)
+завершился с ошибкой из-за full-stand realtime/visual, а Trusted Codecov был
+пропущен.
+
+Позднее опубликован source `aae3cb83d6b334b84bbc3f44c7140ec5dc2322d2`.
+Его PR merge `5d697765a1f25c0027a609923877a6def0b2f688` имеет такое же дерево
+`6c435be5c8d4afd0571ac76795eea8777ecb9897`. [Gitleaks](https://github.com/egorribun/university_ecosystem/actions/runs/41944876215),
+[Nilaway](https://github.com/egorribun/university_ecosystem/actions/runs/41944876217),
+[CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/41944876300)
+и [Pact contracts](https://github.com/egorribun/university_ecosystem/actions/runs/41944876265)
+прошли. В [kind](https://github.com/egorribun/university_ecosystem/actions/runs/41944876304/job/126974467671)
+SPIRE server и agent запустились, CSI chart установился и PostgreSQL стал готов.
+Затем Helm не установил приложение из-за отсутствующей CRD `PrometheusRule`
+`monitoring.coreos.com/v1`, поэтому mTLS probes не выполнялись. [Core](https://github.com/egorribun/university_ecosystem/actions/runs/41944876187/job/126974466615)
+завершился с 52 PASS и 2 SKIP; owned NATS step прошёл, [receipt](https://github.com/egorribun/university_ecosystem/actions/runs/41944876187/artifacts/13378188869)
+сохранён. [Owned PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/41944876360/job/126976225754)
+дал шесть named PASS borrowed-session AUD-363/454 и 38 проверенных JUnit cases;
+[migration gate](https://github.com/egorribun/university_ecosystem/actions/runs/41944876360/job/126976224896)
+измерил 100% по 64 statements и 6 branches baseline. Это ограниченные receipts,
+они не меняют приёмку находок.
+
+[Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41944876360)
+завершился с 71 успешным заданием, 8 ошибками и 15 пропусками, включая производные
+агрегаторы. Coverage & Quality Policy Gate и Trusted Codecov были пропущены.
+[CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/41944876360/job/126983816611)
+завершился с ошибкой из-за backend-tests, shellcheck, windows-live-proofs и
+live-realtime-visual. [Full-stand](https://github.com/egorribun/university_ecosystem/actions/runs/41944876360/job/126974470030)
+остановился на unhealthy Temporal до namespace bootstrap; строка
+`temporal_signature` не появилась и сценарии не запускались. [Windows proofs](https://github.com/egorribun/university_ecosystem/actions/runs/41944876360/job/126976225012)
+дали 110 PASS / 3 FAIL / 2 DESELECTED из-за отсутствия signed bootstrap source
+в трёх fixtures. [ShellCheck](https://github.com/egorribun/university_ecosystem/actions/runs/41944876360/job/126976224299)
+отклонил SC2034 в `scripts/temporal/namespace-init.sh:70`. Шаг frozen-RC на
+[shard 0](https://github.com/egorribun/university_ecosystem/actions/runs/41944876360/job/126976225724)
+дал 906 PASS / 1 FAIL из-за отсутствующей в команде записи
+`tests/e2e-live/profile-csrf-observation.contract.test.mjs`. [Shard 2](https://github.com/egorribun/university_ecosystem/actions/runs/41944876360/job/126980234976)
+дал 6387 PASS / 4 FAIL / 137 SKIP на тех же трёх fixtures и browser contract.
+Все результаты относятся только к указанному source; общего GREEN нет.
+
+После `aae3` изменение `36cc739dd` ограничило CRD-free profile только kind proof.
+На чистом локальном архиве `762d8be13` два Helm controls прошли, как и ShellCheck
+0.11.0 для `namespace-init.sh` и три ранее отказавших launcher cases на Windows.
+На чистом локальном архиве `17c0802fa` прошли четыре проверки выбора live contract
+и порядка browser setup. Это локальные результаты, не hosted receipts и не proof
+runtime mTLS, полного live-стенда или browser-сценария.
+
+Следующим опубликован source `a55d69e8df7445a51637a01fabe8f64ebe4af4a7`.
+Его PR merge `11da255028f0112ff215580eb4e93b5bf32707a9` имеет такое же дерево
+`171b97f2b3af788b5229212080e9addb834216c2`. На время среза [Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41947835059)
+ожидал запуска, а [kind](https://github.com/egorribun/university_ecosystem/actions/runs/41947834657/job/126984336594)
+выполнялся. [Gitleaks](https://github.com/egorribun/university_ecosystem/actions/runs/41947834966/job/126984336999)
+прошёл проверку policy inputs и полной истории и выгрузил редактированный SARIF.
+Receipts предыдущих source не заменяют остальные проверки `a55d`, общий GREEN не
+установлен.
 
 ## Предыдущий инвентарь сканеров — 2026-11-02
 
