@@ -13,9 +13,9 @@ SHA-256 пина архива SPIRE 0.30.4. Также владелец подт
 [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md). Финальному source
 SHA по-прежнему нужны scanner и required-check receipts; GREEN не заявлен.
 
-## Hosted checkpoint 2dc / d1 / aae3 / a55d — 2026-11-05
+## Hosted checkpoint 2dc / d1 / aae3 / a55d / 385 — 2026-11-05
 
-Срез на 04:24 Europe/Istanbul. В реестре по-прежнему **449 / 512 приняты,
+Срез на 05:08 Europe/Istanbul. В реестре по-прежнему **449 / 512 приняты,
 63 открыты**. Приведённые результаты ограничены указанным source и не являются
 новой приёмкой находок.
 
@@ -97,12 +97,68 @@ runtime mTLS, полного live-стенда или browser-сценария.
 
 Следующим опубликован source `a55d69e8df7445a51637a01fabe8f64ebe4af4a7`.
 Его PR merge `11da255028f0112ff215580eb4e93b5bf32707a9` имеет такое же дерево
-`171b97f2b3af788b5229212080e9addb834216c2`. На время среза [Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41947835059)
-ожидал запуска, а [kind](https://github.com/egorribun/university_ecosystem/actions/runs/41947834657/job/126984336594)
-выполнялся. [Gitleaks](https://github.com/egorribun/university_ecosystem/actions/runs/41947834966/job/126984336999)
+`171b97f2b3af788b5229212080e9addb834216c2`. [Gitleaks](https://github.com/egorribun/university_ecosystem/actions/runs/41947834966/job/126984336999)
 прошёл проверку policy inputs и полной истории и выгрузил редактированный SARIF.
-Receipts предыдущих source не заменяют остальные проверки `a55d`, общий GREEN не
-установлен.
+[Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41947835059)
+завершился с 74 успешными заданиями, 5 ошибками и 15 пропусками. [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/41947835059/job/126993553843)
+отклонил backend-tests и live-realtime-visual. Coverage & Quality Policy Gate
+и Trusted Codecov были пропущены. [Full-stand](https://github.com/egorribun/university_ecosystem/actions/runs/41947835059/job/126984341224)
+остановился до namespace bootstrap на unhealthy Temporal. Ограниченная диагностика
+сообщила `temporal_state=restarting|true|1|false|7|unhealthy|0` и
+`temporal_signature=fatal_or_panic`. Причина по этой сигнатуре не установлена.
+
+[Windows proofs](https://github.com/egorribun/university_ecosystem/actions/runs/41947835059/job/126986942164)
+завершились с 113 PASS и 2 DESELECTED, [ShellCheck](https://github.com/egorribun/university_ecosystem/actions/runs/41947835059/job/126986941804)
+прошёл. Frozen-RC preflight на [shard 0](https://github.com/egorribun/university_ecosystem/actions/runs/41947835059/job/126986942577)
+прошёл. Последующий pytest дал 8141 PASS / 2 FAIL / 56 SKIP на прежних
+assertions о bind mounts и `--force-recreate`. В чистом локальном архиве
+`385319e8a` обе эти проверки прошли. Новый hosted результат остаётся необходимым.
+[Core](https://github.com/egorribun/university_ecosystem/actions/runs/41947835049/job/126984337560)
+завершился с 52 PASS и 2 SKIP, owned NATS step прошёл. [Owned PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/41947835059/job/126986942631)
+дал шесть named PASS borrowed-session AUD-363/454 и 38 проверенных JUnit cases.
+[Migration gate](https://github.com/egorribun/university_ecosystem/actions/runs/41947835059/job/126986942096)
+измерил 100% по 64 statements и 6 branches baseline. Эти receipts ограничены
+своими сценариями и не меняют приёмку находок.
+
+В [kind](https://github.com/egorribun/university_ecosystem/actions/runs/41947834657/job/126984336594)
+Helm установил приложение, но backend остался на 0/2 готовых replicas до mTLS
+probes. Логи сообщили об ошибке Fernet с меткой TOTP. Source генератора подавал
+hex для Spotify, а общий декодер использовал TOTP-сообщение и для этого ключа.
+Локальная проверка чистого `385319e8a` воспроизвела эту метку с синтетическим
+hex Spotify при корректном TOTP и прошла с Fernet Spotify. Source `385319e8a`
+изменяет генерацию этих fixture keys. Hosted kind ещё требуется.
+
+Позднее опубликован source `385319e8a11e2a7ef94c0fe23b5737ecdb650207`.
+Его PR merge `6c854afd3fd4b942edbbdae9a8a256c2667b8b50` имеет такое же дерево
+`a4cb7d52c71f8176f72458da87fbf8fe61343046`. [Gitleaks](https://github.com/egorribun/university_ecosystem/actions/runs/41951015058),
+[Nilaway](https://github.com/egorribun/university_ecosystem/actions/runs/41951015008)
+и [CodeQL](https://github.com/egorribun/university_ecosystem/actions/runs/41951015183)
+прошли. [Contract Tests](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148/job/126994691814)
+прошли с 3492 основными PASS, 1082 отдельными PASS и 41 именованным PASS.
+[Windows proofs](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148/job/126996080645)
+дали 113 PASS и 2 DESELECTED, [ShellCheck](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148/job/126996080144)
+прошёл, [shard 0](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148/job/126996081252)
+дал 8122 PASS и 132 SKIP. [Owned PostgreSQL](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148/job/126996081301)
+подтвердил шесть named borrowed-session PASS и 38 JUnit cases. [Migration gate](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148/job/126996080589)
+измерил 100% по 64 statements и 6 branches baseline.
+
+[Full-stand](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148/job/126994691765)
+остановился до namespace bootstrap на unhealthy Temporal. Ограниченная диагностика
+сообщила `temporal_state=restarting|true|1|false|6|unhealthy|0` и
+`temporal_signature=fatal_or_panic`. Причина по этой сигнатуре не установлена.
+[Kind](https://github.com/egorribun/university_ecosystem/actions/runs/41951015117/job/126994688091)
+завершился с ошибкой после Helm deployment, backend остался на 0/2 и не прошёл
+startup probes. Логи сообщили о недоступности базы, но причина не установлена и
+mTLS probes не выполнялись.
+
+[Dependency Review](https://github.com/egorribun/university_ecosystem/actions/runs/41951015161/job/126994688678)
+отклонил строку `.github/workflows/trufflehog.yml` для `trufflesecurity/trufflehog`
+на commit `31ce31ee1abb` с лицензией AGPL-3.0. В выводе успешного a55 этой строки
+не было, хотя blob workflow dependency-review.yml не менялся. Это наблюдение не
+является решением владельца или новой приёмкой. [Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41951015148)
+и [Core](https://github.com/egorribun/university_ecosystem/actions/runs/41951015044)
+на время среза ещё выполнялись. Receipts предыдущих source не заменяют остальные
+проверки `385`, общий GREEN не установлен.
 
 ## Предыдущий инвентарь сканеров — 2026-11-02
 
