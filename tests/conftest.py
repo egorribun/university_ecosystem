@@ -556,6 +556,24 @@ def preserve_logging_configuration() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _uninstrument_sqlalchemy_otel_after_test() -> Iterator[None]:
+    """Remove process-global SQLAlchemy OpenTelemetry wrappers after each test.
+
+    ``SQLAlchemyInstrumentor.instrument()`` wraps ``sqlalchemy.create_engine``,
+    ``create_async_engine`` and ``Engine.connect`` globally even when one engine
+    is passed. A test that runs the real ``_configure_otel()`` would otherwise
+    leak SQLCommenter suffixes into engines created by later tests in the same
+    xdist worker.
+    """
+    yield
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+
+    instrumentor = SQLAlchemyInstrumentor()
+    if instrumentor.is_instrumented_by_opentelemetry:
+        instrumentor.uninstrument()
+
+
+@pytest.fixture(autouse=True)
 def mock_cache_backend(
     monkeypatch: pytest.MonkeyPatch,
     mock_global_redis: fakeredis.aioredis.FakeRedis,
