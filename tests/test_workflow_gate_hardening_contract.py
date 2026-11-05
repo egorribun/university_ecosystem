@@ -134,6 +134,30 @@ def test_dast_nuclei_checkout_includes_the_parser_and_the_scan_stays_native() ->
             "Nuclei reported 1 medium, high or critical finding",
             "| medium | 1 | yes |",
         ),
+        (
+            '[{"info":{"severity":"high"}}]',
+            1,
+            "Nuclei reported 1 medium, high or critical finding",
+            "| high | 1 | yes |",
+        ),
+        (
+            '[{"info":{"severity":"critical"}}]',
+            1,
+            "Nuclei reported 1 medium, high or critical finding",
+            "| critical | 1 | yes |",
+        ),
+        (
+            '[{"info":{"severity":"low"}}]',
+            0,
+            "no medium, high or critical findings",
+            "| low | 1 | no |",
+        ),
+        (
+            '[{"info":{"severity":"info"}}]',
+            0,
+            "no medium, high or critical findings",
+            "| info | 1 | no |",
+        ),
         (None, 1, "Nuclei produced no JSON export", None),
     ],
 )
