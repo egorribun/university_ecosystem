@@ -324,48 +324,220 @@ if ($Scenario -ne 'success' -or $result -cne 'synthetic-result') { throw 'unexpe
     assert (code == 0) == (scenario == "success")
 
 
+_SIGNED_SOURCE_PATHS = (
+    "start-docker.ps1",
+    "docker-compose.full.yml",
+    "docker-compose.live.yml",
+    "infrastructure/Caddyfile",
+    "services/temporal/config.yaml",
+    "services/temporal/entrypoint.sh",
+    "scripts/temporal/bootstrap-functions.ps1",
+    "scripts/temporal/namespace-init.sh",
+)
+
+
+async def _synthetic_source_repo(
+    root: Path, *, omit: str | None = None
+) -> tuple[Path, dict[str, str]]:
+    """Create real, disposable Git metadata; never access the project index."""
+    repo = root / "source-repo"
+    repo.mkdir()
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith("GIT_")}
+    env.update(
+        {
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_AUTHOR_NAME": "Synthetic",
+            "GIT_AUTHOR_EMAIL": "synthetic@example.invalid",
+            "GIT_COMMITTER_NAME": "Synthetic",
+            "GIT_COMMITTER_EMAIL": "synthetic@example.invalid",
+        }
+    )
+    await _git(repo, env, "init", "--quiet")
+    await _git(repo, env, "config", "core.autocrlf", "false")
+    (repo / ".gitattributes").write_bytes(b"* text=auto eol=lf\n")
+    for name in _SIGNED_SOURCE_PATHS:
+        if name == omit:
+            continue
+        target = repo / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(("synthetic " + name + "\nsecond line\n").encode())
+    await _git(repo, env, "add", "--", ".")
+    await _git(repo, env, "commit", "--quiet", "-m", "synthetic source")
+    return repo, env
+
+
+async def _git(
+    repo: Path, env: dict[str, str], *args: str, data: bytes | None = None
+) -> bytes:
+    executable = shutil.which("git")
+    assert executable
+    process = await asyncio.create_subprocess_exec(
+        executable,
+        "-C",
+        str(repo),
+        *args,
+        stdin=asyncio.subprocess.PIPE
+        if data is not None
+        else asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(data), timeout=20)
+    except BaseException:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+        raise
+    assert process.returncode == 0, stderr.decode("utf-8", errors="replace")
+    return stdout
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scenario", ["clean", "dirty", "missing", "invalid-sha"])
+@pytest.mark.parametrize(
+    ("scenario", "expected"),
+    [
+        ("clean", "ACCEPTED"),
+        ("crlf", "ACCEPTED"),
+        ("dirty", "DIFFERS"),
+        ("missing-worktree", "DIFFERS"),
+        ("missing-commit", "MISSING"),
+        ("invalid-sha", "INVALID"),
+        ("replace", "DIFFERS"),
+        ("assume-unchanged", "DIFFERS"),
+        ("skip-worktree", "DIFFERS"),
+        ("git-filter", "DIFFERS"),
+        ("tree-symlink", "DIFFERS"),
+        ("worktree-symlink-or-directory-if-unavailable", "DIFFERS"),
+        ("fifo-or-directory-if-unavailable", "DIFFERS"),
+        ("git-env", "ACCEPTED"),
+    ],
+)
 async def test_signed_bootstrap_source_is_checked_without_git_mutation(
-    tmp_path: Path, scenario: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scenario: str, expected: str
 ) -> None:
+    omit = _SIGNED_SOURCE_PATHS[-1] if scenario == "missing-commit" else None
+    repo, env = await _synthetic_source_repo(tmp_path, omit=omit)
+    signed_sha = (await _git(repo, env, "rev-parse", "HEAD")).decode().strip()
+    target_name = _SIGNED_SOURCE_PATHS[1]
+    target = repo / target_name
+    if scenario == "crlf":
+        for name in _SIGNED_SOURCE_PATHS:
+            source = repo / name
+            source.write_bytes(source.read_bytes().replace(b"\n", b"\r\n"))
+    elif scenario == "dirty":
+        target.write_bytes(b"different content\n")
+    elif scenario == "missing-worktree":
+        target.unlink()
+    elif scenario == "invalid-sha":
+        signed_sha = "invalid"
+    elif scenario == "replace":
+        target.write_bytes(b"replacement content\n")
+        await _git(repo, env, "add", "--", target_name)
+        await _git(repo, env, "commit", "--quiet", "-m", "replacement source")
+        replacement = (await _git(repo, env, "rev-parse", "HEAD")).decode().strip()
+        await _git(repo, env, "replace", signed_sha, replacement)
+    elif scenario == "assume-unchanged":
+        await _git(repo, env, "update-index", "--assume-unchanged", "--", target_name)
+        target.write_bytes(b"hidden change\n")
+    elif scenario == "skip-worktree":
+        await _git(repo, env, "update-index", "--skip-worktree", "--", target_name)
+        target.write_bytes(b"hidden change\n")
+    elif scenario == "git-filter":
+        (repo / ".git/info/attributes").write_text(
+            target_name + " filter=synthetic\n", encoding="utf-8"
+        )
+        await _git(
+            repo,
+            env,
+            "config",
+            "filter.synthetic.clean",
+            "git show HEAD:" + target_name,
+        )
+        await _git(repo, env, "config", "filter.synthetic.required", "true")
+        target.write_bytes(b"hidden by clean filter\n")
+    elif scenario == "tree-symlink":
+        await _git(repo, env, "config", "core.symlinks", "false")
+        content = b"synthetic-link-target"
+        blob = (
+            (await _git(repo, env, "hash-object", "-w", "--stdin", data=content))
+            .decode()
+            .strip()
+        )
+        await _git(
+            repo,
+            env,
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            "120000",
+            blob,
+            target_name,
+        )
+        await _git(repo, env, "commit", "--quiet", "-m", "synthetic symlink")
+        signed_sha = (await _git(repo, env, "rev-parse", "HEAD")).decode().strip()
+        target.write_bytes(content)
+    elif scenario == "worktree-symlink-or-directory-if-unavailable":
+        replacement = tmp_path / "regular-target"
+        replacement.write_bytes(target.read_bytes())
+        target.unlink()
+        try:
+            target.symlink_to(replacement)
+        except (OSError, NotImplementedError):
+            target.mkdir()
+        assert target.is_symlink() or target.is_dir()
+    elif scenario == "fifo-or-directory-if-unavailable":
+        target.unlink()
+        if hasattr(os, "mkfifo"):
+            try:
+                os.mkfifo(target)
+            except (OSError, NotImplementedError):
+                target.mkdir()
+        else:
+            target.mkdir()
+        assert target.is_fifo() or target.is_dir()
+    elif scenario == "git-env":
+        other = tmp_path / "other-repo"
+        other.mkdir()
+        await _git(other, env, "init", "--quiet")
+        monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+        monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+        monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.bare")
+        monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
+
     runner = tmp_path / "source.ps1"
     runner.write_text(
         r"""
-param($Launcher,$Root,$Scenario)
+param($Launcher,$Root,$SourceSha)
 $ErrorActionPreference='Stop'
 $tokens=$null; $errors=$null
 $ast=[System.Management.Automation.Language.Parser]::ParseFile($Launcher,[ref]$tokens,[ref]$errors)
 if ($errors.Count) { throw 'invalid launcher' }
 $node=$ast.Find({param($v) $v -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $v.Name -eq 'Assert-InPlaceTemporalBootstrapSource'},$true)
+if ($null -eq $node) { throw 'source guard missing' }
 Invoke-Expression $node.Extent.Text
-$script:calls=[System.Collections.Generic.List[string]]::new()
-function Get-Command { [CmdletBinding()] param($Name,$CommandType) return [PSCustomObject]@{Source='fake-git'} }
-function fake-git {
-    $command = if ($args -ccontains 'cat-file') { 'cat-file' } elseif ($args -ccontains 'diff') { 'diff' } else { throw 'unexpected Git operation' }
-    if ($args -cnotcontains '--no-optional-locks') { throw 'Git write-prevention option missing' }
-    [void]$script:calls.Add($command)
-    $global:LASTEXITCODE = if (($Scenario -eq 'dirty' -and $command -eq 'diff') -or
-        ($Scenario -eq 'missing' -and $command -eq 'cat-file' -and $args[-1] -like '*:scripts/temporal/namespace-init.sh')) { 1 } else { 0 }
+try {
+    Assert-InPlaceTemporalBootstrapSource -SourceSha $SourceSha -Repository $Root
+    Write-Output 'ACCEPTED'
+} catch {
+    switch -Exact ($_.Exception.Message) {
+        'Temporal bootstrap source differs from the signed commit.' { Write-Output 'DIFFERS' }
+        'Temporal bootstrap source is missing from the signed commit.' { Write-Output 'MISSING' }
+        'Temporal bootstrap source identity is invalid.' { Write-Output 'INVALID' }
+        default { Write-Output 'UNEXPECTED'; exit 4 }
+    }
 }
-$sha = if ($Scenario -eq 'invalid-sha') { 'invalid' } else { 'a' * 40 }
-$accepted=$true
-try { Assert-InPlaceTemporalBootstrapSource -SourceSha $sha -Repository $Root } catch { $accepted=$false }
-[PSCustomObject]@{accepted=$accepted;calls=@($script:calls)} | ConvertTo-Json -Compress
 """,
         encoding="utf-8",
     )
     code, output = await _run_powershell(
-        runner, str(ROOT / "start-docker.ps1"), str(tmp_path), scenario
+        runner, str(ROOT / "start-docker.ps1"), str(repo), signed_sha
     )
     assert code == 0, output
-    receipt = json.loads(output)
-    assert receipt["accepted"] == (scenario == "clean")
-    if scenario == "invalid-sha":
-        assert receipt["calls"] == []
-    else:
-        assert receipt["calls"].count("cat-file") == 8
-        assert receipt["calls"].count("diff") == (scenario != "missing")
+    assert output.strip() == expected
 
 
 @pytest.mark.asyncio

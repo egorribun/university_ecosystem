@@ -725,13 +725,115 @@ function Assert-InPlaceTemporalBootstrapSource {
         'infrastructure/Caddyfile', 'services/temporal/config.yaml', 'services/temporal/entrypoint.sh',
         'scripts/temporal/bootstrap-functions.ps1', 'scripts/temporal/namespace-init.sh'
     )
-    $git = Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1
-    foreach ($path in $paths) {
-        $null = & $git.Source --no-optional-locks -C $Repository cat-file -e "${SourceSha}:$path" 2>$null
-        if ($LASTEXITCODE -ne 0) { throw 'Temporal bootstrap source is missing from the signed commit.' }
+    $git = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    $nullDevice = if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [System.Runtime.InteropServices.OSPlatform]::Windows)) { 'NUL' } else { '/dev/null' }
+    function Invoke-TemporalSourceGit {
+        param([Parameter(Mandatory=$true)][string[]]$Arguments, [Parameter(Mandatory=$true)][long]$MaximumBytes)
+        if ($MaximumBytes -lt 0 -or $MaximumBytes -ge [int]::MaxValue) {
+            throw 'Temporal bootstrap source is missing from the signed commit.'
+        }
+        $info = [System.Diagnostics.ProcessStartInfo]::new()
+        $info.FileName = $git
+        $info.UseShellExecute = $false
+        $info.CreateNoWindow = $true
+        $info.RedirectStandardOutput = $true
+        $info.RedirectStandardError = $true
+        foreach ($name in @($info.Environment.Keys)) {
+            if ($name.StartsWith('GIT_', [StringComparison]::OrdinalIgnoreCase)) {
+                [void]$info.Environment.Remove($name)
+            }
+        }
+        $info.Environment['GIT_CONFIG_NOSYSTEM'] = '1'
+        $info.Environment['GIT_CONFIG_GLOBAL'] = $nullDevice
+        $info.Environment['GIT_TERMINAL_PROMPT'] = '0'
+        $info.Environment['GIT_NO_LAZY_FETCH'] = '1'
+        foreach ($arg in (@('--no-replace-objects', '--no-optional-locks', '-C', $Repository) + $Arguments)) {
+            $info.ArgumentList.Add($arg)
+        }
+        $process = [System.Diagnostics.Process]::new()
+        $process.StartInfo = $info
+        $output = [System.IO.MemoryStream]::new()
+        $started = $false
+        try {
+            if (-not $process.Start()) { throw 'Git could not start.' }
+            $started = $true
+            $timer = [System.Diagnostics.Stopwatch]::StartNew()
+            $errorTask = $process.StandardError.BaseStream.CopyToAsync([System.IO.Stream]::Null)
+            $buffer = [byte[]]::new(8192)
+            while ($true) {
+                $remaining = [Math]::Max(0, 30000 - [int]$timer.ElapsedMilliseconds)
+                if ($remaining -eq 0) { throw 'Git source inspection timed out.' }
+                $capacity = [int][Math]::Min($buffer.Length, $MaximumBytes + 1 - $output.Length)
+                $readTask = $process.StandardOutput.BaseStream.ReadAsync($buffer, 0, $capacity)
+                if (-not $readTask.Wait($remaining)) { throw 'Git source inspection timed out.' }
+                $count = $readTask.GetAwaiter().GetResult()
+                if ($count -eq 0) { break }
+                $output.Write($buffer, 0, $count)
+                if ($output.Length -gt $MaximumBytes) { throw 'Git source output exceeded its bound.' }
+            }
+            $remaining = [Math]::Max(0, 30000 - [int]$timer.ElapsedMilliseconds)
+            if ($remaining -eq 0 -or -not $process.WaitForExit($remaining)) { throw 'Git source inspection timed out.' }
+            $remaining = [Math]::Max(0, 30000 - [int]$timer.ElapsedMilliseconds)
+            if ($remaining -eq 0 -or -not $errorTask.Wait($remaining)) { throw 'Git source inspection timed out.' }
+            $null = $errorTask.GetAwaiter().GetResult()
+            return [PSCustomObject]@{ ExitCode=$process.ExitCode; Bytes=$output.ToArray() }
+        } catch { throw 'Temporal bootstrap source is missing from the signed commit.' }
+        finally {
+            if ($started -and -not $process.HasExited) { try { $process.Kill($true) } catch { } }
+            $process.Dispose()
+            $output.Dispose()
+        }
     }
-    $null = & $git.Source --no-optional-locks -C $Repository diff --quiet --no-ext-diff --no-textconv $SourceSha -- @paths 2>$null
-    if ($LASTEXITCODE -ne 0) { throw 'Temporal bootstrap source differs from the signed commit.' }
+    foreach ($path in $paths) {
+        # Resolve from the signed tree without mutable index, replacements, filters or attributes.
+        $tree = Invoke-TemporalSourceGit -MaximumBytes 1024 -Arguments @(
+            'ls-tree', '-z', '--long', '--full-tree', $SourceSha, '--', $path)
+        if ($tree.ExitCode -ne 0 -or $tree.Bytes.Length -eq 0) {
+            throw 'Temporal bootstrap source is missing from the signed commit.'
+        }
+        $entryPattern = '^(100644|100755) blob ([0-9a-f]{40}) +([0-9]+)\t' + [regex]::Escape($path) + '\x00$'
+        $entry = [regex]::Match([System.Text.Encoding]::ASCII.GetString($tree.Bytes), $entryPattern)
+        if (-not $entry.Success) { throw 'Temporal bootstrap source differs from the signed commit.' }
+        $expectedId = $entry.Groups[2].Value
+        try {
+            $expectedSize = [long]::Parse($entry.Groups[3].Value, [System.Globalization.CultureInfo]::InvariantCulture)
+        } catch { throw 'Temporal bootstrap source differs from the signed commit.' }
+        $blob = Invoke-TemporalSourceGit -MaximumBytes $expectedSize -Arguments @('cat-file', 'blob', $expectedId)
+        if ($blob.ExitCode -ne 0 -or $blob.Bytes.LongLength -ne $expectedSize) {
+            throw 'Temporal bootstrap source is missing from the signed commit.'
+        }
+        try {
+            $file = [System.IO.FileInfo]::new([System.IO.Path]::GetFullPath((Join-Path $Repository $path)))
+            if (-not $file.Exists -or $null -ne $file.LinkTarget -or
+                ($file.Attributes -band ([System.IO.FileAttributes]::Directory -bor
+                    [System.IO.FileAttributes]::ReparsePoint -bor [System.IO.FileAttributes]::Device)) -ne 0 -or
+                $expectedSize -gt ([long]::MaxValue / 2) -or $file.Length -gt (2 * $expectedSize)) {
+                throw 'Source file is not a bounded regular file.'
+            }
+            if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+                [System.Runtime.InteropServices.OSPlatform]::Linux)) {
+                # FileAttributes.Device is not supported on Linux. Inspect the
+                # file type before opening so a FIFO cannot block this check.
+                $stat = (Get-Command stat -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+                $mode = @(& $stat '-c' '%f' '--' $file.FullName 2>$null)
+                if ($LASTEXITCODE -ne 0 -or $mode.Count -ne 1 -or
+                    $mode[0] -cnotmatch '^[0-9a-fA-F]{1,8}$' -or
+                    (([Convert]::ToInt32($mode[0], 16) -band 0xF000) -ne 0x8000)) {
+                    throw 'Source file is not regular.'
+                }
+            }
+            $utf8 = [System.Text.UTF8Encoding]::new($false, $true)
+            $actualBytes = [System.IO.File]::ReadAllBytes($file.FullName)
+            # The signed paths are text with LF attributes. Preserve Git's ordinary
+            # CRLF checkout compatibility without consulting the index or filters.
+            $crlf = [string]([char]13) + [char]10
+            $normalized = $utf8.GetBytes($utf8.GetString($actualBytes).Replace($crlf, [string]([char]10)))
+            if (-not [System.Security.Cryptography.CryptographicOperations]::FixedTimeEquals($normalized, $blob.Bytes)) {
+                throw 'Source file content changed.'
+            }
+        } catch { throw 'Temporal bootstrap source differs from the signed commit.' }
+    }
 }
 
 if ($LiveStateMode) {
