@@ -91,3 +91,23 @@ func TestAUD167RotatingSpoofedLeftmostHopBehindTrustedProxyCannotEscapeLimit(t *
 		gatewayRequestStatus(t, router, proxy, "203.0.113.99, 198.51.100.77"),
 		"a rotated forged prefix must not reset the real client's budget")
 }
+
+// A trusted hop may append a separate header field. The gateway must use the
+// resulting complete chain, not a client-controlled first field.
+func TestAUD167RotatingFirstForwardedFieldCannotEscapeLimit(t *testing.T) {
+	router := gatewayRateLimitedRouter(t, []string{"10.200.0.12"})
+	attempt := func(forged, client string) int {
+		request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/resource", nil)
+		request.RemoteAddr = "10.200.0.12:45678"
+		request.Header.Add("X-Forwarded-For", forged)
+		request.Header.Add("X-Forwarded-For", client)
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		return recorder.Code
+	}
+	for i := 1; i <= 3; i++ {
+		require.Equal(t, http.StatusNoContent, attempt(fmt.Sprintf("203.0.113.%d", i), "198.51.100.25"))
+	}
+	require.Equal(t, http.StatusTooManyRequests, attempt("203.0.113.4", "198.51.100.25"))
+	require.Equal(t, http.StatusNoContent, attempt("203.0.113.5", "198.51.100.26"))
+}
