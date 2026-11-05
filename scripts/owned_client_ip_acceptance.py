@@ -38,7 +38,7 @@ _BACKEND_COMMAND = (
     "gunicorn",
     "app.main:app",
     "--worker-class",
-    "uvicorn.workers.UvicornWorker",
+    "app.server.spiffe_worker.BackendWorker",
     "--workers",
     "2",
     "--bind",

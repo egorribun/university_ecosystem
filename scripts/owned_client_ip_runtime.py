@@ -181,7 +181,7 @@ def _check_probe(
         or host.get("SecurityOpt") != ["no-new-privileges:true"]
         or host.get("NetworkMode") not in (public_name, public_id)
         or host.get("PidMode") not in (None, "")
-        or host.get("IpcMode") not in (None, "")
+        or host.get("IpcMode") not in (None, "", "private")
         or host.get("AutoRemove") is not False
         or host.get("RestartPolicy") != {"Name": "no", "MaximumRetryCount": 0}
         or (
