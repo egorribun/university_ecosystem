@@ -278,18 +278,55 @@ def test_module_inventory_scans_each_module_outside_the_root_workspace(
 
 @pytest.mark.parametrize(("job", "name"), SCAN_STEPS)
 @pytest.mark.parametrize("mode", ["analysis-error", "analysis-skipped"])
-def test_module_inventory_rejects_a_call_analysis_error_even_with_findings(
+def test_module_scan_records_scanner_status_2_for_the_gate(
     pytester: pytest.Pytester,
     monkeypatch: pytest.MonkeyPatch,
     job: str,
     name: str,
     mode: str,
 ) -> None:
+    # The scan step only records the status; the validation step rejects it.
     result = _run(pytester, monkeypatch, job, name, mode)
     assert result.ret == 0, result.stderr.str()
     assert (pytester.path / "github-output").read_text(encoding="utf-8").strip() == (
         "scanner_status=2"
     )
+
+
+@pytest.mark.parametrize(
+    ("job", "name"),
+    [
+        ("sbom-go", "Validate OSV scanner result"),
+        ("vuln-gate-pr", "Validate OSV scanner result (pull request inventory)"),
+    ],
+)
+def test_validation_step_rejects_scanner_status_2_even_with_findings(
+    pytester: pytest.Pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    job: str,
+    name: str,
+) -> None:
+    # Findings are present in the SARIF, yet analysis failed: the gate must fail.
+    (pytester.path / "go-vuln.sarif").write_text(
+        '{"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "osv"}},'
+        ' "results": [{"ruleId": "GO-2099-0001"}]}]}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SCANNER_STATUS", "2")
+    result = pytester.run(
+        _bash(),
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        "-c",
+        _step(job, name)["run"],
+        timeout=20,
+    )
+    assert result.ret != 0
+    output = result.stdout.str() + result.stderr.str()
+    assert "failed operationally (exit 2)" in output
 
 
 @pytest.mark.parametrize("job", ["sbom-go", "vuln-gate-pr"])

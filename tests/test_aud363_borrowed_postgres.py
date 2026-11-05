@@ -267,23 +267,40 @@ def test_service_inspection_rejects_an_unowned_or_changed_service(
         proof.inspect_service(_ID)
 
 
+_IDENTITY_UNAVAILABLE = "owned service identity unavailable"
+_INSPECTION_FAILED = "owned service inspection failed"
+
+
 @pytest.mark.parametrize(
-    "failure", ["bad-id", "no-docker", "status", "invalid-json", "timeout"]
+    ("failure", "message"),
+    [
+        ("bad-id", _IDENTITY_UNAVAILABLE),
+        ("no-docker", _IDENTITY_UNAVAILABLE),
+        ("status", _INSPECTION_FAILED),
+        ("invalid-json", _INSPECTION_FAILED),
+        ("timeout", _INSPECTION_FAILED),
+    ],
 )
 def test_service_inspection_fails_closed_without_leaking_diagnostics(
-    monkeypatch: pytest.MonkeyPatch, failure: str
+    monkeypatch: pytest.MonkeyPatch, failure: str, message: str
 ) -> None:
-    run = _mock_inspect(monkeypatch, "sensitive diagnostic", status=1)
+    # Docker succeeds by default so that only the named guard can reject a case.
+    run = _mock_inspect(monkeypatch, "sensitive diagnostic", status=0)
     container_id = "bad" if failure == "bad-id" else _ID
     if failure == "no-docker":
         monkeypatch.setattr(proof.shutil, "which", lambda _name: None)
-    elif failure == "invalid-json":
-        run.return_value.returncode = 0
+    elif failure == "status":
+        run.return_value.returncode = 1
     elif failure == "timeout":
         run.side_effect = TimeoutExpired("sensitive diagnostic", 15)
-    with pytest.raises(proof.ProofError) as caught:
+    # invalid-json: the default stdout "sensitive diagnostic" is not JSON.
+    with pytest.raises(proof.ProofError, match=message) as caught:
         proof.inspect_service(container_id)
     assert "sensitive diagnostic" not in str(caught.value)
+    if failure in {"bad-id", "no-docker"}:
+        run.assert_not_called()
+    else:
+        run.assert_called_once()
 
 
 def _admin_connection() -> AsyncMock:
@@ -507,7 +524,16 @@ def test_main_rechecks_service_before_running_proof(
 
 @pytest.mark.parametrize(
     "failure",
-    ["id", "temp", "inspect", "bootstrap", "reinspect", "admin-changed", "pytest"],
+    [
+        "id",
+        "temp",
+        "inspect",
+        "bootstrap",
+        "reinspect",
+        "admin-changed",
+        "pytest",
+        "unexpected",
+    ],
 )
 def test_main_fails_closed_without_exposing_diagnostics(
     tmp_path: Path,
@@ -533,14 +559,46 @@ def test_main_fails_closed_without_exposing_diagnostics(
         inspect.side_effect = ["p" * 24, "q" * 24]
     elif failure == "pytest":
         run.side_effect = proof.ProofError("sensitive detail")
+    elif failure == "unexpected":
+        inspect.side_effect = RuntimeError("sensitive detail")
     monkeypatch.setattr(proof, "inspect_service", inspect)
     monkeypatch.setattr(proof, "bootstrap", provision)
     monkeypatch.setattr(proof, "run_proof", run)
 
     assert proof.main() == 1
-    assert "sensitive" not in capsys.readouterr().err
+    captured = capsys.readouterr()
+    assert "sensitive" not in captured.err and not captured.out
+    assert "AUD363_454_OWNED_POSTGRES_REJECTED" in captured.err
     if failure != "pytest":
         run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "outcome", ["success", "exit", "bad-report", "oserror", "timeout"]
+)
+def test_pytest_child_directory_is_removed_on_every_outcome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    def run(args, **_kwargs):
+        if outcome == "oserror":
+            raise OSError("sensitive diagnostic")
+        if outcome == "timeout":
+            raise TimeoutExpired("sensitive command", 180)
+        report_arg = next(arg for arg in args if arg.startswith("--junitxml="))
+        report = Path(report_arg.removeprefix("--junitxml="))
+        if outcome == "bad-report":
+            report.write_text("bad report", encoding="utf-8")
+        else:
+            _write_report(report, _report())
+        return CompletedProcess(args, 1 if outcome == "exit" else 0, stdout="")
+
+    monkeypatch.setattr(proof.subprocess, "run", run)
+    if outcome == "success":
+        proof.run_proof("a" * 64, tmp_path)
+    else:
+        with pytest.raises(proof.ProofError):
+            proof.run_proof("a" * 64, tmp_path)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_cli_rejects_missing_configuration_without_connecting(

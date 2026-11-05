@@ -206,37 +206,42 @@ def run_proof(role_password: str, temp_root: Path) -> None:
         f"{role_password}@127.0.0.1:15432/audit_ws_borrowed"
     )
     try:
-        directory = Path(tempfile.mkdtemp(prefix="aud363-proof-", dir=temp_root))
-        report = directory / "junit.xml"
-        test_file = "tests/integration/test_aud363_454_borrowed_session_postgres.py"
-        result = subprocess.run(  # noqa: S603  # Current interpreter and fixed test cases.
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                *(f"{test_file}::{name}" for name in _CASES),
-                "-n",
-                "0",
-                "--no-cov",
-                "-p",
-                "no:cacheprovider",
-                "-o",
-                "xfail_strict=true",
-                f"--junitxml={report}",
-                f"--basetemp={directory / 'pytest'}",
-                "-q",
-            ],
-            env=child_env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=180,
-            check=False,
-        )
+        # The directory (report, basetemp, and any child artifacts) is removed on
+        # every outcome, including failures and timeouts.
+        with tempfile.TemporaryDirectory(
+            prefix="aud363-proof-", dir=temp_root
+        ) as directory_name:
+            directory = Path(directory_name)
+            report = directory / "junit.xml"
+            test_file = "tests/integration/test_aud363_454_borrowed_session_postgres.py"
+            result = subprocess.run(  # noqa: S603  # Current interpreter and fixed test cases.
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    *(f"{test_file}::{name}" for name in _CASES),
+                    "-n",
+                    "0",
+                    "--no-cov",
+                    "-p",
+                    "no:cacheprovider",
+                    "-o",
+                    "xfail_strict=true",
+                    f"--junitxml={report}",
+                    f"--basetemp={directory / 'pytest'}",
+                    "-q",
+                ],
+                env=child_env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=180,
+                check=False,
+            )
+            if result.returncode != 0:
+                raise ProofError("AUD-363/454 pytest process failed")
+            validate_report(report)
     except (OSError, subprocess.SubprocessError):
         raise ProofError("AUD-363/454 pytest process failed") from None
-    if result.returncode != 0:
-        raise ProofError("AUD-363/454 pytest process failed")
-    validate_report(report)
 
 
 def validate_report(path: Path) -> None:
@@ -285,7 +290,9 @@ def main() -> int:
         if not hmac.compare_digest(admin_password, inspect_service(container_id)):
             raise ProofError("owned PostgreSQL identity changed")
         run_proof(role_password, temp_root)
-    except ProofError:
+    except Exception:
+        # Fail closed on ProofError and on any unexpected error alike. The
+        # message is fixed, so no exception text or credential reaches the log.
         print("AUD363_454_OWNED_POSTGRES_REJECTED", file=sys.stderr)
         return 1
     print("AUD-363/454: all six named PostgreSQL cases passed without skips")
