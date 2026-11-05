@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from sqlalchemy.engine import make_url
 
 from tests import conftest as project_conftest
 from tests.fixtures.database import database as database_fixtures
@@ -548,13 +549,16 @@ async def test_database_cleanup_skips_only_allowlisted_parser_after_body_error(
 ) -> None:
     clear_calls: list[bool] = []
 
-    async def record_clear(*, is_postgresql: bool) -> None:
+    async def record_clear(
+        *, is_postgresql: bool, expected_url: object, expected_engine: object
+    ) -> None:
         clear_calls.append(is_postgresql)
 
     monkeypatch.setattr(database_fixtures, "_clear_mapped_database_rows", record_clear)
     request = SimpleNamespace(node=_node(relative_path=relative_path, name=node_name))
     fixture = database_fixtures.clean_database.__wrapped__(
-        prepare_database=None, request=request
+        prepare_database=(make_url("sqlite+aiosqlite:///:memory:"), object()),
+        request=request,
     )
     await fixture.__anext__()
 
@@ -671,7 +675,9 @@ async def test_policy_database_cleanup_is_exact_after_body_error(
 ) -> None:
     clear_calls: list[bool] = []
 
-    async def record_clear(*, is_postgresql: bool) -> None:
+    async def record_clear(
+        *, is_postgresql: bool, expected_url: object, expected_engine: object
+    ) -> None:
         clear_calls.append(is_postgresql)
 
     monkeypatch.setattr(database_fixtures, "_clear_mapped_database_rows", record_clear)
@@ -690,7 +696,8 @@ async def test_policy_database_cleanup_is_exact_after_body_error(
             node=_node(relative_path=relative_path, name=node_name)
         )
         fixture = database_fixtures.clean_database.__wrapped__(
-            prepare_database=None, request=request
+            prepare_database=(make_url("sqlite+aiosqlite:///:memory:"), object()),
+            request=request,
         )
         await fixture.__anext__()
 

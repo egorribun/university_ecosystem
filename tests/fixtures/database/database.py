@@ -8,8 +8,9 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import ArgumentError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.ext.compiler import compiles
 
 import app.models  # noqa: F401
@@ -291,11 +292,57 @@ def _explicit_sqlite_sentinel_exists(database_url: str) -> bool:
         return False
 
 
+def _has_unambiguous_database_target(database_url: str) -> bool:
+    try:
+        parsed = make_url(database_url)
+        if parsed.drivername == "postgresql+asyncpg":
+            # asyncpg may take connection identity from query parameters or
+            # PG* environment variables when URL components are absent.
+            return bool(
+                parsed.host
+                and parsed.port
+                and parsed.username
+                and parsed.database
+                and not (parsed.query.keys() - {"ssl", "prepared_statement_cache_size"})
+                and all(isinstance(value, str) for value in parsed.query.values())
+            )
+        if parsed.drivername == "sqlite+aiosqlite":
+            if parsed.host or parsed.port or parsed.username or parsed.password:
+                return False
+            allowed = {
+                "cached_statements",
+                "check_same_thread",
+                "detect_types",
+                "isolation_level",
+                "timeout",
+                "uri",
+            }
+            if parsed.query.keys() - allowed:
+                return False
+            uri = parsed.query.get("uri")
+            # URI-mode filename escapes and query options can change the actual
+            # SQLite database relative to the parsed URL path.
+            return uri is None or (
+                isinstance(uri, str)
+                and uri.strip().lower() in {"false", "no", "off", "n", "f", "0"}
+            )
+    except (ArgumentError, TypeError, ValueError):
+        return False
+    return False
+
+
 def _require_safe_database_reset(database_url: str) -> None:
     mode = os.environ.get("UNIVERSITY_ECOSYSTEM_PYTEST_DATABASE_MODE", "explicit")
     external_database_url = os.environ.get(
         "UNIVERSITY_ECOSYSTEM_PYTEST_EXTERNAL_DATABASE_URL"
     )
+    if not _has_unambiguous_database_target(database_url) or (
+        external_database_url
+        and not _has_unambiguous_database_target(external_database_url)
+    ):
+        raise pytest.UsageError(
+            "Explicit database reset is not authorized: ambiguous database target."
+        )
     reset_target = external_database_url or database_url
     if (
         external_database_url
@@ -327,8 +374,60 @@ def _require_safe_database_reset(database_url: str) -> None:
     )
 
 
-async def _clear_mapped_database_rows(*, is_postgresql: bool) -> None:
-    async with database.engine.begin() as conn:
+def _authorized_reset_engine(
+    expected_url: str | URL | None = None, expected_engine: AsyncEngine | None = None
+) -> AsyncEngine:
+    try:
+        selected_url = make_url(os.environ.get("DATABASE_URL", ""))
+        expected = make_url(expected_url) if expected_url is not None else selected_url
+    except (ArgumentError, TypeError, ValueError):
+        raise pytest.UsageError(
+            "Explicit database reset is not authorized: invalid database target."
+        ) from None
+    _require_safe_database_reset(selected_url.render_as_string(hide_password=False))
+    # init_database may reuse an existing engine. Check its actual URL rather
+    # than trusting DATABASE_URL, which DATABASE_URL_FILE can override.
+    init_database()
+    engine = database._engine
+    if (
+        engine is None
+        or engine.url != selected_url
+        or selected_url != expected
+        or (expected_engine is not None and engine is not expected_engine)
+    ):
+        raise pytest.UsageError(
+            "Explicit database reset is not authorized: engine target mismatch."
+        )
+    return engine
+
+
+def _maintenance_connect_kwargs(engine: AsyncEngine) -> dict[str, object]:
+    # The dialect's arguments match the engine's interpretation of URL parts;
+    # passing a DSN to asyncpg would decode some parts differently.
+    positional, options = engine.dialect.create_connect_args(engine.url)
+    if positional:
+        raise pytest.UsageError(
+            "Explicit database reset is not authorized: ambiguous maintenance target."
+        )
+    result = dict(options)
+    # This option belongs to SQLAlchemy's adapter, not asyncpg.connect().
+    result.pop("prepared_statement_cache_size", None)
+    result["database"] = "postgres"
+    return result
+
+
+async def _clear_mapped_database_rows(
+    *,
+    is_postgresql: bool,
+    expected_url: str | URL | None = None,
+    expected_engine: AsyncEngine | None = None,
+) -> None:
+    engine = _authorized_reset_engine(expected_url, expected_engine)
+    if (engine.url.get_backend_name() == "postgresql") != is_postgresql:
+        raise pytest.UsageError(
+            "Explicit database reset is not authorized: database dialect mismatch."
+        )
+    async with engine.begin() as conn:
         if is_postgresql:
             result = await conn.exec_driver_sql(
                 "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'"
@@ -353,10 +452,10 @@ async def _clear_mapped_database_rows(*, is_postgresql: bool) -> None:
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
-async def prepare_database() -> AsyncIterator[None]:
-    database_url = os.environ.get("DATABASE_URL", "")
-    is_postgresql = database_url.startswith("postgresql")
-    _require_safe_database_reset(database_url)
+async def prepare_database() -> AsyncIterator[tuple[URL, AsyncEngine]]:
+    engine = _authorized_reset_engine()
+    database_url = engine.url
+    is_postgresql = engine.url.get_backend_name() == "postgresql"
     is_harness_owned = os.environ.get("UNIVERSITY_ECOSYSTEM_PYTEST_DATABASE_MODE") in {
         "harness-sqlite",
         "harness-postgres",
@@ -365,16 +464,10 @@ async def prepare_database() -> AsyncIterator[None]:
     if is_postgresql:
         worker_id = os.environ.get("PYTEST_XDIST_WORKER")
         if worker_id:
-            from urllib.parse import urlparse, urlunparse
-
             import asyncpg
 
-            parsed = urlparse(database_url)
-            worker_db = parsed.path.lstrip("/")
-            # Connect to 'postgres' database to create the worker-specific DB
-            postgres_url = urlunparse(parsed._replace(path="/postgres"))
-            conn_url = postgres_url.replace("postgresql+asyncpg://", "postgresql://")
-            conn = await asyncpg.connect(conn_url)
+            worker_db = engine.url.database or ""
+            conn = await asyncpg.connect(**_maintenance_connect_kwargs(engine))
             try:
                 exists = await conn.fetchval(
                     "SELECT 1 FROM pg_database WHERE datname = $1", worker_db
@@ -392,11 +485,9 @@ async def prepare_database() -> AsyncIterator[None]:
             finally:
                 await conn.close()
 
-    init_database()
-
     if is_postgresql:
         # Create vector extension, all tables, and RLS policies for PostgreSQL
-        async with database.engine.begin() as conn:
+        async with engine.begin() as conn:
             await conn.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
             await conn.run_sync(Base.metadata.create_all)
             await conn.exec_driver_sql("ALTER TABLE messages ENABLE ROW LEVEL SECURITY")
@@ -495,7 +586,7 @@ async def prepare_database() -> AsyncIterator[None]:
             now + timedelta(days=32),  # next month
         ]
 
-        async with database.engine.execution_options(
+        async with engine.execution_options(
             isolation_level="AUTOCOMMIT"
         ).connect() as conn:
             for tbl in _PARTITIONED_TABLES:
@@ -553,27 +644,23 @@ async def prepare_database() -> AsyncIterator[None]:
                     )
 
         if not is_harness_owned:
-            await _clear_mapped_database_rows(is_postgresql=True)
+            await _clear_mapped_database_rows(
+                is_postgresql=True, expected_url=database_url, expected_engine=engine
+            )
 
         try:
-            yield
+            yield database_url, engine
         finally:
             if database._engine is not None:
                 await database._engine.dispose()
             if database._read_replica_engine is not None:
                 await database._read_replica_engine.dispose()
             if worker_id:
-                from urllib.parse import urlparse, urlunparse
-
                 import asyncpg
 
-                parsed = urlparse(database_url)
-                worker_db = parsed.path.lstrip("/")
-                postgres_url = urlunparse(parsed._replace(path="/postgres"))
-                conn_url = postgres_url.replace(
-                    "postgresql+asyncpg://", "postgresql://"
-                )
-                conn = await asyncpg.connect(conn_url)
+                engine = _authorized_reset_engine(database_url, engine)
+                worker_db = engine.url.database or ""
+                conn = await asyncpg.connect(**_maintenance_connect_kwargs(engine))
                 try:
                     await conn.execute(
                         "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
@@ -612,7 +699,7 @@ async def prepare_database() -> AsyncIterator[None]:
         "stored_events",
     }
 
-    async with database.engine.begin() as conn:
+    async with engine.begin() as conn:
         await conn.exec_driver_sql("PRAGMA busy_timeout=5000")
         await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
 
@@ -833,11 +920,14 @@ async def prepare_database() -> AsyncIterator[None]:
         )
 
     if not is_harness_owned:
-        await _clear_mapped_database_rows(is_postgresql=False)
+        await _clear_mapped_database_rows(
+            is_postgresql=False, expected_url=database_url, expected_engine=engine
+        )
 
-    yield
+    yield database_url, engine
     if is_harness_owned:
-        async with database.engine.begin() as conn:
+        engine = _authorized_reset_engine(database_url, engine)
+        async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
     if database._engine is not None:
         await database._engine.dispose()
@@ -859,7 +949,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 
 @pytest_asyncio.fixture(autouse=True)
 async def clean_database(
-    prepare_database: None, request: pytest.FixtureRequest
+    prepare_database: tuple[URL, AsyncEngine], request: pytest.FixtureRequest
 ) -> AsyncIterator[None]:
     """
     Clean up tables between tests to ensure isolation.
@@ -877,17 +967,17 @@ async def clean_database(
     ):
         return
 
-    database_url = os.environ.get("DATABASE_URL", "")
-    is_postgresql = (
-        database.engine.dialect.name == "postgresql"
-        or database_url.startswith("postgresql")
-    )
+    is_postgresql = database.engine.dialect.name == "postgresql"
 
     attempts = 5
     delay = 0.1
     for attempt in range(1, attempts + 1):
         try:
-            await _clear_mapped_database_rows(is_postgresql=is_postgresql)
+            await _clear_mapped_database_rows(
+                is_postgresql=is_postgresql,
+                expected_url=prepare_database[0],
+                expected_engine=prepare_database[1],
+            )
             break
         except OperationalError as exc:
             if "database is locked" not in str(exc).lower() or attempt == attempts:
