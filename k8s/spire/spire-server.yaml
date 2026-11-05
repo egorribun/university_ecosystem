@@ -141,6 +141,10 @@ spec:
               readOnly: true
             - name: spire-data
               mountPath: /run/spire/data
+            # Preserve SPIRE's default local-only admin socket while keeping
+            # the container root filesystem read-only.
+            - name: spire-server-admin-socket
+              mountPath: /tmp/spire-server/private
           resources:
             requests:
               cpu: 100m
@@ -152,6 +156,8 @@ spec:
         - name: spire-config
           configMap:
             name: spire-server-config
+        - name: spire-server-admin-socket
+          emptyDir: {}
   volumeClaimTemplates:
     - metadata:
         name: spire-data

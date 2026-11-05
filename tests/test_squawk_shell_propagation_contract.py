@@ -339,3 +339,154 @@ def test_global_squawk_configuration_has_no_exclusions() -> None:
 
     config = tomllib.loads((ROOT / ".squawk.toml").read_text(encoding="utf-8"))
     assert config == {"excluded_rules": []}
+
+
+def _run_readiness_step(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pytester: pytest.Pytester,
+    *,
+    ready_after: int,
+    failure_exit: int,
+    silent: bool,
+) -> tuple[dict, dict]:
+    """Run the actual Actions body against a fake native PostgreSQL probe."""
+    import json
+    import sys
+
+    workflow = yaml.safe_load(
+        (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    job = workflow["jobs"]["alembic-migrations"]
+    steps = [step for step in job["steps"] if step.get("name") == "Wait for PostgreSQL"]
+    assert len(steps) == 1
+    assert steps[0]["shell"] == "pwsh"
+    step_path = tmp_path / "workflow-readiness.ps1"
+    step_path.write_text(steps[0]["run"], encoding="utf-8", newline="\n")
+
+    state_path = tmp_path / "readiness-state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "ready_after": ready_after,
+                "failure_exit": failure_exit,
+                "silent": silent,
+                "calls": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "path = Path(os.environ['READINESS_STATE'])\n"
+        "state = json.loads(path.read_text(encoding='utf-8'))\n"
+        "number = len(state['calls']) + 1\n"
+        "ready = state['ready_after'] > 0 and number >= state['ready_after']\n"
+        "status = 0 if ready else state['failure_exit']\n"
+        "state['calls'].append({'arguments': sys.argv[1:], 'exit': status})\n"
+        "path.write_text(json.dumps(state), encoding='utf-8')\n"
+        "if not state['silent']:\n"
+        "    print('localhost:5432 - accepting connections' if ready else "
+        "'localhost:5432 - rejecting connections')\n"
+        "sys.exit(status)\n",
+        encoding="utf-8",
+    )
+    if os.name == "nt":
+        stub = tmp_path / "pg-isready.cmd"
+        stub.write_text(
+            '@echo off\n"%READINESS_PYTHON%" "%READINESS_PROBE%" %*\n'
+            "exit /b %ERRORLEVEL%\n",
+            encoding="utf-8",
+        )
+    else:
+        stub = tmp_path / "pg-isready"
+        _executable(
+            stub,
+            '#!/bin/sh\nexec "$READINESS_PYTHON" "$READINESS_PROBE" "$@"\n',
+        )
+
+    harness = tmp_path / "harness.ps1"
+    harness.write_text(
+        """$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
+$global:readinessSleeps = [Collections.Generic.List[int]]::new()
+function global:pg_isready { & $env:READINESS_STUB @args }
+function global:Start-Sleep { param([int]$Seconds) $global:readinessSleeps.Add($Seconds) }
+try {
+  & $env:READINESS_STEP
+  $outcome = 'success'
+  $message = ''
+} catch {
+  $outcome = 'failure'
+  $message = $_.Exception.Message
+}
+$result = [PSCustomObject]@{ outcome=$outcome; message=$message; sleeps=@($global:readinessSleeps) }
+Write-Output ('READINESS_RESULT=' + ($result | ConvertTo-Json -Compress -Depth 8))
+""",
+        encoding="utf-8",
+    )
+    for name, value in {
+        "READINESS_STATE": str(state_path),
+        "READINESS_PYTHON": sys.executable,
+        "READINESS_PROBE": str(probe),
+        "READINESS_STUB": str(stub),
+        "READINESS_STEP": str(step_path),
+        "XDG_CACHE_HOME": str(tmp_path / "powershell-cache"),
+    }.items():
+        monkeypatch.setenv(name, value)
+    pwsh = shutil.which("pwsh")
+    assert pwsh, "PowerShell 7 is required to execute the workflow step"
+    result = pytester.run(
+        pwsh, "-NoProfile", "-NonInteractive", "-File", str(harness), timeout=40
+    )
+    assert result.ret == 0, result.outlines + result.errlines
+    lines = [line for line in result.outlines if line.startswith("READINESS_RESULT=")]
+    assert len(lines) == 1, result.outlines
+    return (
+        json.loads(lines[0].split("=", 1)[1]),
+        json.loads(state_path.read_text(encoding="utf-8")),
+    )
+
+
+@pytest.mark.parametrize(
+    ("ready_after", "failure_exit", "silent", "outcome", "calls", "sleeps"),
+    [
+        pytest.param(1, 2, False, "success", 1, 0, id="ready-first"),
+        pytest.param(2, 1, False, "success", 2, 1, id="refused-then-ready"),
+        pytest.param(30, 2, False, "success", 30, 29, id="ready-last"),
+        pytest.param(0, 1, False, "failure", 30, 30, id="refused-with-stdout"),
+        pytest.param(0, 2, False, "failure", 30, 30, id="no-response"),
+        pytest.param(0, 3, False, "failure", 30, 30, id="no-attempt"),
+        pytest.param(1, 1, True, "success", 1, 0, id="ready-without-stdout"),
+    ],
+)
+def test_postgres_readiness_uses_native_exit_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pytester: pytest.Pytester,
+    ready_after: int,
+    failure_exit: int,
+    silent: bool,
+    outcome: str,
+    calls: int,
+    sleeps: int,
+) -> None:
+    observed, state = _run_readiness_step(
+        tmp_path,
+        monkeypatch,
+        pytester,
+        ready_after=ready_after,
+        failure_exit=failure_exit,
+        silent=silent,
+    )
+    assert observed["outcome"] == outcome
+    assert len(state["calls"]) == calls
+    assert observed["sleeps"] == [1] * sleeps
+    assert all(
+        call["arguments"] == ["-h", "localhost", "-p", "5432", "-U", "test"]
+        for call in state["calls"]
+    )
+    if outcome == "failure":
+        assert observed["message"] == "PostgreSQL was not ready in 30 seconds"
