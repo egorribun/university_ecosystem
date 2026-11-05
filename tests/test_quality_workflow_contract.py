@@ -3154,6 +3154,14 @@ def test_rust_fuzz_matrix_covers_every_fuzz_workspace() -> None:
     }
     assert "crates/" not in workflow_path.read_text(encoding="utf-8")
 
+    for directory in by_directory:
+        workspace = REPOSITORY_ROOT / directory
+        manifest = tomllib.loads((workspace / "Cargo.toml").read_text(encoding="utf-8"))
+        for member in manifest["workspace"]["members"]:
+            assert list(workspace.glob(f"{member}/Cargo.toml")), (
+                f"{directory}: workspace member {member!r} has no Cargo.toml"
+            )
+
 
 def test_rust_fuzz_required_context_runs_when_its_workflow_changes() -> None:
     """A workflow-only PR change must exercise the required fuzz context."""
