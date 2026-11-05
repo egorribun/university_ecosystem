@@ -1412,6 +1412,27 @@ jobs:
           echo "Linting changed Alembic migrations for ZDD safety..."
           base_sha="${{ github.event.pull_request.base.sha }}"
           if [ -z "$base_sha" ]; then base_sha="HEAD~1"; fi
+          versions_mode="$(git ls-tree --format='%(objectmode)' HEAD -- alembic/versions)"
+          if [[ "$versions_mode" != "040000" || ! -d alembic/versions || -L alembic || -L alembic/versions ]]; then
+            echo "::error::Alembic versions must be a checked-out Git tree" >&2
+            exit 1
+          fi
+          type_changes="$(git diff --name-only --diff-filter=T "$base_sha"...HEAD -- 'alembic/versions/*.py')"
+          if [[ -n "$type_changes" ]]; then
+            echo "::error::Alembic migration type changes are not supported" >&2
+            exit 1
+          fi
+          version_modes="$(git ls-tree -r --format='%(objectmode)' HEAD -- alembic/versions)"
+          if [[ -z "$version_modes" ]]; then
+            echo "::error::Alembic versions tree is empty" >&2
+            exit 1
+          fi
+          while IFS= read -r version_mode; do
+            if [[ "$version_mode" != "100644" ]]; then
+              echo "::error::Alembic versions contain a non-regular Git object" >&2
+              exit 1
+            fi
+          done <<< "$version_modes"
           changed_files="$(git diff --name-only --diff-filter=ACMR "$base_sha"...HEAD -- 'alembic/versions/*.py')"
           if [ -z "$changed_files" ]; then
             echo "No changed migrations; nothing to lint."
@@ -1433,6 +1454,11 @@ jobs:
                 --exclude prefer-text-field
                 --exclude prefer-bigint-over-int
               )
+            fi
+            migration_mode="$(git ls-tree --format='%(objectmode)' HEAD -- "$migration")"
+            if [[ "$migration_mode" != "100644" || ! -f "$migration" || -L "$migration" ]]; then
+              echo "::error::Alembic migration must be a checked-out regular Git blob" >&2
+              exit 1
             fi
             revision_metadata="$(uv run python scripts/quality/read_alembic_revision.py "$migration")"
             read -r revision down_revision <<< "$revision_metadata"

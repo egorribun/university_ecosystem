@@ -96,6 +96,19 @@ if [[ "$name" == "${TEST_SCANNER_FAIL:-}" ]]; then exit 23; fi
         binary_dir / "git",
         """#!/usr/bin/env bash
 set -eu
+if [[ "$1" == ls-tree ]]; then
+  path="${@: -1}"
+  if [[ "$2" == "-r" ]]; then
+    printf '%s\\n' "${TEST_ALL_MODES:-100644}"
+  elif [[ "$path" == "alembic/versions" ]]; then
+    printf '%s\\n' "${TEST_VERSIONS_MODE:-040000}"
+  elif [[ "$path" == "${TEST_BAD_MODE_PATH:-}" ]]; then
+    printf '%s\\n' "${TEST_BAD_MODE:-120000}"
+  else
+    printf '100644\\n'
+  fi
+  exit "${TEST_LS_TREE_EXIT:-0}"
+fi
 [[ "$1" == diff && "$2" == --name-only ]] || exit 91
 filter=""
 for argument in "$@"; do
@@ -109,6 +122,9 @@ fi
 if [[ -z "$filter" || "$filter" == *D* ]]; then
   if [[ -n "$TEST_DELETED_FILES" ]]; then printf '%s\\n' "$TEST_DELETED_FILES"; fi
 fi
+if [[ -z "$filter" || "$filter" == *T* ]]; then
+  if [[ -n "$TEST_TYPE_CHANGED_FILES" ]]; then printf '%s\\n' "$TEST_TYPE_CHANGED_FILES"; fi
+fi
 exit "${TEST_GIT_EXIT:-0}"
 """,
     )
@@ -116,6 +132,7 @@ exit "${TEST_GIT_EXIT:-0}"
         binary_dir / "uv",
         """#!/usr/bin/env bash
 set -eu
+if [[ "${TEST_FORBID_UV:-0}" == 1 ]]; then exit 99; fi
 if [[ "$1" == run && "$2" == python && "$3" == scripts/quality/read_alembic_revision.py ]]; then
   migration="$4"
   name="${migration##*/}"
@@ -169,6 +186,13 @@ fi
         "TEST_METADATA_MODE",
         "TEST_RENDER_FAIL",
         "TEST_DELETED_FILES",
+        "TEST_TYPE_CHANGED_FILES",
+        "TEST_BAD_MODE_PATH",
+        "TEST_BAD_MODE",
+        "TEST_FORBID_UV",
+        "TEST_VERSIONS_MODE",
+        "TEST_LS_TREE_EXIT",
+        "TEST_ALL_MODES",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -176,10 +200,23 @@ fi
         changed_files: Sequence[str],
         deleted_files: Sequence[str] = (),
         *,
+        type_changed_files: Sequence[str] = (),
+        symlink_files: Sequence[str] = (),
         mutate: Callable[[str], str] | None = None,
     ) -> tuple[int, list[str]]:
         monkeypatch.setenv("TEST_CHANGED_FILES", "\n".join(changed_files))
         monkeypatch.setenv("TEST_DELETED_FILES", "\n".join(deleted_files))
+        monkeypatch.setenv("TEST_TYPE_CHANGED_FILES", "\n".join(type_changed_files))
+        (pytester.path / "alembic/versions").mkdir(parents=True, exist_ok=True)
+        for migration in changed_files:
+            file = pytester.path / migration
+            file.parent.mkdir(parents=True, exist_ok=True)
+            if migration in symlink_files:
+                target = file.with_suffix(".target")
+                target.write_text("revision = 'fixture'\n", encoding="utf-8")
+                file.symlink_to(target.name)
+            else:
+                file.write_text("revision = 'fixture'\n", encoding="utf-8")
         text = script if mutate is None else mutate(script)
         step_path = tmp_path / "mutated-workflow-step.sh"
         step_path.write_text(text, encoding="utf-8", newline="\n")
@@ -197,6 +234,64 @@ fi
 FIRST = "alembic/versions/first.py"
 SECOND = "alembic/versions/second.py"
 DELETED = "alembic/versions/deleted.py"
+
+
+def test_type_changed_migration_is_rejected_before_metadata_or_render(
+    migration_gate: MigrationGate, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TEST_FORBID_UV", "1")
+    status, scans = migration_gate([], type_changed_files=[FIRST])
+    assert status not in (0, 99)
+    assert scans == []
+
+
+def test_non_regular_git_object_is_rejected_before_metadata_or_render(
+    migration_gate: MigrationGate, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TEST_BAD_MODE_PATH", FIRST)
+    monkeypatch.setenv("TEST_FORBID_UV", "1")
+    status, scans = migration_gate([FIRST])
+    assert status not in (0, 99)
+    assert scans == []
+
+
+def test_checkout_symlink_is_rejected_before_metadata_or_render(
+    migration_gate: MigrationGate, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TEST_FORBID_UV", "1")
+    status, scans = migration_gate([FIRST], symlink_files=[FIRST])
+    assert status not in (0, 99)
+    assert scans == []
+
+
+def test_versions_path_must_be_a_git_tree_even_without_changed_migrations(
+    migration_gate: MigrationGate, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TEST_VERSIONS_MODE", "120000")
+    monkeypatch.setenv("TEST_FORBID_UV", "1")
+    status, scans = migration_gate([])
+    assert status not in (0, 99)
+    assert scans == []
+
+
+def test_git_mode_lookup_failure_stops_before_metadata_or_render(
+    migration_gate: MigrationGate, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TEST_LS_TREE_EXIT", "17")
+    monkeypatch.setenv("TEST_FORBID_UV", "1")
+    status, scans = migration_gate([FIRST])
+    assert status == 17
+    assert scans == []
+
+
+def test_nonregular_unchanged_entry_cannot_bypass_the_gate(
+    migration_gate: MigrationGate, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TEST_ALL_MODES", "120000")
+    monkeypatch.setenv("TEST_FORBID_UV", "1")
+    status, scans = migration_gate([])
+    assert status not in (0, 99)
+    assert scans == []
 
 
 def test_lint_step_scans_every_changed_migration_when_all_succeed(
@@ -235,7 +330,8 @@ def test_deleted_revision_would_fail_the_lint_without_the_diff_filter(
         deleted_files=[DELETED],
         mutate=lambda text: text.replace(DIFF_FILTER, "", 1),
     )
-    assert status == 2
+    # The deleted path is rejected as missing before metadata is read.
+    assert status == 1
     assert "first.sql" in scans
 
 
