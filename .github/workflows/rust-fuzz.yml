@@ -167,6 +167,7 @@ jobs:
       - name: Run fuzz targets
         env:
           EVENT_NAME: ${{ github.event_name }}
+          FUZZ_TARGETS: ${{ matrix.targets }}
         working-directory: ${{ matrix.directory }}
         run: |
           if [ "${EVENT_NAME}" = "schedule" ] || [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
@@ -174,7 +175,8 @@ jobs:
           else
             DURATION=60
           fi
-          for target in ${{ matrix.targets }}; do
+          read -r -a targets <<< "$FUZZ_TARGETS"
+          for target in "${targets[@]}"; do
             cargo +nightly fuzz run "$target" -- -max_total_time="$DURATION"
           done
 

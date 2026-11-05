@@ -2346,10 +2346,8 @@ def test_go_coverage_artifacts_are_staged_for_trusted_codecov_upload() -> None:
     artifact_name = next(
         step for step in steps if step.get("name") == "Generate artifact name"
     )
-    assert (
-        "go-coverage-$SANITIZED-attempt-${{ github.run_attempt }}"
-        in artifact_name["run"]
-    )
+    assert artifact_name["env"]["RUN_ATTEMPT"] == "${{ github.run_attempt }}"
+    assert "go-coverage-$SANITIZED-attempt-${RUN_ATTEMPT}" in artifact_name["run"]
 
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     go_matrix = ci["jobs"]["go-tests"]["strategy"]["matrix"]["include"]
@@ -4252,8 +4250,9 @@ def _expected_comparator_critical_execution_segment(
     """Return the narrow trusted comparator tail for one benchmark format."""
 
     assert comparator_format in {"go", "bencher"}
-    base_revision = "${{ steps." + capture_id + ".outputs.base_sha }}"
-    candidate_revision = "${{ steps." + capture_id + ".outputs.candidate_sha }}"
+    assert capture_id in {"capture_ws_hub", "capture_rust_native"}
+    base_revision = "$CAPTURED_BASE_SHA"
+    candidate_revision = "$CAPTURED_CANDIDATE_SHA"
     return _canonical_shell_lines(
         'ACTUAL_COMPARATOR_SHA256="$(sha256sum "$BASE_COMPARATOR" | awk \'{print $1}\')"\n'
         'if [[ "$ACTUAL_COMPARATOR_SHA256" != "$EXPECTED_COMPARATOR_SHA256" ]]; then\n'
@@ -5138,21 +5137,45 @@ def _assert_paired_capture_contract(
     assert comparator.get("continue-on-error", False) is False
     comparator_text = str(comparator["run"])
     capture_id = str(capture["id"])
-    assert (
-        'BASE_COMPARATOR="${{ steps.' + capture_id + '.outputs.base_comparator }}"'
-    ) in comparator_text
-    assert (
-        'PYTHON_BIN="${{ steps.' + capture_id + '.outputs.python_bin }}"'
-        in comparator_text
+    comparator_env = comparator.get("env", {})
+    assert isinstance(comparator_env, dict)
+    for key, output in (
+        ("ARTIFACT_ROOT", "artifact_root"),
+        ("CAPTURED_BASE_COMPARATOR", "base_comparator"),
+        ("CAPTURED_PYTHON_BIN", "python_bin"),
+        ("CAPTURED_COMPARATOR_SHA256", "base_comparator_sha256"),
+        ("CAPTURED_BASE_SHA", "base_sha"),
+        ("CAPTURED_CANDIDATE_SHA", "candidate_sha"),
+    ):
+        assert (
+            comparator_env.get(key)
+            == "${{ steps." + capture_id + ".outputs." + output + " }}"
+        )
+    export_line = (
+        "export -n CAPTURED_BASE_COMPARATOR CAPTURED_PYTHON_BIN "
+        "CAPTURED_COMPARATOR_SHA256 CAPTURED_BASE_SHA CAPTURED_CANDIDATE_SHA"
     )
     assert (
-        'EXPECTED_COMPARATOR_SHA256="${{ steps.'
-        + capture_id
-        + '.outputs.base_comparator_sha256 }}"'
-    ) in comparator_text
-    assert 'ARTIFACT_ROOT="${{ steps.' + capture_id + '.outputs.artifact_root }}"' in (
-        comparator_text
+        " ".join(
+            _normalize_shell_lexical_continuations(comparator_text)
+            .splitlines()[1]
+            .split()
+        )
+        == export_line
     )
+    for key in (
+        "CAPTURED_BASE_COMPARATOR",
+        "CAPTURED_PYTHON_BIN",
+        "CAPTURED_COMPARATOR_SHA256",
+        "CAPTURED_BASE_SHA",
+        "CAPTURED_CANDIDATE_SHA",
+    ):
+        assert comparator_text.count(key) == 2
+    assert 'BASE_COMPARATOR="$CAPTURED_BASE_COMPARATOR"' in comparator_text
+    assert 'PYTHON_BIN="$CAPTURED_PYTHON_BIN"' in comparator_text
+    assert 'EXPECTED_COMPARATOR_SHA256="$CAPTURED_COMPARATOR_SHA256"' in comparator_text
+    assert "ARTIFACT_ROOT=" not in comparator_text
+    assert "${{" not in comparator_text
     assert 'if [[ "$PYTHON_BIN" != /* || ! -x "$PYTHON_BIN" ]]; then' in comparator_text
     assert 'if ! test -f "$BASE_COMPARATOR"; then' in comparator_text
     assert (
@@ -5273,9 +5296,10 @@ def _assert_paired_provenance_contract(
     comparator = _step_named(job, "Compare paired benchmark evidence")
     comparator_text = str(comparator["run"])
     normalized_comparator_text = " ".join(comparator_text.replace("\\\n", " ").split())
-    assert (
-        'BASE_COMPARATOR="${{ steps.' + capture_id + '.outputs.base_comparator }}"'
-    ) in comparator_text
+    assert comparator["env"]["CAPTURED_BASE_COMPARATOR"] == (
+        "${{ steps." + capture_id + ".outputs.base_comparator }}"
+    )
+    assert 'BASE_COMPARATOR="$CAPTURED_BASE_COMPARATOR"' in comparator_text
     assert "jq -e" in normalized_comparator_text
     assert '"$ARTIFACT_ROOT/provenance.json" >/dev/null' in normalized_comparator_text
     for required_fragment in (
@@ -5601,11 +5625,11 @@ set -euo pipefail
 mkdir -p artifacts/performance/advisory/go
 (
   cd services/gateway
-  go test -bench=. -run=^$ ./...
+  go test -bench=. -run='^$' ./...
 ) 2>&1 | tee artifacts/performance/advisory/go/gateway-bench.txt
 (
   cd services/ws-hub
-  go test -bench=. -run=^$ ./...
+  go test -bench=. -run='^$' ./...
 ) 2>&1 | tee artifacts/performance/advisory/go/wshub-bench.txt
 cat \\
   artifacts/performance/advisory/go/gateway-bench.txt \\
@@ -7904,3 +7928,50 @@ def test_unauthenticated_smoke_result_preserves_failure_annotation(
     assert result.stdout == result.stderr == ""
     assert (tmp_path / "smoke-annotation.txt").read_bytes() == expected.encode("utf-8")
     assert not (tmp_path / "marker").exists()
+
+
+@pytest.mark.parametrize(
+    ("filename", "job_id"),
+    [
+        ("benchmark.yml", "ws-hub-regression"),
+        ("benchmark.yml", "rust-native-regression"),
+        ("manual-performance-evidence.yml", "ws-hub-regression"),
+        ("manual-performance-evidence.yml", "rust-native-regression"),
+    ],
+)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "ARTIFACT_ROOT",
+        "CAPTURED_BASE_COMPARATOR",
+        "CAPTURED_PYTHON_BIN",
+        "CAPTURED_COMPARATOR_SHA256",
+        "CAPTURED_BASE_SHA",
+        "CAPTURED_CANDIDATE_SHA",
+        "export-inputs",
+        "reassign-input",
+        "change-base-revision",
+    ],
+)
+def test_comparator_output_binding_rejects_mutations(
+    filename: str, job_id: str, mutation: str
+) -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / filename
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    job = workflow["jobs"][job_id]
+    comparator = _step_named(job, "Compare paired benchmark evidence")
+    if mutation in comparator["env"]:
+        comparator["env"][mutation] = "untrusted"
+    elif mutation == "export-inputs":
+        comparator["run"] = comparator["run"].replace("export -n ", "export ", 1)
+    elif mutation == "reassign-input":
+        comparator["run"] += "\nCAPTURED_BASE_SHA=untrusted\n"
+    else:
+        assert mutation == "change-base-revision"
+        comparator["run"] = comparator["run"].replace(
+            '--base-revision "$CAPTURED_BASE_SHA"', "--base-revision untrusted", 1
+        )
+    with pytest.raises(AssertionError):
+        _assert_paired_gate_variant(
+            workflow, workflow_path=workflow_path, job_id=job_id
+        )

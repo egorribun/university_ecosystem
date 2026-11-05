@@ -1,11 +1,9 @@
-{{- include "revocation-store.validate" . -}}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "revocation-store.redis.fullname" . }}
+  name: {{ printf "%s%s" (include "revocation-store.validate" .) (include "revocation-store.redis.fullname" .) }}
   namespace: {{ .Release.Namespace | quote }}
-  labels:
-    {{- include "revocation-store.redis.labels" . | nindent 4 }}
+  labels: {{ include "revocation-store.redis.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
