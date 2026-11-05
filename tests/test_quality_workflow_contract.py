@@ -7866,3 +7866,41 @@ def test_go_sbom_service_is_literal_shell_data(tmp_path: Path) -> None:
         b"",
     ]
     assert not (tmp_path / "marker").exists()
+
+
+@pytest.mark.parametrize("theme", ["light", "dark", "$(touch marker)"])
+def test_unauthenticated_smoke_result_preserves_failure_annotation(
+    tmp_path: Path, theme: str
+) -> None:
+    workflow_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "unauthenticated-routes-smoke.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["unauthed-smoke"]
+    assert job["strategy"]["matrix"]["theme"] == ["light", "dark"]
+    smoke = _step_named(job, "Run unauthenticated routes smoke script")
+    upload = _step_named(job, "Upload smoke reports")
+    gate = _step_named(job, "Re-assert smoke result")
+    matrix_theme = "${{ matrix.theme }}"
+    assert smoke["continue-on-error"] is True
+    assert upload["if"] == "always()"
+    assert upload["with"]["name"] == "unauthenticated-routes-smoke-" + matrix_theme
+    assert upload["with"]["path"] == (
+        "frontend/.screenshots/unauthenticated-routes-smoke-" + matrix_theme
+    )
+    assert gate["if"] == "always() && steps.smoke.outcome == 'failure'"
+    assert gate["env"]["THEME"] == matrix_theme
+
+    script = (
+        f"export THEME={shlex.quote(theme)}\n"
+        "exec > smoke-annotation.txt\n" + gate["run"]
+    )
+    result = _run_coverage_shape_checks(script, tmp_path)
+    expected = (
+        f"::error::Unauthenticated routes smoke FAILED (theme={theme}) — see artifact "
+        f"frontend/.screenshots/unauthenticated-routes-smoke-{theme}/ for sidecar JSONs\n"
+    )
+    assert result.returncode == 1
+    assert result.stdout == result.stderr == ""
+    assert (tmp_path / "smoke-annotation.txt").read_bytes() == expected.encode("utf-8")
+    assert not (tmp_path / "marker").exists()

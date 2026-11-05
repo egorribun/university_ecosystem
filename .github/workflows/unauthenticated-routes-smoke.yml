@@ -405,6 +405,8 @@ jobs:
       - name: Re-assert smoke result
         # The runner step continues so artifacts upload; this final step is the gate.
         if: always() && steps.smoke.outcome == 'failure'
+        env:
+          THEME: ${{ matrix.theme }}
         run: |
-          echo "::error::Unauthenticated routes smoke FAILED (theme=${{ matrix.theme }}) — see artifact frontend/.screenshots/unauthenticated-routes-smoke-${{ matrix.theme }}/ for sidecar JSONs"
+          echo "::error::Unauthenticated routes smoke FAILED (theme=${THEME}) — see artifact frontend/.screenshots/unauthenticated-routes-smoke-${THEME}/ for sidecar JSONs"
           exit 1
