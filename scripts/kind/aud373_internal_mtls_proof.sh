@@ -171,6 +171,9 @@ write_values_file() {
   openssl genrsa -out "${WORK_DIR}/jwt-private.pem" 2048 2>/dev/null
   backend_fields="$(cat <<EOF
 backend:
+  env:
+    # Explicit HTTP hosts for direct JWKS fetches and the gateway relay.
+    ALLOWED_HOSTS: "localhost,127.0.0.1,testserver,${BACKEND_SVC},${GATEWAY_SVC}"
   image:
     repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend"
   config:

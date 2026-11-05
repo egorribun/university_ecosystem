@@ -224,6 +224,8 @@ REGISTRY_IMAGE=fixture
 CLUSTER_NAME=owned-cluster
 IMAGE_TAG=proof
 RELEASE=ue
+BACKEND_SVC=ue-university-ecosystem-backend
+GATEWAY_SVC=ue-university-ecosystem-gateway
 TRUST_DOMAIN=university.ecosystem
 BACKEND_SPIFFE_ID=backend
 GATEWAY_SPIFFE_ID=gateway
@@ -903,6 +905,8 @@ WORK_DIR="$work"
 LOCAL_REGISTRY_ADDRESS=127.0.0.1:32768
 IMAGE_TAG=ue-r9-aud373-0123456789ab
 RELEASE=ue
+BACKEND_SVC=ue-university-ecosystem-backend
+GATEWAY_SVC=ue-university-ecosystem-gateway
 TRUST_DOMAIN=university.ecosystem
 BACKEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-backend
 GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway
@@ -921,6 +925,53 @@ cat "$WORK_DIR/values.yaml"
         return yaml.safe_load(result.stdout)
     except yaml.YAMLError:
         raise AssertionError("generated proof values are not valid YAML") from None
+
+
+def test_generated_proof_http_hosts_are_finite_and_route_jwks() -> None:
+    from starlette.applications import Starlette
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+    from starlette.requests import Request
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    allowed_hosts = _generated_proof_values()["backend"]["env"]["ALLOWED_HOSTS"].split(
+        ","
+    )
+    assert allowed_hosts == [
+        "localhost",
+        "127.0.0.1",
+        "testserver",
+        "ue-university-ecosystem-backend",
+        "ue-university-ecosystem-gateway",
+    ]
+
+    async def jwks_handler(_request: Request) -> PlainTextResponse:
+        return PlainTextResponse("JWKS handler reached")
+
+    app = TrustedHostMiddleware(
+        Starlette(routes=[Route("/.well-known/jwks.json", jwks_handler)]),
+        allowed_hosts=allowed_hosts,
+    )
+    with TestClient(app) as client:
+        for host in (
+            "localhost:8000",
+            "127.0.0.1:8000",
+            "testserver",
+            "ue-university-ecosystem-backend:8000",
+            "ue-university-ecosystem-gateway:8080",
+        ):
+            response = client.get("/.well-known/jwks.json", headers={"host": host})
+            assert response.status_code == 200
+            assert response.text == "JWKS handler reached"
+        for host in (
+            "evil.example",
+            "ue-university-ecosystem-backend.evil.example",
+            "evil-ue-university-ecosystem-gateway",
+        ):
+            response = client.get("/.well-known/jwks.json", headers={"host": host})
+            assert response.status_code == 400
+            assert response.text == "Invalid host header"
 
 
 def test_generated_proof_settings_validate_real_spotify_and_totp_keys(
@@ -1087,6 +1138,8 @@ WORK_DIR="$work"
 LOCAL_REGISTRY_ADDRESS=127.0.0.1:32768
 IMAGE_TAG=proof
 RELEASE=ue
+BACKEND_SVC=ue-university-ecosystem-backend
+GATEWAY_SVC=ue-university-ecosystem-gateway
 TRUST_DOMAIN=university.ecosystem
 BACKEND_SPIFFE_ID=backend
 GATEWAY_SPIFFE_ID=gateway
