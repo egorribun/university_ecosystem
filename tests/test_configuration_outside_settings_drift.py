@@ -75,9 +75,10 @@ def _has_real_default(documented: dict[str, list[str]], name: str) -> bool:
     return any(value not in ("", "-") for value in documented.get(name, []))
 
 
-def _documented_defaults() -> dict[str, list[str]]:
+def _documented_defaults(document: str | None = None) -> dict[str, list[str]]:
     """Maps each CONFIGURATION.md table row name to every default cell that names it."""
-    document = (ROOT / "CONFIGURATION.md").read_text(encoding="utf-8")
+    if document is None:
+        document = (ROOT / "CONFIGURATION.md").read_text(encoding="utf-8")
     defaults: dict[str, list[str]] = {}
     for line in document.splitlines():
         match = re.match(r"^\|\s*`([A-Z][A-Z0-9_]+)`\s*\|", line)
@@ -150,6 +151,51 @@ def test_backend_mtls_constant_names_are_discovered() -> None:
         "INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS",
         "SPIFFE_ENDPOINT_SOCKET",
     } <= set(reads)
+
+
+# These frontend SSR entry points use direct process.env reads or a local
+# runtimeEnv alias. Build-time Vite variables and other frontend files are not
+# included in this scoped check.
+_FRONTEND_SSR_SOURCES = (
+    "frontend/scripts/server-prod.mjs",
+    "frontend/src/api/backendOrigin.ts",
+    "frontend/src/server.ts",
+    "frontend/src/ssrAuth.ts",
+)
+_FRONTEND_ENV_READ = re.compile(r"\b(?:process\.env|runtimeEnv)\.([A-Z][A-Z0-9_]*)\b")
+
+
+def _frontend_ssr_env_reads(source: str) -> set[str]:
+    return set(_FRONTEND_ENV_READ.findall(source))
+
+
+def test_frontend_ssr_entrypoint_environment_reads_have_documented_defaults() -> None:
+    reads: set[str] = set()
+    for relative_path in _FRONTEND_SSR_SOURCES:
+        reads.update(
+            _frontend_ssr_env_reads((ROOT / relative_path).read_text(encoding="utf-8"))
+        )
+    document = (ROOT / "CONFIGURATION.md").read_text(encoding="utf-8")
+    section = document.split("### Frontend SSR runtime\n", 1)[1].split("\n### ", 1)[0]
+    documented = _documented_defaults(section)
+
+    assert {
+        "BACKEND_ORIGIN",
+        "HOST",
+        "PORT",
+        "JWT_ISSUER",
+        "NODE_ENV",
+        "TSS_PRERENDERING",
+    } <= reads
+    assert (
+        sorted(name for name in reads if not _has_real_default(documented, name)) == []
+    )
+
+
+def test_frontend_ssr_scan_detects_a_new_direct_read() -> None:
+    snippet = "const value = process.env.NEW_RUNTIME_KNOB ?? runtimeEnv.OTHER_KNOB"
+
+    assert _frontend_ssr_env_reads(snippet) == {"NEW_RUNTIME_KNOB", "OTHER_KNOB"}
 
 
 # AUD-422: the Go services read their own environment. Names come from the literal first

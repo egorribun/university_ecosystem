@@ -518,7 +518,7 @@ or `os.getenv` reads, and fails when a name has no row with a documented default
 | `GITHUB_ACTIONS` | GitHub Actions runner flag; same effect as `CI` (`true` only). | Unset (not CI) |
 | `ENABLE_PROFILING` | Selects the Pyroscope profiler when `true` (case-insensitive); any other value uses the no-op profiler. Read in `app/core/profiling.py`. | `false` |
 | `PYROSCOPE_SERVER_ADDRESS` | Pyroscope server URL used when profiling is enabled and no explicit address is passed. | `http://pyroscope:4040` |
-| `ENV_FILE_PATH` | Overrides the environment file read by the settings sources. An empty value disables the file; a file byte-identical to the example file is refused. | Unset (project-root `.env` when present) |
+| `ENV_FILE_PATH` | Overrides the environment file read by the settings sources. An empty or nonexistent path disables the file; an explicitly selected file or `.env` identical to the example is accepted with a warning. Read in `app/core/settings_sources.py`. | Unset (first existing project-root `.env` or `.env.local`, otherwise no file) |
 | `ENV_EXAMPLE_PATH` | Overrides the example file used to detect an unedited copy in `ENV_FILE_PATH`. | `.env.example` in the project root |
 | `OTEL_SDK_DISABLED` | OpenTelemetry kill switch read before any provider or exporter starts; `1`, `true`, `yes` or `on` disable the SDK. Read in `app/core/observability.py`. | Unset (SDK enabled) |
 | `OUTBOX_WORKER_RUNTIME_DIR` | Directory for the outbox worker PID and heartbeat markers. Read in `app/workers/outbox.py`. | System temporary directory |
@@ -527,6 +527,24 @@ or `os.getenv` reads, and fails when a name has no row with a documented default
 | `SPICEDB_INSECURE` | Permits a plaintext SpiceDB connection when `true`; TLS is otherwise forced. Local development only. Read in `app/core/spicedb.py`. | `false` |
 | `INTERNAL_HTTP_MTLS_SERVER_SPIFFE_ID` | Exact backend workload identity; required when internal HTTP mTLS is enabled. | Unset |
 | `INTERNAL_HTTP_MTLS_ALLOWED_CLIENT_SPIFFE_IDS` | Comma-separated, unique client identities in the server trust domain; must include the backend's own probe identity when internal HTTP mTLS is enabled. | Unset |
+
+### Frontend SSR runtime
+
+The production Node wrapper and SSR entry points also read process environment
+variables. The drift check covers literal reads in `frontend/scripts/server-prod.mjs`,
+`frontend/src/server.ts`, `frontend/src/api/backendOrigin.ts` and
+`frontend/src/ssrAuth.ts`; it is not an inventory of all frontend build variables.
+Use a trusted backend origin without embedded credentials. The Vite build-time
+fallback is also used by browser code, so it must not contain secrets.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HOST` | Address on which the production SSR wrapper listens. | `0.0.0.0` |
+| `PORT` | SSR wrapper listen port; the explicitly enabled Lighthouse SSR preview can override it. | `3000` when unset |
+| `BACKEND_ORIGIN` | Backend origin for SSR API and JWKS requests. A nonempty runtime value takes precedence over the build-time `VITE_BACKEND_ORIGIN`. | Build-time origin when nonempty; otherwise `http://localhost:8000` |
+| `JWT_ISSUER` | Issuer expected by SSR JWT verification; use the same value as the backend. Blank or invalid values fail authentication. | Unset in production (authentication fails closed); `university-ecosystem` when omitted outside production |
+| `NODE_ENV` | Node mode used by SSR issuer validation. The frontend container sets `production`. | Unset in the process unless supplied |
+| `TSS_PRERENDERING` | TanStack build flag: `true` uses a placeholder nonce and suppresses the request-origin getter during prerendering. Leave unset for live requests. | Unset |
 
 ### Go services (gateway, ws-hub, file-processor)
 
