@@ -463,18 +463,18 @@ _STATIC_IMPORT_BINDING = (
     r"[A-Za-z_$][A-Za-z0-9_$]*"
 )
 _STATIC_IMPORT_SPECIFIER = (
-    rf"(?:type[ \t]+)?{_STATIC_IMPORT_BINDING}"
-    rf"(?:[ \t]+as[ \t]+{_STATIC_IMPORT_BINDING})?"
+    rf"(?:type[ \t]++)?{_STATIC_IMPORT_BINDING}"
+    rf"(?:[ \t]++as[ \t]++{_STATIC_IMPORT_BINDING})?"
 )
 _STATIC_IMPORT_NAMED = (
-    rf"\{{[ \t]*(?:{_STATIC_IMPORT_SPECIFIER}"
-    rf"(?:[ \t]*,[ \t]*{_STATIC_IMPORT_SPECIFIER})*[ \t]*,?)?[ \t]*\}}"
+    rf"\{{[ \t]*+(?:{_STATIC_IMPORT_SPECIFIER}"
+    rf"(?:[ \t]*+,[ \t]*+{_STATIC_IMPORT_SPECIFIER})*[ \t]*+,?)?[ \t]*+\}}"
 )
 _LEADING_STATIC_IMPORT = re.compile(
-    r"import[ \t]+"
-    rf"(?:(?:type[ \t]+)?(?:{_STATIC_IMPORT_BINDING}"
-    rf"|\*[ \t]+as[ \t]+{_STATIC_IMPORT_BINDING}|{_STATIC_IMPORT_NAMED})"
-    r"[ \t]+from[ \t]+)?"
+    r"import[ \t]++"
+    rf"(?:(?:type[ \t]++)?(?:{_STATIC_IMPORT_BINDING}"
+    rf"|\*[ \t]++as[ \t]++{_STATIC_IMPORT_BINDING}|{_STATIC_IMPORT_NAMED})"
+    r"[ \t]++from[ \t]++)?"
     r"(?P<quote>['\"])(?P<path>[^'\"\\\r\n\x00\u2028\u2029]+)(?P=quote)"
 )
 

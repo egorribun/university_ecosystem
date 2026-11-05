@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import ast
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+from defusedxml import ElementTree as SafeElementTree
 
 import tests.symlink_support as symlink_support
 
@@ -108,3 +112,154 @@ def test_census_detects_an_ungated_when_supported_symlink_test() -> None:
     )
 
     assert offenders == ["ungated.py::test_link_when_supported"]
+
+
+@pytest.mark.parametrize(
+    ("denied_kind", "targets", "skip_reasons"),
+    [
+        (
+            "directory",
+            (
+                (
+                    "test_start_docker_live_owner_key_paths.py",
+                    "test_common_git_metadata_rejects_reparse_directory_when_supported",
+                ),
+                (
+                    "test_secret_file_config_contract.py",
+                    "test_file_loader_follows_projected_secret_symlink_when_supported",
+                ),
+            ),
+            {
+                "test_common_git_metadata_rejects_reparse_directory_when_supported": (
+                    "native directory symlink privilege is unavailable (AUD-332 probe)"
+                ),
+                "test_file_loader_follows_projected_secret_symlink_when_supported": (
+                    "native directory and file symlink privileges are unavailable "
+                    "(AUD-332 probe)"
+                ),
+            },
+        ),
+        (
+            "file",
+            (
+                (
+                    "test_start_docker_live_owner_key_paths.py",
+                    "test_worktree_owner_rejects_reparse_common_key_when_supported",
+                ),
+                (
+                    "test_secret_file_config_contract.py",
+                    "test_file_loader_follows_projected_secret_symlink_when_supported",
+                ),
+            ),
+            {
+                "test_worktree_owner_rejects_reparse_common_key_when_supported": (
+                    "native file symlink privilege is unavailable (AUD-332 probe)"
+                ),
+                "test_file_loader_follows_projected_secret_symlink_when_supported": (
+                    "native directory and file symlink privileges are unavailable "
+                    "(AUD-332 probe)"
+                ),
+            },
+        ),
+    ],
+)
+def test_when_supported_cases_skip_after_native_probe_denial(
+    tmp_path: Path,
+    denied_kind: str,
+    targets: tuple[tuple[str, str], ...],
+    skip_reasons: dict[str, str],
+) -> None:
+    """Exercise collection and real test markers after a simulated OS refusal."""
+    plugin = tmp_path / "aud332_refuse_symlink.py"
+    plugin.write_text(
+        "import os\n"
+        "from pathlib import Path\n"
+        "original = Path.symlink_to\n"
+        "def refuse_selected_kind(self, target, target_is_directory=False):\n"
+        "    kind = 'directory' if target_is_directory else 'file'\n"
+        "    if kind == os.environ['AUD332_DENIED_KIND']:\n"
+        "        with open(os.environ['AUD332_PROBE_CALLS'], 'a', encoding='utf-8') as log:\n"
+        "            log.write(kind + '\\n')\n"
+        "        raise OSError(1314, 'A required privilege is not held by the client')\n"
+        "    return original(self, target, target_is_directory=target_is_directory)\n"
+        "Path.symlink_to = refuse_selected_kind\n",
+        encoding="utf-8",
+    )
+    config = tmp_path / "pytest.ini"
+    config.write_text("[pytest]\n", encoding="utf-8")
+    report = tmp_path / "report.xml"
+    calls = tmp_path / "probe-calls.txt"
+    # Collection imports app settings in the projected-secret case. Keep that
+    # import independent of any configured real services or secret files.
+    inherited = {
+        "HOME",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "LANG",
+        "LC_ALL",
+        "PATH",
+        "PATHEXT",
+        "SYSTEMDRIVE",
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "WINDIR",
+    }
+    env = {key: value for key, value in os.environ.items() if key.upper() in inherited}
+    env.update(
+        {
+            "AUD332_DENIED_KIND": denied_kind,
+            "AUD332_PROBE_CALLS": str(calls),
+            "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+            "ENVIRONMENT": "testing",
+            "ENV_FILE_PATH": "",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+            "PYTHONPATH": os.pathsep.join(
+                (
+                    str(tmp_path),
+                    str(TESTS_ROOT.parent),
+                    os.environ.get("PYTHONPATH", ""),
+                )
+            ),
+            "SECRET_KEY": "s" * 64,
+        }
+    )
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and pytest arguments
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-c",
+            str(config),
+            "-p",
+            plugin.stem,
+            "--noconftest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            f"--basetemp={tmp_path / 'child-temp'}",
+            f"--junitxml={report}",
+            *(
+                f"{TESTS_ROOT / filename}::{test_name}"
+                for filename, test_name in targets
+            ),
+        ],
+        cwd=TESTS_ROOT.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert calls.read_text(encoding="utf-8").splitlines() == [denied_kind]
+    cases = {
+        case.get("name"): case
+        for case in SafeElementTree.parse(report).getroot().findall(".//testcase")
+    }
+    assert set(cases) == set(skip_reasons)
+    for test_name, skip_reason in skip_reasons.items():
+        skipped = cases[test_name].find("skipped")
+        assert skipped is not None and skipped.get("message") == skip_reason

@@ -75,6 +75,40 @@ def _match_long_malformed_jsx_names() -> None:
     assert checker._match_jsx_opening_tag("<$" + "$" * 100_000, 0) is None
 
 
+@pytest.mark.parametrize(
+    ("leading_specifier", "default_binding"), [("", "Button"), ("Button,", "Other")]
+)
+def test_static_import_fallback_bounds_long_whitespace(
+    leading_specifier: str, default_binding: str
+) -> None:
+    process = multiprocessing.get_context("spawn").Process(
+        target=_check_long_static_import_whitespace,
+        args=(leading_specifier, default_binding),
+        daemon=True,
+    )
+    process.start()
+    process.join(timeout=5.0)
+    if process.is_alive():
+        process.kill()
+        process.join(timeout=5.0)
+
+    assert process.exitcode == 0
+
+
+def _check_long_static_import_whitespace(
+    leading_specifier: str, default_binding: str
+) -> None:
+    gap = " \t" * 50_000
+    # `default as` is legal syntax, but deliberately outside this fallback's
+    # closed subset. A later unsupported TSX generic causes the fallback.
+    source = (
+        f"import {{{leading_specifier}{gap}default as {default_binding} }} "
+        'from "../Button";\n'
+        "const helper = <T,>() => ({});\n"
+    )
+    assert checker._mask_javascript_non_code(source, jsx=True) == ("", {})
+
+
 def test_component_ownership_survives_nested_jsx_before_its_import(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

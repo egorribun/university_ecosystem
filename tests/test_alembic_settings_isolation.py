@@ -248,6 +248,8 @@ def test_clean_process_probe():
         "migration-configured",
         "migration-db-only",
         "migration-without-idempotency",
+        "partition-configured",
+        "partition-without-idempotency",
         "runtime-configured",
         "runtime-without-idempotency",
     }
@@ -278,6 +280,7 @@ def test_clean_process_probe():
             "os.posix_spawn",
             "os.exec",
             "os.fork",
+            "sqlite3.connect",
         }:
             forbidden_attempts.append(event)
             raise RuntimeError("External effects are forbidden in this offline probe")
@@ -308,6 +311,12 @@ def test_clean_process_probe():
                     for name in sys.modules
                 )
                 _assert_runtime_validation_after_metadata(mode)
+            elif mode.startswith("partition-"):
+                partition = importlib.import_module("app.services.partition_manager")
+                database = importlib.import_module("app.core.database")
+                assert database._engine is None
+                assert partition.engine is database.engine
+                result = {"outcome": "partition-loaded", "database_initialized": False}
             else:
                 configuration = importlib.import_module("app.core.config")
                 configured = configuration.Settings()
@@ -439,6 +448,40 @@ def test_offline_alembic_does_not_require_runtime_idempotency_hmac(
 
 
 @pytest.mark.parametrize("environment", ["production", "staging"])
+def test_migration_job_partition_step_still_uses_runtime_validation(
+    isolated_alembic_probe, environment: str
+) -> None:
+    """Track R7's remaining runtime-settings dependency until isolation lands.
+
+    Expire this characterization when the partition-maintenance command uses
+    database-only settings; see R7 in docs/audits/AUDIT-2026-11-01-review.md.
+    The migration Job launches Alembic and partition maintenance separately.
+    """
+    migration = isolated_alembic_probe("migration-without-idempotency", environment)
+    partition = isolated_alembic_probe("partition-without-idempotency", environment)
+
+    assert migration == {
+        "outcome": "metadata-loaded",
+        "callbacks": 1,
+        "revision_ddl": False,
+    }
+    assert partition == {
+        "outcome": "validation-error",
+        "errors": [{"loc": [], "type": "value_error"}],
+        "idempotency_only": True,
+    }
+
+
+@pytest.mark.parametrize("environment", ["production", "staging"])
+def test_partition_step_imports_with_full_settings_without_initializing_database(
+    isolated_alembic_probe, environment: str
+) -> None:
+    result = isolated_alembic_probe("partition-configured", environment)
+
+    assert result == {"outcome": "partition-loaded", "database_initialized": False}
+
+
+@pytest.mark.parametrize("environment", ["production", "staging"])
 def test_ordinary_runtime_settings_accept_complete_configuration(
     isolated_alembic_probe, environment: str
 ) -> None:
@@ -477,10 +520,13 @@ def test_probe_discards_parent_database_and_env_file_redirections(
     }
     for name, value in values.items():
         monkeypatch.setenv(name, value)
+    # Windows folds environment variable names, so differently cased inputs can
+    # address the same key. Compare with the effective environment after setup.
+    parent_environment = {name: os.environ[name] for name in values}
     result = isolated_alembic_probe("migration-db-only", "production")
     assert result == {
         "outcome": "metadata-loaded",
         "callbacks": 1,
         "revision_ddl": False,
     }
-    assert {name: os.environ[name] for name in values} == values
+    assert {name: os.environ[name] for name in values} == parent_environment

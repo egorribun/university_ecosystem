@@ -163,6 +163,9 @@ coverage.json
 .hypothesis/
 .pytest_cache/
 .pytest_tmp/
+# Root-local pytest runs use unique private basetemp directories. These contain
+# generated test artifacts and should not appear as untracked source files.
+/.pytest_tmp_*/
 .tmp/
 opencode.json
 cover/
