@@ -107,7 +107,9 @@ var authClientTLSConfigFunc = func(client *spiffe.Client, backendSpiffeID string
 	return client.ClientTLSConfig(backendSpiffeID)
 }
 
-var newAuthLRUFunc = lru.New[string, cacheEntry]
+var newAuthLRUFunc = func(size int) (*lru.Cache[string, cacheEntry], error) {
+	return lru.New[string, cacheEntry](size)
+}
 
 // NewInternalAPIAuthClientWithToken creates a client that authenticates the
 // internal participant callback with X-Internal-Token. A cache construction

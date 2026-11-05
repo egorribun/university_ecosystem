@@ -385,7 +385,9 @@ const (
 )
 
 var (
-	newDedupLRUFunc  = lru.New[string, time.Time]
+	newDedupLRUFunc = func(size int) (*lru.Cache[string, time.Time], error) {
+		return lru.New[string, time.Time](size)
+	}
 	newJWKSCacheFunc = jwk.NewCache
 	registerJWKSFunc = func(ctx context.Context, cache *jwk.Cache, url string, options ...jwk.RegisterOption) error {
 		return cache.Register(ctx, url, options...)
