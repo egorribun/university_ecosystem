@@ -42,6 +42,7 @@ python3() { "$AUD_PYTHON" "$@"; }
 FAKE_SCANNER = r"""#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$@" > "$AUD_SCAN_LOG"
+printf '%s\n' "${GOWORK-unset}" > "$AUD_GOWORK_LOG"
 output=''
 manifest=''
 config=''
@@ -68,6 +69,12 @@ fi
 case "$AUD_MODE" in
   scanner-error) exit 17 ;;
   finding) exit 1 ;;
+  analysis-error)
+    printf '%s\n' "Failed to run code analysis (govulncheck) on 'services/caddy/go.mod'" >&2
+    exit 1 ;;
+  analysis-skipped)
+    printf '%s\n' 'Skipping call analysis on Go code since Go is not installed.' >&2
+    exit 1 ;;
   missing-report) exit 0 ;;
   malformed-report) printf '{' > "$output"; exit 0 ;;
 esac
@@ -155,6 +162,7 @@ def _fixture(pytester: pytest.Pytester, mode: str) -> dict[str, str]:
         "AUD_MODE": mode,
         "AUD_PYTHON": Path(sys.executable).as_posix(),
         "AUD_SCAN_LOG": (pytester.path / "scan-log").as_posix(),
+        "AUD_GOWORK_LOG": (pytester.path / "gowork-log").as_posix(),
         "OSV_SCANNER_BIN": scanner.as_posix(),
         "RUNNER_TEMP": runner_temp.as_posix(),
         "GITHUB_OUTPUT": (pytester.path / "github-output").as_posix(),
@@ -252,6 +260,35 @@ def test_module_scan_cannot_hide_findings_with_adjacent_config(
     assert result.ret == 0, result.stderr.str()
     assert (pytester.path / "github-output").read_text(encoding="utf-8").strip() == (
         "scanner_status=1"
+    )
+
+
+@pytest.mark.parametrize(("job", "name"), SCAN_STEPS)
+def test_module_inventory_scans_each_module_outside_the_root_workspace(
+    pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch, job: str, name: str
+) -> None:
+    result = _run(pytester, monkeypatch, job, name, "ok")
+    assert result.ret == 0, result.stderr.str()
+    assert (pytester.path / "gowork-log").read_text(encoding="utf-8").strip() == "off"
+    assert (
+        "--all-vulns"
+        in (pytester.path / "scan-log").read_text(encoding="utf-8").splitlines()
+    )
+
+
+@pytest.mark.parametrize(("job", "name"), SCAN_STEPS)
+@pytest.mark.parametrize("mode", ["analysis-error", "analysis-skipped"])
+def test_module_inventory_rejects_a_call_analysis_error_even_with_findings(
+    pytester: pytest.Pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    job: str,
+    name: str,
+    mode: str,
+) -> None:
+    result = _run(pytester, monkeypatch, job, name, mode)
+    assert result.ret == 0, result.stderr.str()
+    assert (pytester.path / "github-output").read_text(encoding="utf-8").strip() == (
+        "scanner_status=2"
     )
 
 

@@ -168,6 +168,8 @@ jobs:
           trap 'rm -f -- "$manifest_list"' EXIT
           config_file="$(mktemp "${RUNNER_TEMP%/}/osv-go-config.XXXXXXXX")"
           trap 'rm -f -- "$manifest_list" "$config_file"' EXIT
+          scanner_log="$(mktemp "${RUNNER_TEMP%/}/osv-go-log.XXXXXXXX")"
+          trap 'rm -f -- "$manifest_list" "$config_file" "$scanner_log"' EXIT
           git ls-files -z -- ':(glob)services/**/go.mod' > "$manifest_list"
           mapfile -d '' -t manifests < "$manifest_list"
           if ((${#manifests[@]} == 0)); then
@@ -188,12 +190,21 @@ jobs:
           # Keep the recursive scan while requiring every tracked Go manifest to
           # be extracted explicitly by the pinned scanner. The empty override
           # prevents adjacent scanner configs from suppressing findings.
-          "$OSV_SCANNER_BIN" scan source --recursive --format sarif \
+          # The Caddy module is outside go.work; each image builds its own
+          # module. Keep call analysis enabled against those isolated graphs.
+          GOWORK=off "$OSV_SCANNER_BIN" scan source --recursive --format sarif --all-vulns \
             --config "$config_file" \
             "${manifest_args[@]}" \
             --output go-vuln.sarif \
-            ./services/
+            ./services/ 2> "$scanner_log"
           scanner_status=$?
+          # v2.6.0 can return the findings exit code when call analysis fails
+          # or is skipped. Do not treat either as a valid analysis result.
+          if ! cat "$scanner_log" >&2; then scanner_status=2; fi
+          grep -Fq -e 'Failed to run code analysis (govulncheck)' \
+            -e 'Skipping call analysis on Go code since Go is not installed.' "$scanner_log"
+          grep_status=$?
+          if [[ "$grep_status" -ne 1 ]]; then scanner_status=2; fi
           set -e
           echo "scanner_status=$scanner_status" >> "$GITHUB_OUTPUT"
 
@@ -728,6 +739,8 @@ jobs:
           trap 'rm -f -- "$manifest_list"' EXIT
           config_file="$(mktemp "${RUNNER_TEMP%/}/osv-go-config.XXXXXXXX")"
           trap 'rm -f -- "$manifest_list" "$config_file"' EXIT
+          scanner_log="$(mktemp "${RUNNER_TEMP%/}/osv-go-log.XXXXXXXX")"
+          trap 'rm -f -- "$manifest_list" "$config_file" "$scanner_log"' EXIT
           git ls-files -z -- ':(glob)services/**/go.mod' > "$manifest_list"
           mapfile -d '' -t manifests < "$manifest_list"
           if ((${#manifests[@]} == 0)); then
@@ -748,12 +761,21 @@ jobs:
           # Keep the recursive scan while requiring every tracked Go manifest to
           # be extracted explicitly by the pinned scanner. The empty override
           # prevents adjacent scanner configs from suppressing findings.
-          "$OSV_SCANNER_BIN" scan source --recursive --format sarif \
+          # The Caddy module is outside go.work; each image builds its own
+          # module. Keep call analysis enabled against those isolated graphs.
+          GOWORK=off "$OSV_SCANNER_BIN" scan source --recursive --format sarif --all-vulns \
             --config "$config_file" \
             "${manifest_args[@]}" \
             --output go-vuln.sarif \
-            ./services/
+            ./services/ 2> "$scanner_log"
           scanner_status=$?
+          # v2.6.0 can return the findings exit code when call analysis fails
+          # or is skipped. Do not treat either as a valid analysis result.
+          if ! cat "$scanner_log" >&2; then scanner_status=2; fi
+          grep -Fq -e 'Failed to run code analysis (govulncheck)' \
+            -e 'Skipping call analysis on Go code since Go is not installed.' "$scanner_log"
+          grep_status=$?
+          if [[ "$grep_status" -ne 1 ]]; then scanner_status=2; fi
           set -e
           echo "scanner_status=$scanner_status" >> "$GITHUB_OUTPUT"
 
