@@ -40,7 +40,7 @@ run_temporal() {
 ready=false
 # Try existing least-privileged credentials first. With no admin profile, retry
 # across the 60s JWKS refresh; with a fresh admin profile, proceed immediately.
-for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
   if run_temporal operator namespace describe --config-file "$worker_profile" --address 127.0.0.1:7233 --tls=false --command-timeout 2s --namespace default; then
     exit 0
   fi
@@ -53,7 +53,7 @@ if [ ! -s "$profile" ] || [ ! -r "$profile" ]; then
 fi
 
 # 24 * (2s command + 3s delay) = at most 120s, spanning a 60s JWKS refresh.
-for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
   if run_temporal operator cluster health --config-file "$profile" --address 127.0.0.1:7233 --tls=false --command-timeout 2s; then
     ready=true
     break
@@ -67,7 +67,7 @@ fi
 
 # 12 * (3 commands * 2s + 2s delay) = at most 96s. Success always requires
 # an authenticated describe; a failed create alone is never treated as success.
-for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
   if run_temporal operator namespace describe --config-file "$profile" --address 127.0.0.1:7233 --tls=false --command-timeout 2s --namespace default; then
     exit 0
   fi
