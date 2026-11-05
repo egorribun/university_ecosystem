@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { type ReactNode, useMemo } from "react"
 import { Marked, type Tokens } from "marked"
 import { sanitizeArticleHtml } from "@/utils/sanitizeArticleHtml"
 import { slugify } from "@/utils/slugify"
@@ -46,32 +46,28 @@ function hasMarkdownSyntax(text: string): boolean {
  * Legacy plain-text renderer — preserves Wave 57 behavior for
  * existing articles that don't use Markdown syntax.
  */
-function renderPlainText(content: string): string {
+function renderPlainText(content: string): ReactNode[] {
   const chunks = content.split(/\n{2,}/)
-  const parts: string[] = []
+  const parts: ReactNode[] = []
 
-  for (const chunk of chunks) {
+  for (const [index, chunk] of chunks.entries()) {
     const text = chunk.trim()
     if (!text) continue
 
     if (text.startsWith(">")) {
       const quote = text.slice(1).trimStart()
-      parts.push(`<blockquote class="news-pullquote">${escapeHtml(quote)}</blockquote>`)
+      parts.push(
+        <blockquote key={index} className="news-pullquote">
+          {normalizeLegacyText(quote)}
+        </blockquote>
+      )
       continue
     }
 
-    parts.push(`<p>${escapeHtml(text)}</p>`)
+    parts.push(<p key={index}>{normalizeLegacyText(text)}</p>)
   }
 
-  return parts.join("")
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+  return parts
 }
 
 export function NewsDetailBody({ content }: NewsDetailBodyProps) {
@@ -79,13 +75,17 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
   const headings = useArticleHeadings(content)
   const showToc = headings.length >= 3
 
-  const { html, textOnly } = useMemo(() => {
+  const { html, textOnly, plainText } = useMemo(() => {
     if (hasMarkdownSyntax(content)) {
       const raw = articleMarked.parse(content) as string
-      return { html: sanitizeArticleHtml(raw), textOnly: typeof document === "undefined" }
+      return {
+        html: sanitizeArticleHtml(raw),
+        textOnly: typeof document === "undefined",
+        plainText: null,
+      }
     }
 
-    return { html: renderPlainText(content), textOnly: false }
+    return { html: "", textOnly: false, plainText: renderPlainText(content) }
   }, [content])
 
   // The server's Markdown fallback may contain decoded HTML entities and is
@@ -113,7 +113,11 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
           </div>
         )}
 
-        {textOnly ? (
+        {plainText !== null ? (
+          <div className="news-article-body text-body leading-relaxed text-(--text-secondary)">
+            {plainText}
+          </div>
+        ) : textOnly ? (
           <div className="news-article-body text-body leading-relaxed text-(--text-secondary)">
             {html}
           </div>
@@ -123,4 +127,9 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
       </div>
     </section>
   )
+}
+
+function normalizeLegacyText(text: string): string {
+  // Match the HTML parser's treatment of line endings and null characters.
+  return text.replace(/\r\n?/g, "\n").replace(/\0/g, "")
 }

@@ -1,5 +1,6 @@
-import { render, screen } from "@testing-library/react"
-import { renderToStaticMarkup } from "react-dom/server"
+import { act, render, screen } from "@testing-library/react"
+import { hydrateRoot } from "react-dom/client"
+import { renderToStaticMarkup, renderToString } from "react-dom/server"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const { mediaMock } = vi.hoisted(() => ({ mediaMock: vi.fn() }))
@@ -189,6 +190,60 @@ Inline ---
 
     expect(paragraph?.textContent).toBe('Fish & <chips> are "today\'s" special')
     expect(container.querySelector("chips")).not.toBeInTheDocument()
+  })
+
+  it("renders legacy paragraphs and quotes without assigning HTML under Trusted Types", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML")
+    if (!descriptor?.set) throw new Error("Missing innerHTML setter")
+    Object.defineProperty(Element.prototype, "innerHTML", {
+      ...descriptor,
+      set(value: unknown) {
+        if (typeof value === "string") throw new TypeError("TrustedHTML required")
+        descriptor.set?.call(this, value)
+      },
+    })
+    try {
+      const { container } = render(
+        <NewsDetailBody
+          content={"Campus <img src=x onerror=alert(1)>\n\n> A <script>bad()</script> quote"}
+        />
+      )
+      const body = container.querySelector(".news-article-body")
+      expect(body?.querySelector("p")).toHaveTextContent("Campus <img src=x onerror=alert(1)>")
+      expect(body?.querySelector("blockquote")).toHaveTextContent("A <script>bad()</script> quote")
+      expect(body?.querySelector("img, script")).toBeNull()
+    } finally {
+      Object.defineProperty(Element.prototype, "innerHTML", descriptor)
+    }
+  })
+
+  it("preserves HTML parser normalization for legacy text nodes", () => {
+    const { container } = render(<NewsDetailBody content={"A\r\nB\0C\rD\n\n> Q\0R\rS"} />)
+    expect(container.querySelector("p")?.textContent).toBe("A\nBC\nD")
+    expect(container.querySelector("blockquote")?.textContent).toBe("QR\nS")
+  })
+
+  it("hydrates legacy text without changing its server-rendered markup", async () => {
+    const content = "Campus research\r\nupdate\n\n> Safe & sound"
+    const markup = renderToString(<NewsDetailBody content={content} />)
+    const container = document.createElement("div")
+    container.innerHTML = markup
+    document.body.append(container)
+    const recoverableError = vi.fn()
+    try {
+      let root: ReturnType<typeof hydrateRoot>
+      await act(async () => {
+        root = hydrateRoot(container, <NewsDetailBody content={content} />, {
+          onRecoverableError: recoverableError,
+        })
+      })
+      expect(recoverableError).not.toHaveBeenCalled()
+      expect(container.querySelector("p")).toHaveTextContent("Campus research update")
+      expect(container.querySelector("blockquote")).toHaveTextContent("Safe & sound")
+      await act(async () => root.unmount())
+    } finally {
+      container.remove()
+    }
   })
 
   it("does not render active SVG/MathML or unknown elements from article markup", () => {
