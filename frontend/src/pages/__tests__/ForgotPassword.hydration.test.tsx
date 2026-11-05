@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@tanstack/react-router")
 import { act, StrictMode, type ReactNode } from "react"
 import { hydrateRoot, type Root } from "react-dom/client"
 import { renderToString } from "react-dom/server"
@@ -19,7 +20,7 @@ type LinkStubProps = {
 // Keep the page, native controls, RHF, validation, and motion provider real.
 // Only navigation and the HTTP boundary are substituted in this regression.
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  ...(await importOriginal<_MockedModuleType1>()),
   Link: ({ to, children, className }: LinkStubProps) => (
     <a href={to} className={className}>
       {children}

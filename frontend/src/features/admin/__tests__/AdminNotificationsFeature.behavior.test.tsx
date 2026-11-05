@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/api/notifications")
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import {
@@ -33,7 +34,7 @@ import {
 import { AdminNotificationsFeature } from "../AdminNotificationsFeature"
 
 vi.mock("@/api/notifications", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/notifications")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     fetchAdminUserTopics: vi.fn(),

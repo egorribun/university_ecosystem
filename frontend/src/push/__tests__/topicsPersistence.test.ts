@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/push/subscribe")
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
 import { getPersistedTopics, setPersistedTopics } from "../subscribe"
@@ -7,7 +8,7 @@ import type { UserState } from "@/types/Auth"
 const TOPICS_KEY = "push:last_topics"
 
 vi.mock("@/push/subscribe", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/push/subscribe")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     getPersistedTopics: vi.fn().mockImplementation((options) => actual.getPersistedTopics(options)),

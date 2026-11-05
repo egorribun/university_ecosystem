@@ -1,3 +1,5 @@
+type _MockedModuleType1 = typeof import("@/api/hooks/events")
+type _MockedModuleType2 = typeof import("@/app/logger")
 import type { ReactNode } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen } from "@testing-library/react"
@@ -27,7 +29,7 @@ vi.mock("react-i18next", () => ({
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: mocks.user }) }))
 
 vi.mock("@/api/hooks/events", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/hooks/events")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     useEventNavigation: () => ({ prevId: null, nextId: null, prevTitle: null, nextTitle: null }),
@@ -41,7 +43,7 @@ vi.mock("@/hooks/useEventRegistration", () => ({ useEventRegistration: () => ({}
 vi.mock("@/features/events/categories", () => ({ inferEventCategory: () => "lecture" }))
 vi.mock("@/utils/eventsTransition", () => ({ setEventsHeroId: vi.fn() }))
 vi.mock("@/app/logger", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/app/logger")>()
+  const actual = await importOriginal<_MockedModuleType2>()
   return { ...actual, logError: vi.fn() }
 })
 

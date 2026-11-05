@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/hooks/useShare")
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
@@ -90,7 +91,7 @@ vi.mock("@/hooks/useNewsInteraction", () => ({
 }))
 
 vi.mock("@/hooks/useShare", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/hooks/useShare")>()),
+  ...(await importOriginal<_MockedModuleType1>()),
   useShare: (options: { onNotify: (message: string) => void; url?: string }) => {
     mocks.shareNotify = options.onNotify
     mocks.shareUrl = options.url

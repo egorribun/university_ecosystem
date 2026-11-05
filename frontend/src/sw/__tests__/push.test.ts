@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/push/notification-helpers")
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { initPushHandlers } from "../push"
 import { sanitizeReportPayload, storePendingNavigation, storePendingReport } from "../offline"
@@ -9,7 +10,7 @@ import {
 
 // Mock notification helpers while keeping the localized generic defaults available.
 vi.mock("@/push/notification-helpers", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/push/notification-helpers")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     parsePushEventData: vi.fn((data: any) => ({

@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/api/generated/sdk.gen")
 import type { ReactNode } from "react"
 import { hydrateRoot, type Root } from "react-dom/client"
 import { renderToString } from "react-dom/server"
@@ -18,7 +19,7 @@ const sdk = vi.hoisted(() => ({
 }))
 
 vi.mock("@/api/generated/sdk.gen", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/generated/sdk.gen")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     newsListApiV1NewsGet: (...args: unknown[]) => sdk.newsList(...args),

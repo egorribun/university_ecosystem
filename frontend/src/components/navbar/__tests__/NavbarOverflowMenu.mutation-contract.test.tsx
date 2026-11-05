@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("react-i18next")
 import type { ReactNode } from "react"
 import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -11,7 +12,7 @@ const state = vi.hoisted(() => ({
 }))
 
 vi.mock("react-i18next", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react-i18next")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     useTranslation: (namespaces?: unknown) => {

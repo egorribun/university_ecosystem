@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/api/client")
 import { expectImagePickerKeyboard } from "@/tests/helpers/imagePickerKeyboard"
 import { collectWindowErrors } from "@/tests/helpers/windowErrors"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
@@ -30,7 +31,7 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/client")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     default: {

@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/api/client")
 import { expectInlineBackground } from "@/tests/helpers/expectInlineBackground"
 import type { ReactNode } from "react"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
@@ -95,7 +96,7 @@ vi.mock("@/hooks/useDebounced", () => ({
   },
 }))
 vi.mock("@/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/client")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     default: { ...actual.default, get: state.get },

@@ -1,10 +1,11 @@
+type _MockedModuleType1 = typeof import("react")
 import { render, screen, act } from "@testing-library/react"
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest"
 
 const reactEffects = vi.hoisted(() => ({ dependencies: [] as unknown[] }))
 
 vi.mock("react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     useEffect: (effect: Parameters<typeof actual.useEffect>[0], dependencies?: unknown[]) => {

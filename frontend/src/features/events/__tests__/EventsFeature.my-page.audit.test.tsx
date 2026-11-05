@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@tanstack/react-router")
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { http, HttpResponse } from "msw"
@@ -19,7 +20,7 @@ const state = vi.hoisted(() => ({
 }))
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  ...(await importOriginal<_MockedModuleType1>()),
   useSearch: () => state.search,
   useNavigate:
     () => (options: { search: (previous: Record<string, string>) => typeof state.search }) => {

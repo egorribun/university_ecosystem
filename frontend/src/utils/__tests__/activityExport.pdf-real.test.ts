@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("jspdf")
 import { readFile } from "node:fs/promises"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import fontUrl from "@/assets/fonts/inter-latin-cyrillic-400.ttf?url"
@@ -13,7 +14,7 @@ const pngDataUrl =
 vi.mock("html-to-image", () => ({ toPng: vi.fn().mockResolvedValue(pngDataUrl) }))
 vi.mock("@/app/logger", () => ({ logError: vi.fn() }))
 vi.mock("jspdf", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("jspdf")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   const capturingJsPDF = new Proxy(actual.jsPDF, {
     construct(target, args) {
       const pdf = Reflect.construct(target, args) as import("jspdf").jsPDF

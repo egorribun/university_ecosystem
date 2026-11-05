@@ -1,3 +1,5 @@
+type _MockedModuleType1 = typeof import("@/api/generated")
+type _MockedModuleType2 = typeof import("@/api/stories")
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -29,12 +31,12 @@ vi.mock("@/api/client", () => ({
 }))
 
 vi.mock("@/api/generated", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/generated")>()),
+  ...(await importOriginal<_MockedModuleType1>()),
   uploadStoryCoverApiV1StoriesUploadCoverPost: mocks.generatedUploadStoryCover,
 }))
 
 vi.mock("@/api/stories", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/stories")>()),
+  ...(await importOriginal<_MockedModuleType2>()),
   createStory: mocks.createStory,
   deleteStory: mocks.deleteStory,
   updateStory: mocks.updateStory,

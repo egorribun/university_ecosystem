@@ -1,3 +1,5 @@
+type _MockedModuleType1 = typeof import("@/api/generated")
+type _MockedModuleType2 = typeof import("@/api/notifications")
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { renderToString } from "react-dom/server"
@@ -17,7 +19,7 @@ const { generatedCheckSchedule, logWarning } = vi.hoisted(() => ({
 
 vi.mock("@/app/logger", () => ({ logWarning }))
 vi.mock("@/api/generated", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/generated")>()),
+  ...(await importOriginal<_MockedModuleType1>()),
   checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost: generatedCheckSchedule,
 }))
 
@@ -35,7 +37,7 @@ vi.mock("@/api/generated", async (importOriginal) => ({
  */
 
 vi.mock("@/api/notifications", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/api/notifications")>()),
+  ...(await importOriginal<_MockedModuleType2>()),
   fetchNotificationsList: vi.fn(),
   markNotificationRead: vi.fn(),
   markAllNotificationsRead: vi.fn(),

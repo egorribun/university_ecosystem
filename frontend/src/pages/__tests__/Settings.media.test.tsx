@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/stores/useAuthStore")
 import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
@@ -37,7 +38,7 @@ vi.mock("@/hooks/usePushPreferences", () => ({
 }))
 
 vi.mock("@/stores/useAuthStore", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/stores/useAuthStore")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   const user = {
     id: "uuid-1",
     email: "test@example.com",

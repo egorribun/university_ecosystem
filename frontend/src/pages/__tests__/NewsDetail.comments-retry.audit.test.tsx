@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/hooks/useShare")
 import { QueryClient, QueryClientProvider, notifyManager } from "@tanstack/react-query"
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -33,7 +34,7 @@ vi.mock("@/hooks/useArticleNavigation", () => ({
 }))
 vi.mock("@/hooks/useSwipe", () => ({ useSwipe: () => ({}) }))
 vi.mock("@/hooks/useShare", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/hooks/useShare")>()),
+  ...(await importOriginal<_MockedModuleType1>()),
   useShare: () => ({
     sharing: false,
     shareDialogOpen: false,

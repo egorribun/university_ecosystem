@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("idb-keyval")
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { CancelledError, dehydrate, hydrate, type QueryKey } from "@tanstack/react-query"
 import {
@@ -29,7 +30,7 @@ const io = vi.hoisted(() => ({
   writeError: undefined as Error | undefined,
 }))
 vi.mock("idb-keyval", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("idb-keyval")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     keys: async () => {

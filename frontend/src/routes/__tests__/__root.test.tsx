@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("react-dom/client")
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { act } from "react"
@@ -332,7 +333,7 @@ describe("__root.tsx components", () => {
           initGlobalErrorHandlers: vi.fn(),
         }))
         vi.doMock("react-dom/client", async (importOriginal) => {
-          const actual = await importOriginal<typeof import("react-dom/client")>()
+          const actual = await importOriginal<_MockedModuleType1>()
           return {
             ...actual,
             createRoot: (...args: Parameters<typeof createRoot>) => {

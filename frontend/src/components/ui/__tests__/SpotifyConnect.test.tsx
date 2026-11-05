@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/components/settings/SettingsUI")
 import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createInstance } from "i18next"
@@ -38,7 +39,7 @@ const mockState = vi.hoisted(() => ({
 // unhandled rejection outside the test that caused it. Keep the original
 // promise rejected: explicit rejection assertions or afterEach must consume it.
 vi.mock("@/components/settings/SettingsUI", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/components/settings/SettingsUI")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   const Original = actual.Button as unknown as React.ComponentType<Record<string, unknown>>
   const Button = ({ onClick, ...props }: { onClick?: (event: unknown) => unknown }) => (
     <Original

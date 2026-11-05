@@ -1,3 +1,5 @@
+type _MockedModuleType1 = typeof import("@sentry/react")
+type _MockedModuleType2 = typeof import("@/app/logger")
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { useEffect, type ComponentType, type ReactNode } from "react"
 import { describe, expect, it, vi } from "vitest"
@@ -26,12 +28,12 @@ vi.mock("react-i18next", () => ({
 
 // Keep actual error boundaries; mock only their reporting sinks.
 vi.mock("@sentry/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@sentry/react")>()),
+  ...(await importOriginal<_MockedModuleType1>()),
   captureException: mocks.captureException,
 }))
 
 vi.mock("@/app/logger", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/app/logger")>()),
+  ...(await importOriginal<_MockedModuleType2>()),
   logError: mocks.logError,
   logWarning: mocks.logWarning,
 }))

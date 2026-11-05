@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/api/client")
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
@@ -23,7 +24,7 @@ const apiMocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/client")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     default: {

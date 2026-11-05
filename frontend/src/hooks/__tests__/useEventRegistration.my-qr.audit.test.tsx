@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@tanstack/react-router")
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import api from "@/api/client"
@@ -8,7 +9,7 @@ import { useEventCardLogic } from "../useEventCardLogic"
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ user: { id: "account-a" } }) }))
 vi.mock("@/contexts/CampusTimezoneContext", () => ({ useCampusTimezone: () => "UTC" }))
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  ...(await importOriginal<_MockedModuleType1>()),
   useNavigate: () => vi.fn(),
 }))
 

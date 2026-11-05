@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/app/logger")
 /**
  * Session 11 coverage: src/hooks/useLessonNotes.ts (useLessonNotes + useLessonNotesMap)
  *
@@ -38,7 +39,7 @@ const dbState = vi.hoisted(() => ({
 
 vi.mock("idb-keyval", () => ({ get: idb.get, set: idb.set, del: idb.del }))
 vi.mock("@/app/logger", async (orig) => ({
-  ...(await orig<typeof import("@/app/logger")>()),
+  ...(await orig<_MockedModuleType1>()),
   logError: vi.fn(),
 }))
 vi.mock("@/db/lazy", () => ({

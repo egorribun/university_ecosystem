@@ -1,3 +1,4 @@
+type _MockedModuleType1 = typeof import("@/push/subscribe")
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { unsubscribePush } from "@/push/subscribe"
@@ -12,7 +13,7 @@ vi.mock("@/push/register-sw", () => ({
 }))
 
 vi.mock("@/push/subscribe", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/push/subscribe")>()
+  const actual = await importOriginal<_MockedModuleType1>()
   return {
     ...actual,
     unsubscribePush: actual.unsubscribePush,
