@@ -136,7 +136,7 @@ Workflow проверяет эти права до мутаций и прину�
 
 - Healthcheck-и остаются внутри контейнеров (`127.0.0.1`), а единственная запись `extra_hosts` — `host.docker.internal`; удалите её в продакшене, если доступ к хосту не нужен.
 - Prometheus-метрики выключены по умолчанию в `docker-compose.yml`. Чтобы их включить, установите `ENABLE_METRICS_ENDPOINT=true` **и** задайте собственные, стойкие значения `METRICS_BASIC_AUTH_USERNAME` и `METRICS_BASIC_AUTH_PASSWORD` (docker-compose больше не подставляет плейсхолдеры). Backend теперь падает на старте — или возвращает `503` во время запроса — если метрики включены без учётных данных, за исключением случаев, когда allowlist ограничен петлевыми адресами (`127.0.0.1`, `::1`, `localhost`).
-- Для включения заголовка `Cross-Origin-Resource-Policy` установите `ENABLE_CORP=true`. Значение задаётся через `CORP_VALUE` (по умолчанию `same-site`; также поддерживаются `same-origin` и `cross-origin`).
+- Заголовок `Cross-Origin-Resource-Policy` включён по умолчанию (`ENABLE_CORP=true`); для отключения установите `ENABLE_CORP=false`. Значение задаётся через `CORP_VALUE` (по умолчанию `same-site`; также поддерживаются `same-origin` и `cross-origin`).
 
 ## Миграции базы данных
 
@@ -314,77 +314,12 @@ print(Fernet.generate_key().decode())
 PY
 ```
 
-- Для ротации передайте список Fernet-ключей из защищённого хранилища через переменную окружения: новый ключ укажите первым, старый оставьте вторым. Не вставляйте материал ключей в команды или документацию. После деплоя выполните скрипт ниже, чтобы перешифровать уже сохранённые значения и убрать зависимость от старого ключа, затем удалите старый ключ из хранилища и перезапустите сервисы.
-
-```bash
-python - <<'PY'
-import asyncio
-from sqlalchemy import text
-
-from app.core.database import async_session
-from app.utils.encryption import rotate_encrypted_string
-
-
-async def main() -> None:
-    async with async_session() as session:
-        rows = await session.execute(
-            text(
-                "SELECT id, spotify_access_token, spotify_refresh_token FROM users"
-            )
-        )
-        for row in rows.all():
-            await session.execute(
-                text(
-                    "UPDATE users SET spotify_access_token = :access, "
-                    "spotify_refresh_token = :refresh WHERE id = :user_id"
-                ),
-                {
-                    "user_id": row.id,
-                    "access": rotate_encrypted_string(row.spotify_access_token),
-                    "refresh": rotate_encrypted_string(row.spotify_refresh_token),
-                },
-            )
-        await session.commit()
-
-
-asyncio.run(main())
-PY
-```
+- Для существующих токенов `SPOTIFY_TOKEN_SECRET` принимает список Fernet-ключей через запятую: первый шифрует новые значения, при расшифровке проверяется каждый перечисленный ключ. Поддерживаемой команды массовой миграции Spotify-токенов нет. Не удаляйте ключ, необходимый для чтения ciphertext, до завершения проверенной миграции и последующей проверки; храните ключи в защищённом хранилище.
 
 ### Подпись аудит-логов
 
 - `AUDIT_LOG_SECRET` используется для подписи записей журнала аудита (HMAC-SHA256) и должен отличаться от `SECRET_KEY`.
-- Для ротации передайте `AUDIT_LOG_SECRET` из защищённого хранилища как список ключей через запятую: новый первым, старый вторым. После деплоя переподпишите существующие записи, затем удалите старый ключ из хранилища и перезапустите сервисы.
-
-```bash
-python - <<'PY'
-import asyncio
-
-from sqlalchemy import select
-
-from app.core.database import async_session
-from app.models.logs import DataAccessLog
-from app.services.audit_service import SecureAuditService
-
-
-async def main() -> None:
-    service = SecureAuditService()
-    async with async_session() as session:
-        result = await session.execute(
-            select(DataAccessLog).where(DataAccessLog.signature.isnot(None))
-        )
-        updated = 0
-        for log in result.scalars().all():
-            if service.resign_log(log):
-                updated += 1
-        if updated:
-            await session.commit()
-        print(f"Resigned {updated} audit logs.")
-
-
-asyncio.run(main())
-PY
-```
+- `AUDIT_LOG_SECRET` принимает список ключей через запятую: первый подписывает новые записи, настроенные ключи проверяют существующие поддерживаемые подписи. Поддерживаемой миграции одновременно для аудит-логов и цепочек `StoredEvent` нет. Не удаляйте ключ, необходимый для сохранённых записей, до проверенной миграции и подтверждения каждой затронутой записи; не возвращайте скомпрометированный исторический ключ в serving configuration. Требования к инвентаризации и ограничения legacy-подписей описаны в [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md).
 
 ## Docker image
 

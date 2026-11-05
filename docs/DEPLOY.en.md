@@ -136,7 +136,7 @@ reconciliation proof, and an explicit rollout applies the new values.
 
 - Healthchecks stay inside the containers (`127.0.0.1`), and the only `extra_hosts` entry is `host.docker.internal`; remove it for production clusters that do not need host access.
 - Prometheus metrics are disabled by default in `docker-compose.yml`. To expose them, set `ENABLE_METRICS_ENDPOINT=true` **and** configure durable values for `METRICS_BASIC_AUTH_USERNAME` and `METRICS_BASIC_AUTH_PASSWORD` (Compose no longer injects placeholders). The backend now fails startup — or returns `503` at runtime — when metrics are enabled without credentials unless the allowlist is strictly loopback-only (`127.0.0.1`, `::1`, `localhost`).
-- To attach the `Cross-Origin-Resource-Policy` header, set `ENABLE_CORP=true`. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).
+- The `Cross-Origin-Resource-Policy` header is enabled by default (`ENABLE_CORP=true`); set `ENABLE_CORP=false` to disable it. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).
 
 ## Database migrations
 
@@ -310,77 +310,12 @@ print(Fernet.generate_key().decode())
 PY
 ```
 
-- To rotate keys, provide the Fernet key list from a protected store through the environment: set the new key first and keep the old one second. Do not place key material in commands or documentation. After deploying, run the script below to re-encrypt stored values and drop the dependency on the old key, then remove the old key from the store and restart services.
-
-```bash
-python - <<'PY'
-import asyncio
-from sqlalchemy import text
-
-from app.core.database import async_session
-from app.utils.encryption import rotate_encrypted_string
-
-
-async def main() -> None:
-    async with async_session() as session:
-        rows = await session.execute(
-            text(
-                "SELECT id, spotify_access_token, spotify_refresh_token FROM users"
-            )
-        )
-        for row in rows.all():
-            await session.execute(
-                text(
-                    "UPDATE users SET spotify_access_token = :access, "
-                    "spotify_refresh_token = :refresh WHERE id = :user_id"
-                ),
-                {
-                    "user_id": row.id,
-                    "access": rotate_encrypted_string(row.spotify_access_token),
-                    "refresh": rotate_encrypted_string(row.spotify_refresh_token),
-                },
-            )
-        await session.commit()
-
-
-asyncio.run(main())
-PY
-```
+- For an existing token dataset, `SPOTIFY_TOKEN_SECRET` accepts comma-separated Fernet keys: the first encrypts new values and decryption tries each listed key. No supported bulk Spotify-token migration command is provided. Do not remove a key needed to read existing ciphertext until a reviewed migration and verification have completed; keep key material in a protected store.
 
 ### Audit log signing
 
 - `AUDIT_LOG_SECRET` signs audit log entries (HMAC-SHA256) and should be distinct from `SECRET_KEY`.
-- For rotation, provide `AUDIT_LOG_SECRET` from a protected secret store as a comma-separated list: list the new key first and keep the old key second. After deploying, re-sign existing entries, then remove the old key from the store and restart services.
-
-```bash
-python - <<'PY'
-import asyncio
-
-from sqlalchemy import select
-
-from app.core.database import async_session
-from app.models.logs import DataAccessLog
-from app.services.audit_service import SecureAuditService
-
-
-async def main() -> None:
-    service = SecureAuditService()
-    async with async_session() as session:
-        result = await session.execute(
-            select(DataAccessLog).where(DataAccessLog.signature.isnot(None))
-        )
-        updated = 0
-        for log in result.scalars().all():
-            if service.resign_log(log):
-                updated += 1
-        if updated:
-            await session.commit()
-        print(f"Resigned {updated} audit logs.")
-
-
-asyncio.run(main())
-PY
-```
+- `AUDIT_LOG_SECRET` accepts comma-separated keys: the first signs new entries and configured keys verify existing supported signatures. No supported migration is provided for both audit logs and `StoredEvent` chains. Do not retire a key required by retained records until a reviewed migration and verification account for every affected record; do not put a compromised historical key in the serving configuration. See the [MVP master plan](superpowers/plans/MVP_MASTER_PLAN.md) for inventory and legacy-signature limitations.
 
 ## Docker image
 
