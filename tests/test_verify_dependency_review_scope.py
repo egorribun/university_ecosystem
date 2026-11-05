@@ -1962,6 +1962,238 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
             self.assertEqual(output.getvalue(), "")
 
 
+class TrufflehogIdentityBooleanDiagnosticTests(unittest.TestCase):
+    @staticmethod
+    def row():
+        return {
+            "change_type": "added",
+            "manifest": ".github/workflows/trufflehog.yml",
+            "ecosystem": "actions",
+            "name": "trufflesecurity/trufflehog",
+            "version": "a" * 40,
+            "package_url": "pkg:github/trufflesecurity/trufflehog@" + "a" * 40,
+            "license": "AGPL-3.0",
+            "source_repository_url": "https://github.com/trufflesecurity/trufflehog",
+            "vulnerabilities": [],
+        }
+
+    @staticmethod
+    def render(rows, pin="a" * 40):
+        module = sys.modules[verify_dependency_changes.__module__]
+        return module.format_dependency_identity_diagnostics(rows, trufflehog_pin=pin)
+
+    def test_exact_row_emits_only_four_additional_booleans(self):
+        row = self.row()
+        encoded = self.render([row])
+        diagnostic = json.loads(encoded)["rows"][0]
+        self.assertEqual(
+            {key: value for key, value in diagnostic.items() if type(value) is bool},
+            {
+                "version_matches_workflow_pin": True,
+                "package_url_empty": False,
+                "package_url_matches_expected": True,
+                "source_repository_matches_expected": True,
+            },
+        )
+        self.assertEqual(len(diagnostic), 11)
+        self.assertNotIn("a" * 40, encoded)
+        self.assertNotIn("https://", encoded)
+
+    def test_flags_bind_to_workflow_pin_not_row_self_consistency(self):
+        row = self.row()
+        row["version"] = "b" * 40
+        row["package_url"] = "pkg:github/trufflesecurity/trufflehog@" + "b" * 40
+        diagnostic = json.loads(self.render([row]))["rows"][0]
+        self.assertIs(diagnostic["version_matches_workflow_pin"], False)
+        self.assertIs(diagnostic["package_url_matches_expected"], False)
+        self.assertEqual(diagnostic["package_url"], "<matches-40-hex-version>")
+
+    def test_unreviewed_raw_values_cannot_escape_through_boolean_fields(self):
+        cases = (
+            ("version", "version_matches_workflow_pin"),
+            ("package_url", "package_url_matches_expected"),
+            ("source_repository_url", "source_repository_matches_expected"),
+        )
+        values = (
+            None,
+            False,
+            [],
+            {},
+            "withheld-boolean-canary",
+            "a" * 4000,
+            "https://github.com/trufflesecurity/trufflehog/",
+            "\n",
+            "A" * 40,
+        )
+        for field, flag in cases:
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    row = self.row()
+                    row[field] = value
+                    encoded = self.render([row])
+                    diagnostic = json.loads(encoded)["rows"][0]
+                    self.assertIs(diagnostic[flag], False)
+                    self.assertIs(diagnostic["package_url_empty"], False)
+                    self.assertNotIn("withheld-", encoded)
+                    self.assertNotIn("https://", encoded)
+                    self.assertLessEqual(len(encoded), 4096)
+
+    def test_boolean_scope_requires_exact_added_action_coordinates(self):
+        for field, value in (
+            ("change_type", "removed"),
+            ("change_type", "invalid"),
+            ("manifest", ".github/workflows/other.yml"),
+            ("ecosystem", "gomod"),
+            ("name", "example/other"),
+        ):
+            with self.subTest(field=field):
+                row = self.row()
+                row[field] = value
+                for diagnostic in json.loads(self.render([row]))["rows"]:
+                    self.assertFalse(
+                        any(type(value) is bool for value in diagnostic.values())
+                    )
+
+    def test_no_pin_evidence_is_emitted_for_invalid_or_unavailable_trusted_pin(self):
+        for pin in (None, False, [], "", "a" * 39, "A" * 40, "a" * 40 + "\n"):
+            with self.subTest(pin=pin):
+                diagnostic = json.loads(self.render([self.row()], pin=pin))["rows"][0]
+                self.assertFalse(
+                    any(type(value) is bool for value in diagnostic.values())
+                )
+
+    def test_diagnostics_preserve_inputs_and_original_accept_reject_verdicts(self):
+        for changes, accepted in (
+            ({}, True),
+            ({"license": None}, False),
+            ({"package_url": ""}, False),
+            ({"version": "b" * 40}, False),
+        ):
+            with self.subTest(changes=changes):
+                row = {**self.row(), **changes}
+                snapshot = json.dumps(row, sort_keys=True)
+                self.render([row])
+                self.assertEqual(json.dumps(row, sort_keys=True), snapshot)
+                if accepted:
+                    self.assertEqual(
+                        verify_dependency_changes(
+                            [row], trufflehog_pin="a" * 40, today=date(2026, 11, 5)
+                        ),
+                        1,
+                    )
+                else:
+                    with self.assertRaisesRegex(ValueError, "outside its reviewed row"):
+                        verify_dependency_changes(
+                            [row], trufflehog_pin="a" * 40, today=date(2026, 11, 5)
+                        )
+
+    def test_enriched_diagnostics_remain_bounded_and_deterministic(self):
+        rows = [self.row() for _ in range(20)]
+        rows.extend(DependencyIdentityDiagnosticTests.rows()[1:])
+        encoded = self.render(rows)
+        self.assertEqual(encoded, self.render(list(reversed(rows))))
+        self.assertLessEqual(len(encoded), 4096)
+        self.assertTrue(json.loads(encoded)["truncated"])
+
+    def test_current_workflow_pin_evidence_survives_other_action_versions(self):
+        current = {**self.row(), "package_url": "", "license": None}
+        others = []
+        for character in ("b", "c", "d"):
+            pin = character * 40
+            others.append(
+                {
+                    **self.row(),
+                    "version": pin,
+                    "package_url": f"pkg:github/trufflesecurity/trufflehog@{pin}",
+                }
+            )
+        encoded = self.render([*others, current])
+        payload = json.loads(encoded)
+        self.assertTrue(payload["truncated"])
+        self.assertEqual(len(payload["rows"]), 2)
+        self.assertIs(payload["rows"][0]["version_matches_workflow_pin"], True)
+        self.assertIs(payload["rows"][0]["package_url_empty"], True)
+        self.assertEqual(encoded, self.render([current, *reversed(others)]))
+
+    def test_changes_phase_reports_boolean_evidence_before_unchanged_failure(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        pin = "a" * 40
+        row = {
+            "change_type": "added",
+            "manifest": ".github/workflows/trufflehog.yml",
+            "ecosystem": "actions",
+            "name": "trufflesecurity/trufflehog",
+            "version": pin,
+            "package_url": "",
+            "license": None,
+            "source_repository_url": "https://github.com/trufflesecurity/trufflehog",
+            "vulnerabilities": [],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workflow = root / ".github/workflows/trufflehog.yml"
+            workflow.parent.mkdir(parents=True)
+            workflow.write_text(
+                f"uses: trufflesecurity/trufflehog@{pin}\n", encoding="utf-8"
+            )
+            changes = root / "changes.json"
+            changes.write_text(json.dumps([row]), encoding="utf-8")
+            argv = [
+                "verify",
+                "changes",
+                "--root",
+                str(root),
+                "--base-sha",
+                "0" * 40,
+                "--changes-file",
+                str(changes),
+            ]
+            with (
+                patch(f"{module}.preflight", return_value=set()),
+                patch.object(sys, "argv", argv),
+                patch("sys.stdout", new_callable=io.StringIO) as output,
+                self.assertRaisesRegex(ValueError, "outside its reviewed row"),
+            ):
+                main()
+        encoded = output.getvalue()
+        diagnostic = json.loads(encoded)["rows"][0]
+        self.assertIn("version_matches_workflow_pin", diagnostic)
+        self.assertIs(diagnostic["version_matches_workflow_pin"], True)
+        self.assertIs(diagnostic["package_url_empty"], True)
+        self.assertIs(diagnostic["package_url_matches_expected"], False)
+        self.assertIs(diagnostic["source_repository_matches_expected"], True)
+        self.assertIsNone(diagnostic["license"])
+        self.assertEqual(diagnostic["version"], "<redacted>")
+        self.assertNotIn(pin, encoded)
+        self.assertNotIn("https://", encoded)
+        self.assertNotIn("verified comparison", encoded)
+
+    def test_unreadable_workflow_keeps_original_diagnostic_then_failure(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        with tempfile.TemporaryDirectory() as directory:
+            changes = Path(directory) / "changes.json"
+            changes.write_text(json.dumps([self.row()]), encoding="utf-8")
+            argv = [
+                "verify",
+                "changes",
+                "--root",
+                directory,
+                "--base-sha",
+                "0" * 40,
+                "--changes-file",
+                str(changes),
+            ]
+            with (
+                patch(f"{module}.preflight", return_value=set()),
+                patch.object(sys, "argv", argv),
+                patch("sys.stdout", new_callable=io.StringIO) as output,
+                self.assertRaisesRegex(ValueError, "workflow is missing or unreadable"),
+            ):
+                main()
+        diagnostic = json.loads(output.getvalue())["rows"][0]
+        self.assertFalse(any(type(value) is bool for value in diagnostic.values()))
+
+
 class ExtendedCaddyJoseExceptionTests(unittest.TestCase):
     def test_exact_three_advisories_have_identical_scope_and_expiry(self):
         self.assertEqual(

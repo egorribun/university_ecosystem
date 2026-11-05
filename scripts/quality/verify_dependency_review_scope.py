@@ -523,10 +523,16 @@ def verify_dependency_changes(
     return sum(accepted.values())
 
 
-def format_dependency_identity_diagnostics(rows: Any) -> str:
+def format_dependency_identity_diagnostics(
+    rows: Any, *, trufflehog_pin: str | None = None
+) -> str:
     """Render bounded evidence only; never alter a dependency decision."""
     # This display vocabulary is not a license or vulnerability exception.
     # Unknown values stay redacted instead of being normalized or accepted.
+    trusted_pin_available = (
+        isinstance(trufflehog_pin, str)
+        and re.fullmatch(r"[0-9a-f]{40}", trufflehog_pin) is not None
+    )
     targets = {
         "trufflesecurity/trufflehog": (
             ".github/workflows/trufflehog.yml",
@@ -612,6 +618,26 @@ def format_dependency_identity_diagnostics(rows: Any) -> str:
                 identity[field] = value
             else:
                 identity[field] = "<redacted>"
+        if (
+            trusted_pin_available
+            and name == TRUFFLEHOG_ACTION_NAME
+            and row.get("change_type") == "added"
+            and row.get("manifest") == TRUFFLEHOG_MANIFEST
+            and row.get("ecosystem") == TRUFFLEHOG_ECOSYSTEM
+        ):
+            # Evidence only: compare raw fields without exposing or normalizing
+            # them. In particular, a null license remains null and still fails.
+            identity.update(
+                version_matches_workflow_pin=row.get("version") == trufflehog_pin,
+                package_url_empty=row.get("package_url") == "",
+                package_url_matches_expected=(
+                    row.get("package_url") == f"{TRUFFLEHOG_PURL}@{trufflehog_pin}"
+                ),
+                source_repository_matches_expected=(
+                    row.get("source_repository_url")
+                    == "https://github.com/trufflesecurity/trufflehog"
+                ),
+            )
         # Fingerprint only a bounded unknown license on an otherwise exact
         # reviewed Caddy identity. Never log its raw value or use this evidence
         # in acceptance decisions. Non-license mismatches remain redacted.
@@ -643,6 +669,8 @@ def format_dependency_identity_diagnostics(rows: Any) -> str:
             if version
             else identity["package_url"] == "<matches-40-hex-version>"
         )
+        if trusted_pin_available and name == TRUFFLEHOG_ACTION_NAME:
+            matches_version = identity.get("version_matches_workflow_pin", False)
         priority = (
             row.get("manifest") != manifest,
             not matches_version,
@@ -1506,9 +1534,17 @@ def main() -> int:
     if args.changes_file is None:
         raise ValueError("--changes-file is required for the changes phase")
     changes = read_dependency_changes_file(args.changes_file)
-    print(format_dependency_identity_diagnostics(changes))
+    try:
+        trufflehog_pin = read_trufflehog_pin(args.root)
+    except ValueError:
+        # Preserve the original diagnostic-before-pin-failure behavior.
+        print(format_dependency_identity_diagnostics(changes))
+        raise
+    print(
+        format_dependency_identity_diagnostics(changes, trufflehog_pin=trufflehog_pin)
+    )
     accepted = verify_dependency_changes(
-        changes, required, trufflehog_pin=read_trufflehog_pin(args.root)
+        changes, required, trufflehog_pin=trufflehog_pin
     )
     ghsa_exceptions_used = verify_ghsa_exception_rows(changes)
     print(
