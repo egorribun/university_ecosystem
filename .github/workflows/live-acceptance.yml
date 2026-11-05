@@ -83,13 +83,13 @@ jobs:
         working-directory: frontend
         run: npm ci --no-audit --no-fund
 
-      - name: Validate live acceptance contracts before starting Docker
-        working-directory: frontend
-        run: npm run test:e2e:live:contract
-
       - name: Install locked Chromium and Linux browser dependencies
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+
+      - name: Validate live acceptance contracts before starting Docker
+        working-directory: frontend
+        run: npm run test:e2e:live:contract
 
       # This is a dependency-consumer regression, not LHCI/performance acceptance.
       - name: Verify browser dependency runtime compatibility
@@ -326,13 +326,13 @@ jobs:
         working-directory: frontend
         run: npm ci --no-audit --no-fund
 
-      - name: Validate live acceptance contracts before starting Docker
-        working-directory: frontend
-        run: npm run test:e2e:live:contract
-
       - name: Install locked Chromium and Linux browser dependencies
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+
+      - name: Validate live acceptance contracts before starting Docker
+        working-directory: frontend
+        run: npm run test:e2e:live:contract
 
       - name: Select unique owned frozen-RC state directory
         run: |

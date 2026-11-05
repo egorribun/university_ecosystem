@@ -178,7 +178,7 @@ def test_workflow_runs_pr_smoke_and_nightly_manual_full_with_safe_cleanup() -> N
         steps[up_index]["env"]["STAND_REF"]
         == "${{ steps.verify-event-commit.outputs.checked_out_sha }}"
     )
-    assert npm_install_index < contract_index < browser_setup_index < up_index
+    assert npm_install_index < browser_setup_index < contract_index < up_index
     e2e_index = next(
         index
         for index, step in enumerate(steps)
@@ -772,6 +772,30 @@ def test_workflow_actions_are_immutable_and_only_read_repository_contents() -> N
     assert uses
     assert all(re.search(r"@[0-9a-f]{40}(?:\s|$)", action) for action in uses)
     assert re.search(r"^permissions:\s*\n\s+contents:\s+read\s*$", source, re.M)
+
+
+@pytest.mark.parametrize("job_name", ("live-acceptance", "frozen-rc-full-smoke"))
+def test_live_contracts_run_after_browser_setup_and_before_docker(
+    job_name: str,
+) -> None:
+    _, workflow = _workflow()
+    steps = workflow["jobs"][job_name]["steps"]
+    browser = next(
+        index
+        for index, step in enumerate(steps)
+        if "playwright install --with-deps chromium" in step.get("run", "")
+    )
+    contract = next(
+        index
+        for index, step in enumerate(steps)
+        if "npm run test:e2e:live:contract" in step.get("run", "")
+    )
+    stand = next(
+        index
+        for index, step in enumerate(steps)
+        if "python -m scripts.live_stand up" in step.get("run", "")
+    )
+    assert browser < contract < stand
 
 
 def test_live_contract_command_includes_every_live_contract_file() -> None:
