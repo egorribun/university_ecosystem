@@ -147,7 +147,7 @@ jobs:
               echo "Server and OpenAPI document are ready."
               break
             fi
-            echo "Waiting for server..."
+            echo "Waiting for server (attempt ${i}/30)..."
             sleep 1
           done
           if ! test -s sqlmap-output/source-openapi.json; then

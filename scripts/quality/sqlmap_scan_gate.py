@@ -354,8 +354,22 @@ def publish_evidence(
         confirmed = None
     query_count = _query_count(output_dir)
     claimed_success = scan == gate == "success"
+    complete = False
+    if claimed_success:
+        try:
+            console = check_completion(scan, console_log, output_dir)
+        except ScanEvidenceError:
+            pass
+        else:
+            targets = 1
+            scan_section = console[: console.index(COMPLETION_MARKER)]
+            tested = sum(marker in scan_section for marker in TESTED_PARAMETERS)
+            if any(marker in console for marker in INJECTION_MARKERS):
+                confirmed = True
+            complete = True
     verified_success = (
         claimed_success
+        and complete
         and targets == 1
         and tested == len(TESTED_PARAMETERS)
         and query_count is not None

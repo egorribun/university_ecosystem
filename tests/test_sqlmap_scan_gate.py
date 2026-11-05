@@ -833,6 +833,79 @@ def test_receipt_write_failure_is_reported_without_raw_data(tmp_path: Path) -> N
     )
 
 
+@pytest.mark.parametrize(
+    "damage",
+    ["missing_ending", "reordered_ending", "critical_error", "missing_result_log"],
+)
+def test_receipt_rejects_success_claim_without_complete_scan_evidence(
+    tmp_path: Path, damage: str
+) -> None:
+    output_dir, console_log = _layout(tmp_path, _CLEAN_RUN)
+    assert gate.run_gate("success", output_dir, console_log, None) == 0
+    if damage == "missing_ending":
+        console_log.write_bytes(_CLEAN_RUN.removesuffix(_END))
+    elif damage == "reordered_ending":
+        console_log.write_bytes(_END + _CLEAN_RUN.removesuffix(_END))
+    elif damage == "critical_error":
+        console_log.write_bytes(_CLEAN_RUN + b"[CRITICAL] connection failed\n")
+    else:
+        (output_dir / "api.invalid" / "log").unlink()
+
+    assert gate.run_gate("success", output_dir, console_log, None) == 1
+    receipt = tmp_path / "receipt.json"
+    assert (
+        gate.publish_evidence(output_dir, "success", "success", "a" * 40, receipt) == 1
+    )
+    assert json.loads(receipt.read_text(encoding="utf-8"))["status"] == "failed"
+
+
+def test_receipt_requires_tested_parameters_in_completion_validated_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output_dir, console_log = _layout(tmp_path, _CLEAN_RUN)
+    original_read_bytes = Path.read_bytes
+    changed = False
+
+    def read_while_log_changes(path: Path) -> bytes:
+        nonlocal changed
+        contents = original_read_bytes(path)
+        if path == console_log and not changed:
+            changed = True
+            console_log.write_bytes(_START + _TARGETS + _SCAN_DONE + _END)
+        return contents
+
+    monkeypatch.setattr(Path, "read_bytes", read_while_log_changes)
+    receipt = tmp_path / "receipt.json"
+    assert (
+        gate.publish_evidence(output_dir, "success", "success", "a" * 40, receipt) == 1
+    )
+    assert json.loads(receipt.read_text(encoding="utf-8"))["status"] == "failed"
+
+
+def test_receipt_rejects_injection_in_completion_validated_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output_dir, console_log = _layout(tmp_path, _CLEAN_RUN)
+    original_read_bytes = Path.read_bytes
+    reads = 0
+
+    def read_while_log_changes(path: Path) -> bytes:
+        nonlocal reads
+        contents = original_read_bytes(path)
+        if path == console_log:
+            reads += 1
+            if reads == 2:
+                console_log.write_bytes(_CLEAN_RUN + _INJECTION)
+        return contents
+
+    monkeypatch.setattr(Path, "read_bytes", read_while_log_changes)
+    receipt = tmp_path / "receipt.json"
+    assert (
+        gate.publish_evidence(output_dir, "success", "success", "a" * 40, receipt) == 1
+    )
+    assert json.loads(receipt.read_text(encoding="utf-8"))["status"] == "failed"
+
+
 def test_receipt_command_publishes_verified_success(tmp_path: Path) -> None:
     output_dir, _ = _layout(tmp_path, _CLEAN_RUN)
     receipt = tmp_path / "receipt.json"
