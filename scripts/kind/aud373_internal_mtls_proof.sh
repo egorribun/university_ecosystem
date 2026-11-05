@@ -469,8 +469,15 @@ spec:
             - containerPort: 5432
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "ue_app", "-d", "university"]
+              command:
+                - sh
+                - -ec
+                - |
+                  pg_isready -h 127.0.0.1 -U "\$POSTGRES_USER" -d "\$POSTGRES_DB" >/dev/null 2>&1
+                  database="\$(PGCONNECT_TIMEOUT=2 PGPASSWORD="\$POSTGRES_PASSWORD" psql -X -w -h 127.0.0.1 -U "\$POSTGRES_USER" -d "\$POSTGRES_DB" -Atqc 'SELECT current_database()' 2>/dev/null)"
+                  test "\$database" = "\$POSTGRES_DB"
             periodSeconds: 5
+            timeoutSeconds: 5
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -492,6 +499,103 @@ spec:
 EOF
   kubectl apply -f "${WORK_DIR}/postgres.yaml"
   kubectl -n "$NAMESPACE" rollout status deployment/ue-postgres --timeout=300s
+  # This disposable database starts empty. Run the tracked migration before
+  # installing the application; never bypass the ordinary Alembic entry point.
+  cat > "${WORK_DIR}/fixture-migration.yaml" <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ue-aud373-migrate
+  namespace: ${NAMESPACE}
+spec:
+  podSelector:
+    matchLabels:
+      university-ecosystem.io/aud373-migration: "true"
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: ue-postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ue-aud373-migrate
+  namespace: ${NAMESPACE}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        university-ecosystem.io/aud373-migration: "true"
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: ${BACKEND_IMAGE}
+          imagePullPolicy: Always
+          command: ["alembic", "upgrade", "head"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          env:
+            - name: ENVIRONMENT
+              value: development
+            - name: DATABASE_URL_FILE
+              value: /run/secrets/university-connections/migration-database-url
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: connections
+              mountPath: /run/secrets/university-connections
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: connections
+          secret:
+            secretName: university-connections
+            items:
+              - key: migration-database-url
+                path: migration-database-url
+        - name: tmp
+          emptyDir: {}
+EOF
+  kubectl -n "$NAMESPACE" apply -f "${WORK_DIR}/fixture-migration.yaml" || return 1
+  kubectl -n "$NAMESPACE" wait --for=condition=complete job/ue-aud373-migrate --timeout=300s || return 1
   register_workloads
   # Not --wait: the frontend Deployment has no image in this cluster by design, and the
   # proof only needs the backend and gateway Deployments to become Available.

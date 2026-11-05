@@ -17,7 +17,7 @@ import struct
 import subprocess
 import sys
 import threading
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -1035,6 +1035,7 @@ NAMESPACE=university-ecosystem
 RELEASE=ue
 BACKEND_SVC=ue-backend
 GATEWAY_SVC=ue-gateway
+BACKEND_IMAGE=fixture
 read_tracked_pin() {{ printf image; }}
 write_values_file() {{ :; }}
 register_workloads() {{ :; }}
@@ -1073,3 +1074,270 @@ cat "$WORK_DIR/postgres.yaml"
     assert matches(pod_labels), "fixture must be an allowed PostgreSQL peer"
     assert not matches({"app": "ue-postgres"})
     assert not matches({"app.kubernetes.io/name": "other"})
+
+
+def test_migration_connection_targets_the_owned_database() -> None:
+    command = f"""set -euo pipefail
+{_shell_function("random_hex")}
+{_shell_function("random_fernet")}
+{_shell_function("write_values_file")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+LOCAL_REGISTRY_ADDRESS=127.0.0.1:32768
+IMAGE_TAG=proof
+RELEASE=ue
+TRUST_DOMAIN=university.ecosystem
+BACKEND_SPIFFE_ID=backend
+GATEWAY_SPIFFE_ID=gateway
+WS_HUB_SPIFFE_ID=ws-hub
+FILE_PROCESSOR_SPIFFE_ID=file-processor
+postgres_password=
+migration_seen=0
+write_secret_file() {{
+  case "$1" in
+    postgres-password) postgres_password="$2" ;;
+    migration-database-url)
+      [[ -n "$postgres_password" ]]
+      [[ "$2" == "postgresql+asyncpg://ue_app:${{postgres_password}}@ue-postgres:5432/university" ]]
+      migration_seen=1 ;;
+  esac
+}}
+openssl() {{
+  if [[ "$1" == genrsa ]]; then :; else command openssl "$@"; fi
+}}
+write_values_file
+test "$migration_seen" = 1
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, "migration target must match the owned database"
+
+
+@pytest.mark.parametrize("failure", ["none", "apply", "wait"])
+def test_owned_database_schema_migrates_before_helm_and_fails_closed(
+    failure: str,
+) -> None:
+    command = f"""set -euo pipefail
+{_shell_function("deploy_stack")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+ROOT_DIR=unused
+NAMESPACE=university-ecosystem
+RELEASE=ue
+BACKEND_SVC=ue-backend
+GATEWAY_SVC=ue-gateway
+BACKEND_IMAGE=fixture-image
+FAILURE={failure}
+TRACE="$work/trace"
+: > "$TRACE"
+read_tracked_pin() {{ printf image; }}
+write_values_file() {{ :; }}
+register_workloads() {{ printf 'REGISTRATION\\n' >> "$TRACE"; }}
+helm() {{ printf 'HELM\\n' >> "$TRACE"; }}
+kubectl() {{
+  case "$*" in
+    *"apply -f -"*) cat > /dev/null ;;
+    *"--dry-run=client"*) printf fixture ;;
+    *"rollout status deployment/ue-postgres"*) printf 'POSTGRES_READY\\n' >> "$TRACE" ;;
+    *"apply -f"*"fixture-migration.yaml"*)
+      printf 'MIGRATION_APPLIED\\n' >> "$TRACE"
+      [[ "$FAILURE" != apply ]] ;;
+    *"wait --for=condition=complete"*)
+      printf 'MIGRATION_WAIT\\n' >> "$TRACE"
+      [[ "$*" == *"job/ue-aud373-migrate --timeout=300s" ]]
+      [[ "$FAILURE" != wait ]] ;;
+    *) : ;;
+  esac
+}}
+if deploy_stack; then status=0; else status=$?; fi
+if [[ "$FAILURE" == none ]]; then
+  test "$status" == 0
+else
+  test "$status" != 0
+fi
+printf '===TRACE===\\n'
+cat "$TRACE"
+printf '===JOB===\\n'
+cat "$WORK_DIR/fixture-migration.yaml"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, "schema fixture did not fail closed"
+    trace_source, job_source = result.stdout.decode().split("===JOB===\n", 1)
+    trace = trace_source.splitlines()
+    assert trace[:3] == ["===TRACE===", "POSTGRES_READY", "MIGRATION_APPLIED"]
+    if failure == "apply":
+        assert trace[3:] == []
+    elif failure == "wait":
+        assert trace[3:] == ["MIGRATION_WAIT"]
+    else:
+        assert trace[3:] == ["MIGRATION_WAIT", "REGISTRATION", "HELM"]
+    policy, job = list(yaml.safe_load_all(job_source))
+    assert policy["kind"] == "NetworkPolicy"
+    assert policy["spec"]["policyTypes"] == ["Ingress", "Egress"]
+    assert policy["spec"]["ingress"] == []
+    rules = policy["spec"]["egress"]
+    assert rules == [
+        {
+            "to": [{"podSelector": {"matchLabels": {"app": "ue-postgres"}}}],
+            "ports": [{"protocol": "TCP", "port": 5432}],
+        },
+        {
+            "to": [
+                {
+                    "namespaceSelector": {
+                        "matchLabels": {"kubernetes.io/metadata.name": "kube-system"}
+                    },
+                    "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}},
+                }
+            ],
+            "ports": [
+                {"protocol": "UDP", "port": 53},
+                {"protocol": "TCP", "port": 53},
+            ],
+        },
+    ]
+    assert job["kind"] == "Job"
+    assert (
+        job["spec"]["template"]["metadata"]["labels"]
+        == policy["spec"]["podSelector"]["matchLabels"]
+    )
+    assert job["spec"]["backoffLimit"] == 0
+    assert job["spec"]["activeDeadlineSeconds"] == 300
+    pod = job["spec"]["template"]["spec"]
+    assert pod["automountServiceAccountToken"] is False
+    assert pod["restartPolicy"] == "Never"
+    assert pod["securityContext"]["runAsNonRoot"] is True
+    assert pod["securityContext"]["seccompProfile"]["type"] == "RuntimeDefault"
+    assert len(pod["containers"]) == 1
+    container = pod["containers"][0]
+    assert container["image"] == "fixture-image"
+    assert container["imagePullPolicy"] == "Always"
+    assert container["command"] == ["alembic", "upgrade", "head"]
+    assert container["securityContext"]["readOnlyRootFilesystem"] is True
+    assert container["securityContext"]["allowPrivilegeEscalation"] is False
+    assert container["securityContext"]["capabilities"]["drop"] == ["ALL"]
+    assert container["resources"]["limits"] == {"cpu": "1", "memory": "1Gi"}
+    assert container["volumeMounts"] == [
+        {
+            "name": "connections",
+            "mountPath": "/run/secrets/university-connections",
+            "readOnly": True,
+        },
+        {"name": "tmp", "mountPath": str(PurePosixPath("/") / "tmp")},
+    ]
+    assert container["env"] == [
+        {"name": "ENVIRONMENT", "value": "development"},
+        {
+            "name": "DATABASE_URL_FILE",
+            "value": "/run/secrets/university-connections/migration-database-url",
+        },
+    ]
+    secret = next(volume["secret"] for volume in pod["volumes"] if "secret" in volume)
+    chart_values = yaml.safe_load(
+        (ROOT / "charts/university-ecosystem/values.yaml").read_text(encoding="utf-8")
+    )
+    assert secret["secretName"] == chart_values["connections"]["existingSecret"]
+    assert secret["items"] == [
+        {"key": "migration-database-url", "path": "migration-database-url"}
+    ]
+
+
+def _postgres_fixture_readiness_command() -> list[str]:
+    command = f"""set -euo pipefail
+{_shell_function("deploy_stack")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+ROOT_DIR=unused
+NAMESPACE=university-ecosystem
+RELEASE=ue
+BACKEND_SVC=ue-backend
+GATEWAY_SVC=ue-gateway
+BACKEND_IMAGE=fixture-image
+read_tracked_pin() {{ printf image; }}
+write_values_file() {{ :; }}
+register_workloads() {{ :; }}
+helm() {{ :; }}
+kubectl() {{
+  case "$*" in
+    *"apply -f -"*) cat > /dev/null ;;
+    *"--dry-run=client"*) printf fixture ;;
+    *) : ;;
+  esac
+}}
+deploy_stack
+cat "$WORK_DIR/postgres.yaml"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, "failed to render PostgreSQL readiness"
+    deployment, _service = list(yaml.safe_load_all(result.stdout))
+    readiness = deployment["spec"]["template"]["spec"]["containers"][0][
+        "readinessProbe"
+    ]
+    assert readiness["timeoutSeconds"] == 5
+    return readiness["exec"]["command"]
+
+
+@pytest.mark.parametrize(
+    ("phase", "auth", "database", "psql_exit", "ready"),
+    [
+        ("temporary_socket", "ok", "expected", 0, False),
+        ("final_tcp", "bad", "expected", 0, False),
+        ("final_tcp", "ok", "wrong", 0, False),
+        ("final_tcp", "ok", "expected", 1, False),
+        ("final_tcp", "ok", "expected", 0, True),
+    ],
+)
+def test_postgres_readiness_requires_final_tcp_auth_and_database(
+    phase: str, auth: str, database: str, psql_exit: int, ready: bool
+) -> None:
+    shell, flags, probe = _postgres_fixture_readiness_command()
+    assert (shell, flags) == ("sh", "-ec")
+    command = f"""set -euo pipefail
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+mkdir "$work/bin"
+cat > "$work/bin/pg_isready" <<'STUB'
+#!/bin/sh
+set -eu
+: > "$PG_TRACE"
+[ "$*" = "-h 127.0.0.1 -U $POSTGRES_USER -d $POSTGRES_DB" ] || exit 2
+printf '%s' "$POSTGRES_PASSWORD"
+printf '%s' "$POSTGRES_PASSWORD" >&2
+[ "$PHASE" = final_tcp ]
+STUB
+cat > "$work/bin/psql" <<'STUB'
+#!/bin/sh
+set -eu
+: > "$PSQL_TRACE"
+[ "${{PGPASSWORD:-}}" = "$POSTGRES_PASSWORD" ] || exit 2
+[ "${{PGCONNECT_TIMEOUT:-}}" = 2 ] || exit 2
+[ "$*" = "-X -w -h 127.0.0.1 -U $POSTGRES_USER -d $POSTGRES_DB -Atqc SELECT current_database()" ] || exit 2
+printf '%s' "$POSTGRES_PASSWORD" >&2
+[ "$AUTH" = ok ] || exit 1
+if [ "$DATABASE" = expected ]; then printf '%s\\n' "$POSTGRES_DB"; else printf 'wrong\\n'; fi
+exit "$PSQL_EXIT"
+STUB
+chmod +x "$work/bin/pg_isready" "$work/bin/psql"
+export PATH="$work/bin:$PATH"
+export POSTGRES_USER=ue_app POSTGRES_DB=university
+export POSTGRES_PASSWORD="$(openssl rand -hex 32)"
+export PHASE={phase} AUTH={auth} DATABASE={database} PSQL_EXIT={psql_exit}
+export PG_TRACE="$work/pg-trace" PSQL_TRACE="$work/psql-trace"
+set +e
+sh -ec {shlex.quote(probe)}
+status=$?
+set -e
+test -f "$PG_TRACE"
+if [[ "$PHASE" == temporary_socket ]]; then
+  test ! -e "$PSQL_TRACE"
+else
+  test -f "$PSQL_TRACE"
+fi
+exit "$status"
+"""
+    result = _bash_command(command)
+    assert (result.returncode == 0) is ready
+    output_is_empty = not result.stdout and not result.stderr
+    assert output_is_empty, "probe must not expose values"
