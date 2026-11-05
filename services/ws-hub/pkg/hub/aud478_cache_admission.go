@@ -58,8 +58,12 @@ func (h *Hub) AdmissionClosed() bool {
 	if !h.authCacheTracked.Load() {
 		return false
 	}
-	return !h.natsConnectionUp() || h.authCacheAdmissionClosed.Load() ||
-		h.natsReconnects() != h.observedNATSReconnects.Load()
+	if !h.natsConnectionUp() || h.authCacheAdmissionClosed.Load() {
+		return true
+	}
+	reconnects := h.natsReconnects()
+	return reconnects != h.observedNATSReconnects.Load() ||
+		reconnects != h.revocationDrainedReconnects.Load()
 }
 
 // resetAuthorizationCache resets the authorization cache when the configured client

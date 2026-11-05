@@ -432,6 +432,14 @@ func TestAUD478ExistingSocketsRejectSingleFlightAllowAcrossReset(t *testing.T) {
 	h.closeAndObserveNATSSession(reconnects.Load())
 	connected.Store(true)
 	require.NoError(t, h.completeAuthCacheReset(context.Background()))
+	// This test exercises cache single-flight behavior after both admission barriers clear.
+	oldConsumerInfo := revocationConsumerInfoFunc
+	t.Cleanup(func() { revocationConsumerInfoFunc = oldConsumerInfo })
+	revocationConsumerInfoFunc = func(*nats.Subscription) (*nats.ConsumerInfo, error) {
+		return &nats.ConsumerInfo{}, nil
+	}
+	reason := ""
+	h.checkRevocationCatchUp(context.Background(), nil, &reason)
 	require.False(t, h.AdmissionClosed())
 
 	// The post-reset join must start a new flight without waiting for the old

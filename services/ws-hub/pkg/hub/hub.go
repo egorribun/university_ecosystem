@@ -337,6 +337,8 @@ type Hub struct {
 	// revocationCatchingUp is set while the cache.revoke replay window is still
 	// draining. Admission and readiness fail closed until it clears (AUD-478).
 	revocationCatchingUp atomic.Bool
+	// revocationDrainedReconnects is the NATS session whose revocation consumer last reported a drained replay.
+	revocationDrainedReconnects atomic.Uint64
 	// revocationWatchdogInterval is how often an open admission barrier re-checks the
 	// replay consumer. revocationConnected overrides the connection probe in tests;
 	// nil means the connection's own state.
@@ -1673,12 +1675,22 @@ func (h *Hub) checkRevocationCatchUp(ctx context.Context, sub *nats.Subscription
 		h.closeRevocationAdmission(ctx, lastReason, "the NATS connection is down", nil)
 		return revocationCatchUpPollInterval
 	}
+	reconnects := h.natsReconnects()
+	if h.revocationDrainedReconnects.Load() != reconnects {
+		h.revocationCatchingUp.Store(true)
+	}
 	info, err := revocationConsumerInfoFunc(sub)
 	if err != nil {
 		h.closeRevocationAdmission(ctx, lastReason, "the cache.revoke consumer position is unavailable", err)
 		return revocationCatchUpPollInterval
 	}
+	// A position requested in an earlier session cannot certify the new session.
+	if !h.natsConnectionUp() || h.natsReconnects() != reconnects {
+		h.closeRevocationAdmission(ctx, lastReason, "the NATS session changed during the cache.revoke consumer position check", nil)
+		return revocationCatchUpPollInterval
+	}
 	if info.NumPending == 0 && info.NumAckPending == 0 {
+		h.revocationDrainedReconnects.Store(reconnects)
 		*lastReason = ""
 		if h.revocationCatchingUp.Swap(false) {
 			h.Logger.InfoContext(ctx, "Room revocation replay caught up; WebSocket admission enabled")
