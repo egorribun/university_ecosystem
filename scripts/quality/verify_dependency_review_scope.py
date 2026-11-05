@@ -638,6 +638,16 @@ def format_dependency_identity_diagnostics(
                     == "https://github.com/trufflesecurity/trufflehog"
                 ),
             )
+            if (
+                identity["version_matches_workflow_pin"]
+                and identity["source_repository_matches_expected"]
+            ):
+                # The pinned upstream README documents the githubactions type.
+                # Probe that exact format only; this does not change acceptance.
+                identity["package_url_matches_githubactions_pin"] = (
+                    row.get("package_url")
+                    == f"pkg:githubactions/{TRUFFLEHOG_ACTION_NAME}@{trufflehog_pin}"
+                )
         # Fingerprint only a bounded unknown license on an otherwise exact
         # reviewed Caddy identity. Never log its raw value or use this evidence
         # in acceptance decisions. Non-license mismatches remain redacted.
