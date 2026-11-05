@@ -102,6 +102,9 @@ repos:
           - "dishka"
           - "authzed"
           - "grpcio"
+          # The logging export boundary subclasses the typed OTel SDK handler.
+          # Keep its base class available to this isolated strict mypy hook.
+          - "opentelemetry-sdk==1.45.1"
 
   - repo: local
     hooks:

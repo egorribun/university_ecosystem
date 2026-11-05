@@ -165,6 +165,28 @@ def test_precommit_mypy_installs_the_declared_psycopg_driver() -> None:
     assert isolated.specifier == production.specifier
 
 
+def test_precommit_mypy_installs_the_locked_opentelemetry_sdk() -> None:
+    lock = _read_toml("uv.lock")
+    sdk_version = next(
+        package["version"]
+        for package in lock["package"]
+        if package["name"] == "opentelemetry-sdk"
+    )
+    pre_commit = yaml.safe_load(_read_text(".pre-commit-config.yaml"))
+    mypy_repo = next(
+        repo
+        for repo in pre_commit["repos"]
+        if repo["repo"] == "https://github.com/pre-commit/mirrors-mypy"
+    )
+    mypy_hook = next(hook for hook in mypy_repo["hooks"] if hook["id"] == "mypy")
+    sdk_requirements = [
+        requirement
+        for requirement in mypy_hook["additional_dependencies"]
+        if Requirement(requirement).name == "opentelemetry-sdk"
+    ]
+    assert sdk_requirements == [f"opentelemetry-sdk=={sdk_version}"]
+
+
 def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
     pre_commit_text = _read_text(".pre-commit-config.yaml")
     assert RENOVATE_PRE_COMMIT_HOOK in pre_commit_text
