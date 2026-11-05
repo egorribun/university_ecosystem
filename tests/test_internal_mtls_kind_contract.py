@@ -402,6 +402,253 @@ test "$calls" = "{failing_call}"
     assert result.returncode == 0, result.stderr
 
 
+def test_owned_probe_policies_are_run_scoped_and_do_not_select_services() -> None:
+    from secrets import token_hex
+
+    function = _shell_function("install_probe_access")
+    template = function.split("<<EOF\n", 1)[1].split("\nEOF\n", 1)[0]
+    values = {
+        "RUN_SUFFIX": token_hex(6),
+        "NAMESPACE": "university-ecosystem",
+        "RELEASE": "ue",
+        "BACKEND_PORT": "8000",
+        "GATEWAY_PORT": "8080",
+    }
+    for name, value in values.items():
+        template = template.replace("${" + name + "}", value)
+    assert "${" not in template
+    policies = list(yaml.safe_load_all(template))
+    assert len(policies) == 2
+    probe = {"university-ecosystem.io/aud373-probe": values["RUN_SUFFIX"]}
+    other_probe = {
+        "university-ecosystem.io/aud373-probe": f"{int(values['RUN_SUFFIX'], 16) ^ 1:012x}"
+    }
+    by_component = {
+        policy["spec"]["podSelector"]["matchLabels"][
+            "app.kubernetes.io/component"
+        ]: policy
+        for policy in policies
+    }
+    assert set(by_component) == {"backend", "gateway"}
+    for component, port in (("backend", 8000), ("gateway", 8080)):
+        policy = by_component[component]
+        assert policy["metadata"]["namespace"] == values["NAMESPACE"]
+        assert policy["spec"] == {
+            "podSelector": {
+                "matchLabels": {
+                    "app.kubernetes.io/name": "university-ecosystem",
+                    "app.kubernetes.io/instance": "ue",
+                    "app.kubernetes.io/component": component,
+                }
+            },
+            "policyTypes": ["Ingress"],
+            "ingress": [
+                {
+                    "from": [{"podSelector": {"matchLabels": probe}}],
+                    "ports": [{"protocol": "TCP", "port": port}],
+                }
+            ],
+        }
+        allowed_probe = policy["spec"]["ingress"][0]["from"][0]["podSelector"][
+            "matchLabels"
+        ]
+        assert all(probe.get(k) == v for k, v in allowed_probe.items())
+        assert not all(other_probe.get(k) == v for k, v in allowed_probe.items())
+        # Service endpoints require the release and component labels, neither
+        # of which is on the run-specific probe.
+        assert not all(
+            probe.get(k) == v
+            for k, v in policy["spec"]["podSelector"]["matchLabels"].items()
+        )
+    assert (
+        '--labels="university-ecosystem.io/aud373-probe=${RUN_SUFFIX}"'
+        in _shell_function("run_probe")
+    )
+    script = _script()
+    assert script.index("  deploy_stack\n  install_probe_access\n  run_proofs\n") > 0
+
+
+def test_probe_policy_rejects_invalid_run_identity_without_kubectl() -> None:
+    command = f"""set -euo pipefail
+{_shell_function("install_probe_access")}
+RUN_SUFFIX=not-a-run
+kubectl() {{ exit 42; }}
+if install_probe_access; then exit 1; fi
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    ("name", "connected_marker", "result_marker"),
+    [
+        ("NO_SVID_TLS_PY", "NO_SVID_TCP=ERROR", "NO_SVID_TLS=ERROR"),
+        ("PLAINTEXT_PY", "PLAINTEXT_TCP=ERROR", "PLAINTEXT=ERROR"),
+    ],
+)
+@pytest.mark.parametrize("failure", ["dns", "timeout", "refused"])
+def test_synthetic_network_failure_is_not_a_tls_rejection(
+    name: str, connected_marker: str, result_marker: str, failure: str
+) -> None:
+    source = _script().split(f"{name}='\n", 1)[1].split("\n'", 1)[0]
+    error = {
+        "dns": "socket.gaierror",
+        "timeout": "TimeoutError",
+        "refused": "ConnectionRefusedError",
+    }[failure]
+    if name == "NO_SVID_TLS_PY":
+        prefix = f"import socket\ndef fail(*args, **kwargs): raise {error}()\nsocket.create_connection = fail\n"
+    else:
+        prefix = f"import http.client, socket\ndef fail(*args, **kwargs): raise {error}()\nhttp.client.HTTPConnection.connect = fail\n"
+    env = os.environ | {
+        "TARGET_BACKEND": "owned.invalid",
+        "TARGET_BACKEND_PORT": "8000",
+    }
+    result = subprocess.run(  # noqa: S603  # Fixed interpreter and in-memory transport stub.
+        [sys.executable, "-c", prefix + source],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines() == [connected_marker, result_marker]
+
+
+def test_negative_success_markers_require_tcp_reachability() -> None:
+    command = f"""set -euo pipefail
+{_shell_function("record")}
+{_shell_function("run_proofs")}
+FAILURES=0
+GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
+run_probe() {{
+  case "$1" in
+    gateway-hop) printf 'STATUS=200\\nBODY_HAS_KEYS=True\\n' ;;
+    no-svid-tls) printf 'NO_SVID_TLS=REJECTED\\n' ;;
+    plaintext) printf 'PLAINTEXT=REJECTED\\n' ;;
+  esac
+}}
+backend_logged_gateway_peer() {{ return 0; }}
+run_proofs
+test "$FAILURES" = 2
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count(b"PASS ") == 2
+    assert result.stdout.count(b"FAIL ") == 2
+
+
+@pytest.mark.parametrize(
+    ("name", "behavior", "expected"),
+    [
+        (
+            "NO_SVID_TLS_PY",
+            "certificate_required",
+            ["NO_SVID_TCP=CONNECTED", "NO_SVID_TLS=REJECTED"],
+        ),
+        (
+            "NO_SVID_TLS_PY",
+            "wrong_alert",
+            ["NO_SVID_TCP=CONNECTED", "NO_SVID_TLS=ERROR"],
+        ),
+        (
+            "NO_SVID_TLS_PY",
+            "response_timeout",
+            ["NO_SVID_TCP=CONNECTED", "NO_SVID_TLS=ERROR"],
+        ),
+        (
+            "NO_SVID_TLS_PY",
+            "answered",
+            ["NO_SVID_TCP=CONNECTED", "NO_SVID_TLS=ANSWERED"],
+        ),
+        ("PLAINTEXT_PY", "closed", ["PLAINTEXT_TCP=CONNECTED", "PLAINTEXT=REJECTED"]),
+        (
+            "PLAINTEXT_PY",
+            "response_timeout",
+            ["PLAINTEXT_TCP=CONNECTED", "PLAINTEXT=ERROR"],
+        ),
+        ("PLAINTEXT_PY", "answered", ["PLAINTEXT_TCP=CONNECTED", "PLAINTEXT=ANSWERED"]),
+    ],
+)
+def test_synthetic_connected_transport_distinguishes_response_from_failure(
+    name: str, behavior: str, expected: list[str]
+) -> None:
+    source = _script().split(f"{name}='\n", 1)[1].split("\n'", 1)[0]
+    if name == "NO_SVID_TLS_PY":
+        prefix = f"""import socket, ssl
+BEHAVIOR={behavior!r}
+class Alert(ssl.SSLError):
+    def __init__(self, reason): self.reason = reason
+class Raw:
+    def __enter__(self): return self
+    def __exit__(self, *args): return False
+class TLS(Raw):
+    def settimeout(self, value): pass
+    def sendall(self, value): pass
+    def recv(self, size):
+        if BEHAVIOR == 'response_timeout': raise TimeoutError()
+        if BEHAVIOR == 'certificate_required': raise Alert('TLSV13_ALERT_CERTIFICATE_REQUIRED')
+        if BEHAVIOR == 'wrong_alert': raise Alert('OTHER_ALERT')
+        return b'x'
+class Context:
+    def wrap_socket(self, raw, server_hostname): return TLS()
+socket.create_connection = lambda *args, **kwargs: Raw()
+ssl.create_default_context = lambda: Context()
+"""
+    else:
+        prefix = f"""import http.client
+BEHAVIOR={behavior!r}
+class Connection:
+    def __init__(self, *args, **kwargs): pass
+    def connect(self): pass
+    def request(self, *args): pass
+    def getresponse(self):
+        if BEHAVIOR == 'response_timeout': raise TimeoutError()
+        if BEHAVIOR == 'closed': raise http.client.RemoteDisconnected()
+        return object()
+    def close(self): pass
+http.client.HTTPConnection = Connection
+"""
+    env = os.environ | {
+        "TARGET_BACKEND": "owned.invalid",
+        "TARGET_BACKEND_PORT": "8000",
+    }
+    result = subprocess.run(  # noqa: S603  # Fixed interpreter and in-memory transport stub.
+        [sys.executable, "-c", prefix + source],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines() == expected
+
+
+def test_negative_success_requires_both_connected_and_rejected_markers() -> None:
+    command = f"""set -euo pipefail
+{_shell_function("record")}
+{_shell_function("run_proofs")}
+FAILURES=0
+GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
+run_probe() {{
+  case "$1" in
+    gateway-hop) printf 'STATUS=200\\nBODY_HAS_KEYS=True\\n' ;;
+    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=REJECTED\\n' ;;
+    plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
+  esac
+}}
+backend_logged_gateway_peer() {{ return 0; }}
+run_proofs
+test "$FAILURES" = 0
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.count(b"PASS ") == 4
+    assert b"FAIL " not in result.stdout
+
+
 def test_probe_command_failure_cannot_pass_even_with_success_markers() -> None:
     command = f"""set -eu
 {_shell_function("record")}
@@ -439,7 +686,7 @@ def _probe(name: str, host: str, port: int) -> str:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
-    return result.stdout.strip()
+    return result.stdout.strip().splitlines()[-1]
 
 
 @pytest.mark.parametrize("name", ["NO_SVID_TLS_PY", "PLAINTEXT_PY"])

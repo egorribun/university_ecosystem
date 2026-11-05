@@ -504,10 +504,61 @@ EOF
   kubectl -n "$NAMESPACE" rollout status "deployment/${GATEWAY_SVC}" --timeout=600s
 }
 
+# Allow only this owned run's probes to reach the two tested listeners.  Do not
+# give probes gateway labels: that would also make them gateway Service endpoints.
+install_probe_access() {
+  [[ "$RUN_SUFFIX" =~ ^[0-9a-f]{12}$ ]] || return 1
+  cat > "${WORK_DIR}/probe-access.yaml" <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ue-r9-aud373-probe-backend-${RUN_SUFFIX}
+  namespace: ${NAMESPACE}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: university-ecosystem
+      app.kubernetes.io/instance: ${RELEASE}
+      app.kubernetes.io/component: backend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              university-ecosystem.io/aud373-probe: "${RUN_SUFFIX}"
+      ports:
+        - protocol: TCP
+          port: ${BACKEND_PORT}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ue-r9-aud373-probe-gateway-${RUN_SUFFIX}
+  namespace: ${NAMESPACE}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: university-ecosystem
+      app.kubernetes.io/instance: ${RELEASE}
+      app.kubernetes.io/component: gateway
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              university-ecosystem.io/aud373-probe: "${RUN_SUFFIX}"
+      ports:
+        - protocol: TCP
+          port: ${GATEWAY_PORT}
+EOF
+  kubectl -n "$NAMESPACE" apply -f "${WORK_DIR}/probe-access.yaml"
+}
+
 run_probe() {
   local name="$1" script="$2"
   timeout 300 kubectl -n "$NAMESPACE" run "ue-r9-aud373-probe-${name}-${RUN_SUFFIX}" \
     --image="$BACKEND_IMAGE" --image-pull-policy=IfNotPresent \
+    --labels="university-ecosystem.io/aud373-probe=${RUN_SUFFIX}" \
     --restart=Never --rm --attach --quiet --pod-running-timeout=180s \
     --env="TARGET_BACKEND=${BACKEND_SVC}" --env="TARGET_GATEWAY=${GATEWAY_SVC}" \
     --env="TARGET_BACKEND_PORT=${BACKEND_PORT}" --env="TARGET_GATEWAY_PORT=${GATEWAY_PORT}" \
@@ -539,11 +590,13 @@ context.verify_mode = ssl.CERT_NONE
 context.minimum_version = ssl.TLSVersion.TLSv1_3
 context.maximum_version = ssl.TLSVersion.TLSv1_3
 result = "ERROR"
+connected = False
 try:
     raw = socket.create_connection((host, port), timeout=10)
 except OSError:
     pass
 else:
+    connected = True
     with raw:
         try:
             with context.wrap_socket(raw, server_hostname=host) as tls:
@@ -563,6 +616,7 @@ else:
                 result = "REJECTED"
         except OSError:
             pass
+print("NO_SVID_TCP=%s" % ("CONNECTED" if connected else "ERROR"))
 print("NO_SVID_TLS=%s" % result)
 '
 
@@ -571,12 +625,14 @@ import http.client, os
 host = os.environ["TARGET_BACKEND"]
 port = int(os.environ["TARGET_BACKEND_PORT"])
 result = "ERROR"
+connected = False
 connection = http.client.HTTPConnection(host, port, timeout=10)
 try:
     connection.connect()
 except OSError:
     pass
 else:
+    connected = True
     try:
         connection.request("GET", "/health/live")
         connection.getresponse()
@@ -587,6 +643,7 @@ else:
         pass
 finally:
     connection.close()
+print("PLAINTEXT_TCP=%s" % ("CONNECTED" if connected else "ERROR"))
 print("PLAINTEXT=%s" % result)
 '
 
@@ -633,6 +690,7 @@ run_proofs() {
   fi
 
   if output="$(run_probe no-svid-tls "$NO_SVID_TLS_PY")" &&
+    grep -qx 'NO_SVID_TCP=CONNECTED' <<<"$output" &&
     grep -qx 'NO_SVID_TLS=REJECTED' <<<"$output"; then
     record "b-no-svid-tls-client-rejected" yes
   else
@@ -640,6 +698,7 @@ run_proofs() {
   fi
 
   if output="$(run_probe plaintext "$PLAINTEXT_PY")" &&
+    grep -qx 'PLAINTEXT_TCP=CONNECTED' <<<"$output" &&
     grep -qx 'PLAINTEXT=REJECTED' <<<"$output"; then
     record "c-plaintext-http-rejected" yes
   else
@@ -717,6 +776,7 @@ main() {
   push_images
   install_spire
   deploy_stack
+  install_probe_access
   run_proofs
   if [[ "$FAILURES" -ne 0 ]]; then
     printf 'RESULT=FAIL failures=%s\n' "$FAILURES"
