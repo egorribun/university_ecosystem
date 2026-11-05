@@ -150,6 +150,26 @@ def test_alert_can_be_disabled_independently() -> None:
     assert not _of_kind(rendered, "PrometheusRule")
 
 
+def test_production_default_retains_partition_maintenance_alert() -> None:
+    rendered = _render_staging(
+        "--set",
+        "internalHttpMTLS.enabled=true",
+        "--set-string",
+        "global.environment=production",
+        "--set-string",
+        "ingress.issuer.kind=ClusterIssuer",
+        "--set-string",
+        "ingress.issuer.name=letsencrypt-prod",
+        release_name=RELEASE,
+    )
+    alerts = [
+        rule
+        for rule in _of_kind(rendered, "PrometheusRule")
+        if rule["metadata"]["name"].endswith("-partition-maintenance-alerts")
+    ]
+    assert len(alerts) == 1
+
+
 def test_values_schema_rejects_unknown_partition_keys() -> None:
     result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
         [

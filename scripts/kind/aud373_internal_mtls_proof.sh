@@ -197,6 +197,10 @@ EOF
 global:
   environment: development
   imageTag: "${IMAGE_TAG}"
+# This isolated proof has no Prometheus Operator; retain the CronJob default.
+partitionMaintenance:
+  alert:
+    enabled: false
 fileProcessor:
   enabled: false
 wsHub:

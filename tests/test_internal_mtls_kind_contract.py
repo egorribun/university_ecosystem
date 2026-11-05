@@ -267,6 +267,9 @@ cat "$WORK_DIR/values.yaml"
     assert values["backend"]["image"]["repository"] == backend
     assert values["gateway"]["image"]["repository"] == gateway
     assert values["redis"]["metrics"]["passwordFileInitImage"]["repository"] == backend
+    # The proof cluster has no Prometheus Operator; keep partition maintenance
+    # enabled by the chart default and omit only its alert custom resource.
+    assert values["partitionMaintenance"] == {"alert": {"enabled": False}}
 
 
 @pytest.mark.parametrize(
