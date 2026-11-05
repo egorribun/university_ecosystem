@@ -42,7 +42,7 @@ class RedactingLoggingHandler(LoggingHandler):
     def format(self, record: logging.LogRecord) -> str:
         try:
             return super().format(record)
-        except (TypeError, ValueError, KeyError):
+        except (TypeError, ValueError, KeyError, OverflowError):
             # A formatter can also request numeric conversions of redacted
             # extras. Keep the safe message; structured extras remain in OTel
             # attributes. Never retry the raw record or encode a JSON envelope
@@ -127,7 +127,7 @@ class RedactingLoggingHandler(LoggingHandler):
             if safe_record.args:
                 try:
                     safe_record.msg = safe_record.getMessage()
-                except (TypeError, ValueError, KeyError):
+                except (TypeError, ValueError, KeyError, OverflowError):
                     # A sensitive numeric mapping value becomes a redaction
                     # string, which cannot satisfy %d. Preserve the safe event
                     # structure rather than dropping the log or retrying raw args.

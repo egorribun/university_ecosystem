@@ -581,6 +581,50 @@ REQUEST_FAILURE_DIAGNOSTIC_FIELDS: tuple[str, ...] = (
 )
 
 
+def _format_safe_positional_args(
+    logger: Any, method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """Interpolate already-redacted arguments, retaining safe types on failure."""
+    args = event_dict.pop("positional_args", None)
+    if not args:
+        return event_dict
+    if (
+        isinstance(args, tuple)
+        and len(args) == 1
+        and isinstance(args[0], dict)
+        and args[0]
+    ):
+        args = args[0]
+    try:
+        message = event_dict["event"] % args
+    except (TypeError, ValueError, KeyError, OverflowError):
+        # A redaction string cannot satisfy %d/%f. Keep the template and the
+        # safe structured arguments rather than retrying raw data or losing
+        # the log. Do not serialize them before free-text redaction.
+        event_dict["positional_args"] = args
+    else:
+        # Interpolation can join individually harmless pieces into PII.
+        event_dict["event"] = _redact_free_text(message)
+    return event_dict
+
+
+class _RedactingProcessorFormatter(structlog.stdlib.ProcessorFormatter):
+    """Protect foreign messages before ProcessorFormatter calls str(msg)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        safe_record = logging.makeLogRecord(record.__dict__.copy())
+        native = (
+            issubclass(type(record.__dict__.get("_logger")), logging.Logger)
+            and type(record.__dict__.get("_name")) is str
+            and type(record.msg) is dict
+        )
+        if not native:
+            safe_record.msg = _redact_nested(record.msg, seen=set())
+            safe_record.__dict__.pop("_logger", None)
+            safe_record.__dict__.pop("_name", None)
+        return super().format(safe_record)
+
+
 def configure_logging(
     *,
     level: int = logging.INFO,
@@ -612,7 +656,7 @@ def configure_logging(
         # Format stdlib-style positional arguments before EventRenamer moves
         # the event field to `message`. Without this, console/testing output
         # raises KeyError("event") for calls such as logger.info("size=%s", n).
-        structlog.stdlib.PositionalArgumentsFormatter(),
+        _format_safe_positional_args,
         structlog.processors.EventRenamer("message"),
         # MED-W19: named processor instead of lambda with side-effect
         _add_service_context,
@@ -683,9 +727,13 @@ def configure_logging(
         rendered: str = renderer(logger, method_name, event_dict)
         return rendered
 
-    processor_formatter = structlog.stdlib.ProcessorFormatter(
+    processor_formatter = _RedactingProcessorFormatter(
         processor=render_event,
         foreign_pre_chain=foreign_pre_chain,
+        # Preserve structured arguments until the shared redactor has seen
+        # their field names. getMessage() would interpolate them too early.
+        use_get_message=False,
+        pass_foreign_args=True,
     )
     for handler in logging.getLogger().handlers:
         if isinstance(handler, logging.StreamHandler):

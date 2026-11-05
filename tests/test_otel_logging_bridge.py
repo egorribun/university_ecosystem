@@ -501,6 +501,51 @@ def test_redacted_numeric_mapping_arguments_keep_the_log_without_raw_fallback() 
     assert arguments == {"otp": 123456, "count": 7}
 
 
+@pytest.mark.parametrize("count", [-1, 1114112])
+def test_numeric_character_overflow_keeps_safe_structured_export(
+    count: int, capsys: pytest.CaptureFixture[str]
+) -> None:
+    name = "otel-bridge-character-overflow"
+    arguments = {"otp": 123456, "count": count}
+    with pipeline() as (sink, console):
+        logging_mod.get_stdlib_logger(name).info("value=%(count)c", arguments)
+        assert exported(sink, name).body == {
+            "message": "value=%(count)c",
+            "arguments": {"otp": "[REDACTED]", "count": count},
+        }
+        assert "123456" not in console.getvalue()
+        assert (
+            b"123456" not in encode_logs(sink.get_finished_logs()).SerializeToString()
+        )
+        assert capsys.readouterr().err == ""
+    assert arguments == {"otp": 123456, "count": count}
+
+
+@pytest.mark.parametrize("count", [-1, 1114112])
+def test_numeric_formatter_overflow_keeps_safe_message_and_attributes(
+    count: int, capsys: pytest.CaptureFixture[str]
+) -> None:
+    name = "otel-bridge-formatter-overflow"
+    with pipeline() as (sink, _):
+        handler = next(
+            h
+            for h in logging.getLogger().handlers
+            if isinstance(h, observability.LoggingHandler)
+        )
+        handler.setFormatter(logging.Formatter("%(count)c %(message)s"))
+        logging_mod.get_stdlib_logger(name).info(
+            "event", extra={"otp": 123456, "count": count}
+        )
+        result = exported(sink, name)
+        assert result.body == "event"
+        assert result.attributes["otp"] == "[REDACTED]"
+        assert result.attributes["count"] == count
+        assert (
+            b"123456" not in encode_logs(sink.get_finished_logs()).SerializeToString()
+        )
+        assert capsys.readouterr().err == ""
+
+
 def test_handler_formatter_cannot_reintroduce_sensitive_extras() -> None:
     name = "otel-bridge-formatter"
     with pipeline() as (sink, _):
