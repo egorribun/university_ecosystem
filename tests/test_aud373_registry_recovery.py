@@ -126,7 +126,14 @@ test "$REGISTRY_CREATED" = 1
     assert b"unexpected docker" not in result.stderr
 
 
-def test_registry_is_verified_before_build_and_again_before_push() -> None:
+@pytest.mark.parametrize(
+    ("probe_access_status", "expected_followup"),
+    [(0, [b"proofs", b"RESULT=PASS"]), (17, [])],
+    ids=["probe-access-succeeds", "probe-access-fails"],
+)
+def test_registry_is_verified_before_build_and_again_before_push(
+    probe_access_status: int, expected_followup: list[bytes]
+) -> None:
     command = f"""set -euo pipefail
 {function("main")}
 cleanup() {{ :; }}
@@ -137,18 +144,21 @@ build_images() {{ printf '%s\\n' build; }}
 start_local_registry() {{ printf '%s\\n' registry; }}
 push_images() {{ printf '%s\\n' push; }}
 install_spire() {{ :; }}
-deploy_stack() {{ :; }}
-run_proofs() {{ :; }}
+deploy_stack() {{ printf '%s\\n' deploy; }}
+install_probe_access() {{ printf '%s\\n' probe-access; return {probe_access_status}; }}
+run_proofs() {{ printf '%s\\n' proofs; }}
 FAILURES=0
 main
 """
     result = bash(command)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == probe_access_status, result.stderr
     assert result.stdout.splitlines() == [
         b"registry",
         b"build",
         b"push",
-        b"RESULT=PASS",
+        b"deploy",
+        b"probe-access",
+        *expected_followup,
     ]
 
 
