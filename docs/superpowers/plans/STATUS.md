@@ -160,6 +160,39 @@ mTLS probes не выполнялись.
 на время среза ещё выполнялись. Receipts предыдущих source не заменяют остальные
 проверки `385`, общий GREEN не установлен.
 
+## Завершённый hosted receipt 07d — 2026-11-05
+
+Срез на 05:56 Europe/Istanbul для source `07d38644d50b1d3ebfc09bde1a60ea3c9b136610`.
+[Matrix](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198)
+завершился с 73 успешными jobs, 15 пропусками и 6 ошибками. Два backend aggregate
+jobs завершились с ошибкой из-за общего `BACKEND_TEST_RESULT=failure`, хотя
+PostgreSQL integration job прошёл. [CI Success](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127017734672)
+показал ошибки `backend-tests`, `security-audit` и `live-realtime-visual`.
+[Coverage & Quality Policy Gate](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127017735508)
+пропущен.
+
+[Full stand](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127009102136)
+остановился на нездоровом Temporal с ограниченной диагностикой `fatal_or_panic`.
+Классифицированный scanner-auth marker не появился. [Backend shard 1](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127010739446)
+получил 1 FAIL, 6235 PASS и 52 SKIP. Тест registry recovery не нашёл
+`install_probe_access` в fixture. [detect-secrets](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127010105954)
+зафиксировал один `Secret Keyword` в `.github/workflows/deploy.yml:1375`.
+
+[Core](https://github.com/egorribun/university_ecosystem/actions/runs/41955431331/job/127009099105)
+прошёл с 52 PASS и 2 SKIP, owned NATS outage тоже прошёл и сохранил
+[receipt](https://github.com/egorribun/university_ecosystem/actions/runs/41955431331/artifacts/13383317441).
+[PostgreSQL integration](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127010739333)
+прошёл с 375 PASS и 13 SKIP в широкой выборке и шестью отдельными PASS.
+[Migration gate](https://github.com/egorribun/university_ecosystem/actions/runs/41955431198/job/127010738900)
+прошёл с 64/64 statements и 6/6 branches для базовой миграции.
+
+[Kind proof](https://github.com/egorribun/university_ecosystem/actions/runs/41955431126/job/127009098884)
+завершился ошибкой готовности backend 0/2. SPIRE agent аттестовал узел и создал
+два X509-SVID. PostgreSQL получил запросы приложения и записал отсутствие таблиц,
+а миграции в этом тестовом стенде отключены. [Диагностика](https://github.com/egorribun/university_ecosystem/actions/runs/41955431126/artifacts/13383676675)
+показывает неполную схему, но не устанавливает причину молчаливых startup-probe
+отказов. Проверки mTLS-соединений не запускались, общая приёмка не меняется.
+
 ## Hosted checkpoint 385 / 07d — 2026-11-05
 
 Срез на 05:42 Europe/Istanbul. Реестр остаётся на **449 / 512 принятых**
