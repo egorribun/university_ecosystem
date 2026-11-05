@@ -128,25 +128,123 @@ function checkSanitizedMarkup(failures, label, input, output) {
     fail(failures, label, `${violation} for input ${JSON.stringify(input.slice(0, 80))}`)
 }
 
-async function loadInitializedModule(jsPath, wasmPath) {
-  const moduleNamespace = await import(pathToFileURL(jsPath).href)
-  const wasmBuffer = fs.readFileSync(wasmPath)
-  if (typeof moduleNamespace.initSync === "function") {
-    moduleNamespace.initSync({ module: wasmBuffer })
-  } else {
-    await moduleNamespace.default({ module: wasmBuffer })
+function wasmInputsMatch(memory, rawArgs, inputs) {
+  // wasm-bindgen passes one pointer/length pair per string or byte array.
+  const buffers = inputs.length === 1 ? 1 : 2
+  try {
+    for (let index = 0; index < buffers; index += 1) {
+      const expected = Buffer.from(inputs[index])
+      const actual = Buffer.from(memory.buffer, rawArgs[index * 2] >>> 0, rawArgs[index * 2 + 1])
+      if (!actual.equals(expected)) return false
+    }
+    return inputs.slice(buffers).every((value, index) => rawArgs[buffers * 2 + index] === value)
+  } catch {
+    return false
   }
-  return moduleNamespace
+}
+
+let moduleSequence = 0
+
+async function loadInitializedModule(jsPath, wasmPath, exportNames) {
+  // wasm-bindgen caches its instance within each imported module. A fresh URL
+  // ensures every campaign instruments the exact bytes it was asked to test.
+  const moduleUrl = pathToFileURL(jsPath)
+  moduleUrl.searchParams.set("fuzz-campaign", String(++moduleSequence))
+  const moduleNamespace = await import(moduleUrl.href)
+  if (typeof moduleNamespace.initSync !== "function") {
+    throw new Error("WebAssembly wrapper has no synchronous initializer")
+  }
+
+  const compiled = new WebAssembly.Module(fs.readFileSync(wasmPath))
+  const nativeInstance = WebAssembly.Instance
+  const calls = Object.fromEntries(exportNames.map((name) => [name, 0]))
+  const missed = Object.fromEntries(exportNames.map((name) => [name, 0]))
+  const mismatched = Object.fromEntries(exportNames.map((name) => [name, 0]))
+  const activeInputs = {}
+  let instances = 0
+  // The constructor is replaced only for the synchronous initialization, so
+  // the wrapper receives real exports whose calls can be counted.
+  const instrumentedInstance = new Proxy(nativeInstance, {
+    construct(target, args) {
+      const instance = Reflect.construct(target, args)
+      if (args[0] !== compiled) return instance
+      instances += 1
+      const wrappedExports = { ...instance.exports }
+      for (const name of exportNames) {
+        const fn = wrappedExports[name]
+        if (typeof fn !== "function") throw new Error(`WebAssembly export missing: ${name}`)
+        wrappedExports[name] = (...args) => {
+          calls[name] += 1
+          if (
+            activeInputs[name] &&
+            !wasmInputsMatch(instance.exports.memory, args, activeInputs[name])
+          ) {
+            mismatched[name] += 1
+          }
+          return fn(...args)
+        }
+      }
+      return new Proxy(instance, {
+        get(target, property) {
+          return property === "exports" ? wrappedExports : Reflect.get(target, property, target)
+        },
+      })
+    },
+  })
+
+  try {
+    WebAssembly.Instance = instrumentedInstance
+    moduleNamespace.initSync({ module: compiled })
+  } finally {
+    WebAssembly.Instance = nativeInstance
+  }
+  if (instances !== 1) throw new Error("WebAssembly artifact was not initialized exactly once")
+
+  const exports = {}
+  for (const name of exportNames) {
+    const fn = moduleNamespace[name]
+    if (typeof fn !== "function") throw new Error(`WebAssembly wrapper export missing: ${name}`)
+    exports[name] = (...args) => {
+      const before = calls[name]
+      activeInputs[name] = args.map((arg) => (arg instanceof Uint8Array ? Buffer.from(arg) : arg))
+      try {
+        return fn(...args)
+      } finally {
+        delete activeInputs[name]
+        if (calls[name] === before) missed[name] += 1
+      }
+    }
+  }
+  return { exports, missed, mismatched }
+}
+
+function checkWasmCalls(failures, missed, mismatched) {
+  for (const [name, count] of Object.entries(missed)) {
+    if (count > 0) fail(failures, name, `${count} calls skipped the WebAssembly export`)
+  }
+  for (const [name, count] of Object.entries(mismatched)) {
+    if (count > 0)
+      fail(failures, name, `${count} calls had WebAssembly inputs differ from generated values`)
+  }
 }
 
 async function fuzzSanitizer(wasmPath, random, iterations, failures, progress) {
-  const sanitizer = await loadInitializedModule(
+  const {
+    exports: sanitizer,
+    missed,
+    mismatched,
+  } = await loadInitializedModule(
     path.join(path.dirname(wasmPath), "wasm_sanitizer.js"),
-    wasmPath
+    wasmPath,
+    ["sanitize_html_basic", "sanitize_rich_text", "strip_html"]
   )
   const { sanitize_html_basic, sanitize_rich_text, strip_html } = sanitizer
+  let firstInput
+  let varied = false
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     const generated = generateText(random)
+    if (iteration === 0) firstInput = generated
+    else if (generated !== firstInput) varied = true
     // Exercise text preservation without spending another WASM call or changing
     // the random stream used by later iterations.
     const marker =
@@ -171,17 +269,36 @@ async function fuzzSanitizer(wasmPath, random, iterations, failures, progress) {
     else if (marker !== null && !stripped.includes(marker))
       fail(failures, "strip_html", "did not preserve safe text")
   }
+  if (iterations > 1 && !varied) fail(failures, "wasm-sanitizer", "generated inputs did not vary")
+  checkWasmCalls(failures, missed, mismatched)
 }
 
 async function fuzzCrypto(wasmPath, random, iterations, failures, progress) {
-  const crypto = await loadInitializedModule(
+  const {
+    exports: crypto,
+    missed,
+    mismatched,
+  } = await loadInitializedModule(
     path.join(path.dirname(wasmPath), "uni_wasm_crypto.js"),
-    wasmPath
+    wasmPath,
+    ["hmac_sha256_sign", "hmac_sha256_sign_base64", "pbkdf2_derive", "scrypt_derive"]
   )
   const { hmac_sha256_sign, hmac_sha256_sign_base64, pbkdf2_derive, scrypt_derive } = crypto
+  let firstKey
+  let firstMessage
+  let firstSalt
+  let firstPassword
+  let varied = false
+  let variedBytes = false
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     const key = generateText(random)
     const message = generateText(random)
+    if (iteration === 0) {
+      firstKey = key
+      firstMessage = message
+    } else if (key !== firstKey || message !== firstMessage) {
+      varied = true
+    }
     progress.executed += 1
     const hex = hmac_sha256_sign(key, message)
     if (!LOWER_HEX_64.test(hex))
@@ -203,6 +320,16 @@ async function fuzzCrypto(wasmPath, random, iterations, failures, progress) {
     const scryptR = 1 + Math.floor(random() * 2)
     const salt = generateBytes(random, 32)
     const password = generateBytes(random, 64)
+    if (iteration === 0) {
+      firstSalt = salt.slice()
+      firstPassword = password.slice()
+    } else if (
+      !variedBytes &&
+      (!Buffer.from(salt).equals(Buffer.from(firstSalt)) ||
+        !Buffer.from(password).equals(Buffer.from(firstPassword)))
+    ) {
+      variedBytes = true
+    }
     progress.executed += 1
     const dk = scrypt_derive(password, salt, scryptN, scryptR, 1, dkLen)
     if (dk.length !== dkLen)
@@ -263,6 +390,10 @@ async function fuzzCrypto(wasmPath, random, iterations, failures, progress) {
   expectRejection(failures, progress, "scrypt_derive(dk_len=65)", () =>
     scrypt_derive(probe, probe, 16, 1, 1, 65)
   )
+  if (iterations > 1 && !varied) fail(failures, "rust-crypto", "generated inputs did not vary")
+  if (iterations > 1 && !variedBytes)
+    fail(failures, "scrypt_derive", "generated byte inputs did not vary")
+  checkWasmCalls(failures, missed, mismatched)
 }
 
 /** Why the campaign parameters are unusable, or null when they are valid. */

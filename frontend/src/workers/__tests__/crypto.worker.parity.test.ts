@@ -1,61 +1,28 @@
 // @vitest-environment node
-/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * crypto.worker.ts ↔ WASM parity KATs (testing session 10, Stream D).
  *
- * Drives the worker's message protocol with an independent node:crypto
- * implementation of the WASM boundary and checks the RFC vectors also
- * covered by native Rust and real-WASM runtime smoke tests:
- * PBKDF2 RFC 7914 §11, HMAC RFC 4231 TC1/TC2, scrypt RFC 7914 §12 V1/V2.
+ * Drives the worker's message protocol with the generated WASM exports.
+ * Only initialization is replaced so the web-target binary can load in Node.
+ * The PBKDF2 one-round RFC vector stays on the independent Node primitive.
  */
 
+import { pbkdf2Sync, scryptSync } from "node:crypto"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 
-// Mock the heavy WASM crypto module with node:crypto for environment independence
-vi.mock("../../../rust-crypto/pkg/uni_wasm_crypto.js", () => {
-  const crypto = require("node:crypto")
-  return {
-    default: vi.fn().mockResolvedValue(undefined),
-    pbkdf2_derive: vi
-      .fn()
-      .mockImplementation(
-        (password: string, salt: string, iterations: number, key_size: number) => {
-          const derived = crypto.pbkdf2Sync(password, salt, iterations, key_size, "sha256")
-          return derived.toString("hex")
-        }
-      ),
-    hmac_sha256_sign_base64: vi.fn().mockImplementation((key: string, message: string) => {
-      const hmac = crypto.createHmac("sha256", Buffer.from(key, "utf8"))
-      hmac.update(message)
-      return hmac.digest("base64")
-    }),
-    scrypt_derive: vi
-      .fn()
-      .mockImplementation(
-        (
-          password: Uint8Array,
-          salt: Uint8Array,
-          n: number,
-          r: number,
-          p: number,
-          dk_len: number
-        ) => {
-          if (r <= 0 || p <= 0) {
-            throw "Invalid params"
-          }
-          const derived = crypto.scryptSync(password, salt, dk_len, {
-            N: n,
-            r,
-            p,
-            maxmem: 128 * 1024 * 1024,
-          })
-          return new Uint8Array(derived)
-        }
-      ),
-  }
+// Load the actual generated module; only its web-specific initializer is replaced.
+vi.mock("../../../rust-crypto/pkg/uni_wasm_crypto.js", async (importOriginal) => {
+  const { readFileSync } = await import("node:fs")
+  const actual =
+    await importOriginal<typeof import("../../../rust-crypto/pkg/uni_wasm_crypto.js")>()
+  const wasm = readFileSync(
+    new URL("../../../rust-crypto/pkg/uni_wasm_crypto_bg.wasm", import.meta.url)
+  )
+  actual.initSync({ module: wasm })
+  return { ...actual, default: vi.fn().mockResolvedValue(undefined) }
 })
 
-// RFC vectors — copied verbatim from frontend/rust-crypto/src/lib.rs:47-58
+// RFC 7914 and RFC 4231 known-answer vectors.
 const PBKDF2_PASSWD_SALT_C1 =
   "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783" // pragma: allowlist secret
 const HMAC_TC1 = "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7" // pragma: allowlist secret
@@ -93,23 +60,31 @@ afterAll(() => {
 })
 
 describe("crypto.worker PBKDF2 parity", () => {
-  it("matches the RFC 7914 §11 PBKDF2-HMAC-SHA-256 vector (keySize in BITS)", async () => {
-    const msg = await dispatch({
-      type: "PBKDF2",
-      id: 1,
-      payload: { value: "passwd", salt: "salt", iterations: 1, keySize: 512 },
-    })
-    expect(msg).toEqual({ id: 1, result: PBKDF2_PASSWD_SALT_C1 })
+  it("checks the one-round RFC 7914 vector only with the independent primitive", () => {
+    expect(pbkdf2Sync("passwd", "salt", 1, 64, "sha256").toString("hex")).toBe(
+      PBKDF2_PASSWD_SALT_C1
+    )
   })
 
-  it("derives keySize/8 bytes (256 bits → 64 hex chars)", async () => {
+  it.each([0, 1, 2, 999])("rejects %i PBKDF2 rounds through the worker", async (iterations) => {
+    const msg = await dispatch({
+      type: "PBKDF2",
+      id: 10,
+      payload: { value: "passwd", salt: "salt", iterations, keySize: 256 },
+    })
+    expect(msg).toEqual({ id: 10, error: "Unknown worker error" })
+  })
+
+  it.each([1_000, 100_000])("derives keySize/8 bytes with %i PBKDF2 rounds", async (iterations) => {
     const msg = await dispatch({
       type: "PBKDF2",
       id: 2,
-      payload: { value: "pw", salt: "salt", iterations: 2, keySize: 256 },
+      payload: { value: "pw", salt: "salt", iterations, keySize: 256 },
     })
-    expect(typeof msg?.result).toBe("string")
-    expect((msg?.result as string).length).toBe(64)
+    expect(msg).toEqual({
+      id: 2,
+      result: pbkdf2Sync("pw", "salt", iterations, 32, "sha256").toString("hex"),
+    })
   })
 })
 
@@ -173,6 +148,36 @@ describe("crypto.worker SCRYPT parity", () => {
     expect(msg?.result).toEqual(Array.from(Buffer.from(SCRYPT_V2, "hex")))
   })
 
+  it("derives scrypt at the application parameters", async () => {
+    const password = new TextEncoder().encode("synthetic MFA value")
+    const salt = new TextEncoder().encode("ecosystem.sensitive.field.salt.v2:synthetic-user")
+    const msg = await dispatch({
+      type: "SCRYPT",
+      id: 11,
+      payload: { password, salt, N: 16_384, r: 8, p: 1, dkLen: 32 },
+    })
+    expect(msg).toEqual({
+      id: 11,
+      result: Array.from(scryptSync(password, salt, 32, { N: 16_384, r: 8, p: 1 })),
+    })
+  })
+
+  it.each([1, 2, 4, 8])("rejects scrypt N=%i through the worker", async (N) => {
+    const msg = await dispatch({
+      type: "SCRYPT",
+      id: 9,
+      payload: {
+        password: new TextEncoder().encode("pw"),
+        salt: new TextEncoder().encode("salt"),
+        N,
+        r: 1,
+        p: 1,
+        dkLen: 32,
+      },
+    })
+    expect(msg).toEqual({ id: 9, error: "Unknown worker error" })
+  })
+
   it("invalid params (r=0) surface the worker's error envelope", async () => {
     const msg = await dispatch({
       type: "SCRYPT",
@@ -201,7 +206,7 @@ describe("crypto.worker protocol edges", () => {
     const msg = await dispatch({
       type: "PBKDF2",
       id: 999,
-      payload: { value: "a", salt: "b", iterations: 1, keySize: 256 },
+      payload: { value: "a", salt: "b", iterations: 1000, keySize: 256 },
     })
     expect(msg?.id).toBe(999)
   })

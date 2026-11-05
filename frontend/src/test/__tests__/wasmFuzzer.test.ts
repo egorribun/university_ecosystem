@@ -63,6 +63,43 @@ describe("wasm fuzzer artifact gate", () => {
     expect(result.failures).toHaveLength(2)
   })
 
+  it("restores the WebAssembly constructor when wrapper initialization throws", () => {
+    const sanitizerPath = join(dir, "sanitizer.wasm")
+    const cryptoPath = join(dir, "crypto.wasm")
+    copyFileSync(SANITIZER_WASM_PATH, sanitizerPath)
+    copyFileSync(CRYPTO_WASM_PATH, cryptoPath)
+    writeFileSync(join(dir, "package.json"), '{"type":"module"}')
+    writeFileSync(
+      join(dir, "wasm_sanitizer.js"),
+      'export function initSync() { throw new Error("initializer failed") }'
+    )
+    const fuzzerScript = resolve(dirname(CRYPTO_WASM_PATH), "../../scripts/wasm-fuzzer.mjs")
+    const child = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `import { pathToFileURL } from "node:url"
+         const [script, sanitizerPath, cryptoPath] = process.argv.slice(2)
+         const { runFuzzCampaign } = await import(pathToFileURL(script).href)
+         const original = WebAssembly.Instance
+         const result = await runFuzzCampaign({ sanitizerPath, cryptoPath, iterations: 1 })
+         console.log(JSON.stringify({ result, restored: WebAssembly.Instance === original }))`,
+        "wasm-fuzz-fixture",
+        fuzzerScript,
+        sanitizerPath,
+        cryptoPath,
+      ],
+      { encoding: "utf8", timeout: 10_000 }
+    )
+
+    expect(child.status, child.stderr).toBe(0)
+    expect(JSON.parse(child.stdout)).toEqual({
+      result: { ok: false, executed: 0, failures: ["fuzz campaign: threw initializer failed"] },
+      restored: true,
+    })
+  })
+
   it("fails closed when an artifact is missing", async () => {
     const result = await runFuzzCampaign({
       sanitizerPath: join(dir, "absent.wasm"),
@@ -132,13 +169,20 @@ function runStubCampaign(mode: string, iterations = 1) {
     writeFileSync(join(dir, "package.json"), '{"type":"module"}')
     copyFileSync(SANITIZER_WASM_PATH, sanitizerPath)
     copyFileSync(CRYPTO_WASM_PATH, cryptoPath)
+    copyFileSync(
+      join(dirname(SANITIZER_WASM_PATH), "wasm_sanitizer.js"),
+      join(dir, "real-sanitizer.js")
+    )
+    copyFileSync(join(dirname(CRYPTO_WASM_PATH), "uni_wasm_crypto.js"), join(dir, "real-crypto.js"))
     expect(WebAssembly.validate(readFileSync(sanitizerPath))).toBe(true)
     expect(WebAssembly.validate(readFileSync(cryptoPath))).toBe(true)
     writeFileSync(
       sanitizerScript,
-      `const mode = ${JSON.stringify(mode)}
-       export const calls = { basic: 0, rich: 0, strip: 0 }
-       export const initSync = () => {}
+      `import * as real from "./real-sanitizer.js"
+       const mode = ${JSON.stringify(mode)}
+       export const calls = globalThis.__aud416SanitizerCalls ??= { basic: 0, rich: 0, strip: 0 }
+       export const initSync = (args) => mode === "passthrough" ? undefined : real.initSync(args)
+       const skip = mode === "init-only" || mode === "skip-sanitizer"
        function safeText(input) {
          const end = input.indexOf("</p>")
          return input.startsWith("<p>") && end > 3 ? input.slice(3, end) : ""
@@ -146,47 +190,64 @@ function runStubCampaign(mode: string, iterations = 1) {
        export function sanitize_html_basic(input) {
          calls.basic++
          if (mode === "throw-basic-third" && calls.basic === 3) throw Error("injected basic failure")
-         return mode === "basic" || mode === "all" ? "" : safeText(input)
+         const output = skip || mode === "skip-basic" || (mode === "skip-basic-third" && calls.basic === 3) ? safeText(input) : real.sanitize_html_basic(mode === "fixed-basic" ? "<p>fixed</p>" : input)
+         return mode === "fixed-basic" ? safeText(input) : mode === "basic" || mode === "all" ? "" : output
        }
        export function sanitize_rich_text(input) {
          calls.rich++
-         return mode === "rich" || mode === "all" ? "" : safeText(input)
+         const output = skip || mode === "skip-rich" ? safeText(input) : real.sanitize_rich_text(input)
+         return mode === "rich" || mode === "all" ? "" : output
        }
        export function strip_html(input) {
          calls.strip++
-         return mode === "strip" || mode === "all" ? "" : safeText(input)
+         const output = skip || mode === "skip-strip" ? safeText(input) : real.strip_html(input)
+         return mode === "strip" || mode === "all" ? "" : output
        }`
     )
     writeFileSync(
       cryptoScript,
-      `import { createHmac, pbkdf2Sync, scryptSync } from "node:crypto"
+      `import * as real from "./real-crypto.js"
+       import { createHmac, pbkdf2Sync, scryptSync } from "node:crypto"
        const mode = ${JSON.stringify(mode)}
-       export const calls = { hex: 0, base64: 0, pbkdf2: 0, scrypt: 0 }
-       export const initSync = () => {}
+       export const calls = globalThis.__aud416CryptoCalls ??= { hex: 0, base64: 0, pbkdf2: 0, scrypt: 0 }
+       export const initSync = (args) => mode === "passthrough" ? undefined : real.initSync(args)
+       const skip = mode === "init-only" || mode === "skip-crypto"
        export function hmac_sha256_sign(key, message) {
          calls.hex++
          if (mode === "throw-hex-first") throw Error("injected HMAC failure")
-         return mode === "hex" || mode === "all" ? "a".repeat(64) : createHmac("sha256", key).update(message).digest("hex")
+         const output = skip || mode === "skip-hex" ? createHmac("sha256", key).update(message).digest("hex") : real.hmac_sha256_sign(mode === "fixed-hex" ? "fixed" : key, message)
+         return mode === "fixed-hex" ? createHmac("sha256", key).update(message).digest("hex") : mode === "hex" || mode === "all" ? "a".repeat(64) : output
        }
        export function hmac_sha256_sign_base64(key, message) {
          calls.base64++
-         return mode === "base64" || mode === "all" ? "A".repeat(43) + "=" : createHmac("sha256", key).update(message).digest("base64")
+         const output = skip || mode === "skip-base64" ? createHmac("sha256", key).update(message).digest("base64") : real.hmac_sha256_sign_base64(key, message)
+         return mode === "base64" || mode === "all" ? "A".repeat(43) + "=" : output
        }
        export function pbkdf2_derive(password, salt, iterations, size) {
          calls.pbkdf2++
-         if (iterations < 1000 || iterations > 1000000 || size < 1 || size > 1024) {
+         try {
+           const bypass = skip || mode === "skip-pbkdf2"
+           if (bypass && (iterations < 1000 || iterations > 1000000 || size < 1 || size > 1024)) throw Error("invalid")
+           const cost = mode === "alter-cost" && iterations >= 1000 && iterations < 1000000 ? iterations + 1 : iterations
+           const output = bypass ? pbkdf2Sync(password, salt, iterations, size, "sha256").toString("hex") : real.pbkdf2_derive(password, salt, cost, size)
+           return mode === "alter-cost" ? pbkdf2Sync(password, salt, iterations, size, "sha256").toString("hex") : mode === "pbkdf2" || mode === "all" ? "a".repeat(size * 2) : output
+         } catch (error) {
            if (mode === "weak-pbkdf2" && iterations === 1) return "a".repeat(size * 2)
-           throw Error("invalid")
+           throw error
          }
-         return mode === "pbkdf2" || mode === "all" ? "a".repeat(size * 2) : pbkdf2Sync(password, salt, iterations, size, "sha256").toString("hex")
        }
        export function scrypt_derive(password, salt, n, r, p, size) {
          calls.scrypt++
-         if (n < 16 || (n & (n - 1)) !== 0 || r === 0 || size < 10 || size > 64) {
+         if (mode === "mutate-scrypt") password.fill(0)
+         try {
+           const bypass = skip || mode === "skip-scrypt"
+           if (bypass && (n < 16 || (n & (n - 1)) !== 0 || r === 0 || size < 10 || size > 64)) throw Error("invalid")
+           const output = bypass ? scryptSync(password, salt, size, { N: n, r, p }) : real.scrypt_derive(password, salt, n, r, p, size)
+           return mode === "scrypt" || mode === "all" ? new Uint8Array(size) : output
+         } catch (error) {
            if (mode === "weak-scrypt" && n === 1) return new Uint8Array(size)
-           throw Error("invalid")
+           throw error
          }
-         return mode === "scrypt" || mode === "all" ? new Uint8Array(size) : scryptSync(password, salt, size, { N: n, r, p })
        }`
     )
 
@@ -226,6 +287,78 @@ function runStubCampaign(mode: string, iterations = 1) {
 }
 
 describe("wasm fuzzer binary campaign", () => {
+  it("fails when wrappers instantiate the binaries but skip their exports", () => {
+    const { result } = runStubCampaign("init-only")
+
+    expect(result.ok).toBe(false)
+    expect(result.failures.some((failure) => failure.includes("WebAssembly"))).toBe(true)
+  })
+  it.each([
+    ["skip-sanitizer", "sanitize_html_basic"],
+    ["skip-crypto", "hmac_sha256_sign"],
+  ])("detects %s even when the other binary is exercised", (mode, label) => {
+    const { result } = runStubCampaign(mode)
+
+    expect(result.ok).toBe(false)
+    expect(
+      result.failures.some(
+        (failure) =>
+          failure.startsWith(`${label}:`) && failure.includes("skipped the WebAssembly export")
+      )
+    ).toBe(true)
+  })
+
+  it.each([
+    ["skip-basic", "sanitize_html_basic"],
+    ["skip-rich", "sanitize_rich_text"],
+    ["skip-strip", "strip_html"],
+    ["skip-hex", "hmac_sha256_sign"],
+    ["skip-base64", "hmac_sha256_sign_base64"],
+    ["skip-pbkdf2", "pbkdf2_derive"],
+    ["skip-scrypt", "scrypt_derive"],
+  ])("detects one skipped WASM export: %s", (mode, label) => {
+    const { result } = runStubCampaign(mode)
+
+    expect(result.ok).toBe(false)
+    expect(
+      result.failures.some(
+        (failure) =>
+          failure.startsWith(`${label}:`) && failure.includes("skipped the WebAssembly export")
+      )
+    ).toBe(true)
+  })
+
+  it("detects a single skipped invocation among calls that reach WASM", () => {
+    const { result } = runStubCampaign("skip-basic-third", 2)
+
+    expect(result.ok).toBe(false)
+    expect(result.failures).toContain("sanitize_html_basic: 1 calls skipped the WebAssembly export")
+  })
+
+  it.each([
+    ["fixed-basic", "sanitize_html_basic"],
+    ["fixed-hex", "hmac_sha256_sign"],
+    ["alter-cost", "pbkdf2_derive"],
+    ["mutate-scrypt", "scrypt_derive"],
+  ])("detects changed inputs passed to a called WASM export: %s", (mode, label) => {
+    const { result } = runStubCampaign(mode, 2)
+
+    expect(result.ok).toBe(false)
+    expect(
+      result.failures.some(
+        (failure) =>
+          failure.startsWith(`${label}:`) && failure.includes("WebAssembly inputs differ")
+      )
+    ).toBe(true)
+  })
+
+  it("fails when realistic wrappers ignore both WASM binaries", () => {
+    const { result } = runStubCampaign("passthrough")
+
+    expect(result.ok).toBe(false)
+    expect(result.failures.some((failure) => failure.includes("WebAssembly"))).toBe(true)
+  })
+
   it("enforces crypto cost boundaries through the generated WASM exports", async () => {
     const crypto = await import("../../../rust-crypto/pkg/uni_wasm_crypto.js")
     crypto.initSync({ module: readFileSync(CRYPTO_WASM_PATH) })
@@ -262,6 +395,12 @@ describe("wasm fuzzer binary campaign", () => {
       expect(result).toEqual({ ok: true, executed: 22, failures: [] })
     }
   )
+
+  it("executes varied inputs against both WASM modules", async () => {
+    const result = await runFuzzCampaign({ seed: 20261101, iterations: 2 })
+
+    expect(result).toEqual({ ok: true, executed: 31, failures: [] })
+  })
 
   it("exits unsuccessfully for a zero-iteration campaign", () => {
     const script = resolve(dirname(CRYPTO_WASM_PATH), "../../scripts/wasm-fuzzer.mjs")
