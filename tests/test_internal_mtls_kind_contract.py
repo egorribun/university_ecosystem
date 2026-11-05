@@ -230,7 +230,8 @@ WS_HUB_SPIFFE_ID=ws-hub
 FILE_PROCESSOR_SPIFFE_ID=file-processor
 docker() {{
   case "$1" in
-    inspect) return 1 ;;
+    inspect) if [[ "$*" == *--format* ]]; then printf '%064d\\n' 1; else return 1; fi ;;
+    run) printf '%064d\\n' 1 ;;
     port) printf '127.0.0.1:32768\\n' ;;
     exec)
       printf '%s\\n' "$*" >> "$TRACE"
@@ -238,6 +239,7 @@ docker() {{
   esac
 }}
 kind() {{ printf 'kind-node\\n'; }}
+verify_registry_paths() {{ :; }}
 log() {{ printf '%s\\n' "$*" >&2; }}
 random_hex() {{ printf fixture; }}
 random_fernet() {{ printf fixture; }}
@@ -281,7 +283,8 @@ REGISTRY_IMAGE=fixture
 REGISTRY_CREATED=0
 docker() {{
   case "$1" in
-    inspect) return 1 ;;
+    inspect) if [[ "$*" == *--format* ]]; then printf '%064d\\n' 1; else return 1; fi ;;
+    run) printf '%064d\\n' 1 ;;
     port) printf '%s' {shlex.quote(endpoint)} ;;
     network|exec) touch "$work/unexpected-network-call" ;;
   esac
@@ -586,11 +589,11 @@ def test_script_cleans_up_only_its_own_cluster_and_registry() -> None:
     assert _pin("LOCAL_REGISTRY_NAME") == "ue-r9-aud373-registry-${RUN_SUFFIX}"
     assert "trap cleanup EXIT" in script
     assert '[[ "$CLUSTER_CREATED" == "1" ]]' in script
-    assert '[[ "$REGISTRY_CREATED" == "1" ]]' in script
+    assert '[[ "$REGISTRY_CREATED" == "1" &&' in script
     assert 'kind delete cluster --name "$CLUSTER_NAME"' in script
-    assert 'docker rm --force --volumes "$LOCAL_REGISTRY_NAME"' in script
+    assert 'docker rm --force --volumes "$REGISTRY_CONTAINER_ID"' in script
     assert '--publish "127.0.0.1::5000"' in script
-    assert 'docker port "$LOCAL_REGISTRY_NAME" 5000/tcp' in script
+    assert 'docker port "$REGISTRY_CONTAINER_ID" 5000/tcp' in script
     assert "docker push" in script
     assert "collect_diagnostics" in script
     assert "system prune" not in script

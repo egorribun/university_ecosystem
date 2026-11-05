@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import shlex
@@ -3379,3 +3380,109 @@ def test_migrations_disable_inherited_backend_runtime_healthcheck(
     ]
     assert re.search(r"^HEALTHCHECK\b", runtime, re.MULTILINE)
     assert migrations.get("healthcheck") == {"disable": True}
+
+
+def test_temporal_startup_diagnostic_is_scoped_to_full_start_failure() -> None:
+    script = _read("start-docker.ps1")
+    call = "Write-TemporalStartupDiagnostic -ComposeArgs $ComposeArgs -EnvFile $EnvFile"
+    assert script.count(call) == 1
+    start = script.index('    Write-Status "Starting containers..."')
+    end = script.index("# -- Health check loop", start)
+    branch = script[start:end]
+    assert branch.index("if ($LASTEXITCODE -ne 0)") < branch.index(call)
+    assert branch.index(call) < branch.index("exit 1")
+
+
+def test_temporal_startup_diagnostic_suppresses_untrusted_output() -> None:
+    pwsh = shutil.which("pwsh")
+    assert pwsh is not None
+    definitions = _powershell_function(
+        _read("start-docker.ps1"),
+        "Get-TemporalDiagnosticSummary",
+        "Assert-LiveStandPrivatePath",
+    )
+    controls = r"""$ErrorActionPreference = "Stop"
+
+$privateMarker = "PRIVATE-MARKER-DO-NOT-EMIT"
+$summary = @(Get-TemporalDiagnosticSummary `
+    -StateLine "restarting|false|2|false|4|starting|0" `
+    -LogLines @("irrelevant $privateMarker", "password authentication failed $privateMarker", "yaml: line 4 $privateMarker") `
+    -LogsAvailable $true)
+if ($summary -notcontains "temporal_state=restarting|false|2|false|4|starting|0") { throw "state summary missing" }
+if ($summary -notcontains "temporal_signature=database_auth") { throw "database category missing" }
+if ($summary -notcontains "temporal_signature=render_or_config") { throw "config category missing" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "private log text leaked" }
+
+$summary = @(Get-TemporalDiagnosticSummary -StateLine "running|true|0|false|0|healthy|0|$privateMarker" -LogLines @("$privateMarker") -LogsAvailable $true)
+if ($summary -notcontains "temporal_state=unavailable") { throw "invalid state accepted" }
+if ($summary -notcontains "temporal_logs=unrecognized") { throw "unrecognized log state missing" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "private state or log text leaked" }
+
+$examples = [ordered]@{
+    missing_input = "POSTGRES_PWD env var required"
+    invalid_jwks_url = "TEMPORAL_JWKS_URL must use the https scheme"
+    missing_trust_anchor = "JWKS trust anchor private-path was not provided"
+    tls_trust = "x509: certificate signed by unknown authority"
+    missing_utility = "getent: not found"
+    render_or_config = "sed: unterminated replacement"
+    database_auth = "password authentication failed"
+    network = "connection refused"
+    fatal_or_panic = "panic: failure"
+}
+foreach ($name in $examples.Keys) {
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @("$($examples[$name]) $privateMarker") -LogsAvailable $true)
+    if ($summary -notcontains "temporal_signature=$name") { throw "expected category missing" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "private category source leaked" }
+}
+
+$summary = @(Get-TemporalDiagnosticSummary -LogsAvailable $false)
+if ($summary -notcontains "temporal_logs=unavailable") { throw "unavailable logs not marked" }
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @() -LogsAvailable $true)
+if ($summary -notcontains "temporal_logs=empty") { throw "empty logs not marked" }
+
+function global:docker {
+    $global:LASTEXITCODE = 0
+    if ($args -contains "ps") { return ("a" * 64) }
+    if ($args -contains "inspect") { return "exited|false|2|false|3|none|0" }
+    if ($args -contains "logs") { return "yaml: line 4 $privateMarker" }
+    $global:LASTEXITCODE = 1
+}
+$summary = @(Write-TemporalStartupDiagnostic -ComposeArgs @("-p", "owned-test") -EnvFile "synthetic")
+if ($summary -notcontains "temporal_state=exited|false|2|false|3|none|0") { throw "inspect tuple missing" }
+if ($summary -notcontains "temporal_signature=render_or_config") { throw "captured category missing" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "captured log text leaked" }
+
+function global:docker { $global:LASTEXITCODE = 0; return "untrusted-$privateMarker" }
+$summary = @(Write-TemporalStartupDiagnostic -ComposeArgs @("-p", "owned-test") -EnvFile "synthetic")
+if ($summary -notcontains "temporal_diagnostic=container_unavailable") { throw "invalid container id accepted" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "invalid id leaked" }
+
+function global:docker { throw "private-$privateMarker" }
+$summary = @(Write-TemporalStartupDiagnostic -ComposeArgs @("-p", "owned-test") -EnvFile "synthetic")
+if ($summary -notcontains "temporal_diagnostic=unavailable") { throw "docker failure not contained" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "exception text leaked" }
+"synthetic diagnostic checks passed"
+"""
+
+    async def run() -> tuple[int | None, str, str]:
+        process = await asyncio.create_subprocess_exec(
+            pwsh,
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            definitions + "\n" + controls,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=20)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+            raise
+        return process.returncode, stdout.decode("utf-8"), stderr.decode("utf-8")
+
+    exit_code, stdout, stderr = asyncio.run(run())
+    assert exit_code == 0, stderr
+    assert stdout.strip() == "synthetic diagnostic checks passed"
+    assert stderr == ""

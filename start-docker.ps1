@@ -99,6 +99,90 @@ $script:LiveAcceptanceCoreClosure = [string[]]@(
     "ws-hub"
 )
 
+# Docker output is never returned except for the strictly validated state tuple.
+function Get-TemporalDiagnosticSummary {
+    param(
+        [AllowEmptyString()][string]$StateLine = "",
+        [string[]]$LogLines = @(),
+        [bool]$LogsAvailable = $false
+    )
+    $statePattern = '^(created|running|paused|restarting|removing|exited|dead)\|(true|false)\|[0-9]{1,5}\|(true|false)\|[0-9]{1,10}\|(none|starting|healthy|unhealthy)\|[0-9]{1,10}$'
+    if ($StateLine -cmatch $statePattern) {
+        # status|running|exit-code|oom-killed|restarts|health|failing-streak
+        "temporal_state=$StateLine"
+    } else {
+        "temporal_state=unavailable"
+    }
+
+    if (-not $LogsAvailable) {
+        "temporal_logs=unavailable"
+        return
+    }
+    if ($LogLines.Count -eq 0) {
+        "temporal_logs=empty"
+        return
+    }
+
+    # Emit category names only. Never interpolate a matching line or regex capture.
+    $patterns = [ordered]@{
+        missing_input = 'POSTGRES_(USER|PWD) env var required|TEMPORAL_JWKS_URL must be an https JWKS endpoint'
+        invalid_jwks_url = 'TEMPORAL_JWKS_URL must use the https scheme|TEMPORAL_JWKS_URL contains characters the config renderer does not accept'
+        missing_trust_anchor = 'JWKS trust anchor .* was not provided'
+        tls_trust = 'x509: certificate signed by unknown authority|certificate verify failed'
+        missing_utility = '(getent|hostname|awk|sed|grep|temporal-server): (not found|command not found)'
+        render_or_config = 'sed:.*(unterminated|invalid|bad option)|yaml: unmarshal|yaml: line [0-9]+'
+        database_auth = 'password authentication failed|SQLSTATE[ =:]?28P01'
+        network = 'connection refused|no such host|connection timed out'
+        fatal_or_panic = 'panic:|fatal error:|"level":"fatal"'
+    }
+    $found = $false
+    foreach ($name in $patterns.Keys) {
+        foreach ($line in $LogLines) {
+            if ($line -match $patterns[$name]) {
+                "temporal_signature=$name"
+                $found = $true
+                break
+            }
+        }
+    }
+    if (-not $found) { "temporal_logs=unrecognized" }
+}
+
+function Write-TemporalStartupDiagnostic {
+    param([string[]]$ComposeArgs, [string]$EnvFile)
+
+    try {
+        $ids = @( & {
+            $ErrorActionPreference = "Continue"
+            $PSNativeCommandUseErrorActionPreference = $false
+            docker compose @ComposeArgs --env-file $EnvFile ps --all -q temporal 2>&1
+        } )
+        if ($LASTEXITCODE -ne 0 -or $ids.Count -ne 1 -or [string]$ids[0] -cnotmatch '^[0-9a-f]{12,64}$') {
+            "temporal_diagnostic=container_unavailable"
+            return
+        }
+        $containerId = [string]$ids[0]
+        # Do not inspect Config, Env, Health.Log.Output, State.Error, or mounts.
+        $format = '{{.State.Status}}|{{.State.Running}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|{{.RestartCount}}|{{if .State.Health}}{{.State.Health.Status}}|{{.State.Health.FailingStreak}}{{else}}none|0{{end}}'
+        $state = @( & {
+            $ErrorActionPreference = "Continue"
+            $PSNativeCommandUseErrorActionPreference = $false
+            docker inspect --format $format -- $containerId 2>&1
+        } )
+        $stateLine = if ($LASTEXITCODE -eq 0 -and $state.Count -eq 1) { [string]$state[0] } else { "" }
+        $logs = @( & {
+            $ErrorActionPreference = "Continue"
+            $PSNativeCommandUseErrorActionPreference = $false
+            docker compose @ComposeArgs --env-file $EnvFile logs --no-color --tail=50 temporal 2>&1
+        } )
+        $logsAvailable = $LASTEXITCODE -eq 0
+        Get-TemporalDiagnosticSummary -StateLine $stateLine -LogLines $logs -LogsAvailable $logsAvailable
+    } catch {
+        # Do not emit exception text: Docker diagnostics can include environment data.
+        "temporal_diagnostic=unavailable"
+    }
+}
+
 function Assert-LiveStandPrivatePath {
     param([Parameter(Mandatory=$true)][string]$Path)
     if (-not $LiveStateMode) { return }
@@ -3361,6 +3445,7 @@ if ($script:LiveAcceptanceCore) {
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to start containers."
         docker compose @ComposeArgs --env-file $EnvFile ps --all
+        Write-TemporalStartupDiagnostic -ComposeArgs $ComposeArgs -EnvFile $EnvFile
         docker compose @ComposeArgs --env-file $EnvFile logs --tail=50 migrations postgres-databases-init minio-init spicedb-migrate temporal-admin-tools temporal-namespace-init flagd flagd-healthprobe backend outbox-worker 2>$null
         exit 1
     }

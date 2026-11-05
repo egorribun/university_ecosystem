@@ -55,6 +55,8 @@ readonly FILE_PROCESSOR_SPIFFE_ID="spiffe://${TRUST_DOMAIN}/ns/${NAMESPACE}/sa/$
 readonly IMAGE_TAG="ue-r9-aud373-${RUN_SUFFIX}"
 readonly LOCAL_REGISTRY_NAME="ue-r9-aud373-registry-${RUN_SUFFIX}"
 LOCAL_REGISTRY_ADDRESS=""
+REGISTRY_CONTAINER_ID=""
+DOCKER_DAEMON_ENDPOINT=""
 BACKEND_IMAGE=""
 GATEWAY_IMAGE=""
 
@@ -71,11 +73,29 @@ log() {
   printf '%s\n' "$*" >&2
 }
 
+require_local_docker_daemon() {
+  local endpoint context
+  if [[ -n "${DOCKER_CONTEXT:-}" ]]; then
+    endpoint="$(docker context inspect --format '{{.Endpoints.docker.Host}}' "$DOCKER_CONTEXT")" || return 1
+  elif [[ -n "${DOCKER_HOST:-}" ]]; then
+    endpoint="$DOCKER_HOST"
+  else
+    context="$(docker context show)" || return 1
+    endpoint="$(docker context inspect --format '{{.Endpoints.docker.Host}}' "$context")" || return 1
+  fi
+  if [[ ! "$endpoint" =~ ^unix:///[^[:space:]]+$ ]]; then
+    log "the registry proof requires a local Docker Unix socket"
+    return 1
+  fi
+  DOCKER_DAEMON_ENDPOINT="$endpoint"
+}
+
 require_platform() {
   if [[ "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ]]; then
     log "this proof runs on Linux x86_64 only (CI ubuntu-24.04)"
     exit 2
   fi
+  require_local_docker_daemon || return 1
   docker info >/dev/null
 }
 
@@ -240,16 +260,53 @@ EOF
   CLUSTER_CREATED=1
 }
 
+wait_local_registry() {
+  local node="${1:-}" failures=0
+  while true; do
+    if [[ -z "$node" ]]; then
+      if curl --fail --silent --max-time 2 --noproxy '*' \
+        "http://${LOCAL_REGISTRY_ADDRESS}/v2/" >/dev/null; then return 0; fi
+    elif docker exec "$node" curl --fail --silent --max-time 2 --noproxy '*' \
+      "http://${LOCAL_REGISTRY_NAME}:5000/v2/" >/dev/null; then
+      return 0
+    fi
+    failures=$((failures + 1))
+    if [[ "$failures" -ge 30 ]]; then
+      log "local registry was not reachable from ${node:-the publishing host}"
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+verify_registry_paths() {
+  local node nodes
+  wait_local_registry || return 1
+  nodes="$(kind get nodes --name "$CLUSTER_NAME")" || return 1
+  [[ -n "$nodes" ]] || return 1
+  while read -r node; do
+    [[ -n "$node" ]] || return 1
+    wait_local_registry "$node" || return 1
+  done <<<"$nodes"
+}
+
 start_local_registry() {
-  local endpoint node nodes
+  local endpoint node nodes observed_id
   if docker inspect --type container "$LOCAL_REGISTRY_NAME" >/dev/null 2>&1; then
     log "refusing to reuse existing container $LOCAL_REGISTRY_NAME"
     return 1
   fi
-  docker run --detach --name "$LOCAL_REGISTRY_NAME" \
-    --publish "127.0.0.1::5000" "$REGISTRY_IMAGE" >/dev/null
+  REGISTRY_CONTAINER_ID="$(docker run --detach --name "$LOCAL_REGISTRY_NAME" --network kind \
+    --publish "127.0.0.1::5000" \
+    --env "REGISTRY_HTTP_ADDR=0.0.0.0:5000" "$REGISTRY_IMAGE")" || return 1
   REGISTRY_CREATED=1
-  endpoint="$(docker port "$LOCAL_REGISTRY_NAME" 5000/tcp)" || return 1
+  if [[ ! "$REGISTRY_CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]; then
+    log "created registry returned an invalid container ID"
+    return 1
+  fi
+  observed_id="$(docker inspect --type container --format '{{.Id}}' "$LOCAL_REGISTRY_NAME")" || return 1
+  [[ "$observed_id" == "$REGISTRY_CONTAINER_ID" ]] || return 1
+  endpoint="$(docker port "$REGISTRY_CONTAINER_ID" 5000/tcp)" || return 1
   if [[ ! "$endpoint" =~ ^127\.0\.0\.1:([0-9]{1,5})$ ]]; then
     log "registry did not publish a single loopback port"
     return 1
@@ -258,23 +315,28 @@ start_local_registry() {
   LOCAL_REGISTRY_ADDRESS="$endpoint"
   BACKEND_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-backend:${IMAGE_TAG}"
   GATEWAY_IMAGE="${LOCAL_REGISTRY_ADDRESS}/university-gateway:${IMAGE_TAG}"
-  docker network connect kind "$LOCAL_REGISTRY_NAME"
   nodes="$(kind get nodes --name "$CLUSTER_NAME")" || return 1
   [[ -n "$nodes" ]] || return 1
   while read -r node; do
-    docker exec "$node" mkdir -p "/etc/containerd/certs.d/${LOCAL_REGISTRY_ADDRESS}"
+    [[ -n "$node" ]] || return 1
+    docker exec "$node" mkdir -p "/etc/containerd/certs.d/${LOCAL_REGISTRY_ADDRESS}" || return 1
     printf '[host."http://%s:5000"]\n  capabilities = ["pull", "resolve"]\n' "$LOCAL_REGISTRY_NAME" |
-      docker exec --interactive "$node" sh -c "cat > /etc/containerd/certs.d/${LOCAL_REGISTRY_ADDRESS}/hosts.toml"
+      docker exec --interactive "$node" sh -c "cat > /etc/containerd/certs.d/${LOCAL_REGISTRY_ADDRESS}/hosts.toml" || return 1
   done <<<"$nodes"
+  verify_registry_paths || return 1
 }
 
-build_and_push_images() {
+build_images() {
   docker build --file "${ROOT_DIR}/backend.Dockerfile" \
-    --tag "$BACKEND_IMAGE" "$ROOT_DIR"
+    --tag "$BACKEND_IMAGE" "$ROOT_DIR" || return 1
   docker build --file "${ROOT_DIR}/services/gateway/Dockerfile" \
-    --tag "$GATEWAY_IMAGE" "$ROOT_DIR"
-  docker push "$BACKEND_IMAGE"
-  docker push "$GATEWAY_IMAGE"
+    --tag "$GATEWAY_IMAGE" "$ROOT_DIR" || return 1
+}
+
+push_images() {
+  verify_registry_paths || return 1
+  docker push "$BACKEND_IMAGE" || return 1
+  docker push "$GATEWAY_IMAGE" || return 1
 }
 
 install_spire() {
@@ -583,6 +645,9 @@ run_proofs() {
 collect_diagnostics() {
   local namespace pod verb
   mkdir -p "$DIAG_DIR"
+  printf '%s\n' "$DOCKER_DAEMON_ENDPOINT" >"${DIAG_DIR}/docker-daemon-endpoint.txt"
+  docker info --format '{{.Name}}' >"${DIAG_DIR}/docker-daemon-name.txt" 2>&1 || true
+  hostname >"${DIAG_DIR}/runner-hostname.txt" 2>&1 || true
   if [[ ! -s "$KUBECONFIG" ]]; then
     return 0
   fi
@@ -598,7 +663,13 @@ collect_diagnostics() {
   done
   kubectl get nodes -o wide >"${DIAG_DIR}/nodes.txt" 2>&1 || true
   if [[ "$REGISTRY_CREATED" == "1" ]]; then
-    docker logs "$LOCAL_REGISTRY_NAME" >"${DIAG_DIR}/registry.log" 2>&1 || true
+    printf '%s\n' "$REGISTRY_CONTAINER_ID" >"${DIAG_DIR}/registry-container-id.txt"
+    printf '%s\n' "$LOCAL_REGISTRY_ADDRESS" >"${DIAG_DIR}/registry-endpoint.txt"
+    docker logs "$REGISTRY_CONTAINER_ID" >"${DIAG_DIR}/registry.log" 2>&1 || true
+    docker inspect --type container --format '{{json .State}}' "$REGISTRY_CONTAINER_ID" \
+      >"${DIAG_DIR}/registry-state.json" 2>&1 || true
+    docker inspect --type container --format '{{json .NetworkSettings}}' "$REGISTRY_CONTAINER_ID" \
+      >"${DIAG_DIR}/registry-network.json" 2>&1 || true
   fi
   # AUD-251: record API-server authorization observations for this kind cluster.
   # They do not establish fine-grained kubelet authorization on other clusters.
@@ -624,8 +695,8 @@ cleanup() {
   if [[ "$CLUSTER_CREATED" == "1" ]]; then
     kind delete cluster --name "$CLUSTER_NAME" --kubeconfig "$KUBECONFIG" >/dev/null 2>&1
   fi
-  if [[ "$REGISTRY_CREATED" == "1" ]]; then
-    docker rm --force --volumes "$LOCAL_REGISTRY_NAME" >/dev/null 2>&1
+  if [[ "$REGISTRY_CREATED" == "1" && "$REGISTRY_CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]; then
+    docker rm --force --volumes "$REGISTRY_CONTAINER_ID" >/dev/null 2>&1
   fi
   rm -rf "$WORK_DIR"
   exit "$status"
@@ -637,7 +708,8 @@ main() {
   install_tools
   create_cluster
   start_local_registry
-  build_and_push_images
+  build_images
+  push_images
   install_spire
   deploy_stack
   run_proofs

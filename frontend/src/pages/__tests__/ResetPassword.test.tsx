@@ -1732,6 +1732,39 @@ describe("ResetPassword behaviour details", () => {
     }
   )
 
+  it("prefers the canonical fragment when a valid legacy token is also present", async () => {
+    const canonical = `canonical-${randomUUID()}`
+    const transit = `transit-${randomUUID()}`
+    const payloads: unknown[] = []
+    server.use(
+      http.post("*/password/reset", async ({ request }) => {
+        payloads.push(await request.json())
+        return HttpResponse.json({ ok: true })
+      })
+    )
+    mockBreachRange()
+    const user = userEvent.setup()
+    const router = await renderQueryResetRoute(
+      `/reset?source=email#token=${canonical}&legacy-token=${transit}&tab=security`
+    )
+
+    try {
+      await waitFor(() =>
+        expect(router.state.location.hash).toBe(`token=${canonical}&tab=security`)
+      )
+      expect(router.state.location.search).toHaveProperty("source", "email")
+      expect(JSON.stringify(router.state.location.state)).not.toContain(transit)
+
+      await fillMatchingPasswords(user)
+      expect(await screen.findByText(tAuth("reset.successTitle"))).toBeInTheDocument()
+      await waitFor(() => expect(router.state.location.hash).toBe("tab=security"))
+      expect(payloads).toEqual([{ password: "Password123!", token: canonical }])
+    } finally {
+      cleanup()
+      router.history.destroy()
+    }
+  })
+
   it("preserves canonical reload and retry while scrubbing malformed transit", async () => {
     const canonical = `canonical-${randomUUID()}`
     const transit = `ignored-${randomUUID()}`
