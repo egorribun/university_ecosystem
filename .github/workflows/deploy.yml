@@ -1518,23 +1518,48 @@ jobs:
                 '.data[$key] | select(type == "string" and length > 0)' \
             | base64 --decode \
             | python3 -c '
+          from base64 import b64decode
+          from hmac import compare_digest
+          from os import fdopen
+          import re
           from sys import argv, stdin
+          from unicodedata import category
           from urllib.parse import urlsplit
+          from urllib.parse import unquote_to_bytes
 
           expected_host = argv[1]
           try:
-              parsed = urlsplit(stdin.read().strip())
+              raw_url = stdin.read().strip()
+              parsed = urlsplit(raw_url)
+              # The store init container uses shell command substitution, which
+              # removes trailing LF bytes before hashing the mounted password.
+              with fdopen(3, "rb") as credential_input:
+                  expected_password = b64decode(
+                      credential_input.read().strip(), validate=True
+                  ).rstrip(b"\n")
               valid = (
-                  parsed.scheme in {"redis", "rediss"}
+                  parsed.scheme == "redis"
                   and parsed.hostname == expected_host
                   and parsed.port == 6379
                   and parsed.path == "/0"
+                  and not parsed.query
+                  and not parsed.fragment
+                  and not re.search(r"%(?![0-9a-fA-F]{2})", raw_url)
+                  and not any(category(char) == "Cc" for char in raw_url)
+                  and parsed.username is not None
+                  and unquote_to_bytes(parsed.username) in (b"", b"default")
+                  and parsed.password is not None
+                  and bool(expected_password)
+                  and b"\0" not in expected_password
+                  and compare_digest(
+                      unquote_to_bytes(parsed.password), expected_password
+                  )
               )
-          except ValueError:
+          except (OSError, UnicodeError, ValueError):
               valid = False
           raise SystemExit(0 if valid else 1)
-          ' "$revocation_redis_service_host"; then
-            echo "::error::The revocation Redis URL must target the rendered dedicated master service."
+          ' "$revocation_redis_service_host" 3<<<"$revocation_redis_password_b64"; then
+            echo "::error::The revocation Redis URL must target the rendered dedicated master service using its credential and supported URL format."
             exit 1
           fi
 
