@@ -17,8 +17,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = REPOSITORY_ROOT / "quality" / "scorecard-floors.json"
 EXPECTED_COMMIT = "a" * 40
 
-# Ratchet: every gated floor may rise but never fall below these values. They
-# were measured from scorecard workflow run 41410082985 (see the policy file).
+# Ratchet: every floor may rise but never fall below these values. The policy
+# distinguishes recorded scores from conservative floors without SARIF results.
 MINIMUM_GATED_FLOORS = {
     "Dangerous-Workflow": 10,
     "Token-Permissions": 10,

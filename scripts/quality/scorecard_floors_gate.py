@@ -19,8 +19,8 @@ SCHEMA_VERSION = 1
 MIN_SCORE = 0
 MAX_SCORE = 10
 NOT_APPLICABLE = -1
-# Initial floors were measured in the policy's recorded Scorecard run. Changes
-# must also be compared with the trusted previous policy via --previous-floors.
+# Initial floors use recorded SARIF scores or the conservative maximum when
+# SARIF lacks a result. Compare changes with the trusted previous policy too.
 MINIMUM_GATED_FLOORS = {
     "Dangerous-Workflow": 10,
     "Token-Permissions": 10,

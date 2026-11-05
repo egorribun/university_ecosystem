@@ -4,7 +4,7 @@
   "source": {
     "workflow": ".github/workflows/scorecard.yml",
     "workflow_run_id": 41410082985,
-    "measurement": "Pre-filter Scorecard SARIF of the run log. A result carries 'score is N' only for checks scoring below 10, so a gated check with no result is recorded as 10. Binary-Artifacts, Pinned-Dependencies, SAST and Vulnerabilities were read from their recorded results."
+    "measurement": "Binary-Artifacts, Pinned-Dependencies, SAST and Vulnerabilities were read from the pre-filter SARIF of the recorded run. Dangerous-Workflow and Token-Permissions had no SARIF result; each uses the conservative maximum floor of 10, but the historical score is not established by that absence."
   },
   "gated_checks": {
     "Dangerous-Workflow": 10,
