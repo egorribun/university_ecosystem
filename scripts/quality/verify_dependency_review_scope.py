@@ -266,15 +266,16 @@ _GHSA_EXCEPTION_TEXT_FIELDS = (
 )
 
 # Owner decision 2026-11-05 (egorribun): CI-only license exception for the GitHub
-# Action trufflesecurity/trufflehog, which the dependency graph reports as AGPL-3.0.
-# The action runs only inside CI and is not distributed with the product. Its PURL
-# allowance in .github/dependency-review-config.yml matches every version, so the
-# verifier accepts exactly one row: the pin read from TRUFFLEHOG_MANIFEST at runtime.
+# Action trufflesecurity/trufflehog. Its immutable LICENSE is AGPL-3.0, while the
+# action's unmodified comparison output has license=null. The PURL allowance
+# matches every version, so both preflight and the row guard bind it to the
+# separately approved pin, never to an arbitrary future workflow pin.
 TRUFFLEHOG_ACTION_NAME = "trufflesecurity/trufflehog"
 TRUFFLEHOG_MANIFEST = ".github/workflows/trufflehog.yml"
 TRUFFLEHOG_ECOSYSTEM = "actions"
 TRUFFLEHOG_LICENSE = "AGPL-3.0"
-TRUFFLEHOG_PURL = f"pkg:github/{TRUFFLEHOG_ACTION_NAME}"
+TRUFFLEHOG_PURL = f"pkg:githubactions/{TRUFFLEHOG_ACTION_NAME}"
+TRUFFLEHOG_LICENSE_SOURCE = "https://github.com/trufflesecurity/trufflehog/blob/31ce31ee1abbcc7dc8eee5764c17121c3044c8b2/LICENSE"
 TRUFFLEHOG_EXCEPTION: dict[str, Any] = {
     "owner": "egorribun",
     "decided": date(2026, 11, 5),
@@ -283,7 +284,10 @@ TRUFFLEHOG_EXCEPTION: dict[str, Any] = {
     "manifest": TRUFFLEHOG_MANIFEST,
     "ecosystem": TRUFFLEHOG_ECOSYSTEM,
     "name": TRUFFLEHOG_ACTION_NAME,
+    "version": TRUFFLEHOG_LICENSE_SOURCE.split("/")[-2],
+    "source_repository_url": "https://github.com/trufflesecurity/trufflehog",
     "license": TRUFFLEHOG_LICENSE,
+    "license_source": TRUFFLEHOG_LICENSE_SOURCE,
     "reason": (
         "CI-only GitHub Action (trufflehog, AGPL-3.0) used for secret scanning inside "
         "CI. It is not distributed with the product."
@@ -420,12 +424,14 @@ def _target_package_url(package_url: str) -> bool:
 
 
 def _is_trufflehog_row(identity: tuple[str, ...]) -> bool:
-    """Match the CI-only trufflehog action by name or by its canonical GitHub PURL."""
+    """Detect upstream PURL aliases for rejection, not exception acceptance."""
     name = identity[3]
     package_url = identity[5]
-    return name == TRUFFLEHOG_ACTION_NAME or _purl_type_and_name(package_url) == (
-        "github",
-        TRUFFLEHOG_ACTION_NAME,
+    canonical = _purl_type_and_name(package_url)
+    return name.lower() == TRUFFLEHOG_ACTION_NAME or (
+        canonical is not None
+        and canonical[0] in {"github", "githubactions"}
+        and canonical[1].lower() == TRUFFLEHOG_ACTION_NAME
     )
 
 
@@ -437,7 +443,7 @@ def _trufflehog_identity(pin: str) -> tuple[str, ...]:
         TRUFFLEHOG_ACTION_NAME,
         pin,
         f"{TRUFFLEHOG_PURL}@{pin}",
-        TRUFFLEHOG_LICENSE,
+        None,
     )
 
 
@@ -488,7 +494,12 @@ def verify_dependency_changes(
                 raise ValueError(
                     "trufflehog dependency row requires the reviewed workflow pin"
                 )
-            if identity != _trufflehog_identity(trufflehog_pin):
+            if (
+                trufflehog_pin != TRUFFLEHOG_EXCEPTION["version"]
+                or identity != _trufflehog_identity(trufflehog_pin)
+                or raw_row["source_repository_url"]
+                != TRUFFLEHOG_EXCEPTION["source_repository_url"]
+            ):
                 raise ValueError(
                     "trufflehog exception is used outside its reviewed row"
                 )
@@ -1443,7 +1454,9 @@ def verify_policy_scope(
     trufflehog_entries = [
         item
         for item in purls
-        if _purl_type_and_name(item) == ("github", TRUFFLEHOG_ACTION_NAME)
+        if (canonical := _purl_type_and_name(item)) is not None
+        and canonical[0] in {"github", "githubactions"}
+        and canonical[1].lower() == TRUFFLEHOG_ACTION_NAME
     ]
     if trufflehog_entries:
         if trufflehog_entries != [TRUFFLEHOG_PURL] or purls[TRUFFLEHOG_PURL] != 1:
@@ -1507,6 +1520,8 @@ def preflight(
     current = verify_current_pins(root)
     current_config = (root / CONFIG_PATH).read_text(encoding="utf-8")
     verify_policy_scope(current_config, today=today)
+    if read_trufflehog_pin(root) != TRUFFLEHOG_EXCEPTION["version"]:
+        raise ValueError("trufflehog workflow differs from the reviewed action pin")
     verify_policy_delta(_git_show(root, base_sha, CONFIG_PATH), current_config)
     return expected_rows_for_delta(_base_pins(root, base_sha), current)
 

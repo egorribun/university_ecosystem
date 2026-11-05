@@ -1917,3 +1917,37 @@ disposition inventory, all 78 required context/app pairs, blocking CodeQL and
 the hooks. Any newly exposed finding remains blocking under the existing
 policy. Each published source SHA still requires its own scans, tests and
 required hosted checks. This approval establishes no passing result.
+
+## Addendum 2026-11-05 UTC - exact TruffleHog CI license exception
+
+Owner `egorribun` explicitly approved retaining the CI-only TruffleHog Action
+at the immutable revision used in `.github/workflows/trufflehog.yml`, with an
+exclusive expiry of 2027-01-10. The approved revision and license source are
+[the pinned LICENSE](https://github.com/trufflesecurity/trufflehog/blob/31ce31ee1abbcc7dc8eee5764c17121c3044c8b2/LICENSE).
+The retrieved Git blob `d2bc34f9900abd088bfd0d914641ecf434aa5a52` contains the
+GNU Affero General Public License, version 3. The recorded license remains
+`AGPL-3.0`; CI approval does not remove the license's obligations.
+
+The pinned Dependency Review action reports this exact added row as ecosystem
+`actions`, name `trufflesecurity/trufflehog`, the approved revision, PURL
+`pkg:githubactions/trufflesecurity/trufflehog@` followed by that revision,
+source `https://github.com/trufflesecurity/trufflehog`, and raw `license=null`.
+Without the exclusion, separate license evaluation can enrich that null; the
+exclusion skips this evaluation without changing the raw comparison output.
+The guard accepts only this observed raw row, without
+rewriting or substituting its license. It rejects a different source, manifest,
+version, PURL, license representation or duplicate row.
+
+The single unversioned `githubactions` PURL replaces the incorrect `github`
+entry. Because upstream PURL exclusions ignore version and manifest, preflight
+independently requires the approved workflow revision, and the always-run row
+guard enforces the exact identity. A matching future workflow and comparison
+revision cannot inherit this approval. Expiry blocks on and after 2027-01-10,
+even when the comparison contains no added TruffleHog row. The action remains
+CI-only and is not distributed with the product.
+
+No global license allowance, vulnerability exception, scanner disposition,
+baseline identity, fingerprint, required context, threshold or hook is added
+or weakened. The pinned upstream action and output capture remain unchanged;
+upstream failures are not masked. This record does not establish passing
+tests, scans or hosted checks for any source revision.

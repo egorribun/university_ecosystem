@@ -169,9 +169,11 @@ allow-dependencies-licenses:
   # via .github/workflows/trufflehog.yml and is not distributed with the product.
   # This PURL matches every version, so scope is enforced by
   # scripts/quality/verify_dependency_review_scope.py (TRUFFLEHOG_EXCEPTION): only
-  # the exact workflow pin, manifest, ecosystem, name and AGPL-3.0 row is accepted.
+  # the separately approved SHA, manifest, ecosystem, name, source and observed
+  # raw license=null row are accepted. A new workflow pin requires a new decision.
+  # The immutable AGPL-3.0 LICENSE evidence is recorded in ADR-047.
   # AGPL-3.0 must NOT be added to the global allow-licenses.
-  - "pkg:github/trufflesecurity/trufflehog"
+  - "pkg:githubactions/trufflesecurity/trufflehog"
 
 vulnerability-check: true
 license-check: true
