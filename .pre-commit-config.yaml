@@ -105,6 +105,7 @@ repos:
           # The logging export boundary subclasses the typed OTel SDK handler.
           # Keep its base class available to this isolated strict mypy hook.
           - "opentelemetry-sdk==1.45.1"
+          - "structlog==26.1.0"
 
   - repo: local
     hooks:

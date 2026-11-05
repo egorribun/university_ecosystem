@@ -5,6 +5,7 @@ import importlib
 import inspect
 import logging
 import sys
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -266,11 +267,12 @@ def test_configure_logging_json_preserves_serializer_and_foreign_chain():
             patch("structlog.configure"),
             patch("logging.basicConfig"),
             patch("structlog.processors.JSONRenderer") as renderer,
-            patch("structlog.stdlib.ProcessorFormatter") as formatter,
+            patch.object(logging_mod, "_RedactingProcessorFormatter") as formatter,
         ):
             logging_mod.configure_logging(json_output=True)
 
         renderer.assert_called_once_with(serializer=logging_mod._orjson_serializer)
+        formatter.assert_called_once()
         formatter_kwargs = formatter.call_args.kwargs
         foreign_pre_chain = formatter_kwargs["foreign_pre_chain"]
         assert logging_mod._format_safe_exc_info in foreign_pre_chain
@@ -301,7 +303,7 @@ def test_configure_logging_console_preserves_safe_traceback_formatter():
             patch("logging.basicConfig"),
             patch("structlog.dev.RichTracebackFormatter") as traceback_formatter,
             patch("structlog.dev.ConsoleRenderer") as renderer,
-            patch("structlog.stdlib.ProcessorFormatter"),
+            patch.object(logging_mod, "_RedactingProcessorFormatter"),
         ):
             logging_mod.configure_logging(json_output=False)
 
@@ -338,3 +340,28 @@ def test_orjson_serializer_does_not_render_unsupported_object_representations():
     assert logging_mod._orjson_serializer({"value": CustomValue()}) == (
         '{"value":"[REDACTED]"}'
     )
+
+
+@pytest.mark.parametrize("json_output", [True, False])
+def test_configure_logging_installs_real_redacting_processor_formatter(
+    json_output: bool,
+) -> None:
+    output = StringIO()
+    handler = logging.StreamHandler(output)
+    root = logging.getLogger()
+    payload = {"authorization": "synthetic-value", "count": 7}
+    root.addHandler(handler)
+    try:
+        with patch.object(logging_mod, "_configured", False):
+            logging_mod.configure_logging(json_output=json_output)
+        assert isinstance(handler.formatter, logging_mod._RedactingProcessorFormatter)
+        assert isinstance(handler.formatter, structlog.stdlib.ProcessorFormatter)
+        logging_mod.get_stdlib_logger("formatter-contract").warning(payload)
+        rendered = output.getvalue()
+        assert "[REDACTED]" in rendered
+        assert "synthetic-value" not in rendered
+        assert "count" in rendered and "7" in rendered
+        assert payload == {"authorization": "synthetic-value", "count": 7}
+    finally:
+        root.removeHandler(handler)
+        handler.close()
