@@ -127,6 +127,21 @@ def test_native_fuzz_uses_stable_pyo3_abi_for_standalone_binaries() -> None:
     assert fuzz_manifest["dependencies"]["rust_ext"]["default-features"] is False
 
 
+def test_native_fuzz_dependency_is_visible_to_trivy() -> None:
+    native = ROOT / "native" / "rust_ext"
+    manifest = tomllib.loads((native / "Cargo.toml").read_text(encoding="utf-8"))
+    fuzz_manifest = tomllib.loads(
+        (native / "fuzz" / "Cargo.toml").read_text(encoding="utf-8")
+    )
+    dependency = fuzz_manifest["dependencies"]["rust_ext"]
+    assert dependency["path"] == ".."
+    assert dependency.get("version") == f"={manifest['package']['version']}", (
+        "Update the exact rust_ext version in native/rust_ext/fuzz/Cargo.toml "
+        "whenever native/rust_ext/Cargo.toml package.version changes, "
+        "including prereleases"
+    )
+
+
 def test_additional_fuzz_matrix_matches_all_checked_in_targets() -> None:
     workflow = yaml.safe_load(FUZZ_WORKFLOW.read_text(encoding="utf-8"))
     entries = workflow["jobs"]["fuzz-additional-rust-crates"]["strategy"]["matrix"][
