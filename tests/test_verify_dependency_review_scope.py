@@ -24,6 +24,9 @@ from scripts.quality.verify_dependency_review_scope import (
     MAX_DEPENDENCY_COMPARE_BYTES,
     PURL_ADDITIONS,
     PURL_REMOVALS,
+    TRUFFLEHOG_LICENSE,
+    TRUFFLEHOG_MANIFEST,
+    TRUFFLEHOG_PURL,
     _action_row,
     _base_manifest_exists,
     _base_pins,
@@ -33,11 +36,13 @@ from scripts.quality.verify_dependency_review_scope import (
     _identity,
     _open_dependency_request,
     _parse_config,
+    _trufflehog_identity,
     expected_rows_for_delta,
     fetch_dependency_comparison,
     main,
     preflight,
     read_dependency_changes_file,
+    read_trufflehog_pin,
     verify_current_pins,
     verify_dependency_changes,
     verify_ghsa_exception_rows,
@@ -1921,7 +1926,11 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
                 patch.object(sys, "argv", argv),
                 patch("sys.stdout", new_callable=io.StringIO) as output,
             ):
-                with self.assertRaisesRegex(ValueError, "unexpected package"):
+                # The synthetic trufflehog fixture pin is not the reviewed workflow
+                # pin, so that row is rejected first (rows are checked in order).
+                with self.assertRaisesRegex(
+                    ValueError, "trufflehog exception is used outside its reviewed row"
+                ):
                     main()
             self.assertTrue(output.getvalue(), "bounded identity diagnostics missing")
             payload = json.loads(output.getvalue())
@@ -1998,6 +2007,219 @@ class ExtendedCaddyJoseExceptionTests(unittest.TestCase):
                     wrong = _advisory_row(manifest, name, version, record["ghsa"])
                     with self.assertRaises(ValueError):
                         verify_ghsa_exception_rows([wrong], today=date(2027, 1, 9))
+
+
+REPO_ROOT = Path(__file__).parents[1]
+TRUFFLEHOG_TODAY = date(2026, 11, 5)
+
+
+def _other_pins(pin):
+    """Derive invalid or different pins from the real workflow pin at runtime."""
+    other_first = "0" if pin[0] != "0" else "1"
+    return {
+        "different-hex": other_first + pin[1:],
+        "uppercase": pin.upper(),
+        "short": pin[:-1],
+        "long": pin + "0",
+        "non-hex": "g" + pin[1:],
+    }
+
+
+def _trufflehog_row(pin, **changes):
+    fields = dict(
+        zip(
+            (
+                "change_type",
+                "manifest",
+                "ecosystem",
+                "name",
+                "version",
+                "purl",
+                "license",
+            ),
+            _trufflehog_identity(pin),
+            strict=True,
+        )
+    )
+    fields.update(changes)
+    return action_row(
+        (
+            fields["change_type"],
+            fields["manifest"],
+            fields["ecosystem"],
+            fields["name"],
+            fields["version"],
+            fields["purl"],
+            fields["license"],
+        )
+    )
+
+
+class TrufflehogCiOnlyExceptionTests(unittest.TestCase):
+    """Owner exception 2026-11-05: CI-only trufflehog Action, AGPL-3.0, exact pin."""
+
+    def setUp(self):
+        self.pin = read_trufflehog_pin(REPO_ROOT)
+
+    def test_workflow_pin_is_read_as_a_single_immutable_sha(self):
+        self.assertRegex(self.pin, r"^[0-9a-f]{40}$")
+
+    def test_exact_row_passes_only_before_expiry(self):
+        row = _trufflehog_row(self.pin)
+        self.assertEqual(
+            verify_dependency_changes(
+                [row], set(), trufflehog_pin=self.pin, today=date(2027, 1, 9)
+            ),
+            1,
+        )
+        for day in (date(2027, 1, 10), date(2027, 1, 11)):
+            with self.subTest(day=day), self.assertRaisesRegex(ValueError, "expired"):
+                verify_dependency_changes(
+                    [row], set(), trufflehog_pin=self.pin, today=day
+                )
+
+    def test_row_outside_the_exact_identity_fails_closed(self):
+        pins = _other_pins(self.pin)
+        cases = [
+            ("manifest", {"manifest": ".github/workflows/other.yml"}),
+            ("ecosystem", {"ecosystem": "gomod"}),
+            ("license", {"license": "AGPL-3.0-only"}),
+            ("null-license", {"license": None}),
+            (
+                "purl-name-encoded",
+                {"purl": f"pkg:github/trufflesecurity%2Ftrufflehog@{self.pin}"},
+            ),
+            (
+                "purl-other-version",
+                {"purl": f"{TRUFFLEHOG_PURL}@{pins['different-hex']}"},
+            ),
+            ("purl-unversioned", {"purl": TRUFFLEHOG_PURL}),
+            ("version-only-mismatch", {"version": pins["different-hex"]}),
+        ]
+        for label, pin_value in pins.items():
+            cases.append(
+                (
+                    f"version-{label}",
+                    {"version": pin_value, "purl": f"{TRUFFLEHOG_PURL}@{pin_value}"},
+                )
+            )
+        for label, changes in cases:
+            with self.subTest(case=label):
+                row = _trufflehog_row(self.pin, **changes)
+                with self.assertRaisesRegex(ValueError, "outside its reviewed row"):
+                    verify_dependency_changes(
+                        [row], set(), trufflehog_pin=self.pin, today=TRUFFLEHOG_TODAY
+                    )
+
+    def test_trufflehog_row_requires_the_workflow_pin(self):
+        row = _trufflehog_row(self.pin)
+        with self.assertRaisesRegex(ValueError, "requires the reviewed workflow pin"):
+            verify_dependency_changes([row], set(), today=TRUFFLEHOG_TODAY)
+
+    def test_duplicate_trufflehog_row_fails(self):
+        row = _trufflehog_row(self.pin)
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            verify_dependency_changes(
+                [row, row], set(), trufflehog_pin=self.pin, today=TRUFFLEHOG_TODAY
+            )
+
+    def test_removed_trufflehog_row_is_ignored(self):
+        row = _trufflehog_row(self.pin, change_type="removed")
+        self.assertEqual(
+            verify_dependency_changes(
+                [row], set(), trufflehog_pin=self.pin, today=TRUFFLEHOG_TODAY
+            ),
+            0,
+        )
+
+    def test_agpl_row_for_another_package_fails_closed(self):
+        row = action_row(
+            (
+                "added",
+                "services/gateway/go.mod",
+                "gomod",
+                "example.test/agpl",
+                "1.0.0",
+                "pkg:golang/example.test/agpl@1.0.0",
+                TRUFFLEHOG_LICENSE,
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "AGPL-3.0"):
+            verify_dependency_changes(
+                [row], set(), trufflehog_pin=self.pin, today=TRUFFLEHOG_TODAY
+            )
+
+    def test_read_pin_fails_closed_on_missing_ambiguous_or_malformed_pin(self):
+        workflow_path = Path(TRUFFLEHOG_MANIFEST)
+        pin_line = "      uses: trufflesecurity/trufflehog@{}  # v3.99.7\n"
+        cases = {
+            "missing": None,
+            "two-references": pin_line.format(self.pin) + pin_line.format(self.pin),
+            "non-hex": pin_line.format("v3.99.7"),
+            "short": pin_line.format(self.pin[:-1]),
+        }
+        for label, text in cases.items():
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                if text is not None:
+                    target = root / workflow_path
+                    target.parent.mkdir(parents=True)
+                    target.write_text(text, encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    read_trufflehog_pin(root)
+
+    def test_real_config_carries_one_exact_trufflehog_entry(self):
+        config_text = (REPO_ROOT / CONFIG_PATH).read_text(encoding="utf-8")
+        _scalars, sections = _parse_config(config_text)
+        entries = sections.get("allow-dependencies-licenses", [])
+        self.assertEqual(entries.count(TRUFFLEHOG_PURL), 1)
+        self.assertNotIn(TRUFFLEHOG_LICENSE, sections.get("allow-licenses", []))
+        verify_policy_scope(config_text, today=TRUFFLEHOG_TODAY)
+
+    def test_policy_scope_accepts_only_the_unversioned_entry_before_expiry(self):
+        base = ["pkg:npm/preserved", *PURL_ADDITIONS.keys()]
+        verify_policy_scope(config([*base, TRUFFLEHOG_PURL]), today=TRUFFLEHOG_TODAY)
+        with self.assertRaisesRegex(ValueError, "expired"):
+            verify_policy_scope(
+                config([*base, TRUFFLEHOG_PURL]), today=date(2027, 1, 10)
+            )
+        for bad in (
+            f"{TRUFFLEHOG_PURL}@{self.pin}",
+            "pkg:github/trufflesecurity%2Ftrufflehog",
+            "pkg:GitHub/trufflesecurity/trufflehog",
+        ):
+            with (
+                self.subTest(entry=bad),
+                self.assertRaisesRegex(ValueError, "exact unversioned"),
+            ):
+                verify_policy_scope(config([*base, bad]), today=TRUFFLEHOG_TODAY)
+        with self.assertRaisesRegex(ValueError, "exact unversioned"):
+            verify_policy_scope(
+                config([*base, TRUFFLEHOG_PURL, TRUFFLEHOG_PURL]),
+                today=TRUFFLEHOG_TODAY,
+            )
+
+    def test_policy_scope_rejects_agpl_in_global_allow_licenses(self):
+        base = ["pkg:npm/preserved", *PURL_ADDITIONS.keys(), TRUFFLEHOG_PURL]
+        with self.assertRaisesRegex(ValueError, "AGPL-3.0 must not"):
+            verify_policy_scope(
+                config(base, license_ids=("MIT", TRUFFLEHOG_LICENSE)),
+                today=TRUFFLEHOG_TODAY,
+            )
+
+    def test_policy_delta_allows_only_the_single_exact_trufflehog_addition(self):
+        old = ["pkg:npm/preserved", *PURL_REMOVALS.keys()]
+        new = ["pkg:npm/preserved", *PURL_ADDITIONS.keys(), TRUFFLEHOG_PURL]
+        verify_policy_delta(config(old), config(new))
+        with self.assertRaisesRegex(ValueError, "PURL additions"):
+            verify_policy_delta(
+                config(old), config([*new, f"{TRUFFLEHOG_PURL}@{self.pin}"])
+            )
+        with self.assertRaisesRegex(ValueError, "at most once"):
+            verify_policy_delta(
+                config([*old, TRUFFLEHOG_PURL]),
+                config([*new, TRUFFLEHOG_PURL]),
+            )
 
 
 if __name__ == "__main__":

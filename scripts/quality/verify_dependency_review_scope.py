@@ -265,6 +265,31 @@ _GHSA_EXCEPTION_TEXT_FIELDS = (
     "reachability",
 )
 
+# Owner decision 2026-11-05 (egorribun): CI-only license exception for the GitHub
+# Action trufflesecurity/trufflehog, which the dependency graph reports as AGPL-3.0.
+# The action runs only inside CI and is not distributed with the product. Its PURL
+# allowance in .github/dependency-review-config.yml matches every version, so the
+# verifier accepts exactly one row: the pin read from TRUFFLEHOG_MANIFEST at runtime.
+TRUFFLEHOG_ACTION_NAME = "trufflesecurity/trufflehog"
+TRUFFLEHOG_MANIFEST = ".github/workflows/trufflehog.yml"
+TRUFFLEHOG_ECOSYSTEM = "actions"
+TRUFFLEHOG_LICENSE = "AGPL-3.0"
+TRUFFLEHOG_PURL = f"pkg:github/{TRUFFLEHOG_ACTION_NAME}"
+TRUFFLEHOG_EXCEPTION: dict[str, Any] = {
+    "owner": "egorribun",
+    "decided": date(2026, 11, 5),
+    "expires": date(2027, 1, 10),
+    "purl": TRUFFLEHOG_PURL,
+    "manifest": TRUFFLEHOG_MANIFEST,
+    "ecosystem": TRUFFLEHOG_ECOSYSTEM,
+    "name": TRUFFLEHOG_ACTION_NAME,
+    "license": TRUFFLEHOG_LICENSE,
+    "reason": (
+        "CI-only GitHub Action (trufflehog, AGPL-3.0) used for secret scanning inside "
+        "CI. It is not distributed with the product."
+    ),
+}
+
 
 def _as_of(today: date | None) -> date:
     return datetime.now(UTC).date() if today is None else today
@@ -368,26 +393,73 @@ def _action_row(row: Any) -> tuple[str, ...]:
     return tuple(row[field] for field in FIELDS)
 
 
-def _target_package_url(package_url: str) -> bool:
-    """Match target PURLs by canonical type/name, ignoring version and qualifiers."""
+def _purl_type_and_name(package_url: str) -> tuple[str, str] | None:
+    """Return the canonical (type, name) of a PURL, ignoring version and qualifiers."""
     if not package_url.lower().startswith("pkg:"):
-        return False
+        return None
     purl_path = package_url[4:].split("?", 1)[0].split("#", 1)[0]
     package_type, separator, name_and_version = purl_path.partition("/")
     if not separator:
-        return False
+        return None
     raw_name = name_and_version.split("@", 1)[0]
     try:
         canonical_type = unquote(package_type, errors="strict").lower()
         canonical_name = unquote(raw_name, errors="strict")
     except UnicodeDecodeError:
+        return None
+    return canonical_type, canonical_name
+
+
+def _target_package_url(package_url: str) -> bool:
+    """Match target PURLs by canonical type/name, ignoring version and qualifiers."""
+    canonical = _purl_type_and_name(package_url)
+    if canonical is None:
         return False
+    canonical_type, canonical_name = canonical
     return canonical_type == TARGET_PURL_TYPE and canonical_name in TARGET_NAMES
+
+
+def _is_trufflehog_row(identity: tuple[str, ...]) -> bool:
+    """Match the CI-only trufflehog action by name or by its canonical GitHub PURL."""
+    name = identity[3]
+    package_url = identity[5]
+    return name == TRUFFLEHOG_ACTION_NAME or _purl_type_and_name(package_url) == (
+        "github",
+        TRUFFLEHOG_ACTION_NAME,
+    )
+
+
+def _trufflehog_identity(pin: str) -> tuple[str, ...]:
+    return (
+        "added",
+        TRUFFLEHOG_MANIFEST,
+        TRUFFLEHOG_ECOSYSTEM,
+        TRUFFLEHOG_ACTION_NAME,
+        pin,
+        f"{TRUFFLEHOG_PURL}@{pin}",
+        TRUFFLEHOG_LICENSE,
+    )
+
+
+def read_trufflehog_pin(root: Path) -> str:
+    """Read the single immutable pin of the CI-only trufflehog action from its workflow."""
+    try:
+        text = (root / TRUFFLEHOG_MANIFEST).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise ValueError("trufflehog workflow is missing or unreadable") from error
+    references = re.findall(rf"{re.escape(TRUFFLEHOG_ACTION_NAME)}@(\S*)", text)
+    if len(references) != 1 or not re.fullmatch(r"[0-9a-f]{40}", references[0]):
+        raise ValueError(
+            "trufflehog workflow must pin its action to exactly one 40-hex commit"
+        )
+    return references[0]
 
 
 def verify_dependency_changes(
     payload: str | list[dict[str, Any]] | None,
     required_rows: set[tuple[str, ...]] | None = None,
+    trufflehog_pin: str | None = None,
+    today: date | None = None,
 ) -> int:
     if payload is None or payload == "":
         raise ValueError("Dependency Review dependency-changes output is missing")
@@ -411,6 +483,25 @@ def verify_dependency_changes(
         change_type, _manifest, _ecosystem, name, _version, _purl, license_id = identity
         if change_type == "removed":
             continue
+        if _is_trufflehog_row(identity):
+            if trufflehog_pin is None:
+                raise ValueError(
+                    "trufflehog dependency row requires the reviewed workflow pin"
+                )
+            if identity != _trufflehog_identity(trufflehog_pin):
+                raise ValueError(
+                    "trufflehog exception is used outside its reviewed row"
+                )
+            if _as_of(today) >= TRUFFLEHOG_EXCEPTION["expires"]:
+                raise ValueError("trufflehog exception expired; renew or remove it")
+            accepted[identity] += 1
+            if accepted[identity] > 1:
+                raise ValueError("duplicate exact dependency exception identity")
+            continue
+        if license_id == TRUFFLEHOG_LICENSE:
+            raise ValueError(
+                "AGPL-3.0 dependency identity is outside the reviewed exception"
+            )
         if (
             name not in TARGET_NAMES
             and license_id != LICENSE_REF
@@ -1300,6 +1391,8 @@ def verify_policy_scope(
         raise ValueError(
             "the unresolved OpenTelemetry marker must not enter global allow-licenses"
         )
+    if TRUFFLEHOG_LICENSE in sections.get("allow-licenses", []):
+        raise ValueError("AGPL-3.0 must not enter global allow-licenses")
     purls = Counter(sections.get("allow-dependencies-licenses", []))
     for purl, count in PURL_ADDITIONS.items():
         if purls[purl] != count:
@@ -1308,6 +1401,20 @@ def verify_policy_scope(
         if any(item.startswith(f"pkg:golang/{name}@") for item in purls):
             raise ValueError(
                 "a versioned target PURL cannot define the version boundary"
+            )
+    trufflehog_entries = [
+        item
+        for item in purls
+        if _purl_type_and_name(item) == ("github", TRUFFLEHOG_ACTION_NAME)
+    ]
+    if trufflehog_entries:
+        if trufflehog_entries != [TRUFFLEHOG_PURL] or purls[TRUFFLEHOG_PURL] != 1:
+            raise ValueError(
+                "the trufflehog PURL must be the exact unversioned entry, once"
+            )
+        if _as_of(today) >= TRUFFLEHOG_EXCEPTION["expires"]:
+            raise ValueError(
+                "trufflehog allowlist exception expired; renew or remove it"
             )
 
 
@@ -1338,15 +1445,20 @@ def verify_policy_delta(base_text: str, current_text: str) -> None:
         raise ValueError("GHSA allowlist additions are prohibited")
     old = Counter(base_sections.get("allow-dependencies-licenses", []))
     new = Counter(current_sections.get("allow-dependencies-licenses", []))
-    if (new - old) - PURL_ADDITIONS:
+    allowed_additions = Counter(PURL_ADDITIONS) + Counter({TRUFFLEHOG_PURL: 1})
+    if (new - old) - allowed_additions:
         raise ValueError("dependency PURL additions exceed the exact reviewed set")
     for purl, count in PURL_ADDITIONS.items():
         if new[purl] != count:
             raise ValueError("an exact package-name PURL is missing or duplicated")
+    if new[TRUFFLEHOG_PURL] > 1:
+        raise ValueError("the trufflehog PURL must appear at most once")
     if LICENSE_REF in current_sections.get("allow-licenses", []):
         raise ValueError(
             "the unresolved OpenTelemetry marker must not enter global allow-licenses"
         )
+    if TRUFFLEHOG_LICENSE in current_sections.get("allow-licenses", []):
+        raise ValueError("AGPL-3.0 must not enter global allow-licenses")
 
 
 def preflight(
@@ -1395,7 +1507,9 @@ def main() -> int:
         raise ValueError("--changes-file is required for the changes phase")
     changes = read_dependency_changes_file(args.changes_file)
     print(format_dependency_identity_diagnostics(changes))
-    accepted = verify_dependency_changes(changes, required)
+    accepted = verify_dependency_changes(
+        changes, required, trufflehog_pin=read_trufflehog_pin(args.root)
+    )
     ghsa_exceptions_used = verify_ghsa_exception_rows(changes)
     print(
         "verified comparison schema and exact license rows; "

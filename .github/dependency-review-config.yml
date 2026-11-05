@@ -164,6 +164,14 @@ allow-dependencies-licenses:
   # pact-python and minicov entries above; the package arrives transitively
   # through the anyio >=4.14.2 pin for CVE-2026-63374/64847.
   - "pkg:pypi/typing-extensions"
+  # Owner decision 2026-11-05 (egorribun), expires 2027-01-10: CI-only Action
+  # license exception. trufflesecurity/trufflehog (AGPL-3.0) runs only inside CI
+  # via .github/workflows/trufflehog.yml and is not distributed with the product.
+  # This PURL matches every version, so scope is enforced by
+  # scripts/quality/verify_dependency_review_scope.py (TRUFFLEHOG_EXCEPTION): only
+  # the exact workflow pin, manifest, ecosystem, name and AGPL-3.0 row is accepted.
+  # AGPL-3.0 must NOT be added to the global allow-licenses.
+  - "pkg:github/trufflesecurity/trufflehog"
 
 vulnerability-check: true
 license-check: true
