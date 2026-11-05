@@ -20,7 +20,7 @@ import sys
 from collections.abc import Mapping
 from datetime import datetime
 from types import TracebackType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 import structlog
@@ -364,6 +364,176 @@ def _redact_pii(
     return redacted
 
 
+def _exception_control(value: Any) -> tuple[BaseException, TracebackType | None] | None:
+    """Resolve real exception controls without consulting instance hooks."""
+    if issubclass(type(value), BaseException):
+        traceback = BaseException.__dict__["__traceback__"].__get__(value)
+        return value, traceback
+    if value is True:
+        _, exception, traceback = sys.exc_info()
+        return (exception, traceback) if exception is not None else None
+    if issubclass(type(value), tuple) and _is_valid_logging_control("exc_info", value):
+        return value[1], value[2]
+    return None
+
+
+def _safe_exception_snapshot(
+    exception: BaseException,
+    traceback: TracebackType | None,
+    *,
+    seen: set[int],
+) -> dict[str, Any]:
+    """Keep redacted arguments and frame locations, never source or locals.
+
+    Built-in descriptors bypass custom exception attribute/representation hooks.
+    A bounded ancestor set cuts cyclic or excessively deep exception chains.
+    """
+    type_name = type.__dict__["__name__"].__get__(type(exception))
+    details: dict[str, Any] = {"type": _redact_free_text(type_name)}
+    marker = id(exception)
+    if marker in seen:
+        return {**details, "cycle": True}
+    if len(seen) >= 32:
+        return {**details, "truncated": True}
+    seen.add(marker)
+    try:
+        args = BaseException.__dict__["args"].__get__(exception)
+        details["args"] = _redact_nested(args, seen=set())
+        frames = []
+        while traceback is not None:
+            code = traceback.tb_frame.f_code
+            frames.append(
+                {
+                    "file": _redact_free_text(code.co_filename),
+                    "line": traceback.tb_lineno,
+                    "function": _redact_free_text(code.co_name),
+                }
+            )
+            traceback = traceback.tb_next
+        details["frames"] = frames
+        state = BaseException.__dict__["__dict__"].__get__(exception)
+        if "__notes__" in state:
+            details["notes"] = _redact_nested(state["__notes__"], seen=set())
+        cause = BaseException.__dict__["__cause__"].__get__(exception)
+        context = BaseException.__dict__["__context__"].__get__(exception)
+        suppressed = BaseException.__dict__["__suppress_context__"].__get__(exception)
+        linked = cause if cause is not None else None if suppressed else context
+        if linked is not None:
+            details["cause" if cause is not None else "context"] = (
+                _safe_exception_snapshot(
+                    linked,
+                    BaseException.__dict__["__traceback__"].__get__(linked),
+                    seen=seen,
+                )
+            )
+        if issubclass(type(exception), BaseExceptionGroup):
+            children = BaseExceptionGroup.__dict__["exceptions"].__get__(exception)
+            details["exceptions"] = [
+                _safe_exception_snapshot(
+                    child,
+                    BaseException.__dict__["__traceback__"].__get__(child),
+                    seen=seen,
+                )
+                for child in children
+            ]
+        return details
+    finally:
+        seen.remove(marker)
+
+
+class _ExceptionSnapshot(dict[str, Any]):
+    """Internal marker, created only after structured exception redaction."""
+
+
+def _exception_message(details: Mapping[str, Any]) -> str:
+    args = details["args"]
+    children = details.get("exceptions")
+    if children:
+        args = args[:1]
+    message = (
+        ""
+        if not args
+        else args[0]
+        if len(args) == 1 and type(args[0]) is str
+        else _orjson_serializer({"args": args})
+    )
+    if children:
+        message += f" ({len(children)} sub-exceptions)"
+    return message
+
+
+def _render_safe_exception(details: Mapping[str, Any]) -> str:
+    """Render conventional traceback text from the already-safe snapshot."""
+    type_name = details["type"]
+    if details.get("cycle"):
+        return f"{type_name}: [exception cycle omitted]"
+    if details.get("truncated"):
+        return f"{type_name}: [exception chain truncated]"
+    lines: list[str] = []
+    if "cause" in details:
+        lines.extend(
+            (
+                _render_safe_exception(details["cause"]),
+                "",
+                "The above exception was the direct cause of the following exception:",
+                "",
+            )
+        )
+    elif "context" in details:
+        lines.extend(
+            (
+                _render_safe_exception(details["context"]),
+                "",
+                "During handling of the above exception, another exception occurred:",
+                "",
+            )
+        )
+    if details["frames"]:
+        lines.append("Traceback (most recent call last):")
+        for frame in details["frames"]:
+            lines.append(
+                f'  File "{frame["file"]}", line {frame["line"]}, in {frame["function"]}'
+            )
+    message = _exception_message(details)
+    lines.append(f"{type_name}: {message}" if message else type_name)
+    notes = details.get("notes", ())
+    if not isinstance(notes, list | tuple):
+        notes = (notes,)
+    for note in notes:
+        lines.append(note if type(note) is str else _orjson_serializer({"note": note}))
+    for number, child in enumerate(details.get("exceptions", ()), start=1):
+        lines.append(f"+---------------- {number} ----------------")
+        lines.extend(f"  {line}" for line in _render_safe_exception(child).splitlines())
+    return "\n".join(lines)
+
+
+def _safe_exception_attributes(value: Any) -> dict[str, str]:
+    resolved = _exception_control(value)
+    if resolved is None:
+        return {}
+    exception, traceback = resolved
+    details = _safe_exception_snapshot(exception, traceback, seen=set())
+    return {
+        "exception.type": cast(str, details["type"]),
+        "exception.message": _exception_message(details),
+        "exception.stacktrace": _render_safe_exception(details),
+    }
+
+
+def _format_safe_exc_info(
+    logger: Any, method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    resolved = _exception_control(event_dict.pop("exc_info", None))
+    if resolved is not None:
+        # Keep the snapshot structured until each sink's final renderer. A
+        # later free-text redaction pass must not corrupt serialized numbers.
+        exception, traceback = resolved
+        event_dict["exception"] = _ExceptionSnapshot(
+            _safe_exception_snapshot(exception, traceback, seen=set())
+        )
+    return event_dict
+
+
 def add_otel_context(
     logger: Any, method_name: str, event_dict: dict[str, Any]
 ) -> dict[str, Any]:
@@ -446,6 +616,7 @@ def configure_logging(
         structlog.processors.EventRenamer("message"),
         # MED-W19: named processor instead of lambda with side-effect
         _add_service_context,
+        _format_safe_exc_info,
     ]
 
     processors: list[Any]
@@ -456,16 +627,12 @@ def configure_logging(
         processors = [
             structlog.stdlib.filter_by_level,
             *shared_processors,
-            # JSON needs a serializable exception string. ConsoleRenderer
-            # handles ``exc_info`` itself and warns if it is pre-formatted.
-            structlog.processors.format_exc_info,
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ]
         factory: Any = structlog.stdlib.LoggerFactory()
     else:
-        # Development: keep rich tracebacks, but never render frame locals.
-        # Locals routinely contain credentials, reset links and request payloads;
-        # showing them would bypass the structured-log redaction processors.
+        # The shared chain renders safe exception snapshots in both modes.
+        # Keep locals disabled as defense in depth for direct renderer usage.
         safe_traceback = structlog.dev.RichTracebackFormatter(show_locals=False)
         renderer = structlog.dev.ConsoleRenderer(
             colors=True,
@@ -494,8 +661,6 @@ def configure_logging(
         level=level,
     )
     foreign_pre_chain = list(shared_processors)
-    if json_output:
-        foreign_pre_chain.append(structlog.processors.format_exc_info)
 
     def render_event(logger: Any, method_name: str, event_dict: EventDict) -> str:
         # This producer owns a finite, privacy-safe schema. Keep its diagnostic
@@ -512,6 +677,9 @@ def configure_logging(
                     if key in event_dict
                 }
             )
+        exception = event_dict.get("exception")
+        if type(exception) is _ExceptionSnapshot:
+            event_dict["exception"] = _render_safe_exception(exception)
         rendered: str = renderer(logger, method_name, event_dict)
         return rendered
 

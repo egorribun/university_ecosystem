@@ -246,12 +246,8 @@ def test_configure_logging_builds_json_and_console_processor_chains():
         assert kwargs["wrapper_class"] is structlog.stdlib.BoundLogger
         assert kwargs["cache_logger_on_first_use"] is True
         assert processors[-1] is structlog.stdlib.ProcessorFormatter.wrap_for_formatter
-        if json_output:
-            assert structlog.processors.format_exc_info in processors
-        else:
-            # ConsoleRenderer formats ``exc_info`` itself. Pre-formatting it
-            # emits a warning and produces a less readable duplicate trace.
-            assert structlog.processors.format_exc_info not in processors
+        assert logging_mod._format_safe_exc_info in processors
+        assert structlog.processors.format_exc_info not in processors
         basic_config.assert_called_once_with(
             format="%(message)s",
             stream=sys.stdout,
@@ -277,7 +273,8 @@ def test_configure_logging_json_preserves_serializer_and_foreign_chain():
         renderer.assert_called_once_with(serializer=logging_mod._orjson_serializer)
         formatter_kwargs = formatter.call_args.kwargs
         foreign_pre_chain = formatter_kwargs["foreign_pre_chain"]
-        assert structlog.processors.format_exc_info in foreign_pre_chain
+        assert logging_mod._format_safe_exc_info in foreign_pre_chain
+        assert structlog.processors.format_exc_info not in foreign_pre_chain
         stream_handlers = [
             handler
             for handler in logging.getLogger().handlers
