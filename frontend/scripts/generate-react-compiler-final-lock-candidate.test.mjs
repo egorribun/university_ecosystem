@@ -502,6 +502,35 @@ test("already-final graph requires exact source identity and zero lock delta", (
   }
 })
 
+test("committed sanitizer link metadata matches its package manifest", () => {
+  const local = "wasm-sanitizer/pkg"
+  const manifest = JSON.parse(readFileSync(join(TEST_FRONTEND, local, "package.json"), "utf8"))
+  const lock = JSON.parse(readFileSync(join(TEST_FRONTEND, "package-lock.json"), "utf8"))
+  assert.deepEqual(lock.packages["node_modules/wasm-sanitizer"], { resolved: local, link: true })
+  assert.equal(lock.packages[local].name, manifest.name)
+  assert.equal(lock.packages[local].version, manifest.version)
+  assert.equal(typeof manifest.license, "string")
+  assert.notEqual(manifest.license, "")
+  assert.equal(lock.packages[local].license, manifest.license)
+})
+
+test("already-final scope rejects a local sanitizer license change", () => {
+  const local = "wasm-sanitizer/pkg"
+  const original = expectedFinalLock()
+  original.packages[local] = { name: "wasm-sanitizer", version: "0.1.0", license: "MIT" }
+  const candidate = structuredClone(original)
+  assert.equal(
+    assertFinalLockScope(original, candidate, formatterMetadata(), SOURCE_PHASE.ALREADY_FINAL),
+    true
+  )
+  candidate.packages[local].license = "LicenseRef-University-Ecosystem-Proprietary"
+  assert.throws(
+    () =>
+      assertFinalLockScope(original, candidate, formatterMetadata(), SOURCE_PHASE.ALREADY_FINAL),
+    { name: "AssertionError" }
+  )
+})
+
 test("committed final graph and strict fixture use the same current ESLint artifact", () => {
   const committedManifest = JSON.parse(readFileSync(join(TEST_FRONTEND, "package.json"), "utf8"))
   const committedLock = JSON.parse(readFileSync(join(TEST_FRONTEND, "package-lock.json"), "utf8"))
