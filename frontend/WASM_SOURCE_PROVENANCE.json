@@ -8,8 +8,8 @@
     },
     {
       "path": "rust-crypto/Cargo.toml",
-      "size": 1011,
-      "sha256": "2d58ca3a5391283815e768d1e157f40d04f61e81c19c213f3c0366070ae115bb"
+      "size": 955,
+      "sha256": "4dcaec80c89f22120a4cf125b2e6f8b52e029791506189ba73299216e1bf7c87"
     },
     {
       "path": "rust-crypto/src/lib.rs",
@@ -23,8 +23,8 @@
     },
     {
       "path": "wasm-sanitizer/Cargo.toml",
-      "size": 578,
-      "sha256": "206c23e6c857a73b3f825844690e9d01ba71e2b16385e05916fdfaa924892c67"
+      "size": 522,
+      "sha256": "73db9b6fe055d8662c762d7050e818cbae5e537f916c8ecad34ebaff2c29b57d"
     },
     {
       "path": "wasm-sanitizer/src/lib.rs",
@@ -32,15 +32,11 @@
       "sha256": "91eb2a042d5495b52b6537ee0cad8ef258afe421316f9309f650f0b63d6c4293"
     }
   ],
-  "source_tree_sha256": "e5e83e179c5c88d5f61f67cc5ed4760997dc1d869b85559af3666656ca2efdfe",
+  "source_tree_sha256": "9077e6441b1c96bced7468d6155290dae8896a4d69b143fb5fcd77140e6eccc4",
   "packages": {
-    "rust-crypto/pkg/LICENSE": {
-      "size": 4986,
-      "sha256": "4475f1e1eb1cd784db57163231450b5fb637019749ffb95aa85ceba19c950930"
-    },
     "rust-crypto/pkg/package.json": {
-      "size": 346,
-      "sha256": "98cb0b8c6fdff80d5ccd44a07b43c33fdcaebda7dc08ad3291daff4ea4caaaa1"
+      "size": 306,
+      "sha256": "abca3afb6c435d8769bdd8db2e457da44473ffe914c78f08c5cd2780439f2f4f"
     },
     "rust-crypto/pkg/uni_wasm_crypto.d.ts": {
       "size": 2416,
@@ -54,13 +50,9 @@
       "size": 45053,
       "sha256": "724d6ef82281b4e5529e5431e2e0ea09b61a41f80d07a4eac347337ab94529a5"
     },
-    "wasm-sanitizer/pkg/LICENSE": {
-      "size": 4986,
-      "sha256": "4475f1e1eb1cd784db57163231450b5fb637019749ffb95aa85ceba19c950930"
-    },
     "wasm-sanitizer/pkg/package.json": {
-      "size": 378,
-      "sha256": "0e6b189908b19ca0681a62f0e79d0a7004ea0efc9cee35e005ee6f239522ef67"
+      "size": 338,
+      "sha256": "2da51c9fb435b4c999756646a862bc972a579f78b2d26550126548bfa77e7344"
     },
     "wasm-sanitizer/pkg/wasm_sanitizer.d.ts": {
       "size": 2021,

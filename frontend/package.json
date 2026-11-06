@@ -55,7 +55,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "ISC",
   "packageManager": "npm@11.17.0",
   "engines": {
     "node": ">=24.0.0",

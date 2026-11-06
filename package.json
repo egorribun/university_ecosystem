@@ -1,7 +1,6 @@
 {
   "name": "university-ecosystem-root",
   "private": true,
-  "license": "SEE LICENSE IN LICENSE",
   "description": "Root management for University Ecosystem",
   "scripts": {
     "release": "semantic-release",
