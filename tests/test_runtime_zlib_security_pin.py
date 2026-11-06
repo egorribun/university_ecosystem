@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCKERFILES = ("services/caddy/Dockerfile", "frontend.Dockerfile")
+DOCKERFILES = (ROOT / "services/caddy/Dockerfile", ROOT / "frontend.Dockerfile")
 ZLIB_PIN = "zlib=1.3.2-r1"
 
 
@@ -67,17 +67,21 @@ def _assert_runtime_zlib_pin(source: str) -> None:
     ], "do not introduce a second zlib package selection"
 
 
-@pytest.mark.parametrize("dockerfile", DOCKERFILES)
-def test_final_production_image_installs_fixed_zlib(dockerfile: str) -> None:
-    _assert_runtime_zlib_pin((ROOT / dockerfile).read_text(encoding="utf-8"))
+@pytest.mark.parametrize(
+    "dockerfile", DOCKERFILES, ids=lambda path: path.relative_to(ROOT).as_posix()
+)
+def test_final_production_image_installs_fixed_zlib(dockerfile: Path) -> None:
+    _assert_runtime_zlib_pin(dockerfile.read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("dockerfile", DOCKERFILES)
+@pytest.mark.parametrize(
+    "dockerfile", DOCKERFILES, ids=lambda path: path.relative_to(ROOT).as_posix()
+)
 @pytest.mark.parametrize("replacement", ["zlib=1.3.2-r0", "zlib", "zlib>=1.3.2-r1", ""])
 def test_runtime_contract_rejects_vulnerable_or_mutable_zlib(
-    dockerfile: str, replacement: str
+    dockerfile: Path, replacement: str
 ) -> None:
-    source = (ROOT / dockerfile).read_text(encoding="utf-8")
+    source = dockerfile.read_text(encoding="utf-8")
     assert source.count(ZLIB_PIN) == 1
     with pytest.raises(AssertionError):
         _assert_runtime_zlib_pin(source.replace(ZLIB_PIN, replacement))
