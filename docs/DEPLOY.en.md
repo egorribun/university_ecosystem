@@ -192,7 +192,7 @@ reconciliation proof, and an explicit rollout applies the new values.
 ### Database connection pool
 
 - In production environments use the SQLAlchemy pool: set `DATABASE_POOL_SIZE` (base pool size), `DATABASE_MAX_OVERFLOW` (additional connections above the pool), `DATABASE_POOL_TIMEOUT` (seconds to wait for a free connection), and `DATABASE_POOL_RECYCLE` (seconds before a forced connection close). `_CPU_COUNT` is the CPU count detected by the application. Default values are `_CPU_COUNT * 2 + 1`, `_CPU_COUNT * 4`, `30`, and `540` respectively. These values apply per process; the overall connection budget must account for processes and replicas.
-- For dev/test environments the application automatically switches to `NullPool` so each connection opens anew; pool parameters are ignored. This avoids SQLite locks and helps with local development.
+- SQLite connections use `NullPool`, so each connection opens anew and pool size, overflow, timeout, and recycle settings are ignored. PostgreSQL uses the configured SQLAlchemy pool in development and testing as well as production; include these processes in the connection budget.
 - Before deploying to PostgreSQL or another production database, choose values within the database limits. For example, on a server limited to 20 connections you could set `DATABASE_POOL_SIZE=5` and `DATABASE_MAX_OVERFLOW=5`, leaving room for background jobs and external tools.
 
 ### Event search
