@@ -329,7 +329,7 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
         package for package in lock["package"] if package["name"] == "virtualenv"
     ]
     assert len(virtualenv_packages) == 1
-    assert virtualenv_packages[0]["version"] == "21.14.9"
+    assert virtualenv_packages[0]["version"] == "21.15.1"
     assert {"name": "virtualenv", "specifier": "==21.14.9"} not in lock["manifest"][
         "constraints"
     ]
@@ -527,4 +527,4 @@ def test_closed_emergency_constraints_keep_all_security_floors() -> None:
     assert "pyasn1>=0.6.5,<0.7" in uv["constraint-dependencies"]
     assert "brotli>=1.2.1,<2" in uv["constraint-dependencies"]
     assert "pillow>=13.0.0,<14" in pyproject["project"]["dependencies"]
-    assert "virtualenv>=21.14.9" in pyproject["dependency-groups"]["dev"]
+    assert "virtualenv>=21.14.13" in pyproject["dependency-groups"]["dev"]
