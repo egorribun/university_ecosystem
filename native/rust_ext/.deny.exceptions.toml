@@ -1,4 +1,0 @@
-# Owner-approved first-party license only; dependency rules are unchanged.
-exceptions = [
-    { name = "rust_ext", version = "=0.1.0", allow = ["LicenseRef-University-Ecosystem-Proprietary"] },
-]

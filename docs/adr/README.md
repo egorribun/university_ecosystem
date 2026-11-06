@@ -53,4 +53,3 @@ This directory contains architectural decision records (ADRs) for the University
 51. [ADR-051: MVP Migration Baseline Squash](ADR-051-mvp-migration-baseline-squash.md)
 52. [ADR-052: Backend SPIFFE Identity at the HTTP Transport Boundary](ADR-052-backend-spiffe-transport.md)
 53. [ADR-053: Operator-Scoped Single-Organization MVP Authentication](ADR-053-operator-scoped-mvp-authentication.md)
-54. [ADR-054: Proprietary Public Source Terms for Future Original Material](ADR-054-proprietary-public-source-terms.md)

@@ -1,15 +1,14 @@
 <div align="center">
 
 # 🎓 University Ecosystem Platform
-
-### _The Ultimate Digital Hub for Modern Campus Life_
+### *The Ultimate Digital Hub for Modern Campus Life*
 
 <p align="center">
   <a href="README.md"><b>English 🇬🇧</b></a> • 
   <a href="README.ru.md"><b>Русский 🇷🇺</b></a>
 </p>
 
-[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
 [![Python coverage policy target](https://img.shields.io/badge/Python_Coverage_Policy_Target-100%25-brightgreen.svg?logo=pytest&logoColor=white)](quality/quality-contract.json)
 [![Go coverage policy target](https://img.shields.io/badge/Go_Coverage_Policy_Target-100%25-brightgreen.svg?logo=go&logoColor=white)](quality/quality-contract.json)
@@ -20,12 +19,6 @@
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8.svg?logo=go&logoColor=white)](https://go.dev/)
 [![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-336791.svg?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Security: Pre-commit](https://img.shields.io/badge/Security-Ruff_%7C_Semgrep_%7C_Trivy-orange.svg)](SECURITY.md)
-
-> **Public source inspection.** Future original material is governed by the
-> [proprietary public inspection terms](LICENSE). Additional use requires prior
-> written permission. Previously licensed code and third-party material retain
-> their existing permissions; see the [transition record](docs/licensing/README.md).
-> Normal use of owner-operated websites is permitted under those terms.
 
 ---
 
@@ -56,12 +49,12 @@
 
 Our polyglot architecture maximizes throughput while maintaining low resource usage:
 
-| Subsystem / Metric                          |     Pure Python / Standard      |       Polyglot Core (Rust / Go)       |   Performance Gain    |
-| :------------------------------------------ | :-----------------------------: | :-----------------------------------: | :-------------------: |
-| **Schedule Conflict Solver** (10,000 items) |    ~45.2 ms (Single-thread)     |   **<0.98 ms** (Rust PyO3 + Rayon)    |  **~46x Faster** 🚀   |
-| **WebSocket Throughput (`ws-hub`)**         |  ~2,500 req/sec (Single Node)   |  **10,000+ req/sec** (<5ms latency)   | **4x Concurrency** ⚡ |
-| **L1 Cache Refresh (`gateway`)**            | Traditional TTL (Stampede Risk) |   **XFetch Probabilistic Refresh**    |  **0 Stampedes** 🛡️   |
-| **Frontend Bundle Budget**                  |    ~1.4 MB (Standard Rollup)    | **<485 KB** (Vite 8 / Rolldown + Oxc) |  **65% Smaller** 📦   |
+| Subsystem / Metric | Pure Python / Standard | Polyglot Core (Rust / Go) | Performance Gain |
+| :--- | :---: | :---: | :---: |
+| **Schedule Conflict Solver** (10,000 items) | ~45.2 ms (Single-thread) | **<0.98 ms** (Rust PyO3 + Rayon) | **~46x Faster** 🚀 |
+| **WebSocket Throughput (`ws-hub`)** | ~2,500 req/sec (Single Node) | **10,000+ req/sec** (<5ms latency) | **4x Concurrency** ⚡ |
+| **L1 Cache Refresh (`gateway`)** | Traditional TTL (Stampede Risk) | **XFetch Probabilistic Refresh** | **0 Stampedes** 🛡️ |
+| **Frontend Bundle Budget** | ~1.4 MB (Standard Rollup) | **<485 KB** (Vite 8 / Rolldown + Oxc) | **65% Smaller** 📦 |
 
 ## 📂 Project Structure
 
@@ -84,11 +77,10 @@ university_ecosystem/
 ## 🧠 Architectural Philosophy
 
 Why the polyglot approach?
-
 - **Python (FastAPI & Python 3.14)**: Selected for development velocity, Dishka dependency injection, rich ecosystem, and async processing for complex business logic.
 - **Go (Golang)**: Powers I/O-bound microservices (`gateway`, `ws-hub`, `file-processor`) to handle thousands of concurrent WebSocket connections and gRPC streams with minimal footprint.
 - **Rust (PyO3 & Rayon)**: Integrated directly into Python for CPU-heavy hot paths (e.g., timetable conflict resolution and partition management) where microsecond performance is critical.
-- **SpiceDB (ReBAC)**: Implements Zanzibar-inspired relationship-based access control (e.g., _"Student X can view Course Y because they belong to Group Z"_).
+- **SpiceDB (ReBAC)**: Implements Zanzibar-inspired relationship-based access control (e.g., *"Student X can view Course Y because they belong to Group Z"*).
 - **Vite 8 & Rolldown**: Delivers ultra-fast frontend builds, React Compiler optimizations, and lightweight bundles (<500 KB JS budget).
 
 ## 🏗️ Architecture & Core Sequence Flows
@@ -203,39 +195,34 @@ sequenceDiagram
 
 ## 🛠️ Technological Stack
 
-| Layer                  | Technologies                                                                                  | Primary Role                                                                              |         Policy target / current evidence         |
-| :--------------------- | :-------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------- | :----------------------------------------------: |
-| **Frontend**           | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack                                   | Matte UX, accessibility (WCAG 2.2 AA), PWA                                                | Policy target: 100%; fresh-SHA evidence required |
-| **Backend API**        | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0                                               | Core business logic and REST APIs                                                         | Policy target: 100%; fresh-SHA evidence required |
-| **Microservices**      | Go 1.26, NATS, gRPC, Temporal Go SDK                                                          | High-concurrency WebSockets & media orchestration                                         | Policy target: 100%; fresh-SHA evidence required |
-| **Native Performance** | Rust, PyO3, Rayon, Maturin                                                                    | Microsecond-speed schedule conflict solver & HMAC                                         | Policy target: 100%; fresh-SHA evidence required |
-| **Auth & Security**    | Argon2id, SpiceDB, TOTP/email OTP, recovery codes, Kyverno, CSRF nonces                       | Zero-trust ReBAC, step-up MFA & policy enforcement                                        |     Implemented; fresh-SHA evidence required     |
-| **Data & Cache**       | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data, probabilistic L1/L2 caching, and isolated durable auth revocation |     Implemented; fresh-SHA evidence required     |
-| **Observability**      | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit                              | Distributed tracing, metrics, profiling & log aggregation                                 |     Implemented; fresh-SHA evidence required     |
+| Layer | Technologies | Primary Role | Policy target / current evidence |
+| :--- | :--- | :--- | :---: |
+| **Frontend** | React 19, Vite 8/Rolldown, Valibot, Framer Motion, TanStack | Matte UX, accessibility (WCAG 2.2 AA), PWA | Policy target: 100%; fresh-SHA evidence required |
+| **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0 | Core business logic and REST APIs | Policy target: 100%; fresh-SHA evidence required |
+| **Microservices** | Go 1.26, NATS, gRPC, Temporal Go SDK | High-concurrency WebSockets & media orchestration | Policy target: 100%; fresh-SHA evidence required |
+| **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | Policy target: 100%; fresh-SHA evidence required |
+| **Auth & Security** | Argon2id, SpiceDB, TOTP/email OTP, recovery codes, Kyverno, CSRF nonces | Zero-trust ReBAC, step-up MFA & policy enforcement | Implemented; fresh-SHA evidence required |
+| **Data & Cache** | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data, probabilistic L1/L2 caching, and isolated durable auth revocation | Implemented; fresh-SHA evidence required |
+| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Distributed tracing, metrics, profiling & log aggregation | Implemented; fresh-SHA evidence required |
 
 ## 🚀 Rapid Onboarding
 
 ### 1. Secure Environment Setup
-
 Create a local environment from the checked-in example. The bootstrapper generates
 development-only secrets when values are missing; never commit `.env` files.
-
 ```powershell
 Copy-Item .env.example .env
 ```
 
 ### 2. Ignition
-
 Launch the entire ecosystem through the PowerShell 7 bootstrapper. It creates
 local secrets, reconciles persistent infrastructure, builds images, and waits
 for every runtime and Prometheus target:
-
 ```powershell
 .\start-docker.ps1 -Build
 ```
 
 ### 🌐 Access Points
-
 - **Digital Hub (Caddy edge, including Frontend SSR)**: [http://localhost](http://localhost)
 - **Core API documentation (development only)**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
 - **Go Gateway Entry**: [http://localhost:8080](http://localhost:8080)
@@ -253,7 +240,6 @@ for every runtime and Prometheus target:
 ## 🧪 Developer Workflow
 
 ### **Python (Core API)**
-
 ```bash
 uv sync --frozen   # Sync Python 3.14 dependencies from the checked-in lock
 uv run pytest      # Run the full pytest suite
@@ -262,7 +248,6 @@ uv run ruff format app/     # Format Python codebase
 ```
 
 ### **React (Frontend)**
-
 ```bash
 cd frontend
 npm ci              # Reproduce the dependency graph from package-lock.json
@@ -279,7 +264,6 @@ on Windows; both Windows runners resolve Chromium from Playwright and do not
 require symbolic-link privileges.
 
 ### **Go (Microservices)**
-
 ```bash
 cd services/gateway
 go test ./...      # Test Go Gateway logic
@@ -289,7 +273,6 @@ make test-integration # Run ADR-022 Testcontainers suite
 ## 🔭 Observability & Continuous Monitoring
 
 The platform includes an integrated observability stack:
-
 - **OpenTelemetry & Tempo**: End-to-end distributed tracing across Go microservices and FastAPI.
 - **Prometheus**: Real-time metrics including L1 cache hit/miss rates (`cache_l1_hits_total`).
 - **Pyroscope**: Continuous CPU/Memory profiling (`grafana/pyroscope:1.19.1`).
@@ -300,5 +283,5 @@ The platform includes an integrated observability stack:
 <div align="center">
   <br />
   <h3>Built with ❤️ by University Ecosystem Engineers</h3>
-  © 2026 egorribun • New original material: <a href="LICENSE">proprietary public inspection terms</a>. Earlier and third-party licenses remain applicable.
+  © 2026 University Ecosystem Platform • Released under the <a href="LICENSE">MIT License</a>.
 </div>
