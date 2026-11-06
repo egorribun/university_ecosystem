@@ -5,6 +5,7 @@ import { URL } from "node:url"
 
 const specUrl = new URL("./zzz-aud174-prehydration-caddy-log.live.spec.ts", import.meta.url)
 const runnerUrl = new URL("../../../scripts/live_stand.py", import.meta.url)
+const evidenceUrl = new URL("../../../scripts/live_stand_playwright_evidence.py", import.meta.url)
 const packageUrl = new URL("../../package.json", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
 const authContractUrl = new URL("./auth-roles.contract.test.mjs", import.meta.url)
@@ -52,7 +53,11 @@ test("pre-hydration login and project-correlated synthetic query use the real Co
 })
 
 test("runner verifies exact per-project rows in complete, bounded windows from the owned Caddy container", async () => {
-  const [runner, spec] = await Promise.all([readFile(runnerUrl, "utf8"), readFile(specUrl, "utf8")])
+  const [runner, spec, evidence] = await Promise.all([
+    readFile(runnerUrl, "utf8"),
+    readFile(specUrl, "utf8"),
+    readFile(evidenceUrl, "utf8"),
+  ])
   const runnerHas = (pattern) => assert.ok(pattern.test(runner))
   runnerHas(/def _verified_live_core_caddy_container\(/u)
   runnerHas(/def _verify_live_caddy_probe_log\(/u)
@@ -70,7 +75,12 @@ test("runner verifies exact per-project rows in complete, bounded windows from t
   runnerHas(/nonce_bytes in output or nonce_bytes in stderr/u)
   runnerHas(/REDACTED/u)
   runnerHas(/set\(observed\) != set\(LIVE_CADDY_PROBE_PROJECTS\)/u)
-  runnerHas(/_PLAYWRIGHT_SKIP_IDENTITY_LIMIT\s*=\s*220/u)
+  runnerHas(
+    /^from scripts\.live_stand_playwright_evidence import \(\s+_live_playwright_skipped_identities as _live_playwright_skipped_identities,\s*\)$/mu
+  )
+  runnerHas(/_live_playwright_skipped_identities\(stdout, cwd=cwd\)/u)
+  assert.match(evidence, /^_PLAYWRIGHT_SKIP_IDENTITY_LIMIT = 220$/mu)
+  assert.match(evidence, /index > _PLAYWRIGHT_SKIP_IDENTITY_LIMIT/u)
   assert.match(spec, /test\.describe\.configure\(\{\s*retries:\s*0\s*\}\)/u)
 })
 

@@ -243,7 +243,21 @@ test("live Playwright collection has a closed source inventory", async (t) => {
       path.join(frontendRoot, "..", "scripts", "live_stand.py"),
       "utf8"
     )
-    const inventory = launcher.match(
+    const evidence = await readFile(
+      path.join(frontendRoot, "..", "scripts", "live_stand_playwright_evidence.py"),
+      "utf8"
+    )
+    requireCollection(
+      /^from scripts\.live_stand_playwright_evidence import \(\s+_PLAYWRIGHT_FAILURE_DECLARATION_SOURCES as _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES,\s*\)$/mu.test(
+        launcher
+      )
+    )
+    requireCollection(
+      /^from scripts\.live_stand_playwright_evidence import \(\s+_PLAYWRIGHT_FULL_COLLECTION_COUNT as _PLAYWRIGHT_FULL_COLLECTION_COUNT,\s*\)$/mu.test(
+        launcher
+      )
+    )
+    const inventory = evidence.match(
       /^_PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = \(\n([\s\S]*?)^\)/mu
     )
     requireCollection(inventory !== null)
@@ -257,7 +271,7 @@ test("live Playwright collection has a closed source inventory", async (t) => {
     requireCollection(reviewed.size > 0 && reviewed.size <= 256)
 
     const expectedCount = Number(
-      launcher.match(/^_PLAYWRIGHT_FULL_COLLECTION_COUNT = ([1-9][0-9]*)$/mu)?.[1]
+      evidence.match(/^_PLAYWRIGHT_FULL_COLLECTION_COUNT = ([1-9][0-9]*)$/mu)?.[1]
     )
     requireCollection(Number.isSafeInteger(expectedCount) && expectedCount > 0)
     requireCollection(expectedCount <= 10_000)
