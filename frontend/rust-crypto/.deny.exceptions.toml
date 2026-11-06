@@ -1,0 +1,4 @@
+# Owner-approved first-party license only; dependency rules are unchanged.
+exceptions = [
+    { name = "uni-wasm-crypto", version = "=0.1.0", allow = ["LicenseRef-University-Ecosystem-Proprietary"] },
+]
