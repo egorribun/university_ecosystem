@@ -1,0 +1,55 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "osv-scanner",
+          "version": "2.6.0",
+          "rules": [
+            {
+              "id": "CVE-2022-24713",
+              "deprecatedIds": [
+                "CVE-2022-24713",
+                "RUSTSEC-2022-0013",
+                "GHSA-m5pq-gvj9-9vr8"
+              ]
+            },
+            {
+              "id": "CVE-2021-3121",
+              "deprecatedIds": [
+                "CVE-2021-3121",
+                "GO-2021-0053",
+                "GHSA-c3h9-896r-86jm"
+              ]
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CVE-2021-3121",
+          "ruleIndex": 1,
+          "message": {
+            "arguments": [],
+            "text": "Package 'github.com/gogo/protobuf@1.3.1' is vulnerable to 'CVE-2021-3121' (also known as 'GO-2021-0053', 'GHSA-c3h9-896r-86jm')."
+          },
+          "locations": [
+            {
+              "annotations": [],
+              "id": -1,
+              "logicalLocations": [],
+              "physicalLocation": {
+                "artifactLocation": {
+                  "index": -1,
+                  "uri": "file:///path/to/go.mod"
+                }
+              },
+              "relationships": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

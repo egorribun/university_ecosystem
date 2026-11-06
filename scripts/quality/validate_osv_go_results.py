@@ -20,9 +20,11 @@ from typing import Any
 from scripts.quality.verify_dependency_review_scope import GHSA_EXCEPTIONS
 
 MAX_SARIF_BYTES = 32 * 1024 * 1024
+ADVISORY_ID = r"(?:CVE-[0-9]{4}-[0-9]{4,}|GO-[0-9]{4}-[0-9]{4,}|GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4})"
 MESSAGE = re.compile(
-    r"^Package '(?P<name>[^@']+)@(?P<version>[^']+)' is vulnerable to "
-    r"'(?P<id>[^']+)'(?: \(also known as '(?P<alias>GHSA-[a-z0-9-]+)'\))?\.?$"
+    r"Package '(?P<name>[^@'\s]+)@(?P<version>[^'\s]+)' is vulnerable to "
+    rf"'(?P<id>{ADVISORY_ID})'"
+    rf"(?: \(also known as (?P<aliases>'{ADVISORY_ID}'(?:, '{ADVISORY_ID}')*)\))?\.?"
 )
 
 
@@ -48,11 +50,45 @@ def _exceptions_by_key() -> dict[tuple[str, str, str, str], dict[str, Any]]:
 
 
 def _manifest(uri: str) -> str:
-    marker = "services/"
-    index = uri.find(marker)
-    if index < 0:
+    parts = uri.split("/")
+    if "services" not in parts:
         raise OsvResultError("result location is outside services/")
-    return uri[index:]
+    return "/".join(parts[parts.index("services") :])
+
+
+def _ghsa_alias(
+    run: dict[str, Any], result: dict[str, Any], match: re.Match[str]
+) -> str:
+    # v2.6.0 emits all aliases, not only GHSA, and repeats the complete alias
+    # group in the referenced rule's deprecatedIds. Never select the first
+    # approved alias from an ambiguous group or from unmatched message text.
+    aliases = match.group("aliases")
+    ids = [match.group("id"), *(aliases[1:-1].split("', '") if aliases else [])]
+    if len(set(ids)) != len(ids):
+        raise OsvResultError("duplicate advisory identifier")
+    ghsas = [identifier for identifier in ids if identifier.startswith("GHSA-")]
+    if not ghsas:
+        raise OsvResultError(f"finding {ids[0]} has no GHSA alias")
+    if len(ghsas) != 1:
+        raise OsvResultError("finding has ambiguous GHSA aliases")
+    tool = run.get("tool")
+    driver = tool.get("driver") if isinstance(tool, dict) else None
+    rules = driver.get("rules") if isinstance(driver, dict) else None
+    if not isinstance(rules, list) or not all(isinstance(rule, dict) for rule in rules):
+        raise OsvResultError("finding has no valid SARIF rules")
+    matched = [
+        (index, rule) for index, rule in enumerate(rules) if rule.get("id") == ids[0]
+    ]
+    if result.get("ruleId") != ids[0] or len(matched) != 1:
+        raise OsvResultError("finding does not identify one matching SARIF rule")
+    index, rule = matched[0]
+    if "ruleIndex" in result and (
+        type(result["ruleIndex"]) is not int or result["ruleIndex"] != index
+    ):
+        raise OsvResultError("finding ruleIndex disagrees with ruleId")
+    if rule.get("deprecatedIds") != ids:
+        raise OsvResultError("finding aliases disagree with SARIF rule")
+    return ghsas[0]
 
 
 def validate(report: dict[str, Any], scanner_status: int, today: date) -> list[str]:
@@ -72,7 +108,7 @@ def validate(report: dict[str, Any], scanner_status: int, today: date) -> list[s
         for result in run.get("results") or []:
             findings += 1
             message = str((result.get("message") or {}).get("text", ""))
-            match = MESSAGE.match(message)
+            match = MESSAGE.fullmatch(message)
             if match is None:
                 raise OsvResultError("unparsable finding message")
             locations = result.get("locations") or []
@@ -80,9 +116,7 @@ def validate(report: dict[str, Any], scanner_status: int, today: date) -> list[s
                 raise OsvResultError("finding must have exactly one location")
             uri = str(locations[0]["physicalLocation"]["artifactLocation"]["uri"])
             manifest = _manifest(uri)
-            alias = match.group("alias")
-            if alias is None:
-                raise OsvResultError(f"finding {match.group('id')} has no GHSA alias")
+            alias = _ghsa_alias(run, result, match)
             key = (alias, manifest, match.group("name"), match.group("version"))
             record = exceptions.get(key)
             if record is None:
