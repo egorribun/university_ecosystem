@@ -2,21 +2,6 @@
 
 Welcome to the **University Ecosystem Platform** contribution guide. Please follow these guidelines to ensure code quality, security, and repository consistency.
 
-## Contribution rights prerequisite
-
-The project publishes [public inspection terms](../LICENSE) for future original
-material. Issue reports and suggestions are welcome. Before submitting external
-code or assets, obtain a separate contribution rights agreement executed with
-`egorribun`. Maintainers must verify that it covers the proposed material and
-the project's proprietary distribution before accepting the contribution.
-A pull request, DCO, bot attribution, or repository access is not a substitute
-for that agreement. Do not submit code or assets without it.
-
-Preserve existing licenses and upstream notices. Identify copied or adapted
-material and hold the necessary submission rights. An agreement must not claim
-ownership of third-party or previously licensed material. See the
-[licensing transition record](licensing/README.md).
-
 ---
 
 ## 🎨 Git Commit & Branching Conventions
@@ -121,7 +106,6 @@ and are outside the MVP blocking release gate.
 ## 🛡️ Pre-push Security Checklist
 
 Before pushing commits to remote:
-
 1. Run pre-commit hooks: `pre-commit run --all-files`
 2. Ensure `.secrets.baseline` is re-staged if modified.
 3. Verify all automated CI status checks pass (`uv run pytest`, `npm run test --prefix frontend`, `npm run typecheck --prefix frontend`, `go test`, `cargo test`).

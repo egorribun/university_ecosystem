@@ -106,12 +106,6 @@ export function readFacadeSources(directory) {
   return files
 }
 
-export function readFacadeLicenseSnapshot(workspace) {
-  const name = "docs/licensing/legacy/LICENSE-MIT"
-  const path = join(workspace, name)
-  return { name, path, limit: FILE_LIMIT, bytes: regularBytes(path, FILE_LIMIT) }
-}
-
 function sourceFiles(files) {
   return NAMES.map((path) => ({
     path,
@@ -316,13 +310,13 @@ export async function runFacadePack() {
       ["frontend/package.json", 64 * 1024],
       ["frontend/package-lock.json", 4 * 1024 * 1024],
       ["frontend/.npmrc", 4096],
+      ["LICENSE", FILE_LIMIT],
     ].map(([name, limit]) => ({
       name,
       path: join(workspace, name),
       limit,
       bytes: regularBytes(join(workspace, name), limit),
     }))
-    snapshots.push(readFacadeLicenseSnapshot(workspace))
     assert.equal(JSON.parse(snapshots[0].bytes).packageManager, "npm@11.17.0")
     assert.equal(
       snapshots[2].bytes.toString(),

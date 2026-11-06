@@ -1,11 +1,9 @@
 # Security Policy
 
 ## Supported Versions
-
 We actively maintain and provide security updates for the latest released version of this project. Older versions may no longer receive security fixes, so upgrading to the most recent release is strongly recommended.
 
 ## Reporting a Vulnerability
-
 If you discover a vulnerability, do not publish technical details in an issue, pull request, or discussion. Open a GitHub issue titled **"Security contact request"** that contains no vulnerability details; the maintainer will reply with a private channel for the full report. We aim to acknowledge new reports within 24 hours for Critical vulnerabilities and 48 hours for High vulnerabilities.
 
 ---
@@ -17,7 +15,7 @@ If you discover a vulnerability, do not publish technical details in an issue, p
 - **Argon2 Concurrency Cap**: Argon2 hashing runs in a dedicated executor sized to the cgroup-aware CPU count (at least 2 threads), and a semaphore admits at most `workers - 1` (at least 1) concurrent hashes per process, so peak hashing memory stays bounded at 32 MiB per admitted hash (PERF-02, PERF-24-04).
 - **MFA Factors**: Interactive MFA uses **TOTP** or a six-digit **email OTP**; single-use **recovery codes** remain available only as an emergency recovery factor.
 - **Factor Migration Safety**: Legacy hardware-key-only accounts are never migrated silently. A migration preflight selects an existing TOTP factor or a verified-email OTP path and blocks accounts without either path until controlled remediation is complete.
-- **Pwned Password Checks**: SHA-1 is used _exclusively_ for the [Have I Been Pwned API](https://haveibeenpwned.com/API/v3#PwnedPasswords) k-anonymity check. Only the first 5 characters of the hash are transmitted; the full hash is never stored.
+- **Pwned Password Checks**: SHA-1 is used *exclusively* for the [Have I Been Pwned API](https://haveibeenpwned.com/API/v3#PwnedPasswords) k-anonymity check. Only the first 5 characters of the hash are transmitted; the full hash is never stored.
 
 ---
 
@@ -82,15 +80,15 @@ If you discover a vulnerability, do not publish technical details in an issue, p
 
 ### Response SLA (MOD-W8-03)
 
-| Severity     | Acknowledgement |  Triage  |     Fix     |
-| :----------- | :-------------: | :------: | :---------: |
-| **Critical** |    24 hours     | 48 hours |   7 days    |
-| **High**     |    48 hours     |  5 days  |   30 days   |
-| **Medium**   |     5 days      | 14 days  |   90 days   |
-| **Low**      |     5 days      | 30 days  | Best-effort |
+| Severity | Acknowledgement | Triage | Fix |
+|:---|:---:|:---:|:---:|
+| **Critical** | 24 hours | 48 hours | 7 days |
+| **High** | 48 hours | 5 days | 30 days |
+| **Medium** | 5 days | 14 days | 90 days |
+| **Low** | 5 days | 30 days | Best-effort |
 
 ---
 
 <div align="center">
-  © 2026 egorribun • New original material: <a href="LICENSE">proprietary public inspection terms</a>. Earlier and third-party licenses remain applicable.
+  © 2026 University Ecosystem Platform • Released under the <a href="LICENSE">MIT License</a>.
 </div>
