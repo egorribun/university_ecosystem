@@ -27,10 +27,10 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
 - Control the object-storage health probe with `HEALTH_STORAGE_PROBE_ENABLED` (run a write/delete check when set to `true`) and `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` (cache probe results between intervals). When disabled, the probe uses cheap bucket/list calls when available, which is friendlier to external providers.
 - Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory:
-  - Create the Compose secrets `secret_key`, `database_url`, `nats_auth_token`, and `mfa_totp_encryption_keys`.
-  - Provide their source paths through `SECRET_KEY_SOURCE_FILE`, `DATABASE_URL_SOURCE_FILE`, `NATS_AUTH_TOKEN_SOURCE_FILE`, `CACHE_REDIS_URL_SOURCE_FILE`, `REVOCATION_REDIS_URL_SOURCE_FILE`, and `MFA_TOTP_ENCRYPTION_KEYS_SOURCE_FILE`.
+  - Provision every file-backed secret required by the `secrets:` section of `docker-compose.prod.yml`; that section lists the complete set of mandatory `*_SOURCE_FILE` inputs.
+  - Keep the three database credentials separate: `DATABASE_URL_SOURCE_FILE` supplies the backend/outbox `ue_app` login, `NOTIFICATIONS_DATABASE_URL_SOURCE_FILE` supplies the notifications `ue_worker` login, and `MIGRATION_DATABASE_URL_SOURCE_FILE` supplies the `ue_migrator` login only to migrations. The corresponding `UE_APP_DB_PASSWORD_SOURCE_FILE`, `UE_WORKER_DB_PASSWORD_SOURCE_FILE`, and `UE_MIGRATOR_DB_PASSWORD_SOURCE_FILE` must match their URL credentials: URL-encode passwords in connection URLs, but keep the original passwords in the role-password files. Bootstrap also requires the separate `UE_SPICEDB_DB_PASSWORD_SOURCE_FILE` and `UE_TEMPORAL_DB_PASSWORD_SOURCE_FILE`.
   - Set the non-secret `MFA_TOTP_ACTIVE_ENCRYPTION_KEY_ID` directly. The TOTP ring and active ID are delivered to backend and migrations; non-auth workers stay keyless.
-  - Provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`.
+  - Provide the bootstrap PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. Runtime URL secrets use `pgbouncer:5432`; the migration URL uses `postgres:5432` directly, never the transaction pooler. Never give runtime services the migrator or bootstrap credentials.
   - Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
 - The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). The TOTP ring is an application Secret key used by backend and migration; its active key ID is a direct non-secret chart value. The two non-auth workers receive neither TOTP setting. In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, S3 credentials (the `minio-access-key`/`minio-secret-key` keys), and Temporal API key. Production rendering rejects plaintext S3, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
 
@@ -140,31 +140,50 @@ reconciliation proof, and an explicit rollout applies the new values.
 
 ## Database migrations
 
-- Before launching a new release, run `alembic upgrade head`:
+- The current baseline, `202611020000`, requires a fresh, empty, quiescent
+  PostgreSQL database. Keep application writers and other migrators/schema
+  changes stopped during initialization. Before DDL, the guard rejects extra
+  non-system namespaces and existing objects in `public`, including objects
+  owned by preinstalled extensions. Normal empty Alembic version bookkeeping
+  is allowed; the guard does not validate an arbitrary preexisting relation
+  named `alembic_version`. The pre-squash revisions were removed; a database
+  bound to that chain has no supported upgrade path. Do not stamp an existing
+  database to the new baseline. See [ADR-051](adr/ADR-051-mvp-migration-baseline-squash.md).
+- Run Alembic in the designated migrator environment, not with the application's
+  runtime login:
 
   ```bash
-  cd .
-  # DATABASE_URL must already be supplied by the secret-manager integration.
-  test -n "${DATABASE_URL:?DATABASE_URL is required}"
+  # Supply the ue_migrator connection through the secret-manager integration.
+  # Use DATABASE_URL_FILE, or DATABASE_URL when no file is configured.
   alembic upgrade head
   ```
 
-- Alembic reads the connection string from `alembic.ini`. If that sample URL
-  does not match your target database, provide the correct value through the
-  `DATABASE_URL` environment variable (reuse the same URL as the application).
-- Docker Compose now includes a one-off `migrations` service that runs
-  `alembic upgrade head` before the API and worker containers start. You can rerun
-  migrations manually when needed:
+- `DATABASE_URL_FILE` is authoritative; an invalid configured file fails closed.
+  Otherwise Alembic uses the effective `DATABASE_URL` from environment/dotenv.
+  An explicit `sqlalchemy.url` in `alembic.ini` is only a fallback without an
+  effective configured URL; the checked-in ini contains no sample URL.
+- Compose's one-off `migrations` service receives `MIGRATION_DATABASE_URL`
+  (the production override uses its dedicated secret file), runs the upgrade
+  and partition maintenance before API/workers start, and must be used for a
+  manual rerun. Keep the same Compose files and environment options as the stand:
 
   ```bash
-  docker compose run --rm backend alembic upgrade head
+  # Base Compose stand:
+  docker compose run --rm migrations
+  # Production stand:
+  docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml run --rm migrations
   ```
+
+  Do not run migrations in `backend`: its `ue_app` login has runtime DML
+  permissions, not schema ownership.
 
 - Helm performs the same upgrade automatically through a blocking
   `pre-install,pre-upgrade` hook Job. `connections.existingSecret` must exist
-  before `helm install`; a failed migration aborts the application rollout.
-  Disable `migrations.enabled` only when a separate verified deployment pipeline
-  owns schema migrations.
+  before `helm install`; its `connections.migrationDatabaseURLKey` (default
+  `migration-database-url`) must contain the separate migrator connection,
+  not the runtime `database-url`. A failed migration aborts the application
+  rollout. Disable `migrations.enabled` only when a separate verified
+  deployment pipeline owns schema migrations.
 - Enable Helm backups with `backup.enabled=true`: an init container creates a
   custom-format `pg_dump`, then `rclone` (`backup.s3ClientImage`) uploads it
   to the configured bucket. This requires `backup-database-url` in the connection Secret and
@@ -298,7 +317,6 @@ Production key provisioning, a full-table dry run and apply, post-rotation
 validation, and legacy-key retirement are operator actions and remain pending;
 the source change does not claim that existing production data has been rotated.
 
-
 ### Spotify tokens
 
 - The backend encrypts Spotify access/refresh tokens with Fernet. Before enabling the integration, set `SPOTIFY_TOKEN_SECRET` — a base64 string generated by `Fernet.generate_key()`.
@@ -430,11 +448,11 @@ Development and direct-mode renders do not require ingress proxy ranges.
 
 The API runs one hourly scheduler (`app/core/lifespan.py::_periodic_scheduler_loop`; an initial 0–60 s jitter spreads rolling deploys). The cadence is fixed in code, not configurable per job:
 
-| Cadence | Jobs |
-|---|---|
-| every hour | expired stories, stale password-reset tokens, stale e-mail-change tokens, stale MFA challenges, product gauges (active users, MFA adoption) |
-| every 6 hours | expired and revoked sessions |
-| daily at 02:00 UTC | stale notifications, dead-lettered notification-queue jobs, privacy artifacts (and CWV observations) |
+| Cadence            | Jobs                                                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| every hour         | expired stories, stale password-reset tokens, stale e-mail-change tokens, stale MFA challenges, product gauges (active users, MFA adoption) |
+| every 6 hours      | expired and revoked sessions                                                                                                                |
+| daily at 02:00 UTC | stale notifications, dead-lettered notification-queue jobs, privacy artifacts (and CWV observations)                                        |
 
 Retention windows are configurable (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Each job can also be run manually, e.g. `python -m app.services.session_cleanup` or `python -m app.services.mfa_challenge_cleanup`. Monitor `periodic_task_*_runs_total`, `_errors_total` and `_deleted_total`.
 
