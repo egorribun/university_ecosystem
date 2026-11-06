@@ -5,7 +5,8 @@
   "description": "Call-compatible minimatch 3 function export over the patched minimatch 11 engine, for eslint-plugin-react and eslint-plugin-jsx-a11y only",
   "main": "index.cjs",
   "files": [
-    "index.cjs"
+    "index.cjs",
+    "LICENSE"
   ],
   "license": "ISC",
   "engines": {

@@ -1,0 +1,18 @@
+name,version,license_expression,runtime_linked_platforms,build_only_platforms,exact_version_source_page,exact_source_archive,actual_root_legal_file_names
+associative-cache,3.0.1,MIT OR Apache-2.0,windows;linux;macos,,https://crates.io/crates/associative-cache/3.0.1,https://static.crates.io/crates/associative-cache/associative-cache-3.0.1.crate,LICENSE-APACHE;LICENSE-MIT
+bytecount,0.6.9,Apache-2.0/MIT,windows;linux;macos,,https://crates.io/crates/bytecount/0.6.9,https://static.crates.io/crates/bytecount/bytecount-0.6.9.crate,LICENSE.Apache2;LICENSE.MIT
+cc,1.4.3,MIT OR Apache-2.0,,windows;linux;macos,https://crates.io/crates/cc/1.4.3,https://static.crates.io/crates/cc/cc-1.4.3.crate,LICENSE-APACHE;LICENSE-MIT
+cfg-if,1.0.4,MIT OR Apache-2.0,windows;linux;macos,,https://crates.io/crates/cfg-if/1.0.4,https://static.crates.io/crates/cfg-if/cfg-if-1.0.4.crate,LICENSE-APACHE;LICENSE-MIT
+encoding_rs,0.8.35,(Apache-2.0 OR MIT) AND BSD-3-Clause,windows;linux;macos,,https://crates.io/crates/encoding_rs/0.8.35,https://static.crates.io/crates/encoding_rs/encoding_rs-0.8.35.crate,COPYRIGHT;LICENSE-APACHE;LICENSE-MIT;LICENSE-WHATWG
+find-msvc-tools,0.1.11,MIT OR Apache-2.0,,windows;linux;macos,https://crates.io/crates/find-msvc-tools/0.1.11,https://static.crates.io/crates/find-msvc-tools/find-msvc-tools-0.1.11.crate,LICENSE-APACHE;LICENSE-MIT
+itoap,1.0.1,MIT,windows;linux;macos,,https://crates.io/crates/itoap/1.0.1,https://static.crates.io/crates/itoap/itoap-1.0.1.crate,LICENSE
+jiff-core,0.1.0,Unlicense OR MIT,windows;linux;macos,,https://crates.io/crates/jiff-core/0.1.0,https://static.crates.io/crates/jiff-core/jiff-core-0.1.0.crate,COPYING;LICENSE-MIT
+libc,0.2.189,MIT OR Apache-2.0,windows;linux;macos,,https://crates.io/crates/libc/0.2.189,https://static.crates.io/crates/libc/libc-0.2.189.crate,LICENSE-APACHE;LICENSE-MIT
+once_cell,1.21.4,MIT OR Apache-2.0,windows;linux;macos,,https://crates.io/crates/once_cell/1.21.4,https://static.crates.io/crates/once_cell/once_cell-1.21.4.crate,LICENSE-APACHE;LICENSE-MIT
+pyo3-build-config,0.28.3,MIT OR Apache-2.0,,windows;linux;macos,https://crates.io/crates/pyo3-build-config/0.28.3,https://static.crates.io/crates/pyo3-build-config/pyo3-build-config-0.28.3.crate,LICENSE-APACHE;LICENSE-MIT
+pyo3-ffi,0.28.3,MIT OR Apache-2.0,windows;linux;macos,,https://crates.io/crates/pyo3-ffi/0.28.3,https://static.crates.io/crates/pyo3-ffi/pyo3-ffi-0.28.3.crate,LICENSE-APACHE;LICENSE-MIT
+shlex,2.0.1,MIT OR Apache-2.0,,windows;linux;macos,https://crates.io/crates/shlex/2.0.1,https://static.crates.io/crates/shlex/shlex-2.0.1.crate,LICENSE-APACHE;LICENSE-MIT
+simdutf8,0.1.5,MIT OR Apache-2.0,windows;linux;macos,,https://crates.io/crates/simdutf8/0.1.5,https://static.crates.io/crates/simdutf8/simdutf8-0.1.5.crate,LICENSE-Apache;LICENSE-MIT
+target-lexicon,0.13.5,Apache-2.0 WITH LLVM-exception,,windows;linux;macos,https://crates.io/crates/target-lexicon/0.13.5,https://static.crates.io/crates/target-lexicon/target-lexicon-0.13.5.crate,LICENSE
+xxhash-rust,0.8.18,BSL-1.0,windows;linux;macos,,https://crates.io/crates/xxhash-rust/0.8.18,https://static.crates.io/crates/xxhash-rust/xxhash-rust-0.8.18.crate,LICENSE
+zmij,1.0.23,MIT,windows;linux;macos,,https://crates.io/crates/zmij/1.0.23,https://static.crates.io/crates/zmij/zmij-1.0.23.crate,LICENSE-MIT

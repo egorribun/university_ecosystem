@@ -9,7 +9,13 @@
   "files": [
     "wasm_sanitizer_bg.wasm",
     "wasm_sanitizer.js",
-    "wasm_sanitizer.d.ts"
+    "wasm_sanitizer.d.ts",
+    "LICENSE-RUST-STD",
+    "LICENSE-RUST-STD-COPYRIGHT.txt",
+    "LICENSE-RUST-STD-SOURCES.md",
+    "LICENSE-THIRD-PARTY",
+    "LICENSE-THIRD-PARTY-SOURCES.md",
+    "LICENSE"
   ],
   "main": "wasm_sanitizer.js",
   "types": "wasm_sanitizer.d.ts",

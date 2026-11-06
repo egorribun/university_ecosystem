@@ -4,6 +4,7 @@ import path from "node:path"
 import process from "node:process"
 
 import { validateWasmArtifacts } from "./verify-wasm-artifacts.mjs"
+import { finalizeWasmLicenses } from "./finalize-wasm-licenses.mjs"
 import { writeSourceProvenance } from "./wasm-source-provenance.mjs"
 
 function runWasmPack(command, args, { cwd, env = process.env }) {
@@ -96,6 +97,7 @@ export async function buildWasmArtifacts(
     await validateArtifacts(frontendRoot, { requireSourceProvenance: true })
     return
   }
+  await finalizeWasmLicenses(frontendRoot)
   await writeSourceProvenance(frontendRoot)
   await validateArtifacts(frontendRoot, { requireSourceProvenance: true })
 }

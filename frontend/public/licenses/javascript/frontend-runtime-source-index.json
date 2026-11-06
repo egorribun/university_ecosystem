@@ -1,0 +1,4496 @@
+{
+  "generatedAt": "2026-11-06T03:07:41.819Z",
+  "scope": "Reachability from frontend package-lock.json root dependencies and optional/peer edges. It is a production dependency-path inventory, not a claim that each package is present in the browser bundle; it includes build/runtime tooling and platform-optional packages.",
+  "counts": {
+    "reachableLockPaths": 527,
+    "uniqueNameVersion": 451,
+    "thirdPartyUnique": 450,
+    "localFirstPartyUnique": 1,
+    "installedThirdPartyUnique": 376,
+    "packagesWithFullNoticeText": 371,
+    "textFilesInBaseBundle": 373,
+    "recoveredTextFiles": 9,
+    "unresolvedStandaloneTextAfterRecovery": 5,
+    "notInstalledOptionalPlatformUnique": 74,
+    "nonstandardLicenseMetadata": 1
+  },
+  "packages": [
+    {
+      "name": "@babel/code-frame",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/compat-data",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/core",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/generator",
+      "version": "7.29.8",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/helper-compilation-targets",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/helper-globals",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/helper-module-imports",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/helper-module-transforms",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/helper-string-parser",
+      "version": "7.29.11",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/helper-validator-identifier",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/helper-validator-option",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/helpers",
+      "version": "7.29.10",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/parser",
+      "version": "7.29.11",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/runtime",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/runtime",
+      "version": "8.0.5",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/template",
+      "version": "7.29.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/traverse",
+      "version": "7.29.10",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@babel/types",
+      "version": "7.29.11",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@dnd-kit/accessibility",
+      "version": "3.1.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@dnd-kit/core",
+      "version": "6.3.1",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@dnd-kit/sortable",
+      "version": "10.0.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@dnd-kit/utilities",
+      "version": "3.2.2",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@esbuild/aix-ppc64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/android-arm",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/android-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/android-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/darwin-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/darwin-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/freebsd-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/freebsd-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/linux-arm",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/linux-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/linux-ia32",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/linux-loong64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/linux-mips64el",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/linux-ppc64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/linux-riscv64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/linux-s390x",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/linux-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/netbsd-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/netbsd-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/openbsd-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/openbsd-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/openharmony-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/sunos-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/win32-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/win32-ia32",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@esbuild/win32-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@floating-ui/core",
+      "version": "1.8.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@floating-ui/dom",
+      "version": "1.8.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@floating-ui/react-dom",
+      "version": "2.1.9",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@floating-ui/react",
+      "version": "0.27.20",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@floating-ui/utils",
+      "version": "0.2.12",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@fontsource-variable/inter",
+      "version": "5.3.0",
+      "license": "OFL-1.1",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@fontsource-variable/outfit",
+      "version": "5.3.0",
+      "license": "OFL-1.1",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@hookform/resolvers",
+      "version": "6.0.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@jridgewell/gen-mapping",
+      "version": "0.3.13",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@jridgewell/remapping",
+      "version": "2.3.5",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@jridgewell/resolve-uri",
+      "version": "3.1.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@jridgewell/source-map",
+      "version": "0.3.11",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@jridgewell/sourcemap-codec",
+      "version": "1.6.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@jridgewell/trace-mapping",
+      "version": "0.3.31",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@mapbox/jsonlint-lines-primitives",
+      "version": "2.0.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@mapbox/point-geometry",
+      "version": "1.1.0",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@mapbox/tiny-sdf",
+      "version": "2.3.0",
+      "license": "BSD-2-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "@mapbox/unitbezier",
+      "version": "0.0.1",
+      "license": "BSD-2-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@mapbox/unitbezier",
+      "version": "1.0.0",
+      "license": "BSD-2-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@mapbox/vector-tile",
+      "version": "3.0.0",
+      "license": "BSD-3-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "@maplibre/geojson-vt",
+      "version": "6.3.0",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@maplibre/maplibre-gl-style-spec",
+      "version": "19.3.3",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "@maplibre/maplibre-gl-style-spec",
+      "version": "26.4.4",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "@maplibre/mlt",
+      "version": "1.3.0",
+      "license": "(MIT OR Apache-2.0)",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "@maplibre/vt-pbf",
+      "version": "4.3.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@napi-rs/lzma-linux-x64-gnu",
+      "version": "1.5.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@noble/ciphers",
+      "version": "2.1.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@noble/curves",
+      "version": "2.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@noble/hashes",
+      "version": "2.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@noble/hashes",
+      "version": "2.4.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@oozcitak/dom",
+      "version": "2.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@oozcitak/infra",
+      "version": "2.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@oozcitak/url",
+      "version": "3.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@oozcitak/util",
+      "version": "10.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/api-logs",
+      "version": "0.223.0",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/api",
+      "version": "1.9.1",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/core",
+      "version": "2.12.0",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/exporter-trace-otlp-http",
+      "version": "0.223.0",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/instrumentation-fetch",
+      "version": "0.223.0",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/instrumentation-user-interaction",
+      "version": "0.67.0",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/instrumentation-xml-http-request",
+      "version": "0.223.0",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/instrumentation",
+      "version": "0.223.0",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/otlp-exporter-base",
+      "version": "0.223.0",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/otlp-transformer",
+      "version": "0.223.0",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/resources",
+      "version": "2.12.0",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/sdk-logs",
+      "version": "0.223.0",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/sdk-metrics",
+      "version": "2.12.0",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/sdk-trace-base",
+      "version": "2.12.0",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/sdk-trace-web",
+      "version": "2.12.0",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/sdk-trace",
+      "version": "2.12.0",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/semantic-conventions",
+      "version": "1.43.0",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@opentelemetry/web-common",
+      "version": "0.223.0",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@oxc-project/types",
+      "version": "0.155.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@rolldown/binding-android-arm-eabi",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-android-arm64",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-darwin-arm64",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-darwin-x64",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-freebsd-x64",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-linux-arm-gnueabihf",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-linux-arm64-gnu",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-linux-arm64-musl",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-linux-ppc64-gnu",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-linux-s390x-gnu",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-linux-x64-gnu",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-linux-x64-musl",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-openharmony-arm64",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-win32-arm64-msvc",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/binding-win32-x64-msvc",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rolldown/pluginutils",
+      "version": "1.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@rollup/rollup-android-arm-eabi",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-android-arm64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-darwin-arm64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-darwin-x64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-freebsd-arm64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-freebsd-x64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-arm-gnueabihf",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-arm-musleabihf",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-arm64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-arm64-musl",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-loong64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-loong64-musl",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-ppc64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-ppc64-musl",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-riscv64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-riscv64-musl",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-s390x-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-x64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-linux-x64-musl",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-openbsd-x64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-openharmony-arm64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-win32-arm64-msvc",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-win32-ia32-msvc",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-win32-x64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@rollup/rollup-win32-x64-msvc",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "@scure/base",
+      "version": "2.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@scure/bip32",
+      "version": "2.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@scure/bip39",
+      "version": "2.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@sentry/browser-utils",
+      "version": "11.9.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@sentry/browser",
+      "version": "11.9.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@sentry/conventions",
+      "version": "0.27.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@sentry/core",
+      "version": "11.9.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@sentry/feedback",
+      "version": "11.9.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@sentry/react",
+      "version": "11.9.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@sentry/replay-canvas",
+      "version": "11.9.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@sentry/replay",
+      "version": "11.9.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@sinclair/typebox",
+      "version": "0.34.52",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["license"]
+    },
+    {
+      "name": "@standard-schema/spec",
+      "version": "1.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@standard-schema/utils",
+      "version": "0.3.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/history",
+      "version": "1.162.5",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/query-core",
+      "version": "5.104.5",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/query-persist-client-core",
+      "version": "5.104.5",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/react-query-persist-client",
+      "version": "5.104.5",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/react-query",
+      "version": "5.104.5",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/react-router",
+      "version": "1.170.46",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/react-start-client",
+      "version": "1.168.44",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/react-start-rsc",
+      "version": "0.1.65",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/react-start-server",
+      "version": "1.167.52",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/react-start",
+      "version": "1.169.4",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/react-store",
+      "version": "0.11.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/react-table",
+      "version": "9.3.1",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/react-virtual",
+      "version": "3.14.22",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/router-core",
+      "version": "1.171.39",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/router-generator",
+      "version": "1.167.46",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/router-plugin",
+      "version": "1.168.48",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/router-utils",
+      "version": "1.162.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/start-client-core",
+      "version": "1.170.39",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/start-fn-stubs",
+      "version": "1.162.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/start-plugin-core",
+      "version": "1.171.55",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/start-server-core",
+      "version": "1.169.45",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/start-storage-context",
+      "version": "1.167.41",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/store",
+      "version": "0.11.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/table-core",
+      "version": "9.3.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/virtual-core",
+      "version": "3.19.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@tanstack/virtual-file-routes",
+      "version": "1.162.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/common-tags",
+      "version": "1.8.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/estree",
+      "version": "1.0.9",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/geojson",
+      "version": "7946.0.16",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/json-schema",
+      "version": "7.0.11",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/node",
+      "version": "26.6.5",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/pako",
+      "version": "2.0.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/raf",
+      "version": "3.4.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/react",
+      "version": "19.3.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/simple-peer",
+      "version": "9.11.9",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/trusted-types",
+      "version": "2.0.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@types/ws",
+      "version": "8.18.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@typescript/typescript6",
+      "version": "6.0.2",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "@vis.gl/react-mapbox",
+      "version": "8.1.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@vis.gl/react-maplibre",
+      "version": "8.1.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@zxcvbn-ts/core",
+      "version": "4.2.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "@zxcvbn-ts/dictionary-compression",
+      "version": "3.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "@zxcvbn-ts/language-common",
+      "version": "4.1.3",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "@zxcvbn-ts/language-en",
+      "version": "4.1.1",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt", "NOTICE.md"]
+    },
+    {
+      "name": "@zxcvbn-ts/language-ru",
+      "version": "4.1.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "acorn",
+      "version": "8.18.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "agent-base",
+      "version": "6.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "ajv-formats",
+      "version": "3.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "ajv",
+      "version": "8.20.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "ansis",
+      "version": "4.4.0",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "argparse",
+      "version": "2.0.1",
+      "license": "Python-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "arr-union",
+      "version": "3.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "array-push-at-sort-position",
+      "version": "5.0.0",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "as-typed",
+      "version": "1.3.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "assign-symbols",
+      "version": "1.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "asynckit",
+      "version": "0.4.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "axios",
+      "version": "1.20.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "babel-dead-code-elimination",
+      "version": "1.0.12",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "base64-arraybuffer",
+      "version": "1.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "base64-js",
+      "version": "1.5.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "baseline-browser-mapping",
+      "version": "2.11.25",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "bidi-js",
+      "version": "1.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "binary-decision-diagram",
+      "version": "4.0.0",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "broadcast-channel",
+      "version": "7.4.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "browserslist",
+      "version": "4.29.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "buffer-from",
+      "version": "1.1.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "buffer",
+      "version": "6.0.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "bytewise-core",
+      "version": "1.2.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "bytewise",
+      "version": "1.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "call-bind-apply-helpers",
+      "version": "1.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "caniuse-lite",
+      "version": "1.0.30001810",
+      "license": "CC-BY-4.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "canvg",
+      "version": "3.0.11",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "chokidar",
+      "version": "5.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "cjs-module-lexer",
+      "version": "2.2.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "class-variance-authority",
+      "version": "0.7.1",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "clsx",
+      "version": "2.1.1",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["license"]
+    },
+    {
+      "name": "combined-stream",
+      "version": "1.0.8",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["License"]
+    },
+    {
+      "name": "commander",
+      "version": "15.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "commander",
+      "version": "2.20.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "common-tags",
+      "version": "1.8.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["license.md"]
+    },
+    {
+      "name": "convert-source-map",
+      "version": "2.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "cookie-es",
+      "version": "3.1.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "core-js",
+      "version": "3.50.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "crypto-js",
+      "version": "4.2.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "css-line-break",
+      "version": "2.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "csstype",
+      "version": "3.2.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "custom-idle-queue",
+      "version": "5.0.2",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "debug",
+      "version": "4.4.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "defekt",
+      "version": "9.3.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt", "licenseCheck.json"]
+    },
+    {
+      "name": "delayed-stream",
+      "version": "1.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["License"]
+    },
+    {
+      "name": "detect-libc",
+      "version": "2.1.2",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "dexie",
+      "version": "4.4.2",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE", "NOTICE"]
+    },
+    {
+      "name": "diff",
+      "version": "9.0.0",
+      "license": "BSD-3-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "dompurify",
+      "version": "3.4.17",
+      "license": "(MPL-2.0 OR Apache-2.0)",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE", "LICENSE-MPL"]
+    },
+    {
+      "name": "dunder-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "earcut",
+      "version": "3.2.4",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "electron-to-chromium",
+      "version": "1.5.434",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "err-code",
+      "version": "3.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "es-define-property",
+      "version": "1.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "es-errors",
+      "version": "1.3.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "es-module-lexer",
+      "version": "3.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "es-object-atoms",
+      "version": "1.1.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "es-set-tostringtag",
+      "version": "2.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "esbuild",
+      "version": "0.28.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "escalade",
+      "version": "3.2.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["license"]
+    },
+    {
+      "name": "event-reduce-js",
+      "version": "6.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "eventemitter3",
+      "version": "4.0.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "exsolve",
+      "version": "1.1.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "extend-shallow",
+      "version": "2.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "extend-shallow",
+      "version": "3.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "fast-deep-equal",
+      "version": "3.1.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "fast-png",
+      "version": "6.4.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "fast-uri",
+      "version": "3.1.9",
+      "license": "BSD-3-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "fastest-levenshtein",
+      "version": "1.0.16",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "fdir",
+      "version": "6.5.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "fetchdts",
+      "version": "0.2.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENCE"]
+    },
+    {
+      "name": "fflate",
+      "version": "0.8.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "focus-trap",
+      "version": "8.2.3",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "follow-redirects",
+      "version": "1.16.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "form-data",
+      "version": "4.0.6",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["License"]
+    },
+    {
+      "name": "framer-motion",
+      "version": "14.6.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "fsevents",
+      "version": "2.3.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "function-bind",
+      "version": "1.1.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "generate-function",
+      "version": "2.3.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "generate-object-property",
+      "version": "1.2.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "gensync",
+      "version": "1.0.0-beta.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "get-browser-rtc",
+      "version": "1.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "get-graphql-from-jsonschema",
+      "version": "8.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt", "licenseCheck.json"]
+    },
+    {
+      "name": "get-intrinsic",
+      "version": "1.3.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "get-proto",
+      "version": "1.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "get-value",
+      "version": "2.0.6",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "gl-matrix",
+      "version": "3.4.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "gopd",
+      "version": "1.2.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "graphql-ws",
+      "version": "6.3.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "graphql",
+      "version": "17.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "has-symbols",
+      "version": "1.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "has-tostringtag",
+      "version": "1.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "hasown",
+      "version": "2.0.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "html-parse-stringify",
+      "version": "4.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "html-to-image",
+      "version": "1.11.13",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "html2canvas",
+      "version": "1.4.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "https-proxy-agent",
+      "version": "5.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "i18next",
+      "version": "26.5.11",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "idb-keyval",
+      "version": "6.3.0",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENCE"]
+    },
+    {
+      "name": "idb",
+      "version": "8.0.4",
+      "license": "ISC",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "ieee754",
+      "version": "1.2.1",
+      "license": "BSD-3-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "import-in-the-middle",
+      "version": "3.5.1",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE", "LICENSE-3rdparty.csv", "NOTICE"]
+    },
+    {
+      "name": "inherits",
+      "version": "2.0.4",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "iobuffer",
+      "version": "5.4.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "is-extendable",
+      "version": "0.1.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "is-extendable",
+      "version": "1.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "is-my-ip-valid",
+      "version": "1.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "is-my-json-valid",
+      "version": "2.20.6",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "is-plain-object",
+      "version": "2.0.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "is-property",
+      "version": "1.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "isbot",
+      "version": "5.2.2",
+      "license": "Unlicense",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "isobject",
+      "version": "3.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "jiti",
+      "version": "2.7.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "jose",
+      "version": "6.2.13",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "js-base64",
+      "version": "3.9.4",
+      "license": "BSD-3-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "js-tokens",
+      "version": "4.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "js-yaml",
+      "version": "4.3.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "jsesc",
+      "version": "3.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE-MIT.txt"]
+    },
+    {
+      "name": "json-schema-traverse",
+      "version": "1.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "json-stringify-pretty-compact",
+      "version": "3.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "json-stringify-pretty-compact",
+      "version": "4.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "json5",
+      "version": "2.2.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "jsonpointer",
+      "version": "5.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "jsonschema-key-compression",
+      "version": "1.7.0",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "jspdf",
+      "version": "4.2.1",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "kdbush",
+      "version": "4.1.0",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "lightningcss-android-arm64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "lightningcss-darwin-arm64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "lightningcss-darwin-x64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "lightningcss-freebsd-x64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "lightningcss-linux-arm-gnueabihf",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "lightningcss-linux-arm64-gnu",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "lightningcss-linux-arm64-musl",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "lightningcss-linux-x64-gnu",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "lightningcss-linux-x64-musl",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "lightningcss-win32-arm64-msvc",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": false,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "lightningcss-win32-x64-msvc",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "lightningcss",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "lru-cache",
+      "version": "5.1.1",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "lucide-react",
+      "version": "1.61.0",
+      "license": "ISC",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "magic-string",
+      "version": "0.30.21",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "maplibre-gl",
+      "version": "6.15.0",
+      "license": "BSD-3-Clause",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "marked",
+      "version": "18.1.1",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "math-intrinsics",
+      "version": "1.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "mime-db",
+      "version": "1.52.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "mime-types",
+      "version": "2.1.35",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "mingo",
+      "version": "7.2.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "minimist",
+      "version": "1.2.8",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "module-details-from-path",
+      "version": "1.0.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "motion-dom",
+      "version": "14.6.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "motion-utils",
+      "version": "14.6.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "ms",
+      "version": "2.1.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["license.md"]
+    },
+    {
+      "name": "murmurhash-js",
+      "version": "1.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "nanoid",
+      "version": "3.3.20",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "node-releases",
+      "version": "2.0.56",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "nostr-tools",
+      "version": "2.25.2",
+      "license": "Unlicense",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "nostr-wasm",
+      "version": "0.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "oblivious-set",
+      "version": "2.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "p-finally",
+      "version": "1.0.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["license"]
+    },
+    {
+      "name": "p-queue",
+      "version": "6.6.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["license"]
+    },
+    {
+      "name": "p-timeout",
+      "version": "3.2.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["license"]
+    },
+    {
+      "name": "pako",
+      "version": "2.2.0",
+      "license": "(MIT AND Zlib)",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE", "README"]
+    },
+    {
+      "name": "pathe",
+      "version": "2.0.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "pbf",
+      "version": "5.1.2",
+      "license": "BSD-3-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "performance-now",
+      "version": "2.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["license.txt"]
+    },
+    {
+      "name": "picocolors",
+      "version": "1.1.1",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "picomatch",
+      "version": "4.0.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "postcss",
+      "version": "8.5.31",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "potpack",
+      "version": "2.1.0",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "prettier",
+      "version": "3.9.10",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "protocol-buffers-schema",
+      "version": "3.6.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "proxy-from-env",
+      "version": "2.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "punycode",
+      "version": "2.3.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE-MIT.txt"]
+    },
+    {
+      "name": "qrcode.react",
+      "version": "4.2.0",
+      "license": "ISC",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "queue-microtask",
+      "version": "1.2.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "quickselect",
+      "version": "3.0.0",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "raf",
+      "version": "3.4.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "randombytes",
+      "version": "2.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "react-dom",
+      "version": "19.3.1",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "react-hook-form",
+      "version": "7.91.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "react-i18next",
+      "version": "17.1.9",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "react-map-gl",
+      "version": "8.1.3",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "react",
+      "version": "19.3.1",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "readable-stream",
+      "version": "3.6.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "readdirp",
+      "version": "5.1.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "regenerator-runtime",
+      "version": "0.13.11",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "require-from-string",
+      "version": "2.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["license"]
+    },
+    {
+      "name": "require-in-the-middle",
+      "version": "8.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "resolve-protobuf-schema",
+      "version": "2.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "ret",
+      "version": "0.5.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "rgbcolor",
+      "version": "1.0.1",
+      "license": "MIT OR SEE LICENSE IN FEEL-FREE.md",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["FEEL-FREE.md", "LICENSE.md"]
+    },
+    {
+      "name": "rolldown",
+      "version": "1.2.15",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "rollup",
+      "version": "4.63.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "rw",
+      "version": "1.3.3",
+      "license": "BSD-3-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "rxdb",
+      "version": "17.6.0",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "rxjs",
+      "version": "7.8.2",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "safe-buffer",
+      "version": "5.2.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "safe-regex2",
+      "version": "5.1.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "scheduler",
+      "version": "0.28.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "semver",
+      "version": "6.3.1",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "seroval-plugins",
+      "version": "1.6.8",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "seroval",
+      "version": "1.6.12",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "set-value",
+      "version": "2.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "simple-peer",
+      "version": "9.11.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "sort-asc",
+      "version": "0.2.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "sort-desc",
+      "version": "0.2.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "sort-object",
+      "version": "3.0.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "source-map-js",
+      "version": "1.2.2",
+      "license": "BSD-3-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "source-map-support",
+      "version": "0.5.21",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "source-map",
+      "version": "0.6.1",
+      "license": "BSD-3-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "source-map",
+      "version": "0.7.6",
+      "license": "BSD-3-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "split-string",
+      "version": "3.1.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "srvx",
+      "version": "1.0.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "stackblur-canvas",
+      "version": "2.7.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE-MIT.txt"]
+    },
+    {
+      "name": "string_decoder",
+      "version": "1.3.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "svg-pathdata",
+      "version": "6.0.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "tabbable",
+      "version": "6.5.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "tailwind-merge",
+      "version": "3.7.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "terser",
+      "version": "5.51.2",
+      "license": "BSD-2-Clause",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "text-segmentation",
+      "version": "1.0.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "tinyglobby",
+      "version": "0.2.17",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "tinyqueue",
+      "version": "3.0.0",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "tslib",
+      "version": "2.8.1",
+      "license": "0BSD",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["CopyrightNotice.txt", "LICENSE.txt"]
+    },
+    {
+      "name": "typescript",
+      "version": "6.0.3",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "typewise-core",
+      "version": "1.2.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "typewise",
+      "version": "1.0.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": []
+    },
+    {
+      "name": "ufo",
+      "version": "1.6.4",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "undici-types",
+      "version": "8.9.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "union-value",
+      "version": "1.0.1",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "unload",
+      "version": "2.4.1",
+      "license": "Apache-2.0",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "unplugin",
+      "version": "3.5.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "update-browserslist-db",
+      "version": "1.3.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "use-sync-external-store",
+      "version": "1.7.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "util-deprecate",
+      "version": "1.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "utrie",
+      "version": "1.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "valibot",
+      "version": "1.5.0",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "validator",
+      "version": "13.15.35",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "vite",
+      "version": "8.3.5",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.md"]
+    },
+    {
+      "name": "vitefu",
+      "version": "1.1.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "web-vitals",
+      "version": "6.2.3",
+      "license": "Apache-2.0",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "webpack-virtual-modules",
+      "version": "0.6.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "ws",
+      "version": "8.22.0",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "xmlbuilder2",
+      "version": "4.0.3",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE.txt"]
+    },
+    {
+      "name": "xtend",
+      "version": "4.0.2",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "yallist",
+      "version": "3.1.1",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "yaml",
+      "version": "2.9.1",
+      "license": "ISC",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "z-schema",
+      "version": "12.4.6",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "zod",
+      "version": "4.6.7",
+      "license": "MIT",
+      "role": "transitive runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    },
+    {
+      "name": "zustand",
+      "version": "5.0.16",
+      "license": "MIT",
+      "role": "direct runtime",
+      "installed": true,
+      "standaloneTextFiles": ["LICENSE"]
+    }
+  ],
+  "recoveredLicenseSources": [
+    {
+      "name": "@esbuild/win32-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "file": "LICENSE.md",
+      "sourceType": "upstream GitHub at exact npm gitHead",
+      "sourceUrl": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "included_in": "frontend-runtime-js-notices.txt"
+    },
+    {
+      "name": "@esbuild/win32-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "file": "LICENSE.txt",
+      "sourceType": "upstream GitHub at exact npm gitHead",
+      "sourceUrl": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/internal/xxhash/LICENSE.txt",
+      "included_in": "frontend-runtime-js-notices.txt"
+    },
+    {
+      "name": "@rollup/rollup-win32-x64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "file": "LICENSE.md",
+      "sourceType": "upstream GitHub at exact npm gitHead",
+      "sourceUrl": "https://raw.githubusercontent.com/rollup/rollup/ba78d5752a1e1ff4ff4af3a8bffab7691d822f7d/LICENSE.md",
+      "included_in": "frontend-runtime-js-notices.txt"
+    },
+    {
+      "name": "@rollup/rollup-win32-x64-msvc",
+      "version": "4.63.4",
+      "license": "MIT",
+      "file": "LICENSE.md",
+      "sourceType": "upstream GitHub at exact npm gitHead",
+      "sourceUrl": "https://raw.githubusercontent.com/rollup/rollup/ba78d5752a1e1ff4ff4af3a8bffab7691d822f7d/LICENSE.md",
+      "included_in": "frontend-runtime-js-notices.txt"
+    },
+    {
+      "name": "event-reduce-js",
+      "version": "6.0.0",
+      "license": "MIT",
+      "file": "LICENSE",
+      "sourceType": "upstream GitHub at exact npm gitHead",
+      "sourceUrl": "https://raw.githubusercontent.com/pubkey/event-reduce/52e54b9f5944c35435e8e9dbbbd58c2413294998/LICENSE",
+      "included_in": "frontend-runtime-js-notices.txt"
+    },
+    {
+      "name": "agent-base",
+      "version": "6.0.2",
+      "license": "MIT",
+      "file": "README.md",
+      "sourceType": "embedded full license section in exact npm tarball",
+      "sourceUrl": "Exact registry tarball; README embedded grant",
+      "included_in": "frontend-runtime-js-notices.txt"
+    },
+    {
+      "name": "https-proxy-agent",
+      "version": "5.0.1",
+      "license": "MIT",
+      "file": "README.md",
+      "sourceType": "embedded full license section in exact npm tarball",
+      "sourceUrl": "Exact registry tarball; README embedded grant",
+      "included_in": "frontend-runtime-js-notices.txt"
+    },
+    {
+      "name": "murmurhash-js",
+      "version": "1.0.0",
+      "license": "MIT",
+      "file": "README.md",
+      "sourceType": "embedded full license section in exact npm tarball",
+      "sourceUrl": "Exact registry tarball; README embedded grant",
+      "included_in": "frontend-runtime-js-notices.txt"
+    },
+    {
+      "name": "@rolldown/binding-win32-x64-msvc",
+      "version": "1.2.15",
+      "license": "MIT",
+      "file": "LICENSE",
+      "sourceType": "upstream release tag v1.2.15",
+      "sourceUrl": "https://raw.githubusercontent.com/rolldown/rolldown/v1.2.15/LICENSE",
+      "included_in": "frontend-runtime-js-notices.txt"
+    }
+  ],
+  "installedPackagesWithoutStandaloneText": [
+    {
+      "name": "@esbuild/win32-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "lockPaths": ["node_modules/@esbuild/win32-x64"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": true,
+      "sources": [
+        {
+          "file": "LICENSE.md",
+          "sourceType": "upstream GitHub at exact npm gitHead",
+          "sourceUrl": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md"
+        },
+        {
+          "file": "LICENSE.txt",
+          "sourceType": "upstream GitHub at exact npm gitHead",
+          "sourceUrl": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/internal/xxhash/LICENSE.txt"
+        }
+      ],
+      "status": "full text recovered from upstream source or inline npm README"
+    },
+    {
+      "name": "@rolldown/binding-win32-x64-msvc",
+      "version": "1.2.15",
+      "license": "MIT",
+      "lockPaths": ["node_modules/@rolldown/binding-win32-x64-msvc"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": true,
+      "sources": [
+        {
+          "file": "LICENSE",
+          "sourceType": "upstream release tag v1.2.15",
+          "sourceUrl": "https://raw.githubusercontent.com/rolldown/rolldown/v1.2.15/LICENSE"
+        }
+      ],
+      "status": "full text recovered from upstream source or inline npm README"
+    },
+    {
+      "name": "@rollup/rollup-win32-x64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "lockPaths": ["node_modules/@rollup/rollup-win32-x64-gnu"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": true,
+      "sources": [
+        {
+          "file": "LICENSE.md",
+          "sourceType": "upstream GitHub at exact npm gitHead",
+          "sourceUrl": "https://raw.githubusercontent.com/rollup/rollup/ba78d5752a1e1ff4ff4af3a8bffab7691d822f7d/LICENSE.md"
+        }
+      ],
+      "status": "full text recovered from upstream source or inline npm README"
+    },
+    {
+      "name": "@rollup/rollup-win32-x64-msvc",
+      "version": "4.63.4",
+      "license": "MIT",
+      "lockPaths": ["node_modules/@rollup/rollup-win32-x64-msvc"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": true,
+      "sources": [
+        {
+          "file": "LICENSE.md",
+          "sourceType": "upstream GitHub at exact npm gitHead",
+          "sourceUrl": "https://raw.githubusercontent.com/rollup/rollup/ba78d5752a1e1ff4ff4af3a8bffab7691d822f7d/LICENSE.md"
+        }
+      ],
+      "status": "full text recovered from upstream source or inline npm README"
+    },
+    {
+      "name": "agent-base",
+      "version": "6.0.2",
+      "license": "MIT",
+      "lockPaths": ["node_modules/agent-base"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": true,
+      "sources": [
+        {
+          "file": "README.md",
+          "sourceType": "embedded full license section in exact npm tarball",
+          "sourceUrl": "Exact registry tarball; README embedded grant"
+        }
+      ],
+      "status": "full text recovered from upstream source or inline npm README"
+    },
+    {
+      "name": "bytewise",
+      "version": "1.1.0",
+      "license": "MIT",
+      "lockPaths": ["node_modules/bytewise"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": false,
+      "sources": [],
+      "status": "no full grant/copyright text located in exact package archive/upstream source during this pass"
+    },
+    {
+      "name": "err-code",
+      "version": "3.0.1",
+      "license": "MIT",
+      "lockPaths": ["node_modules/err-code"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": false,
+      "sources": [],
+      "status": "no full grant/copyright text located in exact package archive/upstream source during this pass"
+    },
+    {
+      "name": "event-reduce-js",
+      "version": "6.0.0",
+      "license": "MIT",
+      "lockPaths": ["node_modules/event-reduce-js"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": true,
+      "sources": [
+        {
+          "file": "LICENSE",
+          "sourceType": "upstream GitHub at exact npm gitHead",
+          "sourceUrl": "https://raw.githubusercontent.com/pubkey/event-reduce/52e54b9f5944c35435e8e9dbbbd58c2413294998/LICENSE"
+        }
+      ],
+      "status": "full text recovered from upstream source or inline npm README"
+    },
+    {
+      "name": "get-browser-rtc",
+      "version": "1.1.0",
+      "license": "MIT",
+      "lockPaths": ["node_modules/get-browser-rtc"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": false,
+      "sources": [],
+      "status": "no full grant/copyright text located in exact package archive/upstream source during this pass"
+    },
+    {
+      "name": "https-proxy-agent",
+      "version": "5.0.1",
+      "license": "MIT",
+      "lockPaths": ["node_modules/https-proxy-agent"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": true,
+      "sources": [
+        {
+          "file": "README.md",
+          "sourceType": "embedded full license section in exact npm tarball",
+          "sourceUrl": "Exact registry tarball; README embedded grant"
+        }
+      ],
+      "status": "full text recovered from upstream source or inline npm README"
+    },
+    {
+      "name": "murmurhash-js",
+      "version": "1.0.0",
+      "license": "MIT",
+      "lockPaths": ["node_modules/murmurhash-js"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": true,
+      "sources": [
+        {
+          "file": "README.md",
+          "sourceType": "embedded full license section in exact npm tarball",
+          "sourceUrl": "Exact registry tarball; README embedded grant"
+        }
+      ],
+      "status": "full text recovered from upstream source or inline npm README"
+    },
+    {
+      "name": "nostr-wasm",
+      "version": "0.1.0",
+      "license": "MIT",
+      "lockPaths": ["node_modules/nostr-wasm"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": false,
+      "sources": [],
+      "status": "no full grant/copyright text located in exact package archive/upstream source during this pass"
+    },
+    {
+      "name": "typewise",
+      "version": "1.0.3",
+      "license": "MIT",
+      "lockPaths": ["node_modules/typewise"],
+      "standaloneTextInNpmArchive": false,
+      "recoveredFullText": false,
+      "sources": [],
+      "status": "no full grant/copyright text located in exact package archive/upstream source during this pass"
+    }
+  ],
+  "hostMissingOptionalPlatformPackages": [
+    {
+      "name": "@esbuild/aix-ppc64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["aix"],
+      "cpu": ["ppc64"]
+    },
+    {
+      "name": "@esbuild/android-arm",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["android"],
+      "cpu": ["arm"]
+    },
+    {
+      "name": "@esbuild/android-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["android"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@esbuild/android-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["android"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@esbuild/darwin-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["darwin"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@esbuild/darwin-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["darwin"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@esbuild/freebsd-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["freebsd"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@esbuild/freebsd-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["freebsd"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@esbuild/linux-arm",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm"]
+    },
+    {
+      "name": "@esbuild/linux-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@esbuild/linux-ia32",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["ia32"]
+    },
+    {
+      "name": "@esbuild/linux-loong64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["loong64"]
+    },
+    {
+      "name": "@esbuild/linux-mips64el",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["mips64el"]
+    },
+    {
+      "name": "@esbuild/linux-ppc64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["ppc64"]
+    },
+    {
+      "name": "@esbuild/linux-riscv64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["riscv64"]
+    },
+    {
+      "name": "@esbuild/linux-s390x",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["s390x"]
+    },
+    {
+      "name": "@esbuild/linux-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@esbuild/netbsd-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["netbsd"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@esbuild/netbsd-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["netbsd"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@esbuild/openbsd-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["openbsd"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@esbuild/openbsd-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["openbsd"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@esbuild/openharmony-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["openharmony"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@esbuild/sunos-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["sunos"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@esbuild/win32-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["win32"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@esbuild/win32-ia32",
+      "version": "0.28.2",
+      "license": "MIT",
+      "optional": true,
+      "os": ["win32"],
+      "cpu": ["ia32"]
+    },
+    {
+      "name": "@napi-rs/lzma-linux-x64-gnu",
+      "version": "1.5.1",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@rolldown/binding-android-arm-eabi",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["android"],
+      "cpu": ["arm"]
+    },
+    {
+      "name": "@rolldown/binding-android-arm64",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["android"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rolldown/binding-darwin-arm64",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["darwin"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rolldown/binding-darwin-x64",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["darwin"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@rolldown/binding-freebsd-x64",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["freebsd"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@rolldown/binding-linux-arm-gnueabihf",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm"]
+    },
+    {
+      "name": "@rolldown/binding-linux-arm64-gnu",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rolldown/binding-linux-arm64-musl",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rolldown/binding-linux-ppc64-gnu",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["ppc64"]
+    },
+    {
+      "name": "@rolldown/binding-linux-s390x-gnu",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["s390x"]
+    },
+    {
+      "name": "@rolldown/binding-linux-x64-gnu",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@rolldown/binding-linux-x64-musl",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@rolldown/binding-openharmony-arm64",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["openharmony"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rolldown/binding-win32-arm64-msvc",
+      "version": "1.2.15",
+      "license": "MIT",
+      "optional": true,
+      "os": ["win32"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rollup/rollup-android-arm-eabi",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["android"],
+      "cpu": ["arm"]
+    },
+    {
+      "name": "@rollup/rollup-android-arm64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["android"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rollup/rollup-darwin-arm64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["darwin"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rollup/rollup-darwin-x64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["darwin"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@rollup/rollup-freebsd-arm64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["freebsd"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rollup/rollup-freebsd-x64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["freebsd"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@rollup/rollup-linux-arm-gnueabihf",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm"]
+    },
+    {
+      "name": "@rollup/rollup-linux-arm-musleabihf",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm"]
+    },
+    {
+      "name": "@rollup/rollup-linux-arm64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rollup/rollup-linux-arm64-musl",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rollup/rollup-linux-loong64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["loong64"]
+    },
+    {
+      "name": "@rollup/rollup-linux-loong64-musl",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["loong64"]
+    },
+    {
+      "name": "@rollup/rollup-linux-ppc64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["ppc64"]
+    },
+    {
+      "name": "@rollup/rollup-linux-ppc64-musl",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["ppc64"]
+    },
+    {
+      "name": "@rollup/rollup-linux-riscv64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["riscv64"]
+    },
+    {
+      "name": "@rollup/rollup-linux-riscv64-musl",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["riscv64"]
+    },
+    {
+      "name": "@rollup/rollup-linux-s390x-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["s390x"]
+    },
+    {
+      "name": "@rollup/rollup-linux-x64-gnu",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@rollup/rollup-linux-x64-musl",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@rollup/rollup-openbsd-x64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["openbsd"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "@rollup/rollup-openharmony-arm64",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["openharmony"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rollup/rollup-win32-arm64-msvc",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["win32"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "@rollup/rollup-win32-ia32-msvc",
+      "version": "4.63.4",
+      "license": "MIT",
+      "optional": true,
+      "os": ["win32"],
+      "cpu": ["ia32"]
+    },
+    {
+      "name": "fsevents",
+      "version": "2.3.3",
+      "license": "MIT",
+      "optional": true,
+      "os": ["darwin"],
+      "cpu": null
+    },
+    {
+      "name": "lightningcss-android-arm64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "optional": true,
+      "os": ["android"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "lightningcss-darwin-arm64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "optional": true,
+      "os": ["darwin"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "lightningcss-darwin-x64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "optional": true,
+      "os": ["darwin"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "lightningcss-freebsd-x64",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "optional": true,
+      "os": ["freebsd"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "lightningcss-linux-arm-gnueabihf",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm"]
+    },
+    {
+      "name": "lightningcss-linux-arm64-gnu",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "lightningcss-linux-arm64-musl",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["arm64"]
+    },
+    {
+      "name": "lightningcss-linux-x64-gnu",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "lightningcss-linux-x64-musl",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"]
+    },
+    {
+      "name": "lightningcss-win32-arm64-msvc",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "optional": true,
+      "os": ["win32"],
+      "cpu": ["arm64"]
+    }
+  ],
+  "nonstandardLicenseMetadata": [
+    {
+      "name": "rgbcolor",
+      "version": "1.0.1",
+      "license": "MIT OR SEE LICENSE IN FEEL-FREE.md",
+      "lockPaths": ["node_modules/rgbcolor"],
+      "reason": "Non-SPDX field refers to an included alternative permissions file; MIT choice is explicit."
+    }
+  ],
+  "omittedNpmTarballTextFileFindings": {
+    "exactTarballsFetched": 21,
+    "sriVerified": 21,
+    "noPackageScriptsExecuted": true,
+    "details": "Exact lockfile tarball files and README evidence in registry-tarball-license-inspection.json and linux-optional-source-index.json."
+  }
+}

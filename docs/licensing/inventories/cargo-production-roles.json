@@ -1,0 +1,5062 @@
+[
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "base64ct",
+    "version": "1.8.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1148,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "block-buffer",
+    "version": "0.12.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "bumpalo",
+    "version": "3.20.3",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1059,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "cfg-if",
+    "version": "1.0.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "cipher",
+    "version": "0.5.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1070,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "cmov",
+    "version": "0.5.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "const-oid",
+    "version": "0.10.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "crypto-common",
+    "version": "0.2.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1070,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "ctutils",
+    "version": "0.4.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "digest",
+    "version": "0.11.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1103,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "hex",
+    "version": "0.4.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1125,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "hmac",
+    "version": "0.13.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "hybrid-array",
+    "version": "0.4.15",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "inout",
+    "version": "0.2.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1115,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "once_cell",
+    "version": "1.21.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "pbkdf2",
+    "version": "0.13.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1115,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "proc-macro2",
+    "version": "1.0.107",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "quote",
+    "version": "1.0.47",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "rustversion",
+    "version": "1.0.23",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "salsa20",
+    "version": "0.11.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1115,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "scrypt",
+    "version": "0.12.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "sha2",
+    "version": "0.11.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1196,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "syn",
+    "version": "3.0.6",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "typenum",
+    "version": "1.20.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 17,
+        "name": "LICENSE"
+      },
+      {
+        "bytes": 10835,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1083,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "unicode-ident",
+    "version": "1.0.26",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      },
+      {
+        "bytes": 1995,
+        "name": "LICENSE-UNICODE"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "wasm-bindgen-macro-support",
+    "version": "0.2.129",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "wasm-bindgen-macro",
+    "version": "0.2.129",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "wasm-bindgen-shared",
+    "version": "0.2.129",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "wasm-bindgen",
+    "version": "0.2.129",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-wasm32",
+    "package": "zeroize",
+    "version": "1.9.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "base64ct",
+    "version": "1.8.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1148,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "block-buffer",
+    "version": "0.12.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "bumpalo",
+    "version": "3.20.3",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1059,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "cfg-if",
+    "version": "1.0.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "cipher",
+    "version": "0.5.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1070,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "cmov",
+    "version": "0.5.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "const-oid",
+    "version": "0.10.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "cpufeatures",
+    "version": "0.3.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "crypto-common",
+    "version": "0.2.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1070,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "ctutils",
+    "version": "0.4.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "digest",
+    "version": "0.11.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1103,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "hex",
+    "version": "0.4.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1125,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "hmac",
+    "version": "0.13.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "hybrid-array",
+    "version": "0.4.15",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "inout",
+    "version": "0.2.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1115,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "once_cell",
+    "version": "1.21.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "pbkdf2",
+    "version": "0.13.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1115,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "proc-macro2",
+    "version": "1.0.107",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "quote",
+    "version": "1.0.47",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "rustversion",
+    "version": "1.0.23",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "salsa20",
+    "version": "0.11.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1115,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "scrypt",
+    "version": "0.12.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "sha2",
+    "version": "0.11.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1196,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "syn",
+    "version": "3.0.6",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "typenum",
+    "version": "1.20.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 17,
+        "name": "LICENSE"
+      },
+      {
+        "bytes": 10835,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1083,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "unicode-ident",
+    "version": "1.0.26",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      },
+      {
+        "bytes": 1995,
+        "name": "LICENSE-UNICODE"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "wasm-bindgen-macro-support",
+    "version": "0.2.129",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "wasm-bindgen-macro",
+    "version": "0.2.129",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "wasm-bindgen-shared",
+    "version": "0.2.129",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "wasm-bindgen",
+    "version": "0.2.129",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "uni-wasm-crypto-native",
+    "package": "zeroize",
+    "version": "1.9.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "ammonia",
+    "version": "4.2.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "bumpalo",
+    "version": "3.20.3",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1059,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "cfg-if",
+    "version": "1.0.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "cssparser",
+    "version": "0.38.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MPL-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 16726,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "displaydoc",
+    "version": "0.2.7",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "dtoa-short",
+    "version": "0.3.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MPL-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 16725,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "dtoa",
+    "version": "1.0.11",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "fastrand",
+    "version": "2.5.0",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "form_urlencoded",
+    "version": "1.2.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1072,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "html5ever",
+    "version": "0.40.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1076,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "icu_collections",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "icu_locale_core",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "icu_normalizer",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "icu_normalizer_data",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "icu_properties",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "icu_properties_data",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "icu_provider",
+    "version": "2.3.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "idna",
+    "version": "1.1.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1072,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "idna_adapter",
+    "version": "1.2.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1062,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "itoa",
+    "version": "1.0.18",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "litemap",
+    "version": "0.8.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "lock_api",
+    "version": "0.4.14",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "log",
+    "version": "0.4.34",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "maplit",
+    "version": "1.0.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT/Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1043,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "markup5ever",
+    "version": "0.40.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1076,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "memchr",
+    "version": "2.8.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unlicense OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 126,
+        "name": "COPYING"
+      },
+      {
+        "bytes": 1081,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "new_debug_unreachable",
+    "version": "1.0.6",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "once_cell",
+    "version": "1.21.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "parking_lot",
+    "version": "0.12.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "parking_lot_core",
+    "version": "0.9.12",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "percent-encoding",
+    "version": "2.3.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1072,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "phf",
+    "version": "0.14.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1099,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "phf_codegen",
+    "version": "0.14.0",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1099,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "phf_generator",
+    "version": "0.14.0",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1099,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "phf_shared",
+    "version": "0.14.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1099,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "potential_utf",
+    "version": "0.1.6",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "precomputed-hash",
+    "version": "0.1.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1078,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "proc-macro2",
+    "version": "1.0.107",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "quote",
+    "version": "1.0.47",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "rustversion",
+    "version": "1.0.23",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "scopeguard",
+    "version": "1.2.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1097,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "serde",
+    "version": "1.0.229",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "serde_core",
+    "version": "1.0.229",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "serde_derive",
+    "version": "1.0.229",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "siphasher",
+    "version": "1.0.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 281,
+        "name": "COPYING"
+      },
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "smallvec",
+    "version": "1.16.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1072,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "stable_deref_trait",
+    "version": "1.2.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1056,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "string_cache",
+    "version": "0.11.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1067,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "string_cache_codegen",
+    "version": "0.11.2",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1067,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "syn",
+    "version": "3.0.6",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "synstructure",
+    "version": "0.14.0",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1052,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "tendril",
+    "version": "0.5.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1061,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "tinystr",
+    "version": "0.8.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "unicode-ident",
+    "version": "1.0.26",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      },
+      {
+        "bytes": 1995,
+        "name": "LICENSE-UNICODE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "url",
+    "version": "2.5.8",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1072,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "utf8_iter",
+    "version": "1.0.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1742,
+        "name": "COPYRIGHT"
+      },
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1053,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "wasm-bindgen-macro-support",
+    "version": "0.2.129",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "wasm-bindgen-macro",
+    "version": "0.2.129",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "wasm-bindgen-shared",
+    "version": "0.2.129",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "wasm-bindgen",
+    "version": "0.2.129",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "web_atoms",
+    "version": "0.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1076,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "writeable",
+    "version": "0.6.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "yoke-derive",
+    "version": "0.8.4",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "yoke",
+    "version": "0.8.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "zerofrom-derive",
+    "version": "0.1.8",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "zerofrom",
+    "version": "0.1.8",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "zerotrie",
+    "version": "0.2.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "zerovec-derive",
+    "version": "0.11.6",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-wasm32",
+    "package": "zerovec",
+    "version": "0.11.8",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "ammonia",
+    "version": "4.2.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "bumpalo",
+    "version": "3.20.3",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1059,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "cfg-if",
+    "version": "1.0.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "cssparser",
+    "version": "0.38.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MPL-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 16726,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "displaydoc",
+    "version": "0.2.7",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "dtoa-short",
+    "version": "0.3.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MPL-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 16725,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "dtoa",
+    "version": "1.0.11",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "fastrand",
+    "version": "2.5.0",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "form_urlencoded",
+    "version": "1.2.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1072,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "html5ever",
+    "version": "0.40.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1076,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "icu_collections",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "icu_locale_core",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "icu_normalizer",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "icu_normalizer_data",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "icu_properties",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "icu_properties_data",
+    "version": "2.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "icu_provider",
+    "version": "2.3.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "idna",
+    "version": "1.1.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1072,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "idna_adapter",
+    "version": "1.2.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1062,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "itoa",
+    "version": "1.0.18",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "litemap",
+    "version": "0.8.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "lock_api",
+    "version": "0.4.14",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "log",
+    "version": "0.4.34",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "maplit",
+    "version": "1.0.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT/Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1043,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "markup5ever",
+    "version": "0.40.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1076,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "memchr",
+    "version": "2.8.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unlicense OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 126,
+        "name": "COPYING"
+      },
+      {
+        "bytes": 1081,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "new_debug_unreachable",
+    "version": "1.0.6",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "once_cell",
+    "version": "1.21.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "parking_lot",
+    "version": "0.12.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "parking_lot_core",
+    "version": "0.9.12",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "percent-encoding",
+    "version": "2.3.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1072,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "phf",
+    "version": "0.14.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1099,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "phf_codegen",
+    "version": "0.14.0",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1099,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "phf_generator",
+    "version": "0.14.0",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1099,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "phf_shared",
+    "version": "0.14.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1099,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "potential_utf",
+    "version": "0.1.6",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "precomputed-hash",
+    "version": "0.1.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1078,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "proc-macro2",
+    "version": "1.0.107",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "quote",
+    "version": "1.0.47",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "rustversion",
+    "version": "1.0.23",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "scopeguard",
+    "version": "1.2.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1097,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "serde",
+    "version": "1.0.229",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "serde_core",
+    "version": "1.0.229",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "serde_derive",
+    "version": "1.0.229",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "siphasher",
+    "version": "1.0.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 281,
+        "name": "COPYING"
+      },
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "smallvec",
+    "version": "1.16.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1072,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "stable_deref_trait",
+    "version": "1.2.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1056,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "string_cache",
+    "version": "0.11.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1067,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "string_cache_codegen",
+    "version": "0.11.2",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1067,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "syn",
+    "version": "3.0.6",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "synstructure",
+    "version": "0.14.0",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1052,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "tendril",
+    "version": "0.5.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1061,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "tinystr",
+    "version": "0.8.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "unicode-ident",
+    "version": "1.0.26",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      },
+      {
+        "bytes": 1995,
+        "name": "LICENSE-UNICODE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "url",
+    "version": "2.5.8",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1072,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "utf8_iter",
+    "version": "1.0.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1742,
+        "name": "COPYRIGHT"
+      },
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1053,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "wasm-bindgen-macro-support",
+    "version": "0.2.129",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "wasm-bindgen-macro",
+    "version": "0.2.129",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "wasm-bindgen-shared",
+    "version": "0.2.129",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "wasm-bindgen",
+    "version": "0.2.129",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "web_atoms",
+    "version": "0.3.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1076,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "windows-link",
+    "version": "0.2.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11351,
+        "name": "license-apache-2.0"
+      },
+      {
+        "bytes": 1141,
+        "name": "license-mit"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "writeable",
+    "version": "0.6.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "yoke-derive",
+    "version": "0.8.4",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "yoke",
+    "version": "0.8.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "zerofrom-derive",
+    "version": "0.1.8",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "zerofrom",
+    "version": "0.1.8",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "zerotrie",
+    "version": "0.2.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "zerovec-derive",
+    "version": "0.11.6",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "wasm-sanitizer-native",
+    "package": "zerovec",
+    "version": "0.11.8",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 2195,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "autocfg",
+    "version": "1.5.1",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1054,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "block-buffer",
+    "version": "0.12.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "cfg-if",
+    "version": "1.0.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "chrono",
+    "version": "0.4.45",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 12307,
+        "name": "LICENSE.txt"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "cmov",
+    "version": "0.5.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "const-oid",
+    "version": "0.10.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "cpufeatures",
+    "version": "0.3.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "crossbeam-deque",
+    "version": "0.8.8",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1099,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "crossbeam-epoch",
+    "version": "0.9.21",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1099,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "crossbeam-utils",
+    "version": "0.8.23",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1099,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "crypto-common",
+    "version": "0.2.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1070,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "ctutils",
+    "version": "0.4.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "digest",
+    "version": "0.11.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1103,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "either",
+    "version": "1.18.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1043,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "heck",
+    "version": "0.5.0",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "hex",
+    "version": "0.4.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1125,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "hmac",
+    "version": "0.13.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "hybrid-array",
+    "version": "0.4.15",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "libc",
+    "version": "0.2.189",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1066,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "num-traits",
+    "version": "0.2.19",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "once_cell",
+    "version": "1.21.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "proc-macro2",
+    "version": "1.0.107",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "pyo3-build-config",
+    "version": "0.29.3",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9807,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1107,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "pyo3-ffi",
+    "version": "0.29.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9807,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1107,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "pyo3-macros-backend",
+    "version": "0.29.3",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9807,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1107,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "pyo3-macros",
+    "version": "0.29.3",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9807,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1107,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "pyo3",
+    "version": "0.29.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9807,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1107,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "quote",
+    "version": "1.0.47",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "rayon-core",
+    "version": "1.13.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "rayon",
+    "version": "1.12.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "sha2",
+    "version": "0.11.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1196,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "subtle",
+    "version": "2.6.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "BSD-3-Clause",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1582,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "syn",
+    "version": "2.0.119",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "target-lexicon",
+    "version": "0.13.5",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 WITH LLVM-exception",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 12243,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "typenum",
+    "version": "1.20.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 17,
+        "name": "LICENSE"
+      },
+      {
+        "bytes": 10835,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1083,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "unicode-ident",
+    "version": "1.0.26",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      },
+      {
+        "bytes": 1995,
+        "name": "LICENSE-UNICODE"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "windows-link",
+    "version": "0.2.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11351,
+        "name": "license-apache-2.0"
+      },
+      {
+        "bytes": 1141,
+        "name": "license-mit"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-windows",
+    "package": "zeroize",
+    "version": "1.9.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "autocfg",
+    "version": "1.5.1",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1054,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "block-buffer",
+    "version": "0.12.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "cfg-if",
+    "version": "1.0.5",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "chrono",
+    "version": "0.4.45",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 12307,
+        "name": "LICENSE.txt"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "cmov",
+    "version": "0.5.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "const-oid",
+    "version": "0.10.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "cpufeatures",
+    "version": "0.3.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "crossbeam-deque",
+    "version": "0.8.8",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1099,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "crossbeam-epoch",
+    "version": "0.9.21",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1099,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "crossbeam-utils",
+    "version": "0.8.23",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1099,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "crypto-common",
+    "version": "0.2.2",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1070,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "ctutils",
+    "version": "0.4.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "digest",
+    "version": "0.11.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1103,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "either",
+    "version": "1.18.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1043,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "heck",
+    "version": "0.5.0",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "hex",
+    "version": "0.4.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1125,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "hmac",
+    "version": "0.13.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1057,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "hybrid-array",
+    "version": "0.4.15",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "iana-time-zone",
+    "version": "0.1.65",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10832,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1059,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "libc",
+    "version": "0.2.189",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1066,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "num-traits",
+    "version": "0.2.19",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "once_cell",
+    "version": "1.21.4",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "proc-macro2",
+    "version": "1.0.107",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "pyo3-build-config",
+    "version": "0.29.3",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9807,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1107,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "pyo3-ffi",
+    "version": "0.29.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9807,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1107,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "pyo3-macros-backend",
+    "version": "0.29.3",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9807,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1107,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "pyo3-macros",
+    "version": "0.29.3",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9807,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1107,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "pyo3",
+    "version": "0.29.3",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9807,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1107,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "quote",
+    "version": "1.0.47",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "rayon-core",
+    "version": "1.13.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "rayon",
+    "version": "1.12.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10847,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1071,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "sha2",
+    "version": "0.11.0",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 10849,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1196,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "subtle",
+    "version": "2.6.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "BSD-3-Clause",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 1582,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "syn",
+    "version": "2.0.119",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "target-lexicon",
+    "version": "0.13.5",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 WITH LLVM-exception",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 12243,
+        "name": "LICENSE"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "typenum",
+    "version": "1.20.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "MIT OR Apache-2.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 17,
+        "name": "LICENSE"
+      },
+      {
+        "bytes": 10835,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1083,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "unicode-ident",
+    "version": "1.0.26",
+    "role": "build-only",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 9723,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1023,
+        "name": "LICENSE-MIT"
+      },
+      {
+        "bytes": 1995,
+        "name": "LICENSE-UNICODE"
+      }
+    ]
+  },
+  {
+    "graph": "rust_ext-linux",
+    "package": "zeroize",
+    "version": "1.9.1",
+    "role": "runtime-linked",
+    "source": "registry+https://github.com/rust-lang/crates.io-index",
+    "license_expression": "Apache-2.0 OR MIT",
+    "license_file_manifest": null,
+    "license_text_files": [
+      {
+        "bytes": 11358,
+        "name": "LICENSE-APACHE"
+      },
+      {
+        "bytes": 1082,
+        "name": "LICENSE-MIT"
+      }
+    ]
+  }
+]

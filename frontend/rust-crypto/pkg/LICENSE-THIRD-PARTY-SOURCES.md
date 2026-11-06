@@ -1,0 +1,31 @@
+THIRD-PARTY SOURCE ACCESS — uni-wasm-crypto
+
+The source archives below provide the source form corresponding to the exact locked third-party crate versions included in this package. Open the version page or download the versioned crate archive. The notice bundle beside this file contains the upstream root license and notice texts.
+
+Runtime-linked dependencies:
+
+- base64ct 1.8.3 (Apache-2.0 OR MIT): [crates.io release page](https://crates.io/crates/base64ct/1.8.3); [source archive](https://crates.io/api/v1/crates/base64ct/1.8.3/download); [upstream repository](https://github.com/RustCrypto/formats)
+- block-buffer 0.12.1 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/block-buffer/0.12.1); [source archive](https://crates.io/api/v1/crates/block-buffer/0.12.1/download); [upstream repository](https://github.com/RustCrypto/utils)
+- cfg-if 1.0.5 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/cfg-if/1.0.5); [source archive](https://crates.io/api/v1/crates/cfg-if/1.0.5/download); [upstream repository](https://github.com/rust-lang/cfg-if)
+- cipher 0.5.2 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/cipher/0.5.2); [source archive](https://crates.io/api/v1/crates/cipher/0.5.2/download); [upstream repository](https://github.com/RustCrypto/traits)
+- cmov 0.5.4 (Apache-2.0 OR MIT): [crates.io release page](https://crates.io/crates/cmov/0.5.4); [source archive](https://crates.io/api/v1/crates/cmov/0.5.4/download); [upstream repository](https://github.com/RustCrypto/utils)
+- const-oid 0.10.2 (Apache-2.0 OR MIT): [crates.io release page](https://crates.io/crates/const-oid/0.10.2); [source archive](https://crates.io/api/v1/crates/const-oid/0.10.2/download); [upstream repository](https://github.com/RustCrypto/formats)
+- crypto-common 0.2.2 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/crypto-common/0.2.2); [source archive](https://crates.io/api/v1/crates/crypto-common/0.2.2/download); [upstream repository](https://github.com/RustCrypto/traits)
+- ctutils 0.4.4 (Apache-2.0 OR MIT): [crates.io release page](https://crates.io/crates/ctutils/0.4.4); [source archive](https://crates.io/api/v1/crates/ctutils/0.4.4/download); [upstream repository](https://github.com/RustCrypto/utils)
+- digest 0.11.3 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/digest/0.11.3); [source archive](https://crates.io/api/v1/crates/digest/0.11.3/download); [upstream repository](https://github.com/RustCrypto/traits)
+- hex 0.4.3 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/hex/0.4.3); [source archive](https://crates.io/api/v1/crates/hex/0.4.3/download); [upstream repository](https://github.com/KokaKiwi/rust-hex)
+- hmac 0.13.0 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/hmac/0.13.0); [source archive](https://crates.io/api/v1/crates/hmac/0.13.0/download); [upstream repository](https://github.com/RustCrypto/MACs)
+- hybrid-array 0.4.15 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/hybrid-array/0.4.15); [source archive](https://crates.io/api/v1/crates/hybrid-array/0.4.15/download); [upstream repository](https://github.com/RustCrypto/hybrid-array)
+- inout 0.2.2 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/inout/0.2.2); [source archive](https://crates.io/api/v1/crates/inout/0.2.2/download); [upstream repository](https://github.com/RustCrypto/utils)
+- once_cell 1.21.4 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/once_cell/1.21.4); [source archive](https://crates.io/api/v1/crates/once_cell/1.21.4/download); [upstream repository](https://github.com/matklad/once_cell)
+- pbkdf2 0.13.0 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/pbkdf2/0.13.0); [source archive](https://crates.io/api/v1/crates/pbkdf2/0.13.0/download); [upstream repository](https://github.com/RustCrypto/password-hashes)
+- salsa20 0.11.0 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/salsa20/0.11.0); [source archive](https://crates.io/api/v1/crates/salsa20/0.11.0/download); [upstream repository](https://github.com/RustCrypto/stream-ciphers)
+- scrypt 0.12.0 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/scrypt/0.12.0); [source archive](https://crates.io/api/v1/crates/scrypt/0.12.0/download); [upstream repository](https://github.com/RustCrypto/password-hashes)
+- sha2 0.11.0 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/sha2/0.11.0); [source archive](https://crates.io/api/v1/crates/sha2/0.11.0/download); [upstream repository](https://github.com/RustCrypto/hashes)
+- typenum 1.20.1 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/typenum/1.20.1); [source archive](https://crates.io/api/v1/crates/typenum/1.20.1/download); [upstream repository](https://github.com/paholg/typenum)
+- unicode-ident 1.0.26 ((MIT OR Apache-2.0) AND Unicode-3.0): [crates.io release page](https://crates.io/crates/unicode-ident/1.0.26); [source archive](https://crates.io/api/v1/crates/unicode-ident/1.0.26/download); [upstream repository](https://github.com/dtolnay/unicode-ident)
+- wasm-bindgen 0.2.129 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/wasm-bindgen/0.2.129); [source archive](https://crates.io/api/v1/crates/wasm-bindgen/0.2.129/download); [upstream repository](https://github.com/wasm-bindgen/wasm-bindgen)
+- wasm-bindgen-shared 0.2.129 (MIT OR Apache-2.0): [crates.io release page](https://crates.io/crates/wasm-bindgen-shared/0.2.129); [source archive](https://crates.io/api/v1/crates/wasm-bindgen-shared/0.2.129/download); [upstream repository](https://github.com/wasm-bindgen/wasm-bindgen/tree/master/crates/shared)
+- zeroize 1.9.1 (Apache-2.0 OR MIT): [crates.io release page](https://crates.io/crates/zeroize/1.9.1); [source archive](https://crates.io/api/v1/crates/zeroize/1.9.1/download); [upstream repository](https://github.com/RustCrypto/utils)
+
+Rust standard-library notices and source access are retained in `LICENSE-RUST-STD`, `LICENSE-RUST-STD-COPYRIGHT.txt` and `LICENSE-RUST-STD-SOURCES.md`. Their release-wide notice scope does not assert that every listed target dependency is linked into this artifact.

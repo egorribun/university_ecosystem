@@ -34,3 +34,31 @@
 # Exclude dependency installs from archives and prevent accidental tracking
 root/node_modules/ export-ignore
 root/frontend/node_modules/ export-ignore
+
+# Aggregated upstream legal text retains the original file-body bytes,
+# including mixed upstream line endings. Source indexes remain normal text.
+docs/licensing/distribution/GO-*.txt -text
+docs/licensing/distribution/PYTHON-LICENSES.txt -text
+docs/licensing/distribution/NATS-CHART.txt -text
+frontend/public/licenses/javascript/*.txt -text
+services/caddy/THIRD_PARTY_NOTICES.txt -text
+charts/university-ecosystem/THIRD_PARTY_NOTICES.txt -text
+frontend/rust-crypto/LICENSE-THIRD-PARTY -text
+frontend/rust-crypto/pkg/LICENSE-THIRD-PARTY -text
+frontend/public/licenses/rust-crypto/LICENSE-THIRD-PARTY -text
+frontend/wasm-sanitizer/LICENSE-THIRD-PARTY -text
+frontend/wasm-sanitizer/pkg/LICENSE-THIRD-PARTY -text
+frontend/public/licenses/wasm-sanitizer/LICENSE-THIRD-PARTY -text
+native/rust_ext/LICENSE-THIRD-PARTY -text
+native/rust_ext/LICENSE-RUST-STD -text
+native/rust_ext/LICENSE-RUST-STD-COPYRIGHT.txt -text
+frontend/rust-crypto/LICENSE-RUST-STD -text
+frontend/rust-crypto/LICENSE-RUST-STD-COPYRIGHT.txt -text
+frontend/wasm-sanitizer/LICENSE-RUST-STD -text
+frontend/wasm-sanitizer/LICENSE-RUST-STD-COPYRIGHT.txt -text
+frontend/rust-crypto/pkg/LICENSE-RUST-STD -text
+frontend/rust-crypto/pkg/LICENSE-RUST-STD-COPYRIGHT.txt -text
+frontend/wasm-sanitizer/pkg/LICENSE-RUST-STD -text
+frontend/wasm-sanitizer/pkg/LICENSE-RUST-STD-COPYRIGHT.txt -text
+frontend/public/licenses/rust-stdlib/LICENSE-RUST-STD -text
+frontend/public/licenses/rust-stdlib/LICENSE-RUST-STD-COPYRIGHT.txt -text

@@ -151,6 +151,7 @@ jobs:
         run: |
           wasm-pack build rust-crypto --target web
           wasm-pack build wasm-sanitizer --target web
+          node scripts/finalize-wasm-licenses.mjs
 
       # Wave 129 SW6 — verify VITE_LHCI tree-shake invariant before LHCI run.
       # CLAUDE.md gotcha: VITE_LHCI flag set ONLY by `scripts/run-lhci.mjs`

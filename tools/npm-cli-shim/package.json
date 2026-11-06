@@ -12,5 +12,6 @@
   },
   "engines": {
     "node": ">=22.14.0"
-  }
+  },
+  "license": "SEE LICENSE IN LICENSE"
 }

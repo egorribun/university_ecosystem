@@ -1,0 +1,1070 @@
+{
+  "tracked_files": 5502,
+  "manifests": [
+    {
+      "path": ".agents/skills/playwright-skill/package.json",
+      "type": "package.json",
+      "name": "playwright-skill",
+      "license": "MIT",
+      "license_file": null,
+      "license_files": null,
+      "private": null,
+      "publish": null
+    },
+    {
+      "path": "frontend/package.json",
+      "type": "package.json",
+      "name": "frontend",
+      "license": "SEE LICENSE IN LICENSE",
+      "license_file": null,
+      "license_files": null,
+      "private": true,
+      "publish": null
+    },
+    {
+      "path": "frontend/rust-crypto/Cargo.toml",
+      "type": "Cargo.toml",
+      "name": "uni-wasm-crypto",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": null,
+      "private": null,
+      "publish": false
+    },
+    {
+      "path": "frontend/rust-crypto/fuzz/Cargo.toml",
+      "type": "Cargo.toml",
+      "name": "rust-crypto-fuzz",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": null,
+      "private": null,
+      "publish": false
+    },
+    {
+      "path": "frontend/rust-crypto/pkg/package.json",
+      "type": "package.json",
+      "name": "uni-wasm-crypto",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": null,
+      "private": null,
+      "publish": null
+    },
+    {
+      "path": "frontend/scripts/boundary-micromatch-compat/package.json",
+      "type": "package.json",
+      "name": "@university-ecosystem/boundary-micromatch-compat",
+      "license": "MIT",
+      "license_file": null,
+      "license_files": null,
+      "private": true,
+      "publish": null
+    },
+    {
+      "path": "frontend/scripts/minimatch-3-compat/package.json",
+      "type": "package.json",
+      "name": "@university-ecosystem/minimatch-3-compat",
+      "license": "ISC",
+      "license_file": null,
+      "license_files": null,
+      "private": true,
+      "publish": null
+    },
+    {
+      "path": "frontend/scripts/node-resolve-defaults-clone-compat/package.json",
+      "type": "package.json",
+      "name": "@university-ecosystem/node-resolve-defaults-clone-compat",
+      "license": "SEE LICENSE IN LICENSE",
+      "license_file": null,
+      "license_files": null,
+      "private": true,
+      "publish": null
+    },
+    {
+      "path": "frontend/scripts/react-compiler-zod-compat/package.json",
+      "type": "package.json",
+      "name": "@university-ecosystem/react-compiler-zod-compat",
+      "license": "MIT",
+      "license_file": null,
+      "license_files": null,
+      "private": true,
+      "publish": null
+    },
+    {
+      "path": "frontend/tools/stryker-process-host/Cargo.toml",
+      "type": "Cargo.toml",
+      "name": "stryker-process-host",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": null,
+      "private": null,
+      "publish": false
+    },
+    {
+      "path": "frontend/wasm-sanitizer/Cargo.toml",
+      "type": "Cargo.toml",
+      "name": "wasm-sanitizer",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": null,
+      "private": null,
+      "publish": false
+    },
+    {
+      "path": "frontend/wasm-sanitizer/fuzz/Cargo.toml",
+      "type": "Cargo.toml",
+      "name": "wasm-sanitizer-fuzz",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": null,
+      "private": null,
+      "publish": false
+    },
+    {
+      "path": "frontend/wasm-sanitizer/pkg/package.json",
+      "type": "package.json",
+      "name": "wasm-sanitizer",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": null,
+      "private": null,
+      "publish": null
+    },
+    {
+      "path": "gen/go/go.mod",
+      "type": "go",
+      "module": "github.com/university-ecosystem/core/gen/go"
+    },
+    {
+      "path": "go.mod",
+      "type": "go",
+      "module": "university-ecosystem"
+    },
+    {
+      "path": "native/rust_ext/Cargo.toml",
+      "type": "Cargo.toml",
+      "name": "rust_ext",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": null,
+      "private": null,
+      "publish": false
+    },
+    {
+      "path": "native/rust_ext/fuzz/Cargo.toml",
+      "type": "Cargo.toml",
+      "name": "rust_ext-fuzz",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": null,
+      "private": null,
+      "publish": false
+    },
+    {
+      "path": "native/rust_ext/pyproject.toml",
+      "type": "pyproject.toml",
+      "name": "rust_ext",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": [
+        "LICENSE",
+        "LICENSE-APACHE-LEGACY",
+        "LICENSE-THIRD-PARTY",
+        "LICENSE-THIRD-PARTY-SOURCES.md",
+        "LICENSE-RUST-STD",
+        "LICENSE-RUST-STD-COPYRIGHT.txt",
+        "LICENSE-RUST-STD-SOURCES.md"
+      ],
+      "private": null,
+      "publish": null
+    },
+    {
+      "path": "package.json",
+      "type": "package.json",
+      "name": "university-ecosystem-root",
+      "license": "SEE LICENSE IN LICENSE",
+      "license_file": null,
+      "license_files": null,
+      "private": true,
+      "publish": null
+    },
+    {
+      "path": "pyproject.toml",
+      "type": "pyproject.toml",
+      "name": "university-ecosystem",
+      "license": "LicenseRef-University-Ecosystem-Proprietary",
+      "license_file": null,
+      "license_files": [
+        "LICENSE",
+        "THIRD_PARTY_NOTICES.md",
+        "docs/licensing/README.md",
+        "docs/licensing/legacy/LICENSE-MIT",
+        "docs/licensing/legacy/LICENSE-ISC",
+        "docs/licensing/legacy/LICENSE-APACHE",
+        "docs/licensing/distribution/PYTHON-LICENSES.txt",
+        "docs/licensing/distribution/PYTHON-SOURCES.md",
+        "app/data/emoji/LICENSE.txt"
+      ],
+      "private": null,
+      "publish": null
+    },
+    {
+      "path": "services/caddy/go.mod",
+      "type": "go",
+      "module": "github.com/university-ecosystem/caddy"
+    },
+    {
+      "path": "services/cmd/uni-cli/go.mod",
+      "type": "go",
+      "module": "github.com/university-ecosystem/uni-cli"
+    },
+    {
+      "path": "services/file-processor/go.mod",
+      "type": "go",
+      "module": "github.com/university-ecosystem/file-processor"
+    },
+    {
+      "path": "services/gateway/go.mod",
+      "type": "go",
+      "module": "github.com/university-ecosystem/gateway"
+    },
+    {
+      "path": "services/pkg/logging/go.mod",
+      "type": "go",
+      "module": "github.com/university-ecosystem/services/pkg/logging"
+    },
+    {
+      "path": "services/pkg/spicedb/go.mod",
+      "type": "go",
+      "module": "github.com/university-ecosystem/services/pkg/spicedb"
+    },
+    {
+      "path": "services/pkg/spiffe/go.mod",
+      "type": "go",
+      "module": "github.com/university-ecosystem/services/pkg/spiffe"
+    },
+    {
+      "path": "services/ws-hub/go.mod",
+      "type": "go",
+      "module": "github.com/university-ecosystem/ws-hub"
+    },
+    {
+      "path": "tools/npm-cli-shim/package.json",
+      "type": "package.json",
+      "name": "runner-npm-cli-bridge",
+      "license": "SEE LICENSE IN LICENSE",
+      "license_file": null,
+      "license_files": null,
+      "private": true,
+      "publish": null
+    },
+    {
+      "path": "tools/semantic-release-micromatch-compat/package.json",
+      "type": "package.json",
+      "name": "micromatch",
+      "license": "SEE LICENSE IN LICENSE",
+      "license_file": null,
+      "license_files": null,
+      "private": true,
+      "publish": null
+    }
+  ],
+  "notices": [
+    ".agents/skills/algorithmic-art/LICENSE.txt",
+    ".agents/skills/frontend-design/LICENSE.txt",
+    ".agents/skills/webapp-testing/LICENSE.txt",
+    "LICENSE",
+    "app/data/emoji/LICENSE.txt",
+    "docs/licensing/legacy/LICENSE-MIT",
+    "frontend/LICENSE",
+    "frontend/rust-crypto/LICENSE",
+    "frontend/rust-crypto/pkg/LICENSE",
+    "frontend/scripts/boundary-micromatch-compat/LICENSE",
+    "frontend/scripts/react-compiler-zod-compat/LICENSE",
+    "frontend/src/assets/fonts/OFL.txt",
+    "frontend/wasm-sanitizer/LICENSE",
+    "frontend/wasm-sanitizer/pkg/LICENSE",
+    "native/rust_ext/LICENSE",
+    "tests/fixtures/geoip/LICENSE-APACHE"
+  ],
+  "skills": [
+    {
+      "path": ".agents/skills/ai-engineer",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/algorithmic-art",
+      "notice_paths": [
+        ".agents/skills/algorithmic-art/LICENSE.txt"
+      ]
+    },
+    {
+      "path": ".agents/skills/api-design-principles",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/api-endpoint-builder",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/api-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/api-security-best-practices",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/api-security-testing",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/application-performance-performance-optimization",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/architecture",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/architecture-decision-records",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/architecture-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/async-python-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/auth-implementation-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/backend-architect",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/backend-security-coder",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/brainstorming",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/clean-code",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/cloud-devops",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/context-driven-development",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/context7-auto-research",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/cqrs-implementation",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/database-admin",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/database-architect",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/database-optimizer",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/ddd-strategic-design",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/ddd-tactical-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/deployment-engineer",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/deployment-pipeline-design",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/devops-troubleshooter",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/dispatching-parallel-agents",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/distributed-debugging-debug-trace",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/distributed-tracing",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/docker-expert",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/domain-driven-design",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/e2e-testing-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/embedding-strategies",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/error-handling-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/event-sourcing-architect",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/executing-plans",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/fastapi-pro",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/fastapi-templates",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/find-bugs",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/finishing-a-development-branch",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/frontend-design",
+      "notice_paths": [
+        ".agents/skills/frontend-design/LICENSE.txt"
+      ]
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/frontend-developer",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/git-advanced-workflows",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/github-actions-templates",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/github-automation",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/github-workflow-automation",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/go-concurrency-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/golang-pro",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/grafana-dashboards",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/graphql-architect",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/grpc-golang",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/i18n-localization",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/incident-runbook-templates",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/javascript-testing-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/k6-load-testing",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/k8s-security-policies",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/kubernetes-architect",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/kubernetes-deployment",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/linkerd-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/llm-app-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/memory-safety-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/microservices-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/mtls-configuration",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/observability-engineer",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/on-call-handoff-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/openapi-spec-generation",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/pci-compliance",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/performance-engineer",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/performance-optimizer",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/performance-profiling",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/playwright-skill",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/postgresql",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/postgresql-optimization",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/privacy-by-design",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/progressive-web-app",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/prometheus-configuration",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/pydantic-models-py",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/python-performance-optimization",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/python-pro",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/python-testing-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/radix-ui-design-system",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/rag-engineer",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/react-best-practices",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/react-component-performance",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/react-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/react-state-management",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/react-ui-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/receiving-code-review",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/requesting-code-review",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/rust-async-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/rust-pro",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/saga-orchestration",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/secrets-management",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/security-audit",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/security-auditor",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/security-bluebook-builder",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/security-requirement-extraction",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/security-scanning-security-dependencies",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/security-scanning-security-hardening",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/security-scanning-security-sast",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/semgrep-rule-creator",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/senior-architect",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/senior-fullstack",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/sentry-automation",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/service-mesh-expert",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/service-mesh-observability",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/shadcn",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/slo-implementation",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/sql-injection-testing",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/sql-optimization-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/sql-pro",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/subagent-driven-development",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/systematic-debugging",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/systems-programming-rust-project",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/tailwind-design-system",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/tailwind-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/tanstack-query-expert",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/tdd-workflow",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/temporal-golang-pro",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/temporal-python-pro",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/temporal-python-testing",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/terraform-specialist",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/test-automator",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/test-driven-development",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/testing-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/testing-qa",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/threat-modeling-expert",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/top-web-vulnerabilities",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/typescript-expert",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/typescript-pro",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/ui-a11y",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/ui-ux-designer",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/unit-testing-test-generate",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/using-git-worktrees",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/using-superpowers",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/uv-package-manager",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/vector-database-engineer",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/vector-index-tuning",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/verification-before-completion",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/vulnerability-scanner",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/web-performance-optimization",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/web-security-testing",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/webapp-testing",
+      "notice_paths": [
+        ".agents/skills/webapp-testing/LICENSE.txt"
+      ]
+    },
+    {
+      "path": ".agents/skills/workflow-orchestration-patterns",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/writing-plans",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/writing-skills",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/zod-validation-expert",
+      "notice_paths": []
+    },
+    {
+      "path": ".agents/skills/zustand-store-ts",
+      "notice_paths": []
+    }
+  ],
+  "assets": [
+    ".agents/skills/shadcn/assets/shadcn-small.png",
+    ".agents/skills/shadcn/assets/shadcn.png",
+    "app/test-static/avatars/test-avatar-017f9965e705411eb2137d11b5462b51.png",
+    "app/test-static/avatars/test-avatar-05b27c2f297f4d128683b37e2cfb4592.png",
+    "app/test-static/avatars/test-avatar-065280e4c7664f0697fc8bac569ff4e8.png",
+    "app/test-static/avatars/test-avatar-14a9f38da4c04433bf78425a1061f8b1.png",
+    "app/test-static/avatars/test-avatar-19eded6f88ef431ab7e214299f27c21d.png",
+    "app/test-static/avatars/test-avatar-1a263e296a8d48829ede7ec55f1ce197.png",
+    "app/test-static/avatars/test-avatar-1cb255df384f4700b219f673cd79b18b.png",
+    "app/test-static/avatars/test-avatar-242ddd091a6347d6999f98e53c8d7031.png",
+    "app/test-static/avatars/test-avatar-248659e4888844e798595bf3788c57dc.png",
+    "app/test-static/avatars/test-avatar-259b687b6aa246e898d9ef647f21080e.png",
+    "app/test-static/avatars/test-avatar-2aeeb86540b24a69bea4ab2926ce965c.png",
+    "app/test-static/avatars/test-avatar-2c3d0071993c4478a7a5191bbf45fc9d.png",
+    "app/test-static/avatars/test-avatar-2e3d742ebf3b49c49165b6ef198bac0b.png",
+    "app/test-static/avatars/test-avatar-2e7ba1353e7e497198a4788fdaa6b52e.png",
+    "app/test-static/avatars/test-avatar-3490b2c229524229ac8f1e1704dd59eb.png",
+    "app/test-static/avatars/test-avatar-49be464282d54da295870476f4e479e2.png",
+    "app/test-static/avatars/test-avatar-49cdec344a924b888215924c643521f5.png",
+    "app/test-static/avatars/test-avatar-4a470567695b4eca976e2afb3722230e.png",
+    "app/test-static/avatars/test-avatar-5942c53d884e4e3d861d90a1a2c9c862.png",
+    "app/test-static/avatars/test-avatar-601504b9abb142dfac75f1034f7a317f.png",
+    "app/test-static/avatars/test-avatar-6b895c1837fc44ff918aeb1489f776bb.png",
+    "app/test-static/avatars/test-avatar-6c8f2490a8af4aaab17ac0400fec7cfe.png",
+    "app/test-static/avatars/test-avatar-6d5312c1c1df4fe68e069b92899976cb.png",
+    "app/test-static/avatars/test-avatar-705a2cf8c9e04add9c86916e77edac01.png",
+    "app/test-static/avatars/test-avatar-787d56bd41c144be9be19b036b2d3bfd.png",
+    "app/test-static/avatars/test-avatar-7a2bb22931d74cc691e8685eba9c834a.png",
+    "app/test-static/avatars/test-avatar-81793f6325cd471d953778bbab6613c2.png",
+    "app/test-static/avatars/test-avatar-83f037f4bdc44658af5ba8deebb7c1ff.png",
+    "app/test-static/avatars/test-avatar-858ccb43ba5e466bbce6b84d6b236a38.png",
+    "app/test-static/avatars/test-avatar-8856758ab33b4922befdf1c308a3bc95.png",
+    "app/test-static/avatars/test-avatar-90573b75e2474201b5f1e15d176db955.png",
+    "app/test-static/avatars/test-avatar-a00c3e86451b47ffa23c9df98d81472d.png",
+    "app/test-static/avatars/test-avatar-a7436b5924f44480b718577387d3dd83.png",
+    "app/test-static/avatars/test-avatar-ad3a19e3e4804337994e10b7563a15e0.png",
+    "app/test-static/avatars/test-avatar-af3094a2d9f844d383863710850b5cf7.png",
+    "app/test-static/avatars/test-avatar-b7cce8b51db143b79ad24d107e653a82.png",
+    "app/test-static/avatars/test-avatar-b9f470e22d8a480e8dd0bcd0a05ed63c.png",
+    "app/test-static/avatars/test-avatar-c540059a0e7a4a2aafa620b891cb4fb3.png",
+    "app/test-static/avatars/test-avatar-c671cb0650ef47049cf173981cf2ae07.png",
+    "app/test-static/avatars/test-avatar-ce6de97b1f4c48b4aa5588c8a4767eb7.png",
+    "app/test-static/avatars/test-avatar-d3b5b65ecabd42b3b63116c7919a1a9c.png",
+    "app/test-static/avatars/test-avatar-d89f4ec00e8d43fa972a1b475bd6c415.png",
+    "app/test-static/avatars/test-avatar-d8da2bebbba8484b8a2c96b92ebf7ecd.png",
+    "app/test-static/avatars/test-avatar-dde1afe4290147028a1d01df729452bd.png",
+    "app/test-static/avatars/test-avatar-de2a4b93d5b4438482051e6d71ab1480.png",
+    "app/test-static/avatars/test-avatar-e03771e4f6674cb09ac6cd832c65cfdc.png",
+    "app/test-static/avatars/test-avatar-e90af7dbbe5b4194b788f963cdedb490.png",
+    "app/test-static/avatars/test-avatar-e9214abc91c24166beff06296d679d0e.png",
+    "app/test-static/avatars/test-avatar-efce2ca8770c42dca527047f00119e4b.png",
+    "app/test-static/avatars/test-avatar-f0a3becb8d644b71b70b5ae8ff4f7a93.png",
+    "app/test-static/avatars/test-avatar-f2b27c82d371409784769432db594666.png",
+    "app/test-static/avatars/test-avatar-f435735c8aa448039cb4a2bdc29caaac.png",
+    "app/test-static/avatars/test-avatar-f44cee3f383749ba90b1a7a7abebd64b.png",
+    "app/test-static/avatars/test-avatar-f9c2d1f860974202acab760127d266cc.png",
+    "app/test-static/avatars/test-avatar-fad72741b64947029117efc29d0fe3c5.png",
+    "app/test-static/avatars/test-avatar-fed052a5641e4a5285a9ae4ba95d48d4.png",
+    "app/test-static/covers/test-cover-151af6ca876c43d48166c6f5df313818.png",
+    "app/test-static/covers/test-cover-166baf378e8f473eb8437599ba444bbf.png",
+    "app/test-static/covers/test-cover-16c8cc9c9eb34566834e8c323a92241a.png",
+    "app/test-static/covers/test-cover-17bf25067b8e465e82584990000c6e81.png",
+    "app/test-static/covers/test-cover-1c2ee6115e60463987873a9c03e783ca.png",
+    "app/test-static/covers/test-cover-23b4a3ea3c1341a1a2bd8fce95b96e70.png",
+    "app/test-static/covers/test-cover-2612946dc93c4525b718eabbd19cbdce.png",
+    "app/test-static/covers/test-cover-27b03067a094442ba9b9b255cb0c6940.png",
+    "app/test-static/covers/test-cover-28de05b37d6641ac9bcedeb99d4a94a4.png",
+    "app/test-static/covers/test-cover-29aa431881ed449d8b2ae2efc521d58e.png",
+    "app/test-static/covers/test-cover-2d091fb69c72458583b2c224a4b630d3.png",
+    "app/test-static/covers/test-cover-31b4af99bde34052be11a3094017eedf.png",
+    "app/test-static/covers/test-cover-331aa51df81c4cf89e7795079c98c140.png",
+    "app/test-static/covers/test-cover-367823c366f24d3ca8c4764da28ad2f9.png",
+    "app/test-static/covers/test-cover-3b5c928c5c9e49c1a51660957d6b4d9e.png",
+    "app/test-static/covers/test-cover-489c3b8188a44c28b91fe903f9e221b1.png",
+    "app/test-static/covers/test-cover-4a1c979dfb10414d82f09f073304686f.png",
+    "app/test-static/covers/test-cover-54071c65fb8b43908b7d74709c8ca7fa.png",
+    "app/test-static/covers/test-cover-5671b697b7984f42b329cc7fadad2213.png",
+    "app/test-static/covers/test-cover-5c10348c0534446891061c769848c388.png",
+    "app/test-static/covers/test-cover-5dd050d9c4ab412ca37be48d59c8cb35.png",
+    "app/test-static/covers/test-cover-5e42112f51ad41378413dff83d8658d2.png",
+    "app/test-static/covers/test-cover-62c96d41a94a4f74b723823ceca1a07e.png",
+    "app/test-static/covers/test-cover-660aecf11083412e8a008cde044d47f5.png",
+    "app/test-static/covers/test-cover-6ff31203a23a4c2c9c7da4049660f12a.png",
+    "app/test-static/covers/test-cover-768cfcbb6b59400eb2c585f5b51d66d5.png",
+    "app/test-static/covers/test-cover-76cc8bc85e7a44788a9479bc56b89805.png",
+    "app/test-static/covers/test-cover-7729d9ea95354dba8d98a401cbfbc919.png",
+    "app/test-static/covers/test-cover-7a8dcdee128e49fb9fb430e9e436e8df.png",
+    "app/test-static/covers/test-cover-83a16451f399408a8dd6ae163ab12ecd.png",
+    "app/test-static/covers/test-cover-84e1cc84c50147eba5526639e6db4564.png",
+    "app/test-static/covers/test-cover-857886971ce3422c8514278e2ebe3856.png",
+    "app/test-static/covers/test-cover-90ded4ef52544fbaa38c9aa235336cff.png",
+    "app/test-static/covers/test-cover-9162ca6830664d89ba7681c6e6a2eee2.png",
+    "app/test-static/covers/test-cover-9504c7f82f1142688d1b349166e7f3f3.png",
+    "app/test-static/covers/test-cover-9609ea7a7df84c398e76b96993e25c58.png",
+    "app/test-static/covers/test-cover-98ed623fd3b94f839d54e362feda7640.png",
+    "app/test-static/covers/test-cover-a0c661b8d1ad42ec98f2a5e4d6d90e7b.png",
+    "app/test-static/covers/test-cover-a88584c0fb1a44538f0cddeda3b0673b.png",
+    "app/test-static/covers/test-cover-aa913d9617d14fe68fec2ef61943271d.png",
+    "app/test-static/covers/test-cover-ab5c19b797464b54887b87051355a1df.png",
+    "app/test-static/covers/test-cover-aba090f722924d67912d32067b680e9c.png",
+    "app/test-static/covers/test-cover-c9eb29f7ed37470db42b1cd01e501719.png",
+    "app/test-static/covers/test-cover-cfd440922501456ca7ec3914d028bef1.png",
+    "app/test-static/covers/test-cover-d1a36b912e7e46118c30ad3fe4292d17.png",
+    "app/test-static/covers/test-cover-d34c0d8a340d49588fe378f5749e2f95.png",
+    "app/test-static/covers/test-cover-d536aa1bc2574a19b36503f8a4f0046b.png",
+    "app/test-static/covers/test-cover-dcef4629ae0946fda55e62091897fa6f.png",
+    "app/test-static/covers/test-cover-ddeae361568c4ae0aac3b1431a4c4389.png",
+    "app/test-static/covers/test-cover-e09b7c0e16124205b1b2950cb1542c5b.png",
+    "app/test-static/covers/test-cover-e955fd7bc09a42b08378cf1dd45a93e8.png",
+    "app/test-static/covers/test-cover-eb07267b6f2c496a8449e1040fee94b5.png",
+    "app/test-static/covers/test-cover-eea7d48069f440e4ac91cae34f5fd6d6.png",
+    "app/test-static/covers/test-cover-ef4a2c6b318e47678b5e873bb4a1b2f2.png",
+    "app/test-static/covers/test-cover-f6dff71081a64b37aadf234daa283f72.png",
+    "app/test-static/covers/test-cover-fa295a36d109417380e7527836b08a99.png",
+    "app/test-static/covers/test-cover-fd5fc845d032461ab813aaad0e724f9b.png",
+    "app/test-static/covers/test-cover-feee4530261c433c980a1875b098e30a.png",
+    "charts/university-ecosystem/charts/nats-2.15.0.tgz",
+    "charts/university-ecosystem/charts/redis-0.1.0.tgz",
+    "frontend/public/apple-touch-icon.png",
+    "frontend/public/fallbacks/default_avatar.png",
+    "frontend/public/fallbacks/placeholder.png",
+    "frontend/public/favicon-16x16.png",
+    "frontend/public/favicon-32x32.png",
+    "frontend/public/favicon.ico",
+    "frontend/public/guu_logo.png",
+    "frontend/public/icon-192.png",
+    "frontend/public/icon-512.png",
+    "frontend/public/maskable-icon-192.png",
+    "frontend/public/maskable-icon-512.png",
+    "frontend/src/assets/background.jpg",
+    "frontend/src/assets/fonts/inter-latin-cyrillic-400.ttf",
+    "frontend/src/assets/guu_logo.png",
+    "frontend/tests/e2e/visual.spec.ts-snapshots/dashboard-chromium-win32.png",
+    "frontend/tests/e2e/visual.spec.ts-snapshots/messenger-chromium-win32.png",
+    "frontend/tests/e2e/visual.spec.ts-snapshots/news-list-chromium-win32.png",
+    "frontend/tests/e2e/visual.spec.ts-snapshots/profile-chromium-win32.png",
+    "frontend/tests/e2e/visual.spec.ts-snapshots/schedule-chromium-win32.png",
+    "frontend/vendor/react-compiler-zod-compat-1.0.0.tgz",
+    "frontend/visual-baselines/live/home-empty/home-empty_en_dark_w1440.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_en_dark_w390.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_en_dark_w768.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_en_light_w1440.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_en_light_w390.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_en_light_w768.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_ru_dark_w1440.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_ru_dark_w390.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_ru_dark_w768.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_ru_light_w1440.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_ru_light_w390.png",
+    "frontend/visual-baselines/live/home-empty/home-empty_ru_light_w768.png",
+    "tests/fixtures/geoip/MaxMind-DB-test-ipv4-24.mmdb",
+    "tests/fixtures/uploads/svg_with_js.svg"
+  ],
+  "scope": "Tracked materials at development baseline before this audit; manifest license fields refreshed after repairs. This is an inventory, not proof of copyright ownership."
+}

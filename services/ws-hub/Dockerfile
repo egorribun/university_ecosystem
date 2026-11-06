@@ -42,6 +42,9 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/services/ws-hub/ws-hub .
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/university-ecosystem/
+COPY docs/licensing/distribution/GO-WS-HUB.txt /usr/share/licenses/university-ecosystem/GO-DEPENDENCIES.txt
+COPY docs/licensing/distribution/GO-SOURCES.tsv /usr/share/licenses/university-ecosystem/GO-SOURCES.tsv
 
 # WS-Hub runs on 8081
 EXPOSE 8081

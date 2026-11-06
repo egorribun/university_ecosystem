@@ -18,6 +18,20 @@ async function withFixture(callback) {
     await mkdir(path.join(root, "rust-crypto", "pkg"), { recursive: true })
     await mkdir(path.join(root, "wasm-sanitizer", "src"), { recursive: true })
     await mkdir(path.join(root, "wasm-sanitizer", "pkg"), { recursive: true })
+    for (const component of ["rust-crypto", "wasm-sanitizer"]) {
+      for (const name of [
+        "LICENSE",
+        "LICENSE-THIRD-PARTY",
+        "LICENSE-THIRD-PARTY-SOURCES.md",
+        "LICENSE-RUST-STD",
+        "LICENSE-RUST-STD-COPYRIGHT.txt",
+        "LICENSE-RUST-STD-SOURCES.md",
+      ]) {
+        const notice = `Fixture notice for ${component}/${name}\n`
+        await writeFile(path.join(root, component, name), notice)
+        await writeFile(path.join(root, component, "pkg", name), notice)
+      }
+    }
     await writeFile(path.join(root, "rust-crypto", "pkg", ".gitignore"), "*\n")
     await writeFile(path.join(root, "wasm-sanitizer", "pkg", ".gitignore"), "*\n")
     await writeFile(path.join(root, "rust-crypto", "Cargo.toml"), "[package]\nname='crypto'\n")
@@ -81,6 +95,33 @@ test("source provenance is deterministic and records source/package hashes", asy
     assert.equal(first.packages["wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm.d.ts"], undefined)
   })
 })
+
+test("legal source changes invalidate the bound generated package", async () => {
+  await withFixture(async (root) => {
+    const metadata = await writeSourceProvenance(root)
+    for (const crate of ["rust-crypto", "wasm-sanitizer"]) {
+      for (const file of [
+        "LICENSE",
+        "LICENSE-THIRD-PARTY",
+        "LICENSE-THIRD-PARTY-SOURCES.md",
+        "LICENSE-RUST-STD",
+        "LICENSE-RUST-STD-COPYRIGHT.txt",
+        "LICENSE-RUST-STD-SOURCES.md",
+      ]) {
+        expectNotice(metadata, crate, file)
+      }
+    }
+    await writeFile(path.join(root, "wasm-sanitizer", "LICENSE-THIRD-PARTY"), "Changed notice\n")
+    await assert.rejects(() => validateSourceProvenance(root), /source inventory drift/i)
+  })
+})
+
+function expectNotice(metadata, crate, file) {
+  const name = `${crate}/${file}`
+  assert(metadata.source_files.some((entry) => entry.path === name && entry.size > 0))
+  const packagePath = `${crate}/pkg/${file}`
+  assert(metadata.packages[packagePath].size > 0)
+}
 
 test("validator rejects source or generated package drift", async () => {
   await withFixture(async (root) => {

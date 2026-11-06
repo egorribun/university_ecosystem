@@ -2,10 +2,11 @@
 
 Date: 2026-11-06
 
-Status: Owner-approved; implemented in
+Status: Owner-approved and integrated through
 [PR #1361](https://github.com/egorribun/university_ecosystem/pull/1361) and
 [PR #1362](https://github.com/egorribun/university_ecosystem/pull/1362).
-Source-bound hosted acceptance and integration remain pending.
+Both PRs were merged on 2026-11-06. Integration does not certify passing
+source-bound hosted checks or a complete third-party licensing audit.
 
 ## Context and decision
 

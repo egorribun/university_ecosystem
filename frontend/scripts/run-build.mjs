@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process"
 import path from "node:path"
 import process from "node:process"
+import { buildWasmArtifacts } from "./build-wasm.mjs"
 
 const args = process.argv.slice(2)
 const wantsReport = args.includes("--report")
@@ -30,22 +31,7 @@ function run(command, commandArgs, options = {}) {
 }
 
 async function main() {
-  console.log("Building rust-crypto WASM...")
-  try {
-    await run("wasm-pack", ["build", "rust-crypto", "--target", "web"], {
-      cwd: path.resolve(process.cwd()),
-      shell: true,
-    })
-    await run("wasm-pack", ["build", "wasm-sanitizer", "--target", "web"], {
-      cwd: path.resolve(process.cwd()),
-      shell: true,
-    })
-  } catch (error) {
-    console.warn(
-      "WASM build failed. If this is a non-rust environment, ensure rust-crypto/pkg and wasm-sanitizer/pkg exist."
-    )
-    console.warn(error.message)
-  }
+  await buildWasmArtifacts(path.resolve(process.cwd()))
 
   console.log("Syncing tokens...")
   await run("node", ["./scripts/sync-tokens.mjs"])

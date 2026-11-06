@@ -11,6 +11,7 @@ handoffs are intentionally not part of the canonical index.
 - [Contributing guide](CONTRIBUTING.md)
 - [Licensing and public source terms](licensing/README.md)
 - [Third-party and separately licensed material](../THIRD_PARTY_NOTICES.md)
+- [Licensing audit, component inventories and open rights items](licensing/AUDIT-2026-11-06.md)
 - [API documentation](api/README.md)
 - [API examples](API_EXAMPLES.md)
 - [Test and quality guide](../TESTING.md)

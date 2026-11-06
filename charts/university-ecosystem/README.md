@@ -1,5 +1,16 @@
 # University Ecosystem Helm chart
 
+## Licensing and bundled charts
+
+The [project notice](LICENSE) preserves earlier permissions and governs only
+the new original material it defines. The unchanged official NATS chart archive
+has its separate Apache-2.0 [notice](THIRD_PARTY_NOTICES.txt), shipped beside it
+in this parent chart. Preserve that notice when redistributing the archive.
+The local Redis compatibility chart includes its own copy of the project
+notice; it is not an official upstream Redis chart. Chart templates and the
+Redis/NATS server images have separate licenses. See the
+[service and provenance record](../../docs/licensing/EXTERNAL-SERVICES.md).
+
 This chart supports local development through `values.yaml` and a fail-closed,
 production-like staging overlay through `values-staging.yaml`. The staging file
 contains no credential material. Every `REQUIRED_*` marker must be replaced by

@@ -100,6 +100,10 @@ RUN /opt/venv/bin/python -c "import fastapi, sqlalchemy, urllib3; assert urllib3
 COPY --chown=app:app app ./app
 COPY --chown=app:app alembic ./alembic
 COPY --chown=app:app alembic.ini ./alembic.ini
+COPY --chown=app:app LICENSE THIRD_PARTY_NOTICES.md ./
+COPY --chown=app:app docs/licensing/README.md ./docs/licensing/README.md
+COPY --chown=app:app docs/licensing/legacy ./docs/licensing/legacy
+COPY --chown=app:app docs/licensing/distribution ./docs/licensing/distribution
 
 # Ensure cache directory exists with correct permissions
 RUN mkdir -p /app/cache && chown -R app:app /app/cache

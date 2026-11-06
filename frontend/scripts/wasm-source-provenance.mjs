@@ -14,14 +14,20 @@ import path from "node:path"
 
 export const PROVENANCE_FILENAME = "WASM_SOURCE_PROVENANCE.json"
 
-const DEFAULT_SOURCE_FILES = [
-  "rust-crypto/Cargo.toml",
-  "rust-crypto/Cargo.lock",
-  "rust-crypto/src/lib.rs",
-  "wasm-sanitizer/Cargo.toml",
-  "wasm-sanitizer/Cargo.lock",
-  "wasm-sanitizer/src/lib.rs",
+const CRATE_SOURCE_FILES = [
+  "Cargo.toml",
+  "Cargo.lock",
+  "LICENSE",
+  "LICENSE-THIRD-PARTY",
+  "LICENSE-THIRD-PARTY-SOURCES.md",
+  "LICENSE-RUST-STD",
+  "LICENSE-RUST-STD-COPYRIGHT.txt",
+  "LICENSE-RUST-STD-SOURCES.md",
+  "src/lib.rs",
 ]
+const DEFAULT_SOURCE_FILES = ["rust-crypto", "wasm-sanitizer"].flatMap((crate) =>
+  CRATE_SOURCE_FILES.map((file) => `${crate}/${file}`)
+)
 
 const PACKAGE_ROOTS = ["rust-crypto/pkg", "wasm-sanitizer/pkg"]
 

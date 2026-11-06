@@ -42,6 +42,9 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/services/gateway/gateway .
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/university-ecosystem/
+COPY docs/licensing/distribution/GO-GATEWAY.txt /usr/share/licenses/university-ecosystem/GO-DEPENDENCIES.txt
+COPY docs/licensing/distribution/GO-SOURCES.tsv /usr/share/licenses/university-ecosystem/GO-SOURCES.tsv
 
 # Gateway runs on 8080
 EXPOSE 8080

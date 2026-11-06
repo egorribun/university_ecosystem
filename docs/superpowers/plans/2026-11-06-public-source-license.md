@@ -38,5 +38,5 @@ WASM producer/verifiers, and the GitHub PR workflow.
 Preparation, local validation, commit/push hooks, and publication of both PRs
 are complete: [development PR #1361](https://github.com/egorribun/university_ecosystem/pull/1361)
 and [default-branch PR #1362](https://github.com/egorribun/university_ecosystem/pull/1362).
-They remain subject to source-bound hosted checks and the ordinary merge policy.
-This checklist does not certify passing hosted checks or completed integration.
+Both PRs were merged on 2026-11-06. This records integration only; it does not
+certify passing hosted checks or a complete third-party rights audit.

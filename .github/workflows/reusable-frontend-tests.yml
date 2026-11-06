@@ -239,6 +239,7 @@ jobs:
           # reproducible artifact bytes.
           wasm-pack build rust-crypto --target web --release
           wasm-pack build wasm-sanitizer --target web --release
+          node scripts/finalize-wasm-licenses.mjs
           if [[ ! -s rust-crypto/pkg/uni_wasm_crypto_bg.wasm || ! -s wasm-sanitizer/pkg/wasm_sanitizer_bg.wasm ]]; then
             echo "::error::WASM build did not produce both binary modules"
             exit 1

@@ -37,6 +37,8 @@ RUN grep -Fq "github.com/caddyserver/caddy/v2 v${CADDY_VERSION}" go.mod \
 FROM caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
 
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+COPY LICENSE THIRD_PARTY_NOTICES.txt /usr/share/licenses/university-ecosystem/
+COPY THIRD_PARTY_SOURCES.tsv /usr/share/licenses/university-ecosystem/GO-SOURCES.tsv
 
 # The pinned upstream Alpine image runs as root and does not ship a named
 # runtime account. Upgrade only the fixed, explicitly versioned security

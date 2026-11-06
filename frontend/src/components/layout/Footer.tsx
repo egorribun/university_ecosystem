@@ -125,6 +125,12 @@ export default function Footer() {
           <p className="text-xs text-[var(--text-on-footer)] opacity-dim">
             {t("navigation:footer.careNote")}
           </p>
+          <a
+            href="/licenses/NOTICE.txt"
+            className="inline-flex min-h-11 items-center text-xs text-[var(--text-on-footer)] underline underline-offset-4"
+          >
+            {t("navigation:footer.licenses")}
+          </a>
         </div>
       </div>
     </footer>

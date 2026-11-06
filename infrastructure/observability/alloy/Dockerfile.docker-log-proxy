@@ -15,6 +15,8 @@ RUN GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local CGO_ENABLED=0 go build \
 
 FROM gcr.io/distroless/static-debian12@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838
 COPY --from=builder /docker-log-proxy /docker-log-proxy
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/university-ecosystem/
+COPY docs/licensing/distribution/GO-DOCKER-LOG-PROXY.txt /usr/share/licenses/university-ecosystem/GO-DEPENDENCIES.txt
 USER 65532:65532
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 CMD ["/docker-log-proxy", "--healthcheck"]
 EXPOSE 2375

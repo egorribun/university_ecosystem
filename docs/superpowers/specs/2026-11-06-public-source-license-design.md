@@ -24,4 +24,7 @@ WASM metadata/provenance, validate TOML/JSON and notice preservation, run
 appropriate existing tests and hooks, then submit separate license-only PRs to
 `egorribun` and `main`. Their histories diverge substantially; do not include
 unrelated development commits in the default-branch licensing change.
-Source-bound hosted checks remain required; no merge or bypass is authorized.
+Source-bound hosted checks remain required. The implementation agent was not
+authorized to merge or bypass gates; the owner merged PRs #1361 and #1362 on
+2026-11-06. This design is the historical transition scope, not a complete
+third-party licensing audit.

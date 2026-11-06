@@ -210,6 +210,7 @@ jobs:
           for attempt in 1 2 3; do
             if wasm-pack build rust-crypto --target web && \
                wasm-pack build wasm-sanitizer --target web; then
+              node scripts/finalize-wasm-licenses.mjs || exit 1
               echo "OK: WASM modules built (attempt $attempt)"
               exit 0
             fi

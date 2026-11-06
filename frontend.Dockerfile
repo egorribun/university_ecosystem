@@ -46,6 +46,19 @@ RUN --mount=type=cache,id=university-frontend-wasm-cargo-registry-${TARGETARCH},
     wasm-pack build rust-crypto --target web --release \
  && wasm-pack build wasm-sanitizer --target web --release
 
+# Finalize the npm archive allowlists without changing the WASM binary bytes.
+# Consumers still validate the checked-in provenance; this stage never blesses
+# a different Rust build or regenerates its source inventory.
+FROM base AS wasm-packages
+COPY frontend/scripts/finalize-wasm-licenses.mjs ./scripts/finalize-wasm-licenses.mjs
+COPY frontend/rust-crypto/LICENSE frontend/rust-crypto/LICENSE-THIRD-PARTY frontend/rust-crypto/LICENSE-THIRD-PARTY-SOURCES.md ./rust-crypto/
+COPY frontend/rust-crypto/LICENSE-RUST-STD frontend/rust-crypto/LICENSE-RUST-STD-COPYRIGHT.txt frontend/rust-crypto/LICENSE-RUST-STD-SOURCES.md ./rust-crypto/
+COPY frontend/wasm-sanitizer/LICENSE frontend/wasm-sanitizer/LICENSE-THIRD-PARTY frontend/wasm-sanitizer/LICENSE-THIRD-PARTY-SOURCES.md ./wasm-sanitizer/
+COPY frontend/wasm-sanitizer/LICENSE-RUST-STD frontend/wasm-sanitizer/LICENSE-RUST-STD-COPYRIGHT.txt frontend/wasm-sanitizer/LICENSE-RUST-STD-SOURCES.md ./wasm-sanitizer/
+COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
+RUN node scripts/finalize-wasm-licenses.mjs
+
 # Stage 3: Dependencies
 FROM base AS deps
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
@@ -54,12 +67,16 @@ COPY frontend/vendor/react-compiler-zod-compat-1.0.0.tgz ./vendor/
 COPY frontend/scripts ./scripts/
 COPY frontend/WASM_SOURCE_PROVENANCE.json ./
 COPY frontend/rust-crypto/Cargo.toml frontend/rust-crypto/Cargo.lock ./rust-crypto/
+COPY frontend/rust-crypto/LICENSE frontend/rust-crypto/LICENSE-THIRD-PARTY frontend/rust-crypto/LICENSE-THIRD-PARTY-SOURCES.md ./rust-crypto/
+COPY frontend/rust-crypto/LICENSE-RUST-STD frontend/rust-crypto/LICENSE-RUST-STD-COPYRIGHT.txt frontend/rust-crypto/LICENSE-RUST-STD-SOURCES.md ./rust-crypto/
 COPY frontend/rust-crypto/src/lib.rs ./rust-crypto/src/lib.rs
 COPY frontend/wasm-sanitizer/Cargo.toml frontend/wasm-sanitizer/Cargo.lock ./wasm-sanitizer/
+COPY frontend/wasm-sanitizer/LICENSE frontend/wasm-sanitizer/LICENSE-THIRD-PARTY frontend/wasm-sanitizer/LICENSE-THIRD-PARTY-SOURCES.md ./wasm-sanitizer/
+COPY frontend/wasm-sanitizer/LICENSE-RUST-STD frontend/wasm-sanitizer/LICENSE-RUST-STD-COPYRIGHT.txt frontend/wasm-sanitizer/LICENSE-RUST-STD-SOURCES.md ./wasm-sanitizer/
 COPY frontend/wasm-sanitizer/src/lib.rs ./wasm-sanitizer/src/lib.rs
 # Copy built WASM packages so local file: dependencies exist and satisfy ensure-wasm preinstall check
-COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
-COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
+COPY --from=wasm-packages /app/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-packages /app/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 # Integrity failure is deterministic: abort before the npm network retry loop.
 RUN node scripts/verify-wasm-artifacts.mjs
 # Retry to tolerate transient ECONNRESET / "network aborted" from the npm
@@ -115,8 +132,8 @@ ENV FRONTEND_REACT_DEV_MODE=$FRONTEND_REACT_DEV_MODE
 # Reuse the dependency-stage node_modules and local file-link targets directly.
 COPY frontend ./
 # Copy pre-built WASM packages (FIX-44-02: prevents silent WASM build failure)
-COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
-COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
+COPY --from=wasm-packages /app/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-packages /app/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 # Check the generated package bytes against the checked-in source inventory;
 # never regenerate provenance inside the image to bless a divergent build.
 RUN node scripts/verify-wasm-artifacts.mjs
@@ -136,12 +153,16 @@ COPY frontend/vendor/react-compiler-zod-compat-1.0.0.tgz ./vendor/
 COPY frontend/scripts ./scripts/
 COPY frontend/WASM_SOURCE_PROVENANCE.json ./
 COPY frontend/rust-crypto/Cargo.toml frontend/rust-crypto/Cargo.lock ./rust-crypto/
+COPY frontend/rust-crypto/LICENSE frontend/rust-crypto/LICENSE-THIRD-PARTY frontend/rust-crypto/LICENSE-THIRD-PARTY-SOURCES.md ./rust-crypto/
+COPY frontend/rust-crypto/LICENSE-RUST-STD frontend/rust-crypto/LICENSE-RUST-STD-COPYRIGHT.txt frontend/rust-crypto/LICENSE-RUST-STD-SOURCES.md ./rust-crypto/
 COPY frontend/rust-crypto/src/lib.rs ./rust-crypto/src/lib.rs
 COPY frontend/wasm-sanitizer/Cargo.toml frontend/wasm-sanitizer/Cargo.lock ./wasm-sanitizer/
+COPY frontend/wasm-sanitizer/LICENSE frontend/wasm-sanitizer/LICENSE-THIRD-PARTY frontend/wasm-sanitizer/LICENSE-THIRD-PARTY-SOURCES.md ./wasm-sanitizer/
+COPY frontend/wasm-sanitizer/LICENSE-RUST-STD frontend/wasm-sanitizer/LICENSE-RUST-STD-COPYRIGHT.txt frontend/wasm-sanitizer/LICENSE-RUST-STD-SOURCES.md ./wasm-sanitizer/
 COPY frontend/wasm-sanitizer/src/lib.rs ./wasm-sanitizer/src/lib.rs
 # Copy built WASM packages so local file: dependencies exist and satisfy ensure-wasm preinstall check
-COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
-COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
+COPY --from=wasm-packages /app/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-packages /app/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 # Integrity failure is deterministic: abort before the npm network retry loop.
 RUN node scripts/verify-wasm-artifacts.mjs
 # Drop dev-only lifecycle scripts before `npm ci`:
@@ -187,14 +208,18 @@ RUN addgroup -S -g 10001 app \
 # correctly and so the wasm-sanitizer / rust-crypto file:// references
 # (declared as runtime dependencies) match the node_modules layout.
 COPY --from=prod-deps --chown=10001:10001 /app/package.json ./package.json
+COPY --chown=10001:10001 LICENSE THIRD_PARTY_NOTICES.md ./
+COPY --chown=10001:10001 docs/licensing/README.md ./docs/licensing/README.md
+COPY --chown=10001:10001 docs/licensing/legacy ./docs/licensing/legacy
+COPY --chown=10001:10001 docs/licensing/distribution ./docs/licensing/distribution
 
 # Production-only node_modules — no devDependencies. ~150 MB → ~80 MB
 # vs full deps (saves Storybook/Playwright/Vitest/etc.).
 COPY --from=prod-deps --chown=10001:10001 /app/node_modules ./node_modules
 
 # Copy built WASM packages to runtime so Node resolves the file: dependencies at runtime
-COPY --from=wasm-builder --chown=10001:10001 /wasm/rust-crypto/pkg ./rust-crypto/pkg
-COPY --from=wasm-builder --chown=10001:10001 /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
+COPY --from=wasm-packages --chown=10001:10001 /app/rust-crypto/pkg ./rust-crypto/pkg
+COPY --from=wasm-packages --chown=10001:10001 /app/wasm-sanitizer/pkg ./wasm-sanitizer/pkg
 
 # server-prod.mjs Node wrapper (W131 SW1) — imports dist/server/server.js
 # default export, adapts Web Standards Request <-> Node IncomingMessage,

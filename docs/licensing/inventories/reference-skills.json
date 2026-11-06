@@ -1,0 +1,2157 @@
+{
+  "candidate_repository": "https://github.com/sickn33/antigravity-awesome-skills",
+  "source_date": "2026-07-22T17:58:48Z",
+  "method": "Full tracked-file bytes compared against the latest upstream snapshot preceding local import; a match is source evidence, not chain-of-title certification.",
+  "files": [
+    {
+      "path": ".agents/skills/ai-engineer/SKILL.md",
+      "candidate_source_path": "skills/ai-engineer/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/algorithmic-art/LICENSE.txt",
+      "candidate_source_path": "skills/algorithmic-art/LICENSE.txt",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/algorithmic-art/SKILL.md",
+      "candidate_source_path": "skills/algorithmic-art/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/algorithmic-art/templates/generator_template.js",
+      "candidate_source_path": "skills/algorithmic-art/templates/generator_template.js",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/algorithmic-art/templates/viewer.html",
+      "candidate_source_path": "skills/algorithmic-art/templates/viewer.html",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/api-design-principles/SKILL.md",
+      "candidate_source_path": "skills/api-design-principles/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-design-principles/assets/api-design-checklist.md",
+      "candidate_source_path": "skills/api-design-principles/assets/api-design-checklist.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-design-principles/assets/rest-api-template.py",
+      "candidate_source_path": "skills/api-design-principles/assets/rest-api-template.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/api-design-principles/references/graphql-schema-design.md",
+      "candidate_source_path": "skills/api-design-principles/references/graphql-schema-design.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-design-principles/references/rest-best-practices.md",
+      "candidate_source_path": "skills/api-design-principles/references/rest-best-practices.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-design-principles/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/api-design-principles/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-endpoint-builder/README.md",
+      "candidate_source_path": "skills/api-endpoint-builder/README.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-endpoint-builder/SKILL.md",
+      "candidate_source_path": "skills/api-endpoint-builder/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/SKILL.md",
+      "candidate_source_path": "skills/api-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/api-style.md",
+      "candidate_source_path": "skills/api-patterns/api-style.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/auth.md",
+      "candidate_source_path": "skills/api-patterns/auth.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/documentation.md",
+      "candidate_source_path": "skills/api-patterns/documentation.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/graphql.md",
+      "candidate_source_path": "skills/api-patterns/graphql.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/rate-limiting.md",
+      "candidate_source_path": "skills/api-patterns/rate-limiting.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/response.md",
+      "candidate_source_path": "skills/api-patterns/response.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/rest.md",
+      "candidate_source_path": "skills/api-patterns/rest.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/scripts/api_validator.py",
+      "candidate_source_path": "skills/api-patterns/scripts/api_validator.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/api-patterns/security-testing.md",
+      "candidate_source_path": "skills/api-patterns/security-testing.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/trpc.md",
+      "candidate_source_path": "skills/api-patterns/trpc.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-patterns/versioning.md",
+      "candidate_source_path": "skills/api-patterns/versioning.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/api-security-best-practices/SKILL.md",
+      "candidate_source_path": "skills/api-security-best-practices/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/api-security-testing/SKILL.md",
+      "candidate_source_path": "skills/api-security-testing/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/application-performance-performance-optimization/SKILL.md",
+      "candidate_source_path": "skills/application-performance-performance-optimization/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/architecture-decision-records/SKILL.md",
+      "candidate_source_path": "skills/architecture-decision-records/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/architecture-patterns/SKILL.md",
+      "candidate_source_path": "skills/architecture-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/architecture-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/architecture-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/architecture/SKILL.md",
+      "candidate_source_path": "skills/architecture/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/architecture/context-discovery.md",
+      "candidate_source_path": "skills/architecture/context-discovery.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/architecture/examples.md",
+      "candidate_source_path": "skills/architecture/examples.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/architecture/pattern-selection.md",
+      "candidate_source_path": "skills/architecture/pattern-selection.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/architecture/patterns-reference.md",
+      "candidate_source_path": "skills/architecture/patterns-reference.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/architecture/trade-off-analysis.md",
+      "candidate_source_path": "skills/architecture/trade-off-analysis.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/async-python-patterns/SKILL.md",
+      "candidate_source_path": "skills/async-python-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/async-python-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/async-python-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/auth-implementation-patterns/SKILL.md",
+      "candidate_source_path": "skills/auth-implementation-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/auth-implementation-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/auth-implementation-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/backend-architect/SKILL.md",
+      "candidate_source_path": "skills/backend-architect/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/backend-security-coder/SKILL.md",
+      "candidate_source_path": "skills/backend-security-coder/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/brainstorming/SKILL.md",
+      "candidate_source_path": "skills/brainstorming/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/brainstorming/scripts/frame-template.html",
+      "candidate_source_path": "skills/brainstorming/scripts/frame-template.html",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/brainstorming/scripts/helper.js",
+      "candidate_source_path": "skills/brainstorming/scripts/helper.js",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/brainstorming/scripts/server.cjs",
+      "candidate_source_path": "skills/brainstorming/scripts/server.cjs",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/brainstorming/scripts/start-server.sh",
+      "candidate_source_path": "skills/brainstorming/scripts/start-server.sh",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/brainstorming/scripts/stop-server.sh",
+      "candidate_source_path": "skills/brainstorming/scripts/stop-server.sh",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/brainstorming/spec-document-reviewer-prompt.md",
+      "candidate_source_path": "skills/brainstorming/spec-document-reviewer-prompt.md",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/brainstorming/visual-companion.md",
+      "candidate_source_path": "skills/brainstorming/visual-companion.md",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/clean-code/SKILL.md",
+      "candidate_source_path": "skills/clean-code/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/cloud-devops/SKILL.md",
+      "candidate_source_path": "skills/cloud-devops/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/context-driven-development/SKILL.md",
+      "candidate_source_path": "skills/context-driven-development/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/context7-auto-research/SKILL.md",
+      "candidate_source_path": "skills/context7-auto-research/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/cqrs-implementation/SKILL.md",
+      "candidate_source_path": "skills/cqrs-implementation/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/cqrs-implementation/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/cqrs-implementation/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/database-admin/SKILL.md",
+      "candidate_source_path": "skills/database-admin/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/database-architect/SKILL.md",
+      "candidate_source_path": "skills/database-architect/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/database-optimizer/SKILL.md",
+      "candidate_source_path": "skills/database-optimizer/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ddd-strategic-design/SKILL.md",
+      "candidate_source_path": "skills/ddd-strategic-design/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ddd-strategic-design/references/strategic-design-template.md",
+      "candidate_source_path": "skills/ddd-strategic-design/references/strategic-design-template.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ddd-tactical-patterns/SKILL.md",
+      "candidate_source_path": "skills/ddd-tactical-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ddd-tactical-patterns/references/tactical-checklist.md",
+      "candidate_source_path": "skills/ddd-tactical-patterns/references/tactical-checklist.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/deployment-engineer/SKILL.md",
+      "candidate_source_path": "skills/deployment-engineer/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/deployment-pipeline-design/SKILL.md",
+      "candidate_source_path": "skills/deployment-pipeline-design/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/devops-troubleshooter/SKILL.md",
+      "candidate_source_path": "skills/devops-troubleshooter/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/dispatching-parallel-agents/SKILL.md",
+      "candidate_source_path": "skills/dispatching-parallel-agents/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/distributed-debugging-debug-trace/SKILL.md",
+      "candidate_source_path": "skills/distributed-debugging-debug-trace/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/distributed-debugging-debug-trace/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/distributed-debugging-debug-trace/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/distributed-tracing/SKILL.md",
+      "candidate_source_path": "skills/distributed-tracing/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/docker-expert/SKILL.md",
+      "candidate_source_path": "skills/docker-expert/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/domain-driven-design/SKILL.md",
+      "candidate_source_path": "skills/domain-driven-design/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/domain-driven-design/references/ddd-deliverables.md",
+      "candidate_source_path": "skills/domain-driven-design/references/ddd-deliverables.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/e2e-testing-patterns/SKILL.md",
+      "candidate_source_path": "skills/e2e-testing-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/e2e-testing-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/e2e-testing-patterns/resources/implementation-playbook.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/embedding-strategies/SKILL.md",
+      "candidate_source_path": "skills/embedding-strategies/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/error-handling-patterns/SKILL.md",
+      "candidate_source_path": "skills/error-handling-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/error-handling-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/error-handling-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/event-sourcing-architect/SKILL.md",
+      "candidate_source_path": "skills/event-sourcing-architect/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/executing-plans/SKILL.md",
+      "candidate_source_path": "skills/executing-plans/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/fastapi-pro/SKILL.md",
+      "candidate_source_path": "skills/fastapi-pro/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/fastapi-templates/SKILL.md",
+      "candidate_source_path": "skills/fastapi-templates/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/fastapi-templates/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/fastapi-templates/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/find-bugs/SKILL.md",
+      "candidate_source_path": "skills/find-bugs/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/finishing-a-development-branch/SKILL.md",
+      "candidate_source_path": "skills/finishing-a-development-branch/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/frontend-design/LICENSE.txt",
+      "candidate_source_path": "skills/frontend-design/LICENSE.txt",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/frontend-design/SKILL.md",
+      "candidate_source_path": "skills/frontend-design/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/SKILL.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/resources/common-patterns.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/resources/common-patterns.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/resources/complete-examples.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/resources/complete-examples.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/resources/component-patterns.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/resources/component-patterns.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/resources/data-fetching.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/resources/data-fetching.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/resources/file-organization.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/resources/file-organization.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/resources/loading-and-error-states.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/resources/loading-and-error-states.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/resources/performance.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/resources/performance.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/resources/routing-guide.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/resources/routing-guide.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/resources/styling-guide.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/resources/styling-guide.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/frontend-dev-guidelines/resources/typescript-standards.md",
+      "candidate_source_path": "skills/frontend-dev-guidelines/resources/typescript-standards.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/frontend-developer/SKILL.md",
+      "candidate_source_path": "skills/frontend-developer/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/git-advanced-workflows/SKILL.md",
+      "candidate_source_path": "skills/git-advanced-workflows/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/github-actions-templates/SKILL.md",
+      "candidate_source_path": "skills/github-actions-templates/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/github-automation/SKILL.md",
+      "candidate_source_path": "skills/github-automation/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/github-workflow-automation/SKILL.md",
+      "candidate_source_path": "skills/github-workflow-automation/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/go-concurrency-patterns/SKILL.md",
+      "candidate_source_path": "skills/go-concurrency-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/go-concurrency-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/go-concurrency-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/golang-pro/SKILL.md",
+      "candidate_source_path": "skills/golang-pro/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/grafana-dashboards/SKILL.md",
+      "candidate_source_path": "skills/grafana-dashboards/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/graphql-architect/SKILL.md",
+      "candidate_source_path": "skills/graphql-architect/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/grpc-golang/SKILL.md",
+      "candidate_source_path": "skills/grpc-golang/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/grpc-golang/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/grpc-golang/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/i18n-localization/SKILL.md",
+      "candidate_source_path": "skills/i18n-localization/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/i18n-localization/scripts/i18n_checker.py",
+      "candidate_source_path": "skills/i18n-localization/scripts/i18n_checker.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/incident-runbook-templates/SKILL.md",
+      "candidate_source_path": "skills/incident-runbook-templates/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/javascript-testing-patterns/SKILL.md",
+      "candidate_source_path": "skills/javascript-testing-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/javascript-testing-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/javascript-testing-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/k6-load-testing/SKILL.md",
+      "candidate_source_path": "skills/k6-load-testing/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/k8s-security-policies/SKILL.md",
+      "candidate_source_path": "skills/k8s-security-policies/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/k8s-security-policies/assets/network-policy-template.yaml",
+      "candidate_source_path": "skills/k8s-security-policies/assets/network-policy-template.yaml",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/k8s-security-policies/references/rbac-patterns.md",
+      "candidate_source_path": "skills/k8s-security-policies/references/rbac-patterns.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/kubernetes-architect/SKILL.md",
+      "candidate_source_path": "skills/kubernetes-architect/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/kubernetes-deployment/SKILL.md",
+      "candidate_source_path": "skills/kubernetes-deployment/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/linkerd-patterns/SKILL.md",
+      "candidate_source_path": "skills/linkerd-patterns/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/llm-app-patterns/SKILL.md",
+      "candidate_source_path": "skills/llm-app-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/memory-safety-patterns/SKILL.md",
+      "candidate_source_path": "skills/memory-safety-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/memory-safety-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/memory-safety-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/microservices-patterns/SKILL.md",
+      "candidate_source_path": "skills/microservices-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/microservices-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/microservices-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/mtls-configuration/SKILL.md",
+      "candidate_source_path": "skills/mtls-configuration/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/observability-engineer/SKILL.md",
+      "candidate_source_path": "skills/observability-engineer/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/on-call-handoff-patterns/SKILL.md",
+      "candidate_source_path": "skills/on-call-handoff-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/openapi-spec-generation/SKILL.md",
+      "candidate_source_path": "skills/openapi-spec-generation/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/openapi-spec-generation/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/openapi-spec-generation/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/pci-compliance/SKILL.md",
+      "candidate_source_path": "skills/pci-compliance/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/performance-engineer/SKILL.md",
+      "candidate_source_path": "skills/performance-engineer/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/performance-optimizer/README.md",
+      "candidate_source_path": "skills/performance-optimizer/README.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/performance-optimizer/SKILL.md",
+      "candidate_source_path": "skills/performance-optimizer/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/performance-profiling/SKILL.md",
+      "candidate_source_path": "skills/performance-profiling/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/performance-profiling/scripts/lighthouse_audit.py",
+      "candidate_source_path": "skills/performance-profiling/scripts/lighthouse_audit.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/playwright-skill/API_REFERENCE.md",
+      "candidate_source_path": "skills/playwright-skill/API_REFERENCE.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/playwright-skill/SKILL.md",
+      "candidate_source_path": "skills/playwright-skill/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/playwright-skill/lib/helpers.js",
+      "candidate_source_path": "skills/playwright-skill/lib/helpers.js",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/playwright-skill/package.json",
+      "candidate_source_path": "skills/playwright-skill/package.json",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/playwright-skill/run.js",
+      "candidate_source_path": "skills/playwright-skill/run.js",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/AGENTS.md",
+      "candidate_source_path": "skills/postgres-best-practices/AGENTS.md",
+      "comparison": "different",
+      "import_comparison": "exact match at import"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/README.md",
+      "candidate_source_path": "skills/postgres-best-practices/README.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/SKILL.md",
+      "candidate_source_path": "skills/postgres-best-practices/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/metadata.json",
+      "candidate_source_path": "skills/postgres-best-practices/metadata.json",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/_contributing.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/_contributing.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/_sections.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/_sections.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/_template.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/_template.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/advanced-full-text-search.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/advanced-full-text-search.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/advanced-jsonb-indexing.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/advanced-jsonb-indexing.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/conn-idle-timeout.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/conn-idle-timeout.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/conn-limits.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/conn-limits.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/conn-pooling.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/conn-pooling.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/conn-prepared-statements.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/conn-prepared-statements.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/data-batch-inserts.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/data-batch-inserts.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/data-n-plus-one.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/data-n-plus-one.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/data-pagination.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/data-pagination.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/data-upsert.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/data-upsert.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/lock-advisory.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/lock-advisory.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/lock-deadlock-prevention.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/lock-deadlock-prevention.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/lock-short-transactions.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/lock-short-transactions.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/lock-skip-locked.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/lock-skip-locked.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/monitor-explain-analyze.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/monitor-explain-analyze.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/monitor-pg-stat-statements.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/monitor-pg-stat-statements.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/monitor-vacuum-analyze.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/monitor-vacuum-analyze.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/query-composite-indexes.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/query-composite-indexes.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/query-covering-indexes.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/query-covering-indexes.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/query-index-types.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/query-index-types.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/query-missing-indexes.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/query-missing-indexes.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/query-partial-indexes.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/query-partial-indexes.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/schema-data-types.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/schema-data-types.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/schema-foreign-key-indexes.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/schema-foreign-key-indexes.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/schema-lowercase-identifiers.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/schema-lowercase-identifiers.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/schema-partitioning.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/schema-partitioning.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/schema-primary-keys.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/schema-primary-keys.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/security-privileges.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/security-privileges.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/security-rls-basics.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/security-rls-basics.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgres-best-practices/rules/security-rls-performance.md",
+      "candidate_source_path": "skills/postgres-best-practices/rules/security-rls-performance.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgresql-optimization/SKILL.md",
+      "candidate_source_path": "skills/postgresql-optimization/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/postgresql/SKILL.md",
+      "candidate_source_path": "skills/postgresql/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/privacy-by-design/README.md",
+      "candidate_source_path": "skills/privacy-by-design/README.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/privacy-by-design/SKILL.md",
+      "candidate_source_path": "skills/privacy-by-design/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/progressive-web-app/SKILL.md",
+      "candidate_source_path": "skills/progressive-web-app/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/prometheus-configuration/SKILL.md",
+      "candidate_source_path": "skills/prometheus-configuration/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/pydantic-models-py/SKILL.md",
+      "candidate_source_path": "skills/pydantic-models-py/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/python-performance-optimization/SKILL.md",
+      "candidate_source_path": "skills/python-performance-optimization/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/python-performance-optimization/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/python-performance-optimization/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/python-pro/SKILL.md",
+      "candidate_source_path": "skills/python-pro/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/python-testing-patterns/SKILL.md",
+      "candidate_source_path": "skills/python-testing-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/python-testing-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/python-testing-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/radix-ui-design-system/SKILL.md",
+      "candidate_source_path": "skills/radix-ui-design-system/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/radix-ui-design-system/examples/README.md",
+      "candidate_source_path": "skills/radix-ui-design-system/examples/README.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/radix-ui-design-system/examples/dialog-example.tsx",
+      "candidate_source_path": "skills/radix-ui-design-system/examples/dialog-example.tsx",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/radix-ui-design-system/examples/dropdown-example.tsx",
+      "candidate_source_path": "skills/radix-ui-design-system/examples/dropdown-example.tsx",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/radix-ui-design-system/templates/component-template.tsx.template",
+      "candidate_source_path": "skills/radix-ui-design-system/templates/component-template.tsx.template",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/rag-engineer/SKILL.md",
+      "candidate_source_path": "skills/rag-engineer/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/AGENTS.md",
+      "candidate_source_path": "skills/react-best-practices/AGENTS.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/README.md",
+      "candidate_source_path": "skills/react-best-practices/README.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/SKILL.md",
+      "candidate_source_path": "skills/react-best-practices/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/metadata.json",
+      "candidate_source_path": "skills/react-best-practices/metadata.json",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/_sections.md",
+      "candidate_source_path": "skills/react-best-practices/rules/_sections.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/_template.md",
+      "candidate_source_path": "skills/react-best-practices/rules/_template.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/advanced-event-handler-refs.md",
+      "candidate_source_path": "skills/react-best-practices/rules/advanced-event-handler-refs.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/advanced-use-latest.md",
+      "candidate_source_path": "skills/react-best-practices/rules/advanced-use-latest.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-api-routes.md",
+      "candidate_source_path": "skills/react-best-practices/rules/async-api-routes.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-defer-await.md",
+      "candidate_source_path": "skills/react-best-practices/rules/async-defer-await.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-dependencies.md",
+      "candidate_source_path": "skills/react-best-practices/rules/async-dependencies.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-parallel.md",
+      "candidate_source_path": "skills/react-best-practices/rules/async-parallel.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/async-suspense-boundaries.md",
+      "candidate_source_path": "skills/react-best-practices/rules/async-suspense-boundaries.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-barrel-imports.md",
+      "candidate_source_path": "skills/react-best-practices/rules/bundle-barrel-imports.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-conditional.md",
+      "candidate_source_path": "skills/react-best-practices/rules/bundle-conditional.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-defer-third-party.md",
+      "candidate_source_path": "skills/react-best-practices/rules/bundle-defer-third-party.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-dynamic-imports.md",
+      "candidate_source_path": "skills/react-best-practices/rules/bundle-dynamic-imports.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/bundle-preload.md",
+      "candidate_source_path": "skills/react-best-practices/rules/bundle-preload.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/client-event-listeners.md",
+      "candidate_source_path": "skills/react-best-practices/rules/client-event-listeners.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/client-swr-dedup.md",
+      "candidate_source_path": "skills/react-best-practices/rules/client-swr-dedup.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-batch-dom-css.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-batch-dom-css.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-cache-function-results.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-cache-function-results.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-cache-property-access.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-cache-property-access.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-cache-storage.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-cache-storage.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-combine-iterations.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-combine-iterations.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-early-exit.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-early-exit.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-hoist-regexp.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-hoist-regexp.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-index-maps.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-index-maps.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-length-check-first.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-length-check-first.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-min-max-loop.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-min-max-loop.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-set-map-lookups.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-set-map-lookups.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/js-tosorted-immutable.md",
+      "candidate_source_path": "skills/react-best-practices/rules/js-tosorted-immutable.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-activity.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rendering-activity.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-animate-svg-wrapper.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rendering-animate-svg-wrapper.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-conditional-render.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rendering-conditional-render.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-content-visibility.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rendering-content-visibility.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-hoist-jsx.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rendering-hoist-jsx.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-hydration-no-flicker.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rendering-hydration-no-flicker.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rendering-svg-precision.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rendering-svg-precision.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-defer-reads.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rerender-defer-reads.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-dependencies.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rerender-dependencies.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-derived-state.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rerender-derived-state.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-functional-setstate.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rerender-functional-setstate.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-lazy-state-init.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rerender-lazy-state-init.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-memo.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rerender-memo.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/rerender-transitions.md",
+      "candidate_source_path": "skills/react-best-practices/rules/rerender-transitions.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-after-nonblocking.md",
+      "candidate_source_path": "skills/react-best-practices/rules/server-after-nonblocking.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-cache-lru.md",
+      "candidate_source_path": "skills/react-best-practices/rules/server-cache-lru.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-cache-react.md",
+      "candidate_source_path": "skills/react-best-practices/rules/server-cache-react.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-parallel-fetching.md",
+      "candidate_source_path": "skills/react-best-practices/rules/server-parallel-fetching.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-best-practices/rules/server-serialization.md",
+      "candidate_source_path": "skills/react-best-practices/rules/server-serialization.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-component-performance/SKILL.md",
+      "candidate_source_path": "skills/react-component-performance/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-component-performance/agents/openai.yaml",
+      "candidate_source_path": "skills/react-component-performance/agents/openai.yaml",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-component-performance/references/examples.md",
+      "candidate_source_path": "skills/react-component-performance/references/examples.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-patterns/SKILL.md",
+      "candidate_source_path": "skills/react-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-state-management/SKILL.md",
+      "candidate_source_path": "skills/react-state-management/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/react-ui-patterns/SKILL.md",
+      "candidate_source_path": "skills/react-ui-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/receiving-code-review/SKILL.md",
+      "candidate_source_path": "skills/receiving-code-review/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/requesting-code-review/SKILL.md",
+      "candidate_source_path": "skills/requesting-code-review/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/requesting-code-review/code-reviewer.md",
+      "candidate_source_path": "skills/requesting-code-review/code-reviewer.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/rust-async-patterns/SKILL.md",
+      "candidate_source_path": "skills/rust-async-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/rust-async-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/rust-async-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/rust-pro/SKILL.md",
+      "candidate_source_path": "skills/rust-pro/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/saga-orchestration/SKILL.md",
+      "candidate_source_path": "skills/saga-orchestration/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/saga-orchestration/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/saga-orchestration/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/secrets-management/SKILL.md",
+      "candidate_source_path": "skills/secrets-management/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/security-audit/SKILL.md",
+      "candidate_source_path": "skills/security-audit/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/security-auditor/SKILL.md",
+      "candidate_source_path": "skills/security-auditor/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/security-bluebook-builder/SKILL.md",
+      "candidate_source_path": "skills/security-bluebook-builder/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/security-requirement-extraction/SKILL.md",
+      "candidate_source_path": "skills/security-requirement-extraction/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/security-requirement-extraction/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/security-requirement-extraction/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/security-scanning-security-dependencies/SKILL.md",
+      "candidate_source_path": "skills/security-scanning-security-dependencies/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/security-scanning-security-dependencies/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/security-scanning-security-dependencies/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/security-scanning-security-hardening/SKILL.md",
+      "candidate_source_path": "skills/security-scanning-security-hardening/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/security-scanning-security-sast/SKILL.md",
+      "candidate_source_path": "skills/security-scanning-security-sast/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/semgrep-rule-creator/SKILL.md",
+      "candidate_source_path": "skills/semgrep-rule-creator/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/senior-architect/SKILL.md",
+      "candidate_source_path": "skills/senior-architect/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/senior-architect/references/architecture_patterns.md",
+      "candidate_source_path": "skills/senior-architect/references/architecture_patterns.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/senior-architect/references/system_design_workflows.md",
+      "candidate_source_path": "skills/senior-architect/references/system_design_workflows.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/senior-architect/references/tech_decision_guide.md",
+      "candidate_source_path": "skills/senior-architect/references/tech_decision_guide.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/senior-architect/scripts/architecture_diagram_generator.py",
+      "candidate_source_path": "skills/senior-architect/scripts/architecture_diagram_generator.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/senior-architect/scripts/dependency_analyzer.py",
+      "candidate_source_path": "skills/senior-architect/scripts/dependency_analyzer.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/senior-architect/scripts/project_architect.py",
+      "candidate_source_path": "skills/senior-architect/scripts/project_architect.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/senior-fullstack/SKILL.md",
+      "candidate_source_path": "skills/senior-fullstack/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/senior-fullstack/references/architecture_patterns.md",
+      "candidate_source_path": "skills/senior-fullstack/references/architecture_patterns.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/senior-fullstack/references/development_workflows.md",
+      "candidate_source_path": "skills/senior-fullstack/references/development_workflows.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/senior-fullstack/references/tech_stack_guide.md",
+      "candidate_source_path": "skills/senior-fullstack/references/tech_stack_guide.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/senior-fullstack/scripts/code_quality_analyzer.py",
+      "candidate_source_path": "skills/senior-fullstack/scripts/code_quality_analyzer.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/senior-fullstack/scripts/fullstack_scaffolder.py",
+      "candidate_source_path": "skills/senior-fullstack/scripts/fullstack_scaffolder.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/senior-fullstack/scripts/project_scaffolder.py",
+      "candidate_source_path": "skills/senior-fullstack/scripts/project_scaffolder.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/sentry-automation/SKILL.md",
+      "candidate_source_path": "skills/sentry-automation/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/service-mesh-expert/SKILL.md",
+      "candidate_source_path": "skills/service-mesh-expert/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/service-mesh-observability/SKILL.md",
+      "candidate_source_path": "skills/service-mesh-observability/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/SKILL.md",
+      "candidate_source_path": "skills/shadcn/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/agents/openai.yml",
+      "candidate_source_path": "skills/shadcn/agents/openai.yml",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/assets/shadcn-small.png",
+      "candidate_source_path": "skills/shadcn/assets/shadcn-small.png",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/assets/shadcn.png",
+      "candidate_source_path": "skills/shadcn/assets/shadcn.png",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/cli.md",
+      "candidate_source_path": "skills/shadcn/cli.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/customization.md",
+      "candidate_source_path": "skills/shadcn/customization.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/evals/evals.json",
+      "candidate_source_path": "skills/shadcn/evals/evals.json",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/mcp.md",
+      "candidate_source_path": "skills/shadcn/mcp.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/rules/base-vs-radix.md",
+      "candidate_source_path": "skills/shadcn/rules/base-vs-radix.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/rules/composition.md",
+      "candidate_source_path": "skills/shadcn/rules/composition.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/rules/forms.md",
+      "candidate_source_path": "skills/shadcn/rules/forms.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/rules/icons.md",
+      "candidate_source_path": "skills/shadcn/rules/icons.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/shadcn/rules/styling.md",
+      "candidate_source_path": "skills/shadcn/rules/styling.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/slo-implementation/SKILL.md",
+      "candidate_source_path": "skills/slo-implementation/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/sql-injection-testing/SKILL.md",
+      "candidate_source_path": "skills/sql-injection-testing/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/sql-optimization-patterns/SKILL.md",
+      "candidate_source_path": "skills/sql-optimization-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/sql-optimization-patterns/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/sql-optimization-patterns/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/sql-pro/SKILL.md",
+      "candidate_source_path": "skills/sql-pro/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/subagent-driven-development/SKILL.md",
+      "candidate_source_path": "skills/subagent-driven-development/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/subagent-driven-development/code-quality-reviewer-prompt.md",
+      "candidate_source_path": "skills/subagent-driven-development/code-quality-reviewer-prompt.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/subagent-driven-development/implementer-prompt.md",
+      "candidate_source_path": "skills/subagent-driven-development/implementer-prompt.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/subagent-driven-development/spec-reviewer-prompt.md",
+      "candidate_source_path": "skills/subagent-driven-development/spec-reviewer-prompt.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/CREATION-LOG.md",
+      "candidate_source_path": "skills/systematic-debugging/CREATION-LOG.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/SKILL.md",
+      "candidate_source_path": "skills/systematic-debugging/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/condition-based-waiting-example.ts",
+      "candidate_source_path": "skills/systematic-debugging/condition-based-waiting-example.ts",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/condition-based-waiting.md",
+      "candidate_source_path": "skills/systematic-debugging/condition-based-waiting.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/defense-in-depth.md",
+      "candidate_source_path": "skills/systematic-debugging/defense-in-depth.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/find-polluter.sh",
+      "candidate_source_path": "skills/systematic-debugging/find-polluter.sh",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/root-cause-tracing.md",
+      "candidate_source_path": "skills/systematic-debugging/root-cause-tracing.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/test-academic.md",
+      "candidate_source_path": "skills/systematic-debugging/test-academic.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/test-pressure-1.md",
+      "candidate_source_path": "skills/systematic-debugging/test-pressure-1.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/test-pressure-2.md",
+      "candidate_source_path": "skills/systematic-debugging/test-pressure-2.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systematic-debugging/test-pressure-3.md",
+      "candidate_source_path": "skills/systematic-debugging/test-pressure-3.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/systems-programming-rust-project/SKILL.md",
+      "candidate_source_path": "skills/systems-programming-rust-project/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/tailwind-design-system/SKILL.md",
+      "candidate_source_path": "skills/tailwind-design-system/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/tailwind-design-system/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/tailwind-design-system/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/tailwind-patterns/SKILL.md",
+      "candidate_source_path": "skills/tailwind-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/tanstack-query-expert/SKILL.md",
+      "candidate_source_path": "skills/tanstack-query-expert/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/tdd-workflow/SKILL.md",
+      "candidate_source_path": "skills/tdd-workflow/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/temporal-golang-pro/SKILL.md",
+      "candidate_source_path": "skills/temporal-golang-pro/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/temporal-golang-pro/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/temporal-golang-pro/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/temporal-golang-pro/resources/testing-strategies.md",
+      "candidate_source_path": "skills/temporal-golang-pro/resources/testing-strategies.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/temporal-python-pro/SKILL.md",
+      "candidate_source_path": "skills/temporal-python-pro/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/temporal-python-testing/SKILL.md",
+      "candidate_source_path": "skills/temporal-python-testing/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/temporal-python-testing/resources/integration-testing.md",
+      "candidate_source_path": "skills/temporal-python-testing/resources/integration-testing.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/temporal-python-testing/resources/local-setup.md",
+      "candidate_source_path": "skills/temporal-python-testing/resources/local-setup.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/temporal-python-testing/resources/replay-testing.md",
+      "candidate_source_path": "skills/temporal-python-testing/resources/replay-testing.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/temporal-python-testing/resources/unit-testing.md",
+      "candidate_source_path": "skills/temporal-python-testing/resources/unit-testing.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/terraform-specialist/SKILL.md",
+      "candidate_source_path": "skills/terraform-specialist/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/test-automator/SKILL.md",
+      "candidate_source_path": "skills/test-automator/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/test-driven-development/SKILL.md",
+      "candidate_source_path": "skills/test-driven-development/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/test-driven-development/testing-anti-patterns.md",
+      "candidate_source_path": "skills/test-driven-development/testing-anti-patterns.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/testing-patterns/SKILL.md",
+      "candidate_source_path": "skills/testing-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/testing-qa/SKILL.md",
+      "candidate_source_path": "skills/testing-qa/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/threat-modeling-expert/SKILL.md",
+      "candidate_source_path": "skills/threat-modeling-expert/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/top-web-vulnerabilities/SKILL.md",
+      "candidate_source_path": "skills/top-web-vulnerabilities/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/typescript-expert/SKILL.md",
+      "candidate_source_path": "skills/typescript-expert/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/typescript-expert/references/tsconfig-strict.json",
+      "candidate_source_path": "skills/typescript-expert/references/tsconfig-strict.json",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/typescript-expert/references/typescript-cheatsheet.md",
+      "candidate_source_path": "skills/typescript-expert/references/typescript-cheatsheet.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/typescript-expert/references/utility-types.ts",
+      "candidate_source_path": "skills/typescript-expert/references/utility-types.ts",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/typescript-expert/scripts/ts_diagnostic.py",
+      "candidate_source_path": "skills/typescript-expert/scripts/ts_diagnostic.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/typescript-pro/SKILL.md",
+      "candidate_source_path": "skills/typescript-pro/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-a11y/SKILL.md",
+      "candidate_source_path": "skills/ui-a11y/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/ui-ux-designer/SKILL.md",
+      "candidate_source_path": "skills/ui-ux-designer/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/SKILL.md",
+      "candidate_source_path": "skills/ui-ux-pro-max/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/charts.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/charts.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/colors.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/colors.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/icons.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/icons.csv",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/landing.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/landing.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/products.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/products.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/prompts.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/prompts.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/react-performance.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/react-performance.csv",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/flutter.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/flutter.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/html-tailwind.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/html-tailwind.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/nextjs.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/nextjs.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/nuxt-ui.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/nuxt-ui.csv",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/nuxtjs.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/nuxtjs.csv",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/react-native.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/react-native.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/react.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/react.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/shadcn.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/shadcn.csv",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/svelte.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/svelte.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/swiftui.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/swiftui.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/stacks/vue.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/stacks/vue.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/styles.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/styles.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/typography.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/typography.csv",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/ui-reasoning.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/ui-reasoning.csv",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/ux-guidelines.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/ux-guidelines.csv",
+      "comparison": "line-ending-only match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/data/web-interface.csv",
+      "candidate_source_path": "skills/ui-ux-pro-max/data/web-interface.csv",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/core.py",
+      "candidate_source_path": "skills/ui-ux-pro-max/scripts/core.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/design_system.py",
+      "candidate_source_path": "skills/ui-ux-pro-max/scripts/design_system.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/ui-ux-pro-max/scripts/search.py",
+      "candidate_source_path": "skills/ui-ux-pro-max/scripts/search.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/unit-testing-test-generate/SKILL.md",
+      "candidate_source_path": "skills/unit-testing-test-generate/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/using-git-worktrees/SKILL.md",
+      "candidate_source_path": "skills/using-git-worktrees/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/using-superpowers/SKILL.md",
+      "candidate_source_path": "skills/using-superpowers/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/using-superpowers/references/codex-tools.md",
+      "candidate_source_path": "skills/using-superpowers/references/codex-tools.md",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/using-superpowers/references/copilot-tools.md",
+      "candidate_source_path": "skills/using-superpowers/references/copilot-tools.md",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/using-superpowers/references/gemini-tools.md",
+      "candidate_source_path": "skills/using-superpowers/references/gemini-tools.md",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/uv-package-manager/SKILL.md",
+      "candidate_source_path": "skills/uv-package-manager/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/uv-package-manager/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/uv-package-manager/resources/implementation-playbook.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/vector-database-engineer/SKILL.md",
+      "candidate_source_path": "skills/vector-database-engineer/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/vector-index-tuning/SKILL.md",
+      "candidate_source_path": "skills/vector-index-tuning/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/vector-index-tuning/resources/implementation-playbook.md",
+      "candidate_source_path": "skills/vector-index-tuning/resources/implementation-playbook.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/verification-before-completion/SKILL.md",
+      "candidate_source_path": "skills/verification-before-completion/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/vulnerability-scanner/SKILL.md",
+      "candidate_source_path": "skills/vulnerability-scanner/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/vulnerability-scanner/checklists.md",
+      "candidate_source_path": "skills/vulnerability-scanner/checklists.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/vulnerability-scanner/scripts/security_scan.py",
+      "candidate_source_path": "skills/vulnerability-scanner/scripts/security_scan.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/web-performance-optimization/SKILL.md",
+      "candidate_source_path": "skills/web-performance-optimization/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/web-security-testing/SKILL.md",
+      "candidate_source_path": "skills/web-security-testing/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/webapp-testing/LICENSE.txt",
+      "candidate_source_path": "skills/webapp-testing/LICENSE.txt",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/webapp-testing/SKILL.md",
+      "candidate_source_path": "skills/webapp-testing/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/webapp-testing/scripts/with_server.py",
+      "candidate_source_path": "skills/webapp-testing/scripts/with_server.py",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/workflow-orchestration-patterns/SKILL.md",
+      "candidate_source_path": "skills/workflow-orchestration-patterns/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/writing-plans/SKILL.md",
+      "candidate_source_path": "skills/writing-plans/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/writing-plans/plan-document-reviewer-prompt.md",
+      "candidate_source_path": "skills/writing-plans/plan-document-reviewer-prompt.md",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/writing-skills/SKILL.md",
+      "candidate_source_path": "skills/writing-skills/SKILL.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/writing-skills/anthropic-best-practices.md",
+      "candidate_source_path": "skills/writing-skills/anthropic-best-practices.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/writing-skills/examples/CLAUDE_MD_TESTING.md",
+      "candidate_source_path": "skills/writing-skills/examples/CLAUDE_MD_TESTING.md",
+      "comparison": "absent",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/writing-skills/graphviz-conventions.dot",
+      "candidate_source_path": "skills/writing-skills/graphviz-conventions.dot",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/writing-skills/persuasion-principles.md",
+      "candidate_source_path": "skills/writing-skills/persuasion-principles.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/writing-skills/render-graphs.js",
+      "candidate_source_path": "skills/writing-skills/render-graphs.js",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/writing-skills/testing-skills-with-subagents.md",
+      "candidate_source_path": "skills/writing-skills/testing-skills-with-subagents.md",
+      "comparison": "different",
+      "import_comparison": "different or absent at candidate import snapshot"
+    },
+    {
+      "path": ".agents/skills/zod-validation-expert/SKILL.md",
+      "candidate_source_path": "skills/zod-validation-expert/SKILL.md",
+      "comparison": "exact match"
+    },
+    {
+      "path": ".agents/skills/zustand-store-ts/SKILL.md",
+      "candidate_source_path": "skills/zustand-store-ts/SKILL.md",
+      "comparison": "exact match"
+    }
+  ],
+  "candidate_source": "https://github.com/sickn33/antigravity-awesome-skills/tree/11c9e675ddfe2ed4b1db936eb66cf96697d689fb"
+}

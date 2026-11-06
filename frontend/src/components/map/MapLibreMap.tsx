@@ -495,16 +495,33 @@ export function MapLibreMapComponent({
         {mapRef && <MapControls mapRef={mapRef} initialPitch={urlInitialViewport?.pitch ?? 45} />}
       </div>
 
-      {/* Minimal OSM attribution — replaces built-in widget */}
-      <div className="absolute bottom-1 left-1 text-[9px] leading-none opacity-40 pointer-events-auto z-[1]">
+      {/* Preserve all provider credits when replacing the built-in widget. */}
+      <div className="absolute bottom-1 left-1 flex flex-wrap items-center gap-1 rounded bg-(--map-attribution-bg) px-1 text-xs leading-normal pointer-events-auto z-[1]">
+        <a
+          href="https://openfreemap.org/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-6 items-center text-(--text-tertiary) hover:underline"
+        >
+          OpenFreeMap
+        </a>
+        <a
+          href="https://www.openmaptiles.org/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-6 items-center text-(--text-tertiary) hover:underline"
+        >
+          © OpenMapTiles
+        </a>
+        <span className="text-(--text-tertiary)">{t("attribution.dataFrom")}</span>
         <a
           href="https://www.openstreetmap.org/copyright"
           target="_blank"
           rel="noopener noreferrer"
-          className="hover:opacity-80"
+          className="inline-flex min-h-6 items-center hover:underline"
           style={{ color: "var(--text-tertiary)" }}
         >
-          © OpenStreetMap
+          {t("attribution.openStreetMap", "© OpenStreetMap contributors")}
         </a>
       </div>
     </div>

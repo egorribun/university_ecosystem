@@ -4,6 +4,12 @@
   "private": true,
   "description": "Fail-closed clone adapter for fixed node-resolve 16.0.3 defaults only",
   "main": "index.cjs",
-  "files": ["index.cjs", "README.md"],
-  "engines": {"node": ">=24"}
+  "files": [
+    "index.cjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "SEE LICENSE IN LICENSE"
 }

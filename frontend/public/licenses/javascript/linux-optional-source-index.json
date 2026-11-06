@@ -1,0 +1,121 @@
+{
+  "scope": "Selected x64 Linux optional packages for glibc and musl; exact versions from checked-in frontend lockfile; archive content inspected without install or scripts.",
+  "tarballsFetchedAndSRIValidated": 8,
+  "packages": [
+    {
+      "name": "@img/sharp-libvips-linux-x64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "role": "optional dev tool",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"],
+      "lockPath": "node_modules/@img/sharp-libvips-linux-x64",
+      "registryTarball": "https://registry.npmjs.org/@img/sharp-libvips-linux-x64/-/sharp-libvips-linux-x64-1.3.4.tgz",
+      "sourceFile": "package/README.md",
+      "sourceBytes": 4331,
+      "note": "package README third-party license table; archive has no separate license text"
+    },
+    {
+      "name": "@img/sharp-libvips-linuxmusl-x64",
+      "version": "1.3.4",
+      "license": "LGPL-3.0-or-later",
+      "role": "optional dev tool",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"],
+      "lockPath": "node_modules/@img/sharp-libvips-linuxmusl-x64",
+      "registryTarball": "https://registry.npmjs.org/@img/sharp-libvips-linuxmusl-x64/-/sharp-libvips-linuxmusl-x64-1.3.4.tgz",
+      "sourceFile": "package/README.md",
+      "sourceBytes": 4334,
+      "note": "package README third-party license table; archive has no separate license text"
+    },
+    {
+      "name": "@img/sharp-linux-x64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "role": "optional dev tool",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"],
+      "lockPath": "node_modules/@img/sharp-linux-x64",
+      "registryTarball": "https://registry.npmjs.org/@img/sharp-linux-x64/-/sharp-linux-x64-0.35.5.tgz",
+      "sourceFile": "package/LICENSE",
+      "sourceBytes": 10273,
+      "note": "full Apache-2.0 license text"
+    },
+    {
+      "name": "@img/sharp-linuxmusl-x64",
+      "version": "0.35.5",
+      "license": "Apache-2.0",
+      "role": "optional dev tool",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"],
+      "lockPath": "node_modules/@img/sharp-linuxmusl-x64",
+      "registryTarball": "https://registry.npmjs.org/@img/sharp-linuxmusl-x64/-/sharp-linuxmusl-x64-0.35.5.tgz",
+      "sourceFile": "package/LICENSE",
+      "sourceBytes": 10273,
+      "note": "full Apache-2.0 license text"
+    },
+    {
+      "name": "lightningcss-linux-x64-gnu",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "role": "optional dev tool",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"],
+      "lockPath": "node_modules/lightningcss-linux-x64-gnu",
+      "registryTarball": "https://registry.npmjs.org/lightningcss-linux-x64-gnu/-/lightningcss-linux-x64-gnu-1.32.0.tgz",
+      "sourceFile": "package/LICENSE",
+      "sourceBytes": 15648,
+      "note": "full MPL-2.0 license text"
+    },
+    {
+      "name": "lightningcss-linux-x64-musl",
+      "version": "1.32.0",
+      "license": "MPL-2.0",
+      "role": "optional dev tool",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"],
+      "lockPath": "node_modules/lightningcss-linux-x64-musl",
+      "registryTarball": "https://registry.npmjs.org/lightningcss-linux-x64-musl/-/lightningcss-linux-x64-musl-1.32.0.tgz",
+      "sourceFile": "package/LICENSE",
+      "sourceBytes": 15648,
+      "note": "full MPL-2.0 license text"
+    },
+    {
+      "name": "lightningcss-linux-x64-gnu",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "optional dev tool",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"],
+      "lockPath": "node_modules/@tanstack/start-plugin-core/node_modules/lightningcss-linux-x64-gnu",
+      "registryTarball": "https://registry.npmjs.org/lightningcss-linux-x64-gnu/-/lightningcss-linux-x64-gnu-1.33.0.tgz",
+      "sourceFile": "package/LICENSE",
+      "sourceBytes": 15648,
+      "note": "full MPL-2.0 license text"
+    },
+    {
+      "name": "lightningcss-linux-x64-musl",
+      "version": "1.33.0",
+      "license": "MPL-2.0",
+      "role": "optional dev tool",
+      "optional": true,
+      "os": ["linux"],
+      "cpu": ["x64"],
+      "lockPath": "node_modules/@tanstack/start-plugin-core/node_modules/lightningcss-linux-x64-musl",
+      "registryTarball": "https://registry.npmjs.org/lightningcss-linux-x64-musl/-/lightningcss-linux-x64-musl-1.33.0.tgz",
+      "sourceFile": "package/LICENSE",
+      "sourceBytes": 15648,
+      "note": "full MPL-2.0 license text"
+    }
+  ],
+  "unresolved": {
+    "sharpLibvips": "Both @img/sharp-libvips Linux x64 archives declare LGPL-3.0-or-later in package.json and carry prebuilt libvips dependencies. They have no standalone LICENSE file; README lists bundled component licenses (LGPLv3, MPL-1.1, BSD, MIT, zlib/other and AOM patent license) but does not include full texts. Canonical LGPL-3.0 text/source: https://www.gnu.org/licenses/lgpl-3.0.html."
+  }
+}

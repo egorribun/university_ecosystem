@@ -1309,7 +1309,8 @@
   background: color-mix(in srgb, #334155 90%, transparent);
 }
 
-/* Built-in attribution removed (attributionControl={false}) — custom © OSM in JSX.
+/* Built-in attribution removed (attributionControl={false}); JSX retains
+   OpenFreeMap, OpenMapTiles and OpenStreetMap credits.
    Hide default navigation/compass controls (we use MapControls). */
 .map-theme .maplibregl-ctrl-group {
   display: none;

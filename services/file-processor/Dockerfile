@@ -71,6 +71,9 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/services/file-processor/file-processor .
+COPY LICENSE THIRD_PARTY_NOTICES.md /usr/share/licenses/university-ecosystem/
+COPY docs/licensing/distribution/GO-FILE-PROCESSOR.txt /usr/share/licenses/university-ecosystem/GO-DEPENDENCIES.txt
+COPY docs/licensing/distribution/GO-SOURCES.tsv /usr/share/licenses/university-ecosystem/GO-SOURCES.tsv
 
 # Copy the locally rebuilt probe for the compose-level healthcheck.
 COPY --from=health-probe /grpc_health_probe /usr/local/bin/grpc_health_probe

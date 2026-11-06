@@ -1,4 +1,5 @@
 [package]
+license = "LicenseRef-University-Ecosystem-Proprietary"
 name = "stryker-process-host"
 version = "0.1.0"
 edition = "2021"

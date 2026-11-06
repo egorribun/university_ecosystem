@@ -29,6 +29,13 @@ const findLinkByHref = (container: HTMLElement, hrefStartsWith: string): HTMLAnc
 }
 
 describe("Footer", () => {
+  it("exposes third-party license notices to website users", async () => {
+    const { container } = await renderWithRouter({ ui: Footer, path: "/", authProvider: false })
+    const noticeLink = container.querySelector('a[href="/licenses/NOTICE.txt"]')
+    expect(noticeLink).toHaveAccessibleName(/third.party licenses|лицензии сторонних компонентов/i)
+    expect(noticeLink).toHaveClass("min-h-11")
+  })
+
   it("renders with role=contentinfo and brand block", async () => {
     const { container } = await renderWithRouter({ ui: Footer, path: "/", authProvider: false })
 

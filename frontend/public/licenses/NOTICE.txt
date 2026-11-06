@@ -1,0 +1,83 @@
+University Ecosystem — third-party notices and source information
+
+The project's public inspection terms concern only the new original material
+defined in Project-LICENSE.txt. Earlier project permissions and every
+third-party license remain applicable to their respective material. Ordinary
+use of the owner-operated website is permitted under the project terms.
+
+Project-ISC-LEGACY.txt retains the ISC text for frontend material previously
+published under that grant. It does not license new Restricted Material.
+
+Project terms and licensing record:
+https://github.com/egorribun/university_ecosystem/blob/main/LICENSE
+https://github.com/egorribun/university_ecosystem/blob/main/docs/licensing/README.md
+
+Fonts
+-----
+The bundled Inter font and the Fontsource Inter and Outfit distributions retain
+their SIL Open Font License notices. Complete notices are provided alongside
+this file:
+
+  Inter-bundled-OFL.txt
+  Inter-Fontsource-LICENSE.txt
+  Outfit-Fontsource-LICENSE.txt
+
+Their font software remains governed by the OFL, independently of the project's
+terms. Font notices do not grant ownership of third-party names or marks.
+
+Map data and services
+---------------------
+Map tiles/styles are supplied by OpenFreeMap using the OpenMapTiles schema and
+data from OpenStreetMap contributors. The map displays the corresponding provider/data credits.
+Map data does not become proprietary project material.
+
+  OpenFreeMap: https://openfreemap.org/
+  OpenMapTiles: https://www.openmaptiles.org/
+  OpenStreetMap copyright/ODbL: https://www.openstreetmap.org/copyright
+
+Software components
+-------------------
+JavaScript dependency-path texts and source/evidence indexes:
+
+  javascript/frontend-runtime-js-notices.txt
+  javascript/frontend-runtime-source-index.json
+  javascript/MPL-SOURCES.md
+  javascript/linux-optional-toolchain-notices.txt
+  javascript/linux-optional-source-index.json
+
+This inventory includes SSR/build tooling and optional platform packages, not
+only code delivered to browsers. Five MIT-declared packages have unresolved
+full-text evidence (bytewise, err-code, get-browser-rtc, nostr-wasm, typewise);
+other host-absent platform variants are identified in the index. Their metadata
+is retained; this notice does not invent an upstream copyright grant.
+
+The Rust/WebAssembly notices and exact-version source-access indexes are
+provided in these directories beside this notice:
+
+  rust-crypto/LICENSE-THIRD-PARTY
+  rust-crypto/LICENSE-THIRD-PARTY-SOURCES.md
+  wasm-sanitizer/LICENSE-THIRD-PARTY
+  wasm-sanitizer/LICENSE-THIRD-PARTY-SOURCES.md
+
+The Rust 1.99.0 standard-library/core/alloc/compiler-builtins notices and
+release-wide library copyright record are retained in:
+
+  rust-stdlib/LICENSE-RUST-STD
+  rust-stdlib/LICENSE-RUST-STD-COPYRIGHT.txt
+  rust-stdlib/LICENSE-RUST-STD-SOURCES.md
+
+The original HTML copyright record is preserved in the .txt file without
+rewriting its contents. The source index explains its cross-target scope.
+
+The sanitizer includes cssparser 0.38.0 and dtoa-short 0.3.5 under MPL-2.0.
+Their source-access indexes link the exact upstream source archives. Their
+MPL source rights remain available independently of the project's terms.
+
+JavaScript, Rust/WebAssembly, and other components retain their own copyright,
+license notices, and source-access rights. Complete distribution notices and
+the audited component inventories are maintained in the repository:
+
+https://github.com/egorribun/university_ecosystem/blob/main/THIRD_PARTY_NOTICES.md
+https://github.com/egorribun/university_ecosystem/tree/egorribun/docs/licensing
+
+The project's terms do not restrict rights granted by those component licenses.

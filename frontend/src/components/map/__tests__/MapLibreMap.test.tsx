@@ -68,7 +68,7 @@ vi.mock("react-i18next", () => ({
   useTranslation: (namespace: string) => {
     translationState.namespaces.push(namespace)
     return {
-      t: (key: string) => key,
+      t: (key: string, fallback?: string) => fallback ?? key,
       i18n: {
         language: translationState.language,
         resolvedLanguage: translationState.resolvedLanguage,
@@ -332,11 +332,18 @@ describe("MapLibreMap", () => {
     expect(renderedOverlayProps.controls.length).toBeGreaterThan(0)
     expect(renderedOverlayProps.controls.every((props) => props.mapRef !== undefined)).toBe(true)
     expect(document.querySelector(".map-controls-positioner")).toHaveStyle({ bottom: "12px" })
-    const attribution = screen.getByRole("link", { name: "© OpenStreetMap" })
+    const attribution = screen.getByRole("link", { name: "© OpenStreetMap contributors" })
     expect(attribution).toHaveAttribute("href", "https://www.openstreetmap.org/copyright")
     expect(attribution).toHaveAttribute("target", "_blank")
     expect(attribution).toHaveAttribute("rel", "noopener noreferrer")
     expect(attribution).toHaveStyle({ color: "var(--text-tertiary)" })
+    const schemaCredit = screen.getByRole("link", { name: "© OpenMapTiles" })
+    expect(schemaCredit).toHaveAttribute("href", "https://www.openmaptiles.org/")
+    expect(schemaCredit).toHaveAttribute("rel", "noopener noreferrer")
+    expect(screen.getByRole("link", { name: "OpenFreeMap" })).toHaveAttribute(
+      "href",
+      "https://openfreemap.org/"
+    )
   })
 
   it("uses the dark map style without changing the MapLibre interaction contract", () => {

@@ -1,4 +1,4 @@
-# cargo-deny configuration for native/rust_ext
+# Shared cargo-deny license policy, stored with native/rust_ext.
 
 [graph]
 targets = []
@@ -13,8 +13,8 @@ allow = [
     "Apache-2.0",
     "BSD-3-Clause",
     "Apache-2.0 WITH LLVM-exception",
-    # ammonia's html5ever/cssparser dependency chain is MPL-2.0 and is
-    # distributed under a compatible, OSI-approved copyleft license.
+    # The frontend sanitizer's ammonia/html5ever/cssparser graph uses MPL-2.0.
+    # Keep its source/notice obligations when using this shared policy.
     "MPL-2.0",
     "Unicode-3.0",
 ]

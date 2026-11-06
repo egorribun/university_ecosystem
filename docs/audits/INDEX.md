@@ -4,6 +4,11 @@ This index holds the retained platform findings and historical-evidence policy.
 Historical classifications describe their recorded source revision. Current
 release claims require fresh evidence under the master plan.
 
+- [Licensing audit, 2026-11-06](../licensing/AUDIT-2026-11-06.md) — package
+  metadata, source notices, attribution and distribution repairs; locked
+  component inventories and explicit open rights/provenance items. This is
+  separate from platform finding acceptance, full CI and release certification.
+
 ## Current quality-closure roadmap
 
 - [Current accepted audit lower bound: 449 / 512 (87.7%)](AUDIT-2026-10.md#scoped-seven-finding-acceptance-after-b72-review-2026-11-01) — preserves all 442 earlier IDs and adds only AUD-270 / 274 / 311 / 351 / 456 / 490 / 503 under their original criteria. [Complete new review](AUDIT-2026-11-01-review.md): one commit, 94 paths, all 70 previously open IDs; 41 current notes and29 explicitly historical classifications. [Current63-ID complement](AUDIT-2026-10-30-reconciliation.md#current-63-finding-reconciliation--2026-11-01):15 source-fixed/proof-pending, 36 partial, 9 unfixed, 3 unverified. AUD-269 remains open: the reconstructed 19-name DROP population includes six source-loss candidates and two unresolved equivalences, not a proved deployed-query regression. AUD-274 has three named own-953 PG passes in addition to unchanged-source historical proof; 311 / 490 / 503 are explicitly COHORT-INFERRED, not named logs or full coverage GREEN. Full b72 CI remains red; own 953 recovery checks are separate. New GIN/SW/DLQ residuals stay open. At source `aae3cb83d`, inventories contained policy362, baseline242 and Gitleaks27. The separately approved policy363 update was pending in the 2026-11-05 working tree. These inventory facts add no audit acceptance. The separate [ten-identity baseline retirement](../adr/ADR-047-risk-based-quality-policy.md#ten-obsolete-test-baseline-identities-retired-2026-11-01) changes no accepted ID, disposition, required check or threshold; historical315/319 receipts below remain dated evidence.
