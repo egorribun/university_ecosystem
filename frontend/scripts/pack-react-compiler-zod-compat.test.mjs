@@ -1,7 +1,15 @@
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -14,6 +22,7 @@ import {
   facadePackCommand,
   inspectFacadeArchive,
   readFacadeSources,
+  readFacadeLicenseSnapshot,
   validateFacadePackSummary,
   validateFacadeSources,
 } from "./pack-react-compiler-zod-compat.mjs"
@@ -71,6 +80,38 @@ function sourceFiles(files) {
     sha256: hash(files[path]),
   }))
 }
+
+test("facade license snapshot preserves MIT after the project license changes", () => {
+  withDirectory((directory) => {
+    const files = sources()
+    const legacyDirectory = join(directory, "docs", "licensing", "legacy")
+    mkdirSync(legacyDirectory, { recursive: true })
+    writeFileSync(join(directory, "LICENSE"), "Proprietary public inspection terms\n")
+    writeFileSync(join(legacyDirectory, "LICENSE-MIT"), files.LICENSE)
+
+    const snapshot = readFacadeLicenseSnapshot(directory)
+    assert.deepEqual(snapshot.bytes, files.LICENSE)
+    assert.notDeepEqual(snapshot.bytes, readFileSync(join(directory, "LICENSE")))
+    assert.equal(snapshot.path, join(directory, snapshot.name))
+    assert(snapshot.limit >= snapshot.bytes.length)
+  })
+})
+
+test("facade license snapshot rejects missing, linked or oversized legacy material without root fallback", () => {
+  withDirectory((directory) => {
+    writeFileSync(join(directory, "LICENSE"), sources().LICENSE)
+    assert.throws(() => readFacadeLicenseSnapshot(directory), { code: "ENOENT" })
+
+    const legacyDirectory = join(directory, "docs", "licensing", "legacy")
+    mkdirSync(legacyDirectory, { recursive: true })
+    const legacyPath = join(legacyDirectory, "LICENSE-MIT")
+    symlinkSync(join(directory, "LICENSE"), legacyPath)
+    assert.throws(() => readFacadeLicenseSnapshot(directory), { name: "AssertionError" })
+    rmSync(legacyPath)
+    writeFileSync(legacyPath, Buffer.alloc(64 * 1024 + 1, 65))
+    assert.throws(() => readFacadeLicenseSnapshot(directory), { name: "AssertionError" })
+  })
+})
 
 function checksum(header) {
   header.fill(32, 148, 156)

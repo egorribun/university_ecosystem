@@ -9,6 +9,8 @@ handoffs are intentionally not part of the canonical index.
 - [Project overview and local startup](../README.md)
 - [Configuration reference](../CONFIGURATION.md)
 - [Contributing guide](CONTRIBUTING.md)
+- [Licensing and public source terms](licensing/README.md)
+- [Third-party and separately licensed material](../THIRD_PARTY_NOTICES.md)
 - [API documentation](api/README.md)
 - [API examples](API_EXAMPLES.md)
 - [Test and quality guide](../TESTING.md)
