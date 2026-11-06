@@ -5,7 +5,7 @@
     "Admin"
   ],
   "version": "0.1.0",
-  "license": "MIT",
+  "license": "LicenseRef-University-Ecosystem-Proprietary",
   "files": [
     "wasm_sanitizer_bg.wasm",
     "wasm_sanitizer.js",
