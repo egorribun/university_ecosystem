@@ -3462,8 +3462,8 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
         "github.com/go-jose/go-jose/v4@v4.1.7",
         "github.com/spiffe/go-spiffe/v2@v2.9.0",
         "google.golang.org/grpc@v1.84.0",
-        "golang.org/x/net@v0.60.0",
-        "golang.org/x/text@v0.42.0",
+        "golang.org/x/net@v0.62.0",
+        "golang.org/x/text@v0.43.0",
     ):
         assert dependency in health_probe
     assert "go mod download" in health_probe

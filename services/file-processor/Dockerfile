@@ -55,8 +55,8 @@ RUN probe_module="github.com/grpc-ecosystem/grpc-health-probe@${GRPC_HEALTH_PROB
       github.com/go-jose/go-jose/v4@v4.1.7 \
       github.com/spiffe/go-spiffe/v2@v2.9.0 \
       google.golang.org/grpc@v1.84.0 \
-      golang.org/x/net@v0.60.0 \
-      golang.org/x/text@v0.42.0 && \
+      golang.org/x/net@v0.62.0 \
+      golang.org/x/text@v0.43.0 && \
     go mod tidy && \
     CGO_ENABLED=0 GOOS=linux go build \
       -trimpath \
