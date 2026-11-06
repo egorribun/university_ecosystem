@@ -7,6 +7,8 @@ tool pins, the three behavioural checks, and cleanup in the EXIT trap.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 import re
 import shlex
@@ -651,13 +653,23 @@ def test_synthetic_network_failure_is_not_a_tls_rejection(
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip().splitlines() == [connected_marker, result_marker]
+    lines = result.stdout.strip().splitlines()
+    assert lines[-2:] == [connected_marker, result_marker]
+    if name == "NO_SVID_TLS_PY":
+        assert lines[:2] == [
+            "NO_SVID_STAGE=TCP_CONNECT",
+            "NO_SVID_EVENT=" + ("TIMEOUT" if failure == "timeout" else "OS_ERROR"),
+        ]
 
 
 def test_negative_success_markers_require_tcp_reachability() -> None:
     command = f"""set -euo pipefail
 {_shell_function("record")}
+{_shell_function("sanitize_probe_output")}
+{_shell_function("capture_probe")}
 {_shell_function("run_proofs")}
+DIAG_DIR=$(mktemp -d)
+trap 'rm -rf "$DIAG_DIR"' EXIT
 FAILURES=0
 GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
 run_probe() {{
@@ -700,6 +712,18 @@ test "$FAILURES" = 2
             "answered",
             ["NO_SVID_TCP=CONNECTED", "NO_SVID_TLS=ANSWERED"],
         ),
+        ("NO_SVID_TLS_PY", "eof", ["NO_SVID_TCP=CONNECTED", "NO_SVID_TLS=ERROR"]),
+        ("NO_SVID_TLS_PY", "reset", ["NO_SVID_TCP=CONNECTED", "NO_SVID_TLS=ERROR"]),
+        (
+            "NO_SVID_TLS_PY",
+            "write_timeout",
+            ["NO_SVID_TCP=CONNECTED", "NO_SVID_TLS=ERROR"],
+        ),
+        (
+            "NO_SVID_TLS_PY",
+            "handshake_error",
+            ["NO_SVID_TCP=CONNECTED", "NO_SVID_TLS=ERROR"],
+        ),
         ("PLAINTEXT_PY", "closed", ["PLAINTEXT_TCP=CONNECTED", "PLAINTEXT=REJECTED"]),
         (
             "PLAINTEXT_PY",
@@ -723,14 +747,19 @@ class Raw:
     def __exit__(self, *args): return False
 class TLS(Raw):
     def settimeout(self, value): pass
-    def sendall(self, value): pass
+    def sendall(self, value):
+        if BEHAVIOR == 'write_timeout': raise TimeoutError('private failure details')
     def recv(self, size):
-        if BEHAVIOR == 'response_timeout': raise TimeoutError()
+        if BEHAVIOR in ('response_timeout', 'write_timeout'): raise TimeoutError()
+        if BEHAVIOR == 'eof': return b''
+        if BEHAVIOR == 'reset': raise ConnectionResetError('private failure details')
         if BEHAVIOR == 'certificate_required': raise Alert('TLSV13_ALERT_CERTIFICATE_REQUIRED')
         if BEHAVIOR == 'wrong_alert': raise Alert('OTHER_ALERT')
         return b'x'
 class Context:
-    def wrap_socket(self, raw, server_hostname): return TLS()
+    def wrap_socket(self, raw, server_hostname):
+        if BEHAVIOR == 'handshake_error': raise Alert('PRIVATE_UNRECOGNIZED_ALERT')
+        return TLS()
 socket.create_connection = lambda *args, **kwargs: Raw()
 ssl.create_default_context = lambda: Context()
 """
@@ -761,13 +790,38 @@ http.client.HTTPConnection = Connection
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip().splitlines() == expected
+    lines = result.stdout.strip().splitlines()
+    assert lines[-2:] == expected
+    if name == "NO_SVID_TLS_PY":
+        assert lines[:2] == [
+            "NO_SVID_STAGE="
+            + {
+                "response_timeout": "READ_RESPONSE",
+                "write_timeout": "WRITE_REQUEST",
+                "handshake_error": "TLS_HANDSHAKE",
+            }.get(behavior, "READ_ALERT"),
+            "NO_SVID_EVENT="
+            + {
+                "certificate_required": "CERTIFICATE_REQUIRED",
+                "wrong_alert": "SSL_ERROR",
+                "response_timeout": "TIMEOUT",
+                "answered": "DATA",
+                "eof": "EOF",
+                "reset": "RESET",
+                "write_timeout": "TIMEOUT",
+                "handshake_error": "SSL_ERROR",
+            }[behavior],
+        ]
 
 
 def test_negative_success_requires_both_connected_and_rejected_markers() -> None:
     command = f"""set -euo pipefail
 {_shell_function("record")}
+{_shell_function("sanitize_probe_output")}
+{_shell_function("capture_probe")}
 {_shell_function("run_proofs")}
+DIAG_DIR=$(mktemp -d)
+trap 'rm -rf "$DIAG_DIR"' EXIT
 FAILURES=0
 GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
 run_probe() {{
@@ -790,7 +844,11 @@ test "$FAILURES" = 0
 def test_probe_command_failure_cannot_pass_even_with_success_markers() -> None:
     command = f"""set -eu
 {_shell_function("record")}
+{_shell_function("sanitize_probe_output")}
+{_shell_function("capture_probe")}
 {_shell_function("run_proofs")}
+DIAG_DIR=$(mktemp -d)
+trap 'rm -rf "$DIAG_DIR"' EXIT
 FAILURES=0
 GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
 run_probe() {{
@@ -811,7 +869,7 @@ test "$FAILURES" = 4
     assert result.stdout.count(b"FAIL ") == 4
 
 
-def _probe(name: str, host: str, port: int) -> str:
+def _probe_result(name: str, host: str, port: int) -> subprocess.CompletedProcess[str]:
     script = _script()
     source = script.split(f"{name}='\n", 1)[1].split("\n'", 1)[0]
     env = os.environ | {"TARGET_BACKEND": host, "TARGET_BACKEND_PORT": str(port)}
@@ -824,7 +882,11 @@ def _probe(name: str, host: str, port: int) -> str:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
-    return result.stdout.strip().splitlines()[-1]
+    return result
+
+
+def _probe(name: str, host: str, port: int) -> str:
+    return _probe_result(name, host, port).stdout.strip().splitlines()[-1]
 
 
 @pytest.mark.parametrize("name", ["NO_SVID_TLS_PY", "PLAINTEXT_PY"])
@@ -2318,3 +2380,176 @@ def test_file_processor_startup_and_gateway_health_keep_real_dependencies_ordere
     assert "ServerName:   cfg.GRPCServerName" in gateway
     assert "GRPCClientIdentityURI" in gateway
     assert "InsecureSkipVerify" not in server + gateway
+
+
+@pytest.mark.parametrize(
+    ("payload", "command_status", "valid"),
+    [
+        ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED\n", 0, True),
+        ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED\n", 37, False),
+        ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=ERROR\nNO_SVID_TLS=REJECTED\n", 0, False),
+        ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED secret\n", 0, False),
+        ("NO_SVID_TLS=REJECTED\x00secret\n", 0, False),
+        ("secret" * 20000 + "\n", 0, False),
+        ("secret\n" * 12000, 0, False),
+        ("PROBE_EXIT=0\n", 37, False),
+    ],
+    ids=[
+        "clean",
+        "command-failure",
+        "duplicate",
+        "suffix",
+        "nul",
+        "long-line",
+        "noise",
+        "fake-exit",
+    ],
+)
+def test_probe_capture_is_bounded_and_preserves_real_exit(
+    payload: str, command_status: int, valid: bool, tmp_path: Path
+) -> None:
+    raw = tmp_path / "input"
+    raw.write_bytes(payload.encode())
+    command = f"""set -euo pipefail
+{_shell_function("sanitize_probe_output")}
+{_shell_function("capture_probe")}
+DIAG_DIR={shlex.quote(_bash_path(tmp_path))}
+run_probe() {{ cat {shlex.quote(_bash_path(raw))}; return {command_status}; }}
+status=0
+capture_probe no-svid-tls ignored || status=$?
+printf 'CAPTURE_STATUS=%s\\n' "$status"
+cat "$DIAG_DIR/probe-no-svid-tls.txt"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    output = result.stdout.decode()
+    assert "secret" not in output
+    assert len(output) < 2048
+    assert ("CAPTURE_STATUS=0\n" in output) is valid
+    assert f"PROBE_EXIT={command_status}\n" in output
+
+
+@pytest.mark.parametrize("broken_diagnostics", [False, True, None])
+def test_all_probe_runs_record_diagnostics_or_fail_closed_and_continue(
+    broken_diagnostics: bool | None, tmp_path: Path
+) -> None:
+    directory = tmp_path / "diagnostics"
+    if broken_diagnostics:
+        directory.write_text("not a directory", encoding="utf-8")
+    elif broken_diagnostics is False:
+        directory.mkdir()
+    command = f"""set -euo pipefail
+{_shell_function("sanitize_probe_output")}
+{_shell_function("capture_probe")}
+{_shell_function("record")}
+{_shell_function("run_proofs")}
+DIAG_DIR={shlex.quote(_bash_path(directory))}
+FAILURES=0
+GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
+run_probe() {{
+  case "$1" in
+    gateway-hop) printf 'STATUS=200\\nBODY_HAS_KEYS=True\\n' ;;
+    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=REJECTED\\n' ;;
+    plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
+  esac
+}}
+backend_logged_gateway_peer() {{ return 0; }}
+run_proofs
+printf 'FAILURES=%s\\n' "$FAILURES"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    assert f"FAILURES={3 if broken_diagnostics else 0}" in result.stdout.decode()
+    assert b"d-backend-logs-gateway-peer-spiffe-id" in result.stdout
+    assert b"c-plaintext-http-rejected" in result.stdout
+    if not broken_diagnostics:
+        assert {path.name for path in directory.iterdir()} == {
+            "probe-gateway-hop.txt",
+            "probe-no-svid-tls.txt",
+            "probe-plaintext.txt",
+        }
+        assert all("PROBE_EXIT=0" in path.read_text() for path in directory.iterdir())
+
+
+@pytest.mark.parametrize("require_certificate", [True, False])
+def test_real_uvloop_no_svid_eof_remains_error_with_stage_diagnostics(
+    require_certificate: bool, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The production uvloop transport can discard the outgoing TLS 1.3 alert.
+    # Unlike the blocking-socket fixture, do not hold a duplicate TCP socket open.
+    caplog.set_level(logging.DEBUG, logger="asyncio")
+    context = _server_tls_context(tmp_path)
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.verify_mode = ssl.CERT_REQUIRED if require_certificate else ssl.CERT_NONE
+
+    async def exercise() -> None:
+        loop = asyncio.get_running_loop()
+        loop.set_debug(True)
+        errors = []
+        loop.set_exception_handler(lambda _loop, context: errors.append(context))
+        accepted = []
+
+        class Respond(asyncio.Protocol):
+            def connection_made(self, transport: asyncio.BaseTransport) -> None:
+                accepted.append(True)
+                self.transport = transport
+
+            def data_received(self, data: bytes) -> None:
+                self.transport.write(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                self.transport.close()
+
+        server = await loop.create_server(Respond, "127.0.0.1", 0, ssl=context)
+        try:
+            port = server.sockets[0].getsockname()[1]
+            result = await asyncio.to_thread(
+                _probe_result, "NO_SVID_TLS_PY", "127.0.0.1", port
+            )
+            assert result.returncode == 0, result.stderr
+            lines = result.stdout.splitlines()
+            if require_certificate:
+                expected = [
+                    "NO_SVID_STAGE=READ_ALERT",
+                    "NO_SVID_EVENT=EOF",
+                    "NO_SVID_TCP=CONNECTED",
+                    "NO_SVID_TLS=ERROR",
+                ]
+                if (
+                    sys.platform == "win32"
+                    and "NO_SVID_EVENT=CERTIFICATE_REQUIRED" in lines
+                ):
+                    expected[1] = "NO_SVID_EVENT=CERTIFICATE_REQUIRED"
+                    expected[3] = "NO_SVID_TLS=REJECTED"
+                assert lines == expected
+                assert not accepted
+                handshake_errors = [
+                    record.exc_info[1]
+                    for record in caplog.records
+                    if record.exc_info and isinstance(record.exc_info[1], ssl.SSLError)
+                ]
+                if sys.platform == "win32":
+                    handshake_errors.extend(item["exception"] for item in errors)
+                else:
+                    assert not errors
+                assert len(handshake_errors) == 1
+                assert isinstance(handshake_errors[0], ssl.SSLError)
+                assert handshake_errors[0].reason == "PEER_DID_NOT_RETURN_A_CERTIFICATE"
+            else:
+                assert lines == [
+                    "NO_SVID_STAGE=READ_RESPONSE",
+                    "NO_SVID_EVENT=DATA",
+                    "NO_SVID_TCP=CONNECTED",
+                    "NO_SVID_TLS=ANSWERED",
+                ]
+                assert accepted == [True]
+                assert not errors
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    if sys.platform == "win32":
+        asyncio.run(exercise())
+    else:
+        import uvloop
+
+        uvloop.run(exercise())

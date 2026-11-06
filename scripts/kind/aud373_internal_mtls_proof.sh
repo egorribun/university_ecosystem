@@ -1063,31 +1063,52 @@ context.minimum_version = ssl.TLSVersion.TLSv1_3
 context.maximum_version = ssl.TLSVersion.TLSv1_3
 result = "ERROR"
 connected = False
+stage = "TCP_CONNECT"
+event = "OS_ERROR"
+def failure_event(error):
+    if isinstance(error, TimeoutError):
+        return "TIMEOUT"
+    if isinstance(error, (ConnectionResetError, BrokenPipeError)):
+        return "RESET"
+    if isinstance(error, ssl.SSLEOFError):
+        return "EOF"
+    if isinstance(error, ssl.SSLError):
+        return "SSL_ERROR"
+    return "OS_ERROR"
 try:
     raw = socket.create_connection((host, port), timeout=10)
-except OSError:
-    pass
+except OSError as error:
+    event = failure_event(error)
 else:
     connected = True
     with raw:
         try:
+            stage = "TLS_HANDSHAKE"
             with context.wrap_socket(raw, server_hostname=host) as tls:
                 # TLS 1.3 may report a missing-certificate alert after the client
                 # handshake has returned. Read it before sending application data.
                 tls.settimeout(2)
+                stage = "READ_ALERT"
                 try:
                     data = tls.recv(1)
                 except TimeoutError:
                     tls.settimeout(10)
+                    stage = "WRITE_REQUEST"
                     tls.sendall(("GET /health/live HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n" % host).encode())
+                    stage = "READ_RESPONSE"
                     data = tls.recv(64)
+                event = "DATA" if data else "EOF"
                 if data:
                     result = "ANSWERED"
         except ssl.SSLError as error:
+            event = failure_event(error)
             if error.reason == "TLSV13_ALERT_CERTIFICATE_REQUIRED":
+                event = "CERTIFICATE_REQUIRED"
                 result = "REJECTED"
-        except OSError:
-            pass
+        except OSError as error:
+            event = failure_event(error)
+print("NO_SVID_STAGE=%s" % stage)
+print("NO_SVID_EVENT=%s" % event)
 print("NO_SVID_TCP=%s" % ("CONNECTED" if connected else "ERROR"))
 print("NO_SVID_TLS=%s" % result)
 '
@@ -1148,9 +1169,72 @@ backend_logged_gateway_peer() {
   return 1
 }
 
+# Drain the command stream without retaining raw output. Only finite, complete marker
+# lines can reach artifacts. Oversized/malformed/duplicate markers fail closed.
+sanitize_probe_output() {
+  python3 -c '
+import re, sys
+allowed = {
+    "gateway-hop": {"STATUS": r"[1-5][0-9]{2}", "BODY_HAS_KEYS": r"True|False", "ERROR": r"[A-Za-z]+"},
+    "no-svid-tls": {
+        "NO_SVID_TCP": r"CONNECTED|ERROR", "NO_SVID_TLS": r"REJECTED|ANSWERED|ERROR",
+        "NO_SVID_STAGE": r"TCP_CONNECT|TLS_HANDSHAKE|READ_ALERT|WRITE_REQUEST|READ_RESPONSE",
+        "NO_SVID_EVENT": r"TIMEOUT|RESET|EOF|SSL_ERROR|OS_ERROR|DATA|CERTIFICATE_REQUIRED",
+    },
+    "plaintext": {"PLAINTEXT_TCP": r"CONNECTED|ERROR", "PLAINTEXT": r"REJECTED|ANSWERED|ERROR"},
+}[sys.argv[1]]
+seen = {}
+invalid = False
+total = 0
+# readline(size) bounds allocation even for a single unterminated hostile line.
+while True:
+    line = sys.stdin.buffer.readline(129)
+    if not line:
+        break
+    total += len(line)
+    if total > 65536 or len(line) > 128 or not line.endswith(b"\n"):
+        invalid = True
+    if invalid:
+        continue
+    text = line[:-1].decode("ascii", errors="replace")
+    key, sep, value = text.partition("=")
+    if key in allowed:
+        if key in seen or not sep or not re.fullmatch(allowed[key], value):
+            invalid = True
+        else:
+            # Gateway exceptions are deliberately reduced, never echo their names.
+            seen[key] = "ERROR" if key == "ERROR" else value
+    elif text.startswith(("NO_SVID_", "PLAINTEXT", "STATUS", "BODY_HAS_KEYS", "ERROR", "PROBE_")):
+        invalid = True
+for key, value in seen.items():
+    print("%s=%s" % (key, value))
+print("PROBE_OUTPUT=%s" % ("INVALID" if invalid else "VALID"))
+sys.exit(1 if invalid else 0)
+' "$1"
+}
+
+capture_probe() {
+  local name="$1" output status=0
+  # PIPESTATUS must be saved immediately; no raw kubectl text or fake exit marker
+  # can replace the actual command status. Conditional capture disables errexit
+  # here so both status collection and every later proof still execute.
+  output="$(
+    run_probe "$@" | sanitize_probe_output "$name"
+    statuses=("${PIPESTATUS[@]}")
+    printf 'PROBE_EXIT=%s\n' "${statuses[0]}"
+    if [[ "${statuses[0]}" != 0 ]]; then exit "${statuses[0]}"; fi
+    exit "${statuses[1]}"
+  )" || status=$?
+  if ! { mkdir -p "$DIAG_DIR" && printf '%s\n' "$output" >"${DIAG_DIR}/probe-${name}.txt"; } 2>/dev/null; then
+    return 125
+  fi
+  printf '%s\n' "$output"
+  return "$status"
+}
+
 run_proofs() {
   local output
-  if output="$(run_probe gateway-hop "$GATEWAY_HOP_PY")" &&
+  if output="$(capture_probe gateway-hop "$GATEWAY_HOP_PY")" &&
     grep -qx 'STATUS=200' <<<"$output" && grep -qx 'BODY_HAS_KEYS=True' <<<"$output"; then
     record "a-gateway-to-backend-mtls-hop" yes
   else
@@ -1163,7 +1247,7 @@ run_proofs() {
     record "d-backend-logs-gateway-peer-spiffe-id" no
   fi
 
-  if output="$(run_probe no-svid-tls "$NO_SVID_TLS_PY")" &&
+  if output="$(capture_probe no-svid-tls "$NO_SVID_TLS_PY")" &&
     grep -qx 'NO_SVID_TCP=CONNECTED' <<<"$output" &&
     grep -qx 'NO_SVID_TLS=REJECTED' <<<"$output"; then
     record "b-no-svid-tls-client-rejected" yes
@@ -1171,7 +1255,7 @@ run_proofs() {
     record "b-no-svid-tls-client-rejected" no
   fi
 
-  if output="$(run_probe plaintext "$PLAINTEXT_PY")" &&
+  if output="$(capture_probe plaintext "$PLAINTEXT_PY")" &&
     grep -qx 'PLAINTEXT_TCP=CONNECTED' <<<"$output" &&
     grep -qx 'PLAINTEXT=REJECTED' <<<"$output"; then
     record "c-plaintext-http-rejected" yes
