@@ -28,7 +28,15 @@ WASM producer/verifiers, and the GitHub PR workflow.
 - [x] Validate metadata consistency and unchanged dependency records/notices;
       run `python verify_harness.py`, existing WASM script tests from `frontend/`,
       the artifact validator, exact Cargo license scans, and changed-file formatting.
-- [ ] Run existing commit/push hooks, re-stage `.secrets.baseline` after
+- [x] Run existing commit/push hooks, re-stage `.secrets.baseline` after
       detect-secrets without adding identities, review the staged diff, commit
       with a non-wave scope, and create/attach separate license-only PRs targeting `egorribun` and `main`.
       Report the actual hosted-check state; do not merge or bypass gates.
+
+## Integration status
+
+Preparation, local validation, commit/push hooks, and publication of both PRs
+are complete: [development PR #1361](https://github.com/egorribun/university_ecosystem/pull/1361)
+and [default-branch PR #1362](https://github.com/egorribun/university_ecosystem/pull/1362).
+They remain subject to source-bound hosted checks and the ordinary merge policy.
+This checklist does not certify passing hosted checks or completed integration.

@@ -2,8 +2,10 @@
 
 Date: 2026-11-06
 
-Status: Owner-approved direction; implementation and hosted validation await
-integration through the required PR workflow.
+Status: Owner-approved; implemented in
+[PR #1361](https://github.com/egorribun/university_ecosystem/pull/1361) and
+[PR #1362](https://github.com/egorribun/university_ecosystem/pull/1362).
+Source-bound hosted acceptance and integration remain pending.
 
 ## Context and decision
 

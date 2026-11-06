@@ -18,7 +18,8 @@ upstream notices. Bundle the terms and retained MIT notice with WASM packages.
 Use exact per-crate/version Cargo Deny mappings for the new first-party license;
 leave dependency allowlists, security policy, and required checks unchanged.
 
-Implement in an isolated `codex/` branch from `egorribun`, rebuild and verify
+Use separate isolated `codex/` branches based on their respective target
+branches, `egorribun` and `main`. Rebuild and verify
 WASM metadata/provenance, validate TOML/JSON and notice preservation, run
 appropriate existing tests and hooks, then submit separate license-only PRs to
 `egorribun` and `main`. Their histories diverge substantially; do not include
