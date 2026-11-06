@@ -10,7 +10,7 @@ import os
 import shutil
 import struct
 import subprocess
-import time
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -425,6 +425,9 @@ def _run_case(
     list[list[str]],
     list[dict[str, str]],
 ]:
+    # The shared fixtures load a separate source-bound module; all fixture
+    # patches must target the same runner instance that this case executes.
+    monkeypatch.setattr(base_tests, "gate", gate)
     repository_root, rules_root, index_blobs = _fixture(
         tmp_path,
         monkeypatch,
@@ -690,20 +693,20 @@ class _FakeHTTPResponse:
         *,
         status: int = 200,
         headers: dict[str, str] | None = None,
-        delay_seconds: float = 0,
+        on_read: Callable[[], None] | None = None,
     ) -> None:
         self._data = data
         self._offset = 0
         self.status = status
-        self._delay_seconds = delay_seconds
+        self._on_read = on_read
         self.headers = headers or {"Content-Length": str(len(data))}
 
     def getheader(self, name: str) -> str | None:
         return self.headers.get(name)
 
     def read(self, size: int) -> bytes:
-        if self._delay_seconds:
-            time.sleep(self._delay_seconds)
+        if self._on_read is not None:
+            self._on_read()
         result = self._data[self._offset : self._offset + size]
         self._offset += len(result)
         return result
@@ -771,7 +774,7 @@ def test_download_streams_only_the_pinned_official_archive(
     assert connections[0].requests == [
         (
             "GET",
-            "/helm-v4.2.4-windows-amd64.zip",
+            pin["archive_url"].removeprefix("https://get.helm.sh"),
             {"User-Agent": "university-ecosystem-semgrep-gate"},
         )
     ]
@@ -823,12 +826,21 @@ def test_download_enforces_total_deadline_and_removes_its_partial_file(
 ) -> None:
     pin = _test_helm_pin()
     monkeypatch.setattr(gate, "HELM_ARCHIVE_TIMEOUT_SECONDS", 0.001)
-    response = _FakeHTTPResponse(ARCHIVE_BYTES, delay_seconds=0.01)
-    _stub_archive_connections(monkeypatch, [response])
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(gate, "time", SimpleNamespace(monotonic=lambda: clock.now))
+    destination = tmp_path / "slow.archive"
+
+    def exceed_deadline_during_read() -> None:
+        assert destination.is_file()
+        clock.now = 10.0
+
+    response = _FakeHTTPResponse(ARCHIVE_BYTES, on_read=exceed_deadline_during_read)
+    connections = _stub_archive_connections(monkeypatch, [response])
 
     with pytest.raises(gate.SemgrepGateError, match="time limit"):
-        gate._download_helm_archive(pin, tmp_path / "slow.archive")
-    assert not (tmp_path / "slow.archive").exists()
+        gate._download_helm_archive(pin, destination)
+    assert not destination.exists()
+    assert connections[0].closed
 
 
 def test_prefetched_archive_cache_tampering_fails_before_render_or_scan(

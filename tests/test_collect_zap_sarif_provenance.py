@@ -20,7 +20,7 @@ def _repository_root() -> Path:
 REPOSITORY_ROOT = _repository_root()
 COLLECTOR_PATH = Path(__file__).with_name("collect_zap_sarif_provenance.py")
 if not COLLECTOR_PATH.is_file():
-    COLLECTOR_PATH = REPOSITORY_ROOT / "scripts/quality/zap_sarif_provenance.py"
+    COLLECTOR_PATH = REPOSITORY_ROOT / Path("scripts/quality/zap_sarif_provenance.py")
 SPEC = importlib.util.spec_from_file_location(
     "collect_zap_sarif_provenance", COLLECTOR_PATH
 )

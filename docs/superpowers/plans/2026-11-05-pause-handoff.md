@@ -227,7 +227,7 @@ CI на 1cc8fb2db ещё не смотрели. На 6c56a28dd было 7 кра
 Актуальные ограничения задают AGENTS.md и текущие root-инструкции выше. Этот
 перечень сохранён как прежний снимок и не расширяет их.
 - Никаких `--no-verify`, force-push, admin bypass.
-- Никаких `pragma: allowlist secret`, `type: ignore`, `nosemgrep`, skip, xfail, eslint-disable. `# noqa: S603  # причина` допустим.
+- Никаких inline-подавлений detect-secrets, `type: ignore`, `nosemgrep`, skip, xfail, eslint-disable. `# noqa: S603  # причина` допустим.
 - Не ослаблять гейты, пороги, обязательные проверки и полы покрытия. Не делать тест «мягче», чтобы он прошёл. Альтернативы в `assertRaisesRegex` тоже ослабление.
 - Новые сущности для detect-secrets или Gitleaks только с согласия владельца. Перепривязки 1:1 разрешены.
 - Не трогать тома `university_*`, не делать глобальный prune. Контейнеры называть `ue-r9-*` и удалять с `-v`.

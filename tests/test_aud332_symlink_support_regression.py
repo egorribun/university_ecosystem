@@ -17,7 +17,7 @@ REPOSITORY_ROOT = next(
     for parent in Path(__file__).resolve().parents
     if (parent / "AGENTS.md").is_file() and (parent / "tests").is_dir()
 )
-MAIN_SOURCE_PATH = REPOSITORY_ROOT / "tests" / "symlink_support.py"
+MAIN_SOURCE_PATH = REPOSITORY_ROOT / Path("tests/symlink_support.py")
 SOURCE_PATH = Path(
     os.environ.get("AUD332_SOURCE_PATH", str(MAIN_SOURCE_PATH))
 ).resolve()

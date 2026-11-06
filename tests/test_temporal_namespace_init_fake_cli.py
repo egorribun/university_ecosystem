@@ -70,8 +70,20 @@ exit 1
 
 
 def _executable(path: Path, content: str) -> None:
-    path.write_text(content, encoding="utf-8")
+    path.write_text(content, encoding="utf-8", newline="\n")
     path.chmod(0o755)
+
+
+def _shell() -> str:
+    shell = shutil.which("sh")
+    if shell:
+        return shell
+    # Git for Windows supplies a POSIX shell even when only git.exe is on PATH.
+    git = shutil.which("git")
+    assert git, "POSIX shell is required for the fake CLI contract"
+    candidate = Path(git).resolve().parents[1] / "bin" / "sh.exe"
+    assert candidate.is_file(), "POSIX shell is required for the fake CLI contract"
+    return str(candidate)
 
 
 def _run_case(
@@ -81,9 +93,7 @@ def _run_case(
     worker: str | None = WORKER_TOKEN,
     admin: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    shell = shutil.which("sh")
-    if os.name == "nt" or not shell:
-        pytest.skip("POSIX shell is required for the fake CLI contract")
+    shell = _shell()
 
     root = tmp_path / mode
     runtime = root / "runtime"
@@ -102,17 +112,16 @@ def _run_case(
         profile_path.write_text(
             f"[profile.default]\naddress = '127.0.0.1:7233'\napi_key = '{admin}'\n",
             encoding="ascii",
+            newline="\n",
         )
 
     _executable(
         bindir / "id", '#!/bin/sh\ncase "$1" in -u|-g) echo 1000;; *) exit 1;; esac\n'
     )
     _executable(bindir / "sleep", "#!/bin/sh\nexit 0\n")
-    log_path = root / "cli.log"
-    count_path = root / "admin-describes"
     temporal = (
-        FAKE_TEMPORAL.replace("__LOG__", str(log_path))
-        .replace("__COUNT__", str(count_path))
+        FAKE_TEMPORAL.replace("__LOG__", "./cli.log")
+        .replace("__COUNT__", "./admin-describes")
         .replace("__MODE__", mode)
         .replace("__WORKER__", WORKER_TOKEN)
         .replace("__ADMIN__", ADMIN_TOKEN)
@@ -120,24 +129,36 @@ def _run_case(
     _executable(bindir / "temporal", temporal)
 
     source = SCRIPT.read_text(encoding="utf-8")
-    source = source.replace(
-        "/run/temporal-bootstrap/profile.toml", str(profile_path)
-    ).replace("/run/temporal-worker/token", str(key_path))
-    source = source.replace("/run/temporal-bootstrap-runtime", str(runtime))
-    source = source.replace(
-        "PATH=/usr/local/bin:/usr/bin:/bin",
-        f"PATH={bindir}:/usr/local/bin:/usr/bin:/bin",
+    # Shell-relative paths preserve the mounted-file behavior without Windows
+    # drive-letter PATH separators or backslashes. All fixtures live in cwd.
+    replacements = (
+        ("/run/temporal-bootstrap/profile.toml", "./bootstrap/profile.toml", 1),
+        ("/run/temporal-worker/token", "./worker/token", 1),
+        ("/run/temporal-bootstrap-runtime", "./runtime", 3),
+        (
+            "PATH=/usr/local/bin:/usr/bin:/bin",
+            "PATH=./bin:/usr/local/bin:/usr/bin:/bin",
+            1,
+        ),
     )
+    for original, replacement, count in replacements:
+        assert source.count(original) == count, (
+            f"source fixture marker changed: {original}"
+        )
+        source = source.replace(original, replacement)
     script_path = root / "namespace-init.sh"
-    script_path.write_text(source, encoding="utf-8")
+    script_path.write_text(source, encoding="utf-8", newline="\n")
+    environment = {
+        "PATH": "./bin:/usr/local/bin:/usr/bin:/bin",
+        "TEMPORAL_TEST_SECRET": PRIVATE_MARKER,
+    }
+    if "SYSTEMROOT" in os.environ:
+        environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
 
     return subprocess.run(  # noqa: S603 - fixed test script in a temporary directory
-        [shell, str(script_path)],
+        [shell, "./namespace-init.sh"],
         cwd=root,
-        env={
-            "PATH": f"{bindir}:/usr/local/bin:/usr/bin:/bin",
-            "TEMPORAL_TEST_SECRET": PRIVATE_MARKER,
-        },
+        env=environment,
         capture_output=True,
         text=True,
         timeout=5,
@@ -158,6 +179,37 @@ def _recorded_cli_calls(log: str) -> list[tuple[str, ...]]:
         assert len(arguments) >= 3
         calls.append(arguments)
     return calls
+
+
+@pytest.mark.parametrize("git_available", [False, True])
+def test_missing_posix_shell_fails_before_creating_fixtures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, git_available: bool
+) -> None:
+    git = tmp_path / "Git" / "cmd" / "git.exe"
+    if git_available:
+        git.parent.mkdir(parents=True)
+        git.write_bytes(b"test-only Git path")
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda name: str(git) if name == "git" and git_available else None,
+    )
+    with pytest.raises(AssertionError, match="POSIX shell is required"):
+        _run_case(tmp_path, mode="worker-success")
+    assert not (tmp_path / "worker-success").exists()
+
+
+def test_git_distributed_shell_is_resolved_when_sh_is_not_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    git = tmp_path / "Git" / "cmd" / "git.exe"
+    shell = tmp_path / "Git" / "bin" / "sh.exe"
+    shell.parent.mkdir(parents=True)
+    shell.write_bytes(b"test-only shell path")
+    monkeypatch.setattr(
+        shutil, "which", lambda name: str(git) if name == "git" else None
+    )
+    assert _shell() == str(shell)
 
 
 def test_worker_token_succeeds_without_minting_admin_profile(tmp_path: Path) -> None:

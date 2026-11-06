@@ -25,9 +25,9 @@ def _repository_root() -> Path:
 
 
 REPOSITORY_ROOT = _repository_root()
-CANDIDATE_ROOT = Path(__file__).resolve().parents[1]
-HELPER_PATH = CANDIDATE_ROOT / "scripts/quality/helm_rendered_target_overlay.py"
-REGISTRY_PATH = CANDIDATE_ROOT / "scripts/quality/helm_semgrep_profile_registry.json"
+TEST_ROOT = Path(__file__).resolve().parents[1]
+HELPER_PATH = TEST_ROOT / "scripts/quality/helm_rendered_target_overlay.py"
+REGISTRY_PATH = TEST_ROOT / "scripts/quality/helm_semgrep_profile_registry.json"
 
 _spec = importlib.util.spec_from_file_location(
     "helm_rendered_target_overlay_candidate", HELPER_PATH

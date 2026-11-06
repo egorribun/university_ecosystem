@@ -179,10 +179,13 @@ if role == "parent":
     })
     print("owned parent stdout", flush=True)
     print("owned parent stderr", file=sys.stderr, flush=True)
+    # Bounded 7.5s fixture lifetime exceeds the real parent's 2s timeout.
     time.sleep(7.5)
 elif role == "grandchild":
     launcher_pid, launcher_created = int(sys.argv[3]), int(sys.argv[4])
     release_after = float(sys.argv[5])
+    if not 0 < release_after <= 4.5:
+        raise SystemExit("grandchild lifetime must be finite and at most 4.5s")
     write_record(directory / "grandchild.json", {
         "pid": pid, "creation": created,
         "nonce": nonce, "stdout_type": stdout_type, "stderr_type": stderr_type,
@@ -192,6 +195,7 @@ elif role == "grandchild":
     })
     print("owned grandchild stdout", flush=True)
     print("owned grandchild stderr", file=sys.stderr, flush=True)
+    # Bounded above at 4.5s; retain the real inherited-pipe lifetime regression.
     time.sleep(release_after)
     write_record(directory / "grandchild-done.json", {"pid": pid, "creation": created})
 else:

@@ -13,8 +13,8 @@ from typing import Any
 
 import pytest
 
-CANDIDATE_ROOT = Path(__file__).resolve().parents[1]
-RUNNER_PATH = CANDIDATE_ROOT / "scripts" / "quality" / "run_semgrep_gate.py"
+TEST_ROOT = Path(__file__).resolve().parents[1]
+RUNNER_PATH = TEST_ROOT / "scripts" / "quality" / "run_semgrep_gate.py"
 SPEC = importlib.util.spec_from_file_location("mts_candidate_runner", RUNNER_PATH)
 assert SPEC is not None and SPEC.loader is not None
 gate = importlib.util.module_from_spec(SPEC)
