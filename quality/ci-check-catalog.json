@@ -4485,7 +4485,7 @@
       "events": [
         {
           "event": "pull_request",
-          "guard": "{\"branches\":[\"main\"],\"paths\":[\"charts/**\",\"k8s/spire/**\",\"services/gateway/**\",\"app/server/**\",\"scripts/kind/**\",\".github/workflows/internal-mtls-kind.yml\"]}"
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"backend.Dockerfile\",\"backend.Dockerfile.dockerignore\",\".dockerignore\",\"app/**\",\"native/**\",\"alembic/**\",\"alembic.ini\",\"pyproject.toml\",\"uv.lock\",\"go.mod\",\"go.sum\",\"gen/go/**\",\"services/pkg/logging/**\",\"services/pkg/spiffe/**\",\"k8s/README.md\",\"charts/**\",\"k8s/spire/**\",\"services/gateway/**\",\"app/server/**\",\"scripts/kind/**\",\".github/workflows/internal-mtls-kind.yml\"]}"
         },
         {
           "event": "schedule",
