@@ -750,12 +750,18 @@ api.interceptors.response.use(
   async (response) => {
     const config = response.config as (InternalAxiosRequestConfig & ApiRequestConfig) | undefined
     _cleanupIdempotencyKey(config)
-    if (config?.etagCacheKey) {
-      await handleEtagResponse(response, config.etagCacheKey)
+    try {
+      if (config?.etagCacheKey) {
+        await handleEtagResponse(response, config.etagCacheKey, () =>
+          assertCurrentRequestSession(config)
+        )
+      }
+      updateTraceContext(response.headers as AxiosHeaders)
+      return response
+    } finally {
+      // A stale-session cancellation or HMAC failure must also release the slot.
+      releaseClientQueueSlot(config)
     }
-    updateTraceContext(response.headers as AxiosHeaders)
-    releaseClientQueueSlot(config)
-    return response
   },
   async (error) => {
     const config = error?.config as (InternalAxiosRequestConfig & ApiRequestConfig) | undefined
