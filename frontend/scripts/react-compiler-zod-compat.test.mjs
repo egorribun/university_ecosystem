@@ -846,7 +846,7 @@ test("the Docker stages carry the archive and builder keeps native compiler reso
   const fromLines = fromLinesFor(dockerfile)
   assert.deepEqual(
     fromLines.map((match) => match[3].toLowerCase()),
-    ["base", "wasm-builder", "deps", "builder", "prod-deps", "runtime"]
+    ["base", "wasm-builder", "wasm-packages", "deps", "builder", "prod-deps", "runtime"]
   )
   const stage = (alias) => {
     const index = fromLines.findIndex((match) => match[3].toLowerCase() === alias)
@@ -863,6 +863,7 @@ test("the Docker stages carry the archive and builder keeps native compiler reso
   }
   const base = stage("base")
   const wasmBuilder = stage("wasm-builder")
+  const wasmPackages = stage("wasm-packages")
   const deps = stage("deps")
   const builder = stage("builder")
   const prodDeps = stage("prod-deps")
@@ -871,10 +872,54 @@ test("the Docker stages carry the archive and builder keeps native compiler reso
   assert.match(base.image, nodeImagePin)
   assert.match(wasmBuilder.image, /^rust:1\.99\.0-slim-bookworm@sha256:[a-f0-9]{64}$/)
   assert.equal(wasmBuilder.platform, "$WASM_BUILDPLATFORM")
+  assert.equal(wasmPackages.image, "base")
   assert.equal(runtime.image, base.image)
   assert.equal(deps.image, "base")
   assert.equal(builder.image, "deps")
   assert.equal(prodDeps.image, "base")
+
+  assert.match(wasmBuilder.body, /wasm-pack build rust-crypto --target web --release/)
+  assert.match(wasmBuilder.body, /wasm-pack build wasm-sanitizer --target web --release/)
+  const finalizeWasmPackages = "RUN node scripts/finalize-wasm-licenses.mjs"
+  const finalizeIndex = wasmPackages.body.indexOf(finalizeWasmPackages)
+  assert.notEqual(finalizeIndex, -1, "wasm-packages stage must finalize the raw packages")
+  for (const crate of ["rust-crypto", "wasm-sanitizer"]) {
+    const rawPackageCopy = `COPY --from=wasm-builder /wasm/${crate}/pkg ./${crate}/pkg`
+    assert.equal(wasmPackages.body.split(rawPackageCopy).length - 1, 1)
+    assert.ok(wasmPackages.body.indexOf(rawPackageCopy) < finalizeIndex)
+    assert.ok(
+      wasmPackages.body.includes(
+        `COPY frontend/${crate}/LICENSE frontend/${crate}/LICENSE-THIRD-PARTY frontend/${crate}/LICENSE-THIRD-PARTY-SOURCES.md ./${crate}/`
+      )
+    )
+    assert.ok(
+      wasmPackages.body.includes(
+        `COPY frontend/${crate}/LICENSE-RUST-STD frontend/${crate}/LICENSE-RUST-STD-COPYRIGHT.txt frontend/${crate}/LICENSE-RUST-STD-SOURCES.md ./${crate}/`
+      )
+    )
+  }
+
+  const wasmConsumers = [
+    ["deps", deps, ""],
+    ["builder", builder, ""],
+    ["prod-deps", prodDeps, ""],
+    ["runtime", runtime, "--chown=10001:10001 "],
+  ]
+  for (const [alias, consumer, copyOptions] of wasmConsumers) {
+    assert.equal(
+      consumer.body.includes("COPY --from=wasm-builder"),
+      false,
+      `${alias} must consume finalized WASM packages, not the raw producer`
+    )
+    for (const crate of ["rust-crypto", "wasm-sanitizer"]) {
+      const finalizedPackageCopy = `COPY --from=wasm-packages ${copyOptions}/app/${crate}/pkg ./${crate}/pkg`
+      assert.equal(
+        consumer.body.split(finalizedPackageCopy).length - 1,
+        1,
+        `${alias} must consume the finalized ${crate} package`
+      )
+    }
+  }
 
   const archiveCopy = "COPY frontend/vendor/react-compiler-zod-compat-1.0.0.tgz ./vendor/"
   assert.equal(deps.body.split(archiveCopy).length - 1, 1)

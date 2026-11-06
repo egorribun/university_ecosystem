@@ -340,15 +340,37 @@ describe("ADVERSARIAL: build-wasm.mjs flags and fail-closed contracts", () => {
     try {
       await createFixturePackage(tmp, "wasm-sanitizer")
       await createFixturePackage(tmp, "rust-crypto")
-      // Skipping the build still validates source provenance, so the fixture
-      // must be a complete checkout: sources plus a matching provenance file.
+      // Skipping the build still validates every canonical source input, so
+      // model both crate roots and all nine inputs for each crate.
+      const sourceInputs = [
+        "Cargo.toml",
+        "Cargo.lock",
+        "LICENSE",
+        "LICENSE-THIRD-PARTY",
+        "LICENSE-THIRD-PARTY-SOURCES.md",
+        "LICENSE-RUST-STD",
+        "LICENSE-RUST-STD-COPYRIGHT.txt",
+        "LICENSE-RUST-STD-SOURCES.md",
+        "src/lib.rs",
+      ]
+      assert.equal(sourceInputs.length * 2, 18)
       for (const crate of ["rust-crypto", "wasm-sanitizer"]) {
-        await mkdir(path.join(tmp, crate, "src"), { recursive: true })
-        await writeFile(path.join(tmp, crate, "Cargo.toml"), `[package]\nname = "${crate}"\n`)
-        await writeFile(path.join(tmp, crate, "Cargo.lock"), "version = 4\n")
-        await writeFile(path.join(tmp, crate, "src", "lib.rs"), "pub fn fixture() {}\n")
+        for (const sourceInput of sourceInputs) {
+          const sourcePath = path.join(tmp, crate, sourceInput)
+          await mkdir(path.dirname(sourcePath), { recursive: true })
+          const contents =
+            sourceInput === "Cargo.toml"
+              ? `[package]\nname = "${crate}"\n`
+              : sourceInput === "Cargo.lock"
+                ? "version = 4\n"
+                : sourceInput === "src/lib.rs"
+                  ? "pub fn fixture() {}\n"
+                  : `fixture legal input: ${crate}/${sourceInput}\n`
+          await writeFile(sourcePath, contents)
+        }
       }
-      await writeSourceProvenance(tmp)
+      const provenance = await writeSourceProvenance(tmp)
+      assert.equal(provenance.source_files.length, 18)
 
       const originalEnv = process.env.SKIP_WASM_BUILD
       process.env.SKIP_WASM_BUILD = "1"
@@ -359,6 +381,14 @@ describe("ADVERSARIAL: build-wasm.mjs flags and fail-closed contracts", () => {
 
       try {
         await buildWasmArtifacts(tmp, { runCommand })
+        assert.equal(commandInvoked, false)
+
+        const changedLicensePath = path.join(tmp, "rust-crypto", "LICENSE-THIRD-PARTY")
+        await writeFile(changedLicensePath, "fixture legal input drift\n")
+        await assert.rejects(
+          () => buildWasmArtifacts(tmp, { runCommand }),
+          /WASM_SOURCE_PROVENANCE\.json source inventory drift detected/
+        )
         assert.equal(commandInvoked, false)
       } finally {
         if (originalEnv !== undefined) {

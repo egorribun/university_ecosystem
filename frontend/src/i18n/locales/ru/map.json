@@ -681,6 +681,8 @@
     "miniMapLabel": "Обзор кампуса — нажмите для перецентровки"
   },
   "attribution": {
+    "provider": "OpenFreeMap",
+    "schema": "© OpenMapTiles",
     "dataFrom": "Данные",
     "openStreetMap": "© участники OpenStreetMap"
   }

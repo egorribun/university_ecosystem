@@ -104,6 +104,13 @@ alembic/versions/*.pyc
 
 # The backend runtime target also ships in test builds.
 !LICENSE
+!frontend/LICENSE
+!frontend/rust-crypto/LICENSE
+!frontend/rust-crypto/LICENSE-THIRD-PARTY
+!frontend/rust-crypto/LICENSE-THIRD-PARTY-SOURCES.md
+!frontend/wasm-sanitizer/LICENSE
+!frontend/wasm-sanitizer/LICENSE-THIRD-PARTY
+!frontend/wasm-sanitizer/LICENSE-THIRD-PARTY-SOURCES.md
 !native/rust_ext/LICENSE
 !native/rust_ext/LICENSE-THIRD-PARTY
 !native/rust_ext/LICENSE-THIRD-PARTY-SOURCES.md

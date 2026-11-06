@@ -63,6 +63,33 @@ test("npm archives retain every legal file after wasm-pack generates a restricti
   }
 })
 
+test("producer file enumeration order cannot change source-bound package metadata", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "wasm-license-order-"))
+  try {
+    for (const producer of ["left", "right"]) {
+      for (const crate of ["rust-crypto", "wasm-sanitizer"]) {
+        const source = path.join(root, producer, crate)
+        await mkdir(path.join(source, "pkg"), { recursive: true })
+        for (const file of legalFiles) await writeFile(path.join(source, file), `${file}\n`)
+        const entries = ["module.js", "module.wasm", ...legalFiles]
+        await writeFile(
+          path.join(source, "pkg/package.json"),
+          JSON.stringify({ name: crate, files: producer === "left" ? entries : entries.reverse() })
+        )
+      }
+      await finalizeWasmLicenses(path.join(root, producer))
+    }
+    for (const crate of ["rust-crypto", "wasm-sanitizer"]) {
+      assert.deepEqual(
+        await readFile(path.join(root, "left", crate, "pkg/package.json")),
+        await readFile(path.join(root, "right", crate, "pkg/package.json"))
+      )
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("missing source notices abort finalization", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "wasm-license-missing-"))
   try {

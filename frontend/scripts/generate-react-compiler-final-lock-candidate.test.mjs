@@ -558,6 +558,17 @@ test("committed final graph and strict fixture use the same current ESLint artif
   assert.deepEqual({ committedManifest, committedLock }, snapshot)
 })
 
+test("committed final lock keeps npm serialization order for the licensed local clone", () => {
+  const lockBytes = readFileSync(join(TEST_FRONTEND, "package-lock.json"))
+  const lock = JSON.parse(lockBytes)
+  const cloneRecord = lock.packages["scripts/node-resolve-defaults-clone-compat"]
+
+  // The already-final generator requires an empty text diff. Semantic lock checks do not
+  // detect property-order changes, so keep this npm-written record order under regression.
+  assert.deepEqual(Object.keys(cloneRecord), ["name", "version", "dev", "license", "engines"])
+  assert.deepEqual(Buffer.from(JSON.stringify(lock, null, 2) + "\n"), lockBytes)
+})
+
 test("local input preflight accepts every committed local dependency without widening its scope", () => {
   const committedManifest = JSON.parse(readFileSync(join(TEST_FRONTEND, "package.json"), "utf8"))
   const localPaths = ["dependencies", "devDependencies", "optionalDependencies"].flatMap(

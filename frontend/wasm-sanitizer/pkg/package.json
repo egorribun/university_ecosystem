@@ -7,15 +7,15 @@
   "version": "0.1.0",
   "license": "LicenseRef-University-Ecosystem-Proprietary",
   "files": [
-    "wasm_sanitizer_bg.wasm",
-    "wasm_sanitizer.js",
-    "wasm_sanitizer.d.ts",
+    "LICENSE",
     "LICENSE-RUST-STD",
     "LICENSE-RUST-STD-COPYRIGHT.txt",
     "LICENSE-RUST-STD-SOURCES.md",
     "LICENSE-THIRD-PARTY",
     "LICENSE-THIRD-PARTY-SOURCES.md",
-    "LICENSE"
+    "wasm_sanitizer.d.ts",
+    "wasm_sanitizer.js",
+    "wasm_sanitizer_bg.wasm"
   ],
   "main": "wasm_sanitizer.js",
   "types": "wasm_sanitizer.d.ts",

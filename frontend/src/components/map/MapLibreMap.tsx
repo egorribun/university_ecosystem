@@ -503,7 +503,7 @@ export function MapLibreMapComponent({
           rel="noopener noreferrer"
           className="inline-flex min-h-6 items-center text-(--text-tertiary) hover:underline"
         >
-          OpenFreeMap
+          {t("attribution.provider")}
         </a>
         <a
           href="https://www.openmaptiles.org/"
@@ -511,7 +511,7 @@ export function MapLibreMapComponent({
           rel="noopener noreferrer"
           className="inline-flex min-h-6 items-center text-(--text-tertiary) hover:underline"
         >
-          © OpenMapTiles
+          {t("attribution.schema")}
         </a>
         <span className="text-(--text-tertiary)">{t("attribution.dataFrom")}</span>
         <a
@@ -521,7 +521,7 @@ export function MapLibreMapComponent({
           className="inline-flex min-h-6 items-center hover:underline"
           style={{ color: "var(--text-tertiary)" }}
         >
-          {t("attribution.openStreetMap", "© OpenStreetMap contributors")}
+          {t("attribution.openStreetMap")}
         </a>
       </div>
     </div>

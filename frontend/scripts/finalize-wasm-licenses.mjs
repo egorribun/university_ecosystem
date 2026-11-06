@@ -25,6 +25,9 @@ export async function finalizeWasmLicenses(frontendRoot) {
       await copyFile(path.join(source, file), path.join(pkg, file))
       if (!manifest.files.includes(file)) manifest.files.push(file)
     }
+    // wasm-pack inherits filesystem enumeration order for extra notices.
+    // npm treats this list as a set; canonical order keeps producer bytes portable.
+    manifest.files = [...new Set(manifest.files)].sort()
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8")
   }
 }

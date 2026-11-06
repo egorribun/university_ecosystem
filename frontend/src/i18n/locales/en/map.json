@@ -681,6 +681,8 @@
     "miniMapLabel": "Campus overview — click to recenter"
   },
   "attribution": {
+    "provider": "OpenFreeMap",
+    "schema": "© OpenMapTiles",
     "dataFrom": "Data from",
     "openStreetMap": "© OpenStreetMap contributors"
   }

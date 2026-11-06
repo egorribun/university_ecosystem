@@ -22,6 +22,25 @@ def _step(steps: list[dict], name: str) -> dict:
     return next(step for step in steps if step.get("name") == name)
 
 
+FROM_STAGE_PATTERN = re.compile(
+    r"(?im)^[ \t]*FROM[ \t]+(?:--platform=[^ \t]+[ \t]+)?"
+    r"(?P<image>[^ \t]+)(?:[ \t]+AS[ \t]+(?P<alias>[A-Za-z0-9_.-]+))?[ \t]*$"
+)
+
+
+def _stage_body(dockerfile: str, alias: str, stages: list[re.Match]) -> str:
+    indexes = [
+        index
+        for index, stage in enumerate(stages)
+        if stage.group("alias") is not None and stage.group("alias").casefold() == alias
+    ]
+    assert len(indexes) == 1, f"expected exactly one Docker stage named {alias}"
+    index = indexes[0]
+    start = stages[index].start()
+    end = stages[index + 1].start() if index + 1 < len(stages) else len(dockerfile)
+    return dockerfile[start:end]
+
+
 def test_frontend_image_wasm_toolchain_matches_canonical_producer() -> None:
     workflow = yaml.safe_load(PRODUCER.read_text(encoding="utf-8"))
     steps = workflow["jobs"]["build"]["steps"]
@@ -82,55 +101,106 @@ def test_frontend_image_validates_built_wasm_against_checked_in_source_provenanc
     None
 ):
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
-    from_pattern = re.compile(
-        r"(?im)^[ \t]*FROM[ \t]+(?:--platform=[^ \t]+[ \t]+)?"
-        r"(?P<image>[^ \t]+)(?:[ \t]+AS[ \t]+(?P<alias>[A-Za-z0-9_.-]+))?[ \t]*$"
-    )
-    from_stages = list(from_pattern.finditer(dockerfile))
+    from_stages = list(FROM_STAGE_PATTERN.finditer(dockerfile))
     from_instructions = re.findall(r"(?im)^[ \t]*FROM\b[^\r\n]*$", dockerfile)
     assert len(from_stages) == len(from_instructions)
 
-    named_stage_indexes = {
-        alias: [
+    stage_indexes = {
+        alias: next(
             index
             for index, stage in enumerate(from_stages)
             if stage.group("alias") is not None
             and stage.group("alias").casefold() == alias
-        ]
-        for alias in ("base", "deps", "builder")
+        )
+        for alias in (
+            "base",
+            "wasm-builder",
+            "wasm-packages",
+            "deps",
+            "builder",
+            "prod-deps",
+            "runtime",
+        )
     }
-    assert all(len(indexes) == 1 for indexes in named_stage_indexes.values())
-    base_index = named_stage_indexes["base"][0]
-    deps_index = named_stage_indexes["deps"][0]
-    builder_index = named_stage_indexes["builder"][0]
-    assert base_index < deps_index < builder_index
-    assert from_stages[deps_index].group("image").casefold() == "base"
-    assert from_stages[builder_index].group("image").casefold() == "deps"
-
-    builder_start = from_stages[builder_index].start()
-    builder_end = (
-        from_stages[builder_index + 1].start()
-        if builder_index + 1 < len(from_stages)
-        else len(dockerfile)
+    assert len(stage_indexes) == len(from_stages)
+    assert list(stage_indexes.values()) == sorted(stage_indexes.values())
+    assert (
+        from_stages[stage_indexes["base"]].group("image").casefold().startswith("node:")
     )
-    builder = dockerfile[builder_start:builder_end]
+    assert (
+        from_stages[stage_indexes["wasm-packages"]].group("image").casefold() == "base"
+    )
+    assert from_stages[stage_indexes["deps"]].group("image").casefold() == "base"
+    assert from_stages[stage_indexes["builder"]].group("image").casefold() == "deps"
+    assert from_stages[stage_indexes["prod-deps"]].group("image").casefold() == "base"
+
+    wasm_builder = _stage_body(dockerfile, "wasm-builder", from_stages)
+    assert "WORKDIR /wasm" in wasm_builder
+    assert "COPY frontend/rust-crypto ./rust-crypto" in wasm_builder
+    assert "COPY frontend/wasm-sanitizer ./wasm-sanitizer" in wasm_builder
+    assert "wasm-pack build rust-crypto --target web --release" in wasm_builder
+    assert "wasm-pack build wasm-sanitizer --target web --release" in wasm_builder
+
+    wasm_packages = _stage_body(dockerfile, "wasm-packages", from_stages)
+    assert (
+        "COPY frontend/scripts/finalize-wasm-licenses.mjs ./scripts/finalize-wasm-licenses.mjs"
+        in wasm_packages
+    )
+    for crate in ("rust-crypto", "wasm-sanitizer"):
+        for legal_file in (
+            "LICENSE",
+            "LICENSE-THIRD-PARTY",
+            "LICENSE-THIRD-PARTY-SOURCES.md",
+            "LICENSE-RUST-STD",
+            "LICENSE-RUST-STD-COPYRIGHT.txt",
+            "LICENSE-RUST-STD-SOURCES.md",
+        ):
+            assert f"frontend/{crate}/{legal_file}" in wasm_packages
+        assert (
+            f"COPY --from=wasm-builder /wasm/{crate}/pkg ./{crate}/pkg" in wasm_packages
+        )
+    finalizer = "RUN node scripts/finalize-wasm-licenses.mjs"
+    assert finalizer in wasm_packages
+    assert "wasm-pack build" not in wasm_packages
+    assert max(
+        wasm_packages.index(f"COPY frontend/{crate}/")
+        for crate in ("rust-crypto", "wasm-sanitizer")
+    ) < wasm_packages.index(finalizer)
+
+    for consumer in ("deps", "builder", "prod-deps", "runtime"):
+        consumer_body = _stage_body(dockerfile, consumer, from_stages)
+        assert "--from=wasm-packages" in consumer_body
+        for crate in ("rust-crypto", "wasm-sanitizer"):
+            assert f"/app/{crate}/pkg ./{crate}/pkg" in consumer_body
+
+    for consumer, next_command in (
+        ("deps", "until npm ci"),
+        ("builder", "RUN rm -rf dist && npm run build"),
+        ("prod-deps", "until npm ci --omit=dev"),
+    ):
+        consumer_body = _stage_body(dockerfile, consumer, from_stages)
+        validation = "RUN node scripts/verify-wasm-artifacts.mjs"
+        assert validation in consumer_body
+        assert consumer_body.index(validation) < consumer_body.index(next_command)
+
+    builder = _stage_body(dockerfile, "builder", from_stages)
     assert "ENV SKIP_WASM_BUILD=1" in builder
     assert "COPY frontend ./" in builder
-    assert "COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg" in builder
-    assert (
-        "COPY --from=wasm-builder /wasm/wasm-sanitizer/pkg ./wasm-sanitizer/pkg"
-        in builder
-    )
-    assert "RUN node scripts/verify-wasm-artifacts.mjs" in builder
-    assert "RUN rm -rf dist && npm run build" in builder
-    assert builder.index("RUN node scripts/verify-wasm-artifacts.mjs") < builder.index(
-        "RUN rm -rf dist && npm run build"
-    )
 
     build_wasm = (ROOT / "frontend/scripts/build-wasm.mjs").read_text(encoding="utf-8")
     assert (
         "await validateArtifacts(frontendRoot, { requireSourceProvenance: true })"
         in build_wasm
+    )
+    verifier = (ROOT / "frontend/scripts/verify-wasm-artifacts.mjs").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "if (requireSourceProvenance) await validateSourceProvenance(root)" in verifier
+    )
+    assert (
+        "validateWasmArtifacts(frontendRoot, { requireSourceProvenance: true })"
+        in verifier
     )
 
 
@@ -151,6 +221,8 @@ def test_frontend_npm_install_validates_source_bound_wasm_before_network_retry(
         assert (
             f"COPY frontend/{package}/src/lib.rs ./{package}/src/lib.rs" in stage_body
         )
+        assert "--from=wasm-packages" in stage_body
+        assert f"/app/{package}/pkg ./{package}/pkg" in stage_body
     assert "RUN node scripts/verify-wasm-artifacts.mjs" in stage_body
     assert stage_body.index(
         "RUN node scripts/verify-wasm-artifacts.mjs"

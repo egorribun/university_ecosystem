@@ -64,19 +64,29 @@ vi.mock("react-map-gl/maplibre", async () => {
   }
   return { ...base, Map: MapWithEvents, Layer }
 })
-vi.mock("react-i18next", () => ({
-  useTranslation: (namespace: string) => {
-    translationState.namespaces.push(namespace)
-    return {
-      t: (key: string, fallback?: string) => fallback ?? key,
-      i18n: {
-        language: translationState.language,
-        resolvedLanguage: translationState.resolvedLanguage,
-        changeLanguage: () => Promise.resolve(),
-      },
-    }
-  },
-}))
+vi.mock("react-i18next", async () => {
+  const en = (await import("@/i18n/locales/en/map.json")).default
+  const ru = (await import("@/i18n/locales/ru/map.json")).default
+  return {
+    useTranslation: (namespace: string) => {
+      translationState.namespaces.push(namespace)
+      return {
+        t: (key: string) => {
+          if (!key.startsWith("attribution.")) return key
+          const catalogue = translationState.language === "ru" ? ru : en
+          return catalogue.attribution[
+            key.slice("attribution.".length) as keyof typeof en.attribution
+          ]
+        },
+        i18n: {
+          language: translationState.language,
+          resolvedLanguage: translationState.resolvedLanguage,
+          changeLanguage: () => Promise.resolve(),
+        },
+      }
+    },
+  }
+})
 vi.mock("@/utils/deviceCapabilities", () => ({
   isLowPowerDevice: () => deviceState.lowPower,
 }))
