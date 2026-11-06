@@ -2,7 +2,8 @@
 name = "uni-wasm-crypto"
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
+license = "LicenseRef-University-Ecosystem-Proprietary"
+publish = false
 
 # Ignore false positive unused dev-dependency in cargo-udeps
 [package.metadata.cargo-udeps.ignore]

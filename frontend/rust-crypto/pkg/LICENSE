@@ -1,0 +1,100 @@
+University Ecosystem — Proprietary Public Inspection Terms
+Version 1.0, 2026-11-06
+License identifier: LicenseRef-University-Ecosystem-Proprietary
+
+Copyright (c) 2026 egorribun.
+All rights reserved in the Restricted Material defined below.
+
+1. Scope and existing permissions
+
+"Restricted Material" means original, copyright-protected code, documentation,
+or other material whose rights are held by egorribun and which is first
+published under these terms. These terms take effect for that material upon
+its publication with this notice; the version date does not backdate them.
+
+Material previously made available under MIT, ISC, Apache-2.0, or another
+license retains those permissions, including when unchanged material is
+included in a later revision. These terms do not revoke or narrow any existing
+license. The earlier development snapshot is
+9d4f55b0b54c990363d19af74b61a25a8f9a10bd. See docs/licensing/README.md and
+docs/licensing/legacy/LICENSE-MIT for the transition record and retained notice.
+
+Third-party material and components with their own license notices remain
+subject to those licenses. No rights in third-party material are claimed here.
+See THIRD_PARTY_NOTICES.md and the notices accompanying each component.
+
+2. Public inspection
+
+You may read and inspect Restricted Material for information. Publication of
+the source does not grant additional permission to build, execute, deploy,
+modify, incorporate into another work, distribute, sublicense, sell, or
+otherwise use Restricted Material, whether commercially or noncommercially.
+Those activities require separate prior written permission from egorribun.
+This requirement does not apply to activities expressly permitted below.
+
+3. Platform rights and applicable law
+
+Nothing in these terms limits rights granted to GitHub, its affiliates, or
+users under applicable GitHub terms, including viewing and forking through
+the service. A public fork does not by itself grant additional permissions
+beyond those terms, existing licenses, or applicable law.
+
+Nothing here excludes a right, limitation, or exception that applicable law
+does not permit the rightsholder to exclude. These terms do not restrict
+egorribun or persons acting within separate written authorization, including
+authorized development, testing, hosting, and CI service providers.
+
+4. Owner-operated websites
+
+You may interact normally with a website or demonstration made available by
+egorribun, subject to its access controls and any separate service terms.
+This permission includes execution of delivered browser code and temporary
+copies or caching reasonably needed for that interaction. It does not permit
+self-hosting, extraction for reuse, redistribution of Restricted Material,
+or access to nonpublic functionality or data.
+
+5. Contributions and separate permission
+
+External code and asset contributions require a separate contribution rights
+agreement executed with egorribun before acceptance. These terms are not such
+an agreement and do not transfer a contributor's rights. Issue reports and
+suggestions may be submitted without contributing code or assets.
+
+Silence, public accessibility, a fork, or submission of a contribution does
+not constitute separate written permission to use Restricted Material.
+Preserve this notice when making copies permitted by the applicable terms.
+
+6. Warranty and liability
+
+To the extent permitted by applicable law, Restricted Material is provided
+without warranties of any kind, including warranties of merchantability,
+fitness for a particular purpose, title, or noninfringement. To that same
+extent, egorribun is not liable for loss or damage arising from access to or
+use of Restricted Material. Non-excludable statutory rights remain unaffected.
+
+7. Retained historical root MIT notice
+
+The following notice applies to material previously released under that
+license. It does not license new Restricted Material under MIT.
+
+MIT License
+
+Copyright (c) 2026 egorribun
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

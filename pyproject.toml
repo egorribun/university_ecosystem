@@ -2,6 +2,8 @@
 name = "university-ecosystem"
 version = "1.0.0"
 description = "University Ecosystem Platform"
+license = "LicenseRef-University-Ecosystem-Proprietary"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 # MOD-21-08 (audit 2026-03-25 Wave 21): Standardised on Python 3.14.
 # Python 3.14 benefits: deferred annotation evaluation (PEP 649), improved error
 # messages, faster startup, template strings (PEP 750), free-threading (PEP 703).
