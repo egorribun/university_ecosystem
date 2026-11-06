@@ -456,4 +456,4 @@ The API runs one hourly scheduler (`app/core/lifespan.py::_periodic_scheduler_lo
 
 Retention windows are configurable (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Each job can also be run manually, e.g. `python -m app.services.session_cleanup` or `python -m app.services.mfa_challenge_cleanup`. Monitor `periodic_task_*_runs_total`, `_errors_total` and `_deleted_total`.
 
-Session revocations (logout, `/auth/sessions/*`) delete database rows immediately; after upgrading from a release that only marked rows revoked, run the session cleanup once so `/auth/sessions` and operator dashboards stay in sync.
+Successful logout and session-revocation operations mark existing session rows with `revoked_at` rather than deleting them immediately. `/auth/sessions` filters out revoked rows. Scheduled or manual session cleanup removes expired or revoked rows; the presence of a revoked row alone does not mean revocation failed.

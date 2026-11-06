@@ -465,4 +465,4 @@ API запускает один почасовой планировщик (`app/
 
 Окна хранения настраиваются (`NOTIFICATIONS_RETENTION_DAYS`, `NOTIFICATION_QUEUE_DEAD_LETTER_RETENTION_DAYS`, `PASSWORD_RESET_CLEANUP_RETENTION_MINUTES`, `EMAIL_CHANGE_CLEANUP_RETENTION_MINUTES`, `MFA_CHALLENGE_CLEANUP_GRACE_PERIOD_SECONDS`, `SESSION_RETENTION_DAYS`, ...). Каждую задачу можно запустить вручную, например `python -m app.services.session_cleanup` или `python -m app.services.mfa_challenge_cleanup`. Следите за метриками `periodic_task_*_runs_total`, `_errors_total` и `_deleted_total`.
 
-Отзыв сессий (logout, `/auth/sessions/*`) удаляет строки в БД сразу; после обновления с релиза, где строки только помечались отозванными, один раз запустите очистку сессий, чтобы `/auth/sessions` и операторские дашборды были согласованы.
+Успешный logout и операции отзыва сессий помечают существующие строки сессий полем `revoked_at`, а не удаляют их сразу. `/auth/sessions` отфильтровывает отозванные строки. Плановая или ручная очистка сессий удаляет истёкшие или отозванные строки; наличие отозванной строки само по себе не означает, что отзыв не сработал.
