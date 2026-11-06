@@ -12,7 +12,8 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_DISPOSITION_RECORDS = 494
+EXPECTED_DISPOSITION_RECORDS = 502
+EXPECTED_PUBLIC_INTEGRITY_DIGEST_RECORDS = 306
 
 
 def _baseline_identities() -> int:
@@ -39,6 +40,15 @@ def test_secrets_baseline_count_matches_the_workspace_file() -> None:
 
 def test_disposition_policy_count_matches_the_workspace_file() -> None:
     assert _disposition_records() == EXPECTED_DISPOSITION_RECORDS
+    policy = json.loads(
+        (ROOT / "quality/security-false-positive-dispositions.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert (
+        sum(row["category"] == "public_integrity_digest" for row in policy["records"])
+        == EXPECTED_PUBLIC_INTEGRITY_DIGEST_RECORDS
+    )
 
 
 def test_docs_index_states_the_workspace_baseline_and_disposition_counts() -> None:
@@ -50,11 +60,19 @@ def test_docs_index_states_the_workspace_baseline_and_disposition_counts() -> No
     )
     assert (
         "363 previously active records, 106 previously owner-approved identities now materialized, "
-        "21 previously approved exact identities, and four newly approved exact identities"
+        "21 previously approved exact identities, four previously approved exact identities, "
+        "and eight newly approved zlib APK integrity identities"
     ) in document
     assert (
         "The inventory is not evidence of a passing scan or required checks; each "
         "source SHA requires its own validation."
+    ) in document
+    assert (
+        f"category inventory grows from 298 to {EXPECTED_PUBLIC_INTEGRITY_DIGEST_RECORDS}"
+    ) in document
+    assert "2027-01-10 inclusive" in document
+    assert (
+        "all prior 494 records, their order, metadata and expiry values remain unchanged"
     ) in document
     assert "319" not in re.findall(r"\b\d{3}\b", document)
 

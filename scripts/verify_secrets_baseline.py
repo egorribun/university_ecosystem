@@ -5523,6 +5523,440 @@ _NOV2_PUBLIC_INTEGRITY_DIGESTS = frozenset(
 )
 
 
+# Eight exact owner-approved zlib APK integrity identities, November 6, 2026.
+# Preserve the unrelated pre-existing Binaryen identity in frontend.Dockerfile.
+_NOV6_ZLIB_APK_EVIDENCE = {
+    (
+        "frontend.Dockerfile",
+        "Hex High Entropy String",
+        (
+            193,
+            17,
+            144,
+            74,
+            56,
+            88,
+            63,
+            135,
+            99,
+            90,
+            200,
+            86,
+            241,
+            248,
+            116,
+            247,
+            144,
+            228,
+            8,
+            249,
+        ),
+    ): "Official "
+    "signed "
+    "Alpine "
+    "3.24 "
+    "x86_64 "
+    "zlib "
+    "1.3.2-r1 "
+    "APK "
+    "integrity; "
+    "source "
+    "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/zlib-1.3.2-r1.apk; "
+    "exact "
+    "source "
+    "reference "
+    "frontend.Dockerfile:185; "
+    "owner "
+    "approved "
+    "this "
+    "finite "
+    "identity "
+    "on "
+    "2026-11-06; "
+    "not "
+    "credential "
+    "material.",
+    (
+        "frontend.Dockerfile",
+        "Hex High Entropy String",
+        (
+            114,
+            208,
+            53,
+            130,
+            231,
+            183,
+            59,
+            88,
+            149,
+            209,
+            33,
+            59,
+            79,
+            235,
+            228,
+            244,
+            37,
+            75,
+            162,
+            215,
+        ),
+    ): "Official "
+    "signed "
+    "Alpine "
+    "3.24 "
+    "aarch64 "
+    "zlib "
+    "1.3.2-r1 "
+    "APK "
+    "integrity; "
+    "source "
+    "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/zlib-1.3.2-r1.apk; "
+    "exact "
+    "source "
+    "reference "
+    "frontend.Dockerfile:186; "
+    "owner "
+    "approved "
+    "this "
+    "finite "
+    "identity "
+    "on "
+    "2026-11-06; "
+    "not "
+    "credential "
+    "material.",
+    (
+        "services/caddy/Dockerfile",
+        "Hex High Entropy String",
+        (
+            227,
+            185,
+            225,
+            87,
+            12,
+            234,
+            38,
+            70,
+            87,
+            199,
+            47,
+            232,
+            113,
+            127,
+            191,
+            25,
+            200,
+            254,
+            173,
+            173,
+        ),
+    ): "Official "
+    "signed "
+    "Alpine "
+    "3.23 "
+    "x86_64 "
+    "zlib "
+    "1.3.2-r1 "
+    "APK "
+    "integrity; "
+    "source "
+    "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk; "
+    "exact "
+    "source "
+    "reference "
+    "services/caddy/Dockerfile:49; "
+    "owner "
+    "approved "
+    "this "
+    "finite "
+    "identity "
+    "on "
+    "2026-11-06; "
+    "not "
+    "credential "
+    "material.",
+    (
+        "services/caddy/Dockerfile",
+        "Hex High Entropy String",
+        (
+            22,
+            234,
+            158,
+            97,
+            197,
+            161,
+            232,
+            152,
+            125,
+            171,
+            3,
+            143,
+            19,
+            133,
+            41,
+            99,
+            162,
+            12,
+            228,
+            229,
+        ),
+    ): "Official "
+    "signed "
+    "Alpine "
+    "3.23 "
+    "aarch64 "
+    "zlib "
+    "1.3.2-r1 "
+    "APK "
+    "integrity; "
+    "source "
+    "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/zlib-1.3.2-r1.apk; "
+    "exact "
+    "source "
+    "reference "
+    "services/caddy/Dockerfile:50; "
+    "owner "
+    "approved "
+    "this "
+    "finite "
+    "identity "
+    "on "
+    "2026-11-06; "
+    "not "
+    "credential "
+    "material.",
+    (
+        "tests/test_runtime_zlib_security_pin.py",
+        "Hex High Entropy String",
+        (
+            227,
+            185,
+            225,
+            87,
+            12,
+            234,
+            38,
+            70,
+            87,
+            199,
+            47,
+            232,
+            113,
+            127,
+            191,
+            25,
+            200,
+            254,
+            173,
+            173,
+        ),
+    ): "Official "
+    "signed "
+    "Alpine "
+    "3.23 "
+    "x86_64 "
+    "zlib "
+    "1.3.2-r1 "
+    "APK "
+    "integrity; "
+    "source "
+    "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk; "
+    "exact "
+    "source "
+    "reference "
+    "tests/test_runtime_zlib_security_pin.py:17; "
+    "owner "
+    "approved "
+    "this "
+    "finite "
+    "identity "
+    "on "
+    "2026-11-06; "
+    "not "
+    "credential "
+    "material.",
+    (
+        "tests/test_runtime_zlib_security_pin.py",
+        "Hex High Entropy String",
+        (
+            22,
+            234,
+            158,
+            97,
+            197,
+            161,
+            232,
+            152,
+            125,
+            171,
+            3,
+            143,
+            19,
+            133,
+            41,
+            99,
+            162,
+            12,
+            228,
+            229,
+        ),
+    ): "Official "
+    "signed "
+    "Alpine "
+    "3.23 "
+    "aarch64 "
+    "zlib "
+    "1.3.2-r1 "
+    "APK "
+    "integrity; "
+    "source "
+    "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/zlib-1.3.2-r1.apk; "
+    "exact "
+    "source "
+    "reference "
+    "tests/test_runtime_zlib_security_pin.py:18; "
+    "owner "
+    "approved "
+    "this "
+    "finite "
+    "identity "
+    "on "
+    "2026-11-06; "
+    "not "
+    "credential "
+    "material.",
+    (
+        "tests/test_runtime_zlib_security_pin.py",
+        "Hex High Entropy String",
+        (
+            193,
+            17,
+            144,
+            74,
+            56,
+            88,
+            63,
+            135,
+            99,
+            90,
+            200,
+            86,
+            241,
+            248,
+            116,
+            247,
+            144,
+            228,
+            8,
+            249,
+        ),
+    ): "Official "
+    "signed "
+    "Alpine "
+    "3.24 "
+    "x86_64 "
+    "zlib "
+    "1.3.2-r1 "
+    "APK "
+    "integrity; "
+    "source "
+    "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/zlib-1.3.2-r1.apk; "
+    "exact "
+    "source "
+    "reference "
+    "tests/test_runtime_zlib_security_pin.py:21; "
+    "owner "
+    "approved "
+    "this "
+    "finite "
+    "identity "
+    "on "
+    "2026-11-06; "
+    "not "
+    "credential "
+    "material.",
+    (
+        "tests/test_runtime_zlib_security_pin.py",
+        "Hex High Entropy String",
+        (
+            114,
+            208,
+            53,
+            130,
+            231,
+            183,
+            59,
+            88,
+            149,
+            209,
+            33,
+            59,
+            79,
+            235,
+            228,
+            244,
+            37,
+            75,
+            162,
+            215,
+        ),
+    ): "Official "
+    "signed "
+    "Alpine "
+    "3.24 "
+    "aarch64 "
+    "zlib "
+    "1.3.2-r1 "
+    "APK "
+    "integrity; "
+    "source "
+    "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/zlib-1.3.2-r1.apk; "
+    "exact "
+    "source "
+    "reference "
+    "tests/test_runtime_zlib_security_pin.py:22; "
+    "owner "
+    "approved "
+    "this "
+    "finite "
+    "identity "
+    "on "
+    "2026-11-06; "
+    "not "
+    "credential "
+    "material.",
+}
+_NOV6_ZLIB_APK_PATHS = frozenset(identity[0] for identity in _NOV6_ZLIB_APK_EVIDENCE)
+_NOV6_ZLIB_APK_DIGESTS = frozenset(identity[2] for identity in _NOV6_ZLIB_APK_EVIDENCE)
+_NOV6_ZLIB_PRIOR_FRONTEND_IDENTITY = (
+    "frontend.Dockerfile",
+    "Hex High Entropy String",
+    (
+        18,
+        118,
+        73,
+        45,
+        155,
+        18,
+        127,
+        44,
+        116,
+        227,
+        164,
+        237,
+        204,
+        30,
+        66,
+        80,
+        30,
+        56,
+        173,
+        209,
+    ),
+)
+
+
 _FALSE_POSITIVE_DOCUMENT_FIELDS = frozenset({"schema_version", "records"})
 _FALSE_POSITIVE_POLICY_PATH = "quality/security-false-positive-dispositions.json"
 _FALSE_POSITIVE_RECORD_LIMIT = 512
@@ -6003,6 +6437,25 @@ def validate_false_positive_dispositions(
             finding_type,
             tuple(raw_digest_bytes),
         )
+        apk_evidence = _NOV6_ZLIB_APK_EVIDENCE.get(exact_source_identity)
+        if (
+            exact_source_identity != _NOV6_ZLIB_PRIOR_FRONTEND_IDENTITY
+            and (
+                path in _NOV6_ZLIB_APK_PATHS
+                or tuple(raw_digest_bytes) in _NOV6_ZLIB_APK_DIGESTS
+            )
+        ) and (
+            apk_evidence is None
+            or category != "public_integrity_digest"
+            or record.get("evidence") != apk_evidence
+            or record.get("owner") != "egorribun"
+            or record.get("reviewed_on") != "2026-11-06"
+            or record.get("expires_on") != "2027-01-10"
+            or record.get("approval_status") != "approved"
+        ):
+            raise BaselineArtifactError(
+                f"{artifact}: November-6 zlib APK identity or approval changed"
+            )
         chart_evidence = _NOV2_CHART_REFERENCE_EVIDENCE.get(exact_source_identity)
         if tuple(raw_digest_bytes) in {
             identity[2] for identity in _NOV2_CHART_REFERENCE_EVIDENCE

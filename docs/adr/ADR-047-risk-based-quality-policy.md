@@ -2120,3 +2120,15 @@ A normal 14-filter hook reconciliation confirmed the three test sentinels at the
 The detect-secrets baseline remains 242 identities, Gitleaks remains at 27 immutable historical fingerprints, all 78 required CI context/app pairs and existing thresholds/hooks remain unchanged, and the Semgrep ledger remains at 15 rows. No baseline entry, category change, wildcard, exclusion, pragma, bypass, or expiry extension is approved.
 
 [Semgrep dispositions](../../quality/semgrep-dispositions.json), [detect-secrets disposition policy](../../quality/security-false-positive-dispositions.json), [validator](../../scripts/verify_secrets_baseline.py), and [baseline contract tests](../../tests/test_verify_secrets_baseline.py).
+
+## Owner-approved eight exact zlib APK integrity identities (2026-11-06)
+
+On 2026-11-06, the owner approved exactly eight additional path/type/finding-digest dispositions for four public SHA-256 checksums of signed Alpine zlib 1.3.2-r1 APKs. The finite scope is two checksum identities in `frontend.Dockerfile` (Alpine 3.24, x86_64 and aarch64), two in `services/caddy/Dockerfile` (Alpine 3.23, x86_64 and aarch64), and the same four checksums in `tests/test_runtime_zlib_security_pin.py`. All eight findings retain detector type `Hex High Entropy String` and category `public_integrity_digest`; owner is `egorribun`, review date is 2026-11-06, and expiry is 2027-01-10 inclusive. A changed path, detector type or finding digest is not approved.
+
+The records are appended to the existing policy: **494 → 502** total, with `public_integrity_digest` **298 → 306**. All prior 494 records, their order, metadata and individual expiry values remain unchanged. The raw APK checksums remain visible in source. Downloaded bytes must match the exact checksum before APK installation; Alpine signature verification, the exact package version and fail-closed negative tests remain required. The companion image fix updates the Caddy runtime c-ares pin from 1.34.8-r0 to 1.34.9-r0.
+
+The approval covers only these eight exact identities and necessary focused checks. It does not authorize baseline additions, source masking, new categories, reclassification, wildcards, file exclusions, inline pragmas, expiry extensions or weakened scanner gates. The detect-secrets baseline remains 242 identities, Gitleaks remains at 27 historical fingerprints, the Semgrep ledger remains at 15 rows, and the existing 512-record cap, 78 required context/app pairs, blocking CodeQL, thresholds and hooks remain unchanged.
+
+These inventory and approval facts do not establish a passing scanner, hook, hosted check, merge or release result. Earlier receipts remain tied to their recorded source; final-source validation and applicable required checks remain necessary for the eventual source SHA. No audit acceptance is added.
+
+[Disposition policy](../../quality/security-false-positive-dispositions.json), [runtime checksum contracts](../../tests/test_runtime_zlib_security_pin.py), and [baseline contract tests](../../tests/test_verify_secrets_baseline.py).

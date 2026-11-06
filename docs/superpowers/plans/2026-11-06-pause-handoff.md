@@ -5,7 +5,7 @@
 ## Текущий снимок
 
 - HEAD `25872c5`, MERGE_HEAD `73b47dd`, последний проверенный remote `7faf2d9`, main `b85516e`. Полученный source интегрирован; завершение слияний и синхронизация истории ожидаются.
-- Формальная приёмка **449/512, 63 open**; активны baseline **242**, dispositions **494 (490 + 4)**, Gitleaks **27**, Semgrep **15**. Четыре записи и шесть companion-привязок rows #7/#15 одобрены и применены с ADR-047; прежние записи и сроки сохранены.
+- Формальная приёмка **449/512, 63 open**; активны baseline **242**, dispositions **502 (494 + 8)**, Gitleaks **27**, Semgrep **15**. Восемь точных zlib APK integrity identities категории `public_integrity_digest` одобрены владельцем, имеют owner `egorribun` и срок до **2027-01-10 включительно**. Категория выросла с **298 до 306** записей; все прежние 494 записи, их порядок, metadata и сроки сохранены. Ранее одобренные четыре записи и шесть companion-привязок rows #7/#15 не изменены. Инвентарь не подтверждает scanner/CI clearance; final-source scan и required checks остаются обязательными.
 - Основной checkout: полный policy-модуль **1147 PASS / 64.16 s**; три основных policy-контракта прошли. Исправленная сверка документов: **5 PASS / 0.53 s**. Ruff check/format всех **118** изменённых Python-файлов прошли.
 - Helper **2699 PASS / 45.64 s**: statements 1337/1337, branches 696/696, functions 57/57. Alembic **23 PASS / 0.82 s**: environment 132/132 statements и 16/16 branches, comparator 33/33 и 12/12. Scoped floors сохранены; отдельный PostgreSQL-кейс подтвердил drift/restoration.
 - Приватная frontend build прошла; два канонических Chromium login/CSP сценария прошли. Без backend это не full-stack acceptance.

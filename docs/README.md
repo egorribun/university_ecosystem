@@ -85,9 +85,13 @@ handoffs are intentionally not part of the canonical index.
   the owner-approved Semgrep rules-checkout pin; that interim staged update was
   unpublished and still required source-bound validation. Following the exact
   2026-11-06 owner decisions and staged policy integration, the 2026-11-06
-  working tree contains 494 approved disposition records: 363 previously active
+  working tree contains 502 approved disposition records: 363 previously active
   records, 106 previously owner-approved identities now materialized, 21
-  previously approved exact identities, and four newly approved exact identities.
+  previously approved exact identities, four previously approved exact identities,
+  and eight newly approved zlib APK integrity identities. The eight exact
+  `public_integrity_digest` records are owned by `egorribun` and valid through
+  2027-01-10 inclusive. The category inventory grows from 298 to 306 records;
+  all prior 494 records, their order, metadata and expiry values remain unchanged.
   The inventory is not evidence of a passing scan or required checks; each
   source SHA requires its own validation. The separate finite Gitleaks approval
   covers 27 historical fingerprints.

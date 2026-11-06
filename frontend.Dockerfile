@@ -178,7 +178,18 @@ FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c
 
 # CVE-2026-85091: install Alpine's exact backport in the final image.
 # This stage starts from Node directly and does not inherit the build base.
-RUN apk add --no-cache zlib=1.3.2-r1
+# The moving index can drop older fixes. Fetch the mature signed APK by
+# architecture and checksum; APK still verifies Alpine's signature and exact version.
+RUN zlib_arch="$(apk --print-arch)" \
+    && case "$zlib_arch" in \
+      x86_64) zlib_sha256="63aeea03c15a2f9018f81805cfc8aa926bdf5cd68921f22149c2fbb5d0ee9f47" ;; \
+      aarch64) zlib_sha256="1f77a542ac6634761b9fe38d8bdca19b154071dcfa25432e73f2bc8a0740a33f" ;; \
+      *) echo "Unsupported zlib architecture: $zlib_arch" >&2; exit 1 ;; \
+    esac \
+    && wget -O /tmp/zlib.apk "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/${zlib_arch}/zlib-1.3.2-r1.apk" \
+    && printf '%s  %s\n' "$zlib_sha256" /tmp/zlib.apk | sha256sum -c - \
+    && apk add --no-cache zlib=1.3.2-r1 /tmp/zlib.apk \
+    && rm /tmp/zlib.apk
 
 # npm is used in build/install stages only; the production entrypoint runs Node directly.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
