@@ -65,7 +65,7 @@ Replace the example object key with the exact manifest key printed by the
 backup command:
 
 ```powershell
-uv run python scripts/backup_db.py restore --manifest-key database/university-20260930T123000Z-00000000000000000000000000000000.dump.manifest.json --target-database restore_university_20260930
+uv run python scripts/backup_db.py restore --manifest-key database/university-20260930T123000Z-00000000000000000000000000000000.manifest.json --target-database restore_university_20260930
 ```
 
 ## Create a coordinated database and object snapshot
