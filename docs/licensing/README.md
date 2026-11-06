@@ -52,6 +52,12 @@ using the previously licensed product.
 
 ## Components and distribution
 
+The [React Compiler adapter README](../../frontend/scripts/react-compiler-zod-compat/README.md)
+is retained verbatim as part of its source-bound MIT component archive. Its
+reference to the repository MIT license describes the earlier snapshot and
+that separately licensed adapter, not a blanket license for new project
+material. The component MIT notice and archive inputs remain unchanged.
+
 [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md) records known bundled
 materials and separately licensed developer adapters. Their own notices take
 precedence for those materials. Preserve dependency licenses, copyright notices,
