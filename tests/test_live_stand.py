@@ -7513,6 +7513,9 @@ def test_in_place_compose_override_does_not_store_secret_contents(
     assert initializer["user"] == "1000:1000"
     assert initializer["read_only"] is True
     assert initializer["cap_drop"] == ["ALL"]
+    # Compose validates duplicate security options before the final merge.
+    # Keep this replacement tag: stripping tags for value checks hid the regression.
+    assert '    security_opt: !override ["no-new-privileges:true"]\n' in content
     assert initializer["security_opt"] == ["no-new-privileges:true"]
     assert initializer["entrypoint"] == ["/bin/sh", "/etc/temporal/namespace-init.sh"]
     assert initializer["command"] == []

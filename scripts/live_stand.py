@@ -856,7 +856,7 @@ def _write_in_place_compose_override(state_root: Path) -> Path:
         '    user: "1000:1000"\n'
         "    read_only: true\n"
         '    cap_drop: ["ALL"]\n'
-        '    security_opt: ["no-new-privileges:true"]\n'
+        '    security_opt: !override ["no-new-privileges:true"]\n'
         "    network_mode: service:temporal\n"
         "    networks: !reset null\n"
         "    environment: !reset {}\n"
