@@ -54,6 +54,7 @@ RUN apk update \
       brotli-libs=1.2.1-r0 \
       libcurl=8.23.0-r0 \
       curl=8.23.0-r0 \
+      zlib=1.3.2-r1 \
     && addgroup -S caddy \
     && adduser -S -D -H -G caddy caddy \
     && chown -R caddy:caddy /data /config /etc/caddy

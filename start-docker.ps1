@@ -159,6 +159,60 @@ function Get-TemporalDiagnosticSummary {
             break
         }
     }
+    # A scanner workflow denial alone does not identify the fatal caller.
+    # Match one finite fatal tuple from Temporal 1.30.7; emit no source values.
+    foreach ($line in ($LogLines | Select-Object -First 50)) {
+        if ($line.Length -gt 16384) { continue }
+        $start = $line.IndexOf('{')
+        if ($start -lt 0) { continue }
+        $document = $null
+        try {
+            $document = [System.Text.Json.JsonDocument]::Parse($line.Substring($start))
+            if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) { continue }
+            $fields = @{}
+            $ambiguous = $false
+            foreach ($property in $document.RootElement.EnumerateObject()) {
+                if ($fields.ContainsKey($property.Name)) { $ambiguous = $true; break }
+                $fields[$property.Name] = $property.Value
+            }
+            if ($ambiguous) { continue }
+            $expected = @{
+                level = 'fatal'
+                msg = 'error starting scanner'
+                error = 'Request unauthorized.'
+            }
+            $matched = $true
+            foreach ($key in $expected.Keys) {
+                if ($fields.Keys -cnotcontains $key -or
+                    $fields[$key].ValueKind -ne [System.Text.Json.JsonValueKind]::String -or
+                    $fields[$key].GetString() -cne $expected[$key]) {
+                    $matched = $false
+                    break
+                }
+            }
+            # Observed official release builds preserve runtime.Caller's absolute path.
+            # Keep the caller vocabulary finite; do not accept arbitrary suffixes.
+            $callers = @(
+                'service/worker/service.go:314',
+                '/home/runner/work/temporal/temporal/service/worker/service.go:314'
+            )
+            if ($fields.Keys -cnotcontains 'logging-call-at' -or
+                $fields['logging-call-at'].ValueKind -ne [System.Text.Json.JsonValueKind]::String -or
+                $callers -cnotcontains $fields['logging-call-at'].GetString()) {
+                $matched = $false
+            }
+            if ($matched) {
+                "temporal_fatal=scanner_start_auth_denied"
+                $found = $true
+                break
+            }
+        } catch [System.Text.Json.JsonException] {
+            # Malformed records remain unclassified.
+            continue
+        } finally {
+            if ($null -ne $document) { $document.Dispose() }
+        }
+    }
     if (-not $found) { "temporal_logs=unrecognized" }
 }
 

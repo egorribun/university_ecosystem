@@ -3492,10 +3492,72 @@ $scannerCategory = "temporal_worker_scanner_auth=denied"
 $scannerLine = 'temporal-1 | {"level":"error","msg":"error starting workflow","error":"Request unauthorized.","logging-call-at":"service/worker/scanner/scanner.go:270","stacktrace":"PRIVATE-MARKER-DO-NOT-EMIT"}'
 $fatalLine = 'temporal-1 | {"level":"fatal","msg":"error starting scanner","error":"Request unauthorized.","logging-call-at":"service/worker/service.go:314","stacktrace":"PRIVATE-MARKER-DO-NOT-EMIT"}'
 $summary = @(Get-TemporalDiagnosticSummary -LogLines @($scannerLine, $fatalLine, $scannerLine) -LogsAvailable $true)
-if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic,$scannerCategory") { throw "scanner category or existing category order incorrect" }
+if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic,$scannerCategory,temporal_fatal=scanner_start_auth_denied") { throw "scanner category or existing category order incorrect" }
 if (($summary -join "`n").Contains($privateMarker)) { throw "scanner record leaked" }
 $summary = @(Get-TemporalDiagnosticSummary -LogLines @($fatalLine) -LogsAvailable $true)
-if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic") { throw "fatal-only classification changed" }
+if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic,temporal_fatal=scanner_start_auth_denied") { throw "fatal-only classification changed" }
+$fatalCategory = "temporal_fatal=scanner_start_auth_denied"
+$absoluteCaller = '/home/runner/work/temporal/temporal/service/worker/service.go:314'
+$absoluteFatalLine = $fatalLine.Replace('service/worker/service.go:314', $absoluteCaller)
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($absoluteFatalLine) -LogsAvailable $true)
+if ($summary -notcontains $fatalCategory) { throw "official absolute fatal caller not classified" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "absolute fatal record leaked" }
+foreach ($caller in @(
+    ('prefix' + $absoluteCaller),
+    ($absoluteCaller + 'suffix'),
+    $absoluteCaller.Replace('/service/', '/../service/'),
+    $absoluteCaller.Replace('/worker/', '/Worker/'),
+    $absoluteCaller.Replace(':314', ':315'),
+    $absoluteCaller.Replace('service.go', 'scanner.go'),
+    '/different/build/service/worker/service.go:314',
+    ($absoluteCaller + '\n'),
+    ($absoluteCaller + '\r')
+)) {
+    $line = $fatalLine.Replace('service/worker/service.go:314', $caller)
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @($line) -LogsAvailable $true)
+    if ($summary -contains $fatalCategory) { throw "unrecognized fatal caller accepted" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "caller negative record leaked" }
+}
+# The bound includes the Compose prefix and measures PowerShell UTF-16 units.
+foreach ($length in @(16384, 16385)) {
+    $line = $absoluteFatalLine.Replace($privateMarker, $privateMarker + ('x' * ($length - $absoluteFatalLine.Length)))
+    if ($line.Length -ne $length) { throw "fatal length fixture incorrect" }
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @($line) -LogsAvailable $true)
+    if (($summary -contains $fatalCategory) -ne ($length -eq 16384)) { throw "fatal line length boundary incorrect" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "bounded fatal record leaked" }
+}
+foreach ($position in @(50, 51)) {
+    $lines = @('unrecognized PRIVATE-MARKER-DO-NOT-EMIT') * ($position - 1)
+    $lines += $absoluteFatalLine
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines $lines -LogsAvailable $true)
+    if (($summary -contains $fatalCategory) -ne ($position -eq 50)) { throw "fatal record count boundary incorrect" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "bounded record sequence leaked" }
+}
+
+$fatalNegatives = @(
+    $scannerLine,
+    $fatalLine.Replace('"level":"fatal"', '"level":"error"'),
+    $fatalLine.Replace('"msg":"error starting scanner"', '"msg":"different"'),
+    $fatalLine.Replace('Request unauthorized.', 'Request unauthorized. extra'),
+    $fatalLine.Replace('service.go:314', 'service.go:315'),
+    $fatalLine.Replace('"error":', '"Error":'),
+    $fatalLine.Replace('"error":"Request unauthorized."', '"error":null'),
+    $fatalLine.Replace('"level":"fatal"', '"level":"error","level":"fatal"'),
+    $fatalLine.Replace('"level":"fatal"', '"Level":"error","level":"fatal"'),
+    ('{"nested":' + $fatalLine.Substring($fatalLine.IndexOf('{')) + '}'),
+    $fatalLine.Substring(0, $fatalLine.Length - 1),
+    $fatalLine.Replace('PRIVATE-MARKER-DO-NOT-EMIT', ('x' * 16384))
+)
+foreach ($line in $fatalNegatives) {
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @($line) -LogsAvailable $true)
+    if ($summary -contains $fatalCategory) { throw "untrusted fatal tuple accepted" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "fatal private text leaked" }
+}
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($fatalLine, $fatalLine) -LogsAvailable $true)
+if (@($summary | Where-Object { $_ -ceq $fatalCategory }).Count -ne 1) { throw "duplicate fatal categories emitted" }
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($fatalLine) -LogsAvailable $false)
+if ($summary -contains $fatalCategory) { throw "unavailable fatal logs classified" }
+
 $reordered = 'temporal-1 | { "logging-call-at": "github.com/temporalio/temporal/service/worker/scanner/scanner.go:270", "error": "Request unauthorized." }'
 $summary = @(Get-TemporalDiagnosticSummary -LogLines @($reordered) -LogsAvailable $true)
 if ($summary -notcontains $scannerCategory) { throw "reordered scanner fields not classified" }
