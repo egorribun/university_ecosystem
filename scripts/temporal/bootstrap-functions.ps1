@@ -237,6 +237,19 @@ function Assert-TemporalBootstrapNoReparseComponents {
     }
 }
 
+function Test-TemporalBootstrapNoHostPathCreation {
+    param([Parameter(Mandatory=$true)]$Mount)
+    $bindProperty = $Mount.PSObject.Properties['bind']
+    if ($null -eq $bindProperty -or $bindProperty.Value -isnot [pscustomobject]) {
+        return $false
+    }
+    # Compose serializes the false bool with omitempty, producing bind: {}.
+    # Reject explicit null, strings and numbers rather than coercing them.
+    $createProperty = $bindProperty.Value.PSObject.Properties['create_host_path']
+    if ($null -eq $createProperty) { return $true }
+    return ($createProperty.Value -is [bool] -and $createProperty.Value -eq $false)
+}
+
 function Assert-InPlaceTemporalBootstrapModel {
     param([Parameter(Mandatory=$true)]$ComposeModel, [Parameter(Mandatory=$true)][string]$StateRoot, [Parameter(Mandatory=$true)][string]$ProjectRoot)
     $services = $ComposeModel.PSObject.Properties['services'].Value
@@ -335,7 +348,7 @@ function Assert-InPlaceTemporalBootstrapModel {
         $target = [string]$mount.target
         if (-not $expected.ContainsKey($target) -or $seen.ContainsKey($target) -or
             [string]$mount.type -cne 'bind' -or $mount.read_only -ne $true -or
-            $null -eq $mount.bind -or $mount.bind.create_host_path -ne $false -or
+            -not (Test-TemporalBootstrapNoHostPathCreation -Mount $mount) -or
             -not [System.IO.Path]::IsPathFullyQualified([string]$mount.source) -or
             -not [string]::Equals([System.IO.Path]::GetFullPath([string]$mount.source), $expected[$target], $comparison)) {
             throw 'Temporal bootstrap Compose mount is not exact and read-only.'
@@ -409,10 +422,10 @@ function Assert-InPlaceTemporalBootstrapModel {
                 $exactTokenSource = [string]::Equals($workerToken, $source, $comparison)
                 $allowedInitializer = $service.Name -ceq 'temporal-namespace-init' -and
                     $exactTokenSource -and $target -ceq '/run/temporal-worker/token' -and $mount.read_only -eq $true -and
-                    $mount.bind.create_host_path -eq $false
+                    (Test-TemporalBootstrapNoHostPathCreation -Mount $mount)
                 $allowedFileProcessor = $service.Name -ceq 'file-processor' -and
                     $exactTokenSource -and $target -ceq '/app/.secrets/temporal_api_key' -and $mount.read_only -eq $true -and
-                    $mount.bind.create_host_path -eq $false
+                    (Test-TemporalBootstrapNoHostPathCreation -Mount $mount)
                 if (-not ($allowedInitializer -or $allowedFileProcessor)) {
                     throw 'Temporal worker token is exposed through an unapproved bind.'
                 }

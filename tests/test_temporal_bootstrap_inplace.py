@@ -170,10 +170,39 @@ async def test_exact_images_mounts_and_negative_controls(tmp_path: Path) -> None
 
     good = _model(state, repo)
     assert await validate(good, expected=True)
+    canonical = copy.deepcopy(good)
+    for service in canonical["services"].values():
+        for mount in service.get("volumes", []):
+            if mount.get("type") == "bind":
+                mount["bind"] = {}
+    assert await validate(canonical, expected=True)
     token_path.unlink()
     assert not await validate(good)
     token_path.write_text("synthetic-worker-token", encoding="ascii")
     bad_models = []
+    for service_name, mount_index in (
+        ("temporal-namespace-init", 0),
+        ("temporal-namespace-init", 1),
+        ("temporal-namespace-init", 2),
+        ("file-processor", 0),
+    ):
+        for bind_value in (
+            None,
+            False,
+            [],
+            {"create_host_path": True},
+            {"create_host_path": None},
+            {"create_host_path": "false"},
+            {"create_host_path": 0},
+        ):
+            altered = copy.deepcopy(canonical)
+            altered["services"][service_name]["volumes"][mount_index]["bind"] = (
+                bind_value
+            )
+            bad_models.append(altered)
+        altered = copy.deepcopy(canonical)
+        del altered["services"][service_name]["volumes"][mount_index]["bind"]
+        bad_models.append(altered)
     for service, field, value in (
         ("temporal-namespace-init", "image", "temporalio/admin-tools:1.30.7"),
         ("temporal-namespace-init", "image", ADMIN_IMAGE.replace("bbdf", "abcd")),
