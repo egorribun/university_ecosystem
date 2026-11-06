@@ -4,7 +4,7 @@ import re
 import unittest
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class GeneratedGoSecurityDependencyPinsTests(unittest.TestCase):
@@ -22,11 +22,11 @@ class GeneratedGoSecurityDependencyPinsTests(unittest.TestCase):
         self.assertNotRegex(go_mod, r"(?m)^\s*replace\b")
 
     def test_standalone_module_requires_fixed_network_release(self) -> None:
-        go_mod = (_ROOT / "gen/go/go.mod").read_text(encoding="utf-8")
+        go_mod = (ROOT / "gen/go/go.mod").read_text(encoding="utf-8")
         self._assert_network_security_floor(go_mod)
 
     def test_replacement_syntax_cannot_bypass_network_security_floor(self) -> None:
-        go_mod = (_ROOT / "gen/go/go.mod").read_text(encoding="utf-8")
+        go_mod = (ROOT / "gen/go/go.mod").read_text(encoding="utf-8")
         self._assert_network_security_floor(go_mod)
         # Each directive is accepted by Go 1.26.10's go mod edit -json parser.
         for directive in (
@@ -43,14 +43,14 @@ class GeneratedGoSecurityDependencyPinsTests(unittest.TestCase):
                 self._assert_network_security_floor(f"{go_mod}\n{directive}\n")
 
     def test_comment_about_replacements_does_not_change_security_floor(self) -> None:
-        go_mod = (_ROOT / "gen/go/go.mod").read_text(encoding="utf-8")
+        go_mod = (ROOT / "gen/go/go.mod").read_text(encoding="utf-8")
         self._assert_network_security_floor(
             f'{go_mod}\n// replace "golang.org/x/net" => golang.org/x/net v0.60.0\n'
         )
 
     def test_selected_network_modules_have_both_checksum_records(self) -> None:
-        go_mod = (_ROOT / "gen/go/go.mod").read_text(encoding="utf-8")
-        sums = (_ROOT / "gen/go/go.sum").read_text(encoding="utf-8")
+        go_mod = (ROOT / "gen/go/go.mod").read_text(encoding="utf-8")
+        sums = (ROOT / "gen/go/go.sum").read_text(encoding="utf-8")
         for module in ("golang.org/x/net", "golang.org/x/text"):
             with self.subTest(module=module):
                 match = re.search(
