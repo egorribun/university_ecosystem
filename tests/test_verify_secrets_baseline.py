@@ -4303,12 +4303,12 @@ _AUD380_CURRENT_DELTA_COMPANION_SOURCE_LINES = (
     ("tests/integration/test_aud433_notifications_baseline_partition.py", 59),
     ("tests/integration/test_aud433_notifications_baseline_partition.py", 61),
     ("tests/integration/test_aud433_notifications_baseline_partition.py", 62),
-    ("tests/test_internal_mtls_kind_contract.py", 1931),
-    ("tests/test_internal_mtls_kind_contract.py", 1936),
-    ("tests/test_internal_mtls_kind_contract.py", 1937),
-    ("tests/test_internal_mtls_kind_contract.py", 1945),
-    ("tests/test_internal_mtls_kind_contract.py", 1949),
-    ("tests/test_internal_mtls_kind_contract.py", 1953),
+    ("tests/test_internal_mtls_kind_contract.py", 1993),
+    ("tests/test_internal_mtls_kind_contract.py", 1998),
+    ("tests/test_internal_mtls_kind_contract.py", 1999),
+    ("tests/test_internal_mtls_kind_contract.py", 2007),
+    ("tests/test_internal_mtls_kind_contract.py", 2011),
+    ("tests/test_internal_mtls_kind_contract.py", 2015),
 )
 _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
     (
@@ -8417,7 +8417,7 @@ def _assert_conditional_owner_source_bindings(
         for path, finding_type, digest, _category, _line in identity_source_lines
     }
     assert current_identity_keys == unchanged_n21_keys | set(
-        _AUD380_N4_PENDING_OWNER_IDENTITIES
+        _AUD380_CURRENT_N4_IDENTITIES
     ), "current source identities differ from exact N21 survivors plus N4"
     assert not (current_identity_keys & replaced_keys), (
         "replaced historical N21 identity is still claimed as current"
@@ -8437,11 +8437,11 @@ def _assert_conditional_owner_source_bindings(
         _aud380_identity_key(record): record
         for record in [
             *_AUD380_PENDING_OWNER_RECORDS,
-            *_AUD380_N4_PENDING_OWNER_RECORDS,
+            *_AUD380_CURRENT_N4_PENDING_RECORDS,
         ]
     }
     assert set(pending_by_identity) == n21_identity_keys | set(
-        _AUD380_N4_PENDING_OWNER_IDENTITIES
+        _AUD380_CURRENT_N4_IDENTITIES
     )
     for row in _AUD380_PENDING_OWNER_RECORDS:
         assert row["approval_status"] == "NOT_APPROVED"
@@ -8488,7 +8488,7 @@ def _assert_conditional_owner_source_bindings(
     }
     n4_records_by_key = {
         _aud380_identity_key(record): record
-        for record in _AUD380_N4_PENDING_OWNER_RECORDS
+        for record in _AUD380_CURRENT_N4_PENDING_RECORDS
     }
     location_to_old_key = {
         (path, line_number): (path, finding_type, digest)
@@ -17854,7 +17854,12 @@ def _aud380_assert_live_policy_is_exact_494(
     assert live_records[:490] == historical_490["records"], (
         "live approved 490-row prefix changed"
     )
-    _assert_aud380_n4_conditional_policy(live_policy, historical_490)
+    expected_suffix = copy.deepcopy(_AUD380_CURRENT_N4_PENDING_RECORDS)
+    for record in expected_suffix:
+        record["approval_status"] = "approved"
+    assert live_records[490:] == expected_suffix, (
+        "live exact replacement suffix changed"
+    )
     accepted = verifier.validate_false_positive_dispositions(
         live_policy, today=verifier.date(2026, 11, 6)
     )
@@ -20177,110 +20182,110 @@ _AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
     ),
     "quality/semgrep-dispositions.json": bytes(
         (
-            21,
-            27,
-            157,
-            11,
-            62,
-            169,
-            82,
-            187,
-            187,
-            1,
-            190,
-            178,
-            41,
-            31,
-            162,
-            116,
-            110,
-            193,
-            131,
-            175,
-            217,
-            43,
-            183,
-            177,
-            231,
-            142,
-            23,
-            99,
-            52,
+            50,
             53,
-            119,
+            245,
+            224,
+            183,
+            11,
+            151,
+            245,
+            35,
+            176,
+            48,
+            246,
+            34,
+            48,
+            42,
+            165,
+            143,
+            183,
+            27,
+            226,
+            46,
+            105,
             234,
+            151,
+            104,
+            121,
+            177,
+            28,
+            15,
+            54,
+            208,
+            183,
         ),
     ),
     "scripts/kind/aud373_internal_mtls_proof.sh": bytes(
         (
-            32,
-            126,
-            17,
-            99,
-            74,
-            4,
-            240,
-            133,
-            61,
-            93,
-            138,
-            26,
-            107,
-            55,
-            232,
-            154,
+            3,
+            172,
+            181,
+            63,
+            157,
+            35,
+            90,
+            14,
+            36,
+            237,
+            78,
+            209,
+            248,
+            239,
+            9,
+            225,
+            44,
+            52,
+            233,
+            203,
+            23,
+            24,
+            187,
+            8,
+            104,
+            30,
             60,
-            26,
-            246,
-            86,
-            237,
-            205,
+            255,
+            112,
             236,
-            57,
-            219,
-            135,
-            165,
-            4,
-            237,
-            216,
-            68,
-            105,
+            207,
+            148,
         ),
     ),
     "scripts/live_stand.py": bytes(
         (
-            23,
-            28,
-            49,
-            42,
-            231,
-            220,
-            243,
-            226,
-            207,
-            204,
-            24,
-            190,
-            185,
-            103,
-            145,
-            54,
-            164,
-            127,
-            113,
-            47,
-            56,
-            176,
-            24,
-            223,
-            98,
-            97,
+            45,
+            222,
+            198,
             247,
-            126,
+            86,
+            0,
+            33,
+            33,
+            236,
+            80,
+            246,
+            225,
+            227,
+            205,
+            23,
+            142,
+            0,
+            138,
+            96,
+            233,
+            139,
+            76,
+            246,
+            149,
+            240,
+            213,
+            166,
+            105,
             248,
-            37,
-            232,
-            19,
+            201,
+            253,
+            20,
         ),
     ),
     "scripts/owned_nats_broker_control.py": bytes(
@@ -20825,38 +20830,38 @@ _AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
     ),
     "tests/test_internal_mtls_kind_contract.py": bytes(
         (
-            110,
-            198,
-            109,
-            43,
-            39,
-            243,
+            6,
+            209,
+            138,
+            41,
+            217,
+            119,
+            148,
+            173,
+            168,
+            138,
+            79,
+            238,
+            175,
+            52,
+            251,
             111,
-            15,
-            144,
-            43,
-            231,
-            139,
-            161,
-            163,
-            7,
-            69,
-            115,
+            162,
+            77,
+            79,
+            208,
+            208,
             53,
-            193,
-            195,
-            60,
-            115,
-            126,
-            39,
-            88,
-            117,
+            72,
+            85,
+            240,
             239,
-            155,
-            159,
-            160,
-            96,
-            122,
+            72,
+            192,
+            141,
+            248,
+            235,
+            174,
         ),
     ),
     "tests/test_logging_pii_redaction_contract.py": bytes(
@@ -21583,7 +21588,7 @@ _AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES = (
             30,
         ),
         "ci_test_contract_sentinel",
-        1981,
+        2043,
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
@@ -21611,7 +21616,7 @@ _AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES = (
             133,
         ),
         "external_kubernetes_secret_reference",
-        1352,
+        1414,
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
@@ -21639,32 +21644,32 @@ _AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES = (
             153,
         ),
         "external_kubernetes_secret_reference",
-        1353,
+        1415,
     ),
     (
         "quality/semgrep-dispositions.json",
         "Hex High Entropy String",
         (
-            166,
-            110,
-            177,
-            206,
-            147,
-            218,
-            249,
-            66,
-            1,
-            241,
-            95,
-            73,
-            8,
-            215,
-            24,
-            86,
-            67,
-            165,
-            227,
-            57,
+            140,
+            112,
+            244,
+            183,
+            49,
+            221,
+            5,
+            37,
+            7,
+            115,
+            178,
+            143,
+            167,
+            128,
+            59,
+            130,
+            121,
+            44,
+            210,
+            80,
         ),
         "public_integrity_digest",
         189,
@@ -22216,74 +22221,74 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
         189,
         bytes(
             (
-                44,
+                155,
+                96,
+                15,
+                204,
+                239,
+                248,
                 159,
+                109,
+                217,
+                207,
+                253,
+                52,
+                192,
+                129,
+                48,
                 169,
-                165,
-                166,
-                149,
-                178,
-                220,
-                213,
-                245,
-                84,
-                64,
-                128,
-                13,
-                55,
-                205,
-                84,
-                229,
-                29,
-                53,
-                19,
-                196,
-                221,
+                59,
+                147,
+                34,
+                215,
+                130,
+                99,
+                223,
+                111,
+                39,
+                208,
+                76,
+                10,
+                199,
+                59,
                 20,
-                219,
-                43,
-                108,
-                171,
-                132,
-                210,
-                26,
-                178,
+                217,
             ),
         ),
         bytes(
             (
-                14,
-                222,
-                230,
+                39,
+                148,
+                70,
+                150,
+                152,
+                60,
+                82,
+                0,
+                117,
+                69,
+                224,
+                97,
+                87,
+                211,
+                198,
+                21,
                 189,
-                171,
-                75,
-                75,
-                102,
-                38,
-                213,
-                235,
-                40,
+                100,
+                95,
+                126,
+                200,
+                226,
+                130,
                 238,
-                36,
-                119,
-                192,
-                72,
-                90,
-                59,
-                219,
-                7,
-                151,
-                181,
-                75,
-                46,
-                12,
-                179,
-                248,
-                91,
-                9,
-                193,
-                249,
+                244,
+                121,
+                30,
+                64,
+                98,
+                53,
+                239,
+                107,
             ),
         ),
     ),
@@ -22292,74 +22297,74 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
         189,
         bytes(
             (
-                44,
+                155,
+                96,
+                15,
+                204,
+                239,
+                248,
                 159,
+                109,
+                217,
+                207,
+                253,
+                52,
+                192,
+                129,
+                48,
                 169,
-                165,
-                166,
-                149,
-                178,
-                220,
-                213,
-                245,
-                84,
-                64,
-                128,
-                13,
-                55,
-                205,
-                84,
-                229,
-                29,
-                53,
-                19,
-                196,
-                221,
+                59,
+                147,
+                34,
+                215,
+                130,
+                99,
+                223,
+                111,
+                39,
+                208,
+                76,
+                10,
+                199,
+                59,
                 20,
-                219,
-                43,
-                108,
-                171,
-                132,
-                210,
-                26,
-                178,
+                217,
             ),
         ),
         bytes(
             (
-                14,
-                222,
-                230,
+                39,
+                148,
+                70,
+                150,
+                152,
+                60,
+                82,
+                0,
+                117,
+                69,
+                224,
+                97,
+                87,
+                211,
+                198,
+                21,
                 189,
-                171,
-                75,
-                75,
-                102,
-                38,
-                213,
-                235,
-                40,
+                100,
+                95,
+                126,
+                200,
+                226,
+                130,
                 238,
-                36,
-                119,
-                192,
-                72,
-                90,
-                59,
-                219,
-                7,
-                151,
-                181,
-                75,
-                46,
-                12,
-                179,
-                248,
-                91,
-                9,
-                193,
-                249,
+                244,
+                121,
+                30,
+                64,
+                98,
+                53,
+                239,
+                107,
             ),
         ),
     ),
@@ -24569,7 +24574,7 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
-        1352,
+        1414,
         bytes(
             (
                 37,
@@ -24645,7 +24650,7 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
-        1353,
+        1415,
         bytes(
             (
                 66,
@@ -24721,7 +24726,7 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
-        1931,
+        1993,
         bytes(
             (
                 199,
@@ -24797,7 +24802,7 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
-        1936,
+        1998,
         bytes(
             (
                 233,
@@ -24873,7 +24878,7 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
-        1937,
+        1999,
         bytes(
             (
                 235,
@@ -24949,7 +24954,7 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
-        1945,
+        2007,
         bytes(
             (
                 181,
@@ -25025,7 +25030,7 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
-        1949,
+        2011,
         bytes(
             (
                 84,
@@ -25101,7 +25106,7 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
-        1953,
+        2015,
         bytes(
             (
                 199,
@@ -25177,7 +25182,7 @@ _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
     ),
     (
         "tests/test_internal_mtls_kind_contract.py",
-        1981,
+        2043,
         bytes(
             (
                 1,
@@ -26155,3 +26160,129 @@ def test_aud380_n4_exact_n3_sentinels_and_row7_digest_are_finite() -> None:
             verifier.validate_false_positive_dispositions(
                 _disposition_document(changed), today=verifier.date(2026, 11, 6)
             )
+
+
+# Current owner-authorized same-path/type replacement; historical N4 review stays above.
+_AUD380_CURRENT_ROW7_DIGEST = (
+    140,
+    112,
+    244,
+    183,
+    49,
+    221,
+    5,
+    37,
+    7,
+    115,
+    178,
+    143,
+    167,
+    128,
+    59,
+    130,
+    121,
+    44,
+    210,
+    80,
+)
+_AUD380_CURRENT_N4_PENDING_RECORDS = copy.deepcopy(_AUD380_N4_PENDING_OWNER_RECORDS)
+_AUD380_CURRENT_N4_PENDING_RECORDS[0]["identity"]["hashed_secret_bytes"] = list(
+    _AUD380_CURRENT_ROW7_DIGEST
+)
+_AUD380_CURRENT_N4_IDENTITIES = frozenset(
+    _aud380_identity_key(record) for record in _AUD380_CURRENT_N4_PENDING_RECORDS
+)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["path", "type", "digest", "category", "expiry", "count", "old_only"]
+)
+def test_current_row7_replacement_rejects_scope_and_inventory_drift(
+    mutation: str,
+) -> None:
+    live = _aud380_read_live_policy()
+    historical = _aud380_conditional_policy()
+    _aud380_assert_live_policy_is_exact_494(live, historical)
+    changed = copy.deepcopy(live)
+    row = changed["records"][490]
+    if mutation in {"path", "type"}:
+        row["identity"][mutation] += ".unreviewed"
+    elif mutation == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        row["category"] = "ci_test_contract_sentinel"
+    elif mutation == "expiry":
+        row["expires_on"] = "2027-01-11"
+    elif mutation == "count":
+        changed["records"].append(copy.deepcopy(row))
+    else:
+        row["identity"]["hashed_secret_bytes"] = list(
+            _AUD380_N4_PUBLIC_LEDGER_IDENTITY[2]
+        )
+    with pytest.raises(AssertionError):
+        _aud380_assert_live_policy_is_exact_494(changed, historical)
+
+
+def test_current_row7_replacement_preserves_metadata_and_exact_matching() -> None:
+    historical = copy.deepcopy(_AUD380_N4_PENDING_OWNER_RECORDS[0])
+    historical["approval_status"] = "approved"
+    current = _aud380_read_live_policy()["records"][490]
+    expected = copy.deepcopy(historical)
+    expected["identity"]["hashed_secret_bytes"] = list(_AUD380_CURRENT_ROW7_DIGEST)
+    assert current == expected
+    old_matches = verifier.validate_false_positive_dispositions(
+        _disposition_document(historical), today=verifier.date(2026, 11, 6)
+    )
+    new_matches = verifier.validate_false_positive_dispositions(
+        _disposition_document(current), today=verifier.date(2026, 11, 6)
+    )
+    assert len(old_matches) == len(new_matches) == 1
+    assert old_matches.isdisjoint(new_matches)
+    for row in (historical, current):
+        with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(row), today=verifier.date(2027, 1, 11)
+            )
+
+
+def test_current_row7_replacement_requires_owner_opt_in(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repository, _ = _new_git_fixture(tmp_path)
+    old = copy.deepcopy(_AUD380_N4_PENDING_OWNER_RECORDS[0])
+    old["approval_status"] = "approved"
+    trusted_sha = _commit_dispositions(repository, [old])
+    current = _aud380_read_live_policy()["records"][490]
+    policy_path = repository / "quality/security-false-positive-dispositions.json"
+    policy_path.write_text(json.dumps(_disposition_document(current)), encoding="utf-8")
+    monkeypatch.setattr(
+        verifier, "__file__", str(repository / "scripts/verify_secrets_baseline.py")
+    )
+    baseline = _write(tmp_path / "baseline.json", _document())
+    identity = current["identity"]
+    finding = (
+        identity["path"],
+        identity["type"],
+        bytes(identity["hashed_secret_bytes"]).hex(),
+        189,
+    )
+    scan = _write(tmp_path / "current.json", _document(finding))
+    arguments = [str(baseline), str(scan), "--trusted-base-source-sha", trusted_sha]
+    assert verifier.main(arguments) == 1
+    assert verifier.main([*arguments, "--owner-authored-disposition-update"]) == 0
+    old_identity = old["identity"]
+    _write(
+        scan,
+        _document(
+            (
+                old_identity["path"],
+                old_identity["type"],
+                bytes(old_identity["hashed_secret_bytes"]).hex(),
+                189,
+            )
+        ),
+    )
+    assert verifier.main([*arguments, "--owner-authored-disposition-update"]) == 1
+    assert "new finding" in capsys.readouterr().err
