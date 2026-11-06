@@ -136,7 +136,14 @@ def test_registry_is_verified_before_build_and_again_before_push(
 ) -> None:
     command = f"""set -euo pipefail
 {function("main")}
-cleanup() {{ :; }}
+{function("cleanup")}
+collect_diagnostics() {{ :; }}
+rm() {{ :; }}
+log() {{ printf '%s\\n' "$*" >&2; }}
+CLUSTER_CREATED=0
+REGISTRY_CREATED=0
+WORK_DIR=/owned/private-material
+PROOFS_PASSED=0
 require_platform() {{ :; }}
 install_tools() {{ :; }}
 create_cluster() {{ :; }}

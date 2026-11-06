@@ -66,6 +66,7 @@ readonly DIAG_DIR="${UE_KIND_DIAG_DIR:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/aud373-di
 export KUBECONFIG="${WORK_DIR}/kubeconfig"
 export PATH="${WORK_DIR}/bin:${PATH}"
 FAILURES=0
+PROOFS_PASSED=0
 CLUSTER_CREATED=0
 REGISTRY_CREATED=0
 
@@ -814,13 +815,20 @@ run_proofs() {
 }
 
 collect_diagnostics() {
-  local namespace pod verb
-  mkdir -p "$DIAG_DIR"
-  printf '%s\n' "$DOCKER_DAEMON_ENDPOINT" >"${DIAG_DIR}/docker-daemon-endpoint.txt"
+  local namespace pod verb diagnostics_failed=0
+  mkdir -p "$DIAG_DIR" 2>/dev/null || return 1
+  # Required metadata writes fail closed without skipping other possible observations.
+  { printf '%s\n' "$DOCKER_DAEMON_ENDPOINT" >"${DIAG_DIR}/docker-daemon-endpoint.txt"; } 2>/dev/null || diagnostics_failed=1
+  if [[ "$REGISTRY_CREATED" == "1" ]]; then
+    { printf '%s\n' "$REGISTRY_CONTAINER_ID" >"${DIAG_DIR}/registry-container-id.txt"; } 2>/dev/null || diagnostics_failed=1
+    { printf '%s\n' "$LOCAL_REGISTRY_ADDRESS" >"${DIAG_DIR}/registry-endpoint.txt"; } 2>/dev/null || diagnostics_failed=1
+  fi
   docker info --format '{{.Name}}' >"${DIAG_DIR}/docker-daemon-name.txt" 2>&1 || true
+  timeout --kill-after=5s 20s docker info --format '{"cpus":{{.NCPU}},"memoryBytes":{{.MemTotal}}}' \
+    >"${DIAG_DIR}/docker-capacity.json" 2>&1 || true
   hostname >"${DIAG_DIR}/runner-hostname.txt" 2>&1 || true
   if [[ ! -s "$KUBECONFIG" ]]; then
-    return 0
+    return "$diagnostics_failed"
   fi
   for namespace in "$NAMESPACE" "$SPIRE_NAMESPACE"; do
     kubectl -n "$namespace" get all,serviceaccounts -o wide >"${DIAG_DIR}/${namespace}-get.txt" 2>&1 || true
@@ -833,9 +841,12 @@ collect_diagnostics() {
     done < <(kubectl -n "$namespace" get pods -o name 2>/dev/null | sed 's#^pod/##' || true)
   done
   kubectl get nodes -o wide >"${DIAG_DIR}/nodes.txt" 2>&1 || true
+  # Nonsecret scheduler accounting; never infer actual capacity from the runner label.
+  timeout --kill-after=5s 20s kubectl --request-timeout=15s get nodes -o 'jsonpath={range .items[*]}{.metadata.name}{"\t"}{.status.capacity}{"\t"}{.status.allocatable}{"\n"}{end}' \
+    >"${DIAG_DIR}/node-capacity.txt" 2>&1 || true
+  timeout --kill-after=5s 20s kubectl --request-timeout=15s describe nodes \
+    >"${DIAG_DIR}/node-allocated-resources.txt" 2>&1 || true
   if [[ "$REGISTRY_CREATED" == "1" ]]; then
-    printf '%s\n' "$REGISTRY_CONTAINER_ID" >"${DIAG_DIR}/registry-container-id.txt"
-    printf '%s\n' "$LOCAL_REGISTRY_ADDRESS" >"${DIAG_DIR}/registry-endpoint.txt"
     docker logs "$REGISTRY_CONTAINER_ID" >"${DIAG_DIR}/registry.log" 2>&1 || true
     docker inspect --type container --format '{{json .State}}' "$REGISTRY_CONTAINER_ID" \
       >"${DIAG_DIR}/registry-state.json" 2>&1 || true
@@ -856,20 +867,44 @@ collect_diagnostics() {
       kubectl auth can-i "$verb" nodes \
         --as=system:serviceaccount:spire:spire-agent || true
     done
-  } >"${DIAG_DIR}/spire-agent-api-authorization.txt" 2>&1
+  } >"${DIAG_DIR}/spire-agent-api-authorization.txt" 2>&1 || true
+  return "$diagnostics_failed"
 }
 
 cleanup() {
-  local status=$?
+  local status=$? cleanup_failed=0
   set +e
-  collect_diagnostics
+  if ! collect_diagnostics >/dev/null 2>&1; then
+    log "cleanup failed: diagnostics collection"
+    cleanup_failed=1
+  fi
   if [[ "$CLUSTER_CREATED" == "1" ]]; then
-    kind delete cluster --name "$CLUSTER_NAME" --kubeconfig "$KUBECONFIG" >/dev/null 2>&1
+    if ! kind delete cluster --name "$CLUSTER_NAME" --kubeconfig "$KUBECONFIG" >/dev/null 2>&1; then
+      log "cleanup failed: owned kind cluster"
+      cleanup_failed=1
+    fi
   fi
   if [[ "$REGISTRY_CREATED" == "1" && "$REGISTRY_CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]]; then
-    docker rm --force --volumes "$REGISTRY_CONTAINER_ID" >/dev/null 2>&1
+    if ! docker rm --force --volumes "$REGISTRY_CONTAINER_ID" >/dev/null 2>&1; then
+      log "cleanup failed: owned registry container"
+      cleanup_failed=1
+    fi
+  elif [[ "$REGISTRY_CREATED" == "1" ]]; then
+    log "cleanup failed: owned registry identity unavailable"
+    cleanup_failed=1
   fi
-  rm -rf "$WORK_DIR"
+  if ! rm -rf "$WORK_DIR" >/dev/null 2>&1; then
+    log "cleanup failed: private work directory"
+    cleanup_failed=1
+  fi
+  if [[ "$cleanup_failed" != 0 && "$status" == 0 ]]; then
+    printf 'RESULT=FAIL cleanup=1\n'
+    status=1
+  fi
+  # A success marker is terminal: all proofs and owned-resource cleanup succeeded.
+  if [[ "$status" == 0 && "$PROOFS_PASSED" == 1 ]]; then
+    printf 'RESULT=PASS\n'
+  fi
   exit "$status"
 }
 
@@ -889,7 +924,7 @@ main() {
     printf 'RESULT=FAIL failures=%s\n' "$FAILURES"
     exit 1
   fi
-  printf 'RESULT=PASS\n'
+  PROOFS_PASSED=1
 }
 
 main "$@"
