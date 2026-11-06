@@ -36,6 +36,21 @@ WORKFLOW = ROOT / ".github" / "workflows" / "internal-mtls-kind.yml"
 SCRIPT = ROOT / "scripts" / "kind" / "aud373_internal_mtls_proof.sh"
 REFERENCE_WORKFLOW = ROOT / ".github" / "workflows" / "admin-smoke-monitoring.yml"
 REQUIRED_PATHS = {
+    "backend.Dockerfile",
+    "backend.Dockerfile.dockerignore",
+    ".dockerignore",
+    "app/**",
+    "native/**",
+    "alembic/**",
+    "alembic.ini",
+    "pyproject.toml",
+    "uv.lock",
+    "go.mod",
+    "go.sum",
+    "gen/go/**",
+    "services/pkg/logging/**",
+    "services/pkg/spiffe/**",
+    "k8s/README.md",
     "charts/**",
     "k8s/spire/**",
     "services/gateway/**",
@@ -84,9 +99,104 @@ def test_triggers_cover_pull_requests_nightly_and_manual_runs() -> None:
     triggers = _triggers(_workflow())
     assert set(triggers) == {"pull_request", "schedule", "workflow_dispatch"}
     assert triggers["pull_request"]["branches"] == ["main"]
-    assert set(triggers["pull_request"]["paths"]) == REQUIRED_PATHS
+    paths = triggers["pull_request"]["paths"]
+    assert set(paths) == REQUIRED_PATHS
+    assert len(paths) == len(REQUIRED_PATHS), "duplicate path filters are forbidden"
     assert len(triggers["schedule"]) == 1
     assert triggers["schedule"][0]["cron"] == "17 3 * * *"
+
+
+def _literal_or_subtree_matches(path: str, pattern: str) -> bool:
+    """Match only this contract's literal and trailing /** GitHub path subset.
+
+    This is not a general GitHub glob implementation. Unsupported syntax fails
+    closed so future filter changes require an explicit contract update.
+    """
+    literal = pattern.removesuffix("/**")
+    assert literal and not any(char in literal for char in "*?[]!+{}")
+    if pattern.endswith("/**"):
+        return path.startswith(literal + "/")
+    return path == literal
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "backend.Dockerfile",
+        ".dockerignore",
+        "app/main.py",
+        "app/core/config/mixins/mfa_settings.py",
+        "app/server/internal_mtls.py",
+        "native/rust_ext/src/lib.rs",
+        "native/rust_ext/Cargo.lock",
+        "alembic/versions/202611020000_mvp_baseline.py",
+        "alembic/env.py",
+        "alembic.ini",
+        "pyproject.toml",
+        "uv.lock",
+        "go.mod",
+        "go.sum",
+        "gen/go/file_processor/v1/job.pb.go",
+        "services/pkg/logging/logging.go",
+        "services/pkg/spiffe/go.mod",
+        "services/gateway/Dockerfile",
+        "services/gateway/cmd/gateway/main.go",
+        "charts/university-ecosystem/templates/network-policy.yaml",
+        "k8s/spire/spire-server.yaml",
+        "scripts/kind/aud373_internal_mtls_proof.sh",
+        "k8s/README.md",
+        ".github/workflows/internal-mtls-kind.yml",
+    ],
+)
+def test_proof_input_paths_match_pull_request_filter(path: str) -> None:
+    assert (ROOT / path).is_file(), "positive case must be a present proof input"
+    paths = _triggers(_workflow())["pull_request"]["paths"]
+    assert any(_literal_or_subtree_matches(path, pattern) for pattern in paths)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "frontend/src/App.tsx",
+        "frontend.Dockerfile",
+        "docs/README.md",
+        "README.md",
+        "Dockerfile.test",
+        "Dockerfile.test.dockerignore",
+        "go.work",
+        "scripts/dev/check.py",
+        ".agents/skills/docker-expert/SKILL.md",
+        "services/file-processor/Dockerfile",
+        "services/ws-hub/go.mod",
+        "services/pkg/metrics/metrics.go",
+        "gen/python/file_processor.py",
+        "k8s/README.md.bak",
+        "k8s/backend.yaml",
+        "services/pkg/spiffe-extra/go.mod",
+        "services/gateway-extra/main.go",
+        "app-extra/main.py",
+        "charts-extra/values.yaml",
+        "scripts/kind-extra/proof.sh",
+        ".github/workflows/ci.yml",
+        "nested/backend.Dockerfile",
+        "backend.Dockerfile.bak",
+        "uv.lock.bak",
+    ],
+)
+def test_unrelated_paths_do_not_match_proof_filter(path: str) -> None:
+    paths = _triggers(_workflow())["pull_request"]["paths"]
+    assert not any(_literal_or_subtree_matches(path, pattern) for pattern in paths)
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["backend.Dockerfile.dockerignore", "services/gateway/Dockerfile.dockerignore"],
+)
+def test_docker_ignore_override_creation_matches_pull_request_filter(path: str) -> None:
+    # Docker selects <Dockerfile>.dockerignore over the context-root ignore file
+    # when present. Creation matters even though these overrides do not yet exist.
+    paths = _triggers(_workflow())["pull_request"]["paths"]
+    assert any(_literal_or_subtree_matches(path, pattern) for pattern in paths)
 
 
 def test_top_level_and_job_permissions_are_read_only() -> None:
