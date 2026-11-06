@@ -105,6 +105,38 @@ def current_mods(bad=None):
 
 
 class DependencyLicenseGuardTests(unittest.TestCase):
+    def test_compress_security_patch_has_four_exact_reviewed_identities(self):
+        identities = [
+            row for row in EXPECTED_ROWS if row[3] == "github.com/klauspost/compress"
+        ]
+        self.assertEqual(len(identities), 4)
+        for row in identities:
+            with self.subTest(manifest=row[1]):
+                self.assertEqual(row[4], "1.20.2")
+                self.assertEqual(
+                    row[5], "pkg:golang/github.com/klauspost/compress@1.20.2"
+                )
+                self.assertEqual(row[6], "BSD-3-Clause AND Apache-2.0 AND MIT")
+                self.assertEqual(verify_dependency_changes([action_row(row)], {row}), 1)
+
+    def test_compress_license_scope_rejects_old_and_unreviewed_patch_versions(self):
+        for manifest in EXPECTED_MODULES:
+            for version in ("1.20.1", "1.20.3"):
+                row = _identity(
+                    manifest,
+                    "github.com/klauspost/compress",
+                    version,
+                    "BSD-3-Clause AND Apache-2.0 AND MIT",
+                )
+                with (
+                    self.subTest(manifest=manifest, version=version),
+                    self.assertRaisesRegex(
+                        ValueError,
+                        "unexpected package/version/manifest/license/PURL identity",
+                    ),
+                ):
+                    verify_dependency_changes([action_row(row)])
+
     def test_all_exact_rows_pass(self):
         rows = [action_row(row) for row in EXPECTED_ROWS]
         self.assertEqual(
@@ -1511,8 +1543,8 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
                     "services/caddy/go.mod",
                     "gomod",
                     "github.com/klauspost/compress",
-                    "1.20.1",
-                    "pkg:golang/github.com/klauspost/compress@1.20.1",
+                    "1.20.2",
+                    "pkg:golang/github.com/klauspost/compress@1.20.2",
                     "BSD-3-Clause AND Apache-2.0 AND MIT",
                 )
             ),

@@ -42,23 +42,23 @@ EXPECTED_MODULES = {
     "services/file-processor/go.mod": {
         "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc": "v0.72.0",
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.47.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
     },
     "services/gateway/go.mod": {
         "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin": "v0.72.0",
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.47.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
     },
     "services/ws-hub/go.mod": {
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.47.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
     },
     # Locked edge-proxy graph (AUD-482). v1.46.0 is the otlptracegrpc version
     # selected by upstream caddy v2.11.7 itself, so it is the intended pin here
     # and is not the v1.47.0 used by the three service modules above.
     "services/caddy/go.mod": {
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.46.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
         "howett.net/plist": "v1.0.1",
     },
 }
@@ -121,19 +121,19 @@ EXPECTED_ROWS = {
     _identity(
         "services/file-processor/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
     ),
     _identity(
         "services/gateway/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
     ),
     _identity(
         "services/ws-hub/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
     ),
     _identity(
@@ -145,7 +145,7 @@ EXPECTED_ROWS = {
     _identity(
         "services/caddy/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
     ),
     _identity(
@@ -560,7 +560,7 @@ def format_dependency_identity_diagnostics(
         "github.com/klauspost/compress": (
             "services/caddy/go.mod",
             "gomod",
-            "1.20.1",
+            "1.20.2",
             "golang",
         ),
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": (

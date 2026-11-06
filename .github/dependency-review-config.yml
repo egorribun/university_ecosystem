@@ -140,9 +140,9 @@ allow-dependencies-licenses:
   - "pkg:golang/github.com/quic-go/qpack"
   - "pkg:golang/github.com/quic-go/quic-go"
   - "pkg:golang/github.com/quic-go/webtransport-go"
-  # Dependency Review reports an unmapped composite marker for v1.20.1. Upstream tag v1.20.1 LICENSE applies BSD-3-Clause generally and gives file-scoped Apache-2.0 and MIT notices.
-  # Each underlying SPDX ID is already present in allow-licenses. Source: https://github.com/klauspost/compress/blob/v1.20.1/LICENSE (GitHub blob 87d55747778c572bda5a21a2e9ad4578b088e832).
-  # The pinned action ignores PURL versions; workflow guards enforce this exact v1.20.1 row.
+  # The v1.20.2 security update preserves the reviewed composite license and exact upstream LICENSE blob from v1.20.1: BSD-3-Clause generally, with file-scoped Apache-2.0 and MIT notices.
+  # Each underlying SPDX ID is already present in allow-licenses. Source: https://github.com/klauspost/compress/blob/v1.20.2/LICENSE (GitHub blob 87d55747778c572bda5a21a2e9ad4578b088e832).
+  # The pinned action ignores PURL versions; workflow guards enforce only the exact v1.20.2 rows.
   - "pkg:golang/github.com/klauspost/compress"
   # These dual-license metadata markers are bounded to exact reviewed module rows by the workflow guard.
   - "pkg:golang/go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
