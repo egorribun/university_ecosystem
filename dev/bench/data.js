@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1793933458037,
+  "lastUpdate": 1793967982337,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -9162,6 +9162,150 @@ window.BENCHMARK_DATA = {
             "value": 15239,
             "unit": "ns/op",
             "extra": "70152 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4d708e328a4195855721ea881c65d3e87de64b6b",
+          "message": "build(deps): bump the npm_and_yarn group across 2 directories with 4 updates (#1363)\n\nBumps the npm_and_yarn group with 1 update in the / directory: [undici](https://github.com/nodejs/undici).\nBumps the npm_and_yarn group with 4 updates in the /frontend directory: [undici](https://github.com/nodejs/undici), [follow-redirects](https://github.com/follow-redirects/follow-redirects), [serialize-javascript](https://github.com/yahoo/serialize-javascript) and [seroval](https://github.com/lxsmnsyc/seroval).\n\n\nUpdates `undici` from 6.29.0 to 6.29.1\n- [Release notes](https://github.com/nodejs/undici/releases)\n- [Commits](https://github.com/nodejs/undici/compare/v6.29.0...v6.29.1)\n\nUpdates `undici` from 8.11.0 to 8.12.4\n- [Release notes](https://github.com/nodejs/undici/releases)\n- [Commits](https://github.com/nodejs/undici/compare/v6.29.0...v6.29.1)\n\nUpdates `follow-redirects` from 1.16.1 to 1.16.2\n- [Release notes](https://github.com/follow-redirects/follow-redirects/releases)\n- [Commits](https://github.com/follow-redirects/follow-redirects/compare/v1.16.1...v1.16.2)\n\nUpdates `serialize-javascript` from 7.1.2 to 7.1.4\n- [Release notes](https://github.com/yahoo/serialize-javascript/releases)\n- [Commits](https://github.com/yahoo/serialize-javascript/compare/v7.1.2...v7.1.4)\n\nUpdates `seroval` from 1.6.8 to 1.7.7\n- [Release notes](https://github.com/lxsmnsyc/seroval/releases)\n- [Commits](https://github.com/lxsmnsyc/seroval/compare/seroval@1.6.8...seroval@1.7.7)\n\n---\nupdated-dependencies:\n- dependency-name: undici\n  dependency-version: 6.29.1\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: undici\n  dependency-version: 8.12.4\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: follow-redirects\n  dependency-version: 1.16.2\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: serialize-javascript\n  dependency-version: 7.1.4\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n- dependency-name: seroval\n  dependency-version: 1.7.7\n  dependency-type: indirect\n  dependency-group: npm_and_yarn\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+          "timestamp": "2026-11-06T17:00:22+05:00",
+          "tree_id": "5afcd56d0522d1d6a0aa1e4ba3361186e6b952f1",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/4d708e328a4195855721ea881c65d3e87de64b6b"
+        },
+        "date": 1793967981249,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation (github.com/university-ecosystem/gateway/middleware)",
+            "value": 87776,
+            "unit": "ns/op",
+            "extra": "13855 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback (github.com/university-ecosystem/gateway/middleware)",
+            "value": 94.4,
+            "unit": "ns/op",
+            "extra": "12982411 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader (github.com/university-ecosystem/gateway/middleware)",
+            "value": 804.1,
+            "unit": "ns/op",
+            "extra": "1433428 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT (github.com/university-ecosystem/gateway/middleware)",
+            "value": 52.95,
+            "unit": "ns/op",
+            "extra": "22387028 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit (github.com/university-ecosystem/gateway/middleware)",
+            "value": 172.7,
+            "unit": "ns/op",
+            "extra": "6605031 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss (github.com/university-ecosystem/gateway/middleware)",
+            "value": 39.46,
+            "unit": "ns/op",
+            "extra": "30148630 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey (github.com/university-ecosystem/gateway/middleware)",
+            "value": 541.5,
+            "unit": "ns/op",
+            "extra": "2203328 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic (github.com/university-ecosystem/gateway/middleware)",
+            "value": 121.9,
+            "unit": "ns/op",
+            "extra": "9542185 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256 (github.com/university-ecosystem/gateway/middleware)",
+            "value": 68.95,
+            "unit": "ns/op",
+            "extra": "17375109 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 544.2,
+            "unit": "ns/op",
+            "extra": "2203080 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1415,
+            "unit": "ns/op",
+            "extra": "752310 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 17.96,
+            "unit": "ns/op",
+            "extra": "67092404 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 720.1,
+            "unit": "ns/op",
+            "extra": "1615436 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 43.43,
+            "unit": "ns/op",
+            "extra": "27071138 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1492,
+            "unit": "ns/op",
+            "extra": "883002 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 54.52,
+            "unit": "ns/op",
+            "extra": "20096990 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 97.68,
+            "unit": "ns/op",
+            "extra": "12206924 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 63.85,
+            "unit": "ns/op",
+            "extra": "19039935 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 815.4,
+            "unit": "ns/op",
+            "extra": "1451632 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 14832,
+            "unit": "ns/op",
+            "extra": "74781 times\n4 procs"
           }
         ]
       }
