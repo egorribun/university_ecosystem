@@ -1,11 +1,13 @@
 import assert from "node:assert/strict"
+import { spawnSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { existsSync } from "node:fs"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
 import vm from "node:vm"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 import {
   buildAuthenticatedCaptureBasename,
@@ -23,6 +25,8 @@ import {
   isAuthenticatedEventsCaptureReady,
   isAuthenticatedScheduleCaptureReady,
   parseAuthenticatedRemoteBrowserConnection,
+  parseAuthenticatedVisualCredentials,
+  createAuthenticatedVisualAuditEnvironment,
   parseAuthenticatedVisualCaptureMatrix,
   parseAuthenticatedVisualRoutes,
   parseAuthenticatedSelectedVisualRoute,
@@ -42,6 +46,204 @@ if (!path.isAbsolute(REPO_ROOT) || path.resolve(REPO_ROOT) !== REPO_ROOT) {
   throw new Error("REPO_ROOT must be an absolute canonical path")
 }
 const sourceFile = (...segments) => path.join(REPO_ROOT, ...segments)
+
+test("authenticated visual audit requires explicitly supplied credentials", () => {
+  assert.throws(() => parseAuthenticatedVisualCredentials({}), /explicit TEST_EMAIL/u)
+  assert.throws(
+    () =>
+      parseAuthenticatedVisualCredentials({
+        TEST_EMAIL: "student@example.test",
+        TEST_PASSWORD: " \t ",
+      }),
+    /explicit TEST_PASSWORD/u
+  )
+
+  const credentials = {
+    email: "student@example.test",
+    password: randomUUID(),
+  }
+  assert.deepEqual(
+    parseAuthenticatedVisualCredentials({
+      TEST_EMAIL: credentials.email,
+      TEST_PASSWORD: credentials.password,
+    }),
+    credentials
+  )
+})
+
+test("audit entrypoint rejects missing credentials before creating output", async () => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), "visual-audit-credentials-"))
+  const outputDirectory = path.join(outputRoot, "captures")
+  const environment = { ...process.env, OUT_DIR: outputDirectory }
+  delete environment.TEST_EMAIL
+  delete environment.TEST_PASSWORD
+
+  try {
+    const result = spawnSync(process.execPath, ["./scripts/authenticated-visual-audit.mjs"], {
+      cwd: path.join(REPO_ROOT, "frontend"),
+      env: environment,
+      encoding: "utf8",
+    })
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /explicit TEST_EMAIL/u)
+    assert.equal(existsSync(outputDirectory), false)
+  } finally {
+    await rm(outputRoot, { recursive: true, force: true })
+  }
+})
+
+test("authenticated visual child receives explicit credentials and a bounded environment", () => {
+  const password = randomUUID()
+  const ambientPassword = randomUUID()
+  const ambientToken = randomUUID()
+  const environment = createAuthenticatedVisualAuditEnvironment(
+    {
+      PATH: "/runtime/bin",
+      ORIGIN: "http://127.0.0.1:8000",
+      SOURCE_SHA: "a".repeat(40),
+      VISUAL_CAPTURE_MATRIX: "1",
+      TEST_EMAIL: "ambient@example.test",
+      TEST_PASSWORD: ambientPassword,
+      GITHUB_TOKEN: ambientToken,
+      NODE_OPTIONS: "--require=ambient-marker",
+    },
+    { email: "student@example.test", password }
+  )
+
+  assert.equal(environment.TEST_EMAIL, "student@example.test")
+  assert.equal(environment.TEST_PASSWORD, password)
+  assert.equal(environment.ORIGIN, "http://127.0.0.1:8000")
+  assert.equal(environment.SOURCE_SHA, "a".repeat(40))
+  assert.equal(environment.GITHUB_TOKEN, undefined)
+  assert.equal(environment.NODE_OPTIONS, undefined)
+  assert.notEqual(environment.TEST_PASSWORD, ambientPassword)
+  assert.notEqual(environment.TEST_PASSWORD, ambientToken)
+  assert.equal(environment.PATH, "/runtime/bin")
+})
+
+test("local authenticated Chromium launch gets only the allowlisted environment", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "visual-audit-browser-env-"))
+  const projectRoot = path.join(temporaryRoot, "frontend")
+  const playwrightPackage = path.join(projectRoot, "node_modules", "playwright")
+  const outputDirectory = path.join(temporaryRoot, "captures")
+  const capturePath = path.join(temporaryRoot, "launch.json")
+  const preloadPath = path.join(temporaryRoot, "mock-fetch.mjs")
+  const browserScript = sourceFile("frontend", "scripts", "authenticated-visual-audit.mjs")
+  const email = "student@example.test"
+  const password = randomUUID()
+  const tokenValues = {
+    GITHUB_TOKEN: randomUUID(),
+    JWT_SECRET: randomUUID(),
+    ACCESS_TOKEN: randomUUID(),
+    ACCESS_TOKEN_V2: randomUUID(),
+    REFRESH_TOKEN: randomUUID(),
+  }
+
+  try {
+    await mkdir(playwrightPackage, { recursive: true })
+    await writeFile(path.join(projectRoot, "package.json"), "{}\n")
+    await writeFile(
+      path.join(playwrightPackage, "package.json"),
+      JSON.stringify({ type: "commonjs", main: "index.cjs" })
+    )
+    await writeFile(
+      path.join(playwrightPackage, "index.cjs"),
+      [
+        'const { writeFileSync } = require("node:fs")',
+        "module.exports = {",
+        "  chromium: {",
+        "    async launch(options) {",
+        "      writeFileSync(",
+        "        process.env.AUDIT_LAUNCH_CAPTURE,",
+        "        JSON.stringify({ headless: options.headless, env: options.env })",
+        "      )",
+        '      throw new Error("stubbed Chromium launch stop")',
+        "    },",
+        '    async connect() { throw new Error("unexpected remote connection") },',
+        "  },",
+        "}",
+        "",
+      ].join("\n")
+    )
+    await writeFile(
+      preloadPath,
+      [
+        "globalThis.fetch = async () => ({",
+        "  status: 200,",
+        "  json: async () => ({",
+        '    keys: [{ alg: "RS256", kty: "RSA", n: "n", e: "e" }],',
+        "  }),",
+        "})",
+        "",
+      ].join("\n")
+    )
+    const environment = {
+      PATH: process.env.PATH ?? "",
+      SystemRoot: process.env.SystemRoot ?? "C:\\Windows",
+      TEMP: process.env.TEMP ?? os.tmpdir(),
+      TMP: process.env.TMP ?? os.tmpdir(),
+      HOME: process.env.HOME ?? temporaryRoot,
+      REPO_ROOT: temporaryRoot,
+      OUT_DIR: outputDirectory,
+      ORIGIN: "http://127.0.0.1:8000",
+      TEST_EMAIL: email,
+      TEST_PASSWORD: password,
+      SOURCE_SHA: "a".repeat(40),
+      VISUAL_WIDTHS: "390,768",
+      AUDIT_LAUNCH_CAPTURE: capturePath,
+      NODE_OPTIONS: "--import=" + pathToFileURL(preloadPath).href,
+      ...tokenValues,
+    }
+    const result = spawnSync(process.execPath, [browserScript], {
+      cwd: temporaryRoot,
+      env: environment,
+      encoding: "utf8",
+      timeout: 10_000,
+    })
+
+    assert.equal(result.status, 1, result.stderr)
+    assert.match(result.stderr, /stubbed Chromium launch stop/u)
+    const launch = JSON.parse(await readFile(capturePath, "utf8"))
+    assert.equal(launch.headless, true)
+    const preservedKeys = [
+      "PATH",
+      "SystemRoot",
+      "TEMP",
+      "TMP",
+      "HOME",
+      "REPO_ROOT",
+      "OUT_DIR",
+      "ORIGIN",
+      "SOURCE_SHA",
+      "VISUAL_WIDTHS",
+    ]
+    for (const key of preservedKeys) {
+      assert.equal(launch.env[key], environment[key], `${key} remains available to Chromium`)
+    }
+    for (const key of [
+      "TEST_EMAIL",
+      "TEST_PASSWORD",
+      "GITHUB_TOKEN",
+      "JWT_SECRET",
+      "ACCESS_TOKEN",
+      "ACCESS_TOKEN_V2",
+      "REFRESH_TOKEN",
+      "NODE_OPTIONS",
+      "AUDIT_LAUNCH_CAPTURE",
+    ]) {
+      assert.equal(Object.hasOwn(launch.env, key), false, `${key} must not reach Chromium`)
+    }
+    for (const secret of [email, password, ...Object.values(tokenValues)]) {
+      assert.equal(
+        Object.values(launch.env).includes(secret),
+        false,
+        "secret value must not reach Chromium"
+      )
+    }
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true })
+  }
+})
 
 function validAuthenticatedMatrixEnvironment(outputDir) {
   return {

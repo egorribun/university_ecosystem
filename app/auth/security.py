@@ -161,7 +161,7 @@ def _calculate_lookup_hash(input_data: str) -> str:
     """
     # nosec: B303 - SHA-1 is required by the external API
     return (
-        hashlib.sha1(  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+        hashlib.sha1(
             input_data.encode("utf-8"), usedforsecurity=False
         )  # codeql[py/weak-sensitive-data-hashing]
         .hexdigest()
@@ -257,7 +257,7 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
             "External breach lookup failed (fail-%s): %s",
             "open" if fail_open else "closed",
             exc,
-        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        )
         if fail_open:
             return
         raise ValueError(
@@ -267,7 +267,7 @@ async def validate_password_hibp(password: str, *, locale: str | None = None) ->
     if response.status_code != httpx.codes.OK:
         _logger.warning(
             "External breach lookup returned status %s", response.status_code
-        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        )
         if fail_open:
             return
         raise ValueError(
@@ -398,7 +398,7 @@ def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
                 "argon2 verify raised unexpected error for $argon2-prefix hash — "
                 "returning False (no bcrypt fallback): %s",
                 type(exc).__name__,
-            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            )
             return False
     _warn_unsupported_password_hash()
     return False
@@ -457,7 +457,7 @@ def verify_and_update_password_sync(
             _logger.warning(
                 "argon2 verify-and-update failed closed: %s",
                 type(exc).__name__,
-            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            )
             return False, None
 
     _warn_unsupported_password_hash()
@@ -629,18 +629,14 @@ def decode_token(token: str) -> dict[str, Any] | None:
         kid_secret = registry.get(kid)
         if not kid_secret:
             # kid present but unknown — reject immediately; do not fall back.
-            _logger.warning(
-                "JWT rejected", reason="unknown kid", kid=kid
-            )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            _logger.warning("JWT rejected", reason="unknown kid", kid=kid)
             return None
         candidates = [kid_secret]
     else:
         # RZ-10 (audit 2026-03-04) fix:
         # Tokens without `kid` are immediately rejected.
         # This closes the O(N) timing side-channel attack vector.
-        _logger.warning(
-            "JWT rejected", reason="missing kid header"
-        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        _logger.warning("JWT rejected", reason="missing kid header")
         return None
 
     for secret in candidates:
@@ -664,7 +660,7 @@ def decode_token(token: str) -> dict[str, Any] | None:
                         _logger.error(
                             "Failed to extract public key from PEM for RS256 verification: %s",
                             exc,
-                        )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+                        )
                         continue
                 else:
                     verification_key = secret

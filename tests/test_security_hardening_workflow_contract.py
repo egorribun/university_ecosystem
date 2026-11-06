@@ -442,6 +442,15 @@ def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> 
         "scripts/quality/filter_checkov_sarif.py",
         "scripts/verify_secrets_baseline.py",
         "scripts/quality/validate_semgrep_sarif.py",
+        "scripts/quality/select_semgrep_rules.py",
+        "scripts/quality/semgrep_dispositions_gate.py",
+        "scripts/quality/run_semgrep_gate.py",
+        "scripts/quality/helm_rendered_target_overlay.py",
+        "scripts/quality/helm_semgrep_profile_registry.json",
+        "quality/semgrep-dispositions.json",
+        ".semgrep.yml",
+        ".semgrepignore",
+        ".pre-commit-config.yaml",
         "security/detect-secrets-requirements.txt",
         "native/rust_ext/deny.toml",
         "frontend/package.json",
@@ -451,6 +460,22 @@ def test_every_security_scanner_waits_for_the_shared_policy_integrity_gate() -> 
         "frontend/scripts/setup-lhci-binaries.cjs",
     ):
         assert f'"{protected_input}"' in run
+
+    pip_integrity = _step(
+        jobs["pip-audit"], "Verify security policy inputs against protected base"
+    )["run"]
+    for protected_input in (
+        "scripts/quality/select_semgrep_rules.py",
+        "scripts/quality/semgrep_dispositions_gate.py",
+        "scripts/quality/run_semgrep_gate.py",
+        "scripts/quality/helm_rendered_target_overlay.py",
+        "scripts/quality/helm_semgrep_profile_registry.json",
+        "quality/semgrep-dispositions.json",
+        ".semgrep.yml",
+        ".semgrepignore",
+        ".pre-commit-config.yaml",
+    ):
+        assert f'"{protected_input}"' in pip_integrity
 
     consumers = (
         "pip-audit",
@@ -1014,20 +1039,7 @@ def test_squawk_integrity_contract_rejects_baseline_exception_scope_drift(
     )
 
 
-def test_security_audit_protects_scorecard_gate_inputs() -> None:
-    jobs = _workflow(SECURITY_AUDIT)["jobs"]
-    for job_name in ("policy-integrity", "pip-audit"):
-        run = _step(
-            jobs[job_name], "Verify security policy inputs against protected base"
-        )["run"]
-        for path in (
-            "scripts/quality/scorecard_floors_gate.py",
-            "quality/scorecard-floors.json",
-        ):
-            assert f'"{path}"' in run
-
-
-def test_security_audit_protects_nuclei_gate_inputs() -> None:
+def test_security_audit_protects_aud381_gate_inputs() -> None:
     jobs = _workflow(SECURITY_AUDIT)["jobs"]
     for job_name in ("policy-integrity", "pip-audit"):
         run = _step(
@@ -1036,5 +1048,8 @@ def test_security_audit_protects_nuclei_gate_inputs() -> None:
         for path in (
             "scripts/quality/dast_privacy.py",
             "scripts/quality/nuclei_findings_gate.py",
+            "scripts/quality/sqlmap_scan_gate.py",
+            "scripts/quality/scorecard_floors_gate.py",
+            "quality/scorecard-floors.json",
         ):
             assert f'"{path}"' in run

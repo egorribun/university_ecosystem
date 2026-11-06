@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import sys
 from pathlib import Path
@@ -33,13 +34,58 @@ PERSIST_CREDENTIAL_FILES = (
 
 
 def _load(name: str) -> dict[str, Any]:
-    return yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
+    loaded: dict[str, Any] = yaml.safe_load(
+        (WORKFLOWS / name).read_text(encoding="utf-8")
+    )
+    return loaded
 
 
 def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
     matches = [step for step in job["steps"] if step.get("name") == name]
     assert len(matches) == 1, name
-    return matches[0]
+    step: dict[str, Any] = matches[0]
+    return step
+
+
+_COVERAGE_SELECTOR_ARGV = [
+    "python3",
+    "-m",
+    "scripts.quality.select_coverage_producer_artifacts",
+    "--repository",
+    "${COVERAGE_REPOSITORY}",
+    "--run-id",
+    "${COVERAGE_RUN_ID}",
+    "--consumer-run-attempt",
+    "${COVERAGE_RUN_ATTEMPT}",
+    "--commit-sha",
+    "${COVERAGE_COMMIT_SHA}",
+    "--run-head-sha",
+    "${COVERAGE_RUN_HEAD_SHA}",
+    "--event",
+    "${COVERAGE_EVENT}",
+    "--workflow-path",
+    ".github/workflows/ci.yml",
+]
+
+
+def _assert_coverage_selector_argv(script: str) -> None:
+    normalized = re.sub(r"\\\r?\n[ \t]*", " ", script)
+    lines = [line.strip() for line in normalized.splitlines() if line.strip()]
+    assert not re.search(r"\b(?:GH_TOKEN|GITHUB_TOKEN)\b", script), (
+        "coverage selector run must not reference token variables"
+    )
+    commands = [
+        line
+        for line in lines
+        if "scripts.quality.select_coverage_producer_artifacts" in line
+    ]
+    assert len(commands) == 1, "coverage selector command count changed"
+    assert lines == ["set -euo pipefail", commands[0]], (
+        "coverage selector has extra commands"
+    )
+    assert shlex.split(commands[0]) == _COVERAGE_SELECTOR_ARGV, (
+        "coverage selector argv changed"
+    )
 
 
 def _names(job: dict[str, Any]) -> list[str]:
@@ -82,6 +128,168 @@ def test_nightly_slack_notification_reads_a_step_output_in_its_condition() -> No
     )
     assert "env." not in send["if"]
     assert "secrets." not in send["if"]
+
+
+@pytest.mark.parametrize(
+    "case", ["real", "missing", "duplicate", "malformed", "non_semgrep_hook"]
+)
+def test_semgrep_workflow_resolves_exactly_one_immutable_image_from_the_hook(
+    pytester, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    job = _load("ci.yml")["jobs"]["semgrep-sast"]
+    script = _step(job, "Resolve the pinned Semgrep image")["run"]
+    assert "${{" not in script
+
+    config = (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    parsed = yaml.safe_load(config)
+    hooks = [
+        hook
+        for repo in parsed["repos"]
+        for hook in repo["hooks"]
+        if hook.get("id") == "semgrep-docker"
+    ]
+    assert len(hooks) == 1
+    image = next(
+        part
+        for part in hooks[0]["entry"].split()
+        if part.startswith("semgrep/semgrep:")
+    )
+    entry_line = f"entry: {hooks[0]['entry']}"
+    assert config.count(entry_line) == 1
+    if case == "missing":
+        config = config.replace(image, "no-image")
+    elif case == "duplicate":
+        config = config.replace(
+            entry_line,
+            f"{entry_line}\n        entry: {hooks[0]['entry']}",
+            1,
+        )
+    elif case == "malformed":
+        config = config.replace(image, image.split("@", 1)[0])
+    elif case == "non_semgrep_hook":
+        config = config.replace(image, "no-image")
+        config += (
+            "\n- repo: local\n"
+            "  hooks:\n"
+            "    - id: unrelated-container\n"
+            f"      entry: {image}\n"
+        )
+
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    bash = (
+        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
+    )
+    assert bash, "Real Bash is required to execute the Semgrep image resolver"
+    monkeypatch.chdir(pytester.path)
+    monkeypatch.delenv("BASH_ENV", raising=False)
+    monkeypatch.setenv("GITHUB_ENV", "step.env")
+    Path(".pre-commit-config.yaml").write_text(config, encoding="utf-8", newline="\n")
+    Path("resolve-image.sh").write_text(script, encoding="utf-8", newline="\n")
+
+    result = pytester.run(
+        bash,
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        "resolve-image.sh",
+        timeout=20,
+    )
+    if case == "real":
+        assert result.ret == 0
+        assert (
+            Path("step.env").read_text(encoding="utf-8") == f"SEMGREP_IMAGE={image}\n"
+        )
+    else:
+        assert result.ret != 0
+        assert not Path("step.env").exists()
+
+
+def test_live_e2e_catalog_matches_the_pr_only_aggregate_dependency() -> None:
+    jobs = _load("ci.yml")["jobs"]
+    job = jobs["live-realtime-visual"]
+    assert job["if"] == (
+        "${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}"
+    )
+    assert job["uses"] == "./.github/workflows/reusable-live-realtime-visual.yml"
+    assert "live-realtime-visual" in jobs["ci-success"]["needs"]
+
+    catalog = yaml.safe_load((ROOT / "quality/ci-check-catalog.json").read_text())
+    ci = next(
+        workflow
+        for workflow in catalog["workflows"]
+        if workflow["path"] == ".github/workflows/ci.yml"
+    )
+    assert ci["jobs"]["live-realtime-visual"]["profile"] == "required-pr"
+    assert ci["jobs"]["live-realtime-visual"]["guard"] == job["if"]
+    assert "live-realtime-visual" in ci["jobs"]["ci-success"]["needs"]
+
+
+@pytest.mark.parametrize(
+    ("event", "base_ref", "live_result", "expected_status"),
+    [
+        ("pull_request", "main", "success", 0),
+        ("pull_request", "main", "failure", 1),
+        ("pull_request", "main", "skipped", 1),
+        ("pull_request", "main", "cancelled", 1),
+        ("pull_request", "other", "skipped", 0),
+        ("push", "", "skipped", 0),
+        ("push", "", "success", 1),
+    ],
+)
+def test_ci_success_executes_pr_live_e2e_result_policy(
+    pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    event: str,
+    base_ref: str,
+    live_result: str,
+    expected_status: int,
+) -> None:
+    step = _step(_load("ci.yml")["jobs"]["ci-success"], "Check all jobs passed")
+    assert step["shell"] == "bash"
+    results = {
+        "live-realtime-visual": live_result,
+        "codecov-upload": "success" if event == "push" else "skipped",
+    }
+
+    def substitute(match: re.Match[str]) -> str:
+        return results.get(match.group(1), "success")
+
+    script = re.sub(
+        r"\$\{\{\s*needs\.([a-z0-9-]+)\.result\s*\}\}", substitute, step["run"]
+    )
+    assert "${{" not in script
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    bash = (
+        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
+    )
+    assert bash, "Real Bash is required to execute the CI Success aggregate"
+    monkeypatch.chdir(pytester.path)
+    monkeypatch.delenv("BASH_ENV", raising=False)
+    monkeypatch.setenv("EVENT_NAME", event)
+    monkeypatch.setenv(
+        "EVENT_REF", "refs/heads/main" if event == "push" else "refs/pull/1/merge"
+    )
+    monkeypatch.setenv("BASE_REF", base_ref)
+    for name in step["env"]:
+        if name.endswith("_RESULT"):
+            monkeypatch.setenv(name, "success")
+    Path("ci-success.sh").write_text(script, encoding="utf-8", newline="\n")
+
+    result = pytester.run(
+        bash,
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        "ci-success.sh",
+        timeout=20,
+    )
+    assert result.ret == expected_status
+    if expected_status:
+        assert "Event-gated CI job 'live-realtime-visual'" in result.stdout.str()
 
 
 def test_dast_nuclei_gate_runs_after_publication_and_delegates_to_the_parser() -> None:
@@ -284,42 +492,76 @@ def test_scorecard_reports_are_retained_for_ninety_days() -> None:
     assert upload["with"]["if-no-files-found"] == "error"
 
 
-def test_sqlmap_captures_the_console_and_gates_on_completion_and_injection() -> None:
+def test_sqlmap_runs_both_scans_gates_each_outcome_and_retains_reports() -> None:
     job = _load("sqlmap.yml")["jobs"]["sqlmap"]
-    scan_step = _step(job, "Run SQLMap Scan on API")
-    gate = _step(job, "Gate SQLMap scan result")
-    publish = _step(job, "Publish sanitized SQLMap evidence")
-    upload = _step(job, "Upload SQLMap result logs")
+    openapi_scan = _step(job, "Run SQLMap scan for every anonymous OpenAPI operation")
+    news_scan = _step(job, "Run SQLMap Scan on API")
+    openapi_gate = _step(job, "Gate SQLMap complete OpenAPI scan")
+    news_gate = _step(job, "Gate SQLMap seeded news proof scan")
+    publish = _step(job, "Publish sanitized SQLMap evidence receipt")
+    upload = _step(job, "Upload SQLMap reports and evidence receipt")
 
-    assert scan_step["id"] == "sqlmap-scan"
-    assert "set -o pipefail" in scan_step["run"]
-    assert "--output-dir=sqlmap-output" in scan_step["run"]
-    assert "> sqlmap-output/scan-console.log 2>&1" in scan_step["run"]
-    assert "| tee" not in scan_step["run"]
-    assert gate["id"] == "sqlmap-gate"
-    assert gate["if"] == "${{ always() }}"
-    assert gate["env"] == {"SCAN_OUTCOME": "${{ steps.sqlmap-scan.outcome }}"}
-    assert "python3 scripts/quality/sqlmap_scan_gate.py" in gate["run"]
-    assert '--scan-outcome "$SCAN_OUTCOME"' in gate["run"]
-    assert "--output-dir sqlmap-output" in gate["run"]
-    assert "--console-log sqlmap-output/scan-console.log" in gate["run"]
+    for scan, scan_id, output_dir in (
+        (openapi_scan, "sqlmap-openapi-scan", "sqlmap-openapi-output"),
+        (news_scan, "sqlmap-news-scan", "sqlmap-output"),
+    ):
+        assert scan["id"] == scan_id
+        assert scan["continue-on-error"] is True
+        assert "set -euo pipefail" in scan["run"]
+        assert f"--output-dir={output_dir}" in scan["run"]
+        assert f"> {output_dir}/scan-console.log 2>&1" in scan["run"]
+        assert "| tee" not in scan["run"]
+
+    for gate, gate_id, scan_id, mode, output_dir in (
+        (
+            openapi_gate,
+            "sqlmap-openapi-gate",
+            "sqlmap-openapi-scan",
+            "gate-openapi",
+            "sqlmap-openapi-output",
+        ),
+        (
+            news_gate,
+            "sqlmap-news-gate",
+            "sqlmap-news-scan",
+            "gate-news",
+            "sqlmap-output",
+        ),
+    ):
+        assert gate["id"] == gate_id
+        assert gate["if"] == "${{ always() }}"
+        assert "continue-on-error" not in gate
+        assert gate["env"] == {"SCAN_OUTCOME": f"${{{{ steps.{scan_id}.outcome }}}}"}
+        assert f"sqlmap_scan_gate.py {mode}" in gate["run"]
+        assert '--scan-outcome "$SCAN_OUTCOME"' in gate["run"]
+        assert f"--output-dir {output_dir}" in gate["run"]
+        assert f"--console-log {output_dir}/scan-console.log" in gate["run"]
+
     assert publish["if"] == "${{ always() }}"
     assert publish["env"] == {
-        "SCAN_OUTCOME": "${{ steps.sqlmap-scan.outcome }}",
-        "GATE_OUTCOME": "${{ steps.sqlmap-gate.outcome }}",
+        "NEWS_SCAN_OUTCOME": "${{ steps.sqlmap-news-scan.outcome }}",
+        "NEWS_GATE_OUTCOME": "${{ steps.sqlmap-news-gate.outcome }}",
+        "OPENAPI_SCAN_OUTCOME": "${{ steps.sqlmap-openapi-scan.outcome }}",
+        "OPENAPI_GATE_OUTCOME": "${{ steps.sqlmap-openapi-gate.outcome }}",
         "SOURCE_SHA": "${{ github.sha }}",
     }
     assert "scripts/quality/sqlmap_scan_gate.py publish-evidence" in publish["run"]
     assert "sqlmap-evidence/receipt.json" in publish["run"]
+    assert "--openapi-output-dir sqlmap-openapi-output" in publish["run"]
     assert publish.get("continue-on-error", False) is False
     names = _names(job)
     assert (
-        names.index(gate["name"])
+        names.index(openapi_gate["name"])
+        < names.index(news_gate["name"])
         < names.index(publish["name"])
         < names.index(upload["name"])
     )
     assert upload["if"] == "${{ always() }}"
-    assert upload["with"]["path"] == "sqlmap-evidence/receipt.json"
+    assert upload["with"]["path"].splitlines() == [
+        "sqlmap-output/",
+        "sqlmap-openapi-output/",
+        "sqlmap-evidence/receipt.json",
+    ]
     assert upload["with"]["retention-days"] == 90
     assert upload["with"]["if-no-files-found"] == "error"
 
@@ -355,8 +597,50 @@ def test_coverage_consumer_has_only_job_scoped_artifact_read_permission() -> Non
 
     assert workflow["permissions"] == {"contents": "read"}
     assert job.get("permissions") == {"contents": "read", "actions": "read"}
-    assert selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
-    assert "scripts.quality.select_coverage_producer_artifacts" in selector["run"]
+    assert selector["env"] == {
+        "COVERAGE_REPOSITORY": "${{ github.repository }}",
+        "COVERAGE_RUN_ID": "${{ github.run_id }}",
+        "COVERAGE_RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "COVERAGE_COMMIT_SHA": "${{ github.sha }}",
+        "COVERAGE_RUN_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "COVERAGE_EVENT": "${{ github.event_name }}",
+        "GH_TOKEN": "${{ github.token }}",
+    }
+    selector_run = str(selector["run"])
+    assert "scripts.quality.select_coverage_producer_artifacts" in selector_run
+    _assert_coverage_selector_argv(selector_run)
+    assert "${{ github." not in selector_run
+
+
+def test_coverage_selector_contract_rejects_duplicate_identity_arguments() -> None:
+    selector = _step(
+        _load("ci.yml")["jobs"]["coverage-policy-gate"],
+        "Select retry-safe same-run coverage producer artifacts",
+    )
+    duplicate_run_id = str(selector["run"]).replace(
+        '--run-id "${COVERAGE_RUN_ID}"',
+        '--run-id "${COVERAGE_RUN_ID}" --run-id "${ATTACKER_RUN_ID}"',
+        1,
+    )
+    assert duplicate_run_id != selector["run"]
+    with pytest.raises(AssertionError, match="coverage selector argv changed"):
+        _assert_coverage_selector_argv(duplicate_run_id)
+
+
+def test_coverage_selector_contract_rejects_token_logging_and_extra_commands() -> None:
+    selector = _step(
+        _load("ci.yml")["jobs"]["coverage-policy-gate"],
+        "Select retry-safe same-run coverage producer artifacts",
+    )
+    run = str(selector["run"])
+
+    token_logging = run + "\nprintf '%s\\n' \"$GH_TOKEN\"\n"
+    with pytest.raises(AssertionError, match="must not reference token variables"):
+        _assert_coverage_selector_argv(token_logging)
+
+    extra_command = run + "\nprintf harmless\n"
+    with pytest.raises(AssertionError, match="has extra commands"):
+        _assert_coverage_selector_argv(extra_command)
 
 
 def test_inline_trivy_builds_do_not_use_shared_github_actions_cache() -> None:
@@ -602,89 +886,3 @@ def test_weekly_duration_writer_authenticates_only_the_guarded_push(
     else:
         assert status != 0
         assert events == []
-
-
-def test_live_e2e_catalog_matches_the_pr_only_aggregate_dependency() -> None:
-    jobs = _load("ci.yml")["jobs"]
-    job = jobs["live-realtime-visual"]
-    assert job["if"] == (
-        "${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}"
-    )
-    assert job["uses"] == "./.github/workflows/reusable-live-realtime-visual.yml"
-    assert "live-realtime-visual" in jobs["ci-success"]["needs"]
-
-    catalog = yaml.safe_load((ROOT / "quality/ci-check-catalog.json").read_text())
-    ci = next(
-        workflow
-        for workflow in catalog["workflows"]
-        if workflow["path"] == ".github/workflows/ci.yml"
-    )
-    assert ci["jobs"]["live-realtime-visual"]["profile"] == "required-pr"
-    assert ci["jobs"]["live-realtime-visual"]["guard"] == job["if"]
-    assert "live-realtime-visual" in ci["jobs"]["ci-success"]["needs"]
-
-
-@pytest.mark.parametrize(
-    ("event", "base_ref", "live_result", "expected_status"),
-    [
-        ("pull_request", "main", "success", 0),
-        ("pull_request", "main", "failure", 1),
-        ("pull_request", "main", "skipped", 1),
-        ("pull_request", "main", "cancelled", 1),
-        ("pull_request", "other", "skipped", 0),
-        ("push", "", "skipped", 0),
-        ("push", "", "success", 1),
-    ],
-)
-def test_ci_success_executes_pr_live_e2e_result_policy(
-    pytester,
-    monkeypatch: pytest.MonkeyPatch,
-    event: str,
-    base_ref: str,
-    live_result: str,
-    expected_status: int,
-) -> None:
-    step = _step(_load("ci.yml")["jobs"]["ci-success"], "Check all jobs passed")
-    assert step["shell"] == "bash"
-    results = {
-        "live-realtime-visual": live_result,
-        "codecov-upload": "success" if event == "push" else "skipped",
-    }
-
-    def substitute(match: re.Match[str]) -> str:
-        return results.get(match.group(1), "success")
-
-    script = re.sub(
-        r"\$\{\{\s*needs\.([a-z0-9-]+)\.result\s*\}\}", substitute, step["run"]
-    )
-    assert "${{" not in script
-    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
-    bash = (
-        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
-    )
-    assert bash, "Real Bash is required to execute the CI Success aggregate"
-    monkeypatch.chdir(pytester.path)
-    monkeypatch.delenv("BASH_ENV", raising=False)
-    monkeypatch.setenv("EVENT_NAME", event)
-    monkeypatch.setenv(
-        "EVENT_REF", "refs/heads/main" if event == "push" else "refs/pull/1/merge"
-    )
-    monkeypatch.setenv("BASE_REF", base_ref)
-    for name in step["env"]:
-        if name.endswith("_RESULT"):
-            monkeypatch.setenv(name, "success")
-    Path("ci-success.sh").write_text(script, encoding="utf-8", newline="\n")
-
-    result = pytester.run(
-        bash,
-        "--noprofile",
-        "--norc",
-        "-e",
-        "-o",
-        "pipefail",
-        "ci-success.sh",
-        timeout=20,
-    )
-    assert result.ret == expected_status
-    if expected_status:
-        assert "Event-gated CI job 'live-realtime-visual'" in result.stdout.str()

@@ -750,6 +750,153 @@ def _validate_expansions(
     return errors
 
 
+def _validate_catalog_job(
+    job_id: str,
+    job_entry: Any,
+    *,
+    default_runbook: Any,
+    errors: list[str],
+    location: str,
+    profiles: dict[str, Any],
+    repository_root: Path,
+    reusable_timeouts: dict[str, int],
+    source_contexts: set[str],
+    source_events: set[str],
+    source_job_ids: set[str],
+    source_jobs: dict[str, Any],
+    used_profiles: set[str],
+) -> None:
+    """Validate one catalog job against its source workflow job."""
+
+    job_location = f"{location}.jobs[{job_id!r}]"
+    source_job = source_jobs.get(job_id)
+    if not isinstance(source_job, dict):
+        errors.append(f"{job_location}: source job is not an object")
+        return
+    if not isinstance(job_entry, dict):
+        errors.append(f"{job_location} must be an object")
+        return
+    profile_name = job_entry.get("profile")
+    if not isinstance(profile_name, str):
+        errors.append(f"{job_location}.profile must be a string")
+        return
+    try:
+        profile = _effective_profile(profile_name, profiles, location=job_location)
+    except CatalogError as exc:
+        errors.append(str(exc))
+        return
+    used_profiles.add(profile_name)
+    effective = _merge_job(profile, job_entry)
+    if profile.get("classification") == "required":
+        if effective.get("classification") != "required":
+            errors.append(
+                f"{job_location}: required profile classification cannot be weakened"
+            )
+        inherited_events = set(profile.get("required_events") or [])
+        if not inherited_events.issubset(effective.get("required_events") or []):
+            errors.append(f"{job_location}: required profile events cannot be removed")
+    try:
+        expected_timeout = _job_timeout(source_job, reusable_timeouts=reusable_timeouts)
+    except CatalogError as exc:
+        errors.append(f"{job_location}: {exc}")
+        return
+    timeout = effective.get("expected_timeout_minutes")
+    if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout < 1:
+        errors.append(f"{job_location}.expected_timeout_minutes is invalid")
+    elif "runs-on" in source_job and timeout != expected_timeout:
+        errors.append(
+            f"{job_location}: timeout differs from workflow "
+            f"(catalog={timeout}, source={expected_timeout})"
+        )
+    duration = effective.get("expected_duration_seconds")
+    if not isinstance(duration, int) or isinstance(duration, bool) or duration < 1:
+        errors.append(f"{job_location}.expected_duration_seconds is invalid")
+    elif isinstance(timeout, int) and duration < timeout * 60:
+        errors.append(f"{job_location}: duration must cover timeout budget")
+    guard = effective.get("guard")
+    expected_job_guard = (
+        str(source_job["if"]) if "if" in source_job else "workflow trigger"
+    )
+    if guard != expected_job_guard:
+        errors.append(f"{job_location}.guard is stale")
+    expected_name = str(source_job.get("name", job_id))
+    if effective.get("check_name_template") != expected_name:
+        errors.append(f"{job_location}.check_name_template is stale")
+    source_needs = source_job.get("needs", [])
+    if isinstance(source_needs, str):
+        source_needs = [source_needs]
+    if not isinstance(source_needs, list) or not all(
+        isinstance(need, str) and need for need in source_needs
+    ):
+        errors.append(f"{job_location}: source needs must be a list of job IDs")
+    else:
+        if job_entry.get("needs") != source_needs:
+            errors.append(
+                f"{job_location}: needs differs from workflow "
+                f"(catalog={job_entry.get('needs')!r}, source={source_needs!r})"
+            )
+        if len(source_needs) != len(set(source_needs)):
+            errors.append(f"{job_location}: duplicate dependency in source needs")
+        for need in source_needs:
+            if need == job_id:
+                errors.append(f"{job_location}: self-dependency in source needs")
+            elif need not in source_job_ids:
+                errors.append(f"{job_location}: unknown job in source needs: {need!r}")
+        try:
+            for expression in _job_expressions(source_job):
+                for reference in _needs_references(expression):
+                    if reference is None:
+                        errors.append(
+                            f"{job_location}: dynamic needs reference is unsupported"
+                        )
+                    elif reference not in source_needs:
+                        errors.append(
+                            f"{job_location}: undeclared needs reference: {reference!r}"
+                        )
+        except CatalogError as exc:
+            errors.append(f"{job_location}: {exc}")
+    source_contexts.add(expected_name)
+    errors.extend(_matrix_governance_errors(source_job, job_entry, job_location))
+    try:
+        runbook = effective.get("runbook", default_runbook)
+        _repo_file(runbook, repository_root, f"{job_location}.runbook")
+    except CatalogError as exc:
+        errors.append(str(exc))
+    retry_policy = effective.get("retry_policy")
+    if not isinstance(retry_policy, dict):
+        errors.append(f"{job_location}.retry_policy is missing")
+    elif _is_retry_candidate(source_job) and retry_policy.get("mode") == "none":
+        errors.append(
+            f"{job_location}: retry behavior is present but policy is declared none"
+        )
+    errors.extend(
+        _validate_artifacts(effective, _artifact_inventory(source_job), job_location)
+    )
+    classification = effective.get("classification")
+    required_events = effective.get("required_events")
+    if classification == "required":
+        if not required_events:
+            errors.append(f"{job_location}: required job has no required_events")
+        elif not set(required_events).issubset(POLICY_EVENTS):
+            errors.append(f"{job_location}: unsupported required event alias")
+        elif (
+            "pull_request_main" in required_events
+            and "pull_request" not in source_events
+        ):
+            errors.append(f"{job_location}: pull_request_main is not a source event")
+        elif (
+            "pull_request_target_main" in required_events
+            and "pull_request_target" not in source_events
+        ):
+            errors.append(
+                f"{job_location}: pull_request_target_main is not a source event"
+            )
+        elif "push_main" in required_events and "push" not in source_events:
+            errors.append(f"{job_location}: push_main is not a source event")
+    elif required_events:
+        errors.append(f"{job_location}: non-required job has required_events")
+
+
 def validate_catalog(
     catalog: dict[str, Any],
     *,
@@ -853,160 +1000,21 @@ def validate_catalog(
                 f"(catalog={sorted(catalog_job_ids)}, source={sorted(source_job_ids)})"
             )
         for job_id, job_entry in jobs.items():
-            job_location = f"{location}.jobs[{job_id!r}]"
-            source_job = source_jobs.get(job_id)
-            if not isinstance(source_job, dict):
-                errors.append(f"{job_location}: source job is not an object")
-                continue
-            if not isinstance(job_entry, dict):
-                errors.append(f"{job_location} must be an object")
-                continue
-            profile_name = job_entry.get("profile")
-            if not isinstance(profile_name, str):
-                errors.append(f"{job_location}.profile must be a string")
-                continue
-            try:
-                profile = _effective_profile(
-                    profile_name, profiles, location=job_location
-                )
-            except CatalogError as exc:
-                errors.append(str(exc))
-                continue
-            used_profiles.add(profile_name)
-            effective = _merge_job(profile, job_entry)
-            if profile.get("classification") == "required":
-                if effective.get("classification") != "required":
-                    errors.append(
-                        f"{job_location}: required profile classification "
-                        "cannot be weakened"
-                    )
-                inherited_events = set(profile.get("required_events") or [])
-                if not inherited_events.issubset(
-                    effective.get("required_events") or []
-                ):
-                    errors.append(
-                        f"{job_location}: required profile events cannot be removed"
-                    )
-            try:
-                expected_timeout = _job_timeout(
-                    source_job, reusable_timeouts=reusable_timeouts
-                )
-            except CatalogError as exc:
-                errors.append(f"{job_location}: {exc}")
-                continue
-            timeout = effective.get("expected_timeout_minutes")
-            if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout < 1:
-                errors.append(f"{job_location}.expected_timeout_minutes is invalid")
-            elif "runs-on" in source_job and timeout != expected_timeout:
-                errors.append(
-                    f"{job_location}: timeout differs from workflow "
-                    f"(catalog={timeout}, source={expected_timeout})"
-                )
-            duration = effective.get("expected_duration_seconds")
-            if (
-                not isinstance(duration, int)
-                or isinstance(duration, bool)
-                or duration < 1
-            ):
-                errors.append(f"{job_location}.expected_duration_seconds is invalid")
-            elif isinstance(timeout, int) and duration < timeout * 60:
-                errors.append(f"{job_location}: duration must cover timeout budget")
-            guard = effective.get("guard")
-            expected_job_guard = (
-                str(source_job["if"]) if "if" in source_job else "workflow trigger"
+            _validate_catalog_job(
+                job_id,
+                job_entry,
+                default_runbook=default_runbook,
+                errors=errors,
+                location=location,
+                profiles=profiles,
+                repository_root=repository_root,
+                reusable_timeouts=reusable_timeouts,
+                source_contexts=source_contexts,
+                source_events=source_events,
+                source_job_ids=source_job_ids,
+                source_jobs=source_jobs,
+                used_profiles=used_profiles,
             )
-            if guard != expected_job_guard:
-                errors.append(f"{job_location}.guard is stale")
-            expected_name = str(source_job.get("name", job_id))
-            if effective.get("check_name_template") != expected_name:
-                errors.append(f"{job_location}.check_name_template is stale")
-            source_needs = source_job.get("needs", [])
-            if isinstance(source_needs, str):
-                source_needs = [source_needs]
-            if not isinstance(source_needs, list) or not all(
-                isinstance(need, str) and need for need in source_needs
-            ):
-                errors.append(f"{job_location}: source needs must be a list of job IDs")
-            else:
-                if job_entry.get("needs") != source_needs:
-                    errors.append(
-                        f"{job_location}: needs differs from workflow "
-                        f"(catalog={job_entry.get('needs')!r}, source={source_needs!r})"
-                    )
-                if len(source_needs) != len(set(source_needs)):
-                    errors.append(
-                        f"{job_location}: duplicate dependency in source needs"
-                    )
-                for need in source_needs:
-                    if need == job_id:
-                        errors.append(
-                            f"{job_location}: self-dependency in source needs"
-                        )
-                    elif need not in source_job_ids:
-                        errors.append(
-                            f"{job_location}: unknown job in source needs: {need!r}"
-                        )
-                try:
-                    for expression in _job_expressions(source_job):
-                        for reference in _needs_references(expression):
-                            if reference is None:
-                                errors.append(
-                                    f"{job_location}: dynamic needs reference is unsupported"
-                                )
-                            elif reference not in source_needs:
-                                errors.append(
-                                    f"{job_location}: undeclared needs reference: {reference!r}"
-                                )
-                except CatalogError as exc:
-                    errors.append(f"{job_location}: {exc}")
-            source_contexts.add(expected_name)
-            errors.extend(
-                _matrix_governance_errors(source_job, job_entry, job_location)
-            )
-            try:
-                runbook = effective.get("runbook", default_runbook)
-                _repo_file(runbook, repository_root, f"{job_location}.runbook")
-            except CatalogError as exc:
-                errors.append(str(exc))
-            retry_policy = effective.get("retry_policy")
-            if not isinstance(retry_policy, dict):
-                errors.append(f"{job_location}.retry_policy is missing")
-            elif _is_retry_candidate(source_job) and retry_policy.get("mode") == "none":
-                errors.append(
-                    f"{job_location}: retry behavior is present but policy is declared none"
-                )
-            errors.extend(
-                _validate_artifacts(
-                    effective, _artifact_inventory(source_job), job_location
-                )
-            )
-            classification = effective.get("classification")
-            required_events = effective.get("required_events")
-            if classification == "required":
-                if not required_events:
-                    errors.append(
-                        f"{job_location}: required job has no required_events"
-                    )
-                elif not set(required_events).issubset(POLICY_EVENTS):
-                    errors.append(f"{job_location}: unsupported required event alias")
-                elif (
-                    "pull_request_main" in required_events
-                    and "pull_request" not in source_events
-                ):
-                    errors.append(
-                        f"{job_location}: pull_request_main is not a source event"
-                    )
-                elif (
-                    "pull_request_target_main" in required_events
-                    and "pull_request_target" not in source_events
-                ):
-                    errors.append(
-                        f"{job_location}: pull_request_target_main is not a source event"
-                    )
-                elif "push_main" in required_events and "push" not in source_events:
-                    errors.append(f"{job_location}: push_main is not a source event")
-            elif required_events:
-                errors.append(f"{job_location}: non-required job has required_events")
     if len(catalog_paths) != len(set(catalog_paths)):
         errors.append("catalog contains duplicate workflow paths")
     if set(catalog_paths) != source_paths:

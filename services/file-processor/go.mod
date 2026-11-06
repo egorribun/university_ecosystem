@@ -96,7 +96,7 @@ require (
 	github.com/golang/mock v1.6.0 // indirect
 	// github.com/google/uuid promoted to direct — used in main.go (FP-P2-02)
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
-	github.com/klauspost/compress v1.20.1 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect

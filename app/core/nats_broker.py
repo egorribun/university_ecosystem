@@ -654,7 +654,11 @@ class NatsTaskBroker:
 
         from app.core.database import async_session
         from app.tasks.email import AuthEmailPayloadError, prepare_auth_email_payload
-        from app.workers.dead_letter_queue import DeadLetterQueue, compute_job_hash
+        from app.workers.dead_letter_queue import (
+            DeadLetterQuarantineContentionError,
+            DeadLetterQueue,
+            compute_job_hash,
+        )
 
         try:
             _, logical = prepare_auth_email_payload(
@@ -668,6 +672,8 @@ class NatsTaskBroker:
             async with async_session() as session:
                 await DeadLetterQueue(session).quarantine_auth_payload(job_hash)
                 await session.commit()
+        except DeadLetterQuarantineContentionError:
+            _logger.error("nats_auth_payload_quarantine_contended")
         except (SQLAlchemyError, OSError) as exc:
             _logger.error(
                 "nats_auth_payload_quarantine_failed: task=%s id=%s err=%s",

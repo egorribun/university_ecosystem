@@ -63,6 +63,10 @@ class ScriptedWebSocket {
     mocks.parseWsMessage.mockReturnValueOnce(frame)
     this.onmessage?.({ data: "frame" } as MessageEvent)
   }
+
+  receiveRaw(raw: string) {
+    this.onmessage?.({ data: raw } as MessageEvent)
+  }
 }
 
 vi.mock("@/api/client", () => ({ default: { post: mocks.apiPost } }))
@@ -1204,6 +1208,295 @@ describe("new_message reconciliation", () => {
 })
 
 describe("frame side effects", () => {
+  it("rebuilds durable legacy state and fires the trailing refresh at the cooldown boundary", async () => {
+    const replayRoom = "00000000-0000-4000-8000-000000000050"
+    const { socket, invalidateQueries } = await connected({ currentUserId: "user-a" })
+
+    act(() => {
+      socket.receive({
+        type: "replay_checkpoint",
+        chat_id: replayRoom,
+        refresh_required: true,
+        stream_seq: 3,
+        resume_token: "legacy-3",
+        replayed: true,
+      })
+      socket.receive({
+        type: "replay_checkpoint",
+        chat_id: replayRoom,
+        refresh_required: true,
+        stream_seq: 4,
+        resume_token: "legacy-4",
+        replayed: true,
+      })
+    })
+    await flush()
+
+    expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
+      queryKey: ["messages", replayRoom],
+      refetchType: "active",
+    })
+    expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: ["chats"],
+      refetchType: "active",
+    })
+    expect(invalidateQueries).toHaveBeenCalledTimes(2)
+    expect(peekReplayCheckpoint("user-a", replayRoom)).toStrictEqual({
+      sequence: 4,
+      resumeToken: "legacy-4",
+    })
+
+    act(() =>
+      socket.receive({
+        type: "replay_checkpoint",
+        chat_id: replayRoom,
+        refresh_required: true,
+        stream_seq: 5,
+        resume_token: "legacy-5",
+        replayed: true,
+      })
+    )
+    await act(() => vi.advanceTimersByTimeAsync(59_999))
+    expect(invalidateQueries).toHaveBeenCalledTimes(2)
+
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    await flush()
+    expect(invalidateQueries).toHaveBeenNthCalledWith(3, {
+      queryKey: ["messages", replayRoom],
+      refetchType: "active",
+    })
+    expect(invalidateQueries).toHaveBeenNthCalledWith(4, {
+      queryKey: ["chats"],
+      refetchType: "active",
+    })
+    expect(invalidateQueries).toHaveBeenCalledTimes(4)
+    expect(peekReplayCheckpoint("user-a", replayRoom)).toStrictEqual({
+      sequence: 5,
+      resumeToken: "legacy-5",
+    })
+  })
+
+  it("uses REST recovery for a marked unsequenced Core NATS checkpoint without inventing a cursor", async () => {
+    const replayRoom = "00000000-0000-4000-8000-000000000051"
+    const { socket, invalidateQueries } = await connected({ currentUserId: "user-a" })
+
+    act(() =>
+      socket.receive({
+        type: "replay_checkpoint",
+        chat_id: replayRoom,
+        refresh_required: true,
+      })
+    )
+    await flush()
+
+    expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
+      queryKey: ["messages", replayRoom],
+      refetchType: "active",
+    })
+    expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: ["chats"],
+      refetchType: "active",
+    })
+    expect(invalidateQueries).toHaveBeenCalledTimes(2)
+    expect(peekReplayCheckpoint("user-a", replayRoom)).toBeUndefined()
+  })
+
+  it("does not lose queued checkpoint recovery when the socket disconnects", async () => {
+    const replayRoom = "00000000-0000-4000-8000-000000000052"
+    const { socket, invalidateQueries } = await connected({ currentUserId: "user-a" })
+
+    act(() => {
+      socket.receive({
+        type: "replay_checkpoint",
+        chat_id: replayRoom,
+        refresh_required: true,
+        stream_seq: 7,
+        resume_token: "legacy-7",
+        replayed: true,
+      })
+      socket.close(1006)
+    })
+    await flush()
+
+    expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
+      queryKey: ["messages", replayRoom],
+      refetchType: "active",
+    })
+    expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: ["chats"],
+      refetchType: "active",
+    })
+    expect(peekReplayCheckpoint("user-a", replayRoom)).toStrictEqual({
+      sequence: 7,
+      resumeToken: "legacy-7",
+    })
+  })
+
+  it("clears queued recovery with the old account instead of refreshing after an account switch", async () => {
+    const replayRoom = "00000000-0000-4000-8000-000000000057"
+    const session = await connected({ currentUserId: "user-a" })
+
+    act(() =>
+      session.socket.receive({
+        type: "replay_checkpoint",
+        chat_id: replayRoom,
+        refresh_required: true,
+        stream_seq: 11,
+        resume_token: "legacy-11",
+        replayed: true,
+      })
+    )
+    expect(peekReplayCheckpoint("user-a", replayRoom)?.sequence).toBe(11)
+
+    session.rerender({ enabled: true, currentUserId: "user-b" })
+    await flush()
+    await act(() => vi.advanceTimersByTimeAsync(60_000))
+
+    expect(session.invalidateQueries).not.toHaveBeenCalled()
+    expect(peekReplayCheckpoint("user-a", replayRoom)).toBeUndefined()
+    expect(peekReplayCheckpoint("user-b", replayRoom)).toBeUndefined()
+  })
+
+  it("marks a pending checkpoint recovery stale before clearing timers on unmount", async () => {
+    const replayRoom = "00000000-0000-4000-8000-000000000053"
+    const { socket, queryClient, invalidateQueries, unmount } = await connected({
+      currentUserId: "user-a",
+    })
+    queryClient.setQueryData(["messages", replayRoom], [])
+    queryClient.setQueryData(["chats"], [])
+
+    act(() =>
+      socket.receive({
+        type: "replay_checkpoint",
+        chat_id: replayRoom,
+        refresh_required: true,
+        stream_seq: 8,
+        resume_token: "legacy-8",
+        replayed: true,
+      })
+    )
+    act(() => unmount())
+
+    expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
+      queryKey: ["messages", replayRoom],
+      refetchType: "none",
+    })
+    expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: ["chats"],
+      refetchType: "none",
+    })
+    expect(queryClient.getQueryState(["messages", replayRoom])?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(["chats"])?.isInvalidated).toBe(true)
+  })
+
+  it("uses the actual Valibot parser for replay and live envelopes and refreshes only marked durable state", async () => {
+    const cursorRoom = "00000000-0000-4000-8000-000000000054"
+    const replayRoom = "00000000-0000-4000-8000-000000000055"
+    const coreRoom = "00000000-0000-4000-8000-000000000056"
+    const { socket, invalidateQueries } = await connected({ currentUserId: "user-a" })
+    const schema =
+      await vi.importActual<typeof import("@/api/schemas/wsMessage")>("@/api/schemas/wsMessage")
+    mocks.parseWsMessage.mockImplementation((raw) => schema.parseWsMessage(raw))
+
+    const cursorOnlyEnvelope = {
+      type: "replay_checkpoint",
+      room: cursorRoom,
+      seq: 9,
+      resume_token: "legacy-9",
+      replayed: true,
+      payload: { type: "replay_checkpoint", chat_id: cursorRoom },
+    }
+    const cursorOnly = schema.parseWsMessage(JSON.stringify(cursorOnlyEnvelope))
+    expect(cursorOnly).toMatchObject({
+      type: "replay_checkpoint",
+      chat_id: cursorRoom,
+      stream_seq: 9,
+      replayed: true,
+      resume_token: "legacy-9",
+    })
+    expect(cursorOnly).not.toHaveProperty("refresh_required")
+    act(() => socket.receiveRaw(JSON.stringify(cursorOnlyEnvelope)))
+    await flush()
+    expect(invalidateQueries).not.toHaveBeenCalled()
+    expect(peekReplayCheckpoint("user-a", cursorRoom)).toStrictEqual({
+      sequence: 9,
+      resumeToken: "legacy-9",
+    })
+
+    const replayEnvelope = {
+      type: "replay_checkpoint",
+      room: replayRoom,
+      seq: 10,
+      resume_token: "legacy-10",
+      replayed: true,
+      payload: {
+        type: "replay_checkpoint",
+        chat_id: replayRoom,
+        refresh_required: true,
+      },
+    }
+    expect(schema.parseWsMessage(JSON.stringify(replayEnvelope))).toMatchObject({
+      type: "replay_checkpoint",
+      chat_id: replayRoom,
+      refresh_required: true,
+      stream_seq: 10,
+      replayed: true,
+      resume_token: "legacy-10",
+    })
+    act(() => socket.receiveRaw(JSON.stringify(replayEnvelope)))
+    await flush()
+    expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
+      queryKey: ["messages", replayRoom],
+      refetchType: "active",
+    })
+    expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: ["chats"],
+      refetchType: "active",
+    })
+
+    const coreEnvelope = {
+      type: "new_message",
+      room: coreRoom,
+      payload: {
+        type: "replay_checkpoint",
+        chat_id: coreRoom,
+        refresh_required: true,
+      },
+    }
+    expect(schema.parseWsMessage(JSON.stringify(coreEnvelope))).toMatchObject({
+      type: "replay_checkpoint",
+      chat_id: coreRoom,
+      refresh_required: true,
+    })
+    act(() => socket.receiveRaw(JSON.stringify(coreEnvelope)))
+    await flush()
+    expect(invalidateQueries).toHaveBeenNthCalledWith(3, {
+      queryKey: ["messages", coreRoom],
+      refetchType: "active",
+    })
+    expect(invalidateQueries).toHaveBeenNthCalledWith(4, {
+      queryKey: ["chats"],
+      refetchType: "active",
+    })
+    expect(peekReplayCheckpoint("user-a", coreRoom)).toBeUndefined()
+
+    for (const invalidMarker of [false, "true", "persisted_state"]) {
+      expect(
+        schema.parseWsMessage(
+          JSON.stringify({
+            type: "replay_checkpoint",
+            room: replayRoom,
+            payload: {
+              type: "replay_checkpoint",
+              chat_id: replayRoom,
+              refresh_required: invalidMarker,
+            },
+          })
+        )
+      ).toBeNull()
+    }
+  })
+
   it.each([
     ["read", { user_id: "peer", read_at: null }],
     ["message_edited", { message_id: "m-1", content: "x", edited_at: "2026-08-25T12:00:00Z" }],
@@ -1257,7 +1550,7 @@ describe("frame side effects", () => {
     ["an expired resume token without a room", { code: "invalid_resume_token" }],
   ])("keeps the room checkpoint for %s", async (_label, fields) => {
     const { socket, result, invalidateQueries } = await connected({ currentUserId: "me" })
-    socket.receive({ type: "replay_checkpoint", chat_id: CHAT, stream_seq: 3, resume_token: "t3" })
+    act(() => writeReplayCheckpoint("me", CHAT, 3, "t3", CHAT))
     act(() => result.current.sendJoin(CHAT))
     const joinsBeforeError = sentJoins(socket).length
 

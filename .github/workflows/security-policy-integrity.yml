@@ -172,9 +172,11 @@ jobs:
               .github/scripts/deploy-helm.sh|.github/scripts/deploy-revocation-store.sh|\
               .github/scripts/validate_mfa_smoke_path.py|\
               .github/scripts/verify_mfa_key_rotation.py|\
+              .github/scripts/*|\
               scripts/osv_batch_audit.py|scripts/check_dependency_audit_report.py|\
               scripts/quality/dast_privacy.py|\
               scripts/quality/nuclei_findings_gate.py|\
+              scripts/quality/sqlmap_scan_gate.py|\
               scripts/quality/scorecard_floors_gate.py|\
               scripts/audit_dependencies.py|scripts/ci/helm_dependency_build.py|\
               frontend/scripts/generate-zod-root-lock-candidate.mjs|\
@@ -208,6 +210,11 @@ jobs:
               scripts/run_detect_secrets.py|scripts/secrets_baseline.py|\
               tests/test_immutable_policy_integrity_workflow.py|\
               tests/test_security_policy_integrity_snapshot_contract.py|\
+              scripts/quality/select_semgrep_rules.py|\
+              scripts/quality/semgrep_dispositions_gate.py|\
+              scripts/quality/run_semgrep_gate.py|\
+              scripts/quality/helm_rendered_target_overlay.py|\
+              scripts/quality/helm_semgrep_profile_registry.json|\
               scripts/quality/validate_semgrep_sarif.py)
                 protected_paths+=("$path")
                 ;;

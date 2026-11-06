@@ -61,6 +61,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $MyInvocation.MyCommand.Path))
 $LiveStateMode = -not [string]::IsNullOrWhiteSpace($LiveStandStateRoot)
 $StateRoot = $ProjectRoot
+$script:TemporalBootstrapRequested = $false
 $script:LiveStandOwner = $null
 $script:LiveAcceptanceRoots = @()
 $script:LiveAcceptanceServices = @()
@@ -157,6 +158,60 @@ function Get-TemporalDiagnosticSummary {
             "temporal_worker_scanner_auth=denied"
             $found = $true
             break
+        }
+    }
+    # A scanner workflow denial alone does not identify the fatal caller.
+    # Match one finite fatal tuple from Temporal 1.30.7; emit no source values.
+    foreach ($line in ($LogLines | Select-Object -First 50)) {
+        if ($line.Length -gt 16384) { continue }
+        $start = $line.IndexOf('{')
+        if ($start -lt 0) { continue }
+        $document = $null
+        try {
+            $document = [System.Text.Json.JsonDocument]::Parse($line.Substring($start))
+            if ($document.RootElement.ValueKind -ne [System.Text.Json.JsonValueKind]::Object) { continue }
+            $fields = @{}
+            $ambiguous = $false
+            foreach ($property in $document.RootElement.EnumerateObject()) {
+                if ($fields.ContainsKey($property.Name)) { $ambiguous = $true; break }
+                $fields[$property.Name] = $property.Value
+            }
+            if ($ambiguous) { continue }
+            $expected = @{
+                level = 'fatal'
+                msg = 'error starting scanner'
+                error = 'Request unauthorized.'
+            }
+            $matched = $true
+            foreach ($key in $expected.Keys) {
+                if ($fields.Keys -cnotcontains $key -or
+                    $fields[$key].ValueKind -ne [System.Text.Json.JsonValueKind]::String -or
+                    $fields[$key].GetString() -cne $expected[$key]) {
+                    $matched = $false
+                    break
+                }
+            }
+            # Observed official release builds preserve runtime.Caller's absolute path.
+            # Keep the caller vocabulary finite; do not accept arbitrary suffixes.
+            $callers = @(
+                'service/worker/service.go:314',
+                '/home/runner/work/temporal/temporal/service/worker/service.go:314'
+            )
+            if ($fields.Keys -cnotcontains 'logging-call-at' -or
+                $fields['logging-call-at'].ValueKind -ne [System.Text.Json.JsonValueKind]::String -or
+                $callers -cnotcontains $fields['logging-call-at'].GetString()) {
+                $matched = $false
+            }
+            if ($matched) {
+                "temporal_fatal=scanner_start_auth_denied"
+                $found = $true
+                break
+            }
+        } catch [System.Text.Json.JsonException] {
+            # Malformed records remain unclassified.
+            continue
+        } finally {
+            if ($null -ne $document) { $document.Dispose() }
         }
     }
     if (-not $found) { "temporal_logs=unrecognized" }
@@ -855,7 +910,20 @@ if ($LiveStateMode) {
     $inPlaceBootstrapOwner = $script:LiveStandOwner.version -eq 7 -or
         [string]$script:LiveStandOwner.stack -ceq 'full'
     if ($inPlaceBootstrapOwner -and -not $Down -and -not $Logs -and -not $Core -and -not $RefreshTrustedProxyPeers) {
+        $script:TemporalBootstrapRequested = $true
         Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        . (Join-Path $ProjectRoot 'scripts/temporal/bootstrap-functions.ps1')
+    }
+} elseif (-not $Down -and -not $Logs -and -not $Core -and -not $RefreshTrustedProxyPeers) {
+    $prepareManagedFull = $false
+    if ($PrepareOnly -and @($ExtraCompose).Count -eq 1 -and
+        $ExtraCompose[0] -ceq 'docker-compose.live.yml' -and
+        (Test-Path -LiteralPath (Join-Path $ProjectRoot '.secrets/live-stand.json') -PathType Leaf)) {
+        $prepareOwner = Get-VerifiedLiveAcceptanceOwner
+        $prepareManagedFull = $prepareOwner.version -eq 7 -or [string]$prepareOwner.stack -ceq 'full'
+    }
+    if (-not $PrepareOnly -or $prepareManagedFull) {
+        $script:TemporalBootstrapRequested = $true
         . (Join-Path $ProjectRoot 'scripts/temporal/bootstrap-functions.ps1')
     }
 }
@@ -3364,7 +3432,7 @@ if ((Test-Path $EnvFile) -and (Test-Path $EnvCompose)) {
 }
 
 if ($PrepareOnly) {
-    if ($LiveStateMode -and $inPlaceBootstrapOwner) {
+    if ($script:TemporalBootstrapRequested) {
         # Bind an empty, identity-recorded file before the live owner signs the
         # resolved model. The later launch reopens and verifies this same file.
         $bootstrapLease = Enter-TemporalBootstrapLease -StateRoot $StateRoot
@@ -3385,9 +3453,9 @@ $resolvedComposeModel = Assert-ComposeConfiguration
 $hasLiveAcceptanceSelection = Assert-LiveAcceptanceSelection -ComposeModel $resolvedComposeModel
 $script:LiveAcceptanceCore = $hasLiveAcceptanceSelection -and
     $LiveAcceptanceStack -ceq "core"
-$inPlaceFullBootstrap = $LiveStateMode -and $hasLiveAcceptanceSelection -and
-    $LiveAcceptanceStack -ceq 'full'
-if ($inPlaceFullBootstrap) {
+$fullTemporalBootstrap = $script:TemporalBootstrapRequested -and
+    -not $script:LiveAcceptanceCore -and -not $Core
+if ($fullTemporalBootstrap) {
     Assert-InPlaceTemporalBootstrapModel -ComposeModel $resolvedComposeModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
 }
 if ($script:LiveAcceptanceCore -and $Core) {
@@ -3529,11 +3597,21 @@ if ($Rebuild) {
 
 # -- Start services -----------------------------------------------------------
 
-if ($inPlaceFullBootstrap) {
+if ($fullTemporalBootstrap) {
     # Pull/start Temporal's dependency closure before issuing the five-minute
     # admin credential. This also pulls the initializer's pinned image.
-    Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
-    Write-Status 'Starting the signed Temporal dependency closure...'
+    if ($LiveStateMode) {
+        Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+    }
+    # A previously created full-stack file processor may still be running with
+    # the legacy broad .secrets bind. Stop this owned Compose service before
+    # starting the authenticated bootstrap or inspecting running peers.
+    Write-Status 'Stopping the existing file processor before Temporal bootstrap...'
+    docker compose @ComposeArgs --env-file $EnvFile stop file-processor
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Existing file processor could not be stopped; namespace bootstrap was not issued.'
+    }
+    Write-Status 'Starting the Temporal dependency closure...'
     docker compose @ComposeArgs --env-file $EnvFile up --wait --wait-timeout 300 temporal
     if ($LASTEXITCODE -ne 0) {
         Write-TemporalStartupDiagnostic -ComposeArgs $ComposeArgs -EnvFile $EnvFile
@@ -3555,13 +3633,17 @@ if ($inPlaceFullBootstrap) {
 
         # Recheck source, model, actual local image/container IDs and physical
         # volume backing immediately before mint; do not print inspect output.
-        Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        if ($LiveStateMode) {
+            Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        }
         $bootstrapModel = Assert-ComposeConfiguration
         $null = Assert-LiveAcceptanceSelection -ComposeModel $bootstrapModel
         Assert-InPlaceTemporalBootstrapModel -ComposeModel $bootstrapModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
         Assert-InPlaceTemporalBootstrapVolumeSafety -ComposeModel $bootstrapModel
         Assert-TemporalBootstrapIdentity -Lease $bootstrapLease -RequirePath -RequireSingleLink
-        Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        if ($LiveStateMode) {
+            Assert-InPlaceTemporalBootstrapSource -SourceSha ([string]$script:LiveStandOwner.source_sha) -Repository $ProjectRoot
+        }
         Assert-TemporalBootstrapIdentity -Lease $bootstrapLease -RequirePath -RequireSingleLink
         $initializerId = Assert-InPlaceTemporalBootstrapRuntime -ComposeModel $bootstrapModel -StateRoot $StateRoot -ProjectRoot $ProjectRoot
         New-TemporalBootstrapProfile -PrivateKeyPath (Resolve-StatePath '.secrets/jwt_rs256.pem') -Lease $bootstrapLease

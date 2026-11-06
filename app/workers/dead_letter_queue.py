@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import html
 import inspect
 import json
 import random
@@ -19,7 +20,7 @@ import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
-from urllib.parse import quote, unquote
+from urllib.parse import unquote
 
 from sqlalchemy import (
     delete,
@@ -95,20 +96,46 @@ def _protect_retained_auth_payload(job: DeadLetterJob) -> None:
 # Unprotectable retained auth bytes may hold a plaintext link, so they are replaced
 # with a constant that matches no auth task shape. Identity and retry state stay.
 _QUARANTINED_AUTH_PAYLOAD = json.dumps({"kind": "auth-email-quarantined-v1"})
+_AUTH_QUARANTINE_CAS_ATTEMPTS = 3
 
 # Same rule as the DLQ token-scrub migration: error text that echoes a plaintext
-# ``#token=`` / ``?token=`` link is replaced, so no error field keeps the link.
-# The separator and the ``=`` may also arrive percent-encoded or as HTML
-# entities, and the parameter name may vary in case; each form is a live link.
+# token link is replaced. Normalize common transport encodings before matching;
+# errors can contain HTML, JSON-string, or multiply percent-encoded URLs.
+_JSON_URL_ESCAPES = re.compile(r"\\u00(?:23|26|3f|3d)", re.IGNORECASE)
 _PLAINTEXT_TOKEN_LINK = re.compile(
-    r"(?:[#?&]|%23|%3f|%26|&amp;|&#0*38;|&#x0*26;)token(?:=|%3d|&#0*61;|&#x0*3d;)"
-    r"[^\s&\"'<>]+",
+    r"(?:^|[\s#?&;])token\s*=\s*[^\s&;\"'<>]+",
     re.IGNORECASE,
 )
 
 
-# The token parameter of a reset or verification link, plain or percent-encoded.
-_LINK_TOKEN_VALUE = re.compile(r"[#?&]token=([^&#\s]+)", re.IGNORECASE)
+# The token parameter of a reset or verification link after normalization.
+_LINK_TOKEN_VALUE = re.compile(r"(?:^|[#?&;])token=([^&#;\s]+)", re.IGNORECASE)
+
+
+def _decode_token_link_text(value: str) -> str | None:
+    """Decode bounded URL/HTML/JSON escaping, or flag a nonconverged input."""
+    decoded = value
+    for _ in range(8):
+        normalized = _JSON_URL_ESCAPES.sub(
+            lambda match: chr(int(match.group(0)[2:], 16)), decoded
+        )
+        normalized = html.unescape(normalized)
+        normalized = unquote(normalized)
+        if normalized == decoded:
+            return decoded
+        decoded = normalized
+    # Probe convergence without returning the partially decoded eighth result.
+    probe = _JSON_URL_ESCAPES.sub(
+        lambda match: chr(int(match.group(0)[2:], 16)), decoded
+    )
+    probe = html.unescape(probe)
+    probe = unquote(probe)
+    return decoded if probe == decoded else None
+
+
+def _contains_plaintext_token_link(value: str) -> bool:
+    decoded = _decode_token_link_text(value)
+    return decoded is None or _PLAINTEXT_TOKEN_LINK.search(decoded) is not None
 
 
 class DeadLetterPlaintextLinkError(ValueError):
@@ -118,7 +145,16 @@ class DeadLetterPlaintextLinkError(ValueError):
         super().__init__("Dead-letter payload carries a plaintext token link")
 
 
-def _auth_link_tokens(job_type: str, stored_payload: str) -> tuple[str, ...]:
+class DeadLetterQuarantineContentionError(RuntimeError):
+    """A bounded quarantine pass could not classify a persistently changing row."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "Auth payload quarantine did not converge after bounded retries"
+        )
+
+
+def _auth_link_tokens(job_type: str, stored_payload: str) -> tuple[str | None, ...]:
     """Return the token values carried by a stored auth payload's link.
 
     Only the error scrub uses these values, so a token that an error repeats
@@ -139,23 +175,34 @@ def _auth_link_tokens(job_type: str, stored_payload: str) -> tuple[str, ...]:
         if bound.arguments.get("encrypted_link", False) is True:
             link = _read_auth_email_link(link, _token_hmac_secret())[0]
     except Exception:  # RZ-22-01-JUSTIFIED: unreadable row yields no extra scrub values
-        return ()
+        return (None,)
     if not isinstance(link, str):
-        return ()
+        return (None,)
+    normalized_link = _decode_token_link_text(link)
+    if normalized_link is None:
+        # Preserve an explicit fail-closed signal for error scrubbing; an empty
+        # token set would make a standalone echoed token appear safe.
+        return (None,)
     return tuple(
         sorted(
-            {unquote(match.group(1)) for match in _LINK_TOKEN_VALUE.finditer(link)}
+            {match.group(1) for match in _LINK_TOKEN_VALUE.finditer(normalized_link)}
             - {""}
         )
     )
 
 
-def _scrub_error_text(error: str, tokens: tuple[str, ...] = ()) -> str:
+def _scrub_error_text(error: str, tokens: tuple[str | None, ...] = ()) -> str:
     """Return the error text unless it echoes a token link or a known token."""
-    if _PLAINTEXT_TOKEN_LINK.search(error):
+    normalized_error = _decode_token_link_text(error)
+    if normalized_error is None or _PLAINTEXT_TOKEN_LINK.search(normalized_error):
         return _QUARANTINED_AUTH_PAYLOAD
     for token in tokens:
-        if token in error or quote(token, safe="") in error:
+        if token is None:
+            return _QUARANTINED_AUTH_PAYLOAD
+        normalized_token = _decode_token_link_text(token)
+        if normalized_token is None:
+            return _QUARANTINED_AUTH_PAYLOAD
+        if normalized_token and normalized_token in normalized_error:
             return _QUARANTINED_AUTH_PAYLOAD
     return error
 
@@ -166,7 +213,7 @@ def _reject_plaintext_link(stored_payload: str) -> None:
     Auth payloads are sealed before this check, so it only fails for another
     job type that carries such a link, or for an auth payload that was not sealed.
     """
-    if _PLAINTEXT_TOKEN_LINK.search(stored_payload):
+    if _contains_plaintext_token_link(stored_payload):
         raise DeadLetterPlaintextLinkError()
 
 
@@ -212,8 +259,9 @@ class DeadLetterQueue:
         tokens = _auth_link_tokens(job_type, stored_payload)
         # A non-auth payload that still carries a plaintext link is recorded as a
         # quarantined row: the failure stays on record, and it is never replayed.
-        quarantine = job_type != _AUTH_EMAIL_JOB_TYPE and bool(
-            _PLAINTEXT_TOKEN_LINK.search(stored_payload)
+        quarantine = (
+            job_type != _AUTH_EMAIL_JOB_TYPE
+            and _contains_plaintext_token_link(stored_payload)
         )
 
         # Duplicate check: skip only while a retry for this payload is queued.
@@ -378,23 +426,61 @@ class DeadLetterQueue:
     async def quarantine_auth_payload(self, job_hash: str) -> bool:
         """Replace an unprotectable retained auth payload, as a compare-and-set.
 
-        The stored row is read again here and judged on those bytes. Only that
-        exact payload is replaced (``WHERE payload = <observed bytes>``), so a
-        row that another writer changed after it was read is never overwritten
-        on a stale judgement. A row that is protectable now, or is not auth
-        work, is left alone. Returns whether this call replaced the bytes.
+        The stored row is read again here and judged on those bytes. Each
+        compare-and-set is bound to the observed type and payload; a bounded
+        retry handles a concurrent payload change without writing from stale
+        state. Every invalid row's current error is tombstoned without sending
+        the old text back as a query parameter. A protectable row or non-auth
+        row is left alone. Returns whether this call replaced the bytes, or
+        raises a generic contention error if bounded CAS attempts leave the
+        current auth payload unprotectable.
 
-        Only the stored bytes, and any error text that echoes a link, change.
-        The row keeps its id, hash, status, retry budget and schedule, so every
-        later replay still fails closed.
+        The row keeps its id, hash, status, retry budget and schedule; only its
+        payload and error are tombstoned, with the model updating ``updated_at``.
         """
+        for _ in range(_AUTH_QUARANTINE_CAS_ATTEMPTS):
+            row = (
+                await self.session.execute(
+                    select(
+                        DeadLetterJob.job_type,
+                        DeadLetterJob.job_hash,
+                        DeadLetterJob.payload,
+                    ).where(DeadLetterJob.job_hash == job_hash)
+                )
+            ).one_or_none()
+            if row is None or row.job_type != _AUTH_EMAIL_JOB_TYPE:
+                return False
+            if (
+                _protected_auth_payload_bytes(row.job_type, row.job_hash, row.payload)
+                is not None
+            ):
+                return False
+
+            values: dict[str, str] = {
+                "payload": _QUARANTINED_AUTH_PAYLOAD,
+                "error_message": _QUARANTINED_AUTH_PAYLOAD,
+            }
+            predicates = [
+                DeadLetterJob.job_hash == job_hash,
+                DeadLetterJob.job_type == _AUTH_EMAIL_JOB_TYPE,
+                DeadLetterJob.payload == row.payload,
+            ]
+
+            result = await self.session.execute(
+                update(DeadLetterJob).where(*predicates).values(**values)
+            )
+            if getattr(result, "rowcount", 0):
+                return True
+
+        # A lost compare-and-set is benign when the row disappeared or became
+        # protectable. If it remains auth work with invalid bytes, expose a
+        # generic bounded-contention failure so callers can retry and report it.
         row = (
             await self.session.execute(
                 select(
                     DeadLetterJob.job_type,
                     DeadLetterJob.job_hash,
                     DeadLetterJob.payload,
-                    DeadLetterJob.error_message,
                 ).where(DeadLetterJob.job_hash == job_hash)
             )
         ).one_or_none()
@@ -405,21 +491,7 @@ class DeadLetterQueue:
             is not None
         ):
             return False
-
-        values: dict[str, str] = {"payload": _QUARANTINED_AUTH_PAYLOAD}
-        if row.error_message is not None:
-            scrubbed = _scrub_error_text(row.error_message)
-            if scrubbed != row.error_message:
-                values["error_message"] = scrubbed
-        result = await self.session.execute(
-            update(DeadLetterJob)
-            .where(
-                DeadLetterJob.job_hash == job_hash,
-                DeadLetterJob.payload == row.payload,
-            )
-            .values(**values)
-        )
-        return bool(getattr(result, "rowcount", 0))
+        raise DeadLetterQuarantineContentionError() from None
 
     async def auto_replay_jobs(
         self,
@@ -517,6 +589,12 @@ class DeadLetterQueue:
                                     str(exc),
                                     _auth_link_tokens(job.job_type, job.payload),
                                 )
+                                if isinstance(exc, DeadLetterQuarantineContentionError):
+                                    logger.error(
+                                        "DB DLQ auth payload quarantine contended: job_id=%d",
+                                        job.id,
+                                    )
+                                    error_msg = str(exc)
                                 retry_count = int(getattr(job, "retry_count", 0))
                                 max_retries = int(getattr(job, "max_retries", 3))
 

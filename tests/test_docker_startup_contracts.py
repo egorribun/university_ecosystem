@@ -19,6 +19,11 @@ from tests.test_helm_staging_contract import _resolved_staging_args
 def _find_repo_root() -> Path:
     current = Path(__file__).resolve().parent
     for parent in [current, *current.parents]:
+        if (
+            parent.name == "candidate"
+            and parent.parent.name == "temporal-full-auth-luna"
+        ):
+            return parent
         if parent.name == "mutants":
             continue
         if (parent / "pyproject.toml").exists() and (parent / "charts").exists():
@@ -27,6 +32,7 @@ def _find_repo_root() -> Path:
 
 
 ROOT = _find_repo_root()
+REPOSITORY_ROOT = ROOT
 PROMETHEUS_IMAGE = (
     "prom/prometheus:v3.15.0@"
     "sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e"
@@ -787,6 +793,25 @@ def test_compose_wrappers_always_use_the_full_stack_env_file() -> None:
         assert "docker-compose.full.yml" in wrapper
 
 
+def test_direct_full_compose_bootstrap_fails_closed_without_launcher_lease() -> None:
+    # The wrappers pass through to Compose and do not mint credentials. Their
+    # first-run behavior therefore depends on the initializer's no-create binds.
+    for wrapper_path in ("scripts/dc.ps1", "scripts/dc.sh"):
+        wrapper = (REPOSITORY_ROOT / wrapper_path).read_text(encoding="utf-8")
+        assert "docker compose" in wrapper.lower()
+        assert "New-TemporalBootstrapProfile" not in wrapper
+        assert "temporal operator namespace create" not in wrapper
+
+    for compose_path in ("docker-compose.yml", "docker-compose.full.yml"):
+        init = _compose(compose_path)["services"]["temporal-namespace-init"]
+        profile = next(
+            mount
+            for mount in init["volumes"]
+            if mount["target"] == "/run/temporal-bootstrap/profile.toml"
+        )
+        assert profile["bind"]["create_host_path"] is False
+
+
 def test_start_script_waits_for_the_full_stack_without_auto_removing_containers() -> (
     None
 ):
@@ -803,7 +828,7 @@ def test_start_script_waits_for_the_full_stack_without_auto_removing_containers(
     selection_block = script[selection_start:selection_end]
 
     start_services = script[script.index("# -- Start services") : services_start]
-    initializer_start = start_services.index("if ($inPlaceFullBootstrap) {")
+    initializer_start = start_services.index("if ($fullTemporalBootstrap) {")
     long_lived_start = start_services.index(
         "\nif ($script:LiveAcceptanceCore) {", initializer_start
     )
@@ -1152,7 +1177,18 @@ def test_temporal_waits_for_its_healthy_jwks_source() -> None:
 def test_rs256_backend_mounts_the_launcher_managed_keypair() -> None:
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
         backend = _compose(relative_path)["services"]["backend"]
-        assert "./.secrets:/app/.secrets:ro" in backend["volumes"]
+        assert {
+            "type": "bind",
+            "source": "./.secrets/jwt_rs256.pem",
+            "target": "/app/.secrets/jwt_rs256.pem",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        } in backend["volumes"]
+        assert not any(
+            volume.get("source") == "./.secrets"
+            for volume in backend["volumes"]
+            if isinstance(volume, dict)
+        )
 
 
 def test_file_processor_exports_traces_to_tempo() -> None:
@@ -1273,16 +1309,37 @@ def test_full_stack_observability_is_wired_end_to_end() -> None:
 
 
 def test_temporal_namespace_init_is_quietly_idempotent() -> None:
+    init_script = _read("scripts/temporal/namespace-init.sh")
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
-        command = _compose(relative_path)["services"]["temporal-namespace-init"][
-            "command"
-        ][0]
-
-        cluster_health = command.index("temporal operator cluster health")
-        describe = command.index("temporal operator namespace describe")
-        create = command.index("temporal operator namespace create")
-        assert cluster_health < describe < create
-        assert "stabilization" in command
+        service = _compose(relative_path)["services"]["temporal-namespace-init"]
+        assert service["entrypoint"] == ["/bin/sh", "/etc/temporal/namespace-init.sh"]
+        assert service["command"] == []
+        assert service["network_mode"] == "service:temporal"
+        assert "networks" not in service
+        assert service.get("environment", {}) == {}
+        assert service["user"] == "1000:1000"
+        assert service["read_only"] is True
+        assert service["cap_drop"] == ["ALL"]
+        assert service["security_opt"] == ["no-new-privileges:true"]
+        assert {mount["target"] for mount in service["volumes"]} == {
+            "/etc/temporal/namespace-init.sh",
+            "/run/temporal-bootstrap/profile.toml",
+            "/run/temporal-worker/token",
+        }
+        assert all(
+            mount["type"] == "bind"
+            and mount["read_only"] is True
+            and mount["bind"]["create_host_path"] is False
+            for mount in service["volumes"]
+        )
+        assert (
+            "env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/tmp temporal" in init_script
+        )
+        assert "127.0.0.1:7233" in init_script
+        assert '--config-file "$worker_profile"' in init_script
+        assert '--config-file "$profile"' in init_script
+        assert "operator namespace create" in init_script
+        assert "exit 0" in init_script
 
 
 def test_temporal_frontend_binds_every_attached_compose_network() -> None:
@@ -1293,13 +1350,82 @@ def test_temporal_frontend_binds_every_attached_compose_network() -> None:
         namespace_init = services["temporal-namespace-init"]
 
         assert temporal["environment"]["BIND_ON_IP"] == "0.0.0.0"  # noqa: S104
-        assert set(temporal["networks"]) & set(namespace_init["networks"])
+        assert namespace_init["network_mode"] == "service:temporal"
+        assert "networks" not in namespace_init
+    base_temporal_networks = set(
+        _compose("docker-compose.yml")["services"]["temporal"]["networks"]
+    )
+    for relative_path in ("docker-compose.full.yml", "docker-compose.go.yml"):
+        services = _compose(relative_path)["services"]
+        temporal_networks = set(services.get("temporal", {}).get("networks", {}))
+        if not temporal_networks:
+            temporal_networks = base_temporal_networks
+        assert temporal_networks & set(services["file-processor"]["networks"])
 
     temporal_config = yaml.safe_load(_read("services/temporal/config.yaml"))
-    for service in ("frontend", "matching", "history", "worker"):
+    rpc = temporal_config["services"]["frontend"]["rpc"]
+    assert rpc["bindOnLocalHost"] is False
+    assert rpc["bindOnIP"] == "0.0.0.0"  # noqa: S104 - the authenticated public frontend
+    # Internal services share the container. Only loopback can reach them, so
+    # the unauthenticated internal-frontend is never on another container's network.
+    for service in ("internal-frontend", "matching", "history", "worker"):
         rpc = temporal_config["services"][service]["rpc"]
         assert rpc["bindOnLocalHost"] is False
-        assert rpc["bindOnIP"] == "0.0.0.0"  # noqa: S104
+        assert rpc["bindOnIP"] == "127.0.0.1"
+    assert temporal_config["global"]["membership"]["broadcastAddress"] == "127.0.0.1"
+
+
+def test_temporal_runs_internal_frontend_for_the_worker_system_client() -> None:
+    """Without internal-frontend the scanner's system client uses the auth-gated public port."""
+    temporal_config = yaml.safe_load(_read("services/temporal/config.yaml"))
+    services = temporal_config["services"]
+    authorization = temporal_config["global"]["authorization"]
+    assert authorization["claimMapper"] == "default"
+    assert authorization["authorizer"] == "default"
+    assert authorization["audience"] == "temporal"
+    assert authorization["jwtKeyProvider"]["keySourceURIs"] == ["${TEMPORAL_JWKS_URL}"]
+
+    internal_ports = {
+        str(port)
+        for name, spec in services.items()
+        if name != "frontend"
+        for port in (
+            spec["rpc"]["grpcPort"],
+            spec["rpc"]["membershipPort"],
+        )
+    }
+    internal_http_port = services["internal-frontend"]["rpc"].get("httpPort")
+    if internal_http_port:
+        internal_ports.add(str(internal_http_port))
+
+    for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
+        temporal = _compose(relative_path)["services"]["temporal"]
+        assert temporal["environment"]["TEMPORAL_SERVICES"] == (
+            "frontend,history,matching,worker,internal-frontend"
+        )
+        assert temporal["environment"]["TEMPORAL_JWKS_URL"].startswith("https://")
+        ca_volume = (
+            "temporal_jwks_ca"
+            if relative_path == "docker-compose.yml"
+            else "temporal-jwks-ca"
+        )
+        assert set(temporal["volumes"]) == {
+            "./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro",
+            "./services/temporal/entrypoint.sh:/etc/temporal/wave144-entrypoint.sh:ro",
+            f"{ca_volume}:/etc/temporal/jwks-ca:ro",
+        }
+        published_ports = temporal.get("ports", [])
+        published_container_ports = set()
+        for declaration in published_ports:
+            assert isinstance(declaration, str)
+            host_ip, _host_port, container_port = declaration.split(":")
+            assert host_ip == "127.0.0.1"
+            published_container_ports.add(container_port)
+        assert published_container_ports <= {"7233", "7243"}
+        assert not internal_ports & published_container_ports
+
+    assert services["internal-frontend"]["rpc"]["grpcPort"] == 7236
+    assert "authorization" not in services["internal-frontend"]
 
 
 def test_postgres_database_bootstrap_is_cleanly_idempotent() -> None:
@@ -1829,7 +1955,25 @@ def test_file_processor_uses_prefixed_env_and_file_based_rs256_verification() ->
         assert all(
             not key.startswith(("NATS_", "MINIO_", "JWT_")) for key in environment
         )
-        assert "./.secrets:/app/.secrets:ro" in service["volumes"]
+        assert {
+            "type": "bind",
+            "source": "./.secrets/jwt_rs256.pub.pem",
+            "target": "/app/.secrets/jwt_rs256.pub.pem",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        } in service["volumes"]
+        assert {
+            "type": "bind",
+            "source": "./.secrets/temporal_api_key",
+            "target": "/app/.secrets/temporal_api_key",
+            "read_only": True,
+            "bind": {"create_host_path": False},
+        } in service["volumes"]
+        assert not any(
+            volume.get("source") == "./.secrets"
+            for volume in service["volumes"]
+            if isinstance(volume, dict)
+        )
 
         revocation_service = (
             "revocation-redis"
@@ -3254,6 +3398,16 @@ def test_docker_context_excludes_frontend_generated_artifacts() -> None:
         assert expected <= patterns
 
 
+def test_docker_context_excludes_temporal_bootstrap_credentials() -> None:
+    patterns = {
+        line.strip()
+        for line in _read(".dockerignore").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert {".temporal-bootstrap/", "**/.temporal-bootstrap/"} <= patterns
+
+
 def test_protobuf_generator_uses_the_repository_go_toolchain() -> None:
     dockerfile = _read("Dockerfile.protogen")
 
@@ -3492,10 +3646,72 @@ $scannerCategory = "temporal_worker_scanner_auth=denied"
 $scannerLine = 'temporal-1 | {"level":"error","msg":"error starting workflow","error":"Request unauthorized.","logging-call-at":"service/worker/scanner/scanner.go:270","stacktrace":"PRIVATE-MARKER-DO-NOT-EMIT"}'
 $fatalLine = 'temporal-1 | {"level":"fatal","msg":"error starting scanner","error":"Request unauthorized.","logging-call-at":"service/worker/service.go:314","stacktrace":"PRIVATE-MARKER-DO-NOT-EMIT"}'
 $summary = @(Get-TemporalDiagnosticSummary -LogLines @($scannerLine, $fatalLine, $scannerLine) -LogsAvailable $true)
-if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic,$scannerCategory") { throw "scanner category or existing category order incorrect" }
+if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic,$scannerCategory,temporal_fatal=scanner_start_auth_denied") { throw "scanner category or existing category order incorrect" }
 if (($summary -join "`n").Contains($privateMarker)) { throw "scanner record leaked" }
 $summary = @(Get-TemporalDiagnosticSummary -LogLines @($fatalLine) -LogsAvailable $true)
-if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic") { throw "fatal-only classification changed" }
+if (($summary -join ",") -cne "temporal_state=unavailable,temporal_signature=fatal_or_panic,temporal_fatal=scanner_start_auth_denied") { throw "fatal-only classification changed" }
+$fatalCategory = "temporal_fatal=scanner_start_auth_denied"
+$absoluteCaller = '/home/runner/work/temporal/temporal/service/worker/service.go:314'
+$absoluteFatalLine = $fatalLine.Replace('service/worker/service.go:314', $absoluteCaller)
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($absoluteFatalLine) -LogsAvailable $true)
+if ($summary -notcontains $fatalCategory) { throw "official absolute fatal caller not classified" }
+if (($summary -join "`n").Contains($privateMarker)) { throw "absolute fatal record leaked" }
+foreach ($caller in @(
+    ('prefix' + $absoluteCaller),
+    ($absoluteCaller + 'suffix'),
+    $absoluteCaller.Replace('/service/', '/../service/'),
+    $absoluteCaller.Replace('/worker/', '/Worker/'),
+    $absoluteCaller.Replace(':314', ':315'),
+    $absoluteCaller.Replace('service.go', 'scanner.go'),
+    '/different/build/service/worker/service.go:314',
+    ($absoluteCaller + '\n'),
+    ($absoluteCaller + '\r')
+)) {
+    $line = $fatalLine.Replace('service/worker/service.go:314', $caller)
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @($line) -LogsAvailable $true)
+    if ($summary -contains $fatalCategory) { throw "unrecognized fatal caller accepted" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "caller negative record leaked" }
+}
+# The bound includes the Compose prefix and measures PowerShell UTF-16 units.
+foreach ($length in @(16384, 16385)) {
+    $line = $absoluteFatalLine.Replace($privateMarker, $privateMarker + ('x' * ($length - $absoluteFatalLine.Length)))
+    if ($line.Length -ne $length) { throw "fatal length fixture incorrect" }
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @($line) -LogsAvailable $true)
+    if (($summary -contains $fatalCategory) -ne ($length -eq 16384)) { throw "fatal line length boundary incorrect" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "bounded fatal record leaked" }
+}
+foreach ($position in @(50, 51)) {
+    $lines = @('unrecognized PRIVATE-MARKER-DO-NOT-EMIT') * ($position - 1)
+    $lines += $absoluteFatalLine
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines $lines -LogsAvailable $true)
+    if (($summary -contains $fatalCategory) -ne ($position -eq 50)) { throw "fatal record count boundary incorrect" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "bounded record sequence leaked" }
+}
+
+$fatalNegatives = @(
+    $scannerLine,
+    $fatalLine.Replace('"level":"fatal"', '"level":"error"'),
+    $fatalLine.Replace('"msg":"error starting scanner"', '"msg":"different"'),
+    $fatalLine.Replace('Request unauthorized.', 'Request unauthorized. extra'),
+    $fatalLine.Replace('service.go:314', 'service.go:315'),
+    $fatalLine.Replace('"error":', '"Error":'),
+    $fatalLine.Replace('"error":"Request unauthorized."', '"error":null'),
+    $fatalLine.Replace('"level":"fatal"', '"level":"error","level":"fatal"'),
+    $fatalLine.Replace('"level":"fatal"', '"Level":"error","level":"fatal"'),
+    ('{"nested":' + $fatalLine.Substring($fatalLine.IndexOf('{')) + '}'),
+    $fatalLine.Substring(0, $fatalLine.Length - 1),
+    $fatalLine.Replace('PRIVATE-MARKER-DO-NOT-EMIT', ('x' * 16384))
+)
+foreach ($line in $fatalNegatives) {
+    $summary = @(Get-TemporalDiagnosticSummary -LogLines @($line) -LogsAvailable $true)
+    if ($summary -contains $fatalCategory) { throw "untrusted fatal tuple accepted" }
+    if (($summary -join "`n").Contains($privateMarker)) { throw "fatal private text leaked" }
+}
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($fatalLine, $fatalLine) -LogsAvailable $true)
+if (@($summary | Where-Object { $_ -ceq $fatalCategory }).Count -ne 1) { throw "duplicate fatal categories emitted" }
+$summary = @(Get-TemporalDiagnosticSummary -LogLines @($fatalLine) -LogsAvailable $false)
+if ($summary -contains $fatalCategory) { throw "unavailable fatal logs classified" }
+
 $reordered = 'temporal-1 | { "logging-call-at": "github.com/temporalio/temporal/service/worker/scanner/scanner.go:270", "error": "Request unauthorized." }'
 $summary = @(Get-TemporalDiagnosticSummary -LogLines @($reordered) -LogsAvailable $true)
 if ($summary -notcontains $scannerCategory) { throw "reordered scanner fields not classified" }

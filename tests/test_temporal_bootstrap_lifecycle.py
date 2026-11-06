@@ -46,11 +46,20 @@ $script:ProjectRoot = $State
 $script:ComposeArgs = @('-p', 'synthetic-owner', '-f', 'synthetic-compose.yml')
 $script:EnvFile = 'synthetic.env'
 $script:LiveStandOwner = [PSCustomObject]@{ version = 11; stack = 'full'; source_sha = ('a' * 40) }
-$script:LiveStateMode = $true
-$script:inPlaceFullBootstrap = ($Scenario -ne 'disabled')
+$script:LiveStateMode = $Scenario -notin @('ordinary_full', 'disabled') -and -not $Scenario.StartsWith('prepare_')
+$script:TemporalBootstrapRequested = $false
+$LiveStandStateRoot = if ($script:LiveStateMode) { Join-Path $State 'owned-state' } else { '' }
+$script:LiveAcceptanceCore = ($Scenario -eq 'core_bypass')
+$Core = ($Scenario -eq 'core_bypass')
+$Down = ($Scenario -eq 'down_bypass')
+$Logs = ($Scenario -eq 'logs_bypass')
+$RefreshTrustedProxyPeers = ($Scenario -eq 'refresh_bypass')
+$PrepareOnly = ($Scenario -eq 'disabled') -or $Scenario.StartsWith('prepare_')
+$ExtraCompose = @('docker-compose.live.yml')
 $script:sourceCount = 0
 $script:modelCount = 0
 $script:identityCount = 0
+$script:legacyFileProcessorRunning = ($Scenario -eq 'legacy_fp')
 $script:withinHelper = $false
 $script:failure = $false
 $script:failure_reason = ''
@@ -69,11 +78,13 @@ function Add-Event {
 }
 function Write-Status { param([string]$Message) }
 function Resolve-StatePath { param([string]$Path) Join-Path $State $Path }
+function Resolve-OwnedLiveStandStateRoot { param([string]$Path) return $State }
+function Get-VerifiedLiveAcceptanceOwner { return $script:LiveStandOwner }
 function Assert-InPlaceTemporalBootstrapSource {
     param([string]$SourceSha, [string]$Repository)
     $script:sourceCount++
     Add-Event 'source'
-    if ($Scenario -eq 'source_fail' -or ($Scenario -eq 'source_recheck_fail' -and $script:sourceCount -eq 2) -or ($Scenario -eq 'source_final_fail' -and $script:sourceCount -eq 3)) { throw 'synthetic source rejection' }
+    if ($Scenario -eq 'source_fail' -or ($Scenario -eq 'source_recheck_fail' -and $script:sourceCount -eq 3) -or ($Scenario -eq 'source_final_fail' -and $script:sourceCount -eq 4)) { throw 'synthetic source rejection' }
 }
 function Assert-ComposeConfiguration { Add-Event 'resolve'; return [PSCustomObject]@{} }
 function Assert-LiveAcceptanceSelection { param($ComposeModel) Add-Event 'selection'; return $true }
@@ -122,6 +133,7 @@ function Assert-TemporalBootstrapIdentity {
 function Assert-InPlaceTemporalBootstrapRuntime {
     param($ComposeModel, $StateRoot, $ProjectRoot)
     Add-Event 'runtime'
+    if ($script:legacyFileProcessorRunning) { throw 'legacy file processor remained running before peer inspection' }
     if ($Scenario -eq 'runtime_fail') { throw 'synthetic runtime rejection' }
     return ('b' * 64)
 }
@@ -158,6 +170,14 @@ function docker {
         Add-Event 'docker_diagnostic_logs' $arguments
         $global:LASTEXITCODE = if ($Scenario -eq 'dependency_logs_fail') { 12 } else { 0 }
         return "password authentication failed $script:privateMarker"
+    } elseif ($arguments[-2] -eq 'stop' -and $arguments[-1] -eq 'file-processor') {
+        Add-Event 'docker_stop_file_processor' $arguments
+        if ($Scenario -eq 'stop_fail') {
+            $global:LASTEXITCODE = 13
+        } else {
+            $script:legacyFileProcessorRunning = $false
+            $global:LASTEXITCODE = 0
+        }
     } elseif ($arguments[-1] -eq 'temporal') {
         Add-Event 'docker_dependency' $arguments
         $global:LASTEXITCODE = if ($Scenario -like 'dependency_*') { 8 } else { 0 }
@@ -170,27 +190,73 @@ $lines = [System.IO.File]::ReadAllLines($Launcher)
 $marker = -1
 for ($i = 0; $i -lt $lines.Length; $i++) { if ($lines[$i] -match '^# -- Start services') { $marker = $i + 1; break } }
 if ($marker -lt 0) { throw 'start-services marker missing' }
+$bootstrapAssignment = $ast.Find({param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Extent.Text.StartsWith('$fullTemporalBootstrap =')}, $true)
+if ($null -eq $bootstrapAssignment) { throw 'shared bootstrap selection missing' }
 $blocks = @($ast.FindAll({
     param($n)
     $n -is [System.Management.Automation.Language.IfStatementAst] -and
     $n.Extent.StartLineNumber -gt $marker -and
-    $n.Extent.Text.StartsWith('if ($inPlaceFullBootstrap)')
+    $n.Extent.Text.StartsWith('if ($fullTemporalBootstrap)')
 }, $true))
-if ($blocks.Count -ne 1) { throw 'expected one in-place bootstrap block' }
+if ($blocks.Count -ne 1) { throw 'expected one shared full bootstrap block' }
 try {
     if ($Scenario.StartsWith('prepare_')) {
+        $script:LiveStateMode = $false
+        $script:TemporalBootstrapRequested = $false
         $script:LiveStandOwner.version = if ($Scenario -eq 'prepare_v7') { 7 } else { 11 }
         $script:LiveStandOwner.stack = if ($Scenario -eq 'prepare_full') { 'full' } else { 'core' }
-        $assignment = $ast.Find({param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Extent.Text.StartsWith('$inPlaceBootstrapOwner =')}, $true)
-        $prepareGuard = $ast.Find({param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.Text.StartsWith('if ($LiveStateMode -and $inPlaceBootstrapOwner)')}, $true)
-        if ($null -eq $assignment -or $null -eq $prepareGuard) { throw 'prepare guard missing' }
-        Invoke-Expression $assignment.Extent.Text
-        Invoke-Expression $prepareGuard.Extent.Text
+        if ($Scenario -eq 'prepare_ordinary') {
+            Remove-Item -LiteralPath (Join-Path $State '.secrets/live-stand.json') -Force -ErrorAction SilentlyContinue
+        } else {
+            [System.IO.File]::WriteAllText((Join-Path $State '.secrets/live-stand.json'), '{}')
+        }
+        function Get-VerifiedLiveAcceptanceOwner { return $script:LiveStandOwner }
+        $projectScripts = Join-Path $State 'scripts/temporal'
+        New-Item -ItemType Directory -Path $projectScripts -Force | Out-Null
+        Copy-Item -LiteralPath $Helper -Destination (Join-Path $projectScripts 'bootstrap-functions.ps1')
+        $script:ProjectRoot = $State
+        $ProjectRoot = $State
+        $selection = $ast.Find({param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.StartLineNumber -ge 850 -and $n.Extent.StartLineNumber -le 855 -and $n.Extent.Text.StartsWith('if ($LiveStateMode)')}, $true)
+        $prepareLease = $ast.Find({param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.StartLineNumber -ge 3375 -and $n.Extent.StartLineNumber -le 3390 -and $n.Extent.Text.StartsWith('if ($script:TemporalBootstrapRequested)')}, $true)
+        if ($null -eq $selection -or $null -eq $prepareLease) { throw 'managed prepare selection or lease guard missing' }
+        Invoke-Expression $selection.Extent.Text
+        Invoke-Expression $bootstrapAssignment.Extent.Text
+        function Enter-TemporalBootstrapLease {
+            param([string]$StateRoot)
+            Add-Event 'enter'
+            $script:withinHelper = $true
+            try { $lease = & $script:realEnter -StateRoot $StateRoot } finally { $script:withinHelper = $false }
+            Add-Event 'entered'
+            return $lease
+        }
+        function Exit-TemporalBootstrapLease {
+            param($Lease)
+            Add-Event 'exit'
+            $script:withinHelper = $true
+            try { & $script:realExit -Lease $Lease } finally { $script:withinHelper = $false }
+            Add-Event 'exited'
+        }
+        Invoke-Expression $prepareLease.Extent.Text
     } else {
+        if ($Scenario -eq 'disabled') {
+            Remove-Item -LiteralPath (Join-Path $State '.secrets/live-stand.json') -Force -ErrorAction SilentlyContinue
+        }
+        $selection = $ast.Find({
+            param($n)
+            $n -is [System.Management.Automation.Language.IfStatementAst] -and
+            $n.Extent.Text.StartsWith('if ($LiveStateMode)') -and
+            $n.Extent.Text.Contains('$prepareManagedFull')
+        }, $true)
+        if ($null -eq $selection) { throw 'shared Temporal bootstrap selection condition missing' }
+        $selectionPath = Join-Path $State 'scripts/temporal/bootstrap-functions.ps1'
+        New-Item -ItemType Directory -Path (Split-Path -Parent $selectionPath) -Force | Out-Null
+        [System.IO.File]::WriteAllText($selectionPath, '# selection-only placeholder')
+        Invoke-Expression $selection.Extent.Text
+        Invoke-Expression $bootstrapAssignment.Extent.Text
         Invoke-Expression $blocks[0].Extent.Text | ForEach-Object { [void]$script:diagnostics.Add([string]$_) }
     }
 } catch { $script:failure = $true; $script:failure_reason = $_.Exception.Message }
-$payload = [PSCustomObject]@{ failed = $script:failure; reason = $script:failure_reason; events = @($script:events); diagnostics = @($script:diagnostics) } | ConvertTo-Json -Depth 6 -Compress
+$payload = [PSCustomObject]@{ failed = $script:failure; reason = $script:failure_reason; bootstrap_requested = $script:TemporalBootstrapRequested; full_bootstrap = [bool]$fullTemporalBootstrap; events = @($script:events); diagnostics = @($script:diagnostics) } | ConvertTo-Json -Depth 6 -Compress
 [System.IO.File]::WriteAllText($Receipt, $payload, [System.Text.UTF8Encoding]::new($false))
 """
 
@@ -270,9 +336,28 @@ class LauncherLifecycle(unittest.TestCase):
         self.assertTrue(self.profile.is_file())
         self.assertEqual(self.profile.read_bytes(), b"")
 
+    def test_normal_full_up_runs_after_shared_temporal_bootstrap(self):
+        script = PROPOSED.read_text(encoding="utf-8")
+        start = script.index("# -- Start services")
+        bootstrap = script.index("if ($fullTemporalBootstrap)", start)
+        core_selection = script.index("if ($script:LiveAcceptanceCore)", bootstrap)
+        full_start = script.index(
+            'Write-Status "Starting containers..."', core_selection
+        )
+        full_up = script.index(
+            "docker compose @ComposeArgs --env-file $EnvFile up -d\n", full_start
+        )
+        health_loop = script.index("# -- Health check loop", full_up)
+        self.assertLess(bootstrap, core_selection)
+        self.assertLess(core_selection, full_start)
+        self.assertLess(full_start, full_up)
+        self.assertLess(full_up, health_loop)
+
     def test_success_orders_creation_inspection_mint_start_and_wait(self):
         data = self.run_block("success")
         self.assertFalse(data["failed"], data)
+        self.assertTrue(data["bootstrap_requested"])
+        self.assertTrue(data["full_bootstrap"])
         self.assertEqual(data["diagnostics"], [])
         events = data["events"]
         names = [event["name"] for event in events]
@@ -280,6 +365,8 @@ class LauncherLifecycle(unittest.TestCase):
             names,
             [
                 "source",
+                "source",
+                "docker_stop_file_processor",
                 "docker_dependency",
                 "enter",
                 "entered",
@@ -312,6 +399,11 @@ class LauncherLifecycle(unittest.TestCase):
         self.assertEqual(
             first[-5:], ["up", "--wait", "--wait-timeout", "300", "temporal"]
         )
+        stop = events[names.index("docker_stop_file_processor")]["arguments"]
+        self.assertEqual(stop[-2:], ["stop", "file-processor"])
+        self.assertLess(
+            names.index("docker_stop_file_processor"), names.index("runtime")
+        )
         second = events[names.index("docker_create")]["arguments"]
         self.assertEqual(
             second[-8:],
@@ -335,6 +427,38 @@ class LauncherLifecycle(unittest.TestCase):
         self.assertNotIn("build", second)
         self.assertFalse(any("eyJ" in arg for arg in first + second))
 
+    def test_ordinary_full_uses_the_same_authenticated_sequence_without_live_owner(
+        self,
+    ):
+        data = self.run_block("ordinary_full")
+        self.assertFalse(data["failed"], data)
+        self.assertTrue(data["bootstrap_requested"])
+        self.assertTrue(data["full_bootstrap"])
+        names = [event["name"] for event in data["events"]]
+        self.assertNotIn("source", names)
+        self.assertIn("docker_stop_file_processor", names)
+        self.assertIn("docker_dependency", names)
+        self.assertIn("mint", names)
+        self.assertIn("bounded_start", names)
+        self.assertIn("bounded_wait", names)
+        self.assert_scrubbed()
+
+    def test_explicit_lifecycle_and_core_modes_skip_bootstrap(self):
+        for scenario in (
+            "disabled",
+            "core_bypass",
+            "down_bypass",
+            "logs_bypass",
+            "refresh_bypass",
+        ):
+            with self.subTest(scenario=scenario):
+                data = self.run_block(scenario)
+                self.assertFalse(data["failed"], data)
+                self.assertFalse(data["bootstrap_requested"])
+                self.assertFalse(data["full_bootstrap"])
+                self.assertEqual(data["events"], [])
+                self.assertFalse(self.profile.exists())
+
     def test_early_failures_issue_no_credential(self):
         for scenario in ("source_fail", "dependency_fail"):
             with self.subTest(scenario=scenario):
@@ -342,6 +466,29 @@ class LauncherLifecycle(unittest.TestCase):
                 self.assertTrue(data["failed"])
                 self.assertNotIn("enter", [e["name"] for e in data["events"]])
                 self.assertFalse(self.profile.exists())
+
+    def test_legacy_file_processor_is_stopped_before_bootstrap_peer_inspection(self):
+        data = self.run_block("legacy_fp")
+        self.assertFalse(data["failed"], data)
+        names = [event["name"] for event in data["events"]]
+        self.assertLess(
+            names.index("docker_stop_file_processor"), names.index("runtime")
+        )
+        self.assertIn("bounded_start", names)
+        self.assert_scrubbed()
+
+    def test_file_processor_stop_failure_fails_closed_before_credential_mint(self):
+        data = self.run_block("stop_fail")
+        self.assertTrue(data["failed"])
+        self.assertEqual(
+            data["reason"],
+            "Existing file processor could not be stopped; namespace bootstrap was not issued.",
+        )
+        names = [event["name"] for event in data["events"]]
+        self.assertIn("docker_stop_file_processor", names)
+        self.assertNotIn("docker_dependency", names)
+        self.assertNotIn("enter", names)
+        self.assertFalse(self.profile.exists())
 
     def test_dependency_failure_reports_only_scoped_safe_diagnostic(self):
         data = self.run_block("dependency_fail")
@@ -355,6 +502,8 @@ class LauncherLifecycle(unittest.TestCase):
             names,
             [
                 "source",
+                "source",
+                "docker_stop_file_processor",
                 "docker_dependency",
                 "docker_diagnostic_ps",
                 "docker_diagnostic_inspect",
@@ -490,12 +639,6 @@ class LauncherLifecycle(unittest.TestCase):
         self.assertNotEqual(first_digest, second_digest)
         self.assert_scrubbed()
 
-    def test_disabled_block_does_not_create_profile_or_start_services(self):
-        data = self.run_block("disabled")
-        self.assertFalse(data["failed"])
-        self.assertEqual(data["events"], [])
-        self.assertFalse(self.profile.exists())
-
     def test_signed_core_prepare_does_not_create_profile(self):
         data = self.run_block("prepare_core")
         self.assertFalse(data["failed"], data)
@@ -512,6 +655,12 @@ class LauncherLifecycle(unittest.TestCase):
                     ["enter", "entered", "exit", "exited"],
                 )
                 self.assert_scrubbed()
+
+    def test_prepare_without_a_managed_full_owner_skips_bootstrap_lease(self):
+        data = self.run_block("prepare_ordinary")
+        self.assertFalse(data["failed"], data)
+        self.assertEqual(data["events"], [])
+        self.assertFalse(self.profile.exists())
 
 
 if __name__ == "__main__":

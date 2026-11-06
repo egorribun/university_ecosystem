@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import PurePosixPath
 from typing import Any
 from uuid import UUID
 
@@ -60,6 +61,36 @@ def _volume(deployment: dict[str, Any], name: str) -> dict[str, Any] | None:
         (item for item in _pod_spec(deployment)["volumes"] if item["name"] == name),
         None,
     )
+
+
+def test_backend_gunicorn_home_uses_the_writable_tmp_mount() -> None:
+    resources = _render_staging(
+        "--set-string",
+        "global.environment=development",
+        "--set-string",
+        "backend.env.HOME=/home/app",
+    )
+    backend = _deployment(resources, "-backend")
+    pod_spec = _pod_spec(backend)
+    container = _main_container(backend)
+    home_entries = [item for item in container["env"] if item["name"] == "HOME"]
+    tmp_path = PurePosixPath("/", "tmp").as_posix()
+
+    assert home_entries == [{"name": "HOME", "value": tmp_path}]
+    assert container["securityContext"]["readOnlyRootFilesystem"] is True
+    assert pod_spec["securityContext"]["runAsNonRoot"] is True
+    assert pod_spec["securityContext"]["runAsUser"] == 10001
+
+    tmp_mount = next(
+        item for item in container["volumeMounts"] if item["name"] == "tmp"
+    )
+    assert tmp_mount["mountPath"] == tmp_path
+    assert tmp_mount.get("readOnly", False) is False
+    tmp_volume = _volume(backend, "tmp")
+    assert tmp_volume == {
+        "name": "tmp",
+        "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi"},
+    }
 
 
 def _backend_route_overrides() -> list[str]:

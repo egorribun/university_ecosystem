@@ -8,12 +8,14 @@ from pathlib import Path
 
 import pytest
 import yaml
+from defusedxml.common import DefusedXmlException
 
 ROOT = Path(__file__).resolve().parents[1]
 SELECTOR = (
     "tests/integration/test_migration_roundtrip.py::"
     "test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade"
 )
+HELPER = ROOT / ".github/scripts/verify_mvp_migration_boundary_receipt.py"
 
 
 def _workflow():
@@ -48,8 +50,17 @@ def _assert_boundary_job(job):
     assert "timeout --signal=TERM --kill-after=10s 480s" in run
     assert "pytest -n 0 -q --tb=short --timeout=420" in run
     assert '--junitxml="$receipt_root/junit.xml"' in run
-    assert "PY_BOUNDARY_RECEIPT" in run
+    assert (
+        "uv run --frozen --no-sync python -I "
+        ".github/scripts/verify_mvp_migration_boundary_receipt.py "
+        '"$receipt_root/junit.xml"'
+    ) in run
     assert "|| true" not in run
+    install_steps = [
+        step for step in job["steps"] if step.get("name") == "Install dependencies"
+    ]
+    assert len(install_steps) == 1
+    assert install_steps[0]["run"].strip() == "uv sync --frozen"
 
 
 def test_both_deploy_gates_prove_boundary_without_deployed_database_downgrade():
@@ -90,14 +101,8 @@ def test_boundary_dispatch_rejects_bypasses(defect):
 def test_boundary_receipt_requires_one_actual_success(
     tmp_path, monkeypatch, capsys, defect
 ):
-    run = _boundary_step(_workflow()["jobs"]["validate"])["run"]
-    body = run.split("<<'PY_BOUNDARY_RECEIPT'\n", 1)[1].split(
-        "\nPY_BOUNDARY_RECEIPT", 1
-    )[0]
-    script = tmp_path / "receipt.py"
-    script.write_text(body)
     report = tmp_path / "junit.xml"
-    monkeypatch.setattr(sys, "argv", [str(script), str(report)])
+    monkeypatch.setattr(sys, "argv", [str(HELPER), str(report)])
     case = (
         '<testcase classname="tests.integration.test_migration_roundtrip" '
         'name="test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade"/>'
@@ -105,7 +110,7 @@ def test_boundary_receipt_requires_one_actual_success(
     start = '<testsuites><testsuite tests="1" failures="0" errors="0" skipped="0">'
     end = "</testsuite></testsuites>"
     report.write_text(start + case + end)
-    runpy.run_path(str(script), run_name="__main__")
+    runpy.run_path(str(HELPER), run_name="__main__")
     assert capsys.readouterr().out == "MVP_BASELINE_BOUNDARY_VERIFIED_PASS 1\n"
     if defect in {"failure", "error", "skipped"}:
         case = case.replace("/>", f"><{defect}/></testcase>")
@@ -117,5 +122,24 @@ def test_boundary_receipt_requires_one_actual_success(
         case += case
     report.write_text(start + case + end)
     with pytest.raises(SystemExit):
-        runpy.run_path(str(script), run_name="__main__")
+        runpy.run_path(str(HELPER), run_name="__main__")
+    assert "VERIFIED_PASS" not in capsys.readouterr().out
+
+
+def test_boundary_receipt_rejects_internal_entity_declaration(
+    tmp_path, monkeypatch, capsys
+):
+    report = tmp_path / "junit.xml"
+    report.write_text(
+        '<!DOCTYPE testsuites [<!ENTITY payload "expanded">]>'
+        '<testsuites><testsuite tests="1" failures="0" errors="0" skipped="0">'
+        '<testcase classname="tests.integration.test_migration_roundtrip" '
+        'name="test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade">'
+        "&payload;</testcase></testsuite></testsuites>"
+    )
+    monkeypatch.setattr(sys, "argv", [str(HELPER), str(report)])
+
+    with pytest.raises(DefusedXmlException):
+        runpy.run_path(str(HELPER), run_name="__main__")
+
     assert "VERIFIED_PASS" not in capsys.readouterr().out

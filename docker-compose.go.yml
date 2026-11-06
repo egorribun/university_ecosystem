@@ -126,7 +126,18 @@ services:
       FP_OTLP_ENDPOINT: tempo:4317
       FP_OTLP_INSECURE: "true"
     volumes:
-      - ./.secrets:/app/.secrets:ro
+      - type: bind
+        source: ./.secrets/jwt_rs256.pub.pem
+        target: /app/.secrets/jwt_rs256.pub.pem
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./.secrets/temporal_api_key
+        target: /app/.secrets/temporal_api_key
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       nats:
         condition: service_healthy

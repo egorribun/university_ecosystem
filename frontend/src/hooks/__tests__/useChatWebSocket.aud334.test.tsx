@@ -929,3 +929,52 @@ it("keeps observed rejection debt through a transient disconnect before a stable
   }
   expect(vi.getTimerCount()).toBe(0)
 })
+
+it("bounds legacy generic rejections delayed across a room switch", async () => {
+  const session = await connect()
+  try {
+    writeReplayCheckpoint(USER, OTHER_ROOM, 9, "old-room-cursor", OTHER_ROOM)
+    writeReplayCheckpoint(USER, ROOM, 12, "active-room-cursor", OTHER_ROOM)
+
+    // The controller leaves the old room before joining the new one. A legacy
+    // generic rate-limit response delayed after these sends cannot identify
+    // whether the old leave or the new resume join was rejected.
+    act(() => {
+      session.result.current.sendJoin(OTHER_ROOM)
+      session.result.current.sendLeave(OTHER_ROOM)
+      session.result.current.sendJoin(ROOM)
+    })
+    expect(session.socket.send.mock.calls.map(([frame]) => JSON.parse(frame))).toStrictEqual([
+      { type: "join", room: OTHER_ROOM, resume_token: "old-room-cursor" },
+      { type: "leave", room: OTHER_ROOM },
+      { type: "join", room: ROOM, resume_token: "active-room-cursor" },
+    ])
+
+    await act(() => vi.advanceTimersByTimeAsync(5_000))
+    act(() => session.socket.receive({ type: "rate_limit_exceeded" }))
+    await act(() => vi.advanceTimersByTimeAsync(1_049))
+    expect(sentJoins(session.socket)).toHaveLength(2)
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(sentJoins(session.socket)).toStrictEqual([
+      { type: "join", room: OTHER_ROOM, resume_token: "old-room-cursor" },
+      { type: "join", room: ROOM, resume_token: "active-room-cursor" },
+      { type: "join", room: ROOM, resume_token: "active-room-cursor" },
+    ])
+
+    // Another uncorrelated rejection can consume the spent retry and close the
+    // transport; the next connection must still resume the current room.
+    act(() => session.result.current.sendLeave(OTHER_ROOM))
+    act(() => session.socket.receive({ type: "rate_limit_exceeded" }))
+    expect(session.socket.close).toHaveBeenCalledExactlyOnceWith(4002, "replay_unavailable")
+    await act(() => vi.advanceTimersByTimeAsync(500))
+    expect(AuditSocket.instances).toHaveLength(2)
+    const replacement = AuditSocket.instances[1]!
+    act(() => replacement.onopen?.())
+    expect(sentJoins(replacement)).toStrictEqual([
+      { type: "join", room: ROOM, resume_token: "active-room-cursor" },
+    ])
+  } finally {
+    session.unmount()
+  }
+  expect(vi.getTimerCount()).toBe(0)
+})

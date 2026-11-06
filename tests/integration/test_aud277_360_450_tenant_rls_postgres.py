@@ -26,7 +26,7 @@ owned_baseline_server = owned.owned_baseline_server
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.timeout(300, method="signal", func_only=False),
+    pytest.mark.timeout(300, method="thread", func_only=False),
     pytest.mark.skipif(
         os.getenv("RUN_INTEGRATION_TESTS") != "1",
         reason="Set RUN_INTEGRATION_TESTS=1 to run",
@@ -339,6 +339,82 @@ def test_ordinary_writes_are_stamped_with_the_session_tenant(
                 ).scalar()
                 == _TENANT_A
             )
+
+
+@pytest.mark.asyncio
+async def test_news_service_producer_is_stamped_and_rls_scoped(
+    rls_schema: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AUD-360: the mapped News producer is owned by its transaction tenant."""
+    from unittest.mock import MagicMock
+
+    from app.core.db.listeners import register_tenant_listeners
+    from app.core.tenant import bypass_rls_ctx, tenant_id_ctx
+    from app.models.news import News
+    from app.repositories.unit_of_work import uow_from_session
+    from app.schemas import schemas
+    from app.services.news_service import NewsService
+    from app.services.vector_service import VectorService
+
+    def suppress_outbox_event(_self: News, _event: object) -> None:
+        return None
+
+    monkeypatch.setattr(News, "record_event", suppress_outbox_event)
+    register_tenant_listeners()
+    engine = create_async_engine(
+        rls_schema.ordinary.set(drivername="postgresql+asyncpg", query={}),
+        poolclass=sa.pool.NullPool,
+        hide_parameters=True,
+        connect_args={"timeout": 5},
+    )
+    tenant_token = tenant_id_ctx.set(str(_TENANT_A))
+    bypass_token = bypass_rls_ctx.set(False)
+    news_id: uuid.UUID | None = None
+    try:
+        async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+            service = NewsService(
+                uow_from_session(session), vector_service=MagicMock(spec=VectorService)
+            )
+            record = await service.create_news(
+                schemas.NewsCreate(
+                    title="AUD-360 service ownership", content="trigger proof"
+                )
+            )
+            news_id = record.id
+    finally:
+        bypass_rls_ctx.reset(bypass_token)
+        tenant_id_ctx.reset(tenant_token)
+        await engine.dispose()
+
+    try:
+        assert news_id is not None
+        with _rolled_back(rls_schema.admin) as connection:
+            owner = connection.execute(
+                sa.text("SELECT tenant_id FROM news WHERE id = :id"),
+                {"id": news_id},
+            ).scalar_one_or_none()
+        assert owner == _TENANT_A
+
+        for tenant, expected in ((_TENANT_A, news_id), (_TENANT_B, None)):
+            with _rolled_back(rls_schema.ordinary) as connection:
+                with _application_context(connection, tenant=tenant):
+                    visible = connection.execute(
+                        sa.text("SELECT id FROM news WHERE id = :id"),
+                        {"id": news_id},
+                    ).scalar_one_or_none()
+            assert visible == expected
+    finally:
+        if news_id is not None:
+            cleanup_engine = _engine(rls_schema.admin)
+            try:
+                with cleanup_engine.begin() as connection:
+                    connection.execute(
+                        sa.text("DELETE FROM news WHERE id = :id"),
+                        {"id": news_id},
+                    )
+            finally:
+                cleanup_engine.dispose()
 
 
 def test_writes_cannot_target_another_tenant_or_escape_the_session(
@@ -660,3 +736,114 @@ async def test_bypass_scheduler_persists_owned_reminders_and_outbox_events(
             assert visible == [expected_user]
     finally:
         admin.dispose()
+
+
+def test_transaction_local_bypass_guc_is_cleared_by_rollback_on_same_backend(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """AUD-450: rollback clears caller-set local bypass GUC on a reused backend."""
+    engine = _engine(rls_schema.ordinary)
+    try:
+        with engine.connect() as connection:
+            first_transaction = connection.begin()
+            first_backend = connection.scalar(sa.text("SELECT pg_backend_pid()"))
+            try:
+                with _application_context(connection, tenant=_TENANT_A):
+                    connection.execute(
+                        sa.text("SELECT set_config('app.bypass_rls', 'on', true)")
+                    )
+                    assert (
+                        connection.execute(
+                            sa.text("SELECT current_setting('app.bypass_rls', true)")
+                        ).scalar_one()
+                        == "on"
+                    )
+                    # The ordinary role cannot turn a caller-controlled GUC into
+                    # cross-tenant or NULL-tenant visibility.
+                    assert _ids(connection, "news") == {1}
+            finally:
+                if first_transaction.is_active:
+                    first_transaction.rollback()
+
+            with connection.begin():
+                second_backend, bypass_setting = connection.execute(
+                    sa.text(
+                        "SELECT pg_backend_pid(), "
+                        "coalesce(current_setting('app.bypass_rls', true), '')"
+                    )
+                ).one()
+                assert second_backend == first_backend
+                assert bypass_setting == ""
+                with _application_context(connection, tenant=_TENANT_A):
+                    assert _ids(connection, "news") == {1}
+    finally:
+        engine.dispose()
+
+
+# Private batch addition: policy OR/AND causal discriminator.
+def test_permissive_true_causality_depends_on_restrictive_tenant_policy(
+    rls_schema: SimpleNamespace,
+) -> None:
+    """Separate permissive OR behavior from messages' restrictive tenant gate.
+
+    The current canonical baseline is the input. This does not reconstruct or
+    claim the removed historical migration's exact policy catalog.
+    """
+    with _rolled_back(rls_schema.ordinary) as connection:
+        policies = connection.execute(
+            sa.text(
+                "SELECT tablename, policyname, permissive, qual "
+                "FROM pg_policies WHERE schemaname = current_schema() "
+                "AND tablename = ANY(:tables)"
+            ),
+            {"tables": list(_CORE_TABLES)},
+        ).all()
+        tenant_policies = {
+            row.tablename: row.permissive
+            for row in policies
+            if row.policyname == "tenant_isolation_policy"
+        }
+        assert set(tenant_policies) == set(_CORE_TABLES)
+        assert tenant_policies["news"] == "PERMISSIVE"
+        assert tenant_policies["messages"] == "RESTRICTIVE"
+        assert not any(
+            row.qual is not None and row.qual.strip().casefold() == "true"
+            for row in policies
+        )
+
+        # The existing tenant predicate, null-row handling, and GUC control are
+        # distinct from the deliberately added permissive policy below.
+        with _application_context(connection, tenant=_TENANT_A):
+            assert _ids(connection, "news") == {1}
+        with _application_context(connection, tenant=None):
+            assert _ids(connection, "news") == set()
+        with _application_context(connection, tenant=_TENANT_A):
+            connection.execute(
+                sa.text("SELECT set_config('app.bypass_rls', 'on', true)")
+            )
+            assert _ids(connection, "news") == {1}
+
+        # A permissive TRUE policy joins the permissive-policy OR set. On news,
+        # the current permissive tenant policy cannot constrain that result.
+        connection.exec_driver_sql(
+            "CREATE POLICY aud277_true_control ON public.news "
+            "AS PERMISSIVE USING (true)"
+        )
+        # On messages, the independent restrictive tenant policy remains an
+        # AND gate. TRUE widens participant visibility within tenant A only.
+        connection.exec_driver_sql(
+            "CREATE POLICY aud277_true_control ON public.messages "
+            "AS PERMISSIVE USING (true)"
+        )
+
+        with _application_context(connection, tenant=_TENANT_A):
+            assert _ids(connection, "news") == {1, 2, 3}
+            connection.execute(
+                sa.text("SELECT set_config('app.current_user_id', :user, true)"),
+                {"user": str(_USER_A)},
+            )
+            assert _ids(connection, "messages") == {11, 14}
+
+        # _rolled_back() rolls back both CREATE POLICY mutations. An actual
+        # owned-PostgreSQL run is required before treating these expectations as
+        # observed behavior or using this to classify the removed history.

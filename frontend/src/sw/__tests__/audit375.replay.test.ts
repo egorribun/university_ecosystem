@@ -32,6 +32,7 @@ import {
   claimReplayLease,
   releaseReplayLease,
   renewReplayLease,
+  REPLAY_ACTIVE_ATTEMPT_KEY,
   REPLAY_LEASE_KEY,
   REPLAY_LEASE_STORE,
 } from "../replayLease"
@@ -669,6 +670,8 @@ describe("AUD-375: IndexedDB lease takeover never revives a stale replay pass", 
     await first.storePendingMutation(
       mutationRecord({ mutationId: "m-stale-retry", idempotencyKey: "op-stale-retry" })
     )
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    const [row] = await first.readPendingMutations()
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => {
@@ -679,6 +682,7 @@ describe("AUD-375: IndexedDB lease takeover never revives a stale replay pass", 
     vi.stubGlobal("fetch", fetchMock)
 
     const firstPass = first.processOfflineQueues()
+    let secondPass: Promise<void> | undefined
     try {
       await Promise.race([
         entered.promise,
@@ -687,18 +691,29 @@ describe("AUD-375: IndexedDB lease takeover never revives a stale replay pass", 
         }),
       ])
       vi.mocked(Date.now).mockReturnValue(NOW + REPLAY_LEASE_TTL_MS + 1)
-      await second.processOfflineQueues()
-      const afterSecond = await first.readPendingMutations()
+      secondPass = second.processOfflineQueues()
+      await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS * 8)
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(await first.readPendingMutations()).toEqual([row])
+
+      // Model a page draining this row while the older network request remains pending.
+      await observer.delete(STORES.MUTATION, row.id)
       response.resolve(okResponse(500))
       await firstPass
+      expect(await first.readPendingMutations()).toEqual([])
 
-      expect(afterSecond).toEqual([])
-      expect(fetchMock).toHaveBeenCalledTimes(2)
-      expect(fetchMock.mock.calls.every(([url]) => url === `${ORIGIN}/api/v1/profile`)).toBe(true)
+      // The successor pass is still alive; after the attempt marker clears it rereads the row.
+      await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS * 8)
+      await secondPass
+
+      expect(fetchMock).toHaveBeenCalledOnce()
       expect(await first.readPendingMutations()).toEqual([])
     } finally {
       response.resolve(okResponse())
       await firstPass
+      await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS * 8)
+      await secondPass
+      observer.close()
     }
   })
 
@@ -955,17 +970,24 @@ describe("AUD-375: replay mutations are fenced by the shared live lease", () => 
       await first.worker.storePendingMutation(
         mutationRecord({ retryCount: outcome === "exhausted" ? REPLAY_MAX_ATTEMPTS - 1 : 0 })
       )
+      const before = await first.worker.readPendingMutations()
       const entered = replayGate<void>()
       const response = replayGate<Response>()
+      const successorEntered = replayGate<void>()
+      const successorResponse = replayGate<Response>()
       const fetchMock = vi
         .fn()
         .mockImplementationOnce(() => {
           entered.resolve(undefined)
           return response.promise
         })
-        .mockResolvedValue(okResponse(outcome === "exhausted" ? 204 : 500))
+        .mockImplementationOnce(() => {
+          successorEntered.resolve(undefined)
+          return successorResponse.promise
+        })
       vi.stubGlobal("fetch", fetchMock)
       const pass = first.worker.processOfflineQueues()
+      let successorPass: Promise<void> | undefined
       try {
         await Promise.race([
           entered.promise,
@@ -974,20 +996,10 @@ describe("AUD-375: replay mutations are fenced by the shared live lease", () => 
           }),
         ])
         vi.mocked(Date.now).mockReturnValue(NOW + REPLAY_LEASE_TTL_MS + 1)
-        await second.worker.processOfflineQueues()
-        const replacement = await first.worker.readPendingMutations()
-        if (outcome === "exhausted") {
-          expect(replacement).toEqual([])
-        } else {
-          expect(replacement).toEqual([
-            expect.objectContaining({
-              retryCount: 1,
-              nextAttemptAt: NOW + REPLAY_LEASE_TTL_MS + 501,
-            }),
-          ])
-        }
-        const noticeCount = first.notices.mock.calls.length
-        const warningCount = vi.mocked(first.logger.warn).mock.calls.length
+        successorPass = second.worker.processOfflineQueues()
+        await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS * 8)
+        expect(fetchMock).toHaveBeenCalledOnce()
+        expect(await first.worker.readPendingMutations()).toEqual(before)
         if (outcome === "network") {
           response.resolve(Promise.reject(new TypeError("Controlled network failure")))
         } else {
@@ -996,13 +1008,26 @@ describe("AUD-375: replay mutations are fenced by the shared live lease", () => 
           )
         }
         await pass
+        expect(await first.worker.readPendingMutations()).toEqual(before)
+        expect(first.notices).not.toHaveBeenCalled()
+        expect(first.logger.warn).not.toHaveBeenCalled()
+
+        // The successor is the live trigger: it resumes after the matching attempt releases.
+        await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS * 8)
+        await successorEntered.promise
         expect(fetchMock).toHaveBeenCalledTimes(2)
-        expect(await first.worker.readPendingMutations()).toEqual(replacement)
-        expect(first.notices).toHaveBeenCalledTimes(noticeCount)
-        expect(first.logger.warn).toHaveBeenCalledTimes(warningCount)
+        expect(await first.worker.readPendingMutations()).toEqual(before)
+        successorResponse.resolve(okResponse())
+        await successorPass
+        expect(await first.worker.readPendingMutations()).toEqual([])
+        expect(first.notices).not.toHaveBeenCalled()
+        expect(first.logger.warn).not.toHaveBeenCalled()
       } finally {
         response.resolve(okResponse())
         await pass
+        successorResponse.resolve(okResponse())
+        await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS * 8)
+        await successorPass
       }
     }
   )
@@ -1399,6 +1424,194 @@ describe("AUD-375: replay mutations are fenced by the shared live lease", () => 
     expect(first.notices).not.toHaveBeenCalled()
   })
 
+  it("blocks takeover dispatch while the prior request window is live, then retries with its stable key", async () => {
+    const first = await fencedReplayWorker()
+    const second = await fencedReplayWorker()
+    const clock = { now: NOW }
+    vi.mocked(Date.now).mockImplementation(() => clock.now)
+    await first.worker.storePendingMutation(mutationRecord())
+    const entered = replayGate<void>()
+    const response = replayGate<Response>()
+    const successorClaimed = replayGate<void>()
+    const markerWaitStarted = replayGate<void>()
+    const successorRequestStarted = replayGate<void>()
+    let activeRequests = 0
+    let maxActiveRequests = 0
+    const trackRequest = async (request: Promise<Response>) => {
+      activeRequests += 1
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests)
+      try {
+        return await request
+      } finally {
+        activeRequests -= 1
+      }
+    }
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        entered.resolve(undefined)
+        return trackRequest(response.promise)
+      })
+      .mockImplementationOnce(() => {
+        successorRequestStarted.resolve(undefined)
+        clock.now += 1_000
+        return trackRequest(Promise.resolve(okResponse(500)))
+      })
+      .mockImplementationOnce(() => trackRequest(Promise.resolve(okResponse())))
+    vi.stubGlobal("fetch", fetchMock)
+    const firstPass = first.worker.processOfflineQueues()
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    let blockedPass: Promise<void> | undefined
+    try {
+      await entered.promise
+      const active = await observer.get(REPLAY_LEASE_STORE, REPLAY_ACTIVE_ATTEMPT_KEY)
+      expect(active).toMatchObject({
+        id: REPLAY_ACTIVE_ATTEMPT_KEY,
+        owner: expect.any(String),
+        attemptId: expect.any(String),
+        expiresAt: NOW + REPLAY_LEASE_TTL_MS + REPLAY_REQUEST_TIMEOUT_MS,
+      })
+
+      // A healthy heartbeat extends both the owner lease and its request marker.
+      clock.now = NOW + REPLAY_LEASE_RENEW_MS
+      expect(await first.lease.renewReplayLease(observer, active.owner, Date.now)).toBe(true)
+      const renewed = await observer.get(REPLAY_LEASE_STORE, REPLAY_ACTIVE_ATTEMPT_KEY)
+      expect(renewed).toMatchObject({
+        attemptId: active.attemptId,
+        expiresAt: NOW + REPLAY_LEASE_RENEW_MS + REPLAY_LEASE_TTL_MS + REPLAY_REQUEST_TIMEOUT_MS,
+      })
+
+      // Signal only after the second worker's transactional lease claim has committed.
+      const claimLease = second.lease.claimReplayLease
+      const claimSpy = vi
+        .spyOn(second.lease, "claimReplayLease")
+        .mockImplementation(async (db, owner, now) => {
+          const claimed = await claimLease(db, owner, now)
+          if (claimed) successorClaimed.resolve(undefined)
+          return claimed
+        })
+      // Observe the successor reaching the live-marker wait branch, not an arbitrary number of
+      // fake-clock ticks. Keep the fake timer scheduled so it can resume after settlement.
+      const scheduleTimeout = window.setTimeout
+      vi.spyOn(window, "setTimeout").mockImplementation(((
+        callback: TimerHandler,
+        delay?: number
+      ) => {
+        if (delay === REPLAY_LEASE_POLL_MS) markerWaitStarted.resolve(undefined)
+        return scheduleTimeout(callback, delay)
+      }) as typeof window.setTimeout)
+
+      // Simulate takeover at the exact renewed lease expiry.
+      clock.now = NOW + REPLAY_LEASE_RENEW_MS + REPLAY_LEASE_TTL_MS
+      blockedPass = second.worker.processOfflineQueues()
+      await successorClaimed.promise
+      expect(claimSpy).toHaveBeenCalled()
+      const successorLease = await observer.get(REPLAY_LEASE_STORE, REPLAY_LEASE_KEY)
+      expect(successorLease?.owner).not.toBe(active.owner)
+      await markerWaitStarted.promise
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(activeRequests).toBe(1)
+      expect(maxActiveRequests).toBe(1)
+      expect(await observer.get(REPLAY_LEASE_STORE, REPLAY_ACTIVE_ATTEMPT_KEY)).toEqual(renewed)
+
+      response.resolve(okResponse(500))
+      await firstPass
+      expect(activeRequests).toBe(0)
+      expect(await observer.get(REPLAY_LEASE_STORE, REPLAY_ACTIVE_ATTEMPT_KEY)).toBeUndefined()
+      expect(await first.worker.readPendingMutations()).toEqual([
+        expect.objectContaining({ idempotencyKey: "op-1", retryCount: 0 }),
+      ])
+
+      // The waiting successor retries without needing another external replay event.
+      await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS)
+      await successorRequestStarted.promise
+      await blockedPass
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(activeRequests).toBe(0)
+      expect(maxActiveRequests).toBe(1)
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        `${ORIGIN}/api/v1/profile`,
+        expect.objectContaining({ headers: expect.objectContaining({ "Idempotency-Key": "op-1" }) })
+      )
+      expect(await first.worker.readPendingMutations()).toEqual([
+        expect.objectContaining({
+          idempotencyKey: "op-1",
+          retryCount: 1,
+          nextAttemptAt: NOW + REPLAY_LEASE_RENEW_MS + REPLAY_LEASE_TTL_MS + 1_500,
+        }),
+      ])
+
+      clock.now = NOW + REPLAY_LEASE_RENEW_MS + REPLAY_LEASE_TTL_MS + 1_501
+      await second.worker.processOfflineQueues()
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        `${ORIGIN}/api/v1/profile`,
+        expect.objectContaining({ headers: expect.objectContaining({ "Idempotency-Key": "op-1" }) })
+      )
+      expect(await first.worker.readPendingMutations()).toEqual([])
+    } finally {
+      response.resolve(okResponse())
+      await firstPass
+      await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS)
+      await blockedPass
+      observer.close()
+    }
+  }, 5_000)
+
+  it("keeps recovery waiting on an abandoned marker, then resumes at its finite expiry", async () => {
+    const first = await fencedReplayWorker()
+    await first.worker.storePendingMutation(mutationRecord())
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    const markerExpiresAt = NOW + REPLAY_LEASE_TTL_MS + REPLAY_REQUEST_TIMEOUT_MS
+    await observer.put(REPLAY_LEASE_STORE, {
+      id: REPLAY_LEASE_KEY,
+      owner: "crashed-worker",
+      expiresAt: NOW + REPLAY_LEASE_TTL_MS,
+    })
+    await observer.put(REPLAY_LEASE_STORE, {
+      id: REPLAY_ACTIVE_ATTEMPT_KEY,
+      owner: "crashed-worker",
+      attemptId: "abandoned-attempt",
+      expiresAt: markerExpiresAt,
+    })
+    const clock = { now: markerExpiresAt - 1 }
+    vi.mocked(Date.now).mockImplementation(() => clock.now)
+    const fetchMock = vi.fn().mockResolvedValue(okResponse())
+    vi.stubGlobal("fetch", fetchMock)
+    let pass: Promise<void> | undefined
+
+    try {
+      pass = first.worker.processOfflineQueues()
+      await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS * 2)
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(await observer.get(REPLAY_LEASE_STORE, REPLAY_ACTIVE_ATTEMPT_KEY)).toEqual(
+        expect.objectContaining({ attemptId: "abandoned-attempt", expiresAt: markerExpiresAt })
+      )
+
+      clock.now = markerExpiresAt
+      await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS * 8)
+      await pass
+
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${ORIGIN}/api/v1/profile`,
+        expect.objectContaining({
+          headers: expect.objectContaining({ "Idempotency-Key": "op-1" }),
+        })
+      )
+      expect(await first.worker.readPendingMutations()).toEqual([])
+      expect(await observer.get(REPLAY_LEASE_STORE, REPLAY_ACTIVE_ATTEMPT_KEY)).toBeUndefined()
+    } finally {
+      // If an assertion failed before expiry, advance the waiting pass to its recovery point.
+      clock.now = markerExpiresAt
+      await vi.advanceTimersByTimeAsync(REPLAY_LEASE_POLL_MS * 8)
+      await pass
+      observer.close()
+    }
+  })
+
   it("propagates a failed queue commit without deletion or a false notice", async () => {
     const first = await fencedReplayWorker()
     await first.worker.storePendingMutation(mutationRecord())
@@ -1666,7 +1879,7 @@ describe("AUD-375: replay commits never delete a row that changed while its requ
     }
   })
 
-  it("fences the pre-send row read in a readonly transaction", async () => {
+  it("claims a replay attempt in the lease-fenced transaction before sending", async () => {
     const first = await fencedReplayWorker()
     await first.worker.storePendingMutation(mutationRecord())
     const transaction = vi.spyOn(FakeIDBDatabase.prototype, "transaction")
@@ -1681,7 +1894,13 @@ describe("AUD-375: replay commits never delete a row that changed while its requ
 
     await first.worker.processOfflineQueues()
 
-    expect(fenceAtSend).toEqual([[REPLAY_LEASE_STORE, STORES.MUTATION], "readonly"])
+    expect(fenceAtSend).toEqual([[REPLAY_LEASE_STORE, STORES.MUTATION], "readwrite"])
+    const observer = await openDB(REPLAY_DB_NAME, REPLAY_DB_VERSION)
+    try {
+      expect(await observer.get(REPLAY_LEASE_STORE, REPLAY_ACTIVE_ATTEMPT_KEY)).toBeUndefined()
+    } finally {
+      observer.close()
+    }
     expect(await first.worker.readPendingMutations()).toEqual([])
   })
 

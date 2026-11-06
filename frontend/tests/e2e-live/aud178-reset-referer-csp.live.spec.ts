@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto"
+import { writeFile } from "node:fs/promises"
+import { join } from "node:path"
 import { expect, test } from "@playwright/test"
 
 test.describe.configure({ retries: 0 })
@@ -11,18 +13,134 @@ function reportNamesResetDocument(body: string | null, expectedOrigin: string) {
     const document = new URL(documentUri)
     return (
       document.origin === expectedOrigin &&
-      (document.pathname === "/reset-password" || document.pathname.startsWith("/reset-password/"))
+      document.pathname === "/reset-password" &&
+      document.search === "" &&
+      document.hash === ""
     )
   } catch {
     return false
   }
 }
 
-test("reset fragment stays out of browser Referer and CSP report traffic", async ({ page }) => {
+function isLocalCspProbe(body: string | null) {
+  try {
+    const report = JSON.parse(body ?? "") as {
+      "csp-report"?: { "blocked-uri"?: unknown; "effective-directive"?: unknown }
+    }
+    return (
+      report["csp-report"]?.["blocked-uri"] === "data" &&
+      report["csp-report"]?.["effective-directive"] === "connect-src"
+    )
+  } catch {
+    return false
+  }
+}
+
+type ResetLogProbeBinding = { marker: string; correlationId: string }
+type ResetLogProbeBindings = Record<"query" | "path", ResetLogProbeBinding>
+
+function readResetLogProbeBindings(source: string | undefined, project: string) {
+  if (!source) throw new Error("The owned reset log probe is not configured")
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(source)
+  } catch {
+    throw new Error("The owned reset log probe is not configured")
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("The owned reset log probe is not configured")
+  }
+  const projectBindings = (parsed as Record<string, unknown>)[project]
+  if (
+    typeof projectBindings !== "object" ||
+    projectBindings === null ||
+    Array.isArray(projectBindings)
+  ) {
+    throw new Error("The owned reset log probe is not configured")
+  }
+
+  const typedBindings = projectBindings as Record<string, unknown>
+  if (Object.keys(typedBindings).sort().join(",") !== "path,query") {
+    throw new Error("The owned reset log probe is not configured")
+  }
+
+  const result = {} as ResetLogProbeBindings
+  for (const sourceKind of ["query", "path"] as const) {
+    const candidate = typedBindings[sourceKind]
+    if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+      throw new Error("The owned reset log probe is not configured")
+    }
+    const binding = candidate as Record<string, unknown>
+    if (
+      Object.keys(binding).sort().join(",") !== "correlationId,marker" ||
+      typeof binding.marker !== "string" ||
+      !/^[0-9a-f]{32}$/u.test(binding.marker) ||
+      typeof binding.correlationId !== "string" ||
+      !/^[0-9a-f]{32}$/u.test(binding.correlationId) ||
+      binding.marker === binding.correlationId
+    ) {
+      throw new Error("The owned reset log probe is not configured")
+    }
+    result[sourceKind] = {
+      marker: binding.marker,
+      correlationId: binding.correlationId,
+    }
+  }
+  if (result.query.marker === result.path.marker) {
+    throw new Error("The owned reset log probe is not configured")
+  }
+  return result
+}
+
+async function writeResetLogProbeObservation(
+  outputDirectory: string | undefined,
+  project: string,
+  completedAt: Record<"query" | "path", number>
+) {
+  if (!outputDirectory) throw new Error("The owned reset log probe is not configured")
+  const observation = {
+    schema: "aud178-reset-caddy-probe-v1",
+    project,
+    query_completed_at_ms: completedAt.query,
+    path_completed_at_ms: completedAt.path,
+  }
+  try {
+    await writeFile(
+      join(outputDirectory, `aud178-reset-caddy-probe-${project}.json`),
+      JSON.stringify(observation),
+      { encoding: "utf8", flag: "wx", mode: 0o600 }
+    )
+  } catch {
+    throw new Error("The owned reset log probe observation could not be recorded")
+  }
+}
+
+test("reset fragment stays out of browser Referer and CSP report traffic", async ({
+  page,
+}, testInfo) => {
+  const projectName = testInfo.project.name
+  const resetLogBindings = readResetLogProbeBindings(
+    process.env.LIVE_AUD178_PROBE_MARKERS,
+    projectName
+  )
+  const resetLogObservation: Record<"query" | "path", number> = { query: 0, path: 0 }
+  const outputDirectory = process.env.LIVE_E2E_OUTPUT_DIR
   const marker = `synthetic-${randomUUID()}`
   const probe = randomUUID()
   const target = new URL("/reset-password", process.env.LIVE_BASE_URL)
   target.hash = `token=${encodeURIComponent(marker)}`
+
+  // The stand is loopback-only. Abort any application-initiated cross-origin
+  // traffic, including optional telemetry and font requests.
+  await page.route("**/*", async (route) => {
+    if (new URL(route.request().url()).origin !== target.origin) {
+      await route.abort()
+      return
+    }
+    await route.continue()
+  })
 
   // Never let a navigation exception include the synthetic URL in diagnostics.
   const response = await page.goto(target.href).catch(() => {
@@ -66,13 +184,14 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
     return (
       candidate.method() === "POST" &&
       url.pathname === "/api/v1/csp-report" &&
-      (candidate.postData() ?? "").includes("aud178.invalid")
+      isLocalCspProbe(candidate.postData())
     )
   })
   await page.evaluate(async () => {
-    await fetch("https://aud178.invalid/csp-probe").catch(() => undefined)
+    await fetch("data:text/plain,aud178-csp-probe").catch(() => undefined)
   })
   const report = await reportPromise
+  expect(reportNamesResetDocument(report.postData(), target.origin)).toBe(true)
   const reportBodySafe = !(report.postData() ?? "").includes(marker)
   const reportHeaders = await report.allHeaders()
   const reportRefererSafe = !(reportHeaders.referer ?? "").includes(marker)
@@ -97,9 +216,8 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
       releaseScripts = resolve
     })
     try {
-      const legacyMarker = `synthetic-${randomUUID()}`
-      const earlyHost = `aud178-${randomUUID()}.invalid`
-      const lateHost = `aud178-${randomUUID()}.invalid`
+      const resetBinding = resetLogBindings[source]
+      const legacyMarker = resetBinding.marker
       const earlyCorrelation = randomUUID()
       const legacyTarget = new URL("/reset-password", process.env.LIVE_BASE_URL)
       if (source === "query") {
@@ -117,17 +235,43 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
       // Hold real script requests until the initial violation is delivered.
       // This prevents the client migration racing the browser's CSP report.
       await legacyPage.route("**/*", async (route) => {
+        if (new URL(route.request().url()).origin !== legacyTarget.origin) {
+          await route.abort()
+          return
+        }
         if (route.request().resourceType() === "script") await scriptGate
+        const requestUrl = new URL(route.request().url())
+        const isLegacyDocumentRequest =
+          route.request().isNavigationRequest() &&
+          requestUrl.pathname === legacyTarget.pathname &&
+          requestUrl.search === legacyTarget.search
+        if (isLegacyDocumentRequest) {
+          const requestHeaders = await route.request().allHeaders()
+          requestHeaders["x-aud178-correlation"] = resetBinding.correlationId
+          await route.continue({ headers: requestHeaders }).catch(() => undefined)
+          return
+        }
+        if (route.request().isNavigationRequest()) {
+          // route.continue header overrides also apply to redirects. Remove
+          // the selector from the clean fragment redirect so it identifies
+          // only the original token-bearing 302 row.
+          const requestHeaders = await route.request().allHeaders()
+          Reflect.set(requestHeaders, "x-aud178-correlation", undefined)
+          await route.continue({ headers: requestHeaders }).catch(() => undefined)
+          return
+        }
         await route.continue().catch(() => undefined)
       })
       await legacyPage.addInitScript(
-        ({ candidate, host, correlation }) => {
+        ({ candidate, correlation }) => {
           if (window.top !== window) return
           const initialUrl = new URL(window.location.href)
           Object.assign(window, {
             __aud178Early: {
               beforeHydration: window.__APP_HYDRATED !== true,
               markerInPathOrSearch: (initialUrl.pathname + initialUrl.search).includes(candidate),
+              fragmentHasLegacyToken:
+                new URLSearchParams(initialUrl.hash.slice(1)).get("legacy-token") === candidate,
               sanitizedResetUrl:
                 initialUrl.pathname === "/reset-password" &&
                 !initialUrl.searchParams.has("token") &&
@@ -137,9 +281,9 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
           void fetch(`/healthz?aud178=${encodeURIComponent(correlation)}`, {
             cache: "no-store",
           }).catch(() => undefined)
-          void fetch(`https://${host}/csp-probe`).catch(() => undefined)
+          void fetch("data:text/plain,aud178-csp-probe").catch(() => undefined)
         },
-        { candidate: legacyMarker, host: earlyHost, correlation: earlyCorrelation }
+        { candidate: legacyMarker, correlation: earlyCorrelation }
       )
 
       const earlyHealthPromise = legacyPage
@@ -154,7 +298,7 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
           return (
             candidate.method() === "POST" &&
             url.pathname === "/api/v1/csp-report" &&
-            (candidate.postData() ?? "").includes(earlyHost)
+            isLocalCspProbe(candidate.postData())
           )
         })
         .catch(() => null)
@@ -169,6 +313,21 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
         true
       )
       expect(sawLegacyDocumentRequest).toBe(true)
+      const redirectedRequest = legacyResponse!.request().redirectedFrom()
+      const redirectResponse = await redirectedRequest?.response()
+      expect(redirectResponse?.status() === 302).toBe(true)
+      expect(redirectResponse?.headers()["cache-control"]?.includes("no-store") === true).toBe(true)
+      const redirectLocation = redirectResponse?.headers().location
+      const redirectTarget = redirectLocation ? new URL(redirectLocation, legacyTarget) : null
+      expect(
+        redirectTarget !== null &&
+          redirectTarget.origin === legacyTarget.origin &&
+          redirectTarget.pathname === "/reset-password" &&
+          redirectTarget.search === "" &&
+          new URLSearchParams(redirectTarget.hash.slice(1)).get("legacy-token") === legacyMarker
+      ).toBe(true)
+      resetLogObservation[source] = Date.now()
+      expect(!legacyResponse!.request().url().includes(legacyMarker)).toBe(true)
 
       await legacyPage.waitForFunction(() => "__aud178Early" in window, undefined, {
         timeout: 15_000,
@@ -179,6 +338,7 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
             __aud178Early?: {
               beforeHydration: boolean
               markerInPathOrSearch: boolean
+              fragmentHasLegacyToken: boolean
               sanitizedResetUrl: boolean
             }
           }
@@ -186,13 +346,9 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
         return state
       })
       expect(early?.beforeHydration === true).toBe(true)
-      if (early?.markerInPathOrSearch) {
-        expect(early.sanitizedResetUrl).toBe(false)
-      } else {
-        // A server-side migration is also valid if it delivered a clean
-        // document URL before the first script was evaluated.
-        expect(early?.sanitizedResetUrl === true).toBe(true)
-      }
+      expect(early?.markerInPathOrSearch === false).toBe(true)
+      expect(early?.sanitizedResetUrl === true).toBe(true)
+      expect(early?.fragmentHasLegacyToken === true).toBe(true)
 
       const earlyHealth = await earlyHealthPromise
       if (!earlyHealth) throw new Error("The early reset-page health request was not observed")
@@ -234,14 +390,22 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
         .poll(() =>
           legacyPage.evaluate((candidate) => {
             const current = new URL(window.location.href)
-            return (
-              current.pathname === "/reset-password" &&
-              !current.searchParams.has("token") &&
-              !current.pathname.includes(candidate)
-            )
+            return {
+              resetRoute: current.pathname === "/reset-password",
+              queryClear: !current.searchParams.has("token"),
+              tokenAbsent: !current.href.includes(candidate),
+              fragmentClear: !new URLSearchParams(current.hash.slice(1)).has("legacy-token"),
+              hydrated: window.__APP_HYDRATED === true,
+            }
           }, legacyMarker)
         )
-        .toBe(true)
+        .toEqual({
+          resetRoute: true,
+          queryClear: true,
+          tokenAbsent: true,
+          fragmentClear: true,
+          hydrated: true,
+        })
 
       const lateReportPromise = legacyPage
         .waitForRequest((candidate) => {
@@ -249,13 +413,13 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
           return (
             candidate.method() === "POST" &&
             url.pathname === "/api/v1/csp-report" &&
-            (candidate.postData() ?? "").includes(lateHost)
+            isLocalCspProbe(candidate.postData())
           )
         })
         .catch(() => null)
-      await legacyPage.evaluate(async (host) => {
-        await fetch(`https://${host}/csp-probe`).catch(() => undefined)
-      }, lateHost)
+      await legacyPage.evaluate(async () => {
+        await fetch("data:text/plain,aud178-csp-probe").catch(() => undefined)
+      })
       const lateReport = await lateReportPromise
       if (!lateReport) throw new Error("The migrated reset-page CSP report was not observed")
       const lateReportBody = lateReport.postData()
@@ -276,4 +440,5 @@ test("reset fragment stays out of browser Referer and CSP report traffic", async
     }
   }
   expect(earlyReportLeaks).toEqual([false, false])
+  await writeResetLogProbeObservation(outputDirectory, projectName, resetLogObservation)
 })

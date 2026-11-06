@@ -13,6 +13,8 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts" / "quality"))
 
 from scripts.quality.verify_dependency_review_scope import (
@@ -39,6 +41,7 @@ from scripts.quality.verify_dependency_review_scope import (
     _trufflehog_identity,
     expected_rows_for_delta,
     fetch_dependency_comparison,
+    format_dependency_identity_diagnostics,
     main,
     preflight,
     read_dependency_changes_file,
@@ -105,6 +108,38 @@ def current_mods(bad=None):
 
 
 class DependencyLicenseGuardTests(unittest.TestCase):
+    def test_compress_security_patch_has_four_exact_reviewed_identities(self):
+        identities = [
+            row for row in EXPECTED_ROWS if row[3] == "github.com/klauspost/compress"
+        ]
+        self.assertEqual(len(identities), 4)
+        for row in identities:
+            with self.subTest(manifest=row[1]):
+                self.assertEqual(row[4], "1.20.2")
+                self.assertEqual(
+                    row[5], "pkg:golang/github.com/klauspost/compress@1.20.2"
+                )
+                self.assertEqual(row[6], "BSD-3-Clause AND Apache-2.0 AND MIT")
+                self.assertEqual(verify_dependency_changes([action_row(row)], {row}), 1)
+
+    def test_compress_license_scope_rejects_old_and_unreviewed_patch_versions(self):
+        for manifest in EXPECTED_MODULES:
+            for version in ("1.20.1", "1.20.3"):
+                row = _identity(
+                    manifest,
+                    "github.com/klauspost/compress",
+                    version,
+                    "BSD-3-Clause AND Apache-2.0 AND MIT",
+                )
+                with (
+                    self.subTest(manifest=manifest, version=version),
+                    self.assertRaisesRegex(
+                        ValueError,
+                        "unexpected package/version/manifest/license/PURL identity",
+                    ),
+                ):
+                    verify_dependency_changes([action_row(row)])
+
     def test_all_exact_rows_pass(self):
         rows = [action_row(row) for row in EXPECTED_ROWS]
         self.assertEqual(
@@ -1480,6 +1515,8 @@ class GhsaBoundedExceptionTests(unittest.TestCase):
 
 
 class DependencyIdentityDiagnosticTests(unittest.TestCase):
+    TRUFFLEHOG_PIN = "a" * 40
+
     @staticmethod
     def rows():
         return [
@@ -1489,8 +1526,9 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
                     ".github/workflows/trufflehog.yml",
                     "actions",
                     "trufflesecurity/trufflehog",
-                    "a" * 40,  # Synthetic low-entropy pin, not a production SHA.
-                    "pkg:github/trufflesecurity/trufflehog@" + "a" * 40,
+                    DependencyIdentityDiagnosticTests.TRUFFLEHOG_PIN,
+                    "pkg:github/trufflesecurity/trufflehog@"
+                    + DependencyIdentityDiagnosticTests.TRUFFLEHOG_PIN,
                     "AGPL-3.0",
                 )
             ),
@@ -1511,8 +1549,8 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
                     "services/caddy/go.mod",
                     "gomod",
                     "github.com/klauspost/compress",
-                    "1.20.1",
-                    "pkg:golang/github.com/klauspost/compress@1.20.1",
+                    "1.20.2",
+                    "pkg:golang/github.com/klauspost/compress@1.20.2",
                     "BSD-3-Clause AND Apache-2.0 AND MIT",
                 )
             ),
@@ -1534,10 +1572,11 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
         module = sys.modules[verify_dependency_changes.__module__]
         formatter = getattr(module, "format_dependency_identity_diagnostics", None)
         self.assertTrue(callable(formatter), "bounded identity diagnostics missing")
-        return formatter(rows)
+        return formatter(rows, trufflehog_pin=self.TRUFFLEHOG_PIN)
 
-    def test_only_seven_identity_fields_are_emitted_for_four_target_names(self):
+    def test_only_reviewed_fields_and_bounded_trufflehog_structure_are_emitted(self):
         rows = self.rows()
+        rows[0]["package_url"] = f"{TRUFFLEHOG_PURL}@{self.TRUFFLEHOG_PIN}"
         for row in rows:
             row["source_repository_url"] = "withheld-source-canary"
             row["vulnerabilities"] = [{"private": "withheld-advisory-canary"}]
@@ -1570,7 +1609,19 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
             "license",
         }
         for row in payload["rows"]:
-            self.assertEqual(set(row), expected_fields)
+            expected = set(expected_fields)
+            if row["name"] == "trufflesecurity/trufflehog":
+                expected.update(
+                    {
+                        "purl_structure",
+                        "row_version_evidence",
+                        "version_matches_workflow_pin",
+                        "package_url_empty",
+                        "package_url_matches_expected",
+                        "source_repository_matches_expected",
+                    }
+                )
+            self.assertEqual(set(row), expected)
         by_name = {row["name"]: row for row in payload["rows"]}
         self.assertEqual(
             by_name["howett.net/plist"],
@@ -1590,7 +1641,31 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
         )
         self.assertEqual(
             by_name["trufflesecurity/trufflehog"]["package_url"],
-            "<matches-40-hex-version>",
+            "<redacted>",
+        )
+        trufflehog = by_name["trufflesecurity/trufflehog"]
+        self.assertEqual(
+            trufflehog["purl_structure"],
+            {
+                "matches_reviewed_package_name": True,
+                "name": "trufflehog",
+                "namespace": "trufflesecurity",
+                "package_type": "githubactions",
+                "parsed": True,
+                "version_matches_workflow_pin": True,
+                "version_present": True,
+                "version_sha256": hashlib.sha256(
+                    self.TRUFFLEHOG_PIN.encode("ascii")
+                ).hexdigest(),
+            },
+        )
+        self.assertEqual(
+            trufflehog["row_version_evidence"],
+            {
+                "sha256": hashlib.sha256(
+                    self.TRUFFLEHOG_PIN.encode("ascii")
+                ).hexdigest(),
+            },
         )
         self.assertNotIn("a" * 40, encoded)
         self.assertEqual(
@@ -1836,6 +1911,9 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
                 identity = json.loads(encoded)["rows"][0]
                 self.assertEqual(identity["version"], "<redacted>")
                 self.assertEqual(identity["package_url"], expected)
+                self.assertNotIn(
+                    "b" * 40, identity["purl_structure"]["version_sha256"] or ""
+                )
                 self.assertNotIn("b" * 40, encoded)
                 self.assertNotIn("withheld-", encoded)
         row = self.rows()[0]
@@ -1860,6 +1938,117 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
             ),
             1,
         )
+
+    def test_trufflehog_purl_diagnostic_hashes_unknown_components_and_versions(self):
+        row = self.rows()[0]
+        row["version"] = "withheld-row-version-canary"
+        row["package_url"] = (
+            "pkg:githubactions/withheld-namespace-canary/"
+            "withheld-name-canary@withheld-purl-version-canary"
+        )
+        encoded = self.render([row])
+        identity = json.loads(encoded)["rows"][0]
+        structure = identity["purl_structure"]
+        self.assertTrue(structure["parsed"])
+        self.assertEqual(structure["package_type"], "githubactions")
+        self.assertFalse(structure["matches_reviewed_package_name"])
+        self.assertFalse(structure["version_matches_workflow_pin"])
+        self.assertEqual(
+            structure["namespace"],
+            {
+                "length": len("withheld-namespace-canary"),
+                "sha256": hashlib.sha256(b"withheld-namespace-canary").hexdigest(),
+            },
+        )
+        self.assertEqual(
+            structure["name"],
+            {
+                "length": len("withheld-name-canary"),
+                "sha256": hashlib.sha256(b"withheld-name-canary").hexdigest(),
+            },
+        )
+        self.assertEqual(
+            structure["version_sha256"],
+            hashlib.sha256(b"withheld-purl-version-canary").hexdigest(),
+        )
+        self.assertEqual(
+            identity["row_version_evidence"],
+            {
+                "sha256": hashlib.sha256(b"withheld-row-version-canary").hexdigest(),
+            },
+        )
+        for secret in (
+            "withheld-namespace-canary",
+            "withheld-name-canary",
+            "withheld-purl-version-canary",
+            "withheld-row-version-canary",
+        ):
+            self.assertNotIn(secret, encoded)
+
+    def test_trufflehog_purl_structure_fails_closed_for_malformed_values(self):
+        row = self.rows()[0]
+        malformed = (
+            "x" * 513,
+            "not-a-purl",
+            "pkg:/name",
+            "pkg:github/",
+            "pkg:github/@pin",
+            "pkg:github/namespace//name@pin",
+            "pkg:github/%FF/name@pin",
+        )
+        for package_url in malformed:
+            with self.subTest(package_url_length=len(package_url)):
+                row["package_url"] = package_url
+                encoded = self.render([row])
+                structure = json.loads(encoded)["rows"][0]["purl_structure"]
+                self.assertFalse(structure["parsed"])
+                self.assertNotIn(package_url, encoded)
+
+        row["package_url"] = "pkg:github/%0A/name@pin"
+        structure = json.loads(self.render([row]))["rows"][0]["purl_structure"]
+        self.assertTrue(structure["parsed"])
+        self.assertEqual(structure["namespace"], "<redacted>")
+        row["package_url"] = "pkg:github/" + "n" * 81 + "/name@pin"
+        structure = json.loads(self.render([row]))["rows"][0]["purl_structure"]
+        self.assertTrue(structure["parsed"])
+        self.assertEqual(structure["namespace"], "<redacted>")
+
+    def test_trufflehog_purl_without_version_reports_only_row_version_match(self):
+        row = self.rows()[0]
+        row["package_url"] = TRUFFLEHOG_PURL
+        structure = json.loads(self.render([row]))["rows"][0]["purl_structure"]
+        self.assertTrue(structure["matches_reviewed_package_name"])
+        self.assertFalse(structure["version_present"])
+        self.assertIsNone(structure["version_sha256"])
+        self.assertFalse(structure["version_matches_workflow_pin"])
+
+    def test_trufflehog_workflow_supplies_the_exact_review_config(self):
+        workflow = yaml.safe_load(
+            (REPO_ROOT / ".github/workflows/dependency-review.yml").read_text(
+                encoding="utf-8"
+            )
+        )
+        job = workflow["jobs"]["dependency-review"]
+        step = next(
+            item for item in job["steps"] if item.get("name") == "Dependency Review"
+        )
+        self.assertEqual(step["uses"], "./.github/actions/dependency-review-capture")
+        self.assertEqual(step["with"]["config-file"], CONFIG_PATH)
+        self.assertEqual(
+            step["with"]["upstream-commit"],
+            "${{ env.DEPENDENCY_REVIEW_ACTION_REF }}",
+        )
+        self.assertEqual(
+            job["env"]["DEPENDENCY_REVIEW_ACTION_REF"],
+            "a1d282b36b6f3519aa1f3fc636f609c47dddb294",
+        )
+        config_text = (REPO_ROOT / CONFIG_PATH).read_text(encoding="utf-8")
+        _scalars, sections = _parse_config(config_text)
+        self.assertEqual(
+            sections["allow-dependencies-licenses"].count(TRUFFLEHOG_PURL), 1
+        )
+        self.assertNotIn(TRUFFLEHOG_LICENSE, sections.get("allow-licenses", []))
+        verify_policy_scope(config_text, today=TRUFFLEHOG_TODAY)
 
     def test_oversized_top_level_encoding_uses_bounded_empty_fallback(self):
         module = "scripts.quality.verify_dependency_review_scope"
@@ -1962,6 +2151,337 @@ class DependencyIdentityDiagnosticTests(unittest.TestCase):
             self.assertEqual(output.getvalue(), "")
 
 
+class TrufflehogIdentityBooleanDiagnosticTests(unittest.TestCase):
+    @staticmethod
+    def row():
+        return {
+            "change_type": "added",
+            "manifest": ".github/workflows/trufflehog.yml",
+            "ecosystem": "actions",
+            "name": "trufflesecurity/trufflehog",
+            "version": "a" * 40,
+            "package_url": "pkg:github/trufflesecurity/trufflehog@" + "a" * 40,
+            "license": "AGPL-3.0",
+            "source_repository_url": "https://github.com/trufflesecurity/trufflehog",
+            "vulnerabilities": [],
+        }
+
+    @staticmethod
+    def render(rows, pin="a" * 40):
+        module = sys.modules[verify_dependency_changes.__module__]
+        return module.format_dependency_identity_diagnostics(rows, trufflehog_pin=pin)
+
+    def test_exact_row_emits_only_five_additional_booleans(self):
+        row = self.row()
+        encoded = self.render([row])
+        diagnostic = json.loads(encoded)["rows"][0]
+        self.assertEqual(
+            {key: value for key, value in diagnostic.items() if type(value) is bool},
+            {
+                "version_matches_workflow_pin": True,
+                "package_url_empty": False,
+                "package_url_matches_expected": False,
+                "source_repository_matches_expected": True,
+                "package_url_matches_githubactions_pin": False,
+            },
+        )
+        self.assertEqual(len(diagnostic), 14)
+        self.assertNotIn("a" * 40, encoded)
+        self.assertNotIn("https://", encoded)
+
+    def test_flags_bind_to_workflow_pin_not_row_self_consistency(self):
+        row = self.row()
+        row["version"] = "b" * 40
+        row["package_url"] = "pkg:github/trufflesecurity/trufflehog@" + "b" * 40
+        diagnostic = json.loads(self.render([row]))["rows"][0]
+        self.assertIs(diagnostic["version_matches_workflow_pin"], False)
+        self.assertIs(diagnostic["package_url_matches_expected"], False)
+        self.assertEqual(diagnostic["package_url"], "<matches-40-hex-version>")
+
+    def test_unreviewed_raw_values_cannot_escape_through_boolean_fields(self):
+        cases = (
+            ("version", "version_matches_workflow_pin"),
+            ("package_url", "package_url_matches_expected"),
+            ("source_repository_url", "source_repository_matches_expected"),
+        )
+        values = (
+            None,
+            False,
+            [],
+            {},
+            "withheld-boolean-canary",
+            "a" * 4000,
+            "https://github.com/trufflesecurity/trufflehog/",
+            "\n",
+            "A" * 40,
+        )
+        for field, flag in cases:
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    row = self.row()
+                    row[field] = value
+                    encoded = self.render([row])
+                    diagnostic = json.loads(encoded)["rows"][0]
+                    self.assertIs(diagnostic[flag], False)
+                    self.assertIs(diagnostic["package_url_empty"], False)
+                    self.assertNotIn("withheld-", encoded)
+                    self.assertNotIn("https://", encoded)
+                    self.assertLessEqual(len(encoded), 4096)
+
+    def test_boolean_scope_requires_exact_added_action_coordinates(self):
+        for field, value in (
+            ("change_type", "removed"),
+            ("change_type", "invalid"),
+            ("manifest", ".github/workflows/other.yml"),
+            ("ecosystem", "gomod"),
+            ("name", "example/other"),
+        ):
+            with self.subTest(field=field):
+                row = self.row()
+                row[field] = value
+                for diagnostic in json.loads(self.render([row]))["rows"]:
+                    self.assertFalse(
+                        any(type(value) is bool for value in diagnostic.values())
+                    )
+
+    def test_no_pin_evidence_is_emitted_for_invalid_or_unavailable_trusted_pin(self):
+        for pin in (None, False, [], "", "a" * 39, "A" * 40, "a" * 40 + "\n"):
+            with self.subTest(pin=pin):
+                diagnostic = json.loads(self.render([self.row()], pin=pin))["rows"][0]
+                self.assertFalse(
+                    any(type(value) is bool for value in diagnostic.values())
+                )
+
+    def test_diagnostics_preserve_inputs_and_reject_unreviewed_fixture_pins(self):
+        for changes in (
+            {},
+            {"license": None},
+            {"package_url": ""},
+            {"version": "b" * 40},
+        ):
+            with self.subTest(changes=changes):
+                row = {**self.row(), **changes}
+                snapshot = json.dumps(row, sort_keys=True)
+                self.render([row])
+                self.assertEqual(json.dumps(row, sort_keys=True), snapshot)
+                with self.assertRaisesRegex(ValueError, "outside its reviewed row"):
+                    verify_dependency_changes(
+                        [row], trufflehog_pin="a" * 40, today=date(2026, 11, 5)
+                    )
+
+    def test_enriched_diagnostics_remain_bounded_and_deterministic(self):
+        rows = [self.row() for _ in range(20)]
+        rows.extend(DependencyIdentityDiagnosticTests.rows()[1:])
+        encoded = self.render(rows)
+        self.assertEqual(encoded, self.render(list(reversed(rows))))
+        self.assertLessEqual(len(encoded), 4096)
+        self.assertTrue(json.loads(encoded)["truncated"])
+
+    def test_current_workflow_pin_evidence_survives_other_action_versions(self):
+        current = {**self.row(), "package_url": "", "license": None}
+        others = []
+        for character in ("b", "c", "d"):
+            pin = character * 40
+            others.append(
+                {
+                    **self.row(),
+                    "version": pin,
+                    "package_url": f"pkg:github/trufflesecurity/trufflehog@{pin}",
+                }
+            )
+        encoded = self.render([*others, current])
+        payload = json.loads(encoded)
+        self.assertTrue(payload["truncated"])
+        self.assertEqual(len(payload["rows"]), 2)
+        self.assertIs(payload["rows"][0]["version_matches_workflow_pin"], True)
+        self.assertIs(payload["rows"][0]["package_url_empty"], True)
+        self.assertEqual(encoded, self.render([current, *reversed(others)]))
+
+    def test_changes_phase_reports_boolean_evidence_before_unchanged_failure(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        pin = "a" * 40
+        row = {
+            "change_type": "added",
+            "manifest": ".github/workflows/trufflehog.yml",
+            "ecosystem": "actions",
+            "name": "trufflesecurity/trufflehog",
+            "version": pin,
+            "package_url": "",
+            "license": None,
+            "source_repository_url": "https://github.com/trufflesecurity/trufflehog",
+            "vulnerabilities": [],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workflow = root / ".github/workflows/trufflehog.yml"
+            workflow.parent.mkdir(parents=True)
+            workflow.write_text(
+                f"uses: trufflesecurity/trufflehog@{pin}\n", encoding="utf-8"
+            )
+            changes = root / "changes.json"
+            changes.write_text(json.dumps([row]), encoding="utf-8")
+            argv = [
+                "verify",
+                "changes",
+                "--root",
+                str(root),
+                "--base-sha",
+                "0" * 40,
+                "--changes-file",
+                str(changes),
+            ]
+            with (
+                patch(f"{module}.preflight", return_value=set()),
+                patch.object(sys, "argv", argv),
+                patch("sys.stdout", new_callable=io.StringIO) as output,
+                self.assertRaisesRegex(ValueError, "outside its reviewed row"),
+            ):
+                main()
+        encoded = output.getvalue()
+        diagnostic = json.loads(encoded)["rows"][0]
+        self.assertIn("version_matches_workflow_pin", diagnostic)
+        self.assertIs(diagnostic["version_matches_workflow_pin"], True)
+        self.assertIs(diagnostic["package_url_empty"], True)
+        self.assertIs(diagnostic["package_url_matches_expected"], False)
+        self.assertIs(diagnostic["source_repository_matches_expected"], True)
+        self.assertIsNone(diagnostic["license"])
+        self.assertEqual(diagnostic["version"], "<redacted>")
+        self.assertNotIn(pin, encoded)
+        self.assertNotIn("https://", encoded)
+        self.assertNotIn("verified comparison", encoded)
+
+    def test_unreadable_workflow_keeps_original_diagnostic_then_failure(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        with tempfile.TemporaryDirectory() as directory:
+            changes = Path(directory) / "changes.json"
+            changes.write_text(json.dumps([self.row()]), encoding="utf-8")
+            argv = [
+                "verify",
+                "changes",
+                "--root",
+                directory,
+                "--base-sha",
+                "0" * 40,
+                "--changes-file",
+                str(changes),
+            ]
+            with (
+                patch(f"{module}.preflight", return_value=set()),
+                patch.object(sys, "argv", argv),
+                patch("sys.stdout", new_callable=io.StringIO) as output,
+                self.assertRaisesRegex(ValueError, "workflow is missing or unreadable"),
+            ):
+                main()
+        diagnostic = json.loads(output.getvalue())["rows"][0]
+        self.assertFalse(any(type(value) is bool for value in diagnostic.values()))
+
+
+class TrufflehogPublishedPurlDiagnosticTests(unittest.TestCase):
+    def test_exact_published_githubactions_format_is_visible_but_not_accepted(self):
+        row = TrufflehogIdentityBooleanDiagnosticTests.row()
+        row["package_url"] = "pkg:githubactions/trufflesecurity/trufflehog@" + "a" * 40
+        row["license"] = None
+        snapshot = json.dumps(row, sort_keys=True)
+        encoded = TrufflehogIdentityBooleanDiagnosticTests.render([row])
+        diagnostic = json.loads(encoded)["rows"][0]
+        self.assertIn("package_url_matches_githubactions_pin", diagnostic)
+        self.assertIs(diagnostic["package_url_matches_githubactions_pin"], True)
+        self.assertIs(diagnostic["package_url_matches_expected"], True)
+        self.assertEqual(diagnostic["package_url"], "<redacted>")
+        self.assertIsNone(diagnostic["license"])
+        self.assertNotIn("pkg:githubactions/", encoded)
+        self.assertNotIn("a" * 40, encoded)
+        self.assertEqual(json.dumps(row, sort_keys=True), snapshot)
+        with self.assertRaisesRegex(ValueError, "outside its reviewed row"):
+            verify_dependency_changes(
+                [row], trufflehog_pin="a" * 40, today=date(2026, 11, 5)
+            )
+
+    def test_probe_does_not_normalize_other_purl_shapes_or_versions(self):
+        prefix = "pkg:githubactions/trufflesecurity/trufflehog"
+        pin = "a" * 40
+        for purl in (
+            f"{prefix}@{'b' * 40}",
+            prefix,
+            f"{prefix}@{pin}?qualifier=value",
+            f"{prefix}@{pin}#subpath",
+            f"{prefix}@{pin}/",
+            f"{prefix}.git@{pin}",
+            f"pkg:GitHubActions/trufflesecurity/trufflehog@{pin}",
+            f"pkg:githubactions/trufflesecurity%2Ftrufflehog@{pin}",
+            f"pkg:githubactions/other/trufflehog@{pin}",
+            "withheld-purl-probe-canary",
+            "",
+            None,
+            [],
+        ):
+            with self.subTest(purl=purl):
+                row = TrufflehogIdentityBooleanDiagnosticTests.row()
+                row["package_url"] = purl
+                encoded = TrufflehogIdentityBooleanDiagnosticTests.render([row])
+                diagnostic = json.loads(encoded)["rows"][0]
+                self.assertIn("package_url_matches_githubactions_pin", diagnostic)
+                self.assertIs(
+                    diagnostic["package_url_matches_githubactions_pin"], False
+                )
+                self.assertNotIn("withheld-", encoded)
+
+    def test_probe_requires_exact_source_and_current_version_evidence(self):
+        for field, value in (
+            ("version", "b" * 40),
+            ("version", None),
+            ("source_repository_url", None),
+            ("source_repository_url", "https://github.com/trufflesecurity/trufflehog/"),
+            ("source_repository_url", "https://github.com/other/trufflehog"),
+            ("source_repository_url", []),
+        ):
+            with self.subTest(field=field, value=value):
+                row = TrufflehogIdentityBooleanDiagnosticTests.row()
+                row["package_url"] = (
+                    "pkg:githubactions/trufflesecurity/trufflehog@" + "a" * 40
+                )
+                row[field] = value
+                encoded = TrufflehogIdentityBooleanDiagnosticTests.render([row])
+                diagnostic = json.loads(encoded)["rows"][0]
+                self.assertNotIn("package_url_matches_githubactions_pin", diagnostic)
+
+    def test_probe_does_not_expand_to_removed_or_other_workflow_rows(self):
+        for field, value in (
+            ("change_type", "removed"),
+            ("manifest", ".github/workflows/other.yml"),
+            ("ecosystem", "gomod"),
+        ):
+            with self.subTest(field=field):
+                row = TrufflehogIdentityBooleanDiagnosticTests.row()
+                row[field] = value
+                encoded = TrufflehogIdentityBooleanDiagnosticTests.render([row])
+                diagnostic = json.loads(encoded)["rows"][0]
+                self.assertNotIn("package_url_matches_githubactions_pin", diagnostic)
+
+    def test_original_github_identity_is_no_longer_accepted(self):
+        row = TrufflehogIdentityBooleanDiagnosticTests.row()
+        encoded = TrufflehogIdentityBooleanDiagnosticTests.render([row])
+        diagnostic = json.loads(encoded)["rows"][0]
+        self.assertIn("package_url_matches_githubactions_pin", diagnostic)
+        self.assertIs(diagnostic["package_url_matches_githubactions_pin"], False)
+        with self.assertRaisesRegex(ValueError, "outside its reviewed row"):
+            verify_dependency_changes(
+                [row], trufflehog_pin="a" * 40, today=date(2026, 11, 5)
+            )
+
+    def test_published_purl_is_rejected_even_with_reviewed_nonnull_license(self):
+        row = TrufflehogIdentityBooleanDiagnosticTests.row()
+        row["package_url"] = "pkg:githubactions/trufflesecurity/trufflehog@" + "a" * 40
+        encoded = TrufflehogIdentityBooleanDiagnosticTests.render([row])
+        diagnostic = json.loads(encoded)["rows"][0]
+        self.assertIs(diagnostic["package_url_matches_githubactions_pin"], True)
+        self.assertEqual(diagnostic["license"], "AGPL-3.0")
+        with self.assertRaisesRegex(ValueError, "outside its reviewed row"):
+            verify_dependency_changes(
+                [row], trufflehog_pin="a" * 40, today=date(2026, 11, 5)
+            )
+
+
 class ExtendedCaddyJoseExceptionTests(unittest.TestCase):
     def test_exact_three_advisories_have_identical_scope_and_expiry(self):
         self.assertEqual(
@@ -2042,7 +2562,7 @@ def _trufflehog_row(pin, **changes):
         )
     )
     fields.update(changes)
-    return action_row(
+    row = action_row(
         (
             fields["change_type"],
             fields["manifest"],
@@ -2053,6 +2573,8 @@ def _trufflehog_row(pin, **changes):
             fields["license"],
         )
     )
+    row["source_repository_url"] = "https://github.com/trufflesecurity/trufflehog"
+    return row
 
 
 class TrufflehogCiOnlyExceptionTests(unittest.TestCase):
@@ -2060,6 +2582,20 @@ class TrufflehogCiOnlyExceptionTests(unittest.TestCase):
 
     def setUp(self):
         self.pin = read_trufflehog_pin(REPO_ROOT)
+
+    def test_diagnostic_matches_the_current_pin_without_disclosing_it(self):
+        encoded = format_dependency_identity_diagnostics(
+            [_trufflehog_row(self.pin)], trufflehog_pin=self.pin
+        )
+        identity = json.loads(encoded)["rows"][0]
+        self.assertTrue(identity["version_matches_workflow_pin"])
+        self.assertTrue(identity["purl_structure"]["version_matches_workflow_pin"])
+        self.assertTrue(identity["purl_structure"]["matches_reviewed_package_name"])
+        self.assertEqual(
+            identity["row_version_evidence"]["sha256"],
+            hashlib.sha256(self.pin.encode("ascii")).hexdigest(),
+        )
+        self.assertNotIn(self.pin, encoded)
 
     def test_workflow_pin_is_read_as_a_single_immutable_sha(self):
         self.assertRegex(self.pin, r"^[0-9a-f]{40}$")
@@ -2084,7 +2620,7 @@ class TrufflehogCiOnlyExceptionTests(unittest.TestCase):
             ("manifest", {"manifest": ".github/workflows/other.yml"}),
             ("ecosystem", {"ecosystem": "gomod"}),
             ("license", {"license": "AGPL-3.0-only"}),
-            ("null-license", {"license": None}),
+            ("enriched-license", {"license": "AGPL-3.0"}),
             (
                 "purl-name-encoded",
                 {"purl": f"pkg:github/trufflesecurity%2Ftrufflehog@{self.pin}"},
@@ -2220,6 +2756,179 @@ class TrufflehogCiOnlyExceptionTests(unittest.TestCase):
                 config([*old, TRUFFLEHOG_PURL]),
                 config([*new, TRUFFLEHOG_PURL]),
             )
+
+
+class TrufflehogObservedNullRowTests(unittest.TestCase):
+    """Only the owner-approved pin may use the observed raw-null exception."""
+
+    def setUp(self):
+        self.pin = read_trufflehog_pin(REPO_ROOT)
+        self.row = {
+            "change_type": "added",
+            "manifest": ".github/workflows/trufflehog.yml",
+            "ecosystem": "actions",
+            "name": "trufflesecurity/trufflehog",
+            "version": self.pin,
+            "package_url": f"pkg:githubactions/trufflesecurity/trufflehog@{self.pin}",
+            "license": None,
+            "source_repository_url": "https://github.com/trufflesecurity/trufflehog",
+            "vulnerabilities": [],
+        }
+
+    def verify(self, rows, *, pin=None, today=TRUFFLEHOG_TODAY):
+        return verify_dependency_changes(
+            rows, trufflehog_pin=self.pin if pin is None else pin, today=today
+        )
+
+    def test_observed_raw_null_row_passes_without_normalization(self):
+        snapshot = json.dumps(self.row, sort_keys=True)
+        self.assertEqual(self.verify([self.row]), 1)
+        self.assertEqual(json.dumps(self.row, sort_keys=True), snapshot)
+        self.assertIsNone(self.row["license"])
+
+    def test_observed_row_expiry_is_exclusive(self):
+        self.assertEqual(self.verify([self.row], today=date(2027, 1, 9)), 1)
+        for today in (date(2027, 1, 10), date(2027, 1, 11)):
+            with (
+                self.subTest(today=today),
+                self.assertRaisesRegex(ValueError, "expired"),
+            ):
+                self.verify([self.row], today=today)
+
+    def test_all_exact_coordinates_and_raw_license_are_required(self):
+        other_pin = _other_pins(self.pin)["different-hex"]
+        cases = {
+            "manifest": (".github/workflows/other.yml", "services/caddy/go.mod"),
+            "ecosystem": ("gomod", "githubactions"),
+            "name": ("other/action", "TruffleSecurity/TruffleHog"),
+            "version": (other_pin, "v3.99.7", self.pin.upper()),
+            "license": ("AGPL-3.0", "AGPL-3.0-only", "MIT", "", "null", "NOASSERTION"),
+            "source_repository_url": (
+                None,
+                "",
+                "https://github.com/trufflesecurity/trufflehog/",
+                "https://github.com/other/trufflehog",
+                "https://github.com/TruffleSecurity/TruffleHog",
+                "http://github.com/trufflesecurity/trufflehog",
+            ),
+            "package_url": (
+                "",
+                "pkg:githubactions/trufflesecurity/trufflehog",
+                f"pkg:github/trufflesecurity/trufflehog@{self.pin}",
+                f"pkg:githubactions/trufflesecurity/trufflehog@{other_pin}",
+                f"pkg:GitHubActions/trufflesecurity/trufflehog@{self.pin}",
+                f"pkg:githubactions/TruffleSecurity/TruffleHog@{self.pin}",
+                f"pkg:githubactions/trufflesecurity%2Ftrufflehog@{self.pin}",
+                self.row["package_url"] + "?qualifier=value",
+                self.row["package_url"] + "#subpath",
+            ),
+        }
+        for field, values in cases.items():
+            for value in values:
+                with (
+                    self.subTest(field=field, value=value),
+                    self.assertRaises(ValueError),
+                ):
+                    self.verify([{**self.row, field: value}])
+
+    def test_matching_future_pin_and_workflow_do_not_renew_the_exception(self):
+        other = _other_pins(self.pin)["different-hex"]
+        row = {
+            **self.row,
+            "version": other,
+            "package_url": f"pkg:githubactions/trufflesecurity/trufflehog@{other}",
+        }
+        with self.assertRaisesRegex(ValueError, "outside its reviewed row"):
+            self.verify([row], pin=other)
+
+    def test_upstream_matching_purls_cannot_hide_behind_an_unrelated_name(self):
+        for purl in (
+            self.row["package_url"],
+            self.row["package_url"].replace("trufflesecurity", "TruffleSecurity"),
+            self.row["package_url"].replace("githubactions", "GitHubActions"),
+            self.row["package_url"].replace("trufflesecurity/", "trufflesecurity%2F"),
+            self.row["package_url"] + "?qualifier=value",
+            self.row["package_url"].replace("githubactions", "github"),
+        ):
+            with self.subTest(purl=purl), self.assertRaises(ValueError):
+                self.verify([{**self.row, "name": "other/action", "package_url": purl}])
+
+    def test_duplicates_and_missing_source_or_license_fail_closed(self):
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            self.verify([self.row, dict(self.row)])
+        for field in ("source_repository_url", "license"):
+            row = dict(self.row)
+            del row[field]
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.verify([row])
+
+    def test_removed_row_and_unrelated_null_license_get_no_exception(self):
+        self.assertEqual(self.verify([{**self.row, "change_type": "removed"}]), 0)
+        unrelated = {
+            **self.row,
+            "name": "other/action",
+            "package_url": "pkg:githubactions/other/action@v1",
+        }
+        self.assertEqual(self.verify([unrelated]), 0)
+        with self.assertRaisesRegex(ValueError, "AGPL-3.0"):
+            self.verify([{**unrelated, "license": "AGPL-3.0"}])
+
+    def test_policy_replaces_legacy_type_and_rejects_all_aliases(self):
+        expected = "pkg:githubactions/trufflesecurity/trufflehog"
+        current = (REPO_ROOT / CONFIG_PATH).read_text(encoding="utf-8")
+        _scalars, sections = _parse_config(current)
+        self.assertIn(expected, sections["allow-dependencies-licenses"])
+        verify_policy_scope(current, today=TRUFFLEHOG_TODAY)
+        for bad in (
+            "pkg:github/trufflesecurity/trufflehog",
+            "pkg:githubactions/TruffleSecurity/TruffleHog",
+            "pkg:githubactions/trufflesecurity%2Ftrufflehog",
+            expected + "?qualifier=value",
+            expected + "@" + self.pin,
+        ):
+            with self.subTest(purl=bad), self.assertRaises(ValueError):
+                verify_policy_scope(
+                    current.replace(expected, bad), today=TRUFFLEHOG_TODAY
+                )
+        old = current.replace(expected, "pkg:github/trufflesecurity/trufflehog")
+        verify_policy_delta(old, current)
+        with self.assertRaises(ValueError):
+            verify_policy_delta(current, old)
+
+    def test_preflight_rejects_changed_pin_before_running_upstream(self):
+        module = "scripts.quality.verify_dependency_review_scope"
+        for pin, allowed in (
+            (self.pin, True),
+            (_other_pins(self.pin)["different-hex"], False),
+        ):
+            with self.subTest(allowed=allowed), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                files = current_mods()
+                files[CONFIG_PATH] = (REPO_ROOT / CONFIG_PATH).read_text(
+                    encoding="utf-8"
+                )
+                files[TRUFFLEHOG_MANIFEST] = f"uses: trufflesecurity/trufflehog@{pin}\n"
+                for path, content in files.items():
+                    target = root / path
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(content, encoding="utf-8")
+                with (
+                    patch(
+                        f"{module}._git_show",
+                        side_effect=lambda _root, _ref, path, files=files: files[path],
+                    ),
+                    patch(f"{module}._base_manifest_exists", return_value=True),
+                ):
+                    if allowed:
+                        self.assertEqual(
+                            preflight(root, "0" * 40, today=TRUFFLEHOG_TODAY), set()
+                        )
+                        # Expiry is enforced even when no dependency changed.
+                        with self.assertRaisesRegex(ValueError, "expired"):
+                            preflight(root, "0" * 40, today=date(2027, 1, 10))
+                    else:
+                        with self.assertRaisesRegex(ValueError, "reviewed.*pin"):
+                            preflight(root, "0" * 40, today=TRUFFLEHOG_TODAY)
 
 
 if __name__ == "__main__":

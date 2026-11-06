@@ -46,11 +46,20 @@ def _get_jwk_from_pem(kid: str, pem_content: str, alg: str) -> JWK | None:
         if not pem_content.strip().startswith("-----BEGIN"):
             return None
 
-        key = serialization.load_pem_private_key(pem_content.encode(), password=None)
-        if not isinstance(key, rsa.RSAPrivateKey):
-            return None
-
-        public_key = key.public_key()
+        public_key: rsa.RSAPublicKey
+        try:
+            private_key = serialization.load_pem_private_key(
+                pem_content.encode(), password=None
+            )
+        except (TypeError, ValueError):
+            loaded_public_key = serialization.load_pem_public_key(pem_content.encode())
+            if not isinstance(loaded_public_key, rsa.RSAPublicKey):
+                return None
+            public_key = loaded_public_key
+        else:
+            if not isinstance(private_key, rsa.RSAPrivateKey):
+                return None
+            public_key = private_key.public_key()
         numbers = public_key.public_numbers()
 
         # Base64URL encode modulus and exponent

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Wave 144 SW2 NEW (z) #17 — Temporal v1.30.2 plain server does NOT do
+# Wave 144 SW2 NEW (z) #17 — Temporal v1.30.7 plain server does NOT do
 # env-var substitution in YAML config (unlike auto-setup which renders via
 # envsubst inside its own entrypoint). The mounted services/temporal/config.yaml
 # contains `${POSTGRES_USER}` + `${POSTGRES_PWD}` literal placeholders that
@@ -13,9 +13,9 @@
 # then exec's temporal-server with --root /tmp --config . --env docker
 # so it finds the rendered docker.yaml there.
 #
-# BIND_ON_IP defaults to all interfaces because Compose attaches Temporal to
-# multiple networks. Membership still needs one concrete advertised address,
-# which is resolved independently below.
+# The public frontend binds all interfaces (config.yaml) because Compose attaches
+# Temporal to multiple networks. The internal services bind 127.0.0.1 and
+# membership advertises 127.0.0.1, so no container address lookup is needed.
 
 set -eu
 # shellcheck disable=SC3040
@@ -44,6 +44,18 @@ if printf '%s' "${TEMPORAL_JWKS_URL}" | grep -q '[][|&\\"'"'"' ]'; then
   exit 1
 fi
 
+# Single-container topology. The worker scanner's system client authenticates
+# through internal-frontend, which is defined only on 127.0.0.1 (see config.yaml).
+# Every service must be listed here, or the scanner crash-loops. Membership
+# advertises 127.0.0.1 (fixed in config.yaml), so the list is checked exactly.
+EXPECTED_TEMPORAL_SERVICES="frontend,history,matching,worker,internal-frontend"
+: "${TEMPORAL_SERVICES:?TEMPORAL_SERVICES env var required}"
+if [ "${TEMPORAL_SERVICES}" != "${EXPECTED_TEMPORAL_SERVICES}" ]; then
+  echo "TEMPORAL_SERVICES must be ${EXPECTED_TEMPORAL_SERVICES}" >&2
+  exit 1
+fi
+export TEMPORAL_SERVICES
+
 # AUD-506: the JWKS listener presents a certificate from Caddy's internal CA. Compose
 # copies only that public root into a read-only mount, so this process never sees
 # the CA private key. Wait for the root, then trust it alongside the system roots.
@@ -66,22 +78,18 @@ done
 } > /tmp/temporal-jwks-ca-bundle.pem
 export SSL_CERT_FILE=/tmp/temporal-jwks-ca-bundle.pem
 
-# Resolve container's bridge-network IP for membership broadcast.
-BROADCAST_ADDRESS="$(getent hosts "$(hostname)" | awk '{print $1;}')"
 : "${BIND_ON_IP:=0.0.0.0}"
-export BIND_ON_IP BROADCAST_ADDRESS
-: "${TEMPORAL_BROADCAST_ADDRESS:=${BROADCAST_ADDRESS}}"
-export TEMPORAL_BROADCAST_ADDRESS
+export BIND_ON_IP
 
 sed \
   -e "s|\${POSTGRES_USER}|${POSTGRES_USER}|g" \
   -e "s|\${POSTGRES_PWD}|${POSTGRES_PWD}|g" \
-  -e "s|\${BROADCAST_ADDRESS}|${BROADCAST_ADDRESS}|g" \
   -e "s|\${TEMPORAL_JWKS_URL}|${TEMPORAL_JWKS_URL}|g" \
   /etc/temporal/config/docker.yaml > /tmp/docker.yaml
 
 # Start temporal-server reading from the rendered /tmp/docker.yaml.
 # --root /tmp + --config . + --env docker → temporal-server reads /tmp/docker.yaml.
+# TEMPORAL_SERVICES (exported above) selects the services to run in this process.
 # The shared Compose path must retain Temporal's configured authentication
 # boundary.  In particular, do not pass Temporal's no-authorizer CLI switch
 # here: that option would also affect

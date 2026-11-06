@@ -21,6 +21,10 @@ SCAN_STEPS = (
 STDLIB_STEP = "Gate the pinned Go builder standard library"
 BUILDERS = ("caddy", "gateway", "ws-hub", "file-processor")
 MANIFESTS = ("services/gateway/go.mod", "services/pkg/logging/go.mod")
+STDLIB_HELPERS = (
+    "scripts/quality/gate_osv_go_stdlib.sh",
+    "scripts/quality/verify_osv_go_stdlib_inventory.py",
+)
 PREFIX = r"""
 git() {
   if [[ "$1" != ls-files ]]; then return 90; fi
@@ -29,6 +33,7 @@ git() {
     git-partial) printf 'services/gateway/go.mod\0'; return 2 ;;
     no-manifests) return 0 ;;
     duplicate-manifest) printf 'services/gateway/go.mod\0services/gateway/go.mod\0' ;;
+    manifest-with-space) printf 'services/gateway with space/go.mod\0services/pkg/logging/go.mod\0' ;;
     *) printf 'services/gateway/go.mod\0services/pkg/logging/go.mod\0' ;;
   esac
 }
@@ -119,6 +124,38 @@ def _step(job: str, name: str) -> dict[str, Any]:
     )
 
 
+def _copy_stdlib_helpers(pytester: pytest.Pytester) -> None:
+    root = ROOT.resolve(strict=True)
+    for relative in STDLIB_HELPERS:
+        source = root / relative
+        try:
+            resolved_source = source.resolve(strict=True)
+        except OSError:
+            pytest.fail(f"required helper is unavailable: {relative}", pytrace=False)
+        if (
+            source.is_symlink()
+            or not source.is_file()
+            or resolved_source != source.absolute()
+            or not resolved_source.is_relative_to(root)
+        ):
+            pytest.fail(
+                f"required helper is not a regular in-root file: {relative}",
+                pytrace=False,
+            )
+        destination = pytester.path / relative
+        if destination.exists() or destination.is_symlink():
+            pytest.fail(
+                f"helper fixture destination already exists: {relative}", pytrace=False
+            )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            destination.write_bytes(source.read_bytes())
+        except OSError:
+            pytest.fail(
+                f"required helper could not be copied: {relative}", pytrace=False
+            )
+
+
 def _fixture(pytester: pytest.Pytester, mode: str) -> dict[str, str]:
     for manifest in (*MANIFESTS, "go.mod", "gen/go/go.mod"):
         path = pytester.path / manifest
@@ -145,6 +182,10 @@ def _fixture(pytester: pytest.Pytester, mode: str) -> dict[str, str]:
         )
     if mode == "missing-manifest":
         (pytester.path / MANIFESTS[0]).unlink()
+    if mode == "manifest-with-space":
+        path = pytester.path / "services/gateway with space/go.mod"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("module fixture.test/spaced\n\ngo 1.26.4\n", encoding="utf-8")
     if mode == "missing-builder":
         (pytester.path / "services/gateway/Dockerfile").write_text(
             "FROM scratch\n", encoding="utf-8"
@@ -181,7 +222,10 @@ def _run(
 ) -> pytest.RunResult:
     step = _step(job, name)
     assert step.get("continue-on-error") is not True
-    for key, value in _fixture(pytester, mode).items():
+    env = _fixture(pytester, mode)
+    if name == STDLIB_STEP:
+        _copy_stdlib_helpers(pytester)
+    for key, value in env.items():
         monkeypatch.setenv(key, value)
     return pytester.run(
         _bash(),
@@ -339,6 +383,16 @@ def test_stdlib_gate_scans_the_pinned_builder_inventory(
     assert "--all-packages" in args and "--all-vulns" in args
     assert "--no-call-analysis=go" in args
     assert "--lockfile" in args and "--config" in args
+
+
+@pytest.mark.parametrize("job", ["sbom-go", "vuln-gate-pr"])
+def test_stdlib_preflight_preserves_nul_delimited_paths_with_spaces(
+    pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch, job: str
+) -> None:
+    result = _run(pytester, monkeypatch, job, STDLIB_STEP, "manifest-with-space")
+    assert result.ret == 0, result.stderr.str()
+    args = (pytester.path / "scan-log").read_text(encoding="utf-8").splitlines()
+    assert "--all-packages" in args and "--all-vulns" in args
 
 
 @pytest.mark.parametrize("job", ["sbom-go", "vuln-gate-pr"])

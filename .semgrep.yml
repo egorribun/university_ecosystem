@@ -1,26 +1,7 @@
-# MOD-03 (audit 2026-03-06): Explicit Semgrep ruleset configuration.
-# `semgrep ci` picks this up automatically; SEMGREP_APP_TOKEN overrides when set.
-# Rulesets chosen for the actual tech stack: Python/FastAPI backend + React/TS frontend.
-
-rules: []  # Custom rules go here; all scanning comes from the rulesets below.
-
-# Enforcement point (AUD-380, ADR-047 Q4 scanner de-duplication): Semgrep runs
-# only as the pinned `semgrep-docker` pre-commit hook (`semgrep-sast` in
-# .pre-commit-config.yaml), which runs `semgrep --config auto --error --oss-only`.
-# There is NO hosted Semgrep CI job: the reusable security audit deliberately
-# has no `semgrep` job, and CI skips the pre-commit hook (SKIP=semgrep-docker).
-# Do not describe a hosted Semgrep job here unless one is reinstated under ADR-047.
-#
-# Local packs for targeted runs, for example:
-#   semgrep --config p/python --config p/fastapi .
-#
-# Packs named for targeting (descriptive only; the hook runs `--config auto`,
-# which selects rules by detected language and does not enumerate these packs):
-# p/python            - General Python security (injection, unsafe deserialization, etc.)
-# p/fastapi           - FastAPI-specific patterns (auth bypass, injection)
-# p/jwt               - JWT misuse (none algorithm, weak secrets, HS/RS confusion)
-# p/react             - React XSS, dangerouslySetInnerHTML, prop injection
-# p/typescript        - TypeScript type-safety anti-patterns
-# p/secrets           - Hardcoded credentials, API keys, connection strings
-# p/supply-chain      - Dependency confusion, pinning issues
-# p/owasp-top-ten     - Comprehensive OWASP Top 10 coverage across all languages
+# AUD-380: no custom Semgrep rules are defined in this repository.
+# Local and hosted enforcement use scripts/quality/run_semgrep_gate.py, which
+# selects the reviewed security-rule subset from the pinned upstream checkout,
+# runs the pinned Semgrep image, rejects incomplete scan evidence, and enforces
+# exact unexpired dispositions. The root .semgrepignore patterns are checked by
+# that gate before any report can pass.
+rules: []

@@ -1649,6 +1649,7 @@
             "kyverno-test",
             "caddy-emitted-log-proof",
             "windows-live-proofs",
+            "semgrep-sast",
             "live-realtime-visual"
           ],
           "artifacts": [
@@ -1659,6 +1660,23 @@
               "provenance": "run_id_attempt"
             }
           ],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
+        "semgrep-sast": {
+          "profile": "required-pr-main",
+          "check_name_template": "Semgrep SAST",
+          "expected_timeout_minutes": 15,
+          "expected_duration_seconds": 900,
+          "guard": "workflow trigger",
+          "needs": [
+            "pre-commit-check"
+          ],
+          "artifacts": [],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,
@@ -2004,7 +2022,14 @@
           "needs": [
             "verify-trusted-ref"
           ],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "zap-sarif-provenance-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
+              "path_pattern": "zap-sarif-provenance.json",
+              "required": false,
+              "provenance": "run_id_attempt"
+            }
+          ],
           "retry_policy": {
             "mode": "none",
             "first_failure_preserved": true,
@@ -3100,7 +3125,14 @@
           "expected_duration_seconds": 2700,
           "guard": "${{ github.ref == 'refs/heads/main' }}",
           "needs": [],
-          "artifacts": [],
+          "artifacts": [
+            {
+              "name_pattern": "nightly-chaos-resilience-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}",
+              "path_pattern": "${{ runner.temp }}/chaos-resilience.xml",
+              "required": false,
+              "provenance": "sha"
+            }
+          ],
           "retry_policy": {
             "mode": "review-required",
             "first_failure_preserved": false,
@@ -4485,7 +4517,7 @@
       "events": [
         {
           "event": "pull_request",
-          "guard": "{\"branches\":[\"main\"],\"paths\":[\"charts/**\",\"k8s/spire/**\",\"services/gateway/**\",\"app/server/**\",\"scripts/kind/**\",\".github/workflows/internal-mtls-kind.yml\"]}"
+          "guard": "{\"branches\":[\"main\"],\"paths\":[\"backend.Dockerfile\",\"backend.Dockerfile.dockerignore\",\".dockerignore\",\"app/**\",\"native/**\",\"alembic/**\",\"alembic.ini\",\"pyproject.toml\",\"uv.lock\",\"go.mod\",\"go.sum\",\"gen/go/**\",\"services/pkg/logging/**\",\"services/pkg/spiffe/**\",\"k8s/README.md\",\"charts/**\",\"k8s/spire/**\",\"services/gateway/**\",\"app/server/**\",\"scripts/kind/**\",\".github/workflows/internal-mtls-kind.yml\"]}"
         },
         {
           "event": "schedule",
@@ -4662,7 +4694,7 @@
           "artifacts": [
             {
               "name_pattern": "sqlmap-output-${{ github.run_id }}-${{ github.run_attempt }}",
-              "path_pattern": "sqlmap-evidence/receipt.json",
+              "path_pattern": "sqlmap-output/\nsqlmap-openapi-output/\nsqlmap-evidence/receipt.json\n",
               "required": false,
               "provenance": "run_id_attempt"
             }

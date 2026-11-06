@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import importlib
 import os
 import sys
 from logging.config import fileConfig
@@ -184,7 +185,17 @@ def run_migrations_offline() -> None:
         _alembic_op.get_bind = previous_get_bind
 
 
+_JSON_SERVER_DEFAULT_PLUGIN = "university_ecosystem.alembic_json_server_defaults"
+
+
+def _register_json_server_default_plugin() -> None:
+    """Register the PostgreSQL JSON comparator plugin once per process."""
+    plugin_module = importlib.import_module("app.core.db.alembic_json_server_defaults")
+    plugin_module.register()
+
+
 def _configure_context(connection: SyncConnection) -> None:
+    _register_json_server_default_plugin()
     context.configure(
         connection=connection,
         target_metadata=build_migration_metadata(
@@ -192,8 +203,13 @@ def _configure_context(connection: SyncConnection) -> None:
         ),
         include_object=build_partition_aware_include_object(connection),
         compare_type=True,
-        # AUD-434: `alembic check` must also compare server defaults.
+        # Keep Alembic's native default and Computed comparators enabled. The
+        # registered plugin handles only PostgreSQL JSON's non-equality case.
         compare_server_default=True,
+        autogenerate_plugins=(
+            "alembic.autogenerate.*",
+            _JSON_SERVER_DEFAULT_PLUGIN,
+        ),
         render_as_batch=True,
         transactional_ddl=True,
         transaction_per_migration=True,

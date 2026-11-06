@@ -39,6 +39,36 @@ sys.modules["live_stand"] = live_stand
 _SPEC.loader.exec_module(live_stand)
 
 
+def _patch_live_playwright_result(
+    monkeypatch: pytest.MonkeyPatch,
+    completed: subprocess.CompletedProcess,
+    *,
+    calls: list[dict[str, object]] | None = None,
+) -> None:
+    """Feed a fixed child result through the bounded live-command runner."""
+
+    def fake_run_check(check: Any, **kwargs: Any) -> Any:
+        if calls is not None:
+            calls.append({"check": check, **kwargs})
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        return live_stand.fast_preflight.CheckResult(
+            name=check.name,
+            command=tuple(check.command),
+            status="passed" if completed.returncode == 0 else "failed",
+            exit_code=completed.returncode,
+            duration_seconds=0.0,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    monkeypatch.setattr(live_stand.fast_preflight, "run_check", fake_run_check)
+
+
 @pytest.fixture(scope="session")
 def git_executable() -> str:
     executable = shutil.which("git")
@@ -477,7 +507,7 @@ def test_in_place_compose_command_uses_the_shared_live_overlay(
     )
 
 
-def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
+def test_seed_cli_reuses_owner_scoped_password_for_student_and_admin_seeds(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -589,9 +619,11 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
     if len(runs) != 6 or token_sizes != [32]:
         pytest.fail("repeated seed invocations must reuse one owner-scoped password")
 
+    demo_commands = [runs[0][0], runs[3][0]]
+    demo_environments = [runs[0][1], runs[3][1]]
     admin_commands = [runs[1][0], runs[4][0]]
     admin_environments = [runs[1][1], runs[4][1]]
-    non_admin_environments = [runs[index][1] for index in (0, 2, 3, 5)]
+    authorization_environments = [runs[index][1] for index in (2, 5)]
     expected_seed_environment = {
         "COMPOSE_PROJECT_NAME": owner.project_name,
         "LIVE_STAND_OWNER_VERIFIED": "1",
@@ -610,11 +642,14 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
         pytest.fail("each seed subprocess must reverify the owned Docker daemon")
     if [check[1] for check in resource_checks] != [owner] * 6:
         pytest.fail("each seed subprocess must verify signed Compose resources")
-    if any("TEST_PASSWORD" in environment for environment in non_admin_environments):
-        pytest.fail("only admin-account seeding may receive the admin password")
+    if any(
+        "TEST_PASSWORD" in environment for environment in authorization_environments
+    ):
+        pytest.fail("authorization seeding must not receive the generated password")
 
     generated_passwords = [
-        environment.get("TEST_PASSWORD") for environment in admin_environments
+        environment.get("TEST_PASSWORD")
+        for environment in (*demo_environments, *admin_environments)
     ]
     if not all(
         isinstance(password, str)
@@ -625,18 +660,24 @@ def test_seed_cli_reuses_owner_scoped_password_only_for_the_admin_seed(
         and any(not character.isalnum() for character in password)
         for password in generated_passwords
     ):
-        pytest.fail("admin seeding must receive a strong generated password")
+        pytest.fail("student and admin seeds must receive a strong generated password")
     if generated_passwords[0] != generated_passwords[1]:
-        pytest.fail("separate seed invocations must reuse the persisted password")
-    if any(password == inherited_password for password in generated_passwords):
-        pytest.fail("admin seeding must replace inherited passwords with fresh values")
-    if any(
-        "-e" not in command
-        or "TEST_PASSWORD" not in command
-        or command.index("TEST_PASSWORD") > command.index("backend")
-        for command in admin_commands
+        pytest.fail("student seed reruns must reuse the persisted password")
+    if (
+        generated_passwords[0] != generated_passwords[2]
+        or generated_passwords[0] != generated_passwords[3]
     ):
-        pytest.fail("Compose must explicitly pass TEST_PASSWORD to the backend")
+        pytest.fail("student and admin seeds must share the persisted password")
+    if any(password == inherited_password for password in generated_passwords):
+        pytest.fail("seed commands must replace inherited passwords with fresh values")
+    for command in (*demo_commands, *admin_commands):
+        if (
+            "-e" not in command
+            or "TEST_PASSWORD" not in command
+            or command.index("TEST_PASSWORD") > command.index("backend")
+            or any(generated_passwords[0] in part for part in command)
+        ):
+            pytest.fail("Compose must pass the password by environment name only")
 
     captured = capsys.readouterr()
     if any(
@@ -1054,8 +1095,10 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
             or stored_password.get("password") != generated_password
         ):
             pytest.fail("the persisted admin password must belong to this stand")
-        if "TEST_PASSWORD" in demo_env or "TEST_PASSWORD" in authorization_env:
-            pytest.fail("only the admin account seed may receive the admin password")
+        if demo_env.get("TEST_PASSWORD") != generated_password:
+            pytest.fail("the student seed must use the same per-run password")
+        if "TEST_PASSWORD" in authorization_env:
+            pytest.fail("authorization seed must not receive the generated password")
         if e2e_env.get("TEST_PASSWORD") != generated_password:
             pytest.fail("the Playwright child must receive the same per-run password")
         if playwright_password != generated_password:
@@ -1077,6 +1120,14 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         ):
             pytest.fail(
                 "Compose argv must contain only the variable name, never its value"
+            )
+        if (
+            "-e" not in demo_command
+            or "TEST_PASSWORD" not in demo_command
+            or any(generated_password in part for part in demo_command)
+        ):
+            pytest.fail(
+                "demo seed argv must contain only the variable name, never its value"
             )
         if live_stand.LIVE_E2E_COMMAND != ("npm", "run", "test:e2e:live"):
             pytest.fail(
@@ -1690,17 +1741,14 @@ def test_live_playwright_never_emits_child_credentials_or_call_logs(
         f'  - locator.fill("{password}")\n'
         f"failed reset URL https://localhost/reset-password?token={reset_token}\n"
     )
+    completed = subprocess.CompletedProcess(
+        live_stand._live_e2e_command(),
+        1,
+        stdout=stdout.encode(),
+        stderr=stderr.encode(),
+    )
     captured_calls: list[dict[str, object]] = []
-
-    def fake_subprocess_run(
-        command: Sequence[str], **kwargs: object
-    ) -> subprocess.CompletedProcess:
-        captured_calls.append({"command": command, **kwargs})
-        return subprocess.CompletedProcess(
-            command, 1, stdout=stdout.encode(), stderr=stderr.encode()
-        )
-
-    monkeypatch.setattr(live_stand.subprocess, "run", fake_subprocess_run)
+    _patch_live_playwright_result(monkeypatch, completed, calls=captured_calls)
 
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(
@@ -1733,16 +1781,17 @@ def test_live_playwright_never_emits_child_credentials_or_call_logs(
         pytest.fail("the live runner should launch Playwright once")
 
     call = captured_calls[0]
-    command = call["command"]
-    if not isinstance(command, (list, tuple)) or any(
-        password in part for part in command
-    ):
+    check = call["check"]
+    command = check.command
+    if not isinstance(command, tuple) or any(password in part for part in command):
         pytest.fail("the admin password must not appear in Playwright argv")
     if tuple(command) != live_stand._live_e2e_command():
         pytest.fail("the runner must use the platform-specific fixed npm launcher")
-    if call.get("capture_output") is not True or call.get("text") is not False:
-        pytest.fail("Playwright output must be captured before diagnostics are emitted")
-    assert "encoding" not in call and "errors" not in call
+    assert check.name == "live-playwright"
+    assert call["repo_root"] == tmp_path
+    assert call["env"] == {"TEST_PASSWORD": password}
+    assert call["timeout_seconds"] == live_stand.LIVE_E2E_TIMEOUT_SECONDS
+    assert call["include_output"] is True
 
 
 @pytest.mark.parametrize(
@@ -1885,11 +1934,7 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess,
-        "run",
-        lambda *_args, **_kwargs: completed,
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
 
@@ -1907,7 +1952,6 @@ def test_live_playwright_verifies_exact_full_suite_skip_identities(
     assert printed.out.splitlines() == expected_output
     assert printed.err == ""
     assert private_title not in printed.out + printed.err
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("extra_summary", ["flaky", "interrupted"])
@@ -1925,9 +1969,7 @@ def test_live_playwright_canonical_full_rejects_flaky_or_interrupted_counts(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="skip identity accounting"):
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
@@ -1956,9 +1998,7 @@ def test_live_playwright_canonical_full_rejects_missing_or_duplicate_skip_rows(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="skip identity accounting"):
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
@@ -1984,11 +2024,7 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess,
-        "run",
-        lambda *_args, **_kwargs: completed,
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="skip identity accounting"):
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
@@ -2003,7 +2039,6 @@ def test_live_playwright_rejects_same_count_with_unexpected_skip_identity(
     assert "verified count=8" not in printed.out
     assert printed.err == ""
     assert private_title not in printed.out + printed.err
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize(
@@ -2037,9 +2072,7 @@ def test_live_playwright_full_count_matches_collected_inventory(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(), 0, stdout=stdout, stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     if accepted:
         live_stand._run_live_playwright(cwd=ROOT / "frontend", environment={})
@@ -2057,7 +2090,6 @@ def test_live_playwright_full_count_matches_collected_inventory(
         assert "live E2E outcome=failed exit_code=0" in printed.out
     assert private_title not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize(
@@ -2178,9 +2210,7 @@ def test_live_playwright_emits_only_validated_profile_save_diagnostics(
         ),
         stderr=b"private-stack private-credential\n",
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -2312,7 +2342,7 @@ def test_live_playwright_emits_only_bounded_a11y_contrast_values(
         stdout=(sentinel + sentinel.rstrip() + " private-token\n").encode(),
         stderr=b"private body and credential",
     )
-    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -2684,9 +2714,7 @@ def test_live_playwright_emits_only_closed_paint_and_footer_diagnostics(
         ).encode(),
         stderr=b"private traceback and credential\n" + _footer_geometry_row().encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -2710,7 +2738,6 @@ def test_live_playwright_emits_only_closed_paint_and_footer_diagnostics(
     assert "private" not in printed.out + printed.err
     assert "credential" not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
@@ -3068,9 +3095,7 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
         stdout=(row + private + "\n").encode(),
         stderr=(row + private + "\n").encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -3083,7 +3108,6 @@ def test_live_playwright_emits_only_validated_push_observations_from_stdout(
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 _STORY_MEMORY_EVENT_KEYS = (
@@ -3280,9 +3304,7 @@ def test_live_playwright_emits_only_validated_story_memory_records_from_stdout(
         stdout=(valid + malformed + private + "\n").encode(),
         stderr=(valid + private + "\n").encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -3295,7 +3317,6 @@ def test_live_playwright_emits_only_validated_story_memory_records_from_stdout(
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
@@ -3394,9 +3415,7 @@ def test_live_playwright_emits_only_closed_email_otp_and_mfa_http_statuses(
         stdout=(rows + private + "\n").encode(),
         stderr=(rows + private + "\n").encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -3407,7 +3426,6 @@ def test_live_playwright_emits_only_closed_email_otp_and_mfa_http_statuses(
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_http_status_deduplicates_and_bounds_records() -> None:
@@ -3506,7 +3524,7 @@ def test_live_playwright_emits_only_bounded_status_and_retry_metadata(
             b"private-body private-credential private-browser-state\n"
         ),
     )
-    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -3531,7 +3549,6 @@ def test_live_playwright_emits_only_bounded_status_and_retry_metadata(
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("project", ["desktop", "mobile"])
@@ -3912,7 +3929,7 @@ def test_live_playwright_emits_only_bounded_page_error_counts(
             b"private-name private-message private-stack private-code private-browser-state\n"
         ),
     )
-    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -3928,7 +3945,6 @@ def test_live_playwright_emits_only_bounded_page_error_counts(
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_emits_only_bounded_news_and_page_error_details(
@@ -3965,9 +3981,7 @@ def test_live_playwright_emits_only_bounded_news_and_page_error_details(
             + "private stderr diagnostic\n"
         ).encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
     printed = capsys.readouterr()
@@ -3983,7 +3997,6 @@ def test_live_playwright_emits_only_bounded_news_and_page_error_details(
     ]
     assert "private" not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_preserves_control_characters_before_diagnostic_validation(
@@ -3991,7 +4004,6 @@ def test_live_playwright_preserves_control_characters_before_diagnostic_validati
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
-    run = subprocess.run
     child_source = (
         "import sys; "
         "sys.stdout.buffer.write("
@@ -4004,12 +4016,8 @@ def test_live_playwright_preserves_control_characters_before_diagnostic_validati
         "+ b'UE_LIVE_PROFILE_SAVE_V1 project=mobile status=422 detail=array detail_count=1 detail_msg=true alert_count=0 save_disabled=false route=profile page_error_count=0 page_error=none\\r\\n')"
     )
 
-    def run_actual_child(
-        _command: Sequence[str], **kwargs: Any
-    ) -> subprocess.CompletedProcess:
-        return run((sys.executable, "-c", child_source), **kwargs)
-
-    monkeypatch.setattr(live_stand.subprocess, "run", run_actual_child)
+    command = (sys.executable, "-c", child_source)
+    monkeypatch.setattr(live_stand, "_live_e2e_command", lambda **_kwargs: command)
     live_stand._run_live_playwright(
         cwd=tmp_path, environment=dict(os.environ), mode="smoke"
     )
@@ -4081,7 +4089,7 @@ def test_live_playwright_emits_only_validated_failure_locations(
             )
     completed.stdout = completed.stdout.replace("\n", newline).encode()
     completed.stderr = completed.stderr.replace("\n", newline).encode()
-    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -4106,7 +4114,6 @@ def test_live_playwright_emits_only_validated_failure_locations(
         f"live E2E outcome={outcome} exit_code={return_code}",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_failure_source_allowlist_matches_tracked_full_suite(
@@ -4198,9 +4205,7 @@ def test_live_playwright_emits_non_smoke_failure_locations_and_redacts_details(
         ).encode(),
         stderr=b"",
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="full")
@@ -4217,7 +4222,6 @@ def test_live_playwright_emits_non_smoke_failure_locations_and_redacts_details(
     ]
     assert private_details not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_emits_fixed_failure_categories_without_reporter_values(
@@ -4287,9 +4291,7 @@ def test_live_playwright_emits_fixed_failure_categories_without_reporter_values(
             + f"    Received: {marker}\n".encode()
         ),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="full")
@@ -4312,7 +4314,6 @@ def test_live_playwright_emits_fixed_failure_categories_without_reporter_values(
     ]
     assert marker not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_failure_diagnostics_reset_after_controls_and_oversize_lines(
@@ -4342,9 +4343,7 @@ def test_live_playwright_failure_diagnostics_reset_after_controls_and_oversize_l
         ).encode(),
         stderr=b"",
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
 
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="full")
@@ -4356,7 +4355,6 @@ def test_live_playwright_failure_diagnostics_reset_after_controls_and_oversize_l
     ]
     assert marker not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_classifies_pinned_wait_for_response_timeout(
@@ -4604,7 +4602,7 @@ def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
         stdout=f"  1) [desktop] › {source_name}:1:1 › private-title\n".encode(),
         stderr=f"        at {frame_path}:2:1\n1 failed\n".encode(),
     )
-    monkeypatch.setattr(live_stand.subprocess, "run", lambda *_args, **_kw: completed)
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 23"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={})
     printed = capsys.readouterr()
@@ -4616,7 +4614,6 @@ def test_live_playwright_failure_frames_require_a_header_in_the_same_stream(
         "live E2E outcome=failed exit_code=23",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("source_state", ["missing", "invalid-utf8", "directory"])
@@ -5015,26 +5012,19 @@ def test_live_playwright_focused_scope_is_fixed_and_diagnostic_only(
     )
     expected_command = live_stand._live_e2e_command(mode="full", specs=expected)
     completed = subprocess.CompletedProcess((), 0, stdout=b"", stderr=b"")
-    observed: list[tuple[str, ...]] = []
-
-    def fake_run(command, **_kwargs):
-        observed.append(tuple(command))
-        completed.args = command
-        return completed
-
-    monkeypatch.setattr(live_stand.subprocess, "run", fake_run)
+    calls: list[dict[str, object]] = []
+    _patch_live_playwright_result(monkeypatch, completed, calls=calls)
 
     live_stand._run_live_playwright(
         cwd=tmp_path, environment={}, mode="full", specs=selected
     )
 
-    assert observed == [expected_command]
+    assert [tuple(call["check"].command) for call in calls] == [expected_command]
     assert capsys.readouterr().out.splitlines() == [
         "live E2E scope=focused diagnostic_only=true",
         "+ " + " ".join(expected_command),
         "live E2E outcome=passed exit_code=0",
     ]
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize(
@@ -8815,9 +8805,7 @@ def test_live_playwright_auth_diagnostics_are_failure_only(
         stdout=rows.encode(),
         stderr=b"",
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
     printed = capsys.readouterr()
@@ -8828,7 +8816,6 @@ def test_live_playwright_auth_diagnostics_are_failure_only(
     assert "live E2E auth UI" not in printed.out
     assert "live E2E auth HTTP" not in printed.out
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_emits_only_closed_auth_diagnostics_from_stdout(
@@ -8850,9 +8837,7 @@ def test_live_playwright_emits_only_closed_auth_diagnostics_from_stdout(
         stdout=(valid_ui + valid_http + malformed_ui + private + "\n").encode(),
         stderr=(valid_ui + valid_http + private + "\n").encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
 
@@ -8865,7 +8850,6 @@ def test_live_playwright_emits_only_closed_auth_diagnostics_from_stdout(
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 _STORY_SETUP_STAGES = (
@@ -8990,9 +8974,7 @@ def test_live_playwright_emits_story_setup_diagnostics_from_failure_stdout_only(
         stdout=(valid + private + "\n").encode(),
         stderr=valid.encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9003,7 +8985,6 @@ def test_live_playwright_emits_story_setup_diagnostics_from_failure_stdout_only(
     ]
     assert private not in printed.out + printed.err
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_playwright_suppresses_story_setup_diagnostics_on_success(
@@ -9015,9 +8996,7 @@ def test_live_playwright_suppresses_story_setup_diagnostics_on_success(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
@@ -9213,9 +9192,7 @@ def test_live_playwright_emits_registration_diagnostics_only_from_failure_stdout
         stdout=(valid + private + "\n").encode(),
         stderr=valid.encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9237,9 +9214,7 @@ def test_live_playwright_suppresses_registration_diagnostics_on_success(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
@@ -9335,9 +9310,7 @@ def test_live_playwright_emits_only_validated_pwa_route_diagnostics_from_failure
         stdout=(valid + private + "\n").encode(),
         stderr=valid.encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9359,9 +9332,7 @@ def test_live_playwright_suppresses_pwa_bundle_route_diagnostics_on_success(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
@@ -9724,9 +9695,7 @@ def test_live_playwright_emits_only_validated_new_diagnostics_on_failure(
         stdout=(row + private + "\n").encode(),
         stderr=row.encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9758,9 +9727,7 @@ def test_live_playwright_suppresses_new_diagnostics_on_success(
     completed = subprocess.CompletedProcess(
         live_stand._live_e2e_command(mode="smoke"), 0, stdout=row.encode(), stderr=b""
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
     assert printed.out.splitlines() == [
@@ -9794,9 +9761,7 @@ def test_live_playwright_emits_closed_login_failure_observations(
         stdout=(row + "private-body https://private.invalid/?token=x\n").encode(),
         stderr=b"private-stack private-credential\n",
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9806,7 +9771,6 @@ def test_live_playwright_emits_closed_login_failure_observations(
         "live E2E outcome=failed exit_code=1",
     ]
     assert printed.err == ""
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize(
@@ -9840,9 +9804,7 @@ def test_live_playwright_discards_malformed_login_failure_rows(
         "requests=1 responses=1 status=200 route=login\n"
     ).replace(*replacement)
     completed = subprocess.CompletedProcess([], 1, stdout=row.encode(), stderr=b"")
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9865,9 +9827,7 @@ def test_live_playwright_bounds_and_deduplicates_login_failure_rows(
     ]
     stdout = "".join(f"UE_LIVE_LOGIN_FAILURE_V1 {row}\n" * 2 for row in fields).encode()
     completed = subprocess.CompletedProcess([], 1, stdout=stdout, stderr=b"")
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
@@ -9892,9 +9852,7 @@ def test_live_playwright_never_accepts_login_failure_rows_from_stderr(
         b"requests=1 responses=1 status=200 route=login\n"
     )
     completed = subprocess.CompletedProcess([], return_code, stdout=b"", stderr=row)
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     expectation = pytest.raises(live_stand.StandError) if return_code else nullcontext()
     with expectation:
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -9913,9 +9871,7 @@ def test_live_playwright_suppresses_login_failure_rows_after_success(
         b"requests=1 responses=1 status=200 route=login\n"
     )
     completed = subprocess.CompletedProcess([], 0, stdout=row, stderr=b"")
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     printed = capsys.readouterr()
     assert "live E2E login failure " not in printed.out
@@ -13212,9 +13168,7 @@ def test_live_reset_registration_runner_uses_failure_stdout_only(
         stdout=(valid + valid + private + "\n").encode(),
         stderr=(stderr_only + private).encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match="exit code 1"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -13230,7 +13184,6 @@ def test_live_reset_registration_runner_uses_failure_stdout_only(
     assert captured.out.splitlines() == expected
     assert captured.err == ""
     assert private not in captured.out
-    assert completed.stdout == completed.stderr == b""
 
 
 def _reset_registration_v3_record(**overrides: object) -> dict[str, object]:
@@ -13417,9 +13370,7 @@ def test_live_reset_registration_v3_runner_uses_failure_stdout_only(
         stdout=(valid + valid + private + "\n").encode(),
         stderr=(stderr_only + private).encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match="exit code 1"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -13437,7 +13388,6 @@ def test_live_reset_registration_v3_runner_uses_failure_stdout_only(
     assert captured.out.splitlines() == expected
     assert captured.err == ""
     assert private not in captured.out
-    assert completed.stdout == completed.stderr == b""
 
 
 def _aud174_install_window_log_selector(
@@ -14575,9 +14525,7 @@ def test_live_reset_registration_v2_runner_uses_failure_stdout_only(
         stdout=(valid + valid + private + "\n").encode(),
         stderr=(stderr_only + private).encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match="exit code 1"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -14595,7 +14543,6 @@ def test_live_reset_registration_v2_runner_uses_failure_stdout_only(
     assert captured.out.splitlines() == expected
     assert captured.err == ""
     assert private not in captured.out
-    assert completed.stdout == completed.stderr == b""
 
 
 _RESET_URL_DIAGNOSTIC_LINE = (
@@ -14688,9 +14635,7 @@ def test_live_reset_url_runner_emits_failure_stdout_only_and_preserves_exit(
         ).encode(),
         stderr=(stderr_only + private).encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match=f"exit code {return_code}"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -14709,7 +14654,6 @@ def test_live_reset_url_runner_emits_failure_stdout_only_and_preserves_exit(
     assert captured.out.splitlines() == expected
     assert captured.err == ""
     assert private not in captured.out
-    assert completed.stdout == completed.stderr == b""
 
 
 def _aud174_capture_budget_metadata(
@@ -15333,9 +15277,7 @@ def test_live_password_forgot_runner_uses_only_failure_stdout_and_preserves_exit
         stdout=(valid + valid + private + "\n").encode(),
         stderr=(stderr_only + private).encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     if return_code:
         with pytest.raises(live_stand.StandError, match="exit code 1"):
             live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
@@ -15352,7 +15294,6 @@ def test_live_password_forgot_runner_uses_only_failure_stdout_and_preserves_exit
     assert captured.out.splitlines() == expected
     assert captured.err == ""
     assert private not in captured.out
-    assert completed.stdout == completed.stderr == b""
 
 
 def test_live_password_forgot_parser_counts_complete_utf8_frame_bytes() -> None:
@@ -15462,9 +15403,7 @@ def test_live_forgot_runner_never_prints_forged_private_fields(
         stdout=(rows + _password_forgot_line(valid)).encode(),
         stderr=rows.encode(),
     )
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     with pytest.raises(live_stand.StandError, match="exit code 1"):
         live_stand._run_live_playwright(cwd=tmp_path, environment={}, mode="smoke")
     captured = capsys.readouterr()
@@ -15475,7 +15414,6 @@ def test_live_forgot_runner_never_prints_forged_private_fields(
     ]
     assert captured.err == ""
     assert private not in captured.out
-    assert completed.stdout == completed.stderr == b""
 
 
 @pytest.mark.parametrize("value", [None, True, 1, {}, [], "private-label-canary"])
@@ -15582,9 +15520,7 @@ def test_live_forgot_sink_rejects_private_values_when_parser_is_bypassed(
     for value in forged:
         assert live_stand._render_forgot_observation(value) is None
     completed = subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"")
-    monkeypatch.setattr(
-        live_stand.subprocess, "run", lambda *_args, **_kwargs: completed
-    )
+    _patch_live_playwright_result(monkeypatch, completed)
     monkeypatch.setattr(
         live_stand,
         "_live_playwright_password_forgot_diagnostics",
@@ -15645,12 +15581,28 @@ def test_live_forgot_sink_renderer_matches_all_accepted_public_domains(
 
 
 def test_live_forgot_sink_literal_domains_match_validation_guards() -> None:
-    source = (ROOT / "scripts" / "live_stand.py").read_text(encoding="utf-8")
+    helper_source = (ROOT / "scripts" / "live_stand_playwright_evidence.py").read_text(
+        encoding="utf-8"
+    )
     functions = {
         node.name: node
-        for node in ast.parse(source).body
+        for node in ast.parse(helper_source).body
         if isinstance(node, ast.FunctionDef)
     }
+    facade_source = (ROOT / "scripts" / "live_stand.py").read_text(encoding="utf-8")
+    facade_imports = {
+        alias.name: alias.asname or alias.name
+        for node in ast.walk(ast.parse(facade_source))
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "scripts.live_stand_playwright_evidence"
+        for alias in node.names
+    }
+    from scripts import live_stand_playwright_evidence as evidence
+
+    for name in ("_validated_password_forgot_record", "_render_forgot_observation"):
+        assert facade_imports.get(name) == name
+        assert getattr(live_stand, name) is getattr(evidence, name)
+
     guard_domains = {}
     for node in ast.walk(functions["_validated_password_forgot_record"]):
         if (

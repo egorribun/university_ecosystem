@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TEST_NAME = "test_real_gunicorn_worker_emitted_logs_exclude_reset_and_oauth_targets"
 CASE_CLASS = "tests.aud178_449_gunicorn_proof"
 CANARY = "PRIVACYDIAGNOSTICPROBE"
+RECEIPT_VALIDATOR_PATH = ".github/scripts/ci/verify_aud178_449_gunicorn_receipt.py"
 pytest_plugins = ("pytester",)
 
 
@@ -51,6 +52,10 @@ def test_gunicorn_proof_runs_in_the_required_caddy_job_without_a_new_check() -> 
     assert "umask 077" in script and "trap 'rm -rf -- \"$proof_root\"' EXIT" in script
     assert ">/dev/null 2>&1; then" in script
     assert "Gunicorn emitted-log proof receipt rejected" in script
+    assert (
+        f"uv run --frozen --no-sync python -I {RECEIPT_VALIDATOR_PATH} "
+        '"$proof_root/receipt.xml"'
+    ) in script
 
 
 @pytest.mark.parametrize(
@@ -75,8 +80,8 @@ def test_gunicorn_proof_runs_in_the_required_caddy_job_without_a_new_check() -> 
 def test_gunicorn_receipt_validation_is_fail_closed(
     tmp_path: Path, pytester: pytest.Pytester, case: str
 ) -> None:
-    _, step = _proof_step()
-    validator = step["run"].split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+    _proof_step()
+    validator = (ROOT / RECEIPT_VALIDATOR_PATH).read_text(encoding="utf-8")
     receipt = tmp_path / "receipt.xml"
     root = ET.Element("testsuites")
     counts = {"tests": "1", "failures": "0", "errors": "0", "skipped": "0"}

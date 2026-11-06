@@ -1,0 +1,360 @@
+{
+  "chart_template_roots": [
+    "charts/redis-compat/templates",
+    "charts/revocation-store/templates",
+    "charts/university-ecosystem/templates"
+  ],
+  "dependency_updates": false,
+  "guard_only_paths": [
+    "charts/revocation-store/templates/validate-config.yaml",
+    "charts/university-ecosystem/templates/deployment-contract.yaml",
+    "charts/university-ecosystem/templates/validate-config.yaml",
+    "charts/revocation-store/templates/deployment-contract.yaml"
+  ],
+  "helm_version": "v4.2.4",
+  "max_render_seconds": 60,
+  "profiles": [
+    {
+      "api_versions": [],
+      "chart_root": "charts/university-ecosystem",
+      "deployment_profile": true,
+      "environment": "development",
+      "name": "university-development",
+      "profile_kind": "development-contract-fixture; not-deployment-evidence",
+      "values_sources": [
+        "charts/university-ecosystem/values.yaml"
+      ],
+      "view_path": "charts/rendered-profiles/university-development.yaml",
+      "deployment_evidence": false,
+      "synthetic_overrides": [
+        "CI placeholder credentials and contract image digests"
+      ]
+    },
+    {
+      "api_versions": [],
+      "chart_root": "charts/university-ecosystem",
+      "deployment_profile": true,
+      "environment": "staging",
+      "name": "university-staging",
+      "profile_kind": "staging-context-fixture; synthetic-external-egress-CIDRs; not-deployment-evidence",
+      "values_sources": [
+        "charts/university-ecosystem/values.yaml",
+        "charts/university-ecosystem/values-staging.yaml"
+      ],
+      "view_path": "charts/rendered-profiles/university-staging.yaml",
+      "deployment_evidence": false,
+      "synthetic_overrides": [
+        "CI placeholder credentials and contract image digests",
+        "documentation-only 192.0.2.0/24 CIDRs for external HTTPS egress contract rendering"
+      ]
+    },
+    {
+      "api_versions": [],
+      "chart_root": "charts/university-ecosystem",
+      "deployment_profile": true,
+      "environment": "production",
+      "name": "university-production",
+      "profile_kind": "production-context-fixture; staging-values-test-issuer-mTLS-and-synthetic-CIDRs; not-deployment-evidence",
+      "values_sources": [
+        "charts/university-ecosystem/values.yaml",
+        "charts/university-ecosystem/values-staging.yaml"
+      ],
+      "view_path": "charts/rendered-profiles/university-production.yaml",
+      "deployment_evidence": false,
+      "synthetic_overrides": [
+        "staging values with synthetic example.org issuer and host overrides",
+        "test ClusterIssuer name and internal HTTP mTLS fixture",
+        "documentation-only 192.0.2.0/24 CIDRs for external HTTPS egress contract rendering"
+      ]
+    },
+    {
+      "api_versions": [],
+      "chart_root": "charts/university-ecosystem",
+      "deployment_profile": false,
+      "environment": "development",
+      "name": "university-feature-enabled-development",
+      "profile_kind": "feature-enabled-development-ci-fixture; not-deployment-evidence",
+      "values_sources": [
+        "charts/university-ecosystem/values.yaml"
+      ],
+      "view_path": "charts/rendered-profiles/university-feature-enabled-development.yaml",
+      "deployment_evidence": false,
+      "synthetic_overrides": [
+        "CI placeholder credentials and contract image digests",
+        "backup, KEDA, and hibernation features enabled for source coverage"
+      ]
+    },
+    {
+      "api_versions": [],
+      "chart_root": "charts/revocation-store",
+      "deployment_profile": true,
+      "environment": "development",
+      "name": "revocation-store-development",
+      "profile_kind": "development-contract-fixture; not-deployment-evidence",
+      "values_sources": [
+        "charts/revocation-store/values.yaml"
+      ],
+      "view_path": "charts/rendered-profiles/revocation-store-development.yaml",
+      "deployment_evidence": false,
+      "synthetic_overrides": [
+        "synthetic Redis and backend image digests"
+      ]
+    },
+    {
+      "api_versions": [],
+      "chart_root": "charts/revocation-store",
+      "deployment_profile": true,
+      "environment": "staging",
+      "name": "revocation-store-staging",
+      "profile_kind": "staging-context-fixture; not-deployment-evidence",
+      "values_sources": [
+        "charts/revocation-store/values-staging.yaml"
+      ],
+      "view_path": "charts/rendered-profiles/revocation-store-staging.yaml",
+      "deployment_evidence": false,
+      "synthetic_overrides": [
+        "synthetic Redis and backend image digests"
+      ]
+    },
+    {
+      "api_versions": [],
+      "chart_root": "charts/revocation-store",
+      "deployment_profile": true,
+      "environment": "production",
+      "name": "revocation-store-production",
+      "profile_kind": "production-context-fixture-using-staging-values; not-deployment-evidence",
+      "values_sources": [
+        "charts/revocation-store/values-staging.yaml"
+      ],
+      "view_path": "charts/rendered-profiles/revocation-store-production.yaml",
+      "deployment_evidence": false,
+      "synthetic_overrides": [
+        "staging values with synthetic Redis and backend image digests"
+      ]
+    },
+    {
+      "api_versions": [
+        "gateway.networking.k8s.io/v1/Gateway",
+        "gateway.networking.k8s.io/v1/HTTPRoute",
+        "gateway.envoyproxy.io/v1alpha1/ClientTrafficPolicy",
+        "gateway.envoyproxy.io/v1alpha1/BackendTrafficPolicy",
+        "cert-manager.io/v1/Certificate"
+      ],
+      "chart_root": "charts/university-ecosystem",
+      "deployment_profile": false,
+      "environment": "development",
+      "name": "gateway-api-isolated-synthetic-apis",
+      "profile_kind": "isolated-diagnostic-only; synthetic-APIs; full-chart-guard-remains-active; not-deployment-evidence",
+      "values_sources": [
+        "charts/university-ecosystem/values.yaml",
+        "charts/university-ecosystem/values.schema.json"
+      ],
+      "view_path": "charts/rendered-profiles/gateway-api-isolated-synthetic-apis.yaml",
+      "deployment_evidence": false,
+      "synthetic_overrides": [
+        "isolated one-template chart fixture",
+        "synthetic Gateway API declarations; does not enable full-chart deployment"
+      ]
+    }
+  ],
+  "required_profile_coverage": {
+    "charts/university-ecosystem/templates/backup-cronjob.yaml": [
+      "university-feature-enabled-development"
+    ],
+    "charts/university-ecosystem/templates/gateway-api.yaml": [
+      "gateway-api-isolated-synthetic-apis"
+    ],
+    "charts/university-ecosystem/templates/keda-scaledobjects.yaml": [
+      "university-feature-enabled-development"
+    ],
+    "charts/university-ecosystem/templates/keda-trigger-auth.yaml": [
+      "university-feature-enabled-development"
+    ],
+    "charts/university-ecosystem/templates/secrets.yaml": [
+      "university-development"
+    ]
+  },
+  "schema_version": 1,
+  "source_roles": [
+    {
+      "path": "charts/redis-compat/templates/redis.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/revocation-store/templates/deployment-contract.yaml",
+      "role": "guard-only"
+    },
+    {
+      "path": "charts/revocation-store/templates/redis-configmap.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/revocation-store/templates/redis-networkpolicy.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/revocation-store/templates/redis-pdb.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/revocation-store/templates/redis-serviceaccount.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/revocation-store/templates/redis-services.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/revocation-store/templates/redis-statefulset.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/revocation-store/templates/validate-config.yaml",
+      "role": "guard-only"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/backend-deployment.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/backend-service.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/backup-cronjob.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/deployment-contract.yaml",
+      "role": "guard-only"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/file-processor-deployment.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/file-processor-service.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/frontend-deployment.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/frontend-hpa.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/frontend-service.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/gateway-api.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/gateway-deployment.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/gateway-hpa.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/gateway-service.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/hpa.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/ingress.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/keda-scaledobjects.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/keda-trigger-auth.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/migration-job.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/nats-networkpolicy.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/network-policy.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/outbox-worker-deployment.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/partition-maintenance-alert.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/partition-maintenance-cronjob.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/partition-maintenance-networkpolicy.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/pdb.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/rbac.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/secrets.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/validate-config.yaml",
+      "role": "guard-only"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/ws-hub-deployment.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/ws-hub-hpa.yaml",
+      "role": "resource"
+    },
+    {
+      "path": "charts/university-ecosystem/templates/ws-hub-service.yaml",
+      "role": "resource"
+    }
+  ],
+  "helm_toolchains": [
+    {
+      "platform_key": "linux-amd64",
+      "version": "v4.2.4",
+      "archive_member": "linux-amd64/helm",
+      "archive_sha256": "c306b46f719b0a4da32d0f78ee21bf90ce8d602f15b22ab753f0674d1670a7f3",
+      "executable_name": "helm",
+      "archive_type": "tar.gz",
+      "archive_url": "https://get.helm.sh/helm-v4.2.4-linux-amd64.tar.gz"
+    },
+    {
+      "archive_type": "zip",
+      "executable_name": "helm.exe",
+      "archive_member": "windows-amd64/helm.exe",
+      "archive_sha256": "e94d83a4706fd82078c98dade2079fa9d9680c1c2bfb93bfc304ee6bc2412a32",
+      "archive_url": "https://get.helm.sh/helm-v4.2.4-windows-amd64.zip",
+      "platform_key": "windows-amd64",
+      "version": "v4.2.4"
+    }
+  ]
+}

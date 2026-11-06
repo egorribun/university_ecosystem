@@ -66,6 +66,9 @@ CONTRACT_VALIDATION_WORKFLOW_PATH = (
 BACKEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
 )
+BACKEND_INTEGRATION_HELPER_PATH = (
+    REPOSITORY_ROOT / "scripts" / "ci" / "backend-run-integration-tests.ps1"
+)
 FRONTEND_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml"
 )
@@ -3419,9 +3422,14 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         for step in plan_steps
         if step.get("name") == "Require all full mutmut stats shards"
     )
+    assert require_stats["env"]["ARTIFACT_NAMESPACE"] == (
+        "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}"
+    )
     assert "expected=8" in require_stats["run"]
     assert "find mutmut-stats -type f -name 'mutmut-stats.json'" in require_stats["run"]
     assert "seq 0 7" in require_stats["run"]
+    assert "${ARTIFACT_NAMESPACE}" in require_stats["run"]
+    assert "${{" not in require_stats["run"]
     plan_upload = next(
         step
         for step in plan_steps
@@ -3490,10 +3498,11 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         in require_shards["run"]
     )
     assert "seq 1 128" in require_shards["run"]
-    assert (
+    assert require_shards["env"]["ARTIFACT_NAMESPACE"] == (
         "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}"
-        in require_shards["run"]
     )
+    assert "${ARTIFACT_NAMESPACE}" in require_shards["run"]
+    assert "${{" not in require_shards["run"]
     assert "${RUN_ID}-${RUN_ATTEMPT}-${shard}" in require_shards["run"]
     aggregate_upload = next(
         step
@@ -5722,7 +5731,8 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
     install = steps["Install SQLMap"]
     capability = steps["Verify SQLMap OpenAPI support"]
     readiness = steps["Start FastAPI Backend in Background"]
-    scan = steps["Run SQLMap Scan on API"]
+    full_scan = steps["Run SQLMap scan for every anonymous OpenAPI operation"]
+    news_scan = steps["Run SQLMap Scan on API"]
 
     assert re.fullmatch(
         r'uv pip install "sqlmap==\d+\.\d+\.\d+"', install["run"].strip()
@@ -5737,63 +5747,88 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
     assert "for i in {1..30}; do" in readiness["run"]
     assert "exit 1" in readiness["run"]
     assert "sqlmap_scan_gate.py scope-openapi" in readiness["run"]
+    assert "sqlmap_scan_gate.py scope-full-openapi" in readiness["run"]
     assert "sqlmap-output/source-openapi.json" in readiness["run"]
     assert "sqlmap-output/scoped-openapi.json" in readiness["run"]
+    assert "sqlmap-openapi-output/scoped-openapi.json" in readiness["run"]
     assert "db-query-evidence.log" in readiness["run"]
     assert "secrets.token_urlsafe(48)" in readiness["run"]
 
-    scan_script = scan["run"]
-    assert '--openapi="sqlmap-output/scoped-openapi.json"' in scan_script
-    assert f'--openapi-base="{SQLMAP_OPENAPI_BASE_URL}"' in scan_script
-    for option in (
-        "--batch",
-        "--crawl=0",
-        "--technique=BEU",
-        "--risk=1",
-        "--level=1",
-        "--threads=2",
-        "--timeout=5",
-        "--retries=0",
+    for scan, output_dir in (
+        (full_scan, "sqlmap-openapi-output"),
+        (news_scan, "sqlmap-output"),
     ):
-        assert option in scan_script
+        scan_script = scan["run"]
+        assert f'--openapi="{output_dir}/scoped-openapi.json"' in scan_script
+        assert f'--openapi-base="{SQLMAP_OPENAPI_BASE_URL}"' in scan_script
+        for option in (
+            "--batch",
+            "--crawl=0",
+            "--technique=BEU",
+            "--risk=1",
+            "--level=1",
+            "--threads=2",
+            "--timeout=5",
+            "--retries=0",
+            f"--output-dir={output_dir}",
+            f"--results-file={output_dir}/results.csv",
+        ):
+            assert option in scan_script
+        assert scan_script.count(f"> {output_dir}/scan-console.log 2>&1") == 1
+        assert "Authorization:" not in scan_script
 
-    # The native console stays private; only the sanitized receipt is uploaded.
-    assert scan_script.count("> sqlmap-output/scan-console.log 2>&1") == 1
     proxy_unset = (
         "unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY"
     )
-    assert proxy_unset in scan_script
-    assert scan_script.index(proxy_unset) < scan_script.index("uv run sqlmap")
-    sqlmap_invocation = scan_script[scan_script.index("uv run sqlmap") :]
-    sqlmap_invocation = sqlmap_invocation.split(
-        "> sqlmap-output/scan-console.log 2>&1", 1
-    )[0]
-    scan_arguments = shlex.split(sqlmap_invocation.replace("\\\n", ""), comments=True)
-    assert scan_arguments == [
-        "uv",
-        "run",
-        "sqlmap",
-        "--openapi=sqlmap-output/scoped-openapi.json",
-        f"--openapi-base={SQLMAP_OPENAPI_BASE_URL}",
-        "--headers=Accept-Encoding: identity\\nX-Request-ID: sqlmap-aud-381",
-        "--ignore-redirects",
-        "--answers=refresh=N",
-        "--scope=^http://127[.]0[.]0[.]1:8000/api/v1/news([?]|$)",
-        "--batch",
-        "--crawl=0",
-        "--technique=BEU",
-        "--risk=1",
-        "--level=1",
-        "--threads=2",
-        "--timeout=5",
-        "--retries=0",
-        "--output-dir=sqlmap-output",
-        "--results-file=sqlmap-output/results.csv",
-        "--flush-session",
-    ]
+    for scan, output_dir, scope in (
+        (
+            full_scan,
+            "sqlmap-openapi-output",
+            "^http://127[.]0[.]0[.]1:8000/",
+        ),
+        (
+            news_scan,
+            "sqlmap-output",
+            "^http://127[.]0[.]0[.]1:8000/api/v1/news([?]|$)",
+        ),
+    ):
+        scan_script = scan["run"]
+        assert proxy_unset in scan_script
+        assert scan_script.index(proxy_unset) < scan_script.index("uv run sqlmap")
+        sqlmap_invocation = scan_script[scan_script.index("uv run sqlmap") :]
+        log = f"> {output_dir}/scan-console.log 2>&1"
+        sqlmap_invocation = sqlmap_invocation.split(log, 1)[0]
+        scan_arguments = shlex.split(
+            sqlmap_invocation.replace("\\\n", ""), comments=True
+        )
+        assert scan_arguments == [
+            "uv",
+            "run",
+            "sqlmap",
+            f"--openapi={output_dir}/scoped-openapi.json",
+            f"--openapi-base={SQLMAP_OPENAPI_BASE_URL}",
+            "--headers=Accept-Encoding: identity\\nX-Request-ID: sqlmap-aud-381",
+            "--ignore-redirects",
+            "--answers=refresh=N",
+            f"--scope={scope}",
+            "--batch",
+            "--crawl=0",
+            "--technique=BEU",
+            "--risk=1",
+            "--level=1",
+            "--threads=2",
+            "--timeout=5",
+            "--retries=0",
+            f"--output-dir={output_dir}",
+            f"--results-file={output_dir}/results.csv",
+            "--flush-session",
+        ]
 
-    for step in (capability, readiness, scan):
+    for step in (capability, readiness):
         assert step.get("continue-on-error", False) is False
+        assert "|| true" not in step["run"]
+    for step in (full_scan, news_scan):
+        assert step["continue-on-error"] is True
         assert "|| true" not in step["run"]
 
 
@@ -6033,18 +6068,33 @@ def test_coverage_api_selection_receipt_is_bound_before_canonical_merge() -> Non
 def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     job = workflow["jobs"]["coverage-policy-gate"]
+    selection = _provenance_step(
+        job, "Select retry-safe same-run coverage producer artifacts"
+    )
+    assert selection["env"] == {
+        "COVERAGE_REPOSITORY": "${{ github.repository }}",
+        "COVERAGE_RUN_ID": "${{ github.run_id }}",
+        "COVERAGE_RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "COVERAGE_COMMIT_SHA": "${{ github.sha }}",
+        "COVERAGE_RUN_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "COVERAGE_EVENT": "${{ github.event_name }}",
+        "GH_TOKEN": "${{ github.token }}",
+    }
     normalize = _provenance_step(job, "Normalize coverage evidence")
     normalize_run = str(normalize["run"])
 
-    assert normalize["env"]["SOURCE_HEAD_SHA"] == (
-        "${{ github.event.pull_request.head.sha || github.sha }}"
-    )
-    assert normalize["env"]["BASE_SHA"] == (
-        "${{ github.event.pull_request.base.sha || github.sha }}"
-    )
-    assert normalize["env"]["BASE_REF"] == (
-        "${{ github.event.pull_request.base.ref || github.ref_name }}"
-    )
+    for name, value in {
+        "EXPECTED_SHA": "${{ github.sha }}",
+        "SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
+        "WORKFLOW_REPOSITORY": "${{ github.repository }}",
+        "WORKFLOW_REF": "${{ github.workflow_ref }}",
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "WORKFLOW_EVENT": "${{ github.event_name }}",
+    }.items():
+        assert normalize["env"][name] == value
 
     # The coverage gate installs the locked development environment with uv.
     # Running the normalizer through the runner's system Python bypasses that
@@ -6113,18 +6163,44 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
     merge = _provenance_step(job, "Merge canonical coverage provenance")
     merge_run = str(merge["run"])
     assert "coverage_provenance.py merge" in merge_run
+    for name, value in {
+        "EXPECTED_SHA": "${{ github.sha }}",
+        "WORKFLOW_REPOSITORY": "${{ github.repository }}",
+        "WORKFLOW_REF": "${{ github.workflow_ref }}",
+        "WORKFLOW_SHA": "${{ github.workflow_sha }}",
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "WORKFLOW_EVENT": "${{ github.event_name }}",
+        "SELECTIONS_JSON": "${{ steps.select_coverage_producers.outputs.selections }}",
+    }.items():
+        assert merge["env"][name] == value
     assert merge_run.count("--metadata ") == 8
     assert (
         "--metadata artifacts/coverage/node-actions/coverage-provenance.json"
         in merge_run
     )
     assert "--contract quality/quality-contract.json" in merge_run
-    assert "quality-evidence-${{ github.sha }}-attempt-${RUN_ATTEMPT}" in merge_run
+    assert (
+        '--artifact "quality-evidence-${EXPECTED_SHA}-attempt-${RUN_ATTEMPT}"'
+        in merge_run
+    )
 
     validator = _provenance_step(
         job, "Validate quality policy, mutation registry, and Tier0 manifest"
     )
     validator_run = str(validator["run"])
+    for name, value in {
+        "EXPECTED_SHA": "${{ github.sha }}",
+        "SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
+        "WORKFLOW_REPOSITORY": "${{ github.repository }}",
+        "WORKFLOW_REF": "${{ github.workflow_ref }}",
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+        "WORKFLOW_EVENT": "${{ github.event_name }}",
+    }.items():
+        assert validator["env"][name] == value
     assert "uv run python scripts/quality/validate_quality_contract.py" in validator_run
     assert "python scripts/quality/validate_quality_contract.py" not in {
         line.strip() for line in validator_run.splitlines()
@@ -7233,6 +7309,141 @@ def test_focused_baseline_coverage_rejects_population_and_producer_drift(
         _assert_focused_baseline_coverage(workflow)
 
 
+def _backend_integration_helper_source() -> str:
+    return BACKEND_INTEGRATION_HELPER_PATH.read_text(encoding="utf-8")
+
+
+def _assert_backend_integration_helper(
+    step: dict, helper_source: str, workflow: dict
+) -> None:
+    assert step["shell"] == "pwsh"
+    assert step["run"] == ". ./scripts/ci/backend-run-integration-tests.ps1\n"
+    job = workflow["jobs"]["integration-tests"]
+    workflow_run_defaults = (workflow.get("defaults") or {}).get("run") or {}
+    job_run_defaults = (job.get("defaults") or {}).get("run") or {}
+    assert "working-directory" not in workflow_run_defaults
+    assert "working-directory" not in job_run_defaults
+    assert "working-directory" not in step
+    assert step["env"] == {
+        "AUD350_POSTGRES_DATABASE_URL": "${{ env.DATABASE_URL }}",
+        "AUD447_POSTGRES_DATABASE_URL": (
+            "postgresql+psycopg://test:test@127.0.0.1:5432/test"
+        ),
+        "INTEGRATION_SHARD_ID": "${{ inputs.integration-shard-id }}",
+        "INTEGRATION_NUM_SHARDS": "${{ inputs.integration-num-shards }}",
+        "INTEGRATION_TEST_PATTERN": "${{ inputs.integration-test-pattern }}",
+        "AUD428_CACHE_CONTAINER_ID": "${{ job.services.redis.id }}",
+        "AUD428_REVOCATION_CONTAINER_ID": (
+            "${{ job.services['revocation-redis'].id }}"
+        ),
+    }
+    pytest_args_match = re.search(
+        r"\$pytestArgs = @\(\n(?P<args>.*?)\n\)", helper_source, re.DOTALL
+    )
+    assert pytest_args_match is not None
+    pytest_args = pytest_args_match.group("args")
+    assert "$env:INTEGRATION_TEST_PATTERN" in pytest_args
+    assert "tests/test_events_localization.py" in pytest_args
+    assert "tests/test_user_analytics_window_contracts.py" in pytest_args
+    assert "tests/test_migrations_runtime.py" in pytest_args
+    assert "tests/test_query_plans.py" in pytest_args
+    assert (
+        "tests/test_backend_p2_correctness_regressions.py::test_chat_list_cursor_uses_the_same_ordering_key_as_the_page"
+        in pytest_args
+    )
+    assert (
+        "tests/test_backend_p2_correctness_regressions.py::test_chat_and_message_pages_follow_complete_ordering_keys"
+        in pytest_args
+    )
+    assert (
+        "tests/test_news_repository_db.py::test_comment_service_commits_create_and_edit_across_sessions"
+        in pytest_args
+    )
+    assert (
+        "tests/test_news_repository_db.py::test_comment_delete_commits_across_sessions_and_preserves_creation_outbox"
+        in pytest_args
+    )
+    assert '"--ignore=tests/performance"' in helper_source
+    assert '"--ignore=tests/test_schemathesis_api.py"' in helper_source
+    assert "--ignore=tests/integration" not in helper_source
+
+    assert "$integrationShardId = [int]$env:INTEGRATION_SHARD_ID" in helper_source
+    assert "$integrationNumShards = [int]$env:INTEGRATION_NUM_SHARDS" in helper_source
+    assert '"--shard-id=$integrationShardId"' in helper_source
+    assert '"--num-shards=$integrationNumShards"' in helper_source
+    assert "Invalid integration shard configuration:" in helper_source
+    pytest_invocation = (
+        "uv run python scripts/quality/run_owned_redis_contracts.py @pytestArgs"
+    )
+    failure_gate = "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"
+    validator_assignment = "$receiptValidator = @'"
+    receipt_validation = (
+        "uv run --frozen --no-sync python -c $receiptValidator $baselineReceipt"
+    )
+    assert helper_source.count(pytest_invocation) == 1
+    assert helper_source.count(failure_gate) == 2
+    pytest_position = helper_source.index(pytest_invocation)
+    gate_positions = [
+        match.start() for match in re.finditer(re.escape(failure_gate), helper_source)
+    ]
+    validator_assignment_position = helper_source.index(validator_assignment)
+    receipt_validation_position = helper_source.index(receipt_validation)
+    assert (
+        pytest_position
+        < gate_positions[0]
+        < validator_assignment_position
+        < receipt_validation_position
+        < gate_positions[1]
+    )
+    assert (
+        re.search(r"(?im)^\s*(?:exit\s+0\b|return\b)", helper_source[:pytest_position])
+        is None
+    )
+
+    receipt_guard = (
+        "$requireBaselineReceipt = $integrationNumShards -eq 1 -and "
+        '$env:INTEGRATION_TEST_PATTERN -eq "tests/integration/"'
+    )
+    assert helper_source.count(receipt_guard) == 1
+    assert "if ($requireBaselineReceipt) {" in helper_source
+    assert "$baselineReceipt = Join-Path $env:RUNNER_TEMP $receiptName" in helper_source
+    assert receipt_validation in helper_source
+
+    validator_match = re.search(
+        r"\$receiptValidator = @'\n(?P<validator>.*?)\n'@",
+        helper_source,
+        re.DOTALL,
+    )
+    assert validator_match is not None
+    validator_source = validator_match.group("validator")
+    validator = ast.parse(validator_source)
+    expected_node = next(
+        node.value
+        for node in ast.walk(validator)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "expected"
+            for target in node.targets
+        )
+    )
+    expected = ast.literal_eval(expected_node)
+    assert {name: len(cases) for name, cases in expected.items()} == {
+        "tests.integration.test_mvp_baseline_schema_equivalence": 10,
+        "tests.integration.test_aud277_360_450_tenant_rls_postgres": 11,
+        "tests.integration.test_aud262_receipt_schema_postgres": 15,
+        "tests.integration.test_dlq_retry_postgres": 2,
+    }
+    assert sum(map(len, expected.values())) == 38
+    assert (
+        "test_aud447_dedup_waits_for_worker_refreshes_and_leaves_commit_to_caller"
+        in expected["tests.integration.test_dlq_retry_postgres"]
+    )
+    assert "case.find(status)" in validator_source
+    assert '("skipped", "failure", "error")' in validator_source
+    assert "set(observed) != set(names)" in validator_source
+    assert "len(cases) != len(names)" in validator_source
+
+
 def test_aud257_postgres_regression_has_explicit_pg_routing() -> None:
     relative = "tests/integration/test_aud257_vector_service_postgres.py"
     source = (REPOSITORY_ROOT / relative).read_text(encoding="utf-8")
@@ -7273,10 +7484,10 @@ def test_aud257_postgres_regression_has_explicit_pg_routing() -> None:
     assert step["env"]["INTEGRATION_TEST_PATTERN"] == (
         "${{ inputs.integration-test-pattern }}"
     )
-    script = str(step["run"])
-    assert "$env:INTEGRATION_TEST_PATTERN" in script
-    assert f"--ignore={relative}" not in script
-    assert "--ignore=tests/integration" not in script
+    helper_source = _backend_integration_helper_source()
+    _assert_backend_integration_helper(step, helper_source, reusable)
+    assert f"--ignore={relative}" not in helper_source
+    assert "--ignore=tests/integration" not in helper_source
 
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     caller = ci["jobs"]["backend-tests"]
@@ -7657,9 +7868,12 @@ def test_aud350_integration_caller_passes_its_owned_postgres_target() -> None:
     assert "continue-on-error" not in step
 
 
-def _assert_aud447_owned_postgres_allocation(workflow: dict) -> None:
+def _assert_aud447_owned_postgres_allocation(
+    workflow: dict, helper_source: str
+) -> None:
     job = workflow["jobs"]["integration-tests"]
     step = _provenance_step(job, "Run integration tests")
+    _assert_backend_integration_helper(step, helper_source, workflow)
     variable = "AUD447_POSTGRES_DATABASE_URL"
     assert step["env"][variable] == "postgresql+psycopg://test:test@127.0.0.1:5432/test"
     assert job["env"]["ENVIRONMENT"] == "testing"
@@ -7684,17 +7898,18 @@ def _assert_aud447_owned_postgres_allocation(workflow: dict) -> None:
     assert step["env"]["INTEGRATION_TEST_PATTERN"] == (
         "${{ inputs.integration-test-pattern }}"
     )
-    assert "$env:INTEGRATION_TEST_PATTERN" in step["run"]
     assert (
         "--ignore=tests/integration/test_aud447_dlq_auth_scrub_postgres.py"
-        not in step["run"]
+        not in helper_source
     )
 
 
 def test_aud447_postgres_regressions_use_the_explicit_owned_service() -> None:
     workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
 
-    _assert_aud447_owned_postgres_allocation(workflow)
+    _assert_aud447_owned_postgres_allocation(
+        workflow, _backend_integration_helper_source()
+    )
 
 
 @pytest.mark.parametrize(
@@ -7712,13 +7927,19 @@ def test_aud447_postgres_regressions_use_the_explicit_owned_service() -> None:
         "different-service-port",
         "conditional-step",
         "nonblocking-step",
+        "step-working-directory",
+        "job-working-directory",
+        "workflow-working-directory",
+        "early-success-exit",
+        "early-return",
     ],
 )
 def test_aud447_postgres_allocation_rejects_unsafe_workflow_mutations(
     case: str,
 ) -> None:
     workflow = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    _assert_aud447_owned_postgres_allocation(workflow)
+    helper_source = _backend_integration_helper_source()
+    _assert_aud447_owned_postgres_allocation(workflow, helper_source)
     candidate = deepcopy(workflow)
     job = candidate["jobs"]["integration-tests"]
     step = _provenance_step(job, "Run integration tests")
@@ -7747,15 +7968,31 @@ def test_aud447_postgres_allocation_rejects_unsafe_workflow_mutations(
         job["services"]["postgres"]["ports"] = ["5433:5432"]
     elif case == "conditional-step":
         step["if"] = "false"
-    else:
-        assert case == "nonblocking-step"
+    elif case == "nonblocking-step":
         step["continue-on-error"] = True
+    elif case == "step-working-directory":
+        step["working-directory"] = "frontend"
+    elif case == "job-working-directory":
+        job.setdefault("defaults", {}).setdefault("run", {})["working-directory"] = (
+            "frontend"
+        )
+    elif case == "workflow-working-directory":
+        candidate.setdefault("defaults", {}).setdefault("run", {})[
+            "working-directory"
+        ] = "frontend"
+    elif case == "early-success-exit":
+        helper_source = "exit 0\n" + helper_source
+    else:
+        assert case == "early-return"
+        helper_source = "return\n" + helper_source
 
     with pytest.raises((AssertionError, KeyError)):
-        _assert_aud447_owned_postgres_allocation(candidate)
+        _assert_aud447_owned_postgres_allocation(candidate, helper_source)
 
 
-def _assert_pr_postgres_receipt_route(ci: dict, reusable: dict) -> None:
+def _assert_pr_postgres_receipt_route(
+    ci: dict, reusable: dict, helper_source: str
+) -> None:
     caller = ci["jobs"]["backend-tests"]
     inputs = reusable[True]["workflow_call"]["inputs"]
     selected = caller["with"]
@@ -7777,11 +8014,12 @@ def _assert_pr_postgres_receipt_route(ci: dict, reusable: dict) -> None:
     )
     job = reusable["jobs"]["integration-tests"]
     step = _provenance_step(job, "Run integration tests")
+    _assert_backend_integration_helper(step, helper_source, reusable)
     guard = (
         "$requireBaselineReceipt = $integrationNumShards -eq 1 -and "
         '$env:INTEGRATION_TEST_PATTERN -eq "tests/integration/"'
     )
-    assert str(step["run"]).count(guard) == 1
+    assert helper_source.count(guard) == 1
 
 
 @pytest.mark.parametrize(
@@ -7801,6 +8039,7 @@ def _assert_pr_postgres_receipt_route(ci: dict, reusable: dict) -> None:
 def test_pr_postgres_receipt_route_rejects_disabled_proofs(mutation: str) -> None:
     ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     reusable = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    helper_source = _backend_integration_helper_source()
     caller = ci["jobs"]["backend-tests"]
     selected = caller["with"]
     inputs = reusable[True]["workflow_call"]["inputs"]
@@ -7820,19 +8059,21 @@ def test_pr_postgres_receipt_route_rejects_disabled_proofs(mutation: str) -> Non
     elif mutation == "unlinked-integration":
         selected["run-integration-tests"] = False
     elif mutation == "removed-receipt-guard":
-        step = _provenance_step(
-            reusable["jobs"]["integration-tests"], "Run integration tests"
+        guard = (
+            "$requireBaselineReceipt = $integrationNumShards -eq 1 -and "
+            '$env:INTEGRATION_TEST_PATTERN -eq "tests/integration/"'
         )
-        step["run"] = step["run"].replace(
-            "$requireBaselineReceipt =", "$disabledReceipt =", 1
+        assert helper_source.count(guard) == 1
+        helper_source = helper_source.replace(
+            guard, guard.replace("$requireBaselineReceipt", "$disabledReceipt"), 1
         )
     else:
         assert mutation == "valid"
     if mutation == "valid":
-        _assert_pr_postgres_receipt_route(ci, reusable)
+        _assert_pr_postgres_receipt_route(ci, reusable, helper_source)
     else:
         with pytest.raises(AssertionError):
-            _assert_pr_postgres_receipt_route(ci, reusable)
+            _assert_pr_postgres_receipt_route(ci, reusable, helper_source)
 
 
 @pytest.mark.parametrize("service", ["ws-hub", "file-processor", "gateway"])

@@ -18,6 +18,7 @@ from scripts.quality.verify_dependency_review_scope import GHSA_EXCEPTIONS
 
 CADDY_MODULE = "github.com/university-ecosystem/caddy"
 CADDY_MANIFEST = "services/caddy/go.mod"
+CADDY_DOCKERFILE = Path(__file__).resolve().parents[2] / "services/caddy/Dockerfile"
 MAX_REPORT_BYTES = 32 * 1024 * 1024
 MAX_GRAPH_BYTES = 4 * 1024 * 1024
 
@@ -92,7 +93,43 @@ def _messages(text: str) -> list[dict[str, Any]]:
     return result
 
 
-def _expected_modules(graph: str) -> dict[str, str]:
+def _pinned_builder_go_version(dockerfile: Path | None = None) -> str:
+    """Return the Go version from Caddy's digest-pinned builder image."""
+    path = CADDY_DOCKERFILE if dockerfile is None else dockerfile
+    try:
+        source = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise ReportError("Cannot read the Caddy builder pin") from exc
+
+    go_stages = []
+    for line in source.splitlines():
+        directive = re.match(
+            r"^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)", line, re.IGNORECASE
+        )
+        if directive is None:
+            continue
+        image = directive.group(1)
+        name = image.rsplit("/", 1)[-1].split("@", 1)[0].split(":", 1)[0]
+        if name.lower() == "golang":
+            go_stages.append(line)
+
+    if len(go_stages) != 1:
+        raise ReportError("Caddy Dockerfile must contain exactly one Go builder")
+
+    pinned_builder = re.fullmatch(
+        r"\s*FROM\s+(?:--platform=\S+\s+)?"
+        r"(?:[A-Za-z0-9.-]+(?::[0-9]+)?/)*golang:"
+        r"(?P<version>[0-9]+\.[0-9]+\.[0-9]+)-[A-Za-z0-9_.-]+"
+        r"@sha256:[0-9a-f]{64}\s+AS\s+builder\s*",
+        go_stages[0],
+        re.IGNORECASE,
+    )
+    if pinned_builder is None:
+        raise ReportError("Caddy Go builder must use a semantic version and digest pin")
+    return pinned_builder.group("version")
+
+
+def _expected_modules(graph: str, go_version: str) -> dict[str, str]:
     """Read the successfully generated, production-tagged Go package graph."""
     if not graph.strip() or len(graph.encode("utf-8")) > MAX_GRAPH_BYTES:
         raise ReportError("Empty or oversized Caddy module graph")
@@ -118,8 +155,9 @@ def _expected_modules(graph: str) -> dict[str, str]:
         <= modules.keys()
     ):
         raise ReportError("Incomplete Caddy module graph")
-    # Go's dependency list omits standard-library packages' module metadata.
-    modules["stdlib"] = "v1.26.10"
+    # Go's dependency list omits standard-library metadata; govulncheck uses
+    # the builder toolchain version to identify the standard library.
+    modules["stdlib"] = f"v{go_version}"
     return modules
 
 
@@ -136,13 +174,15 @@ def validate_report(
     sboms = [r["SBOM"] for r in records if "SBOM" in r]
     if len(configs) != 1 or len(sboms) != 1:
         raise ReportError("Exactly one configuration and SBOM are required")
+    go_version = _pinned_builder_go_version()
+    govulncheck_go_version = f"go{go_version}"
     expected = {
         "protocol_version": "v1.0.0",
         "scanner_name": "govulncheck",
         "scanner_version": "v1.8.0",
         "scan_level": "symbol",
         "scan_mode": "source",
-        "go_version": "go1.26.10",
+        "go_version": govulncheck_go_version,
         "db": "https://vuln.go.dev",
     }
     if any(configs[0].get(key) != value for key, value in expected.items()):
@@ -151,7 +191,7 @@ def validate_report(
     modules = sbom.get("modules")
     if (
         sbom.get("roots") != [CADDY_MODULE]
-        or sbom.get("go_version") != expected["go_version"]
+        or sbom.get("go_version") != govulncheck_go_version
         or not isinstance(modules, list)
         or not all(
             isinstance(m, dict)
@@ -164,7 +204,7 @@ def validate_report(
         raise ReportError("Report does not describe the Caddy source root")
     scanned_modules = {m["path"]: m.get("version", "") for m in modules}
     if len(scanned_modules) != len(modules) or scanned_modules != _expected_modules(
-        graph
+        graph, go_version
     ):
         raise ReportError("Scanned modules do not match the Caddy build graph")
 

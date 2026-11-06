@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -15,6 +18,14 @@ from app.services.storage import StaticFSStorage, get_storage_backend
 from app.utils import files
 
 _USERINFO_ORIGIN = f"https://{':'.join(('reader', 'fixture'))}@media.example.test"
+
+
+async def _wait_for_cancellable_writes_to_drain(backend: StaticFSStorage) -> None:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 3
+    while backend._pending_cancellable_writes and loop.time() < deadline:
+        await asyncio.sleep(0.005)
+    assert not backend._pending_cancellable_writes
 
 
 def _configuration(tmp_path: Path, **overrides: str) -> StorageSettings:
@@ -427,3 +438,318 @@ async def test_private_identity_rejects_ambiguous_keys_and_bases_before_writes(
     prepare.assert_not_awaited()
     save.assert_not_awaited()
     assert not (tmp_path / "storage").exists()
+
+
+@pytest.mark.asyncio
+async def test_cancellable_static_write_success_and_collision_preserve_ownership(
+    tmp_path: Path,
+) -> None:
+    backend = StaticFSStorage(tmp_path)
+    saved_url = await backend.save_file_cancellable("chat_uploads/new.pdf", b"new")
+    assert saved_url == "/static/chat_uploads/new.pdf"
+    assert (tmp_path / "chat_uploads" / "new.pdf").read_bytes() == b"new"
+    await _wait_for_cancellable_writes_to_drain(backend)
+
+    existing = tmp_path / "chat_uploads" / "existing.pdf"
+    existing.write_bytes(b"keep existing bytes")
+    with pytest.raises(FileExistsError):
+        await backend.save_file_cancellable("chat_uploads/existing.pdf", b"replace")
+    await _wait_for_cancellable_writes_to_drain(backend)
+    assert existing.read_bytes() == b"keep existing bytes"
+
+    await backend.save_file("ordinary/overwrite.txt", b"first")
+    await backend.save_file("ordinary/overwrite.txt", b"second")
+    assert (tmp_path / "ordinary" / "overwrite.txt").read_bytes() == b"second"
+
+    root_url_backend = StaticFSStorage(tmp_path / "root-url", base_url="")
+    root_url = await root_url_backend.save_file_cancellable(
+        "chat_uploads/root.pdf", b"root url"
+    )
+    assert root_url == "/chat_uploads/root.pdf"
+    assert (
+        tmp_path / "root-url" / "chat_uploads" / "root.pdf"
+    ).read_bytes() == b"root url"
+    await _wait_for_cancellable_writes_to_drain(root_url_backend)
+
+
+@pytest.mark.asyncio
+async def test_cancellable_static_write_aborts_when_cancelled_before_worker_starts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backend = StaticFSStorage(tmp_path)
+    loop = asyncio.get_running_loop()
+    executor = ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="static-cancel-test"
+    )
+    original_run_in_executor = loop.run_in_executor
+
+    def use_private_executor(executor_arg, function, *args):
+        if executor_arg is None:
+            executor_arg = executor
+        return original_run_in_executor(executor_arg, function, *args)
+
+    monkeypatch.setattr(loop, "run_in_executor", use_private_executor)
+    release_blocker = threading.Event()
+    blocker_started = threading.Event()
+    target = tmp_path / "chat_uploads" / "queued.pdf"
+
+    def occupy_worker() -> None:
+        blocker_started.set()
+        if not release_blocker.wait(timeout=5):
+            raise TimeoutError("test did not release the executor blocker")
+
+    blocker = loop.run_in_executor(executor, occupy_worker)
+    deadline = loop.time() + 3
+    while not blocker_started.is_set() and loop.time() < deadline:
+        await asyncio.sleep(0.005)
+    assert blocker_started.is_set()
+
+    save_task = asyncio.create_task(
+        backend.save_file_cancellable("chat_uploads/queued.pdf", b"queued")
+    )
+    deadline = loop.time() + 3
+    while not backend._pending_cancellable_writes and loop.time() < deadline:
+        await asyncio.sleep(0.005)
+    assert backend._pending_cancellable_writes
+    write_future = next(iter(backend._pending_cancellable_writes))
+
+    try:
+        save_task.cancel("cancel before executor write starts")
+        with pytest.raises(asyncio.CancelledError) as raised:
+            await asyncio.wait_for(save_task, timeout=2)
+        assert raised.value.args == ("cancel before executor write starts",)
+        assert not target.exists()
+        release_blocker.set()
+        await asyncio.wait_for(blocker, timeout=2)
+        await asyncio.wait_for(asyncio.shield(write_future), timeout=2)
+        await _wait_for_cancellable_writes_to_drain(backend)
+        assert not target.exists()
+    finally:
+        release_blocker.set()
+        if not save_task.done():
+            save_task.cancel("test cleanup")
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(save_task, timeout=2)
+        if not blocker.done():
+            await asyncio.wait_for(blocker, timeout=2)
+        executor.shutdown(wait=True, cancel_futures=True)
+
+
+@pytest.mark.asyncio
+async def test_cancellable_static_write_aborts_after_parent_creation_before_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backend = StaticFSStorage(tmp_path)
+    loop = asyncio.get_running_loop()
+    executor = ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="static-cancel-test"
+    )
+    original_run_in_executor = loop.run_in_executor
+
+    def use_private_executor(executor_arg, function, *args):
+        if executor_arg is None:
+            executor_arg = executor
+        return original_run_in_executor(executor_arg, function, *args)
+
+    monkeypatch.setattr(loop, "run_in_executor", use_private_executor)
+    parent_created = threading.Event()
+    release_worker = threading.Event()
+    worker_threads: list[threading.Thread] = []
+    target = tmp_path / "chat_uploads" / "parent-created.pdf"
+    original_mkdir = Path.mkdir
+
+    def gated_mkdir(path: Path, *args, **kwargs):
+        result = original_mkdir(path, *args, **kwargs)
+        if path.resolve() == target.parent.resolve():
+            worker_threads.append(threading.current_thread())
+            parent_created.set()
+            if not release_worker.wait(timeout=5):
+                raise TimeoutError("test did not release the post-mkdir worker")
+        return result
+
+    monkeypatch.setattr(Path, "mkdir", gated_mkdir)
+    save_task = asyncio.create_task(
+        backend.save_file_cancellable("chat_uploads/parent-created.pdf", b"payload")
+    )
+    write_future = None
+
+    try:
+        deadline = loop.time() + 3
+        while not parent_created.is_set() and loop.time() < deadline:
+            await asyncio.sleep(0.005)
+        assert parent_created.is_set()
+        write_future = next(iter(backend._pending_cancellable_writes))
+        save_task.cancel("cancel after parent creation")
+        with pytest.raises(asyncio.CancelledError) as raised:
+            await asyncio.wait_for(save_task, timeout=2)
+        assert raised.value.args == ("cancel after parent creation",)
+        assert not target.exists()
+        release_worker.set()
+        await asyncio.wait_for(asyncio.shield(write_future), timeout=2)
+        await _wait_for_cancellable_writes_to_drain(backend)
+        assert not target.exists()
+    finally:
+        release_worker.set()
+        if not save_task.done():
+            save_task.cancel("test cleanup")
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(save_task, timeout=2)
+        if write_future is not None and not write_future.done():
+            await asyncio.wait_for(asyncio.shield(write_future), timeout=2)
+        executor.shutdown(wait=True, cancel_futures=True)
+    assert worker_threads and all(not worker.is_alive() for worker in worker_threads)
+
+
+@pytest.mark.asyncio
+async def test_cancellable_static_write_reports_queued_executor_shutdown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backend = StaticFSStorage(tmp_path)
+    loop = asyncio.get_running_loop()
+    executor = ThreadPoolExecutor(
+        max_workers=1, thread_name_prefix="static-shutdown-test"
+    )
+    original_run_in_executor = loop.run_in_executor
+
+    def use_private_executor(executor_arg, function, *args):
+        if executor_arg is None:
+            executor_arg = executor
+        return original_run_in_executor(executor_arg, function, *args)
+
+    monkeypatch.setattr(loop, "run_in_executor", use_private_executor)
+    blocker_started = threading.Event()
+    release_blocker = threading.Event()
+    worker_threads: list[threading.Thread] = []
+    target = tmp_path / "chat_uploads" / "shutdown.pdf"
+    save_task = None
+    blocker_future = None
+    write_future = None
+
+    def occupy_worker() -> None:
+        worker_threads.append(threading.current_thread())
+        blocker_started.set()
+        if not release_blocker.wait(timeout=5):
+            raise TimeoutError("test did not release the executor blocker")
+
+    try:
+        blocker_future = loop.run_in_executor(executor, occupy_worker)
+        deadline = loop.time() + 3
+        while not blocker_started.is_set() and loop.time() < deadline:
+            await asyncio.sleep(0.005)
+        assert blocker_started.is_set()
+
+        save_task = asyncio.create_task(
+            backend.save_file_cancellable("chat_uploads/shutdown.pdf", b"payload")
+        )
+        deadline = loop.time() + 3
+        while not backend._pending_cancellable_writes and loop.time() < deadline:
+            await asyncio.sleep(0.005)
+        assert backend._pending_cancellable_writes
+        write_future = next(iter(backend._pending_cancellable_writes))
+
+        executor.shutdown(wait=False, cancel_futures=True)
+        deadline = loop.time() + 3
+        while not write_future.done() and loop.time() < deadline:
+            await asyncio.sleep(0.005)
+        assert write_future.cancelled()
+        release_blocker.set()
+        await asyncio.wait_for(blocker_future, timeout=2)
+        with pytest.raises(
+            RuntimeError,
+            match="Static write executor stopped before the upload started",
+        ):
+            await asyncio.wait_for(save_task, timeout=2)
+        await _wait_for_cancellable_writes_to_drain(backend)
+        assert not target.exists()
+    finally:
+        release_blocker.set()
+        if save_task is not None and not save_task.done():
+            save_task.cancel("test cleanup")
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(save_task, timeout=2)
+        if blocker_future is not None and not blocker_future.done():
+            await asyncio.wait_for(blocker_future, timeout=2)
+        if write_future is not None and not write_future.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(write_future), timeout=2)
+            except asyncio.CancelledError:
+                pass
+        executor.shutdown(wait=True, cancel_futures=True)
+    assert worker_threads and all(not worker.is_alive() for worker in worker_threads)
+
+
+@pytest.mark.asyncio
+async def test_cancellable_static_write_error_removes_partial_file_and_preserves_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backend = StaticFSStorage(tmp_path)
+    original_open = Path.open
+    target = tmp_path / "chat_uploads" / "partial.pdf"
+    primary_error = OSError("private static write failure")
+
+    class FailingWriter:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            self.stream.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return self.stream.__exit__(exc_type, exc, traceback)
+
+        def write(self, data: bytes) -> int:
+            self.stream.write(data[:4])
+            self.stream.flush()
+            raise primary_error
+
+    def failing_open(path: Path, mode: str = "r", *args, **kwargs):
+        stream = original_open(path, mode, *args, **kwargs)
+        if path.resolve() == target.resolve() and mode == "xb":
+            return FailingWriter(stream)
+        return stream
+
+    monkeypatch.setattr(Path, "open", failing_open)
+
+    with pytest.raises(OSError) as raised:
+        await backend.save_file_cancellable("chat_uploads/partial.pdf", b"payload")
+
+    assert raised.value is primary_error
+    await _wait_for_cancellable_writes_to_drain(backend)
+    assert not target.exists()
+
+
+@pytest.mark.asyncio
+async def test_noncanonical_static_attachment_keeps_generic_save_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backend = StaticFSStorage(tmp_path)
+    monkeypatch.setattr(files, "_get_storage_backend", lambda: backend)
+    monkeypatch.setattr(files, "detect_mime_type", lambda _data: "application/pdf")
+    monkeypatch.setattr(files, "scan_for_malware", AsyncMock())
+    monkeypatch.setattr(files, "_gen_name", lambda _prefix, _extension: "note.pdf")
+    upload = UploadFile(
+        filename="note.pdf",
+        file=io.BytesIO(b"%PDF-1.7\ngeneric upload\n"),
+        headers=Headers({"content-type": "application/pdf"}),
+    )
+
+    try:
+        result = await files.save_attachment(
+            upload,
+            "chat_uploads",
+            "chat",
+            allowed_mime_types={"application/pdf"},
+            allowed_extensions={"pdf"},
+            max_size_bytes=1024,
+            return_meta=True,
+        )
+    finally:
+        await upload.close()
+
+    assert isinstance(result, dict)
+    assert result["url"] == "/static/chat_uploads/note.pdf"
+    assert (tmp_path / "chat_uploads" / "note.pdf").read_bytes() == (
+        b"%PDF-1.7\ngeneric upload\n"
+    )
+    assert not backend._pending_cancellable_writes

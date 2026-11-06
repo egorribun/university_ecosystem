@@ -10,7 +10,6 @@ import os
 import shutil
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -30,14 +29,23 @@ REJECTION = (
 
 
 def _diagnostic() -> str:
-    workflow = WORKFLOW.read_text(encoding="utf-8")
-    source = workflow.split("python3 -I -B - <<'TRIVY_METADATA'\n", 1)[1]
-    source = source.split("          TRIVY_METADATA\n", 1)[0]
-    return textwrap.dedent(source)
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["docker-security"]["steps"]
+    matching = [step for step in steps if step.get("id") == "trivy_fs_metadata"]
+    assert len(matching) == 1
+    assert (
+        matching[0].get("run")
+        == "python3 -I -B scripts/quality/report_trivy_fs_metadata.py"
+    )
+    helper = ROOT / "scripts" / "quality" / "report_trivy_fs_metadata.py"
+    return helper.read_text(encoding="utf-8")
 
 
 def _function(name: str, tmp_path: Path):
     source = _diagnostic().split('\nstage = "self-checks"', 1)[0]
+    git_executable = shutil.which("git")
+    assert git_executable is not None
+    source = source.replace('"/usr/bin/git"', repr(git_executable))
     module_path = tmp_path / "trivy_workflow.py"
     module_path.write_text(source, encoding="utf-8")
     spec = importlib.util.spec_from_file_location("trivy_workflow", module_path)
@@ -212,14 +220,27 @@ def test_classifier_rejects_malformed_or_oversized_diffs(
 
 
 def test_diff_reader_enforces_a_hard_byte_limit_on_real_subprocess_output(
-    tmp_path: Path,
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     read = _function("bounded_process_output", tmp_path)
-    program = "import sys; sys.stdout.buffer.write(b'x' * int(sys.argv[1]))"
-    command = [sys.executable, "-I", "-B", "-c", program]
-    assert len(read([*command, "262144"])) == 262144
+    start = _function("tracked_diff_process", tmp_path)
+    directory = repo / "d"
+    directory.mkdir()
+    tracked_paths = []
+    for index in range(4097):
+        path = directory / (f"{index:04d}" + "x" * 55)
+        assert len(path.relative_to(repo).as_posix().encode("ascii")) == 61
+        path.write_bytes(b"baseline")
+        tracked_paths.append(path)
+    _git(repo, "add", "--", "d")
+    _git(repo, "commit", "--quiet", "-m", "tracked-diff-limit-fixture")
+    for path in tracked_paths[:4096]:
+        path.write_bytes(b"changed!")
+    monkeypatch.chdir(repo)
+    assert len(read(start())) == 262144
+    tracked_paths[4096].write_bytes(b"changed!")
     with pytest.raises(ValueError):
-        read([*command, "262145"])
+        read(start())
 
 
 def _event_wait_command() -> list[str]:
@@ -228,7 +249,7 @@ def _event_wait_command() -> list[str]:
         "-I",
         "-B",
         "-c",
-        "from threading import Event; print('READY', flush=True); Event().wait()",
+        "print('READY', flush=True); exec('while True: pass')",
     ]
 
 
@@ -254,12 +275,46 @@ def test_timeout_fixture_signals_readiness_then_blocks_until_reaped() -> None:
     asyncio.run(exercise())
 
 
-def test_diff_reader_rejects_failure_and_timeout(tmp_path: Path) -> None:
+def test_diff_reader_rejects_failure_and_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     read = _function("bounded_process_output", tmp_path)
+    start = _function("tracked_diff_process", tmp_path)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError):
-        read([sys.executable, "-I", "-B", "-c", "raise SystemExit(2)"])
-    with pytest.raises(subprocess.TimeoutExpired):
-        read(_event_wait_command(), timeout=0.2)
+        read(start())
+
+    event_wait = _event_wait_command()
+    event_program = "print('READY', flush=True); exec('while True: pass')"
+    assert event_wait == [sys.executable, "-I", "-B", "-c", event_program]
+    process = subprocess.Popen(
+        [
+            "/usr/bin/python3",
+            "-I",
+            "-B",
+            "-c",
+            "print('READY', flush=True); exec('while True: pass')",
+        ],
+        executable=sys.executable,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        shell=False,
+    )
+    try:
+        assert process.stdout is not None
+        ready = process.stdout.readline()
+        assert ready.rstrip(b"\r\n") == b"READY"
+        with pytest.raises(subprocess.TimeoutExpired):
+            read(process, timeout=0.2)
+        assert process.poll() is not None
+        assert process.stdout.closed
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=1)
+        if process.stdout is not None and not process.stdout.closed:
+            process.stdout.close()
 
 
 @pytest.mark.parametrize("exception", ["ValueError", "RuntimeError"])

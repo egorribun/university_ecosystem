@@ -36,7 +36,10 @@ import api from "@/api/client"
 import { buildTable } from "@/components/schedule/scheduleUtils"
 import { useCampusTimezone } from "@/contexts/CampusTimezoneContext"
 import { getCampusClockParts } from "@/utils/campusTimezone"
-import { generateGoogleCalendarUrl, selectGoogleCalendarLesson } from "@/utils/scheduleExport"
+import {
+  generateGoogleCalendarUrl,
+  selectGoogleCalendarLesson,
+} from "@/utils/scheduleCalendarExport"
 
 function ScheduleContent() {
   const { t } = useTranslation(["schedule", "common"])

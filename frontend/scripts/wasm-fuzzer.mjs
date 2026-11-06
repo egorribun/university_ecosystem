@@ -2,6 +2,7 @@ import fs from "node:fs"
 import { createHash, createHmac, pbkdf2Sync, scryptSync } from "node:crypto"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { parseFragment } from "parse5"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, "../..")
@@ -23,8 +24,20 @@ export const DEFAULT_SEED = 0x5eed1234
 export const DEFAULT_ITERATIONS = 400
 const MAX_ITERATIONS = 100_000
 
-const SCRIPT_ELEMENT = /<\s*script\b/i
-const EVENT_HANDLER_ATTRIBUTE = /<[^>]*\son[a-z]+\s*=/i
+const INERT_IMAGE_DATA_URL = /^data:image\/(?:avif|bmp|gif|jpe?g|png|webp)(?:;[^,]*)?,/i
+const URL_ATTRIBUTES = new Set(["href", "src", "xlink:href", "action", "formaction"])
+const DANGEROUS_ELEMENTS = new Set([
+  "script",
+  "iframe",
+  "object",
+  "embed",
+  "style",
+  "base",
+  "meta",
+  "form",
+  "svg",
+  "math",
+])
 const LOWER_HEX_64 = /^[0-9a-f]{64}$/
 const BASE64_44 = /^[A-Za-z0-9+/]{43}=$/
 
@@ -33,8 +46,11 @@ const BASE64_44 = /^[A-Za-z0-9+/]{43}=$/
 const MARKUP_FRAGMENTS = [
   "<script>alert(1)</script>",
   "<IMG SRC=javascript:alert('XSS')>",
+  '<a href="data:text/html,alert(1)">x</a>',
   "<svg onload=alert(1)>",
   "<iframe src='javascript:alert(1)'>",
+  "<object data='javascript:alert(1)'></object>",
+  "<embed src='data:text/html,alert(1)'>",
   '<a href="javascript:alert(1)">x</a>',
   "<![CDATA[<script>alert(1)</script>]]>",
   "<!-- <script> -->",
@@ -99,6 +115,18 @@ export function generateBytes(random, maxLength) {
   return bytes
 }
 
+function normalizeUrlAttribute(value) {
+  const separator = value.indexOf(":")
+  if (separator < 0) return value.trim()
+  const scheme = Array.from(value.slice(0, separator))
+    .filter((character) => {
+      const codePoint = character.codePointAt(0)
+      return codePoint !== undefined && codePoint > 0x20 && codePoint !== 0x7f
+    })
+    .join("")
+  return `${scheme}:${value.slice(separator + 1)}`
+}
+
 function fail(failures, label, detail) {
   failures.push(`${label}: ${detail}`)
 }
@@ -117,9 +145,27 @@ function expectRejection(failures, progress, label, fn) {
 /** Describes the first unsafe construct left in sanitizer output, or null when it is clean. */
 export function sanitizedMarkupViolation(output) {
   if (typeof output !== "string") return `returned ${typeof output}`
-  if (SCRIPT_ELEMENT.test(output)) return "kept a script element"
-  if (EVENT_HANDLER_ATTRIBUTE.test(output)) return "kept an event-handler attribute"
-  return null
+  const fragment = parseFragment(output)
+  const pending = [...fragment.childNodes]
+  let foundUnsafeUrl = false
+  while (pending.length > 0) {
+    const node = pending.pop()
+    const tagName = node.tagName?.toLowerCase()
+    if (tagName === "script") return "kept a script element"
+    if (tagName && DANGEROUS_ELEMENTS.has(tagName)) return "kept a dangerous element"
+    for (const attribute of node.attrs ?? []) {
+      const name = attribute.name.toLowerCase()
+      if (/^on[a-z]+$/i.test(name)) return "kept an event-handler attribute"
+      if (URL_ATTRIBUTES.has(name)) {
+        const value = normalizeUrlAttribute(attribute.value)
+        if (/^(?:javascript|vbscript):/i.test(value)) foundUnsafeUrl = true
+        if (/^data:/i.test(value) && !INERT_IMAGE_DATA_URL.test(value)) foundUnsafeUrl = true
+      }
+    }
+    if (node.content?.childNodes) pending.push(...node.content.childNodes)
+    if (node.childNodes) pending.push(...node.childNodes)
+  }
+  return foundUnsafeUrl ? "kept an unsafe URL attribute" : null
 }
 
 function checkSanitizedMarkup(failures, label, input, output) {

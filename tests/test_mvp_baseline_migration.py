@@ -684,13 +684,45 @@ def test_schema_statement_proof_rejects_shape_drift_with_the_same_counts(
         )
 
 
+_PROOF_USER_EMAIL_INDEX_BEFORE = repr(
+    (
+        "users",
+        "ix_users_email_lower",
+        "btree",
+        True,
+        True,
+        True,
+        True,
+        False,
+        "CREATE UNIQUE INDEX ix_users_email_lower ON public.users USING btree "
+        "(lower((email)::text))",
+    )
+)
+_PROOF_USER_EMAIL_INDEX_AFTER = repr(
+    (
+        "users",
+        "ux_users_lower_email",
+        "btree",
+        True,
+        True,
+        True,
+        True,
+        False,
+        "CREATE UNIQUE INDEX ux_users_lower_email ON public.users USING btree "
+        "(lower((email)::text))",
+    )
+)
+
+
 def _proof_catalog_inputs() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
     before: dict[str, list[str]] = {name: [] for name in schema_proof.CATALOG_PROBES}
     before["relations"] = [repr(("users", "r", True, True, False, "p", "d", ""))]
     before["policies"] = [_PROOF_MESSAGES_ROW_BEFORE]
+    before["user_email_indexes"] = [_PROOF_USER_EMAIL_INDEX_BEFORE]
     before["partition_bounds"] = list(_PROOF_DELIVERY_ONCE_REMOVED_ROWS)
     after = deepcopy(before)
     after["policies"] = [_PROOF_MESSAGES_ROW_AFTER]
+    after["user_email_indexes"] = [_PROOF_USER_EMAIL_INDEX_AFTER]
     after["relations"].append(
         repr(("notification_delivery_once", "r", False, False, False, "p", "d", ""))
     )
@@ -773,6 +805,15 @@ def test_schema_catalog_proof_accepts_unchanged_facts_and_exact_claim_rows(
         ("columns", "subscription_id", 3, "NO"),
         ("columns", "channel", 5, 51),
         ("columns", "created_at", 2, None),
+        ("user_email_indexes", "ux_users_lower_email", 3, False),
+        ("user_email_indexes", "ux_users_lower_email", 4, False),
+        ("user_email_indexes", "ux_users_lower_email", 6, False),
+        (
+            "user_email_indexes",
+            "ux_users_lower_email",
+            7,
+            "CREATE UNIQUE INDEX ux_users_lower_email ON public.users USING btree (email)",
+        ),
     ],
 )
 def test_schema_catalog_proof_rejects_drift_inside_an_approved_object(

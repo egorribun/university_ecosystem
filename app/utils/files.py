@@ -582,12 +582,22 @@ async def save_attachment(
     )
     await _prepare_local_storage(backend, sanitized_subdir)
     cache_control = _cache_control_for_subdir(sanitized_subdir)
-    url = await backend.save_file(
-        relative_path,
-        data,
-        content_type=declared_type or detected_type,
-        cache_control=cache_control,
-    )
+    if canonical_url is not None and isinstance(backend, StaticFSStorage):
+        # ChatAttachmentService opts into canonical StaticFS URLs. Keep its
+        # cancellation ownership scoped to this existing chat-only call path.
+        url = await backend.save_file_cancellable(
+            relative_path,
+            data,
+            content_type=declared_type or detected_type,
+            cache_control=cache_control,
+        )
+    else:
+        url = await backend.save_file(
+            relative_path,
+            data,
+            content_type=declared_type or detected_type,
+            cache_control=cache_control,
+        )
     if canonical_url is not None:
         url = canonical_url
     if return_meta:

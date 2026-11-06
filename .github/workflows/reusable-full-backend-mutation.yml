@@ -170,16 +170,24 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}
         run: |
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -317,17 +325,25 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -422,16 +438,24 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}
         run: |
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -511,17 +535,25 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -616,16 +648,24 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}
         run: |
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -672,6 +712,7 @@ jobs:
         env:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          ARTIFACT_NAMESPACE: ${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}
         run: |
           set -euo pipefail
           expected=8
@@ -681,7 +722,7 @@ jobs:
             exit 1
           fi
           for shard in $(seq 0 7); do
-            test -s "mutmut-stats/${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-stats-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-stats.json"
+            test -s "mutmut-stats/${ARTIFACT_NAMESPACE}-mutmut-stats-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-stats.json"
           done
 
       - name: Merge full mutmut stats shards
@@ -795,17 +836,25 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-generation-base-" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -900,16 +949,24 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          CONSUMER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_PATH: ${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}
+          ARTIFACT_PREFIX: ${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}
         run: |
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
-            --workflow-path "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}" \
-            --artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}" \
+            --repository "$REPOSITORY" \
+            --run-id "$RUN_ID" \
+            --consumer-run-attempt "$CONSUMER_RUN_ATTEMPT" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-head-sha "$RUN_HEAD_SHA" \
+            --event "$EVENT_NAME" \
+            --workflow-path "$WORKFLOW_PATH" \
+            --artifact-prefix "$ARTIFACT_PREFIX" \
             --artifact-suffix "" \
             --attempt-policy current-or-earlier
 
@@ -1307,6 +1364,7 @@ jobs:
         env:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          ARTIFACT_NAMESPACE: ${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}
         run: |
           set -euo pipefail
           expected=128
@@ -1316,7 +1374,7 @@ jobs:
             exit 1
           fi
           for shard in $(seq 1 128); do
-            test -s "mutmut-shards/${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}-mutmut-shard-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-cicd-stats.json"
+            test -s "mutmut-shards/${ARTIFACT_NAMESPACE}-mutmut-shard-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-cicd-stats.json"
           done
 
       - name: Merge and gate full mutation evidence

@@ -92,6 +92,10 @@ logger = get_logger(__name__)
 
 _MEMBERSHIP_CACHE_BATCH_SIZE = 128
 _MEMBERSHIP_FAST_PATH_SECONDS = 2.0
+# Cooperative budget for cancelled uploads, matching the upload deadline.
+# Running filesystem threads cannot be forcibly stopped; expired cleanup keeps
+# its lease until the existing TTL rather than admitting an immediate retry.
+_CANCELLED_UPLOAD_CLEANUP_TIMEOUT_SECONDS = 30.0
 # redis-py 7.4.0 (the pyproject lower bound) defines this class; installed type stubs omit it.
 _REDIS_AUTH_ERRORS = (
     redis_errors.AuthenticationError,
@@ -478,10 +482,62 @@ class ChatMessageDispatcher:
             # that admission was acquired.
             _possible_lease_key = _idempotency_cache_key
             _possible_lease_value = _pending_value
+            reservation_task = asyncio.ensure_future(
+                _cache.set(_idempotency_cache_key, _pending_value, nx=True, ex=300)
+            )
+
+            def _consume_reservation_result(
+                task: asyncio.Future[bool | None],
+            ) -> None:
+                if not task.cancelled():
+                    task.exception()
+
+            reservation_task.add_done_callback(_consume_reservation_result)
             try:
-                acquired = await _cache.set(
-                    _idempotency_cache_key, _pending_value, nx=True, ex=300
-                )
+                acquired = await asyncio.shield(reservation_task)
+            except asyncio.CancelledError:
+
+                async def _cleanup_cancelled_reservation() -> None:
+                    loop = asyncio.get_running_loop()
+                    deadline = loop.time() + _CANCELLED_UPLOAD_CLEANUP_TIMEOUT_SECONDS
+                    try:
+                        async with asyncio.timeout_at(deadline):
+                            try:
+                                await asyncio.shield(reservation_task)
+                            except asyncio.CancelledError:
+                                if reservation_task.cancelled():
+                                    return
+                                raise
+                            except (
+                                Exception
+                            ):  # RZ-22-01-JUSTIFIED: preserve cancellation
+                                # Compensate a possibly committed SET before re-raising.
+                                logger.warning(
+                                    "chat_message_idempotency_reservation_ack_failed"
+                                )
+                    except TimeoutError:
+                        # Do not CAS before a possible late SET; TTL bounds the lease.
+                        reservation_task.cancel()
+                        logger.warning("chat_message_idempotency_cleanup_failed")
+                        return
+
+                    try:
+                        async with asyncio.timeout_at(deadline):
+                            await _change_idempotency_slot(
+                                _possible_lease_key, _possible_lease_value
+                            )
+                    except Exception:
+                        logger.warning("chat_message_idempotency_cleanup_failed")
+
+                cleanup_task = asyncio.create_task(_cleanup_cancelled_reservation())
+                while True:
+                    try:
+                        await asyncio.shield(cleanup_task)
+                        break
+                    except asyncio.CancelledError:
+                        if cleanup_task.done():
+                            break
+                raise
             except _REDIS_AUTH_ERRORS:
                 raise
             except _REDIS_DEGRADABLE_ERRORS as cache_error:
@@ -552,6 +608,45 @@ class ChatMessageDispatcher:
                         raise cast(HTTPException, leaves[0]) from None
                     raise
 
+        except asyncio.CancelledError:
+
+            async def _cleanup_cancelled_uploads() -> None:
+                loop = asyncio.get_running_loop()
+                deadline = loop.time() + _CANCELLED_UPLOAD_CLEANUP_TIMEOUT_SECONDS
+                try:
+                    async with asyncio.timeout_at(deadline):
+                        if saved_urls:
+                            await self.attachment_service.cleanup_files(saved_urls)
+                except Exception:  # RZ-22-01-JUSTIFIED: preserve cancellation and still attempt bounded lease release
+                    logger.warning("chat_message_attachment_cleanup_failed")
+                finally:
+                    if _possible_lease_key and _possible_lease_value:
+                        if loop.time() >= deadline:
+                            # No new work after the budget expires; the owned lease
+                            # remains bounded by its existing Redis TTL.
+                            logger.warning("chat_message_idempotency_cleanup_failed")
+                        else:
+                            try:
+                                async with asyncio.timeout_at(deadline):
+                                    await _change_idempotency_slot(
+                                        _possible_lease_key, _possible_lease_value
+                                    )
+                            except Exception:  # RZ-22-01-JUSTIFIED: cleanup must preserve the original cancellation
+                                logger.warning(
+                                    "chat_message_idempotency_cleanup_failed"
+                                )
+
+            cleanup_task = asyncio.create_task(_cleanup_cancelled_uploads())
+            # Repeated cancellation cannot detach this asyncio task. The deadline
+            # cancels and drains async deletions; storage threads may still finish.
+            while True:
+                try:
+                    await asyncio.shield(cleanup_task)
+                    break
+                except asyncio.CancelledError:
+                    if cleanup_task.done():
+                        break
+            raise
         except Exception:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — cleans up partial uploads then re-raises (reviewed TD-27-04)
             # Phase 1 failure: clean up any partial uploads and release slot.
             if saved_urls:

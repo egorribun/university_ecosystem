@@ -192,3 +192,47 @@ does not change the Status section above, and it is not a passing check.
    schema-equivalence receipt described in the Evidence section. No populated-data
    migration test or runbook is required for them. This addendum does not change
    their status in `docs/audits/`.
+
+
+## Addendum: AUD-269 exact lower-email index replacement (approved 2026-11-05 UTC; recorded 2026-11-06 Europe/Istanbul)
+
+On 2026-11-05 UTC (2026-11-06 Europe/Istanbul), the repository owner approved
+this exact additional schema-equivalence delta. Approval is limited to the DDL
+statements and catalog rows listed below; it does not change AUD-269's audit
+status or establish the owned-PostgreSQL schema-equivalence receipt.
+
+The approved additional schema-equivalence difference is limited to the
+pre-squash index statement and catalog row for
+ix_users_email_lower being replaced by the baseline statement and catalog row
+for ux_users_lower_email:
+
+- Removed DDL: CREATE UNIQUE INDEX ix_users_email_lower ON public.users USING btree (lower((email)::text))
+- Added DDL: CREATE UNIQUE INDEX ux_users_lower_email ON public.users USING btree (lower((email)::text))
+- Removed catalog projection `(table, index, access method, unique, valid, ready, live, primary, definition)`: ('users', 'ix_users_email_lower', 'btree', True, True, True, True, False, 'CREATE UNIQUE INDEX ix_users_email_lower ON public.users USING btree (lower((email)::text))')
+- Added catalog projection `(table, index, access method, unique, valid, ready, live, primary, definition)`: ('users', 'ux_users_lower_email', 'btree', True, True, True, True, False, 'CREATE UNIQUE INDEX ux_users_lower_email ON public.users USING btree (lower((email)::text))')
+
+Both definitions preserve one unique btree index on the users lower(email)
+expression; at the PostgreSQL DDL/catalog level, the index name is the only
+difference. This does not claim application error-diagnostic equivalence across
+app revisions. The service pinned to the pre-squash commit
+`3ff5375fba01b6ff6f2bc18aaf2d6b2ba18e19c9` recognizes both
+ix_users_email_lower and ux_users_lower_email, while current
+app/services/user/compliance_service.py recognizes
+ux_users_lower_email but not ix_users_email_lower. The current
+registration regression at tests/test_aud345_444_registration.py:263-264
+expects ix_users_email_lower to map to 400 and ux_users_lower_email to map to
+200. The baseline is fresh-schema-only and has no pre-squash upgrade path.
+The catalog projection includes `indislive`; in the sequential fresh-schema
+comparison each captured index must be live, valid, and ready. The
+2026-11-01 AUD269 source review records ux_users_lower_email and
+ix_users_email_lower as source-equivalent unique lower(email) indexes. The
+pinned chain creates ux in 202507310004, later creates ix in
+f2d2414a6b67, then drops ux in 202603280001. The current ORM and
+duplicate-email conflict mapping use the ux name.
+
+The equivalence proof may allow only this exact removal/addition
+pair and the catalog rows above, with all other DDL and catalog facts still
+identical. This approval does not authorize other renames, schema drift,
+populated-database upgrades, or historical migration rewrites. The actual
+owned-PostgreSQL schema-equivalence receipt remains mandatory and is not
+established by the source-only harness.

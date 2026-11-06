@@ -28,6 +28,7 @@ handoffs are intentionally not part of the canonical index.
 - [Helm chart](../charts/university-ecosystem/README.md)
 - [Kubernetes notes](../k8s/README.md)
 - [Database backup and restore runbook](runbooks/database-backup-restore.md)
+- [Temporal network access runbook](runbooks/temporal-network-access.md)
 - [S3 storage migration runbook](runbooks/s3-seaweedfs-cutover.md)
 - [Rejected-upload quarantine and capacity](runbooks/upload-quarantine.md)
 - [Observability configuration and reference examples](observability/README.md)
@@ -79,8 +80,17 @@ handoffs are intentionally not part of the canonical index.
   distinguishes the historical 243-policy unfiltered scan from the private
   conditional 250-overlay result. The policy approvals do not establish passing
   tests, final-source validation, or hosted-check results. Git and PR #1343 determine published source
-  and hosted status. The current detect-secrets disposition scope is 362;
-  the separate finite Gitleaks approval covers 27 historical fingerprints.
+  and hosted status. At HEAD `1cc8fb2db`, the detect-secrets disposition file
+  contains 362 records. At the 2026-11-05 checkpoint, the working tree contained 363 after adding
+  the owner-approved Semgrep rules-checkout pin; that interim staged update was
+  unpublished and still required source-bound validation. Following the exact
+  2026-11-06 owner decisions and staged policy integration, the 2026-11-06
+  working tree contains 494 approved disposition records: 363 previously active
+  records, 106 previously owner-approved identities now materialized, 21
+  previously approved exact identities, and four newly approved exact identities.
+  The inventory is not evidence of a passing scan or required checks; each
+  source SHA requires its own validation. The separate finite Gitleaks approval
+  covers 27 historical fingerprints.
   See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](adr/ADR-047-risk-based-quality-policy.md#one-exact-historical-public-test-password-hash-fingerprint-2026-11-01).
   See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
   and the [nine-identity update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).

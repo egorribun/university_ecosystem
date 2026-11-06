@@ -193,39 +193,7 @@ jobs:
               timeout-minutes: 5
               shell: pwsh
               run: |
-                  # Root-level owned PostgreSQL proofs run in the full unit shard.
-                  $images = @(
-                    "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
-                  )
-                  $maxAttempts = 5
-
-                  foreach ($image in $images) {
-                    $available = $false
-                    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-                      docker image inspect $image *> $null
-                      if ($LASTEXITCODE -eq 0) {
-                        $available = $true
-                        break
-                      }
-
-                      Write-Host "Pulling $image (attempt $attempt/$maxAttempts)"
-                      docker pull $image
-                      if ($LASTEXITCODE -eq 0) {
-                        $available = $true
-                        break
-                      }
-
-                      if ($attempt -lt $maxAttempts) {
-                        $delaySeconds = [int][math]::Pow(2, $attempt)
-                        Write-Host "Retrying $image in $delaySeconds seconds"
-                        Start-Sleep -Seconds $delaySeconds
-                      }
-                    }
-
-                    if (-not $available) {
-                      throw "Unable to make testcontainer image available after $maxAttempts attempts: $image"
-                    }
-                  }
+                  . ./scripts/ci/backend-prepull-owned-postgres.ps1
 
             - name: Run pytest
               shell: pwsh
@@ -238,82 +206,7 @@ jobs:
                   COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
                   PYTEST_SHARD_MANIFEST: artifacts/coverage/python/pytest-shard-${{ inputs.shard-id }}.json
               run: |
-                  # Keep all caller-controlled values in the step environment.
-                  # Interpolating them into PowerShell source would turn a
-                  # reusable-workflow input into executable runner code.
-                  $parallelWorkers = [int]$env:PARALLEL_WORKERS
-                  $parallelArgs = @()
-                  if ($parallelWorkers -ne -1) {
-                    if ($parallelWorkers -eq 0) {
-                      $parallelArgs = @("-n", "auto")
-                    } else {
-                      $parallelArgs = @("-n", [string]$parallelWorkers)
-                    }
-                  }
-
-                  $failFastArgs = @()
-                  if ([System.Convert]::ToBoolean($env:FAIL_FAST)) {
-                    $failFastArgs = @("-x")
-                  }
-
-                  $shardArgs = @()
-                  $shardSuffix = "full"
-                  $coverageXmlName = "coverage.xml"
-                  $coverageJsonName = "coverage.json"
-                  $shardId = [int]$env:SHARD_ID
-                  $numShards = [int]$env:NUM_SHARDS
-                  if ($numShards -gt 1) {
-                    if ($shardId -lt 0 -or $shardId -ge $numShards) {
-                      throw "shard-id must be between 0 and num-shards - 1"
-                    }
-                    $shardArgs = @(
-                      "--shard-id=$shardId",
-                      "--num-shards=$numShards"
-                    )
-                    $shardSuffix = "shard-$shardId"
-                    $coverageXmlName = "coverage-$shardSuffix.xml"
-                    $coverageJsonName = "coverage-$shardSuffix.json"
-                  }
-
-                  $pytestArgs = @($env:TEST_PATTERN)
-                  $pytestArgs += "--timeout-disable-debugger-detection"
-                  $pytestArgs += $parallelArgs
-                  $pytestArgs += $shardArgs
-                  $pytestArgs += $failFastArgs
-
-                  # pytest-cov must not enforce a whole-suite floor on an
-                  # individual shard. The aggregate coverage-policy-gate
-                  # combines the raw data files below and enforces the floor
-                  # once all shards are present.
-                  $coverageDataFile = ".coverage"
-                  if ($numShards -gt 1) {
-                    $coverageDataFile = ".coverage.$shardId"
-                  }
-                  $env:COVERAGE_FILE = $coverageDataFile
-                  
-                  # Ensure the artifact output folder exists
-                  New-Item -ItemType Directory -Force artifacts/coverage/python | Out-Null
-                  
-                  $pytestArgs += @(
-                    "--ignore=tests/test_schemathesis_api.py",
-                    "--ignore=tests/integration/test_quarantine_reservations_postgres.py",
-                    "--cov=app",
-                    "--cov=alembic/versions",
-                    "--cov-report=xml:$coverageXmlName",
-                    "--cov-report=json:artifacts/coverage/python/$coverageJsonName",
-                    "--cov-report=term-missing",
-                    "--junitxml=pytest-report.xml",
-                    "--dist=loadgroup"
-                  )
-
-                  $coverageThreshold = [int]$env:COVERAGE_THRESHOLD
-                  if ($numShards -le 1 -and $coverageThreshold -gt 0) {
-                    $pytestArgs += "--cov-fail-under=$coverageThreshold"
-                  } else {
-                    $pytestArgs += "--cov-fail-under=0"
-                  }
-
-                  uv run pytest @pytestArgs
+                  . ./scripts/ci/backend-run-pytest.ps1
 
             - name: Check differential coverage (diff-cover)
               # A sharded runner only owns a subset of the test universe.  Running
@@ -529,17 +422,7 @@ jobs:
               shell: pwsh
               # LOW-W19: added max-iteration counter to prevent infinite loop
               run: |
-                  $maxRetries = 30
-                  $attempt = 0
-                  do {
-                    pg_isready -h localhost -p 5432 -U test
-                    if ($LASTEXITCODE -eq 0) { break }
-                    $attempt++
-                    if ($attempt -ge $maxRetries) {
-                      throw "PostgreSQL was not ready after $maxRetries seconds"
-                    }
-                    Start-Sleep -Seconds 1
-                  } while ($true)
+                  . ./scripts/ci/backend-wait-postgres.ps1
 
             - name: Run Alembic migrations
               shell: pwsh
@@ -629,119 +512,12 @@ jobs:
               shell: bash
               timeout-minutes: 5
               run: |
-                  set -euo pipefail
-                  probe_root="$(mktemp -d "$RUNNER_TEMP/aud262343-postgres.XXXXXX")"
-                  trap 'rm -rf -- "$probe_root"' EXIT
-                  pytest_status=0
-                  uv run --frozen --no-sync pytest \
-                    tests/test_aud262_postcommit_redis_failure.py \
-                    tests/test_chat_idempotency_ownership.py::test_simultaneous_dispatchers_persist_one_real_message \
-                    tests/integration/test_aud343_notification_fallback_postgres.py \
-                    -n 0 -v --tb=short --show-capture=no --no-cov --maxfail=0 \
-                    -p no:cacheprovider --junitxml="$probe_root/junit.xml" \
-                    --basetemp="$probe_root/basetemp" \
-                    > "$probe_root/pytest.log" 2>&1 || pytest_status=$?
-                  tail -n 160 "$probe_root/pytest.log"
-                  if ! python3 - "$probe_root/junit.xml" <<'PY'
-                  import sys
-                  from xml.etree import ElementTree
-
-                  cases = list(ElementTree.parse(sys.argv[1]).getroot().iter("testcase"))
-                  completion = (
-                      "tests/test_aud262_postcommit_redis_failure.py::"
-                      "test_postcommit_completion_failure_keeps_database_result"
-                  )
-                  expected = {
-                      f"{completion}[{case}]"
-                      for case in (
-                          "os-error",
-                          "redis-error",
-                          "redis-timeout",
-                          "redis-response-error-propagates",
-                          "cancellation-propagates",
-                          "unexpected-error-propagates",
-                      )
-                  }
-                  expected.update({
-                      "tests/test_aud262_postcommit_redis_failure.py::"
-                      "test_message_without_idempotency_key_skips_cache_completion",
-                      "tests/test_chat_idempotency_ownership.py::"
-                      "test_simultaneous_dispatchers_persist_one_real_message",
-                      "tests/integration/test_aud343_notification_fallback_postgres.py::"
-                      "test_complete_schema_reads_without_fallback_on_postgres",
-                      "tests/integration/test_aud343_notification_fallback_postgres.py::"
-                      "test_unexpected_postgres_error_propagates_without_losing_outer_work",
-                  })
-                  expected.update(
-                      "tests/integration/test_aud343_notification_fallback_postgres.py::"
-                      f"test_missing_column_fallback_preserves_postgres_transaction[{column}]"
-                      for column in ("title_en", "body_en", "read_at")
-                  )
-                  actual = {
-                      case.attrib["classname"].replace(".", "/")
-                      + ".py::"
-                      + case.attrib["name"]
-                      for case in cases
-                  }
-                  if (
-                      len(cases) != 13
-                      or len(expected) != 13
-                      or actual != expected
-                      or any(
-                          case.find(status) is not None
-                          for case in cases
-                          for status in ("failure", "error", "skipped")
-                      )
-                  ):
-                      raise SystemExit("Required PostgreSQL cohort did not pass all 13 cases")
-                  print("PostgreSQL AUD-262/343 cohort: 13 expected passes, zero skips")
-                  PY
-                  then
-                    [ "$pytest_status" -ne 0 ] || pytest_status=1
-                  fi
-                  exit "$pytest_status"
+                  source scripts/ci/backend-aud262343-postgres-proof.sh
 
             - name: Pre-pull testcontainer images with bounded retries
               shell: pwsh
               run: |
-                  # Testcontainers pulls these images lazily.  A transient
-                  # Docker Hub token/registry timeout must not turn a healthy
-                  # integration suite into a false-negative CI failure.
-                  $images = @(
-                    "nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4",
-                    "postgres:15-alpine@sha256:fe0737ba566a2c5b2a28f34433c0a423261900ec17b9bf7ad115e1aae7e57f1b",
-                    "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2",
-                    "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706dbe760aca29db1d096972b4052c22a75d"
-                  )
-                  $maxAttempts = 5
-
-                  foreach ($image in $images) {
-                    $available = $false
-                    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-                      docker image inspect $image *> $null
-                      if ($LASTEXITCODE -eq 0) {
-                        $available = $true
-                        break
-                      }
-
-                      Write-Host "Pulling $image (attempt $attempt/$maxAttempts)"
-                      docker pull $image
-                      if ($LASTEXITCODE -eq 0) {
-                        $available = $true
-                        break
-                      }
-
-                      if ($attempt -lt $maxAttempts) {
-                        $delaySeconds = [int][math]::Pow(2, $attempt)
-                        Write-Host "Retrying $image in $delaySeconds seconds"
-                        Start-Sleep -Seconds $delaySeconds
-                      }
-                    }
-
-                    if (-not $available) {
-                      throw "Unable to make testcontainer image available after $maxAttempts attempts: $image"
-                    }
-                  }
+                  . ./scripts/ci/backend-prepull-testcontainers.ps1
 
             # AUD-426 and AUD-447: PostgreSQL proofs. The AUD-447 quarantine CAS
             # test needs a non-superuser, NOBYPASSRLS login with CREATE on the
@@ -829,168 +605,14 @@ jobs:
                   AUD428_CACHE_CONTAINER_ID: ${{ job.services.redis.id }}
                   AUD428_REVOCATION_CONTAINER_ID: ${{ job.services['revocation-redis'].id }}
               run: |
-                  $integrationShardArgs = @()
-                  $integrationShardId = [int]$env:INTEGRATION_SHARD_ID
-                  $integrationNumShards = [int]$env:INTEGRATION_NUM_SHARDS
-                  if ($integrationShardId -ge 0 -or $integrationNumShards -ne 1) {
-                    if ($integrationShardId -lt 0 -or $integrationShardId -ge $integrationNumShards -or $integrationNumShards -lt 1) {
-                      throw "Invalid integration shard configuration: id=$integrationShardId total=$integrationNumShards"
-                    }
-                    $integrationShardArgs = @(
-                      "--shard-id=$integrationShardId",
-                      "--num-shards=$integrationNumShards"
-                    )
-                  }
-
-                  # pytest-timeout 2.4.0 supports this only as a caller option,
-                  # not a marker keyword. Keep receipt watchdogs active in debuggers.
-                  $pytestArgs = @(
-                    "--timeout-disable-debugger-detection",
-                    $env:INTEGRATION_TEST_PATTERN,
-                    "tests/test_events_localization.py",
-                    "tests/test_user_analytics_window_contracts.py",
-                    "tests/test_migrations_runtime.py",
-                    "tests/test_query_plans.py",
-                    "tests/test_backend_p2_correctness_regressions.py::test_chat_list_cursor_uses_the_same_ordering_key_as_the_page",
-                    "tests/test_backend_p2_correctness_regressions.py::test_chat_and_message_pages_follow_complete_ordering_keys",
-                    "tests/test_news_repository_db.py::test_comment_service_commits_create_and_edit_across_sessions",
-                    "tests/test_news_repository_db.py::test_comment_delete_commits_across_sessions_and_preserves_creation_outbox",
-                    "-v",
-                    "--tb=short",
-                    "-x"
-                  )
-                  $pytestArgs += $integrationShardArgs
-                  $pytestArgs += @(
-                    "--ignore=tests/performance",
-                    "--ignore=tests/test_schemathesis_api.py"
-                  )
-                  # The canonical PR integration suite is unsharded. Capture
-                  # these existing PostgreSQL proofs without rerunning them.
-                  $requireBaselineReceipt = $integrationNumShards -eq 1 -and $env:INTEGRATION_TEST_PATTERN -eq "tests/integration/"
-                  if ($requireBaselineReceipt) {
-                    $receiptName = "baseline-equivalence-" + [guid]::NewGuid().ToString("N") + ".xml"
-                    $baselineReceipt = Join-Path $env:RUNNER_TEMP $receiptName
-                    $pytestArgs += "--junitxml=$baselineReceipt"
-                  }
-                  uv run python scripts/quality/run_owned_redis_contracts.py @pytestArgs
-                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-                  if ($requireBaselineReceipt) {
-                    $receiptValidator = @'
-                  import sys
-                  from xml.etree import ElementTree
-
-                  expected = {'tests.integration.test_mvp_baseline_schema_equivalence': ('test_proof_owned_fixture_never_uses_default_database',
-                                                                              'test_absent_pre_squash_commit_fails_with_a_clear_message',
-                                                                              'test_pre_squash_chain_and_baseline_stamp_their_own_heads',
-                                                                              'test_statement_level_schema_differs_only_by_the_audited_additions',
-                                                                              'test_catalog_facts_outside_the_additions_are_identical',
-                                                                              'test_no_permissive_using_true_policy_exists_on_any_rls_table',
-                                                                              'test_baseline_database_matches_the_current_models',
-                                                                              'test_baseline_refuses_downgrade_and_keeps_its_revision',
-                                                                              'test_baseline_refuses_nonempty_schema_before_ddl',
-                                                                              'test_baseline_refuses_populated_pgx_namespace'),
-                   'tests.integration.test_aud277_360_450_tenant_rls_postgres': ('test_no_permissive_true_policy_remains_on_core_tables',
-                                                                                 'test_tenant_session_sees_only_its_rows_and_never_null_rows',
-                                                                                 'test_guc_bypass_cannot_expose_other_tenants_or_null_rows',
-                                                                                 'test_dedicated_bypass_role_member_sees_every_row',
-                                                                                 'test_ordinary_writes_are_stamped_with_the_session_tenant',
-                                                                                 'test_writes_cannot_target_another_tenant_or_escape_the_session',
-                                                                                 'test_messages_need_both_participation_and_the_session_tenant',
-                                                                                 'test_every_tenant_table_forces_rls_and_stamps_unowned_inserts',
-                                                                                 'test_notification_producer_rows_are_owned_by_the_session_tenant',
-                                                                                 'test_worker_bypass_producer_must_write_its_tenant_explicitly',
-                                                                                 'test_bypass_scheduler_persists_owned_reminders_and_outbox_events'),
-                   'tests.integration.test_aud262_receipt_schema_postgres': ('test_receipt_upgrade_creates_exact_catalog_and_forces_owner_rls',
-                                                                             'test_receipt_rls_hides_other_owners_and_rejects_forged_writes[empty]',
-                                                                             'test_receipt_rls_hides_other_owners_and_rejects_forged_writes[peer]',
-                                                                             'test_receipt_rls_hides_other_owners_and_rejects_forged_writes[outsider]',
-                                                                             'test_receipt_rls_revokes_owner_access_after_membership_removal',
-                                                                             'test_receipt_rls_inherits_parent_chat_tenant_visibility',
-                                                                             'test_receipt_unique_scope_allows_other_chat_and_sender',
-                                                                             'test_expired_receipt_has_no_global_visibility_or_implicit_deletion',
-                                                                             'test_receipt_foreign_key_lifecycle_preserves_message_deletion_marker[messages]',
-                                                                             'test_receipt_foreign_key_lifecycle_preserves_message_deletion_marker[users]',
-                                                                             'test_receipt_foreign_key_lifecycle_preserves_message_deletion_marker[chats]',
-                                                                             'test_receipt_baseline_downgrade_refuses_without_losing_committed_history',
-                                                                             'test_receipt_owned_fixture_never_uses_default_database',
-                                                                             'test_notification_pair_claims_commit_conflict_and_rollback_on_owned_postgres',
-                                                                             'test_notification_pair_ledger_is_unique_without_attempt_constraint'),
-                   'tests.integration.test_dlq_retry_postgres': ('test_retry_completed_job_waits_for_worker_and_preserves_state',
-                                                                 'test_aud447_dedup_waits_for_worker_refreshes_and_leaves_commit_to_caller')}
-                  root = ElementTree.parse(sys.argv[1]).getroot()
-                  for classname, names in expected.items():
-                      cases = [
-                          case for case in root.iter("testcase")
-                          if case.get("classname") == classname
-                      ]
-                      observed = [case.get("name") for case in cases]
-                      if (
-                          len(cases) != len(names)
-                          or set(observed) != set(names)
-                          or any(
-                              case.find(status) is not None
-                              for case in cases
-                              for status in ("skipped", "failure", "error")
-                          )
-                      ):
-                          raise SystemExit(f"PostgreSQL cohort receipt incomplete or unsuccessful: {classname}")
-                  print(f"INTEGRATION_POSTGRES_COHORT_VERIFIED_PASS {sum(map(len, expected.values()))}")
-                  '@
-                    uv run --frozen --no-sync python -c $receiptValidator $baselineReceipt
-                    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-                  }
+                  . ./scripts/ci/backend-run-integration-tests.ps1
 
             - name: Verify durable chat replay PostgreSQL regressions
               if: ${{ !cancelled() && steps.aud262343_postgres.outcome == 'success' }}
               shell: bash
               timeout-minutes: 5
               run: |
-                  set -euo pipefail
-                  probe_root="$(mktemp -d "$RUNNER_TEMP/aud262-durable-postgres.XXXXXX")"
-                  trap 'rm -rf -- "$probe_root"' EXIT
-                  pytest_status=0
-                  uv run --frozen --no-sync pytest \
-                    tests/test_aud262_durable_replay_postgres.py \
-                    -n 0 -v --tb=short --show-capture=no --no-cov --maxfail=0 \
-                    -p no:cacheprovider --junitxml="$probe_root/junit.xml" \
-                    --basetemp="$probe_root/basetemp" \
-                    > "$probe_root/pytest.log" 2>&1 || pytest_status=$?
-                  tail -n 160 "$probe_root/pytest.log"
-                  if ! python3 - "$probe_root/junit.xml" <<'PY'
-                  import sys
-                  from xml.etree import ElementTree
-
-                  cases = list(ElementTree.parse(sys.argv[1]).getroot().iter("testcase"))
-                  prefix = "tests/test_aud262_durable_replay_postgres.py::"
-                  expected = {
-                      prefix + "test_committed_send_replays_after_pending_state_loss[deleted]",
-                      prefix + "test_committed_send_replays_after_pending_state_loss[expired]",
-                      prefix + "test_overlapping_sends_survive_redis_lease_loss",
-                      prefix + "test_live_pending_lease_rejects_overlapping_send",
-                      prefix + "test_rolled_back_send_succeeds_after_pending_lease_expiry",
-                  }
-                  actual = {
-                      case.attrib["classname"].replace(".", "/")
-                      + ".py::"
-                      + case.attrib["name"]
-                      for case in cases
-                  }
-                  if (
-                      len(cases) != 5
-                      or actual != expected
-                      or any(
-                          case.find(status) is not None
-                          for case in cases
-                          for status in ("failure", "error", "skipped")
-                      )
-                  ):
-                      raise SystemExit("Required durable PostgreSQL cohort did not pass all 5 cases")
-                  print("PostgreSQL AUD-262 durable cohort: 5 expected passes, zero skips")
-                  PY
-                  then
-                    [ "$pytest_status" -ne 0 ] || pytest_status=1
-                  fi
-                  exit "$pytest_status"
+                  source scripts/ci/backend-aud262-durable-postgres-proof.sh
 
             - name: Upload test results
               uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

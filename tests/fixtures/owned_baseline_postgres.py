@@ -1,7 +1,7 @@
 """Committed baselines on acknowledged, disposable local PostgreSQL servers.
 
 Only explicitly importing test modules override the three default-DB fixtures.
-The fixed Unix daemon is trusted and quiescent; names and operator URLs are not
+The local daemon is trusted and quiescent; names and operator URLs are not
 ownership evidence. The image must already be present: this helper never pulls.
 
 Docker's 15-second socket/request timeout is not an aggregate wall deadline.
@@ -43,6 +43,9 @@ _POSTGRES_IMAGE = "pgvector/pgvector:pg17@sha256:ac08538c6f8b9904c33c8224c5e5706
 _IMAGE_DIGEST = _POSTGRES_IMAGE.split("@", 1)[1]
 _OWNER_LABEL = "university-ecosystem.owned-baseline-test"
 _DOCKER_SOCKET = "unix:///var/run/docker.sock"
+_DOCKER_NPIPE = "npipe:////./pipe/dockerDesktopLinuxEngine"
+_CPU_LIMIT_NANO_CPUS = 1_000_000_000
+_MEMORY_LIMIT_BYTES = 512 * 1024 * 1024
 _REQUEST_TIMEOUT = 15
 _READINESS_SECONDS = 90
 _SQL_OPTIONS = (
@@ -68,6 +71,13 @@ def _docker_call[T](operation: Callable[[], T], stage: str) -> T:
         raise OwnedPostgresError(f"Owned PostgreSQL {stage} failed") from None
 
 
+def _local_docker_endpoint(platform: str) -> str:
+    """Select only the fixed local transport supported by this platform."""
+    if platform == "win32":
+        return _DOCKER_NPIPE
+    return _DOCKER_SOCKET
+
+
 def _new_docker_client() -> docker.APIClient:
     if docker.__version__ != "7.2.0" or DEFAULT_DOCKER_API_VERSION != "1.45":
         raise OwnedPostgresError("Owned PostgreSQL Docker SDK version unsupported")
@@ -75,7 +85,7 @@ def _new_docker_client() -> docker.APIClient:
     # avoids discovery requests; no registry or credential-helper call is used.
     client = _docker_call(
         lambda: docker.APIClient(
-            base_url=_DOCKER_SOCKET,
+            base_url=_local_docker_endpoint(sys.platform),
             version=DEFAULT_DOCKER_API_VERSION,
             timeout=_REQUEST_TIMEOUT,
         ),
@@ -141,6 +151,15 @@ class _ContainerLease:
             raise OwnedPostgresError("Owned PostgreSQL container identity changed")
         return data
 
+    @staticmethod
+    def _require_resource_limits(data: dict[str, Any]) -> None:
+        host = data.get("HostConfig", {})
+        if (
+            host.get("NanoCpus") != _CPU_LIMIT_NANO_CPUS
+            or host.get("Memory") != _MEMORY_LIMIT_BYTES
+        ):
+            raise OwnedPostgresError("Owned PostgreSQL resource limits changed")
+
     def start(self) -> OwnedPostgres:
         image = _docker_call(
             lambda: self.client.inspect_image(_POSTGRES_IMAGE),
@@ -161,6 +180,8 @@ class _ContainerLease:
         host = self.client.create_host_config(
             port_bindings={5432: ("127.0.0.1",)},
             restart_policy={"Name": "no"},
+            nano_cpus=_CPU_LIMIT_NANO_CPUS,
+            mem_limit=_MEMORY_LIMIT_BYTES,
             auto_remove=False,
         )
         response = _docker_call(
@@ -196,7 +217,8 @@ class _ContainerLease:
             # No guessed name, list/filter search or unverified-ID cleanup.
             raise OwnedPostgresError("Owned PostgreSQL CREATE identity unacknowledged")
         self.container_id = container_id
-        _docker_call(self._identity, "pre-start identity inspection")
+        pre_start_data = _docker_call(self._identity, "pre-start identity inspection")
+        self._require_resource_limits(pre_start_data)
         _docker_call(
             lambda: self.client.start(container_id),
             "container start",
@@ -237,6 +259,7 @@ class _ContainerLease:
         ):
             raise OwnedPostgresError("Owned PostgreSQL lease is not active")
         data = _docker_call(self._identity, "database-admission identity inspection")
+        self._require_resource_limits(data)
         if data.get("State", {}).get("Running") is not True or data.get(
             "NetworkSettings", {}
         ).get("Ports") != {

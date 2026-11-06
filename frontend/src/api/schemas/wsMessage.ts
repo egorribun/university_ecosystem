@@ -198,6 +198,10 @@ const ReactionChangedSchema = v.object({
 const ReplayCheckpointSchema = v.object({
   type: v.literal("replay_checkpoint"),
   chat_id: UuidString,
+  // Set only when a trusted ws-hub has suppressed a known persisted legacy
+  // event because its producer frame omitted the audience. Other checkpoints
+  // remain cursor-only and must not trigger a REST refresh.
+  refresh_required: v.optional(v.literal(true)),
 })
 
 // ── Discriminated union of all valid server→client frames ─────────────────────

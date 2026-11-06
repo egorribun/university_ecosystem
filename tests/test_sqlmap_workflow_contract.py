@@ -58,17 +58,16 @@ def test_sqlmap_proves_openapi_capability_and_backend_readiness_before_scan() ->
     install = steps[indexes["Install SQLMap"]]
     capability = steps[indexes["Verify SQLMap OpenAPI support"]]
     readiness = steps[indexes["Start FastAPI Backend in Background"]]
-    scan = steps[indexes["Run SQLMap Scan on API"]]
+    full_scan = steps[indexes["Run SQLMap scan for every anonymous OpenAPI operation"]]
+    news_scan = steps[indexes["Run SQLMap Scan on API"]]
 
     assert indexes["Install SQLMap"] < indexes["Verify SQLMap OpenAPI support"]
     assert (
         indexes["Verify SQLMap OpenAPI support"]
         < indexes["Start FastAPI Backend in Background"]
     )
-    assert (
-        indexes["Start FastAPI Backend in Background"]
-        < indexes["Run SQLMap Scan on API"]
-    )
+    assert indexes["Start FastAPI Backend in Background"] < indexes[full_scan["name"]]
+    assert indexes[full_scan["name"]] < indexes[news_scan["name"]]
     assert re.fullmatch(
         r'uv pip install "sqlmap==\d+\.\d+\.\d+"', install["run"].strip()
     )
@@ -86,24 +85,32 @@ def test_sqlmap_proves_openapi_capability_and_backend_readiness_before_scan() ->
     assert "for i in {1..30}; do" in readiness_script
     assert "exit 1" in readiness_script
 
-    for step in (capability, readiness, scan):
+    assert "scope-full-openapi" in readiness_script
+    assert "sqlmap-openapi-output/scoped-openapi.json" in readiness_script
+
+    for step in (capability, readiness):
         assert step.get("continue-on-error", False) is False
+        assert "|| true" not in step["run"]
+    for step in (full_scan, news_scan):
+        assert step["continue-on-error"] is True
         assert "|| true" not in step["run"]
 
 
-def test_sqlmap_scan_uses_the_bounded_openapi_boolean_error_union_profile() -> None:
-    """The smoke scan must avoid crawling/time probes and remain deterministic."""
+def test_sqlmap_full_openapi_scan_covers_every_anonymous_operation() -> None:
+    """The blocking full scan keeps its bounded boolean/error-union settings."""
 
     workflow = yaml.safe_load(SQLMAP_WORKFLOW_PATH.read_text(encoding="utf-8"))
     scan = next(
         step
         for step in workflow["jobs"]["sqlmap"]["steps"]
-        if step.get("name") == "Run SQLMap Scan on API"
+        if step.get("name") == "Run SQLMap scan for every anonymous OpenAPI operation"
     )
     script = scan["run"]
 
-    assert '--openapi="sqlmap-output/scoped-openapi.json"' in script
+    assert '--openapi="sqlmap-openapi-output/scoped-openapi.json"' in script
     assert f'--openapi-base="{OPENAPI_BASE_URL}"' in script
+    assert "--scope='^http://127[.]0[.]0[.]1:8000/'" in script
+    assert "Authorization:" not in script
     for option in (
         "--batch",
         "--crawl=0",
@@ -113,9 +120,59 @@ def test_sqlmap_scan_uses_the_bounded_openapi_boolean_error_union_profile() -> N
         "--threads=2",
         "--timeout=5",
         "--retries=0",
+        "--output-dir=sqlmap-openapi-output",
+        "--results-file=sqlmap-openapi-output/results.csv",
         "--flush-session",
     ):
         assert option in script
 
     assert "--crawl=1" not in script
     assert "--technique=BEUSTQ" not in script
+
+
+def test_sqlmap_seeded_news_scan_keeps_the_anonymous_query_proof() -> None:
+    workflow = yaml.safe_load(SQLMAP_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    scan = next(
+        step
+        for step in workflow["jobs"]["sqlmap"]["steps"]
+        if step.get("name") == "Run SQLMap Scan on API"
+    )
+    script = scan["run"]
+    assert '--openapi="sqlmap-output/scoped-openapi.json"' in script
+    assert f'--openapi-base="{OPENAPI_BASE_URL}"' in script
+    assert "--scope='^http://127[.]0[.]0[.]1:8000/api/v1/news([?]|$)'" in script
+    assert ": > sqlmap-output/db-query-evidence.log" in script
+    assert "--results-file=sqlmap-output/results.csv" in script
+
+
+def test_sqlmap_gates_both_scans_and_retains_the_raw_reports() -> None:
+    workflow = yaml.safe_load(SQLMAP_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["sqlmap"]["steps"]
+    gates = {
+        step["id"]: step
+        for step in steps
+        if step.get("id") in {"sqlmap-openapi-gate", "sqlmap-news-gate"}
+    }
+    assert set(gates) == {"sqlmap-openapi-gate", "sqlmap-news-gate"}
+    assert gates["sqlmap-openapi-gate"]["if"] == "${{ always() }}"
+    assert gates["sqlmap-news-gate"]["if"] == "${{ always() }}"
+    assert all("continue-on-error" not in gate for gate in gates.values())
+    assert "gate-openapi" in gates["sqlmap-openapi-gate"]["run"]
+    assert "gate-news" in gates["sqlmap-news-gate"]["run"]
+    assert "steps.sqlmap-openapi-scan.outcome" in str(
+        gates["sqlmap-openapi-gate"]["env"]
+    )
+    assert "steps.sqlmap-news-scan.outcome" in str(gates["sqlmap-news-gate"]["env"])
+
+    upload = next(
+        step
+        for step in steps
+        if step.get("name") == "Upload SQLMap reports and evidence receipt"
+    )
+    assert upload["if"] == "${{ always() }}"
+    assert upload["with"]["retention-days"] == 90
+    assert upload["with"]["path"].splitlines() == [
+        "sqlmap-output/",
+        "sqlmap-openapi-output/",
+        "sqlmap-evidence/receipt.json",
+    ]

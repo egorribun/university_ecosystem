@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import ssl
+from collections.abc import Callable
 from datetime import timedelta
 from unittest.mock import Mock, call
 
@@ -138,6 +139,61 @@ def test_rejected_peer_is_never_logged_as_authorized(
     )
     assert not guard.admit(transport)
     logger.info.assert_not_called()
+
+
+def _without_peer_certificate(tls: Mock) -> None:
+    tls.getpeercert.return_value = None
+
+
+def _session_reused(tls: Mock) -> None:
+    tls.session_reused = True
+
+
+def _empty_verified_chain(tls: Mock) -> None:
+    tls.get_verified_chain.return_value = []
+
+
+@pytest.mark.parametrize(
+    ("mutate", "detail"),
+    [
+        (_without_peer_certificate, "peer certificate is missing"),
+        (_session_reused, "fresh current-generation TLS is required"),
+        (_empty_verified_chain, "verified chain does not contain the peer leaf"),
+    ],
+)
+def test_rejection_logs_reason_without_certificate_data(
+    setup_guard: tuple[TransportGuard, Mock, Mock, Transport],
+    monkeypatch: pytest.MonkeyPatch,
+    mutate: Callable[[Mock], None],
+    detail: str,
+) -> None:
+    guard, _source, _loop, transport = setup_guard
+    logger = Mock()
+    monkeypatch.setattr(transport_module, "logger", logger)
+    assert guard.start() is not None
+    mutate(transport.tls)
+    assert not guard.admit(transport)
+    assert logger.warning.call_args == call(
+        "internal_mtls_peer_rejected",
+        reason="WorkloadIdentityError",
+        detail=detail,
+    )
+    assert transport.aborted
+    logger.info.assert_not_called()
+
+
+def test_rejection_logs_exception_class_for_unexpected_verifier_failure(
+    setup_guard: tuple[TransportGuard, Mock, Mock, Transport],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard, _source, _loop, transport = setup_guard
+    logger = Mock()
+    monkeypatch.setattr(transport_module, "logger", logger)
+    transport.tls.getpeercert.side_effect = OSError("socket closed")
+    assert not guard.admit(transport)
+    assert logger.warning.call_args == call(
+        "internal_mtls_peer_rejected", reason="OSError", detail=""
+    )
 
 
 def test_rotation_aborts_existing_transport_even_after_ws_upgrade(

@@ -138,13 +138,142 @@ describe("wasm fuzzer artifact gate", () => {
 })
 
 describe("wasm fuzzer oracles and generators", () => {
-  it("flags script elements and event-handler attributes left in sanitizer output", () => {
+  it("flags script-capable elements and event-handler attributes left in sanitizer output", () => {
     expect(sanitizedMarkupViolation("<p>safe</p>")).toBeNull()
     expect(sanitizedMarkupViolation("<script>alert(1)</script>")).toBe("kept a script element")
     expect(sanitizedMarkupViolation('<img src="x" onerror=alert(1)>')).toBe(
       "kept an event-handler attribute"
     )
     expect(sanitizedMarkupViolation(42)).toBe("returned number")
+  })
+
+  it.each(["iframe", "object", "embed", "style", "base", "meta", "form", "svg", "math"])(
+    "flags a retained <%s> element",
+    (tag) => {
+      expect(sanitizedMarkupViolation(`<${tag}>content</${tag}>`)).toBe("kept a dangerous element")
+    }
+  )
+
+  it.each([
+    { description: "JavaScript", markup: '<a href="javascript:alert(1)">x</a>', unsafe: true },
+    {
+      description: "entity-encoded JavaScript",
+      markup: "<a href='javascript&#x3a;alert(1)'>x</a>",
+      unsafe: true,
+    },
+    {
+      description: "hex-entity tab in JavaScript scheme",
+      markup: '<a href="java&#x09;script:alert(1)">x</a>',
+      unsafe: true,
+    },
+    {
+      description: "decimal-entity newline in JavaScript scheme",
+      markup: '<a href="java&#10;script:alert(1)">x</a>',
+      unsafe: true,
+    },
+    {
+      description: "named Tab in JavaScript scheme",
+      markup: '<a href="java&Tab;script:alert(1)">x</a>',
+      unsafe: true,
+    },
+    {
+      description: "named NewLine in JavaScript scheme",
+      markup: '<a href="java&NewLine;script:alert(1)">x</a>',
+      unsafe: true,
+    },
+    {
+      description: "JavaScript with control whitespace",
+      markup: '<a href="java\nscript:alert(1)">x</a>',
+      unsafe: true,
+    },
+    { description: "vbscript", markup: '<a xlink:href="vbscript:alert(1)">x</a>', unsafe: true },
+    { description: "non-image data", markup: '<img src="data:text/html,alert(1)">', unsafe: true },
+    {
+      description: "form action",
+      markup: '<div action="javascript:alert(1)">x</div>',
+      unsafe: true,
+    },
+    {
+      description: "formaction",
+      markup: '<button formaction="javascript:alert(1)">x</button>',
+      unsafe: true,
+    },
+    {
+      description: "inert raster image data",
+      markup: '<img src="data:image/png;base64,AAAA">',
+      unsafe: false,
+    },
+    {
+      description: "JavaScript after a double-quoted greater-than attribute",
+      markup: '<a title=">" href="javascript:alert(1)">x</a>',
+      unsafe: true,
+    },
+    {
+      description: "data URL after a single-quoted greater-than attribute",
+      markup: "<a title=' > ' href='data:text/html,alert(1)'>x</a>",
+      unsafe: true,
+    },
+    {
+      description: "JavaScript before a quoted greater-than attribute",
+      markup: '<a href="javascript:alert(1)" title=">">x</a>',
+      unsafe: true,
+    },
+    {
+      description: "unterminated quoted markup that parses as text",
+      markup: '<a href="javascript:alert(1)',
+      unsafe: false,
+    },
+    {
+      description: "unterminated unquoted markup that parses as text",
+      markup: "<a href=javascript:alert(1",
+      unsafe: false,
+    },
+    {
+      description: "unclosed anchor with a retained JavaScript URL",
+      markup: '<a href="javascript:alert(1)">x',
+      unsafe: true,
+    },
+    {
+      description: "safe text in an HTML comment",
+      markup: '<!-- <a href="javascript:alert(1)"> -->',
+      unsafe: false,
+    },
+    {
+      description: "JavaScript URL after an abruptly closed empty comment",
+      markup: "<!--><a href=javascript:alert(1)>x</a>",
+      unsafe: true,
+    },
+    {
+      description: "JavaScript URL after an abruptly closed dashed comment",
+      markup: "<!---><a href=javascript:alert(1)>x</a>",
+      unsafe: true,
+    },
+    {
+      description: "event handler after a double-quoted greater-than attribute",
+      markup: '<img title=">" onerror=alert(1)>',
+      unsafe: true,
+      eventHandler: true,
+    },
+    {
+      description: "event handler after a single-quoted greater-than attribute",
+      markup: "<div title=' > ' onclick=alert(1)>x</div>",
+      unsafe: true,
+      eventHandler: true,
+    },
+    {
+      description: "event handler before a quoted greater-than attribute",
+      markup: '<img onerror=alert(1) title=">">',
+      unsafe: true,
+      eventHandler: true,
+    },
+  ])("checks $description in sanitizer output", ({ markup, unsafe, eventHandler }) => {
+    expect(sanitizedMarkupViolation(markup)).toBe(
+      eventHandler
+        ? "kept an event-handler attribute"
+        : unsafe
+          ? "kept an unsafe URL attribute"
+          : null
+    )
   })
 
   it("replays the same text from the same seed and keeps every string valid UTF-16", () => {

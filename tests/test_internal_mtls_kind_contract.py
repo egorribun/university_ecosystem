@@ -31,11 +31,32 @@ from cryptography.hazmat.primitives.serialization import (
 
 from tests.test_spiffe_identity import IDENTITY, leaf
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(
+    os.environ.get("AUD373_REPO_ROOT", Path(__file__).resolve().parents[1])
+).resolve()
 WORKFLOW = ROOT / ".github" / "workflows" / "internal-mtls-kind.yml"
-SCRIPT = ROOT / "scripts" / "kind" / "aud373_internal_mtls_proof.sh"
+SCRIPT = Path(
+    os.environ.get(
+        "AUD373_SCRIPT", ROOT / "scripts" / "kind" / "aud373_internal_mtls_proof.sh"
+    )
+).resolve()
 REFERENCE_WORKFLOW = ROOT / ".github" / "workflows" / "admin-smoke-monitoring.yml"
 REQUIRED_PATHS = {
+    "backend.Dockerfile",
+    "backend.Dockerfile.dockerignore",
+    ".dockerignore",
+    "app/**",
+    "native/**",
+    "alembic/**",
+    "alembic.ini",
+    "pyproject.toml",
+    "uv.lock",
+    "go.mod",
+    "go.sum",
+    "gen/go/**",
+    "services/pkg/logging/**",
+    "services/pkg/spiffe/**",
+    "k8s/README.md",
     "charts/**",
     "k8s/spire/**",
     "services/gateway/**",
@@ -84,9 +105,104 @@ def test_triggers_cover_pull_requests_nightly_and_manual_runs() -> None:
     triggers = _triggers(_workflow())
     assert set(triggers) == {"pull_request", "schedule", "workflow_dispatch"}
     assert triggers["pull_request"]["branches"] == ["main"]
-    assert set(triggers["pull_request"]["paths"]) == REQUIRED_PATHS
+    paths = triggers["pull_request"]["paths"]
+    assert set(paths) == REQUIRED_PATHS
+    assert len(paths) == len(REQUIRED_PATHS), "duplicate path filters are forbidden"
     assert len(triggers["schedule"]) == 1
     assert triggers["schedule"][0]["cron"] == "17 3 * * *"
+
+
+def _literal_or_subtree_matches(path: str, pattern: str) -> bool:
+    """Match only this contract's literal and trailing /** GitHub path subset.
+
+    This is not a general GitHub glob implementation. Unsupported syntax fails
+    closed so future filter changes require an explicit contract update.
+    """
+    literal = pattern.removesuffix("/**")
+    assert literal and not any(char in literal for char in "*?[]!+{}")
+    if pattern.endswith("/**"):
+        return path.startswith(literal + "/")
+    return path == literal
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "backend.Dockerfile",
+        ".dockerignore",
+        "app/main.py",
+        "app/core/config/mixins/mfa_settings.py",
+        "app/server/internal_mtls.py",
+        "native/rust_ext/src/lib.rs",
+        "native/rust_ext/Cargo.lock",
+        "alembic/versions/202611020000_mvp_baseline.py",
+        "alembic/env.py",
+        "alembic.ini",
+        "pyproject.toml",
+        "uv.lock",
+        "go.mod",
+        "go.sum",
+        "gen/go/file_processor/v1/job.pb.go",
+        "services/pkg/logging/logging.go",
+        "services/pkg/spiffe/go.mod",
+        "services/gateway/Dockerfile",
+        "services/gateway/cmd/gateway/main.go",
+        "charts/university-ecosystem/templates/network-policy.yaml",
+        "k8s/spire/spire-server.yaml",
+        "scripts/kind/aud373_internal_mtls_proof.sh",
+        "k8s/README.md",
+        ".github/workflows/internal-mtls-kind.yml",
+    ],
+)
+def test_proof_input_paths_match_pull_request_filter(path: str) -> None:
+    assert (ROOT / path).is_file(), "positive case must be a present proof input"
+    paths = _triggers(_workflow())["pull_request"]["paths"]
+    assert any(_literal_or_subtree_matches(path, pattern) for pattern in paths)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "frontend/src/App.tsx",
+        "frontend.Dockerfile",
+        "docs/README.md",
+        "README.md",
+        "Dockerfile.test",
+        "Dockerfile.test.dockerignore",
+        "go.work",
+        "scripts/dev/check.py",
+        ".agents/skills/docker-expert/SKILL.md",
+        "services/file-processor/Dockerfile",
+        "services/ws-hub/go.mod",
+        "services/pkg/metrics/metrics.go",
+        "gen/python/file_processor.py",
+        "k8s/README.md.bak",
+        "k8s/backend.yaml",
+        "services/pkg/spiffe-extra/go.mod",
+        "services/gateway-extra/main.go",
+        "app-extra/main.py",
+        "charts-extra/values.yaml",
+        "scripts/kind-extra/proof.sh",
+        ".github/workflows/ci.yml",
+        "nested/backend.Dockerfile",
+        "backend.Dockerfile.bak",
+        "uv.lock.bak",
+    ],
+)
+def test_unrelated_paths_do_not_match_proof_filter(path: str) -> None:
+    paths = _triggers(_workflow())["pull_request"]["paths"]
+    assert not any(_literal_or_subtree_matches(path, pattern) for pattern in paths)
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["backend.Dockerfile.dockerignore", "services/gateway/Dockerfile.dockerignore"],
+)
+def test_docker_ignore_override_creation_matches_pull_request_filter(path: str) -> None:
+    # Docker selects <Dockerfile>.dockerignore over the context-root ignore file
+    # when present. Creation matters even though these overrides do not yet exist.
+    paths = _triggers(_workflow())["pull_request"]["paths"]
+    assert any(_literal_or_subtree_matches(path, pattern) for pattern in paths)
 
 
 def test_top_level_and_job_permissions_are_read_only() -> None:
@@ -199,8 +315,20 @@ def _bash_command(command: str) -> subprocess.CompletedProcess[bytes]:
     bash = shutil.which("bash")
     assert bash is not None
     return subprocess.run(  # noqa: S603  # Fixed shell runs repository-owned functions and fixed fixtures.
-        [bash, "-s"], input=command.encode(), capture_output=True, check=False
+        [bash, "-s"],
+        input=command.encode(),
+        capture_output=True,
+        check=False,
+        timeout=30,
     )
+
+
+def _bash_path(path: Path) -> str:
+    if os.name != "nt":
+        return str(path)
+    drive = path.drive.rstrip(":").lower()
+    assert len(drive) == 1 and path.is_absolute()
+    return PurePosixPath("/mnt", drive, *path.parts[1:]).as_posix()
 
 
 def _shell_function(name: str) -> str:
@@ -224,6 +352,9 @@ REGISTRY_IMAGE=fixture
 CLUSTER_NAME=owned-cluster
 IMAGE_TAG=proof
 RELEASE=ue
+BACKEND_SVC=ue-university-ecosystem-backend
+GATEWAY_SVC=ue-university-ecosystem-gateway
+FILE_PROCESSOR_SVC=ue-university-ecosystem-file-processor
 TRUST_DOMAIN=university.ecosystem
 BACKEND_SPIFFE_ID=backend
 GATEWAY_SPIFFE_ID=gateway
@@ -248,7 +379,8 @@ write_secret_file() {{ :; }}
 openssl() {{ :; }}
 start_local_registry
 write_values_file
-printf 'BACKEND=%s\\nGATEWAY=%s\\n' "$BACKEND_IMAGE" "$GATEWAY_IMAGE"
+printf 'BACKEND=%s\\nGATEWAY=%s\\nFILE_PROCESSOR=%s\\nINIT_REPOSITORY=%s\\n' \\
+  "$BACKEND_IMAGE" "$GATEWAY_IMAGE" "$FILE_PROCESSOR_IMAGE" "$BACKEND_INIT_IMAGE_REPOSITORY"
 cat "$TRACE"
 cat "$HOSTS"
 printf '%s\\n' '===VALUES==='
@@ -261,12 +393,18 @@ cat "$WORK_DIR/values.yaml"
     address = "127.0.0.1:32768"
     backend = f"{address}/university-backend"
     gateway = f"{address}/university-gateway"
+    file_processor = f"{address}/university-file-processor"
+    init_repository = f"{address}/aud373/fixture/backend"
     assert f"BACKEND={backend}:proof" in trace
     assert f"GATEWAY={gateway}:proof" in trace
+    assert f"FILE_PROCESSOR={file_processor}:proof" in trace
+    assert f"INIT_REPOSITORY={init_repository}" in trace
     assert f"/etc/containerd/certs.d/{address}/hosts.toml" in trace
     assert 'host."http://owned-registry:5000"' in trace
     assert values["backend"]["image"]["repository"] == backend
     assert values["gateway"]["image"]["repository"] == gateway
+    assert values["fileProcessor"]["image"]["repository"] == file_processor
+    assert values["fileProcessor"]["enabled"] is False
     assert values["redis"]["metrics"]["passwordFileInitImage"]["repository"] == backend
     # The proof cluster has no Prometheus Operator; keep partition maintenance
     # enabled by the chart default and omit only its alert custom resource.
@@ -879,6 +1017,233 @@ def test_script_cleans_up_only_its_own_cluster_and_registry() -> None:
     assert "volume prune" not in script
 
 
+def test_cluster_ownership_is_recorded_before_kind_creation() -> None:
+    script = _script()
+    assert script.index("CLUSTER_CREATED=1") < script.index("kind create cluster")
+
+
+def test_signals_exit_through_the_cleanup_trap() -> None:
+    script = _script()
+    assert "trap 'exit 130' INT" in script
+    assert "trap 'exit 143' TERM" in script
+    assert script.index("trap 'exit 143' TERM") < script.index("trap cleanup EXIT")
+
+
+def test_network_downloads_and_image_transfers_are_bounded() -> None:
+    script = _script()
+    curl_lines = [
+        line for line in script.splitlines() if line.lstrip().startswith("curl ")
+    ]
+    assert len(curl_lines) == 3
+    assert all("--max-time 300" in line for line in curl_lines)
+    assert "timeout 1800 docker build" in script
+    assert "timeout 900 docker push" in script
+    assert "docker build --file" not in script.replace("timeout 1800 docker build", "")
+    assert "\ndocker push" not in script
+
+
+def test_backend_probe_diagnostics_use_the_chart_command() -> None:
+    chart = (
+        ROOT / "charts/university-ecosystem/templates/backend-deployment.yaml"
+    ).read_text(encoding="utf-8")
+    assert (
+        '"python", "-m", "app.server.internal_mtls", "probe", "/health/ready", "--port", '
+        '"{{ .Values.backend.service.port }}"'
+    ) in chart
+    script = _script()
+    assert 'readonly BACKEND_PORT="8000"' in script
+    assert (
+        'python -m app.server.internal_mtls probe /health/ready --port "$BACKEND_PORT"'
+        in script
+    )
+    assert "timeout 60 kubectl" in script
+    assert "collect_backend_probe_diagnostics" in script
+    body = _shell_function("collect_backend_probe_diagnostics")
+    assert "-probe-ready.stderr" in body
+    assert "-probe-ready.exit" in body
+
+
+def _fake_kubectl_setup() -> str:
+    return """fake_bin="$(mktemp -d)"
+trap 'rm -rf "$fake_bin"' EXIT
+cat >"$fake_bin/kubectl" <<'FAKE_KUBECTL'
+#!/usr/bin/env bash
+case "$*" in
+  *"get pods -o name"*) printf '%s\\n' $FAKE_PODS ;;
+  *" logs "*)
+    printf 'internal_mtls_peer_authorized peer_spiffe_id=%s\\n' "$FAKE_GATEWAY_SPIFFE_ID"
+    for ((index = 0; index < 20000; index++)); do
+      printf 'internal_mtls_peer_authorized peer_spiffe_id=spiffe://other/%s\\n' "$index"
+    done
+    ;;
+  *" exec "*)
+    printf 'fake stdout\\n'
+    printf '%s\\n' "$FAKE_EXEC_STDERR" >&2
+    exit "$FAKE_EXEC_RC"
+    ;;
+esac
+FAKE_KUBECTL
+chmod 0700 "$fake_bin/kubectl"
+PATH="$fake_bin:$PATH"
+export PATH
+"""
+
+
+def _run_with_fake_kubectl(
+    command: str, env: dict[str, str]
+) -> subprocess.CompletedProcess[bytes]:
+    bash = shutil.which("bash")
+    assert bash is not None
+    return subprocess.run(  # noqa: S603  # Fixed shell runs repository-owned functions and fixed fixtures.
+        [bash, "-s"], input=command.encode(), capture_output=True, check=False, env=env
+    )
+
+
+def test_gateway_peer_search_survives_large_multi_match_logs() -> None:
+    gateway = "spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway"
+    command = "\n".join(
+        [
+            "set -euo pipefail",
+            _fake_kubectl_setup(),
+            "FAKE_PODS='pod/ue-university-ecosystem-backend-abc'",
+            f"FAKE_GATEWAY_SPIFFE_ID='{gateway}'",
+            "export FAKE_PODS FAKE_GATEWAY_SPIFFE_ID",
+            "NAMESPACE=university-ecosystem",
+            "BACKEND_SVC=ue-university-ecosystem-backend",
+            f"GATEWAY_SPIFFE_ID={gateway}",
+            _shell_function("backend_logged_gateway_peer"),
+            "backend_logged_gateway_peer && printf 'MATCHED\\n'",
+        ]
+    )
+    result = _run_with_fake_kubectl(command, dict(os.environ))
+    assert result.returncode == 0, result.stderr.decode()
+    assert result.stdout == b"MATCHED\n"
+
+
+def test_backend_probe_diagnostics_record_stdout_stderr_and_status() -> None:
+    command = "\n".join(
+        [
+            "set -euo pipefail",
+            _fake_kubectl_setup(),
+            "FAKE_PODS='pod/ue-university-ecosystem-backend-abc pod/ue-university-ecosystem-gateway-def'",
+            "FAKE_EXEC_STDERR='internal_mtls_probe_failed step=tls_connect error=SSLError: boom'",
+            "FAKE_EXEC_RC=1",
+            "export FAKE_PODS FAKE_EXEC_STDERR FAKE_EXEC_RC",
+            "NAMESPACE=university-ecosystem",
+            "BACKEND_SVC=ue-university-ecosystem-backend",
+            "BACKEND_PORT=8000",
+            'DIAG_DIR="$(mktemp -d)"',
+            _shell_function("collect_backend_probe_diagnostics"),
+            "collect_backend_probe_diagnostics",
+            'probe_prefix="$DIAG_DIR/university-ecosystem-ue-university-ecosystem-backend-abc-probe-ready"',
+            'printf "STDERR_START\\n"; cat "${probe_prefix}.stderr"',
+            'printf "EXIT_START\\n"; cat "${probe_prefix}.exit"',
+            'printf "STDOUT_START\\n"; cat "${probe_prefix}.stdout"',
+            'printf "NO_GATEWAY_DIAGNOSTICS="; if compgen -G "$DIAG_DIR/*gateway*" >/dev/null; then printf "no\\n"; else printf "yes\\n"; fi',
+        ]
+    )
+    result = _run_with_fake_kubectl(command, dict(os.environ))
+    assert result.returncode == 0, result.stderr.decode()
+    assert result.stdout.decode().splitlines() == [
+        "STDERR_START",
+        "internal_mtls_probe_failed step=tls_connect error=SSLError: boom",
+        "EXIT_START",
+        "exit=1",
+        "STDOUT_START",
+        "fake stdout",
+        "NO_GATEWAY_DIAGNOSTICS=yes",
+    ]
+
+
+def test_cleanup_continues_after_diagnostic_and_cluster_delete_timeouts() -> None:
+    backend_diagnostics = _shell_function("collect_backend_probe_diagnostics")
+    diagnostics = _shell_function("collect_diagnostics")
+    cleanup = _shell_function("cleanup")
+    assert "timeout 30 kubectl" in backend_diagnostics
+    assert "timeout 30 docker info" in diagnostics
+    assert "timeout 120 kind delete" in cleanup
+    assert "timeout 60 docker rm" in cleanup
+    functions = "\n".join(
+        source.replace(
+            "timeout --kill-after=5s 20s ", "timeout --kill-after=0.1s 0.1s "
+        )
+        .replace("timeout 30 ", "timeout 0.1 ")
+        .replace("timeout 60 ", "timeout 0.1 ")
+        .replace("timeout 120 ", "timeout 0.1 ")
+        for source in (backend_diagnostics, diagnostics, cleanup)
+    )
+    command = f"""set -euo pipefail
+{functions}
+root="$(mktemp -d)"
+on_exit() {{
+  printf 'TRACE_START\\n'
+  cat "$TRACE"
+  if [[ ! -e "$WORK_DIR" ]]; then printf 'WORK_DIR_REMOVED\\n'; fi
+  rm -rf "$root"
+}}
+trap on_exit EXIT
+WORK_DIR="$root/work"
+mkdir -p "$WORK_DIR/bin"
+KUBECONFIG="$WORK_DIR/kubeconfig"
+printf 'config\\n' >"$KUBECONFIG"
+DIAG_DIR="$WORK_DIR/diagnostics"
+TRACE="$root/trace"
+export TRACE
+cat >"$WORK_DIR/bin/kubectl" <<'FAKE_KUBECTL'
+#!/usr/bin/env bash
+printf 'kubectl %s\\n' "$*" >>"$TRACE"
+exec sleep 5
+FAKE_KUBECTL
+cat >"$WORK_DIR/bin/docker" <<'FAKE_DOCKER'
+#!/usr/bin/env bash
+printf 'docker %s\\n' "$*" >>"$TRACE"
+if [[ "$1" == "rm" ]]; then exit 0; fi
+exec sleep 5
+FAKE_DOCKER
+cat >"$WORK_DIR/bin/kind" <<'FAKE_KIND'
+#!/usr/bin/env bash
+printf 'kind %s\\n' "$*" >>"$TRACE"
+exec sleep 5
+FAKE_KIND
+chmod 0700 "$WORK_DIR/bin/kubectl" "$WORK_DIR/bin/docker" "$WORK_DIR/bin/kind"
+PATH="$WORK_DIR/bin:$PATH"
+export PATH
+DOCKER_DAEMON_ENDPOINT=unix:///var/run/docker.sock
+NAMESPACE=university-ecosystem
+SPIRE_NAMESPACE=spire
+BACKEND_SVC=ue-university-ecosystem-backend
+BACKEND_PORT=8000
+CLUSTER_NAME=owned-cluster
+CLUSTER_CREATED=1
+REGISTRY_CREATED=1
+REGISTRY_CONTAINER_ID="$(printf 'a%.0s' {{1..64}})"
+LOCAL_REGISTRY_ADDRESS=127.0.0.1:5000
+log() {{ echo "$*" >&2; }}
+cleanup
+"""
+    bash = shutil.which("bash")
+    assert bash is not None
+    try:
+        result = subprocess.run(  # noqa: S603  # Fixed shell runs repository-owned cleanup and fixture commands.
+            [bash, "-s"],
+            input=command.encode(),
+            capture_output=True,
+            check=False,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("bounded diagnostics and cleanup did not complete")
+    assert result.returncode == 1, result.stderr.decode()
+    assert result.stderr.decode().splitlines() == ["cleanup failed: owned kind cluster"]
+    trace = result.stdout.decode()
+    assert "RESULT=FAIL cleanup=1" in trace
+    assert "docker info --format" in trace
+    assert "kubectl -n university-ecosystem get all,serviceaccounts -o wide" in trace
+    assert "kind delete cluster --name owned-cluster" in trace
+    assert "docker rm --force --volumes" in trace
+    assert "WORK_DIR_REMOVED" in trace
+
+
 def test_script_proves_spire_installation_and_registration_from_repo_manifests() -> (
     None
 ):
@@ -903,6 +1268,9 @@ WORK_DIR="$work"
 LOCAL_REGISTRY_ADDRESS=127.0.0.1:32768
 IMAGE_TAG=ue-r9-aud373-0123456789ab
 RELEASE=ue
+BACKEND_SVC=ue-university-ecosystem-backend
+GATEWAY_SVC=ue-university-ecosystem-gateway
+FILE_PROCESSOR_SVC=ue-university-ecosystem-file-processor
 TRUST_DOMAIN=university.ecosystem
 BACKEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-backend
 GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway
@@ -921,6 +1289,122 @@ cat "$WORK_DIR/values.yaml"
         return yaml.safe_load(result.stdout)
     except yaml.YAMLError:
         raise AssertionError("generated proof values are not valid YAML") from None
+
+
+def test_generated_proof_http_hosts_are_finite_and_route_jwks() -> None:
+    from starlette.applications import Starlette
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+    from starlette.requests import Request
+    from starlette.responses import PlainTextResponse
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    allowed_hosts = _generated_proof_values()["backend"]["env"]["ALLOWED_HOSTS"].split(
+        ","
+    )
+    assert allowed_hosts == [
+        "localhost",
+        "127.0.0.1",
+        "testserver",
+        "ue-university-ecosystem-backend",
+        "ue-university-ecosystem-gateway",
+    ]
+
+    async def jwks_handler(_request: Request) -> PlainTextResponse:
+        return PlainTextResponse("JWKS handler reached")
+
+    app = TrustedHostMiddleware(
+        Starlette(routes=[Route("/.well-known/jwks.json", jwks_handler)]),
+        allowed_hosts=allowed_hosts,
+    )
+    with TestClient(app) as client:
+        for host in (
+            "localhost:8000",
+            "127.0.0.1:8000",
+            "testserver",
+            "ue-university-ecosystem-backend:8000",
+            "ue-university-ecosystem-gateway:8080",
+        ):
+            response = client.get("/.well-known/jwks.json", headers={"host": host})
+            assert response.status_code == 200
+            assert response.text == "JWKS handler reached"
+        for host in (
+            "evil.example",
+            "ue-university-ecosystem-backend.evil.example",
+            "evil-ue-university-ecosystem-gateway",
+        ):
+            response = client.get("/.well-known/jwks.json", headers={"host": host})
+            assert response.status_code == 400
+            assert response.text == "Invalid host header"
+
+
+def test_generated_values_enable_single_real_file_processor_and_gRPC_mtls() -> None:
+    values = _generated_proof_values()
+    assert values["fileProcessor"]["enabled"] is False
+    assert values["fileProcessor"]["replicaCount"] == 1
+    assert values["internalGrpcMTLS"] == {
+        "enabled": True,
+        "serverName": "ue-university-ecosystem-file-processor",
+        "gatewayIdentityURI": "spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway",
+        "allowedClientURIs": [
+            "spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway"
+        ],
+        "gatewayClient": {"existingSecret": "internal-grpc-mtls-gateway"},
+        "fileProcessorServer": {"existingSecret": "internal-grpc-mtls-server"},
+    }
+    assert values["gateway"]["config"]["grpcUseTLS"] is True
+
+
+def test_generated_revocation_connection_uses_distinct_canonical_redis_password(
+    tmp_path: Path,
+) -> None:
+    command = f"""set -euo pipefail
+{_shell_function("random_hex")}
+{_shell_function("random_fernet")}
+{_shell_function("write_secret_file")}
+{_shell_function("write_values_file")}
+WORK_DIR={shlex.quote(_bash_path(tmp_path))}
+LOCAL_REGISTRY_ADDRESS=127.0.0.1:32768
+IMAGE_TAG=proof
+RELEASE=ue
+BACKEND_SVC=ue-university-ecosystem-backend
+GATEWAY_SVC=ue-university-ecosystem-gateway
+FILE_PROCESSOR_SVC=ue-university-ecosystem-file-processor
+TRUST_DOMAIN=university.ecosystem
+BACKEND_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-backend
+GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway
+WS_HUB_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-ws-hub
+FILE_PROCESSOR_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-file-processor
+write_values_file
+"""
+    bash = shutil.which("bash")
+    assert bash is not None
+    result = subprocess.run(  # noqa: S603  # Fixed Bash runs only the repository-owned proof helper.
+        [bash, "-s"],
+        input=command.encode(),
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    revocation_url = (tmp_path / "secret-files/redis-revocation-url").read_text(
+        encoding="utf-8"
+    )
+    revocation_password = (
+        tmp_path / "secret-files/revocation-redis-password"
+    ).read_text(encoding="utf-8")
+    cache_url = (tmp_path / "secret-files/redis-backend-url").read_text(
+        encoding="utf-8"
+    )
+    cache_password = (tmp_path / "secret-files/redis-password").read_text(
+        encoding="utf-8"
+    )
+    assert revocation_url.startswith("redis://:")
+    assert revocation_url.endswith("@ue-revocation-redis-master:6379/0")
+    assert revocation_password in revocation_url
+    assert cache_url.endswith("@ue-redis-master:6379/0")
+    assert cache_password in cache_url
+    assert revocation_password != cache_password
 
 
 def test_generated_proof_settings_validate_real_spotify_and_totp_keys(
@@ -1035,9 +1519,16 @@ NAMESPACE=university-ecosystem
 RELEASE=ue
 BACKEND_SVC=ue-backend
 GATEWAY_SVC=ue-gateway
+FILE_PROCESSOR_SVC=ue-file-processor
 BACKEND_IMAGE=fixture
 read_tracked_pin() {{ printf image; }}
 write_values_file() {{ :; }}
+write_grpc_mtls_material() {{ :; }}
+install_grpc_mtls_secrets() {{ :; }}
+install_revocation_store() {{ :; }}
+install_temporal_dev_server() {{ :; }}
+wait_for_file_process_stream() {{ :; }}
+openssl() {{ :; }}
 register_workloads() {{ :; }}
 helm() {{ :; }}
 kubectl() {{
@@ -1087,6 +1578,9 @@ WORK_DIR="$work"
 LOCAL_REGISTRY_ADDRESS=127.0.0.1:32768
 IMAGE_TAG=proof
 RELEASE=ue
+BACKEND_SVC=ue-university-ecosystem-backend
+GATEWAY_SVC=ue-university-ecosystem-gateway
+FILE_PROCESSOR_SVC=ue-university-ecosystem-file-processor
 TRUST_DOMAIN=university.ecosystem
 BACKEND_SPIFFE_ID=backend
 GATEWAY_SPIFFE_ID=gateway
@@ -1127,12 +1621,19 @@ NAMESPACE=university-ecosystem
 RELEASE=ue
 BACKEND_SVC=ue-backend
 GATEWAY_SVC=ue-gateway
+FILE_PROCESSOR_SVC=ue-file-processor
 BACKEND_IMAGE=fixture-image
 FAILURE={failure}
 TRACE="$work/trace"
 : > "$TRACE"
 read_tracked_pin() {{ printf image; }}
 write_values_file() {{ :; }}
+write_grpc_mtls_material() {{ :; }}
+install_grpc_mtls_secrets() {{ :; }}
+install_revocation_store() {{ :; }}
+install_temporal_dev_server() {{ :; }}
+wait_for_file_process_stream() {{ printf 'STREAM_READY\\n' >> "$TRACE"; }}
+openssl() {{ :; }}
 register_workloads() {{ printf 'REGISTRATION\\n' >> "$TRACE"; }}
 helm() {{ printf 'HELM\\n' >> "$TRACE"; }}
 kubectl() {{
@@ -1171,7 +1672,13 @@ cat "$WORK_DIR/fixture-migration.yaml"
     elif failure == "wait":
         assert trace[3:] == ["MIGRATION_WAIT"]
     else:
-        assert trace[3:] == ["MIGRATION_WAIT", "REGISTRATION", "HELM"]
+        assert trace[3:] == [
+            "MIGRATION_WAIT",
+            "REGISTRATION",
+            "HELM",
+            "STREAM_READY",
+            "HELM",
+        ]
     policy, job = list(yaml.safe_load_all(job_source))
     assert policy["kind"] == "NetworkPolicy"
     assert policy["spec"]["policyTypes"] == ["Ingress", "Egress"]
@@ -1254,9 +1761,16 @@ NAMESPACE=university-ecosystem
 RELEASE=ue
 BACKEND_SVC=ue-backend
 GATEWAY_SVC=ue-gateway
+FILE_PROCESSOR_SVC=ue-file-processor
 BACKEND_IMAGE=fixture-image
 read_tracked_pin() {{ printf image; }}
 write_values_file() {{ :; }}
+write_grpc_mtls_material() {{ :; }}
+install_grpc_mtls_secrets() {{ :; }}
+install_revocation_store() {{ :; }}
+install_temporal_dev_server() {{ :; }}
+wait_for_file_process_stream() {{ :; }}
+openssl() {{ :; }}
 register_workloads() {{ :; }}
 helm() {{ :; }}
 kubectl() {{
@@ -1341,3 +1855,466 @@ exit "$status"
     assert (result.returncode == 0) is ready
     output_is_empty = not result.stdout and not result.stderr
     assert output_is_empty, "probe must not expose values"
+
+
+def test_revocation_init_image_values_bind_to_one_measured_digest() -> None:
+    function = _shell_function("write_revocation_store_values")
+    command = f"""set -euo pipefail
+{function}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+RELEASE=ue
+IMAGE_TAG=proof
+BACKEND_INIT_IMAGE_REPOSITORY=127.0.0.1:32768/aud373/fixture/backend
+BACKEND_IMAGE_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+write_revocation_store_values
+cat "$WORK_DIR/revocation-store-values.yaml"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    values = yaml.safe_load(result.stdout)
+    digest = values["global"]["backendImageDigest"]
+    repository = values["global"]["backendImageRepository"]
+    assert repository == "127.0.0.1:32768/aud373/fixture/backend"
+    assert re.fullmatch(r"sha256:[0-9a-f]{64}", digest)
+    assert values["applicationReleaseName"] == "ue"
+    assert values["redis"]["fullnameOverride"] == "ue-revocation-redis"
+    assert values["redis"]["commonLabels"] == {
+        "university-ecosystem.io/revocation-store-for": "ue",
+        "app.kubernetes.io/instance": "ue",
+    }
+    helper = values["redis"]["metrics"]["passwordFileInitImage"]
+    assert helper == {
+        "repository": repository,
+        "tag": "proof",
+        "digest": digest,
+        "pullPolicy": "Always",
+    }
+
+
+@pytest.mark.parametrize(
+    ("repository", "digest"),
+    [
+        ("127.0.0.1:32768/aud373/fixture/other", "sha256:" + "a" * 64),
+        ("127.0.0.1:32768/aud373/fixture/backend", "sha256:bad"),
+    ],
+)
+def test_revocation_init_image_binding_rejects_mutated_source_or_digest(
+    repository: str, digest: str
+) -> None:
+    command = f"""set -euo pipefail
+{_shell_function("write_revocation_store_values")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+RELEASE=ue
+IMAGE_TAG=proof
+BACKEND_INIT_IMAGE_REPOSITORY={shlex.quote(repository)}
+BACKEND_IMAGE_DIGEST={shlex.quote(digest)}
+if write_revocation_store_values; then exit 1; fi
+test ! -e "$WORK_DIR/revocation-store-values.yaml"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    ("default_classes", "succeeds", "expected_class"),
+    [
+        ("", True, ""),
+        ("kind-local-path", True, "kind-local-path"),
+        ("kind-local-path\nother-class", False, None),
+        ("invalid_class", False, None),
+    ],
+)
+def test_private_revocation_volume_is_prebound_durable_and_fails_closed(
+    default_classes: str, succeeds: bool, expected_class: str | None
+) -> None:
+    command = f"""set -euo pipefail
+{_shell_function("provision_revocation_store_volume")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+CLUSTER_NAME=owned-kind
+NAMESPACE=university-ecosystem
+RELEASE=ue
+RUN_SUFFIX=0123456789ab
+DEFAULT_CLASSES={shlex.quote(default_classes)}
+log() {{ :; }}
+kind() {{
+  [[ "$*" == "get nodes --name owned-kind" ]] || return 90
+  printf 'owned-kind-control-plane\\n'
+}}
+docker() {{
+  [[ "$*" == "exec owned-kind-control-plane mkdir -p /var/lib/ue-aud373-0123456789ab-revocation-redis" ]]
+}}
+timeout() {{ [[ "$1" == 30 ]] || return 92; shift; "$@"; }}
+kubectl() {{
+  if [[ "$1" == get && "$2" == storageclass ]]; then
+    [[ -z "$DEFAULT_CLASSES" ]] || printf '%s\\n' "$DEFAULT_CLASSES"
+  elif [[ "$1" == apply && "$2" == -f ]]; then
+    cat "$3"
+  else
+    return 91
+  fi
+}}
+if provision_revocation_store_volume; then status=0; else status=$?; fi
+if [[ "{"0" if succeeds else "1"}" == 0 ]]; then
+  test "$status" = 0
+else
+  test "$status" != 0
+fi
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    if not succeeds:
+        assert not result.stdout
+        return
+    volume = yaml.safe_load(result.stdout)
+    assert volume["metadata"]["name"] == "ue-aud373-0123456789ab-revocation-redis"
+    assert volume["spec"]["capacity"] == {"storage": "2Gi"}
+    assert volume["spec"]["accessModes"] == ["ReadWriteOnce"]
+    assert volume["spec"]["persistentVolumeReclaimPolicy"] == "Retain"
+    assert volume["spec"]["storageClassName"] == expected_class
+    assert volume["spec"]["local"]["path"] == (
+        "/var/lib/ue-aud373-0123456789ab-revocation-redis"
+    )
+    assert volume["spec"]["nodeAffinity"]["required"]["nodeSelectorTerms"][0][
+        "matchExpressions"
+    ] == [
+        {
+            "key": "kubernetes.io/hostname",
+            "operator": "In",
+            "values": ["owned-kind-control-plane"],
+        }
+    ]
+    assert volume["spec"]["claimRef"] == {
+        "apiVersion": "v1",
+        "kind": "PersistentVolumeClaim",
+        "name": "redis-data-ue-revocation-redis-master-0",
+        "namespace": "university-ecosystem",
+    }
+
+
+def test_generated_gRPC_material_has_exact_CA_DNS_URI_and_EKU(tmp_path: Path) -> None:
+    from cryptography import x509
+    from cryptography.x509.oid import ExtendedKeyUsageOID
+
+    bash = shutil.which("bash")
+    assert bash is not None
+    command = f"""set -euo pipefail
+umask 077
+{_shell_function("write_grpc_mtls_material")}
+WORK_DIR={shlex.quote(_bash_path(tmp_path))}
+RUN_SUFFIX=0123456789ab
+FILE_PROCESSOR_SVC=ue-university-ecosystem-file-processor
+GATEWAY_SPIFFE_ID=spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway
+TRUST_DOMAIN=university.ecosystem
+NAMESPACE=university-ecosystem
+RELEASE=ue
+write_grpc_mtls_material
+"""
+    result = subprocess.run(  # noqa: S603  # Fixed Bash runs the repository-owned certificate generator.
+        [bash, "-s"],
+        input=command.encode(),
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    material = tmp_path / "grpc-mtls"
+    ca = x509.load_pem_x509_certificate((material / "ca.crt").read_bytes())
+    server = x509.load_pem_x509_certificate((material / "server.crt").read_bytes())
+    client = x509.load_pem_x509_certificate((material / "client.crt").read_bytes())
+    assert ca.extensions.get_extension_for_class(x509.BasicConstraints).value.ca
+    assert server.issuer == ca.subject
+    assert client.issuer == ca.subject
+    assert server.extensions.get_extension_for_class(
+        x509.SubjectAlternativeName
+    ).value.get_values_for_type(x509.DNSName) == [
+        "ue-university-ecosystem-file-processor"
+    ]
+    assert client.extensions.get_extension_for_class(
+        x509.SubjectAlternativeName
+    ).value.get_values_for_type(x509.UniformResourceIdentifier) == [
+        "spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway"
+    ]
+    assert list(
+        server.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+    ) == [ExtendedKeyUsageOID.SERVER_AUTH]
+    assert list(
+        client.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+    ) == [ExtendedKeyUsageOID.CLIENT_AUTH]
+
+
+@pytest.mark.parametrize(
+    ("service_name", "gateway_identity"),
+    [
+        (
+            "ue-file-processor.evil",
+            "spiffe://university.ecosystem/ns/university-ecosystem/sa/ue-gateway",
+        ),
+        (
+            "ue-university-ecosystem-file-processor",
+            "spiffe://university.ecosystem/ns/university-ecosystem/sa/other",
+        ),
+    ],
+)
+def test_gRPC_certificate_creation_rejects_mutated_dns_or_gateway_identity(
+    service_name: str, gateway_identity: str, tmp_path: Path
+) -> None:
+    bash = shutil.which("bash")
+    assert bash is not None
+    command = f"""set -euo pipefail
+umask 077
+{_shell_function("write_grpc_mtls_material")}
+WORK_DIR={shlex.quote(_bash_path(tmp_path))}
+RUN_SUFFIX=0123456789ab
+FILE_PROCESSOR_SVC={shlex.quote(service_name)}
+GATEWAY_SPIFFE_ID={shlex.quote(gateway_identity)}
+TRUST_DOMAIN=university.ecosystem
+NAMESPACE=university-ecosystem
+RELEASE=ue
+openssl() {{ touch "$WORK_DIR/openssl-called"; }}
+if write_grpc_mtls_material; then exit 1; fi
+test ! -e "$WORK_DIR/openssl-called"
+test ! -e "$WORK_DIR/grpc-mtls/ca.key"
+"""
+    result = subprocess.run(  # noqa: S603  # Fixed Bash checks fail-closed certificate input validation.
+        [bash, "-s"],
+        input=command.encode(),
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+
+
+def test_real_temporal_dev_manifest_uses_tracked_image_health_and_network_scope() -> (
+    None
+):
+    command = f"""set -euo pipefail
+{_shell_function("read_tracked_pin")}
+{_shell_function("install_temporal_dev_server")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+ROOT_DIR={shlex.quote(_bash_path(ROOT))}
+NAMESPACE=university-ecosystem
+RELEASE=ue
+log() {{ :; }}
+kubectl() {{
+  if [[ "$1" == apply ]]; then
+    cat "$3"
+  elif [[ "$1" == -n ]]; then
+    [[ "$*" == "-n university-ecosystem rollout status deployment/ue-aud373-temporal-dev --timeout=120s" ]]
+  else
+    return 90
+  fi
+}}
+install_temporal_dev_server
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    deployment, service, policy = list(yaml.safe_load_all(result.stdout))
+    tracked_image = yaml.safe_load(
+        (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    )["services"]["temporal-admin-tools"]["image"]
+    assert re.fullmatch(
+        r"temporalio/admin-tools:1\.30\.7@sha256:[0-9a-f]{64}", tracked_image
+    )
+    pod_spec = deployment["spec"]["template"]["spec"]
+    container = pod_spec["containers"][0]
+    assert container["image"] == tracked_image
+    assert container["imagePullPolicy"] == "IfNotPresent"
+    assert container["command"] == ["temporal"]
+    assert container["args"] == [
+        "server",
+        "start-dev",
+        "--ip",
+        "0.0.0.0",  # noqa: S104  # Isolated pod binds behind a ClusterIP and FP-only ingress policy.
+        "--port",
+        "7233",
+        "--headless",
+    ]
+    health_command = [
+        "temporal",
+        "operator",
+        "cluster",
+        "health",
+        "--address",
+        "127.0.0.1:7233",
+        "--tls=false",
+        "--command-timeout",
+        "2s",
+    ]
+    assert container["startupProbe"]["exec"]["command"] == health_command
+    assert container["readinessProbe"]["exec"]["command"] == health_command
+    assert container["resources"] == {
+        "requests": {"cpu": "250m", "memory": "256Mi"},
+        "limits": {"cpu": "1", "memory": "1Gi"},
+    }
+    assert pod_spec["automountServiceAccountToken"] is False
+    assert service["metadata"]["name"] == "temporal"
+    assert service["spec"]["type"] == "ClusterIP"
+    assert service["spec"]["selector"] == deployment["spec"]["selector"]["matchLabels"]
+    assert service["spec"]["ports"] == [
+        {
+            "name": "frontend",
+            "port": 7233,
+            "targetPort": "frontend",
+            "protocol": "TCP",
+        }
+    ]
+    assert policy["spec"] == {
+        "podSelector": {
+            "matchLabels": {
+                "app.kubernetes.io/name": "temporal",
+                "university-ecosystem.io/aud373-owned": "true",
+            }
+        },
+        "policyTypes": ["Ingress"],
+        "ingress": [
+            {
+                "from": [
+                    {
+                        "podSelector": {
+                            "matchLabels": {
+                                "app.kubernetes.io/instance": "ue",
+                                "app.kubernetes.io/component": "file-processor",
+                            }
+                        }
+                    }
+                ],
+                "ports": [{"protocol": "TCP", "port": 7233}],
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "services:\n  backend:\n    image: example/backend\n",
+        (
+            "services:\n"
+            "  temporal-admin-tools:\n"
+            "    image: temporalio/admin-tools:1.31.0@sha256:"
+            + "a" * 64
+            + "\n  next-service:\n    image: example/next\n"
+        ),
+        (
+            "services:\n"
+            "  temporal-admin-tools:\n"
+            "    image: temporalio/admin-tools:1.30.7@sha256:"
+            + "a"
+            * 64
+            + "\n  next-service:\n    image: example/next\n"
+            "  temporal-admin-tools:\n"
+            "    image: temporalio/admin-tools:1.30.7@sha256:"
+            + "b" * 64
+            + "\n  final-service:\n    image: example/final\n"
+        ),
+    ],
+)
+def test_temporal_dev_install_rejects_missing_mutated_or_ambiguous_pin(
+    source: str, tmp_path: Path
+) -> None:
+    (tmp_path / "docker-compose.yml").write_text(source, encoding="utf-8")
+    command = f"""set -euo pipefail
+{_shell_function("read_tracked_pin")}
+{_shell_function("install_temporal_dev_server")}
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+WORK_DIR="$work"
+ROOT_DIR={shlex.quote(_bash_path(tmp_path))}
+NAMESPACE=university-ecosystem
+log() {{ :; }}
+kubectl() {{ touch "$work/unexpected-kubectl"; }}
+if install_temporal_dev_server; then exit 1; fi
+test ! -e "$work/unexpected-kubectl"
+test ! -e "$WORK_DIR/temporal-dev.yaml"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+
+
+def test_file_processor_startup_and_gateway_health_keep_real_dependencies_ordered() -> (
+    None
+):
+    script = _script()
+    deploy = _shell_function("deploy_stack")
+    ordered_calls = [
+        "write_grpc_mtls_material || return 1",
+        "install_grpc_mtls_secrets || return 1",
+        "install_revocation_store || return 1",
+        "install_temporal_dev_server || return 1",
+        'helm upgrade --install "$RELEASE"',
+        'kubectl -n "$NAMESPACE" rollout status "deployment/${BACKEND_SVC}"',
+        "wait_for_file_process_stream || return 1",
+        "--set fileProcessor.enabled=true",
+        '"deployment/${FILE_PROCESSOR_SVC}" --timeout=600s',
+        '"deployment/${GATEWAY_SVC}" --timeout=600s',
+    ]
+    positions = [deploy.index(call) for call in ordered_calls]
+    assert positions == sorted(positions)
+    assert deploy.count("--set fileProcessor.enabled=true") == 1
+    assert "fileProcessor:\n  enabled: false\n" in script
+    assert "internalGrpcMTLS:\n  enabled: true\n" in script
+    assert "grpcUseTLS: true" in script
+
+    main = (ROOT / "services/file-processor/cmd/file-processor/main.go").read_text(
+        encoding="utf-8"
+    )
+    startup_order = [
+        main.index(
+            "jwtOptions, replayGuard, closeRevocation, err := initRevocationAndReplay"
+        ),
+        main.index("startTemporalWorkerFunc(ctx, cfg, logger)"),
+        main.index("startNatsSubscriberFunc(ctx, cfg, c, logger, replayGuard)"),
+        main.index("setupGRPCServerFunc(ctx, cfg"),
+    ]
+    assert startup_order == sorted(startup_order)
+    auth = (ROOT / "services/file-processor/cmd/file-processor/auth.go").read_text(
+        encoding="utf-8"
+    )
+    assert "client.Ping(pingCtx).Err()" in auth
+    assert "if pingErr := client.Ping(pingCtx).Err(); pingErr != nil" in auth
+    subscriber = main.split("func reconcileFileProcessConsumer", 1)[1].split("\n}", 1)[
+        0
+    ]
+    assert "js.StreamNameBySubject(subject)" in subscriber
+    assert "fileProcessSubject" in main
+
+    handlers = (ROOT / "services/gateway/internal/handlers/handlers.go").read_text(
+        encoding="utf-8"
+    )
+    assert 'Service: "file_processor.v1.FileProcessingService"' in handlers
+    assert (
+        "response.GetStatus() != grpc_health_v1.HealthCheckResponse_SERVING" in handlers
+    )
+    gateway_deployment = (
+        ROOT / "charts/university-ecosystem/templates/gateway-deployment.yaml"
+    ).read_text(encoding="utf-8")
+    assert "path: /health/ready" in gateway_deployment
+    gateway_main = (ROOT / "services/gateway/cmd/gateway/main.go").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        'public.GET("/health/ready", handlers.ReadinessHandler(grpc_health_v1.NewHealthClient(grpcConn), 2*time.Second))'
+        in gateway_main
+    )
+    assert '"deployment/${GATEWAY_SVC}" --timeout=600s' in deploy
+    server = (ROOT / "services/file-processor/cmd/file-processor/main.go").read_text(
+        encoding="utf-8"
+    )
+    gateway = (ROOT / "services/gateway/cmd/gateway/main.go").read_text(
+        encoding="utf-8"
+    )
+    assert "ClientAuth:   tls.RequireAndVerifyClientCert" in server
+    assert "verifyAllowedClientURI(allowedClientURIs, state)" in server
+    assert "RootCAs:      roots" in gateway
+    assert "ServerName:   cfg.GRPCServerName" in gateway
+    assert "GRPCClientIdentityURI" in gateway
+    assert "InsecureSkipVerify" not in server + gateway

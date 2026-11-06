@@ -61,6 +61,10 @@ const CLIENT_HEARTBEAT_CLOSE_CODE = 4000
 const CLIENT_HEARTBEAT_CLOSE_REASON = "heartbeat_timeout"
 const REPLAY_UNAVAILABLE_CLOSE_CODE = 4002
 const REPLAY_UNAVAILABLE_CLOSE_REASON = "replay_unavailable"
+// Legacy replay checkpoints may arrive once per stored event. The chat history
+// endpoint is rate limited to five requests per minute and the query retries
+// twice, so coalesce per room and allow at most one checkpoint refresh per minute.
+const REPLAY_REST_RESYNC_MIN_INTERVAL_MS = 60_000
 // The replay join limiter refills at one token per second with a burst of two.
 // Wait just over one refill before making one same-socket retry.
 const REPLAY_JOIN_RETRY_DELAY_MS = 1_050
@@ -310,6 +314,13 @@ interface TypingUser {
   timeout: ReturnType<typeof setTimeout>
 }
 
+interface ReplayRestRecoveryState {
+  pending: boolean
+  refreshing: boolean
+  nextAllowedAt: number
+  timer: ReturnType<typeof setTimeout> | undefined
+}
+
 /**
  * MOD-11 Fix: useSyncExternalStore for robust WS connection state.
  *
@@ -419,6 +430,76 @@ export function useChatWebSocket({
     room: string
     checkpoint: ReplayCheckpoint
   } | null>(null)
+  const replayRestRecoveryRef = useConstant(() => {
+    const rooms = new Map<string, ReplayRestRecoveryState>()
+    const runPendingRefresh = (chatId: string, state: ReplayRestRecoveryState) => {
+      if (rooms.get(chatId) !== state) return
+      state.timer = undefined
+      if (!state.pending) {
+        rooms.delete(chatId)
+        return
+      }
+      if (!mountedRef.current) {
+        state.pending = false
+        rooms.delete(chatId)
+        return
+      }
+
+      const delay = Math.max(0, state.nextAllowedAt - Date.now())
+      if (delay > 0) {
+        state.timer = setTimeout(() => runPendingRefresh(chatId, state), delay)
+        return
+      }
+
+      state.pending = false
+      state.refreshing = true
+      state.nextAllowedAt = Date.now() + REPLAY_REST_RESYNC_MIN_INTERVAL_MS
+      void Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["messages", chatId],
+          refetchType: "active",
+        }),
+        queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "active" }),
+      ])
+        .catch(() => undefined)
+        .finally(() => {
+          if (rooms.get(chatId) !== state) return
+          state.refreshing = false
+          const cooldownDelay = Math.max(0, state.nextAllowedAt - Date.now())
+          // This timer either starts one trailing refresh at the cooldown
+          // boundary or releases the per-room rate-limit state. Starting the
+          // refresh here avoids scheduling a second zero-delay timer at the
+          // same fake-clock boundary.
+          state.timer = setTimeout(() => runPendingRefresh(chatId, state), cooldownDelay)
+        })
+    }
+    const schedule = (chatId: string) => {
+      let state = rooms.get(chatId)
+      if (!state) {
+        state = { pending: false, refreshing: false, nextAllowedAt: 0, timer: undefined }
+        rooms.set(chatId, state)
+      }
+      state.pending = true
+      if (state.refreshing || state.timer !== undefined) return
+
+      const delay = Math.max(0, state.nextAllowedAt - Date.now())
+      state.timer = setTimeout(() => runPendingRefresh(chatId, state!), delay)
+    }
+    const clear = (markPendingStale = false) => {
+      for (const [chatId, state] of rooms) {
+        if (markPendingStale && state.pending) {
+          void queryClient.invalidateQueries({
+            queryKey: ["messages", chatId],
+            refetchType: "none",
+          })
+          void queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
+        }
+        clearTimeout(state.timer)
+      }
+      rooms.clear()
+    }
+    return { schedule, clear, dispose: () => clear(true) }
+  })
   // Only an observed rejection creates recovery debt. A quiet resumed room has
   // no completion ACK, so an ordinary pending join must not inhibit liveness.
   const replayRejectionRef = useRef<ReplayIdentity | null>(null)
@@ -434,6 +515,7 @@ export function useChatWebSocket({
       accountEpochRef.current += 1
       clearReplayCheckpoints(seenMessageSessionRef.current)
       seenMessageIdsRef.current.clear()
+      replayRestRecoveryRef.clear()
       seenMessageSessionRef.current = currentUserId
       activeRoomRef.current = null
       lastConnectedAccountEpochRef.current = null
@@ -455,6 +537,7 @@ export function useChatWebSocket({
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      replayRestRecoveryRef.dispose()
     }
   }, [])
 
@@ -1168,6 +1251,16 @@ export function useChatWebSocket({
                 break
               }
 
+              case "replay_checkpoint": {
+                // Only ws-hub's explicit marker identifies a suppressed,
+                // persisted legacy event. Poison and audience-excluded
+                // checkpoints remain cursor-only controls.
+                if (validated.refresh_required === true) {
+                  replayRestRecoveryRef.schedule(validated.chat_id)
+                }
+                break
+              }
+
               case "presence": {
                 onPresenceUpdateRef.current(
                   validated.user_id,
@@ -1283,6 +1376,7 @@ export function useChatWebSocket({
     currentUserId,
     finishOwnedTransport,
     hasReplayRejection,
+    replayRestRecoveryRef,
     queryClient,
     sendRoomJoin,
     wsStore,

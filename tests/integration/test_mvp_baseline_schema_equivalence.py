@@ -4,7 +4,8 @@ The pre-squash chain (``alembic/`` and ``app/`` at commit 3ff5375fb, extracted w
 ``git archive`` and never checked out) and the baseline revision run against two
 PostgreSQL databases. Only the statements and catalog rows listed below may differ,
 compared exactly: the AUD-269 restored indexes, the AUD-272 claim ledger, the partition
-children of the restored index, the owner-decided removal of ``ix_users_email_lower``, and
+children of the restored index, the approved ix-to-ux email-index replacement
+(owner approval recorded 2026-11-05 UTC), and
 the AUD-272 removal of the redundant ``uq_notification_delivery_once`` constraint.
 Statements are compared after collapsing unquoted layout, since ``pg_dump`` wraps
 long statements; quoted values and function bodies remain byte-sensitive. Other catalog facts that ``pg_dump`` omits must be identical, and
@@ -260,8 +261,13 @@ _DELIVERY_ONCE_REMOVED_STATEMENTS: Final = (
         )
     ),
 )
-# Owner decision: keep exactly one unique lower(email) index. The pre-squash
-# ix_users_email_lower is dropped; the restored ux_users_lower_email replaces it.
+# Provenance: the 2026-11-01 AUD269 review records ux_users_lower_email as
+# source-equivalent to ix_users_email_lower (UNIQUE lower(email)).
+# ADR-051 records owner approval of this exact replacement (2026-11-05 UTC).
+# This is storage-schema provenance only. The pinned pre-squash service handles
+# both names; current error mapping handles ux_users_lower_email but not
+# ix_users_email_lower. No cross-revision application error-diagnostic
+# equivalence is claimed.
 APPROVED_REMOVED_STATEMENTS: Final = (
     "CREATE UNIQUE INDEX ix_users_email_lower ON public.users USING btree "
     "(lower((email)::text))",
@@ -286,9 +292,39 @@ _DELIVERY_ONCE_COLUMNS: Final = (
     ("channel", None, "NO", "character varying", 50),
     ("created_at", "now()", "NO", "timestamp with time zone", None),
 )
+# Stable pg_index projection for the exact AUD-269 index-name replacement.
+_USER_EMAIL_INDEX_BEFORE: Final = repr(
+    (
+        "users",
+        "ix_users_email_lower",
+        "btree",
+        True,
+        True,
+        True,
+        True,
+        False,
+        "CREATE UNIQUE INDEX ix_users_email_lower ON public.users USING btree "
+        "(lower((email)::text))",
+    )
+)
+_USER_EMAIL_INDEX_AFTER: Final = repr(
+    (
+        "users",
+        "ux_users_lower_email",
+        "btree",
+        True,
+        True,
+        True,
+        True,
+        False,
+        "CREATE UNIQUE INDEX ux_users_lower_email ON public.users USING btree "
+        "(lower((email)::text))",
+    )
+)
 # Catalog rows the baseline adds on purpose, in the repr form produced by _probe.
 APPROVED_CATALOG_ADDITIONS: Final[Mapping[str, tuple[str, ...]]] = {
     "policies": (_MESSAGES_PARTICIPANT_ROW_AFTER,),
+    "user_email_indexes": (_USER_EMAIL_INDEX_AFTER,),
     "relations": (repr(_DELIVERY_ONCE_RELATION),),
     "columns": tuple(
         repr(
@@ -322,6 +358,7 @@ APPROVED_CATALOG_ADDITIONS: Final[Mapping[str, tuple[str, ...]]] = {
 # The constraint's index inheritance rows disappear from pg_inherits as well.
 APPROVED_CATALOG_REMOVALS: Final[Mapping[str, tuple[str, ...]]] = {
     "policies": (_MESSAGES_PARTICIPANT_ROW_BEFORE,),
+    "user_email_indexes": (_USER_EMAIL_INDEX_BEFORE,),
     "partition_bounds": tuple(
         repr((child, "uq_notification_delivery_once", None))
         for _suffix, child in _DELIVERY_ONCE_REMOVED_PARTITIONS
@@ -340,6 +377,19 @@ CATALOG_PROBES: dict[str, str] = {
     ),
     "extensions": (
         "SELECT extname, extversion, extnamespace::regnamespace::text FROM pg_extension"
+    ),
+    "user_email_indexes": (
+        "SELECT table_class.relname, index_class.relname, access_method.amname, "
+        "index_info.indisunique, index_info.indisvalid, index_info.indisready, "
+        "index_info.indislive, index_info.indisprimary, "
+        "pg_get_indexdef(index_info.indexrelid) "
+        "FROM pg_index index_info "
+        "JOIN pg_class index_class ON index_class.oid = index_info.indexrelid "
+        "JOIN pg_class table_class ON table_class.oid = index_info.indrelid "
+        "JOIN pg_am access_method ON access_method.oid = index_class.relam "
+        "JOIN pg_namespace table_schema ON table_schema.oid = table_class.relnamespace "
+        "WHERE table_schema.nspname = 'public' AND table_class.relname = 'users' "
+        "AND index_class.relname IN ('ix_users_email_lower', 'ux_users_lower_email')"
     ),
     "relations": (
         "SELECT c.relname, c.relkind, c.relrowsecurity, c.relforcerowsecurity,"

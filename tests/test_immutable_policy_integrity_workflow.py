@@ -133,13 +133,25 @@ def test_policy_integrity_protects_workflows_and_scanner_adapters() -> None:
     protected_case = source.split('case "$path" in', 1)[1].split(
         'protected_paths+=("$path")', 1
     )[0]
+    protected_patterns = {
+        pattern.strip()
+        for pattern in re.sub(
+            r"\\\r?\n[ \t]*", "", protected_case.split(")", 1)[0]
+        ).split("|")
+    }
     for protected_path in (
         ".github/workflows/*",
+        ".github/scripts/*",
         "quality/*",
         "security/*",
         "scripts/osv_batch_audit.py",
         "scripts/check_dependency_audit_report.py",
         "scripts/quality/validate_semgrep_sarif.py",
+        "scripts/quality/select_semgrep_rules.py",
+        "scripts/quality/semgrep_dispositions_gate.py",
+        "scripts/quality/run_semgrep_gate.py",
+        "scripts/quality/helm_rendered_target_overlay.py",
+        "scripts/quality/helm_semgrep_profile_registry.json",
         "scripts/quality/coverage_provenance.py",
         "scripts/quality/verify_frontend_diff_coverage.mjs",
         "scripts/quality/pytest_shard_manifest.py",
@@ -167,12 +179,33 @@ def test_policy_integrity_protects_workflows_and_scanner_adapters() -> None:
         "frontend/scripts/build-orchestrated.mjs",
         "frontend/scripts/run-lhci.mjs",
     ):
-        assert protected_path in protected_case
-    assert "app/main.py" not in protected_case
-    assert "scripts/*" not in protected_case
-    assert "tests/*" not in protected_case
+        assert protected_path in protected_patterns
+    assert "app/main.py" not in protected_patterns
+    assert "scripts/*" not in protected_patterns
+    assert "tests/*" not in protected_patterns
     assert '"$PR_AUTHOR" != "egorribun"' in source
     assert "owner-authored" in source
+
+
+def test_semgrep_security_inputs_require_owner_review() -> None:
+    owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
+    entries = {
+        tuple(line.split())
+        for line in owners.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    for path in (
+        "/.semgrep.yml",
+        "/.semgrepignore",
+        "/.pre-commit-config.yaml",
+        "quality/",
+        "scripts/quality/select_semgrep_rules.py",
+        "scripts/quality/semgrep_dispositions_gate.py",
+        "scripts/quality/run_semgrep_gate.py",
+        "scripts/quality/helm_rendered_target_overlay.py",
+        "scripts/quality/helm_semgrep_profile_registry.json",
+    ):
+        assert (path, "@egorribun") in entries
 
 
 def test_policy_integrity_protects_npm_lifecycle_inputs() -> None:
@@ -189,20 +222,7 @@ def test_policy_integrity_protects_npm_lifecycle_inputs() -> None:
         assert protected_path in source
 
 
-def test_scorecard_gate_script_is_owner_protected() -> None:
-    owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
-    source = WORKFLOW_PATH.read_text(encoding="utf-8")
-    protected_case = source.split('case "$path" in', 1)[1].split(
-        'protected_paths+=("$path")', 1
-    )[0]
-    path = "scripts/quality/scorecard_floors_gate.py"
-    assert f"{path} @egorribun" in owners.splitlines()
-    assert path in protected_case
-    assert "quality/ @egorribun" in owners.splitlines()
-    assert "quality/*" in protected_case
-
-
-def test_nuclei_security_scripts_are_owner_protected() -> None:
+def test_aud381_gate_scripts_are_owner_protected() -> None:
     owners = (ROOT / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
     source = WORKFLOW_PATH.read_text(encoding="utf-8")
     protected_case = source.split('case "$path" in', 1)[1].split(
@@ -211,6 +231,10 @@ def test_nuclei_security_scripts_are_owner_protected() -> None:
     for path in (
         "scripts/quality/dast_privacy.py",
         "scripts/quality/nuclei_findings_gate.py",
+        "scripts/quality/sqlmap_scan_gate.py",
+        "scripts/quality/scorecard_floors_gate.py",
     ):
         assert f"{path} @egorribun" in owners.splitlines()
         assert path in protected_case
+    assert "quality/ @egorribun" in owners.splitlines()
+    assert "quality/*" in protected_case

@@ -13,8 +13,10 @@ import {
   claimReplayLease,
   releaseReplayLease,
   renewReplayLease,
+  REPLAY_ACTIVE_ATTEMPT_KEY,
   REPLAY_LEASE_KEY,
   REPLAY_LEASE_STORE,
+  type ReplayActiveAttemptRecord,
   type ReplayLeaseRecord,
 } from "./replayLease"
 import {
@@ -296,6 +298,11 @@ type ReplayAttempt =
   | { status: "retry"; reason: string }
   | { status: "rejected"; reason: string }
 
+interface ReplayAttemptClaim {
+  record: QueuedRecord
+  attemptId: string
+}
+
 async function flushOfflineQueues() {
   if (!isOnline()) return
   await withReplayLock(replayHeldRecords)
@@ -334,8 +341,9 @@ function withReplayLock(task: ReplayTask): Promise<void> {
 /**
  * Runs a pass while holding the IndexedDB replay lease. The lease is renewed while the pass
  * runs, so a healthy holder keeps it. A worker that stopped renewing (for example a terminated
- * one) loses it after the TTL and another worker can take over. An already-sent request
- * may outlive that takeover; ownership fences protect queue writes, not HTTP exactly-once.
+ * one) loses it after the TTL and another worker can take over. A durable, bounded attempt marker
+ * prevents takeover from dispatching another request while the prior request window remains live.
+ * Queue fencing and stable idempotency keys still cannot prove a remote side effect happened once.
  */
 function withReplayLease(task: ReplayTask): Promise<void> {
   return withOpenDatabase(async (db) => {
@@ -409,37 +417,70 @@ async function replayRecord(
   // A navigation has no request to replay, so it stays queued until a window consumes it.
   if (!target || (record.nextAttemptAt ?? 0) > now) return
 
-  // Recheck only send-eligible rows, without adopting another session during this pass.
-  const credentials = await requestReplayCredentials()
-  if (!credentials || credentials.sessionNonce !== passSessionNonce) return "stop"
-  // A pass whose lease was taken over must not send: the new holder owns this queue now.
-  if (!(await ownership.isHeld())) return "stop"
+  // Wait for another worker's bounded request window before asking a page for credentials.
+  // Credential requests happen once the slot is clear, not on every short lease poll.
+  let dispatch: { claim: ReplayAttemptClaim; csrfToken: string } | undefined
+  while (!dispatch) {
+    const ready = await replayAttemptSlotReady(db, store, record, ownership)
+    if (ready === "stop") return "stop"
+    if (ready === "wait") {
+      await new Promise((resolve) => setTimeout(resolve, REPLAY_LEASE_POLL_MS))
+      continue
+    }
+    if (!ready) return
 
-  // Credential collection can yield to a page draining or replacing this row. Authorize
-  // the latest stored row and lease together, then send its current payload, not getAll's copy.
-  const current = await currentReplayRecord(db, store, record, ownership)
-  if (current === "stop") return "stop"
-  if (!current) return
-  record = current
+    const credentials = await requestReplayCredentials()
+    if (!credentials || credentials.sessionNonce !== passSessionNonce) return "stop"
+    // Credential collection can yield to a takeover or a row rewrite. The write claim below
+    // revalidates lease, marker and row together immediately before dispatch.
+    if (!(await ownership.isHeld())) return "stop"
+    const next = await claimReplayAttempt(db, store, record, ownership)
+    if (next === "stop") return "stop"
+    if (next === "wait") continue
+    if (!next) return
+    dispatch = { claim: next, csrfToken: credentials.csrfToken }
+  }
+  record = dispatch.claim.record
 
-  const attempt = await deliver(target, record, credentials.csrfToken)
+  const attempt = await deliver(target, record, dispatch.csrfToken)
   if (attempt.status === "delivered") {
-    const outcome = await commitReplayRecord(db, store, record, ownership, { kind: "delete" })
+    const outcome = await commitReplayRecord(
+      db,
+      store,
+      record,
+      ownership,
+      { kind: "delete" },
+      dispatch.claim.attemptId
+    )
     return outcome === "stop" ? "stop" : undefined
   }
   if (attempt.status === "retry") {
     const retryCount = (record.retryCount ?? 0) + 1
     if (retryCount < REPLAY_MAX_ATTEMPTS) {
-      const outcome = await commitReplayRecord(db, store, record, ownership, {
-        kind: "retry",
-        retryCount,
-        nextAttemptAt: now + replayBackoffMs(retryCount),
-      })
+      const outcome = await commitReplayRecord(
+        db,
+        store,
+        record,
+        ownership,
+        {
+          kind: "retry",
+          retryCount,
+          nextAttemptAt: Math.max(now, Date.now()) + replayBackoffMs(retryCount),
+        },
+        dispatch.claim.attemptId
+      )
       return outcome === "stop" ? "stop" : undefined
     }
-    return deadLetter(db, store, record, ownership, `retries-exhausted:${attempt.reason}`)
+    return deadLetter(
+      db,
+      store,
+      record,
+      ownership,
+      `retries-exhausted:${attempt.reason}`,
+      dispatch.claim.attemptId
+    )
   }
-  return deadLetter(db, store, record, ownership, attempt.reason)
+  return deadLetter(db, store, record, ownership, attempt.reason, dispatch.claim.attemptId)
 }
 
 type ReplayMutation =
@@ -460,6 +501,110 @@ const REPLAY_RECORD_METADATA = [
   "nextAttemptAt",
 ] as const
 
+/** Readiness check before asking a window for fresh CSRF/session credentials. */
+async function replayAttemptSlotReady(
+  db: ReplayDatabase,
+  store: ReplayStore,
+  snapshot: QueuedRecord,
+  ownership: ReplayOwnership
+): Promise<QueuedRecord | "stop" | "wait" | undefined> {
+  const tx = db.transaction([REPLAY_LEASE_STORE, store], "readonly")
+  try {
+    const leases = tx.objectStore(REPLAY_LEASE_STORE)
+    const leaseRequest = leases.get(REPLAY_LEASE_KEY)
+    const attemptRequest = leases.get(REPLAY_ACTIVE_ATTEMPT_KEY)
+    const currentRequest = tx.objectStore(store).get(snapshot.id)
+    const [lease, active, current] = (await Promise.all([
+      leaseRequest,
+      attemptRequest,
+      currentRequest,
+    ])) as [
+      ReplayLeaseRecord | undefined,
+      ReplayActiveAttemptRecord | undefined,
+      QueuedRecord | undefined,
+    ]
+    const timestamp = Date.now()
+    if (ownership.lost || lease?.owner !== ownership.owner || lease.expiresAt <= timestamp) {
+      ownership.lost = true
+      await tx.done
+      return "stop"
+    }
+    if (active && active.expiresAt > timestamp) {
+      await tx.done
+      return "wait"
+    }
+    if (!current || REPLAY_RECORD_METADATA.some((key) => current[key] !== snapshot[key])) {
+      await tx.done
+      return
+    }
+    await tx.done
+    return current
+  } catch (error) {
+    await tx.done.catch(() => undefined)
+    throw error
+  }
+}
+
+/**
+ * Atomically reserves the one network-attempt slot after checking the live lease and row.
+ * It returns the current payload after credential renewal while fencing identity, session and
+ * retry metadata against the original snapshot. The marker is independent of queue rows.
+ */
+async function claimReplayAttempt(
+  db: ReplayDatabase,
+  store: ReplayStore,
+  snapshot: QueuedRecord,
+  ownership: ReplayOwnership
+): Promise<ReplayAttemptClaim | "stop" | "wait" | undefined> {
+  const tx = db.transaction([REPLAY_LEASE_STORE, store], "readwrite")
+  const leases = tx.objectStore(REPLAY_LEASE_STORE)
+  try {
+    const leaseRequest = leases.get(REPLAY_LEASE_KEY)
+    const attemptRequest = leases.get(REPLAY_ACTIVE_ATTEMPT_KEY)
+    const currentRequest = tx.objectStore(store).get(snapshot.id)
+    const [lease, active, current] = (await Promise.all([
+      leaseRequest,
+      attemptRequest,
+      currentRequest,
+    ])) as [
+      ReplayLeaseRecord | undefined,
+      ReplayActiveAttemptRecord | undefined,
+      QueuedRecord | undefined,
+    ]
+    const timestamp = Date.now()
+    if (ownership.lost || lease?.owner !== ownership.owner || lease.expiresAt <= timestamp) {
+      ownership.lost = true
+      await tx.done
+      return "stop"
+    }
+    // A request from an expired owner may still be pending. Do not dispatch anything until its
+    // bounded request window has elapsed or that exact attempt releases the marker on settlement.
+    if (active && active.expiresAt > timestamp) {
+      await tx.done
+      return "wait"
+    }
+    if (!current || REPLAY_RECORD_METADATA.some((key) => current[key] !== snapshot[key])) {
+      await tx.done
+      return
+    }
+
+    const attemptId = crypto.randomUUID()
+    await leases.put({
+      id: REPLAY_ACTIVE_ATTEMPT_KEY,
+      owner: ownership.owner,
+      attemptId,
+      // The owner lease covers the dispatch window; the extra timeout permits recovery after a
+      // crashed worker's lease expires, without treating an in-flight request as abandoned early.
+      expiresAt: lease.expiresAt + REPLAY_REQUEST_TIMEOUT_MS,
+    } satisfies ReplayActiveAttemptRecord)
+    await tx.done
+    return { record: current, attemptId }
+  } catch (error) {
+    await tx.done.catch(() => undefined)
+    throw error
+  }
+}
+
 /** Marks a payload that cannot be serialized. Such a row is never sent, so the marker is stable. */
 const UNSERIALIZABLE_BODY = Symbol("unserializable-body")
 
@@ -479,40 +624,6 @@ function replayBodyFingerprint(
 }
 
 /**
- * Fence a snapshot after credential renewal. IDB cannot make an HTTP request atomic with
- * a queue read: a request already sent can outlive lease takeover, so retain idempotency keys.
- * A row that was removed or replaced meanwhile is skipped; only a lost lease stops the pass.
- */
-async function currentReplayRecord(
-  db: ReplayDatabase,
-  store: ReplayStore,
-  snapshot: QueuedRecord,
-  ownership: ReplayOwnership
-): Promise<QueuedRecord | "stop" | undefined> {
-  // Read-only: nothing is written here. IDB still orders this against any overlapping readwrite
-  // (a lease claim or a commit), so the lease check and the row read observe one consistent state.
-  const tx = db.transaction([REPLAY_LEASE_STORE, store], "readonly")
-  try {
-    const lease = (await tx.objectStore(REPLAY_LEASE_STORE).get(REPLAY_LEASE_KEY)) as
-      ReplayLeaseRecord | undefined
-    const current = (await tx.objectStore(store).get(snapshot.id)) as QueuedRecord | undefined
-    if (ownership.lost || lease?.owner !== ownership.owner || lease.expiresAt <= Date.now()) {
-      ownership.lost = true
-      await tx.done
-      return "stop"
-    }
-    await tx.done
-    if (!current || REPLAY_RECORD_METADATA.some((key) => current[key] !== snapshot[key])) {
-      return undefined
-    }
-    return current
-  } catch (error) {
-    await tx.done.catch(() => undefined)
-    throw error
-  }
-}
-
-/**
  * Lease authorization and the row mutation share one transaction. Only IDB requests are
  * awaited inside it; credentials, network delivery and notifications stay outside.
  * A row whose identity, retry state or request body no longer matches the sent snapshot is left
@@ -523,16 +634,34 @@ async function commitReplayRecord(
   store: ReplayStore,
   record: QueuedRecord,
   ownership: ReplayOwnership,
-  mutation: ReplayMutation
+  mutation: ReplayMutation,
+  attemptId?: string
 ): Promise<"committed" | "missing" | "changed" | "stop"> {
   const tx = db.transaction([REPLAY_LEASE_STORE, store], "readwrite")
   try {
-    const lease = (await tx.objectStore(REPLAY_LEASE_STORE).get(REPLAY_LEASE_KEY)) as
-      ReplayLeaseRecord | undefined
+    const leases = tx.objectStore(REPLAY_LEASE_STORE)
+    const leaseRequest = leases.get(REPLAY_LEASE_KEY)
+    const activeRequest = attemptId ? leases.get(REPLAY_ACTIVE_ATTEMPT_KEY) : undefined
     const queue = tx.objectStore(store)
-    const current = (await queue.get(record.id)) as QueuedRecord | undefined
+    const currentRequest = queue.get(record.id)
+    const [lease, active, current] = (await Promise.all([
+      leaseRequest,
+      activeRequest,
+      currentRequest,
+    ])) as [
+      ReplayLeaseRecord | undefined,
+      ReplayActiveAttemptRecord | undefined,
+      QueuedRecord | undefined,
+    ]
+    const ownsAttempt =
+      !attemptId || (active?.owner === ownership.owner && active.attemptId === attemptId)
+    if (attemptId && ownsAttempt) await leases.delete(REPLAY_ACTIVE_ATTEMPT_KEY)
     if (ownership.lost || lease?.owner !== ownership.owner || lease.expiresAt <= Date.now()) {
       ownership.lost = true
+      await tx.done
+      return "stop"
+    }
+    if (!ownsAttempt) {
       await tx.done
       return "stop"
     }
@@ -569,9 +698,17 @@ async function deadLetter(
   store: ReplayStore,
   record: QueuedRecord,
   ownership: ReplayOwnership,
-  reason: string
+  reason: string,
+  attemptId?: string
 ): Promise<"stop" | undefined> {
-  const outcome = await commitReplayRecord(db, store, record, ownership, { kind: "delete" })
+  const outcome = await commitReplayRecord(
+    db,
+    store,
+    record,
+    ownership,
+    { kind: "delete" },
+    attemptId
+  )
   if (outcome === "stop") return "stop"
   if (outcome !== "committed") return
   warn("Dead-lettered offline record", { store, id: record.id, reason })

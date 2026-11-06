@@ -1884,6 +1884,17 @@ unchanged. No new finding, baseline entry, category change, wildcard, scanner
 exclusion or bypass is approved. This policy decision does not establish a
 passing scan or hosted check for any source SHA.
 
+## Addendum 2026-11-04 UTC: Semgrep rules source pin
+
+The owner separately approved exactly one `public_integrity_digest` disposition
+for the `Hex High Entropy String` detected at the Semgrep rules checkout ref in
+`.github/workflows/ci.yml`. The ref identifies a public commit in the upstream
+`semgrep/semgrep-rules` repository, and its detect-secrets identity is derived
+from the exact pinned ref. The record is owned by `egorribun`, reviewed on
+2026-11-04 UTC and expires on 2027-01-10. This adds one identity to the
+361-record inventory; it does not approve any other finding, rule exclusion,
+baseline entry, category change or scanner bypass.
+
 ## Addendum 2026-11-04 UTC: SPIRE chart archive pin
 
 In a separate decision, the owner approved exactly one
@@ -1894,8 +1905,8 @@ matched that local SHA-256 pin; the proof verifies downloaded bytes against it
 before use. The upstream release is mutable and this does not claim a signed
 upstream checksum. The detect-secrets identity derives from the exact pin. The
 record is owned by `egorribun`, reviewed on 2026-11-04 UTC and expires on
-2027-01-10. This adds one identity to the 361-record inventory, for a total of
-362. The 242-identity baseline, 27 Gitleaks fingerprints and 78 required
+2027-01-10. This adds one identity after the Semgrep decision, for a total of
+363. The 242-identity baseline, 27 Gitleaks fingerprints and 78 required
 context/app pairs remain unchanged. These decisions do not establish passing
 scans, tests or hosted checks for any source SHA.
 
@@ -1917,3 +1928,195 @@ disposition inventory, all 78 required context/app pairs, blocking CodeQL and
 the hooks. Any newly exposed finding remains blocking under the existing
 policy. Each published source SHA still requires its own scans, tests and
 required hosted checks. This approval establishes no passing result.
+
+## Addendum 2026-11-05 UTC: Temporal loopback internal frontend
+
+The owner approved using Temporal's loopback `internal-frontend` for the
+single-container system-client scanner. Bind `internal-frontend`, `history`,
+`matching` and `worker` to `127.0.0.1`; use port `7236` for
+`internal-frontend`, membership port `6936`, and `broadcastAddress: 127.0.0.1`.
+The service set is `frontend,history,matching,worker,internal-frontend`.
+Expose only the authenticated public `frontend` on port `7233`. This decision
+does not require inter-node certificates. It approves this configuration and
+network boundary; source integration, bootstrap behavior, tests and hosted
+validation remain separate evidence.
+
+## Addendum 2026-11-05 UTC: SQLMap retains both scan modes
+
+The owner requires both SQLMap modes. The blocking anonymous scan covers the
+entire OpenAPI surface, uses the flags from the
+[reviewed `c3693dbed` workflow](https://github.com/egorribun/university_ecosystem/blob/c3693dbedda63ec89c18fa51ede7e90fb25e2aaf/.github/workflows/sqlmap.yml),
+and fails on any injection. It must prove completion with completion markers,
+a target count equal to the OpenAPI operation count, and no incomplete or
+timeout warnings. Keep the seeded `/api/v1/news` scan as a separate evidence
+run. Retain reports for 90 days, and keep the workflow comment about raw-file
+retention aligned with the actual artifacts. This decision sets acceptance
+criteria; implementation and source-bound scan or hosted-check results are not
+implied.
+
+## Addendum 2026-11-05 UTC: Semgrep uses the same pinned local and CI gate
+
+The local Semgrep pre-commit hook must use the same pinned rules checkout and
+the same exact-disposition gate as the blocking CI job. Keep the hook mandatory
+locally and use one policy for both paths; do not add inline Semgrep comments.
+This decision does not approve any finding-specific Semgrep disposition. In
+particular, the separately approved detect-secrets identity for the public
+Semgrep rules-checkout pin is a source-integrity digest only; it is not an
+approval of entries in `quality/semgrep-dispositions.json`. Any proposed
+Semgrep finding dispositions must be shown to the owner before commit. The
+decision does not establish that the local hook or CI job passes on the current
+working tree.
+
+## Owner-approved Node SSR CSP WebAssembly capability exception (2026-11-05)
+
+On 2026-11-05, the owner approved adding the single quoted
+`'wasm-unsafe-eval'` keyword to the `script-src` directive in the Node SSR
+response policy. A bounded Chromium capability probe against the current
+policy and a counterfactual differing only by that token found that the
+baseline blocked minimal WebAssembly compilation and the one-token policy
+allowed it. JavaScript `eval` remained blocked in both cases. Native Trusted
+Types controls also remained enforced in both cases: default-policy creation
+and raw-string `innerHTML` assignment were blocked. This authorization is
+limited to that exact token in that directive. It does not authorize
+`'unsafe-eval'`, a default Trusted Types policy, or any other CSP change.
+
+The Node SSR policy is implemented in the canonical
+[CSP response source](../../frontend/scripts/server-csp.mjs) and covered by its
+[production CSP contract test](../../frontend/scripts/server-readiness.test.mjs)
+and [browser CSP negative test](../../frontend/tests/e2e-live/production/ssr-csp-browser-negative.spec.ts).
+At the time of this initial capability probe, the separate compiled
+application-route evidence was incomplete: the app policy callback failed
+before requesting the sanitizer WASM asset, and the route did not reach
+`networkidle`.
+
+Subsequent local verification on 2026-11-05 supersedes that route observation
+only within its recorded scope. Chromium exercised the compiled SSR with
+synthetic backend/auth responses, native CSP-negative checks, safe HTML/GFM,
+and hydration. The expected cold WASM attempt was caught; the UI rendered inert
+text and then retried rich rendering after WASM returned HTTP 200. The
+`semanticReady` check passed. A diagnostic `networkidle` wait timed out on the
+single mocked CSRF fetch, which returned HTTP 200. This local result does not
+establish full-stack behavior, hosted validation, or acceptance of the app
+finding. The authorized policy change remains limited to the single quoted
+`'wasm-unsafe-eval'` token above; no default Trusted Types policy, raw-string
+sink, or other CSP relaxation is authorized. The [WASM sanitizer contract
+tests](../../frontend/src/utils/__tests__/wasmSanitizer.test.ts) and
+[Trusted Types tests](../../frontend/src/utils/__tests__/trustedTypes.test.ts)
+remain the source-level references alongside the CSP tests linked above.
+
+## Addendum 2026-11-05 UTC - exact TruffleHog CI license exception
+
+Owner `egorribun` explicitly approved retaining the CI-only TruffleHog Action
+at the immutable revision used in `.github/workflows/trufflehog.yml`, with an
+exclusive expiry of 2027-01-10. The approved revision and license source are
+[the pinned LICENSE](https://github.com/trufflesecurity/trufflehog/blob/31ce31ee1abbcc7dc8eee5764c17121c3044c8b2/LICENSE).
+The retrieved Git blob `d2bc34f9900abd088bfd0d914641ecf434aa5a52` contains the
+GNU Affero General Public License, version 3. The recorded license remains
+`AGPL-3.0`; CI approval does not remove the license's obligations.
+
+The pinned Dependency Review action reports this exact added row as ecosystem
+`actions`, name `trufflesecurity/trufflehog`, the approved revision, PURL
+`pkg:githubactions/trufflesecurity/trufflehog@` followed by that revision,
+source `https://github.com/trufflesecurity/trufflehog`, and raw `license=null`.
+Without the exclusion, separate license evaluation can enrich that null; the
+exclusion skips this evaluation without changing the raw comparison output.
+The guard accepts only this observed raw row, without
+rewriting or substituting its license. It rejects a different source, manifest,
+version, PURL, license representation or duplicate row.
+
+The single unversioned `githubactions` PURL replaces the incorrect `github`
+entry. Because upstream PURL exclusions ignore version and manifest, preflight
+independently requires the approved workflow revision, and the always-run row
+guard enforces the exact identity. A matching future workflow and comparison
+revision cannot inherit this approval. Expiry blocks on and after 2027-01-10,
+even when the comparison contains no added TruffleHog row. The action remains
+CI-only and is not distributed with the product.
+
+No global license allowance, vulnerability exception, scanner disposition,
+baseline identity, fingerprint, required context, threshold or hook is added
+or weakened. The pinned upstream action and output capture remain unchanged;
+upstream failures are not masked. This record does not establish passing
+tests, scans or hosted checks for any source revision.
+
+## Owner-approved Helm rendered-target Semgrep model (2026-11-05 UTC)
+
+On 2026-11-05 UTC, the owner approved the exact rendered-target model and 11-file implementation package in the owner-reviewed Helm proposal. The package identity is manifest SHA-256 dc4d0ad607fa2679567bd3c84f718e522594c9ceacc77e5cc8038a7b6366d036; its reviewed patch SHA-256 is cb608f73a994d8e3b648af6f5ecd1cf85d2ba52059c489275ae80071ae7755b0. This records approval of the target model; it does not activate the scan-target change before the required final source-bound scan and gate review.
+
+The approved model replaces the 40 raw YAML scan inputs under charts/redis-compat/templates/, charts/revocation-store/templates/, and charts/university-ecosystem/templates/ with the exact eight rendered views in the approved profile matrix. The offline render evidence contains 260 Kubernetes objects across those eight views. Each of the 36 resource-bearing template sources must be represented by at least one approved profile; four validation or deployment-contract templates remain guard-only and are not counted as resource objects. The isolated Gateway API view is diagnostic source-analysis input only and does not authorize feature deployment or replace the full-chart refusal contract.
+
+The implementation candidate package passed its scoped 41-test suite (22 gate regressions, 11 runner integration tests, and 8 overlay-helper tests). The test harness simulated the Helm callback, Docker, and Semgrep; this result is not a full selected-rules scan. The render and provenance evidence does not cover every conditional template branch. It establishes no runtime, deployment, admission-controller, cluster, or CNI behavior.
+
+Preserve every non-Helm Semgrep input and the exact existing .semgrepignore, full selected-rules configuration, scanner and rules pins, severity and error behavior, SARIF handling, disposition gate, pre-commit hook, CodeQL gate, and all 78 required CI context/app pairs. This approval adds no finding disposition, false-positive identity, baseline entry, ignore pattern, exclusion, suppression, hook change, required-check change, or threshold change. Findings at rendered paths do not inherit source-template path/line identities; unmatched findings remain blocking.
+
+Before activation, build a fresh source census and render provenance from the frozen current source snapshot, scan the complete preserved non-Helm inputs plus the eight rendered views with the full selected rules, retain raw JSON and SARIF, and require no scan errors, fixpoint timeouts, unapproved skipped targets, or drift. Review every finding under the existing exact-disposition policy. The separate gateway diagnostic profile remains non-deployment evidence.
+
+## Owner-approved Semgrep finding #11 rationale refresh (2026-11-06)
+
+On 2026-11-06, the owner approved a rationale refresh and six source/test companions for exact Semgrep finding #11, `python.lang.security.audit.regex-dos.regex_dos` at `app/core/logging.py:50`. Its rule, path, line/span identity, owner, approval date and expiry are unchanged; expiry remains 2027-01-10. The rationale is limited to catastrophic regex backtracking in the bounded email/phone/UUID patterns and monotonic local email scanning. The OTel bridge adds no regex and reuses the central redactors with a fixed number of passes. Inputs have no enforced maximum length, so no bounded processing cost is claimed for arbitrarily long logs. The approved 15-row postimage preserves the other 14 rows. Scoped evidence records 207 tests across five logging/OTel modules and 22 focused ReDoS tests; the v4 result is only a preview exact-disposition pass over a supplied report, not full SAST or hosted validation. No new identity, rule-wide exclusion, inline suppression, bypass or expiry extension is approved; final-source SAST and required checks remain necessary.
+
+Public references: [Semgrep ledger, row #11](../../quality/semgrep-dispositions.json), [app/core/logging.py:50](../../app/core/logging.py#L50), [app/core/observability.py](../../app/core/observability.py), [app/core/otel_logging.py](../../app/core/otel_logging.py), [app/worker.py](../../app/worker.py), [ReDoS tests](../../tests/test_logging_redos_aud380.py), [PII redaction tests](../../tests/test_logging_pii_redaction_contract.py), and [OTel bridge tests](../../tests/test_otel_logging_bridge.py).
+
+## Owner-approved Helm registry LF pin amendment (2026-11-06)
+
+On 2026-11-06, the owner approved the exact three-file LF pin amendment for the Helm profile registry, renderer helper and regression test. With `.gitattributes` setting `*.json text eol=lf`, the helper/test digest literals must match checkout-normalized registry bytes. The amendment changes only line endings and matching pin literals; parsed JSON, profiles, source coverage, rendered targets, rules, gates and dispositions remain unchanged. This source-integrity update does not activate rendered-target substitution or authorize scanner-policy changes. The two detect-secrets identities associated with the pin literals remain NOT_APPROVED and are not added to either policy file. The bounded candidate result is not the final whole-main unmatched count; final-source and current-index checks remain required.
+
+Public references: [Helm profile registry](../../scripts/quality/helm_semgrep_profile_registry.json), [rendered-target helper](../../scripts/quality/helm_rendered_target_overlay.py), and [helper regression tests](../../tests/test_helm_rendered_target_overlay.py).
+## Owner-approved GitHub workflow helper protection (2026-11-06)
+
+At 2026-11-06 02:26:15 UTC, the owner approved the exact three-file expansion
+of review and immutable-base protection for `.github/scripts/**`. The approved
+change adds the directory to [CODEOWNERS](../../.github/CODEOWNERS), covers
+nested helper paths in the [security-policy integrity workflow](../../.github/workflows/security-policy-integrity.yml),
+and includes the directory in both protected path lists in the
+[reusable security audit workflow](../../.github/workflows/reusable-security-audit.yml).
+All four existing explicit legacy helper patterns remain.
+
+The focused candidate-overlay contract passed for eight new nested helpers and
+four existing explicit helper paths; ordinary-source and neighboring-directory
+negative controls remained unprotected, the non-owner helper-only change was
+rejected, and both reusable path-list guards detected changes under the
+directory. An independent review also passed the exact scope. This approval is
+limited to owner-review and immutable-base path classification. It does not
+change the 78 required CI context/app pairs, hooks, scanners, thresholds,
+permissions, baselines, or finding dispositions. The detect-secrets disposition
+policy remains at 363 records; no new false-positive disposition or baseline
+identity is approved. The candidate evidence does not establish live
+branch-protection/CODEOWNERS enforcement, repository-suite results, or hosted
+check results. DAST target scope remains outside this approval.
+
+## Owner-approved six exact Semgrep source rebindings (2026-11-06 UTC)
+
+On 2026-11-06 UTC, the owner approved source/context and companion rebindings for existing Semgrep disposition rows #3, #7, #8, #9, #10, and #15. The 15-row ledger count is unchanged. Each affected row keeps its exact finding identity, rule, primary path and span, rationale, owner, approval date and expiry; the other nine rows remain semantically identical. This is a bounded metadata refresh: it adds no finding exception, rule-wide exclusion, suppression, expiry extension, scanner change or required-check change.
+
+The current-index reconciliation matched all 15 existing row identities and surfaced one additional regex finding in the OSV validator. The source correction and targeted one-path Semgrep check are recorded separately. These scoped results do not establish a full current-source SAST pass, hosted validation or release readiness. Final source-bound SAST and required checks remain necessary.
+
+[Semgrep dispositions](../../quality/semgrep-dispositions.json), [audit index](../audits/INDEX.md), and [Semgrep gate](../../scripts/quality/run_semgrep_gate.py).
+
+## Owner-approved exact 21 detect-secrets identities (2026-11-06 UTC)
+
+On 2026-11-06 UTC, the owner approved exactly 21 additional exact path/type/finding-digest dispositions: 16 `public_integrity_digest`, four `external_kubernetes_secret_reference`, and one `ci_test_contract_sentinel`. The four Secret Keyword records identify Kubernetes external Secret object names or key references, not credential material. All 21 records retain their reviewed source evidence and expire on 2027-01-10. The previously owner-approved 106 exact records are materialized without reopening their approval. Together with the existing 363 active records, the disposition policy contains 490 exact records after integration.
+
+The final local follow-up used detect-secrets 1.5.0, 27 plugins, 13 filters, `-n`, and one worker over eight selected logical inputs (four changed source paths plus four candidate overlays); source maps remained stable with zero drift. It reconciled the same 21 identities (16/4/1), with 11 unmatched observations in the selected delta and 10 unchanged prior identities retained by exact source-hash confirmation. This is a conservative local preview, not normal 14-filter hook parity or a full-tree clearance scan. The candidate fail-closed guard’s 20/20 bounded tests are not a substitute for the normal hook, final-source scan or hosted checks.
+
+The baseline remains 242 identities, Gitleaks remains 27 historical fingerprints, the 15 Semgrep rows remain exact, and all 78 required CI context/app pairs, thresholds and hooks are unchanged. No baseline entry, category change, wildcard, exclusion, pragma, bypass or expiry extension is approved. These policy decisions do not establish a passing scan, test suite, hosted check or release readiness.
+
+[Disposition policy](../../quality/security-false-positive-dispositions.json), [validator](../../scripts/verify_secrets_baseline.py), and [baseline contract tests](../../tests/test_verify_secrets_baseline.py).
+
+
+## Owner-approved Semgrep rows #7 and #15 companion rebind (2026-11-06)
+
+On 2026-11-06, the owner approved a six-companion source-integrity refresh for existing Semgrep disposition rows #7 and #15. The 15-row ledger count is unchanged. Each row retains its finding identity, rule, primary path and span, rationale, owner, approval date and expiry; only the exact companion hashes are refreshed. The six companions are `scripts/live_stand.py` and five SafeHtml build/source metadata files under `frontend/`. No new Semgrep exception, scanner bypass, suppression, rule-wide exclusion, or expiry extension is added.
+
+The refresh changes which source digests are present at those ledger lines. Six exact detect-secrets observations previously associated with the superseded companion values are no longer current: the former row #7 observation is replaced by one current digest, and five former row #15 observations are replaced by values already represented by other exact records in the active disposition inventory. Those six existing records remain unchanged; none is removed, reclassified, extended, or treated as matching a changed value.
+
+The retained full Semgrep report was generated on the 13:54 UTC predecessor source/index snapshot and recorded 15 findings with zero scan errors or timeouts. A read-only reconciliation maps all 15 existing rows to the refreshed candidate against the root20 source/index snapshot; that reconciliation reuses the retained report and is not a new full SAST run on the latest source. Latest-source full SAST remains required, and neither result establishes hosted-check clearance. The separate detect-secrets preview scanned only the proposed Semgrep ledger with 14 filters; it is not normal-hook parity or a full-tree scan.
+
+## Owner-approved four exact detect-secrets identities (2026-11-06)
+
+On 2026-11-06, the owner approved exactly four additional path/type/finding-digest dispositions: one `public_integrity_digest` for the updated Semgrep row #7 companion value and three `ci_test_contract_sentinel` findings in test fixtures. The three test findings are a fixed mocked password-hash equality value and replaceable shell-template markers; they are test-only values, not runtime credentials. All four new records expire on 2027-01-10. The prior 490 policy records, including their existing expiry values, remain byte-for-byte unchanged. Together with the four additions, the disposition policy contains 494 exact records.
+
+A normal 14-filter hook reconciliation confirmed the three test sentinels at their exact source locations; that run exited nonzero because those findings were intentionally surfaced for owner review, and it is not a gate pass. A separate direct 14-filter CLI preview of the proposed ledger found 93 identities, 92 already matching active records and one new unmatched row #7 digest. That single-file preview is not full-tree or normal-hook evidence. The final-source scan and required checks remain necessary after integration.
+
+The detect-secrets baseline remains 242 identities, Gitleaks remains at 27 immutable historical fingerprints, all 78 required CI context/app pairs and existing thresholds/hooks remain unchanged, and the Semgrep ledger remains at 15 rows. No baseline entry, category change, wildcard, exclusion, pragma, bypass, or expiry extension is approved.
+
+[Semgrep dispositions](../../quality/semgrep-dispositions.json), [detect-secrets disposition policy](../../quality/security-false-positive-dispositions.json), [validator](../../scripts/verify_secrets_baseline.py), and [baseline contract tests](../../tests/test_verify_secrets_baseline.py).

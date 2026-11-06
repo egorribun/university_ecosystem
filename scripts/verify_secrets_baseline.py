@@ -84,6 +84,17 @@ _FALSE_POSITIVE_NON_HEX_CATEGORY_PATH_TYPES = {
                 "tests/test_start_docker_orphan_ownership.py",
                 "Base64 High Entropy String",
             ),
+            (".github/workflows/reusable-live-realtime-visual.yml", "Secret Keyword"),
+            (
+                "frontend/src/pages/__tests__/NewsDetail.comments-retry.audit.test.tsx",
+                "Telegram Bot Token",
+            ),
+            ("tests/test_internal_http_mtls.py", "Private Key"),
+            (
+                "tests/test_internal_mtls_kind_contract.py",
+                "Base64 High Entropy String",
+            ),
+            ("tests/test_temporal_single_container_entrypoint.py", "Secret Keyword"),
             (
                 "services/gateway/internal/config/secret_files_test.go",
                 "Secret Keyword",
@@ -2500,6 +2511,255 @@ _NOV2_CHART_REFERENCE_EVIDENCE = {
     ): "Kubernetes external Secret object name or key reference; not credential material. Public internal HTTP mTLS privateKeyKey reference at charts/university-ecosystem/values.yaml:139; source reviewed at 476f42e58fe780254c0a3bc92f104bf064cb4472.",
 }
 
+_AUD380_HELM_EXTERNAL_SECRET_REFERENCE_IDENTITIES = frozenset(
+    {
+        (
+            "scripts/quality/helm_rendered_target_overlay.py",
+            "Secret Keyword",
+            (
+                145,
+                79,
+                6,
+                243,
+                53,
+                160,
+                184,
+                10,
+                45,
+                6,
+                149,
+                97,
+                154,
+                41,
+                139,
+                248,
+                40,
+                231,
+                216,
+                200,
+            ),
+        ),
+        (
+            "scripts/quality/helm_rendered_target_overlay.py",
+            "Secret Keyword",
+            (
+                176,
+                224,
+                33,
+                74,
+                155,
+                8,
+                223,
+                225,
+                252,
+                220,
+                163,
+                143,
+                85,
+                240,
+                84,
+                244,
+                80,
+                236,
+                147,
+                249,
+            ),
+        ),
+    }
+)
+
+_AUD380_FINAL_KIND_SECRET_REFERENCE_IDENTITIES = frozenset(
+    {
+        (
+            "scripts/kind/aud373_internal_mtls_proof.sh",
+            "Secret Keyword",
+            (
+                72,
+                181,
+                183,
+                235,
+                226,
+                138,
+                58,
+                11,
+                133,
+                115,
+                118,
+                62,
+                187,
+                137,
+                54,
+                156,
+                32,
+                38,
+                207,
+                133,
+            ),
+        ),
+        (
+            "scripts/kind/aud373_internal_mtls_proof.sh",
+            "Secret Keyword",
+            (
+                190,
+                254,
+                225,
+                86,
+                25,
+                144,
+                171,
+                40,
+                21,
+                38,
+                254,
+                179,
+                233,
+                64,
+                127,
+                76,
+                82,
+                31,
+                100,
+                153,
+            ),
+        ),
+        (
+            "tests/test_internal_mtls_kind_contract.py",
+            "Secret Keyword",
+            (
+                72,
+                181,
+                183,
+                235,
+                226,
+                138,
+                58,
+                11,
+                133,
+                115,
+                118,
+                62,
+                187,
+                137,
+                54,
+                156,
+                32,
+                38,
+                207,
+                133,
+            ),
+        ),
+        (
+            "tests/test_internal_mtls_kind_contract.py",
+            "Secret Keyword",
+            (
+                190,
+                254,
+                225,
+                86,
+                25,
+                144,
+                171,
+                40,
+                21,
+                38,
+                254,
+                179,
+                233,
+                64,
+                127,
+                76,
+                82,
+                31,
+                100,
+                153,
+            ),
+        ),
+    }
+)
+
+_AUD380_N3_CI_TEST_SENTINEL_IDENTITIES = frozenset(
+    {
+        (
+            "tests/test_seed_demo_data.py",
+            "Secret Keyword",
+            (
+                95,
+                180,
+                135,
+                74,
+                188,
+                185,
+                142,
+                12,
+                51,
+                173,
+                10,
+                211,
+                168,
+                117,
+                247,
+                144,
+                131,
+                222,
+                96,
+                33,
+            ),
+        ),
+        (
+            "tests/test_temporal_namespace_init_fake_cli.py",
+            "Secret Keyword",
+            (
+                5,
+                7,
+                180,
+                175,
+                200,
+                103,
+                100,
+                106,
+                164,
+                44,
+                199,
+                230,
+                34,
+                191,
+                164,
+                53,
+                52,
+                135,
+                142,
+                180,
+            ),
+        ),
+        (
+            "tests/test_temporal_namespace_init_fake_cli.py",
+            "Secret Keyword",
+            (
+                27,
+                153,
+                57,
+                99,
+                96,
+                18,
+                95,
+                133,
+                152,
+                102,
+                91,
+                168,
+                40,
+                71,
+                175,
+                76,
+                96,
+                207,
+                38,
+                11,
+            ),
+        ),
+    }
+)
+
 _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
     "public_alembic_revision_identifier": {_PUBLIC_ALEMBIC_REVISION_IDENTITY},
     "synthetic_achievement_url_test_fixture": (
@@ -2510,6 +2770,8 @@ _FALSE_POSITIVE_EXACT_CATEGORY_IDENTITIES = {
     ),
     "external_kubernetes_secret_reference": (
         _EXTERNAL_KUBERNETES_SECRET_REFERENCE_IDENTITIES
+        | _AUD380_HELM_EXTERNAL_SECRET_REFERENCE_IDENTITIES
+        | _AUD380_FINAL_KIND_SECRET_REFERENCE_IDENTITIES
         | frozenset(_NOV2_CHART_REFERENCE_EVIDENCE)
     ),
     "source_contract_identifier": (
@@ -6012,7 +6274,12 @@ def validate_false_positive_dispositions(
             raise BaselineArtifactError(
                 f"{artifact}: auth validation UI copy identity changed category"
             )
-        if category in _FALSE_POSITIVE_HEX_CATEGORIES:
+        if (
+            category == "ci_test_contract_sentinel"
+            and exact_source_identity in _AUD380_N3_CI_TEST_SENTINEL_IDENTITIES
+        ):
+            category_matches = True
+        elif category in _FALSE_POSITIVE_HEX_CATEGORIES:
             category_matches = finding_type == _FALSE_POSITIVE_ALLOWED_TYPE
             if (
                 category == "public_integrity_digest"

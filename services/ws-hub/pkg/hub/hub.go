@@ -50,6 +50,11 @@ type Message struct {
 	From     string            `json:"from,omitempty"`
 	To       string            `json:"to,omitempty"`
 	TraceCtx map[string]string `json:"trace_ctx,omitempty"`
+	// audience metadata is parsed only at the trusted NATS ingress. It is
+	// intentionally private so client input cannot set it and JSON output cannot
+	// expose the recipient list.
+	audienceUserIDs map[string]struct{}
+	audiencePresent bool
 	*MessageReplayMetadata
 }
 
@@ -1213,6 +1218,21 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 		if !ok {
 			return nil
 		}
+		if msg.audiencePresent {
+			recipients := make([]recipient, 0, min(len(clients), len(msg.audienceUserIDs)))
+			for client := range clients {
+				if client == nil {
+					continue
+				}
+				if _, allowed := msg.audienceUserIDs[client.UserID]; allowed {
+					recipients = append(recipients, recipient{client: client})
+				}
+			}
+			if span != nil && span.IsRecording() {
+				span.SetAttributes(attribute.Int("recipient.count", len(recipients)))
+			}
+			return recipients
+		}
 		if span != nil && span.IsRecording() {
 			span.SetAttributes(attribute.Int("recipient.count", len(clients)))
 		}
@@ -1818,6 +1838,49 @@ func (h *Hub) processChatDelivery(ctx context.Context, msg *nats.Msg, requireSeq
 	if !h.applyChatSequence(ctx, msg, &wsMsg, requireSequence) {
 		return
 	}
+	audienceUserIDs, audiencePresent, audienceErr := decodeChatAudience(msg.Data)
+	if audienceErr != nil {
+		h.Logger.WarnContext(ctx, "ws-hub: malformed NATS chat audience dropped",
+			"subject", msg.Subject, "room", wsMsg.Room, "err", audienceErr)
+		if requireSequence {
+			h.rejectUndeliverableSequencedChat(ctx, msg, &wsMsg, "invalid audience")
+		} else {
+			safeAck(msg)
+		}
+		return
+	}
+	if !audiencePresent {
+		var eventPayload struct {
+			Type string `json:"type"`
+		}
+		refreshRequired := json.Unmarshal(wsMsg.Payload, &eventPayload) == nil &&
+			shouldRefreshMissingAudienceCheckpoint(wsMsg.Type, eventPayload.Type)
+		checkpointFields := map[string]any{
+			"type":    "replay_checkpoint",
+			"chat_id": wsMsg.Room,
+		}
+		if refreshRequired {
+			checkpointFields["refresh_required"] = true
+		}
+		checkpointPayload, err := hubJSONMarshalFunc(checkpointFields)
+		if err != nil {
+			h.Logger.WarnContext(ctx, "ws-hub: failed to build missing-audience checkpoint",
+				"subject", msg.Subject, "room", wsMsg.Room, "err", err)
+			if requireSequence {
+				h.rejectUndeliverableSequencedChat(ctx, msg, &wsMsg, "checkpoint marshal failed")
+			} else {
+				safeAck(msg)
+			}
+			return
+		}
+		// Do not trust room-wide delivery of an old producer's full payload.
+		// Preserve the outer routing fields and sequence while replacing only
+		// the browser-visible event body with an event-free checkpoint/control
+		// frame. refresh_required only asks the client to recover persisted state.
+		wsMsg.Payload = checkpointPayload
+	}
+	wsMsg.audienceUserIDs = audienceUserIDs
+	wsMsg.audiencePresent = audiencePresent
 	h.enqueueChatDelivery(ctx, msg, &wsMsg, msgID, requireSequence)
 }
 

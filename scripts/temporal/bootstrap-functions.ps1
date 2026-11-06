@@ -288,8 +288,9 @@ function Assert-InPlaceTemporalBootstrapModel {
         ($server.entrypoint -join "`n") -cne "/bin/sh`n/etc/temporal/wave144-entrypoint.sh" -or
         @($server.command | Where-Object { $null -ne $_ }).Count -ne 0 -or
         ($server.healthcheck.test -join "`n") -cne $expectedHealth -or
-        ($serverKeys -join "`n") -cne "BIND_ON_IP`nPOSTGRES_PWD`nPOSTGRES_USER`nTEMPORAL_JWKS_URL" -or
+        ($serverKeys -join "`n") -cne "BIND_ON_IP`nPOSTGRES_PWD`nPOSTGRES_USER`nTEMPORAL_JWKS_URL`nTEMPORAL_SERVICES" -or
         [string]$server.environment.BIND_ON_IP -cne '0.0.0.0' -or
+        [string]$server.environment.TEMPORAL_SERVICES -cne 'frontend,history,matching,worker,internal-frontend' -or
         [string]$server.environment.TEMPORAL_JWKS_URL -cne 'https://caddy:8443/.well-known/jwks.json') {
         throw 'Temporal bootstrap server identity or configuration is invalid.'
     }
@@ -300,6 +301,28 @@ function Assert-InPlaceTemporalBootstrapModel {
         }
     }
     $admin = [System.IO.Path]::GetFullPath((Join-Path $StateRoot '.temporal-bootstrap/profile.toml'))
+    $workerToken = [System.IO.Path]::GetFullPath((Join-Path $StateRoot '.secrets/temporal_api_key'))
+    Assert-TemporalBootstrapNoReparseComponents -Path $workerToken
+    try { $workerTokenItem = Get-Item -LiteralPath $workerToken -Force -ErrorAction Stop }
+    catch { throw 'Temporal worker token bind source is missing.' }
+    if ($workerTokenItem.PSIsContainer -or ($workerTokenItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        throw 'Temporal worker token bind source is not a regular file.'
+    }
+    $workerTokenProbe = [System.IO.FileStream]::new($workerToken, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try { $workerTokenFileIdentity = Get-TemporalBootstrapHandleIdentity -Stream $workerTokenProbe }
+    finally { $workerTokenProbe.Dispose() }
+    if ($workerTokenFileIdentity.Links -ne 1) { throw 'Temporal worker token has an unverified hard-link alias.' }
+    $workerTokenIdentities = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    [void]$workerTokenIdentities.Add($workerTokenFileIdentity.Id)
+    $tokenAncestor = [System.IO.Path]::GetDirectoryName($workerToken)
+    while (-not [string]::IsNullOrEmpty($tokenAncestor)) {
+        if (Test-Path -LiteralPath $tokenAncestor -PathType Container) {
+            [void]$workerTokenIdentities.Add((Get-TemporalBootstrapPathIdentity -Path $tokenAncestor))
+        }
+        $parent = [System.IO.Path]::GetDirectoryName($tokenAncestor)
+        if ($parent -ceq $tokenAncestor) { break }
+        $tokenAncestor = $parent
+    }
     $expected = @{
         '/etc/temporal/namespace-init.sh' = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot 'scripts/temporal/namespace-init.sh'))
         '/run/temporal-bootstrap/profile.toml' = $admin
@@ -312,6 +335,7 @@ function Assert-InPlaceTemporalBootstrapModel {
         $target = [string]$mount.target
         if (-not $expected.ContainsKey($target) -or $seen.ContainsKey($target) -or
             [string]$mount.type -cne 'bind' -or $mount.read_only -ne $true -or
+            $null -eq $mount.bind -or $mount.bind.create_host_path -ne $false -or
             -not [System.IO.Path]::IsPathFullyQualified([string]$mount.source) -or
             -not [string]::Equals([System.IO.Path]::GetFullPath([string]$mount.source), $expected[$target], $comparison)) {
             throw 'Temporal bootstrap Compose mount is not exact and read-only.'
@@ -373,6 +397,24 @@ function Assert-InPlaceTemporalBootstrapModel {
                     -not [string]::Equals($admin, $source, $comparison) -or
                     [string]$mount.target -cne '/run/temporal-bootstrap/profile.toml' -or $mount.read_only -ne $true) {
                     throw 'Temporal bootstrap profile is exposed through another bind.'
+                }
+            }
+            $tokenAlias = $false
+            if ((Test-Path -LiteralPath $source -PathType Leaf) -or (Test-Path -LiteralPath $source -PathType Container)) {
+                $tokenAlias = $workerTokenIdentities.Contains((Get-TemporalBootstrapPathIdentity -Path $source))
+            }
+            $tokenAncestor = [string]::Equals($workerToken, $source, $comparison) -or $workerToken.StartsWith($prefix, $comparison)
+            if ($tokenAncestor -or $tokenAlias) {
+                $target = [string]$mount.target
+                $exactTokenSource = [string]::Equals($workerToken, $source, $comparison)
+                $allowedInitializer = $service.Name -ceq 'temporal-namespace-init' -and
+                    $exactTokenSource -and $target -ceq '/run/temporal-worker/token' -and $mount.read_only -eq $true -and
+                    $mount.bind.create_host_path -eq $false
+                $allowedFileProcessor = $service.Name -ceq 'file-processor' -and
+                    $exactTokenSource -and $target -ceq '/app/.secrets/temporal_api_key' -and $mount.read_only -eq $true -and
+                    $mount.bind.create_host_path -eq $false
+                if (-not ($allowedInitializer -or $allowedFileProcessor)) {
+                    throw 'Temporal worker token is exposed through an unapproved bind.'
                 }
             }
         }
@@ -553,7 +595,8 @@ function Test-TemporalBootstrapSharedNamespace {
 }
 
 function Assert-TemporalBootstrapRunningPeers {
-    param([Parameter(Mandatory=$true)][string]$ServerId, [Parameter(Mandatory=$true)][string]$InitId, [Parameter(Mandatory=$true)][string]$StateRoot)
+    param([Parameter(Mandatory=$true)][string]$ServerId, [Parameter(Mandatory=$true)][string]$InitId,
+        [Parameter(Mandatory=$true)][string]$StateRoot, [Parameter(Mandatory=$true)][string]$ExpectedProjectName)
     $running = @(docker ps --no-trunc --quiet 2>$null)
     if ($LASTEXITCODE -ne 0 -or $running -cnotcontains $ServerId) { throw 'Cannot verify the running Temporal network inventory.' }
     $windows = [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)
@@ -563,10 +606,23 @@ function Assert-TemporalBootstrapRunningPeers {
     try { $profileIdentity = Get-TemporalBootstrapHandleIdentity -Stream $profileProbe }
     finally { $profileProbe.Dispose() }
     if ($profileIdentity.Links -ne 1) { throw 'Temporal bootstrap profile has an unverified hard-link alias.' }
+    $workerToken = Resolve-TemporalBootstrapExistingPath -Path (Join-Path $StateRoot '.secrets/temporal_api_key')
+    $workerProbe = [System.IO.FileStream]::new($workerToken, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try { $workerIdentity = Get-TemporalBootstrapHandleIdentity -Stream $workerProbe }
+    finally { $workerProbe.Dispose() }
+    if ($workerIdentity.Links -ne 1) { throw 'Temporal worker token has an unverified hard-link alias.' }
     $protectedIdentities = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     $ancestor = $profile
     while (-not [string]::IsNullOrEmpty($ancestor)) {
         [void]$protectedIdentities.Add((Get-TemporalBootstrapPathIdentity -Path $ancestor))
+        $parent = [System.IO.Path]::GetDirectoryName($ancestor)
+        if ($parent -ceq $ancestor) { break }
+        $ancestor = $parent
+    }
+    $workerProtectedIdentities = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $ancestor = $workerToken
+    while (-not [string]::IsNullOrEmpty($ancestor)) {
+        [void]$workerProtectedIdentities.Add((Get-TemporalBootstrapPathIdentity -Path $ancestor))
         $parent = [System.IO.Path]::GetDirectoryName($ancestor)
         if ($parent -ceq $ancestor) { break }
         $ancestor = $parent
@@ -584,28 +640,43 @@ function Assert-TemporalBootstrapRunningPeers {
         if ($pidMode -ceq 'host' -or (Test-TemporalBootstrapSharedNamespace -Mode $pidMode -ServerId $ServerId -InitId $InitId -Field 'PidMode')) {
             throw 'A running container can observe a Temporal process namespace.'
         }
-        $mountOutput = @(docker container inspect --format '{{json .Mounts}}' ([string]$peerId) 2>$null)
-        if ($LASTEXITCODE -ne 0 -or $mountOutput.Count -ne 1) { throw 'A running container mount inventory cannot be verified.' }
-        if ([string]$mountOutput[0] -ceq 'null') {
-            $mounts = @()
-        } else {
-            try { $mounts = ConvertFrom-Json -InputObject ([string]$mountOutput[0]) -NoEnumerate -ErrorAction Stop }
-            catch { throw 'A running container mount inventory cannot be parsed.' }
-            if ($mounts -isnot [array]) { throw 'A running container mount inventory is invalid.' }
+        $peerFormat = '{"Labels":{{json .Config.Labels}},"Mounts":{{json .Mounts}}}'
+        $peer = Get-TemporalBootstrapDockerObject -Arguments @('container', 'inspect', '--format', $peerFormat, [string]$peerId)
+        $labelsProperty = $peer.PSObject.Properties['Labels']
+        $mountsProperty = $peer.PSObject.Properties['Mounts']
+        if ($null -eq $labelsProperty -or $null -eq $mountsProperty -or $null -eq $peer.Labels) {
+            throw 'A running container mount inventory cannot be verified.'
         }
+        $labels = $peer.Labels
+        if ($null -eq $peer.Mounts) { $mounts = @() } else { $mounts = @($peer.Mounts) }
         foreach ($mount in $mounts) {
             if ($null -eq $mount) { throw 'A running container mount entry is invalid.' }
             switch -CaseSensitive ([string]$mount.Type) {
                 'bind' {
-                    $source = [string]$mount.Source
+                    $bindSource = ConvertFrom-TemporalRuntimeBindPath -Path ([string]$mount.Source)
+                    $source = [string]$bindSource
                     # Docker Desktop's daemon socket is a VM-local socket, not
                     # a Windows host bind. The daemon itself is trusted.
-                    if ($windows -and $source -ceq '/var/run/docker.sock') { continue }
-                    $source = Resolve-TemporalBootstrapExistingPath -Path (ConvertFrom-TemporalRuntimeBindPath -Path $source)
+                    if ($windows -and $bindSource -ceq '/var/run/docker.sock') { continue }
+                    $source = Resolve-TemporalBootstrapExistingPath -Path $bindSource
                     $prefix = $source.TrimEnd([char[]]@('/', '\')) + [System.IO.Path]::DirectorySeparatorChar
                     if ([string]::Equals($source, $profile, $comparison) -or $profile.StartsWith($prefix, $comparison) -or
                         $protectedIdentities.Contains((Get-TemporalBootstrapPathIdentity -Path $source))) {
                         throw 'A running container can read the Temporal bootstrap profile.'
+                    }
+                    $tokenPrefix = $source.TrimEnd([char[]]@('/', '\')) + [System.IO.Path]::DirectorySeparatorChar
+                    $tokenExposed = [string]::Equals($source, $workerToken, $comparison) -or
+                        $workerToken.StartsWith($tokenPrefix, $comparison) -or
+                        $workerProtectedIdentities.Contains((Get-TemporalBootstrapPathIdentity -Path $source))
+                    if ($tokenExposed) {
+                        $serviceName = [string]$labels.PSObject.Properties['com.docker.compose.service'].Value
+                        $projectName = [string]$labels.PSObject.Properties['com.docker.compose.project'].Value
+                        if ($serviceName -cne 'file-processor' -or $projectName -cne $ExpectedProjectName -or
+                            -not [string]::Equals([System.IO.Path]::GetFullPath($bindSource), $workerToken, $comparison) -or
+                            -not [string]::Equals($source, $workerToken, $comparison) -or
+                            [string]$mount.Destination -cne '/app/.secrets/temporal_api_key' -or $mount.RW -ne $false) {
+                            throw 'A running container can read the Temporal worker token.'
+                        }
                     }
                 }
                 'volume' {
@@ -625,7 +696,12 @@ function Assert-TemporalBootstrapRunningPeers {
 function Assert-InPlaceTemporalBootstrapRuntime {
     param([Parameter(Mandatory=$true)]$ComposeModel, [Parameter(Mandatory=$true)][string]$StateRoot, [Parameter(Mandatory=$true)][string]$ProjectRoot)
     $project = [string]$ComposeModel.name
-    if ($project -cnotmatch '^ue-live-[0-9a-f]{16}$') { throw 'Temporal bootstrap project identity is invalid.' }
+    if ($project -cnotmatch '^[a-z0-9][a-z0-9_-]{0,62}$' -or
+        ($null -ne $script:LiveStandOwner -and
+            -not [string]::IsNullOrWhiteSpace([string]$script:LiveStandOwner.project_name) -and
+            $project -cne [string]$script:LiveStandOwner.project_name)) {
+        throw 'Temporal bootstrap project identity is invalid.'
+    }
     $serverModel = $ComposeModel.services.PSObject.Properties['temporal'].Value
     $initModel = $ComposeModel.services.PSObject.Properties['temporal-namespace-init'].Value
     $imageFormat = '{"Id":{{json .Id}},"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}}}}'
@@ -709,7 +785,7 @@ function Assert-InPlaceTemporalBootstrapRuntime {
     }
     # Do not trust the current project model to describe orphan or foreign
     # containers. Read only network/mount metadata for every running peer.
-    Assert-TemporalBootstrapRunningPeers -ServerId $serverId -InitId $initId -StateRoot $StateRoot
+    Assert-TemporalBootstrapRunningPeers -ServerId $serverId -InitId $initId -StateRoot $StateRoot -ExpectedProjectName $project
     return $initId
 }
 

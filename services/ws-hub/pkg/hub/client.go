@@ -1047,6 +1047,22 @@ func (c *Client) deliverOfflineMessage(
 	if !validateReplayChatBinding(msg.Subject, room, raw) {
 		return c.terminateOfflineMessage(ctx, msg, nil, nil)
 	}
+	audienceUserIDs, audiencePresent, audienceErr := decodeChatAudience(msg.Data)
+	if audienceErr != nil {
+		return c.handleInvalidOfflineMessage(ctx, room, msg, stream, sequence, metadataErr, audienceErr, maxSequence)
+	}
+	if !audiencePresent {
+		refreshRequired := missingAudienceReplayCheckpointNeedsRefresh(raw)
+		return c.deliverOfflineAudienceCheckpoint(
+			ctx, room, msg, stream, sequence, maxSequence, refreshRequired,
+		)
+	}
+	delete(raw, "audience")
+	if _, allowed := audienceUserIDs[c.UserID]; !allowed {
+		return c.deliverOfflineAudienceCheckpoint(
+			ctx, room, msg, stream, sequence, maxSequence, false,
+		)
+	}
 	return c.deliverValidOfflineMessage(ctx, room, msg, raw, stream, sequence, maxSequence)
 }
 
@@ -1099,7 +1115,9 @@ func (c *Client) handleInvalidOfflineMessage(
 	decodeErr error,
 	maxSequence *uint64,
 ) bool {
-	checkpoint, err := c.invalidOfflineMessageCheckpoint(room, msg.Subject, stream, sequence)
+	checkpoint, err := c.invalidOfflineMessageCheckpoint(
+		room, msg.Subject, stream, sequence, false,
+	)
 	if err != nil {
 		return false
 	}
@@ -1117,7 +1135,44 @@ func (c *Client) handleInvalidOfflineMessage(
 	return true
 }
 
-func (c *Client) invalidOfflineMessageCheckpoint(room, subject, stream string, sequence uint64) ([]byte, error) {
+func (c *Client) deliverOfflineAudienceCheckpoint(
+	ctx context.Context,
+	room string,
+	msg *nats.Msg,
+	stream string,
+	sequence uint64,
+	maxSequence *uint64,
+	refreshRequired bool,
+) bool {
+	checkpoint, err := c.invalidOfflineMessageCheckpoint(
+		room, msg.Subject, stream, sequence, refreshRequired,
+	)
+	if err != nil || len(checkpoint) == 0 {
+		return false
+	}
+	if !c.sendReplayWithRetry(ctx, checkpoint) {
+		c.nakOfflineReplay(ctx, msg)
+		return false
+	}
+	*maxSequence = max(*maxSequence, sequence)
+	if err := ackOfflineMessageFunc(msg); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+		c.Hub.Logger.DebugContext(ctx, "Failed to ack audience-filtered NATS replay message", "err", err)
+	}
+	return true
+}
+
+func missingAudienceReplayCheckpointNeedsRefresh(raw map[string]any) bool {
+	envelopeType, _ := raw["type"].(string)
+	payload, _ := raw["payload"].(map[string]any)
+	payloadType, _ := payload["type"].(string)
+	return shouldRefreshMissingAudienceCheckpoint(envelopeType, payloadType)
+}
+
+func (c *Client) invalidOfflineMessageCheckpoint(
+	room, subject, stream string,
+	sequence uint64,
+	refreshRequired bool,
+) ([]byte, error) {
 	if sequence == 0 || room == "" {
 		return nil, nil
 	}
@@ -1128,16 +1183,20 @@ func (c *Client) invalidOfflineMessageCheckpoint(room, subject, stream string, s
 	if err != nil {
 		return nil, err
 	}
+	checkpointPayload := map[string]any{
+		"type":    "replay_checkpoint",
+		"chat_id": room,
+	}
+	if refreshRequired {
+		checkpointPayload["refresh_required"] = true
+	}
 	return hubJSONMarshalFunc(map[string]any{
 		"type":         "replay_checkpoint",
 		"room":         room,
 		"seq":          sequence,
 		"resume_token": resumeToken,
 		"replayed":     true,
-		"payload": map[string]any{
-			"type":    "replay_checkpoint",
-			"chat_id": room,
-		},
+		"payload":      checkpointPayload,
 	})
 }
 

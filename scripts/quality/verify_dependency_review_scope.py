@@ -42,23 +42,23 @@ EXPECTED_MODULES = {
     "services/file-processor/go.mod": {
         "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc": "v0.72.0",
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.47.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
     },
     "services/gateway/go.mod": {
         "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin": "v0.72.0",
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.47.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
     },
     "services/ws-hub/go.mod": {
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.47.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
     },
     # Locked edge-proxy graph (AUD-482). v1.46.0 is the otlptracegrpc version
     # selected by upstream caddy v2.11.7 itself, so it is the intended pin here
     # and is not the v1.47.0 used by the three service modules above.
     "services/caddy/go.mod": {
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": "v1.46.0",
-        "github.com/klauspost/compress": "v1.20.1",
+        "github.com/klauspost/compress": "v1.20.2",
         "howett.net/plist": "v1.0.1",
     },
 }
@@ -121,19 +121,19 @@ EXPECTED_ROWS = {
     _identity(
         "services/file-processor/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
     ),
     _identity(
         "services/gateway/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
     ),
     _identity(
         "services/ws-hub/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
     ),
     _identity(
@@ -145,7 +145,7 @@ EXPECTED_ROWS = {
     _identity(
         "services/caddy/go.mod",
         "github.com/klauspost/compress",
-        "1.20.1",
+        "1.20.2",
         KLAUSPOST_LICENSE,
     ),
     _identity(
@@ -266,15 +266,20 @@ _GHSA_EXCEPTION_TEXT_FIELDS = (
 )
 
 # Owner decision 2026-11-05 (egorribun): CI-only license exception for the GitHub
-# Action trufflesecurity/trufflehog, which the dependency graph reports as AGPL-3.0.
-# The action runs only inside CI and is not distributed with the product. Its PURL
-# allowance in .github/dependency-review-config.yml matches every version, so the
-# verifier accepts exactly one row: the pin read from TRUFFLEHOG_MANIFEST at runtime.
+# Action trufflesecurity/trufflehog. Its immutable LICENSE is AGPL-3.0, while the
+# action's unmodified comparison output has license=null. The PURL allowance
+# matches every version, so both preflight and the row guard bind it to the
+# separately approved pin, never to an arbitrary future workflow pin.
 TRUFFLEHOG_ACTION_NAME = "trufflesecurity/trufflehog"
 TRUFFLEHOG_MANIFEST = ".github/workflows/trufflehog.yml"
 TRUFFLEHOG_ECOSYSTEM = "actions"
 TRUFFLEHOG_LICENSE = "AGPL-3.0"
-TRUFFLEHOG_PURL = f"pkg:github/{TRUFFLEHOG_ACTION_NAME}"
+TRUFFLEHOG_PURL = f"pkg:githubactions/{TRUFFLEHOG_ACTION_NAME}"
+TRUFFLEHOG_PURL_TYPE = "githubactions"
+TRUFFLEHOG_PURL_NAMESPACE, _, TRUFFLEHOG_PURL_NAME = TRUFFLEHOG_ACTION_NAME.partition(
+    "/"
+)
+TRUFFLEHOG_LICENSE_SOURCE = "https://github.com/trufflesecurity/trufflehog/blob/31ce31ee1abbcc7dc8eee5764c17121c3044c8b2/LICENSE"
 TRUFFLEHOG_EXCEPTION: dict[str, Any] = {
     "owner": "egorribun",
     "decided": date(2026, 11, 5),
@@ -283,12 +288,147 @@ TRUFFLEHOG_EXCEPTION: dict[str, Any] = {
     "manifest": TRUFFLEHOG_MANIFEST,
     "ecosystem": TRUFFLEHOG_ECOSYSTEM,
     "name": TRUFFLEHOG_ACTION_NAME,
+    "version": TRUFFLEHOG_LICENSE_SOURCE.split("/")[-2],
+    "source_repository_url": "https://github.com/trufflesecurity/trufflehog",
     "license": TRUFFLEHOG_LICENSE,
+    "license_source": TRUFFLEHOG_LICENSE_SOURCE,
     "reason": (
         "CI-only GitHub Action (trufflehog, AGPL-3.0) used for secret scanning inside "
         "CI. It is not distributed with the product."
     ),
 }
+
+_DIAGNOSTIC_PURL_MAX_CHARS = 512
+_DIAGNOSTIC_PURL_COMPONENTS = frozenset(
+    {
+        "actions",
+        "github",
+        "githubactions",
+        "trufflehog",
+        "trufflesecurity",
+    }
+)
+_DIAGNOSTIC_PURL_TYPES = frozenset(
+    {
+        "alpm",
+        "apk",
+        "cargo",
+        "composer",
+        "conan",
+        "conda",
+        "cran",
+        "deb",
+        "docker",
+        "gem",
+        "generic",
+        "github",
+        "githubactions",
+        "golang",
+        "hackage",
+        "hex",
+        "maven",
+        "npm",
+        "nuget",
+        "oci",
+        "pypi",
+        "rpm",
+        "swift",
+    }
+)
+
+
+def _diagnostic_component(value: str, *, known: frozenset[str]) -> str | dict[str, Any]:
+    normalized = value.lower()
+    if normalized in known:
+        return normalized
+    if not value or len(value) > 80 or not value.isascii() or not value.isprintable():
+        return "<redacted>"
+    return {
+        "length": len(value),
+        "sha256": hashlib.sha256(normalized.encode("ascii")).hexdigest(),
+    }
+
+
+def _diagnostic_string_hash(value: Any) -> str | None:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > 160
+        or not value.isascii()
+        or not value.isprintable()
+    ):
+        return None
+    return hashlib.sha256(value.encode("ascii")).hexdigest()
+
+
+def _trufflehog_purl_diagnostic(package_url: Any, pin: str | None) -> dict[str, Any]:
+    """Expose bounded PURL structure and hashes, never raw unknown components."""
+    result: dict[str, Any] = {
+        "parsed": False,
+        "package_type": "<redacted>",
+        "namespace": "<redacted>",
+        "name": "<redacted>",
+        "matches_reviewed_package_name": False,
+        "version_present": False,
+        "version_sha256": None,
+        "version_matches_workflow_pin": False,
+    }
+    if (
+        not isinstance(package_url, str)
+        or len(package_url) > _DIAGNOSTIC_PURL_MAX_CHARS
+        or not package_url.isascii()
+        or not package_url.isprintable()
+        or not package_url.startswith("pkg:")
+    ):
+        return result
+
+    purl_path = package_url[4:].split("?", 1)[0].split("#", 1)[0]
+    raw_type, separator, raw_path = purl_path.partition("/")
+    if not separator or not raw_type or not raw_path:
+        return result
+    if "@" in raw_path:
+        raw_name_path, raw_version = raw_path.split("@", 1)
+    else:
+        raw_name_path, raw_version = raw_path, None
+    try:
+        package_type = unquote(raw_type, errors="strict").lower()
+        name_path = unquote(raw_name_path, errors="strict")
+        version = (
+            unquote(raw_version, errors="strict") if raw_version is not None else None
+        )
+    except UnicodeDecodeError:
+        return result
+    if not package_type or not name_path:
+        return result
+
+    parts = name_path.split("/")
+    if any(not part for part in parts):
+        return result
+    namespace = "/".join(parts[:-1])
+    name = parts[-1]
+    result.update(
+        {
+            "parsed": True,
+            "package_type": _diagnostic_component(
+                package_type, known=_DIAGNOSTIC_PURL_TYPES
+            ),
+            "namespace": _diagnostic_component(
+                namespace, known=_DIAGNOSTIC_PURL_COMPONENTS
+            )
+            if namespace
+            else "",
+            "name": _diagnostic_component(name, known=_DIAGNOSTIC_PURL_COMPONENTS),
+            "matches_reviewed_package_name": (
+                package_type == TRUFFLEHOG_PURL_TYPE
+                and namespace.lower() == TRUFFLEHOG_PURL_NAMESPACE
+                and name.lower() == TRUFFLEHOG_PURL_NAME
+            ),
+            "version_present": bool(version),
+            "version_sha256": _diagnostic_string_hash(version),
+            "version_matches_workflow_pin": isinstance(pin, str) and version == pin,
+        }
+    )
+    return result
 
 
 def _as_of(today: date | None) -> date:
@@ -420,12 +560,14 @@ def _target_package_url(package_url: str) -> bool:
 
 
 def _is_trufflehog_row(identity: tuple[str, ...]) -> bool:
-    """Match the CI-only trufflehog action by name or by its canonical GitHub PURL."""
+    """Detect upstream PURL aliases for rejection, not exception acceptance."""
     name = identity[3]
     package_url = identity[5]
-    return name == TRUFFLEHOG_ACTION_NAME or _purl_type_and_name(package_url) == (
-        "github",
-        TRUFFLEHOG_ACTION_NAME,
+    canonical = _purl_type_and_name(package_url)
+    return name.lower() == TRUFFLEHOG_ACTION_NAME or (
+        canonical is not None
+        and canonical[0] in {"github", "githubactions"}
+        and canonical[1].lower() == TRUFFLEHOG_ACTION_NAME
     )
 
 
@@ -437,7 +579,7 @@ def _trufflehog_identity(pin: str) -> tuple[str, ...]:
         TRUFFLEHOG_ACTION_NAME,
         pin,
         f"{TRUFFLEHOG_PURL}@{pin}",
-        TRUFFLEHOG_LICENSE,
+        None,
     )
 
 
@@ -488,7 +630,12 @@ def verify_dependency_changes(
                 raise ValueError(
                     "trufflehog dependency row requires the reviewed workflow pin"
                 )
-            if identity != _trufflehog_identity(trufflehog_pin):
+            if (
+                trufflehog_pin != TRUFFLEHOG_EXCEPTION["version"]
+                or identity != _trufflehog_identity(trufflehog_pin)
+                or raw_row["source_repository_url"]
+                != TRUFFLEHOG_EXCEPTION["source_repository_url"]
+            ):
                 raise ValueError(
                     "trufflehog exception is used outside its reviewed row"
                 )
@@ -523,16 +670,22 @@ def verify_dependency_changes(
     return sum(accepted.values())
 
 
-def format_dependency_identity_diagnostics(rows: Any) -> str:
+def format_dependency_identity_diagnostics(
+    rows: Any, *, trufflehog_pin: str | None = None
+) -> str:
     """Render bounded evidence only; never alter a dependency decision."""
     # This display vocabulary is not a license or vulnerability exception.
     # Unknown values stay redacted instead of being normalized or accepted.
+    trusted_pin_available = (
+        isinstance(trufflehog_pin, str)
+        and re.fullmatch(r"[0-9a-f]{40}", trufflehog_pin) is not None
+    )
     targets = {
         "trufflesecurity/trufflehog": (
             ".github/workflows/trufflehog.yml",
             "actions",
             "",
-            "github",
+            "githubactions",
         ),
         "howett.net/plist": (
             "services/caddy/go.mod",
@@ -543,7 +696,7 @@ def format_dependency_identity_diagnostics(rows: Any) -> str:
         "github.com/klauspost/compress": (
             "services/caddy/go.mod",
             "gomod",
-            "1.20.1",
+            "1.20.2",
             "golang",
         ),
         "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc": (
@@ -612,6 +765,49 @@ def format_dependency_identity_diagnostics(rows: Any) -> str:
                 identity[field] = value
             else:
                 identity[field] = "<redacted>"
+        if (
+            trusted_pin_available
+            and name == TRUFFLEHOG_ACTION_NAME
+            and row.get("change_type") == "added"
+            and row.get("manifest") == TRUFFLEHOG_MANIFEST
+            and row.get("ecosystem") == TRUFFLEHOG_ECOSYSTEM
+        ):
+            # Evidence only: compare raw fields without exposing or normalizing
+            # them. In particular, a null license remains null and still fails.
+            identity.update(
+                version_matches_workflow_pin=row.get("version") == trufflehog_pin,
+                package_url_empty=row.get("package_url") == "",
+                package_url_matches_expected=(
+                    row.get("package_url") == f"{TRUFFLEHOG_PURL}@{trufflehog_pin}"
+                ),
+                source_repository_matches_expected=(
+                    row.get("source_repository_url")
+                    == "https://github.com/trufflesecurity/trufflehog"
+                ),
+            )
+            if (
+                identity["version_matches_workflow_pin"]
+                and identity["source_repository_matches_expected"]
+            ):
+                # The pinned upstream README documents the githubactions type.
+                # Probe that exact format only; this does not change acceptance.
+                identity["package_url_matches_githubactions_pin"] = (
+                    row.get("package_url")
+                    == f"pkg:githubactions/{TRUFFLEHOG_ACTION_NAME}@{trufflehog_pin}"
+                )
+        if (
+            trusted_pin_available
+            and name == TRUFFLEHOG_ACTION_NAME
+            and row.get("change_type") == "added"
+            and row.get("manifest") == TRUFFLEHOG_MANIFEST
+            and row.get("ecosystem") == TRUFFLEHOG_ECOSYSTEM
+        ):
+            identity["purl_structure"] = _trufflehog_purl_diagnostic(
+                row.get("package_url"), trufflehog_pin
+            )
+            identity["row_version_evidence"] = {
+                "sha256": _diagnostic_string_hash(row.get("version")),
+            }
         # Fingerprint only a bounded unknown license on an otherwise exact
         # reviewed Caddy identity. Never log its raw value or use this evidence
         # in acceptance decisions. Non-license mismatches remain redacted.
@@ -643,6 +839,8 @@ def format_dependency_identity_diagnostics(rows: Any) -> str:
             if version
             else identity["package_url"] == "<matches-40-hex-version>"
         )
+        if trusted_pin_available and name == TRUFFLEHOG_ACTION_NAME:
+            matches_version = identity.get("version_matches_workflow_pin", False)
         priority = (
             row.get("manifest") != manifest,
             not matches_version,
@@ -1405,7 +1603,9 @@ def verify_policy_scope(
     trufflehog_entries = [
         item
         for item in purls
-        if _purl_type_and_name(item) == ("github", TRUFFLEHOG_ACTION_NAME)
+        if (canonical := _purl_type_and_name(item)) is not None
+        and canonical[0] in {"github", "githubactions"}
+        and canonical[1].lower() == TRUFFLEHOG_ACTION_NAME
     ]
     if trufflehog_entries:
         if trufflehog_entries != [TRUFFLEHOG_PURL] or purls[TRUFFLEHOG_PURL] != 1:
@@ -1469,6 +1669,8 @@ def preflight(
     current = verify_current_pins(root)
     current_config = (root / CONFIG_PATH).read_text(encoding="utf-8")
     verify_policy_scope(current_config, today=today)
+    if read_trufflehog_pin(root) != TRUFFLEHOG_EXCEPTION["version"]:
+        raise ValueError("trufflehog workflow differs from the reviewed action pin")
     verify_policy_delta(_git_show(root, base_sha, CONFIG_PATH), current_config)
     return expected_rows_for_delta(_base_pins(root, base_sha), current)
 
@@ -1506,9 +1708,17 @@ def main() -> int:
     if args.changes_file is None:
         raise ValueError("--changes-file is required for the changes phase")
     changes = read_dependency_changes_file(args.changes_file)
-    print(format_dependency_identity_diagnostics(changes))
+    try:
+        trufflehog_pin = read_trufflehog_pin(args.root)
+    except ValueError:
+        # Preserve the original diagnostic-before-pin-failure behavior.
+        print(format_dependency_identity_diagnostics(changes))
+        raise
+    print(
+        format_dependency_identity_diagnostics(changes, trufflehog_pin=trufflehog_pin)
+    )
     accepted = verify_dependency_changes(
-        changes, required, trufflehog_pin=read_trufflehog_pin(args.root)
+        changes, required, trufflehog_pin=trufflehog_pin
     )
     ghsa_exceptions_used = verify_ghsa_exception_rows(changes)
     print(

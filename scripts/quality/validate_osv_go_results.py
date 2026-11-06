@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -20,10 +20,115 @@ from typing import Any
 from scripts.quality.verify_dependency_review_scope import GHSA_EXCEPTIONS
 
 MAX_SARIF_BYTES = 32 * 1024 * 1024
-MESSAGE = re.compile(
-    r"^Package '(?P<name>[^@']+)@(?P<version>[^']+)' is vulnerable to "
-    r"'(?P<id>[^']+)'(?: \(also known as '(?P<alias>GHSA-[a-z0-9-]+)'\))?\.?$"
-)
+
+
+@dataclass(frozen=True, slots=True)
+class _ParsedMessage:
+    name: str
+    version: str
+    identifiers: tuple[str, ...]
+
+
+def _parse_advisory_id(value: str, start: int) -> tuple[str, int] | None:
+    """Read one exact scanner advisory token with a single forward pass."""
+    if value.startswith("CVE-", start):
+        prefix_end = start + len("CVE-")
+    elif value.startswith("GO-", start):
+        prefix_end = start + len("GO-")
+    elif value.startswith("GHSA-", start):
+        cursor = start + len("GHSA-")
+        for group in range(3):
+            group_end = cursor + 4
+            if group_end > len(value) or any(
+                not ("a" <= char <= "z" or "0" <= char <= "9")
+                for char in value[cursor:group_end]
+            ):
+                return None
+            cursor = group_end
+            if group < 2:
+                if cursor >= len(value) or value[cursor] != "-":
+                    return None
+                cursor += 1
+        return value[start:cursor], cursor
+    else:
+        return None
+
+    year_end = prefix_end + 4
+    if year_end >= len(value) or any(
+        not ("0" <= char <= "9") for char in value[prefix_end:year_end]
+    ):
+        return None
+    if value[year_end] != "-":
+        return None
+    digits_start = year_end + 1
+    cursor = digits_start
+    while cursor < len(value) and "0" <= value[cursor] <= "9":
+        cursor += 1
+    if cursor - digits_start < 4:
+        return None
+    return value[start:cursor], cursor
+
+
+def _parse_message(message: str) -> _ParsedMessage | None:
+    """Parse the scanner's exact package/advisory message grammar linearly."""
+    prefix = "Package '"
+    if not message.startswith(prefix):
+        return None
+
+    name_start = len(prefix)
+    separator = message.find("@", name_start)
+    if separator <= name_start:
+        return None
+    name = message[name_start:separator]
+    if any(char == "'" or char.isspace() for char in name):
+        return None
+
+    version_start = separator + 1
+    cursor = version_start
+    while (
+        cursor < len(message)
+        and message[cursor] != "'"
+        and not message[cursor].isspace()
+    ):
+        cursor += 1
+    if cursor == version_start or not message.startswith(
+        "' is vulnerable to '", cursor
+    ):
+        return None
+    version = message[version_start:cursor]
+    cursor += len("' is vulnerable to '")
+
+    primary = _parse_advisory_id(message, cursor)
+    if primary is None:
+        return None
+    identifier, cursor = primary
+    if cursor >= len(message) or message[cursor] != "'":
+        return None
+    cursor += 1
+    identifiers = [identifier]
+
+    alias_prefix = " (also known as '"
+    if message.startswith(alias_prefix, cursor):
+        cursor += len(alias_prefix)
+        while True:
+            alias = _parse_advisory_id(message, cursor)
+            if alias is None:
+                return None
+            alias_id, cursor = alias
+            identifiers.append(alias_id)
+            if message.startswith("', '", cursor):
+                cursor += len("', '")
+                continue
+            if message.startswith("')", cursor):
+                cursor += len("')")
+                break
+            return None
+
+    if cursor < len(message) and message[cursor] == ".":
+        cursor += 1
+    if cursor != len(message):
+        return None
+    return _ParsedMessage(name, version, tuple(identifiers))
 
 
 class OsvResultError(ValueError):
@@ -48,11 +153,44 @@ def _exceptions_by_key() -> dict[tuple[str, str, str, str], dict[str, Any]]:
 
 
 def _manifest(uri: str) -> str:
-    marker = "services/"
-    index = uri.find(marker)
-    if index < 0:
+    parts = uri.split("/")
+    if "services" not in parts:
         raise OsvResultError("result location is outside services/")
-    return uri[index:]
+    return "/".join(parts[parts.index("services") :])
+
+
+def _ghsa_alias(
+    run: dict[str, Any], result: dict[str, Any], message: _ParsedMessage
+) -> str:
+    # v2.6.0 emits all aliases, not only GHSA, and repeats the complete alias
+    # group in the referenced rule's deprecatedIds. Never select the first
+    # approved alias from an ambiguous group or from unmatched message text.
+    ids = message.identifiers
+    if len(set(ids)) != len(ids):
+        raise OsvResultError("duplicate advisory identifier")
+    ghsas = [identifier for identifier in ids if identifier.startswith("GHSA-")]
+    if not ghsas:
+        raise OsvResultError(f"finding {ids[0]} has no GHSA alias")
+    if len(ghsas) != 1:
+        raise OsvResultError("finding has ambiguous GHSA aliases")
+    tool = run.get("tool")
+    driver = tool.get("driver") if isinstance(tool, dict) else None
+    rules = driver.get("rules") if isinstance(driver, dict) else None
+    if not isinstance(rules, list) or not all(isinstance(rule, dict) for rule in rules):
+        raise OsvResultError("finding has no valid SARIF rules")
+    matched = [
+        (index, rule) for index, rule in enumerate(rules) if rule.get("id") == ids[0]
+    ]
+    if result.get("ruleId") != ids[0] or len(matched) != 1:
+        raise OsvResultError("finding does not identify one matching SARIF rule")
+    index, rule = matched[0]
+    if "ruleIndex" in result and (
+        type(result["ruleIndex"]) is not int or result["ruleIndex"] != index
+    ):
+        raise OsvResultError("finding ruleIndex disagrees with ruleId")
+    if rule.get("deprecatedIds") != list(ids):
+        raise OsvResultError("finding aliases disagree with SARIF rule")
+    return ghsas[0]
 
 
 def validate(report: dict[str, Any], scanner_status: int, today: date) -> list[str]:
@@ -72,23 +210,21 @@ def validate(report: dict[str, Any], scanner_status: int, today: date) -> list[s
         for result in run.get("results") or []:
             findings += 1
             message = str((result.get("message") or {}).get("text", ""))
-            match = MESSAGE.match(message)
-            if match is None:
+            parsed_message = _parse_message(message)
+            if parsed_message is None:
                 raise OsvResultError("unparsable finding message")
             locations = result.get("locations") or []
             if len(locations) != 1:
                 raise OsvResultError("finding must have exactly one location")
             uri = str(locations[0]["physicalLocation"]["artifactLocation"]["uri"])
             manifest = _manifest(uri)
-            alias = match.group("alias")
-            if alias is None:
-                raise OsvResultError(f"finding {match.group('id')} has no GHSA alias")
-            key = (alias, manifest, match.group("name"), match.group("version"))
+            alias = _ghsa_alias(run, result, parsed_message)
+            key = (alias, manifest, parsed_message.name, parsed_message.version)
             record = exceptions.get(key)
             if record is None:
                 raise OsvResultError(
-                    f"unexcepted finding {alias} in {match.group('name')} "
-                    f"{match.group('version')} at {manifest}"
+                    f"unexcepted finding {alias} in {parsed_message.name} "
+                    f"{parsed_message.version} at {manifest}"
                 )
             if today >= record["expires"]:
                 raise OsvResultError(f"disposition for {alias} expired")

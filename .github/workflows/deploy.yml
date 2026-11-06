@@ -219,30 +219,7 @@ jobs:
             uv run --frozen --no-sync pytest -n 0 -q --tb=short --timeout=420 \
             --junitxml="$receipt_root/junit.xml" \
             tests/integration/test_migration_roundtrip.py::test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade
-          uv run --frozen --no-sync python - "$receipt_root/junit.xml" <<'PY_BOUNDARY_RECEIPT'
-          import sys
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-
-          path = Path(sys.argv[1])
-          if not path.is_file() or path.stat().st_size > 1_048_576:
-              raise SystemExit("Baseline boundary receipt missing or oversized")
-          root = ET.fromstring(path.read_bytes())
-          suites = list(root.iter("testsuite"))
-          cases = list(root.iter("testcase"))
-          expected = "test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade"
-          if (
-              len(suites) != 1
-              or suites[0].get("tests") != "1"
-              or any(suites[0].get(key) != "0" for key in ("failures", "errors", "skipped"))
-              or len(cases) != 1
-              or cases[0].get("classname") != "tests.integration.test_migration_roundtrip"
-              or cases[0].get("name") != expected
-              or any(list(root.iter(tag)) for tag in ("failure", "error", "skipped"))
-          ):
-              raise SystemExit("Baseline boundary receipt incomplete or unsuccessful")
-          print("MVP_BASELINE_BOUNDARY_VERIFIED_PASS 1")
-          PY_BOUNDARY_RECEIPT
+          uv run --frozen --no-sync python -I .github/scripts/verify_mvp_migration_boundary_receipt.py "$receipt_root/junit.xml"
 
   prepare:
     name: Prepare release metadata
@@ -1463,7 +1440,7 @@ jobs:
             | jq --raw-output --exit-status --arg key "nats-server.conf" \
                 '.data[$key] | select(type == "string" and length > 0)' \
             | base64 --decode \
-            | python3 -c '
+            | python3 -I -c '
           import sys
           config = sys.stdin.read()
           values = []
@@ -1517,49 +1494,10 @@ jobs:
             | jq --raw-output --exit-status --arg key "$revocation_redis_url_key" \
                 '.data[$key] | select(type == "string" and length > 0)' \
             | base64 --decode \
-            | python3 -c '
-          from base64 import b64decode
-          from hmac import compare_digest
-          from os import fdopen
-          import re
-          from sys import argv, stdin
-          from unicodedata import category
-          from urllib.parse import urlsplit
-          from urllib.parse import unquote_to_bytes
-
-          expected_host = argv[1]
-          try:
-              raw_url = stdin.read().strip()
-              parsed = urlsplit(raw_url)
-              # The store init container uses shell command substitution, which
-              # removes trailing LF bytes before hashing the mounted password.
-              with fdopen(3, "rb") as credential_input:
-                  expected_credential = b64decode(
-                      credential_input.read().strip(), validate=True
-                  ).rstrip(b"\n")
-              valid = (
-                  parsed.scheme == "redis"
-                  and parsed.hostname == expected_host
-                  and parsed.port == 6379
-                  and parsed.path == "/0"
-                  and not parsed.query
-                  and not parsed.fragment
-                  and not re.search(r"%(?![0-9a-fA-F]{2})", raw_url)
-                  and not any(category(char) == "Cc" for char in raw_url)
-                  and parsed.username is not None
-                  and unquote_to_bytes(parsed.username) in (b"", b"default")
-                  and parsed.password is not None
-                  and bool(expected_credential)
-                  and b"\0" not in expected_credential
-                  and compare_digest(
-                      unquote_to_bytes(parsed.password), expected_credential
-                  )
-              )
-          except (OSError, UnicodeError, ValueError):
-              valid = False
-          raise SystemExit(0 if valid else 1)
-          ' "$revocation_redis_service_host" 3<<<"$revocation_redis_password_b64"; then
-            echo "::error::The revocation Redis URL must target the rendered dedicated master service using its credential and supported URL format."
+            | python3 -I .github/scripts/verify_revocation_redis_target.py "$revocation_redis_service_host" \
+                3< <(printf '%s' "$revocation_redis_password_b64") \
+                4< <(printf '%s' "$cache_redis_password_b64"); then
+            echo "::error::The revocation Redis URL must target the rendered dedicated master service using a distinct effective credential and supported URL format."
             exit 1
           fi
 
@@ -1989,30 +1927,7 @@ jobs:
             uv run --frozen --no-sync pytest -n 0 -q --tb=short --timeout=420 \
             --junitxml="$receipt_root/junit.xml" \
             tests/integration/test_migration_roundtrip.py::test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade
-          uv run --frozen --no-sync python - "$receipt_root/junit.xml" <<'PY_BOUNDARY_RECEIPT'
-          import sys
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-
-          path = Path(sys.argv[1])
-          if not path.is_file() or path.stat().st_size > 1_048_576:
-              raise SystemExit("Baseline boundary receipt missing or oversized")
-          root = ET.fromstring(path.read_bytes())
-          suites = list(root.iter("testsuite"))
-          cases = list(root.iter("testcase"))
-          expected = "test_baseline_upgrades_an_empty_database_and_refuses_its_downgrade"
-          if (
-              len(suites) != 1
-              or suites[0].get("tests") != "1"
-              or any(suites[0].get(key) != "0" for key in ("failures", "errors", "skipped"))
-              or len(cases) != 1
-              or cases[0].get("classname") != "tests.integration.test_migration_roundtrip"
-              or cases[0].get("name") != expected
-              or any(list(root.iter(tag)) for tag in ("failure", "error", "skipped"))
-          ):
-              raise SystemExit("Baseline boundary receipt incomplete or unsuccessful")
-          print("MVP_BASELINE_BOUNDARY_VERIFIED_PASS 1")
-          PY_BOUNDARY_RECEIPT
+          uv run --frozen --no-sync python -I .github/scripts/verify_mvp_migration_boundary_receipt.py "$receipt_root/junit.xml"
 
   notify:
     name: Notify deployment status

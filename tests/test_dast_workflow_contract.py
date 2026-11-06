@@ -47,11 +47,12 @@ def _assert_fail_closed_target_preflight(
         ]
     else:
         expected = [
-            'echo "::add-mask::$TARGET_URL"',
             'if [ -z "$TARGET_URL" ]; then',
             f'echo "::error::{EMPTY_TARGET_ERROR}"',
             "exit 1",
             "fi",
+            "python3 -m scripts.quality.dast_privacy validate-target",
+            'echo "::add-mask::$TARGET_URL"',
         ]
     assert shell_lines == expected
 
@@ -83,15 +84,21 @@ def test_dast_active_scans_reject_pr_controlled_workflow_sources() -> None:
             for step in job["steps"]
             if step.get("uses", "").startswith("actions/checkout@")
         )
-        if job_name == "nuclei":
-            assert checkout["with"]["ref"] == "${{ github.sha }}"
-            assert "scripts/quality" in checkout["with"]["sparse-checkout"].split()
-        else:
-            assert checkout["with"]["ref"] == "main"
+        assert checkout["with"]["ref"] == "${{ github.sha }}"
+        expected_sparse_paths = (
+            {".github", "scripts/quality"}
+            if job_name == "nuclei"
+            else {".zap", "scripts/quality"}
+        )
+        assert set(checkout["with"]["sparse-checkout"].split()) == expected_sparse_paths
+        assert checkout["with"]["persist-credentials"] is False
+        assert checkout["with"]["sparse-checkout-cone-mode"] is False
+        if job_name == "zap":
+            assert ".zap" in checkout["with"]["sparse-checkout"].split()
 
 
 def test_target_preflight_blocks_an_empty_target_before_active_scans() -> None:
-    """Both scanners mask and reject absent configured targets before scanning."""
+    """Both scanners reject absent targets; ZAP masks configured targets."""
 
     workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
     scan_steps = {
@@ -119,6 +126,101 @@ def test_target_preflight_blocks_an_empty_target_before_active_scans() -> None:
         _assert_fail_closed_target_preflight(
             preflight["run"], private_nuclei=job_name == "nuclei"
         )
+
+
+@pytest.mark.parametrize(
+    ("target_url", "expected_exit", "expected_events", "expected_error"),
+    [
+        (
+            "https://stage.example.test/private-area",
+            0,
+            ["VALIDATOR_CALLED", "TARGET_MASK_REGISTERED"],
+            None,
+        ),
+        (
+            "ftp://stage.example.test/private-area",
+            1,
+            ["VALIDATOR_CALLED"],
+            "DAST target must be an HTTP(S) URL",
+        ),
+        ("", 1, [], f"::error::{EMPTY_TARGET_ERROR}"),
+    ],
+)
+def test_zap_target_preflight_executes_mask_and_fail_closed_validation(
+    tmp_path: Path,
+    pytester,
+    monkeypatch: pytest.MonkeyPatch,
+    target_url: str,
+    expected_exit: int,
+    expected_events: list[str],
+    expected_error: str | None,
+) -> None:
+    """The real ZAP preflight validates before masking without logging its target."""
+
+    workflow = yaml.safe_load(DAST_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    step = next(
+        item
+        for item in workflow["jobs"]["zap"]["steps"]
+        if item.get("name") == "Validate ZAP target URL"
+    )
+    monkeypatch.chdir(REPOSITORY_ROOT)
+    monkeypatch.delenv("BASH_ENV", raising=False)
+    monkeypatch.setenv("TARGET_URL", target_url)
+    monkeypatch.setenv("TEST_GATE_PYTHON", Path(sys.executable).as_posix())
+    step_log = tmp_path / "zap-preflight-events.log"
+    monkeypatch.setenv("TEST_STEP_LOG", step_log.as_posix())
+    script = tmp_path / "zap-target-preflight.sh"
+    script.write_text(
+        "\n".join(
+            (
+                "echo() {",
+                '  case "${1-}" in',
+                '    "::add-mask::"*)',
+                '      if [ "$1" = "::add-mask::$TARGET_URL" ]; then',
+                "        printf '%s\\n' 'TARGET_MASK_REGISTERED' >> \"$TEST_STEP_LOG\"",
+                "      else",
+                "        printf '%s\\n' 'TARGET_MASK_MISMATCH' >> \"$TEST_STEP_LOG\"",
+                "      fi",
+                "      ;;",
+                '    *) builtin echo "$@" ;;',
+                "  esac",
+                "}",
+                "python3() {",
+                "  printf '%s\\n' 'VALIDATOR_CALLED' >> \"$TEST_STEP_LOG\"",
+                '  "$TEST_GATE_PYTHON" "$@" >/dev/null',
+                "}",
+                step["run"],
+            )
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    bash = (
+        str(git_bash) if os.name == "nt" and git_bash.exists() else shutil.which("bash")
+    )
+    assert bash, "Real Bash is required to execute the ZAP target preflight"
+    result = pytester.run(
+        bash,
+        "--noprofile",
+        "--norc",
+        "-e",
+        "-o",
+        "pipefail",
+        script.as_posix(),
+        timeout=20,
+    )
+
+    output = result.stdout.str() + result.stderr.str()
+    assert result.ret == expected_exit
+    observed_events = (
+        step_log.read_text(encoding="utf-8").splitlines() if step_log.exists() else []
+    )
+    assert observed_events == expected_events
+    if expected_error is not None:
+        assert expected_error in output
+    if target_url:
+        assert target_url not in output
 
 
 def test_nuclei_dispatch_target_never_appears_in_a_step_preamble() -> None:
@@ -506,11 +608,11 @@ def test_zap_preflight_contract_rejects_exit_after_the_empty_target_branch() -> 
 
     escaped_failure_exit = "\n".join(
         (
-            'echo "::add-mask::$TARGET_URL"',
             'if [ -z "$TARGET_URL" ]; then',
             f'  echo "::error::{EMPTY_TARGET_ERROR}"',
             "fi",
             "exit 1",
+            "python3 -m scripts.quality.dast_privacy validate-target",
         )
     )
 
@@ -528,6 +630,7 @@ def test_zap_action_keeps_the_authorized_target_and_scan_configuration() -> None
         if step.get("name") == "ZAP Full Scan"
     )
 
+    assert zap_action.get("continue-on-error", False) is False
     assert zap_action == {
         "name": "ZAP Full Scan",
         "uses": "zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c",
@@ -537,5 +640,6 @@ def test_zap_action_keeps_the_authorized_target_and_scan_configuration() -> None
             "rules_file_name": ".zap/rules.tsv",
             "cmd_options": "-a -j -T 60",
             "artifact_name": "zap-results-${{ github.run_id }}",
+            "allow_issue_writing": False,
         },
     }

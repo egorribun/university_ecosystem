@@ -750,12 +750,18 @@ api.interceptors.response.use(
   async (response) => {
     const config = response.config as (InternalAxiosRequestConfig & ApiRequestConfig) | undefined
     _cleanupIdempotencyKey(config)
-    if (config?.etagCacheKey) {
-      await handleEtagResponse(response, config.etagCacheKey)
+    try {
+      if (config?.etagCacheKey) {
+        await handleEtagResponse(response, config.etagCacheKey, () =>
+          assertCurrentRequestSession(config)
+        )
+      }
+      updateTraceContext(response.headers as AxiosHeaders)
+      return response
+    } finally {
+      // A stale-session cancellation or HMAC failure must also release the slot.
+      releaseClientQueueSlot(config)
     }
-    updateTraceContext(response.headers as AxiosHeaders)
-    releaseClientQueueSlot(config)
-    return response
   },
   async (error) => {
     const config = error?.config as (InternalAxiosRequestConfig & ApiRequestConfig) | undefined
@@ -767,7 +773,16 @@ api.interceptors.response.use(
       updateTraceContext(error.response.headers as AxiosHeaders)
     }
 
-    if (config?.etagCacheKey && responseStatus >= 400) {
+    const retryCount = config?.__rateLimitRetryCount ?? 0
+    const willRetryRateLimitedRequest =
+      responseStatus === 429 &&
+      config !== undefined &&
+      !config.skipRateLimitQueue &&
+      retryCount < RATE_LIMIT_MAX_RETRY &&
+      !config.signal?.aborted &&
+      !isAbortError(error)
+
+    if (config?.etagCacheKey && responseStatus >= 400 && !willRetryRateLimitedRequest) {
       etagCache.delete(config.etagCacheKey)
     }
 
@@ -775,8 +790,7 @@ api.interceptors.response.use(
       const delay = getRetryDelay(error.response.headers)
       scheduleRateLimitWindow(delay)
 
-      const retryCount = config.__rateLimitRetryCount ?? 0
-      if (retryCount < RATE_LIMIT_MAX_RETRY && !config.signal?.aborted && !isAbortError(error)) {
+      if (willRetryRateLimitedRequest) {
         config.__rateLimitRetryCount = retryCount + 1
         // Do not keep a stale tab in the shared retry wait, and check again
         // after the asynchronous window before Axios can attach current cookies.

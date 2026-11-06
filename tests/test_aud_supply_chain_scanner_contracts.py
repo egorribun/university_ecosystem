@@ -6,6 +6,7 @@ unproven. A green result here shows the repository configuration, not a hosted r
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -34,16 +35,17 @@ def _step(job: dict[str, Any], name: str) -> dict[str, Any]:
 # AUD-380 ---------------------------------------------------------------------
 
 
-def test_semgrep_policy_does_not_claim_a_hosted_ci_job() -> None:
+def test_semgrep_policy_describes_the_hosted_blocking_job() -> None:
     text = (REPOSITORY_ROOT / ".semgrep.yml").read_text(encoding="utf-8")
 
-    assert "The CI job runs" not in text
-    assert "enforced in CI via the 'semgrep' job" not in text
-    assert "semgrep-docker" in text
-    assert "NO hosted Semgrep CI job" in text
+    assert "NO hosted Semgrep CI job" not in text
+    assert "scripts/quality/run_semgrep_gate.py" in text
+    assert "exact unexpired dispositions" in text
+    assert "root .semgrepignore patterns" in text
+    assert "rules: []" in text
 
 
-def test_no_workflow_defines_a_semgrep_job() -> None:
+def test_exactly_one_workflow_job_is_the_blocking_semgrep_job() -> None:
     offenders: list[str] = []
     for path in sorted(WORKFLOWS.glob("*.yml")):
         workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -51,7 +53,99 @@ def test_no_workflow_defines_a_semgrep_job() -> None:
             if "semgrep" in job_name.lower():
                 offenders.append(f"{path.name}:{job_name}")
 
-    assert offenders == [], "a semgrep job exists; update .semgrep.yml accordingly"
+    assert offenders == ["ci.yml:semgrep-sast"]
+
+
+def test_semgrep_job_is_blocking_pinned_and_uploads_sarif() -> None:
+    ci = _load_workflow("ci.yml")
+    job = ci["jobs"]["semgrep-sast"]
+    run = str(_step(job, "Run Semgrep with the pinned rule set")["run"])
+    rules = _step(job, "Check out pinned Semgrep rules")
+    upload = _step(job, "Upload Semgrep SARIF to Code Scanning")
+    setup_uv = _step(job, "Install uv for the Semgrep gate")
+
+    assert job["needs"] == "pre-commit-check"
+    assert job["timeout-minutes"] > 0
+    assert job["permissions"] == {"contents": "read", "security-events": "write"}
+    assert "continue-on-error" not in job
+    assert all("continue-on-error" not in step for step in job["steps"])
+    assert "|| true" not in run
+    resolver = str(_step(job, "Resolve the pinned Semgrep image")["run"])
+    assert ".pre-commit-config.yaml" in resolver
+    assert "semgrep-docker" in resolver
+    assert "hooks != 1 || entries != 1 || images != 1" in resolver
+    assert '"SEMGREP_IMAGE=$image" >> "$GITHUB_ENV"' in resolver
+    assert '"$SEMGREP_IMAGE"' in run
+    assert '"$RUNNER_TEMP/semgrep"' in run
+    assert "uv run --frozen python -I scripts/quality/run_semgrep_gate.py" in run
+    assert '"$SEMGREP_IMAGE"' in run
+    assert '--output-directory "$RUNNER_TEMP/semgrep"' in run
+    assert "--exclude" not in run
+    assert "docker run" not in run
+    assert "--config auto" not in run
+    hook_config = yaml.safe_load(
+        (REPOSITORY_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    )
+    semgrep_hooks = [
+        hook
+        for repo in hook_config["repos"]
+        for hook in repo["hooks"]
+        if hook.get("id") == "semgrep-docker"
+    ]
+    assert len(semgrep_hooks) == 1
+    assert "exclude" not in semgrep_hooks[0]
+    assert "python -I scripts/quality/run_semgrep_gate.py" in semgrep_hooks[0]["entry"]
+    runner = (REPOSITORY_ROOT / "scripts/quality/run_semgrep_gate.py").read_text(
+        encoding="utf-8"
+    )
+    assert "EXCLUSIONS" not in runner
+    assert '"--exclude"' not in runner
+    assert '"--no-git-ignore"' in runner
+    assert '"-I"' in runner
+    assert '"--verbose"' in runner
+    assert '"--max-target-bytes=0"' in runner
+    assert not any(
+        step.get("name")
+        in {
+            "Select the deterministic security rule subset",
+            "Create tracked source snapshot",
+            "Enforce exact reviewed Semgrep dispositions",
+        }
+        for step in job["steps"]
+    )
+    assert upload["uses"].startswith("github/codeql-action/upload-sarif@")
+    assert len(upload["uses"].split("@", 1)[1].split(" ", 1)[0]) == 40
+    assert upload["if"] == "${{ always() }}"
+    assert upload["with"]["category"] == "semgrep-sast"
+    assert upload["with"]["sarif_file"] == ("${{ runner.temp }}/semgrep/semgrep.sarif")
+    assert setup_uv["uses"].startswith("astral-sh/setup-uv@")
+    assert len(setup_uv["uses"].split("@", 1)[1].split(" ", 1)[0]) == 40
+    assert rules["uses"].startswith("actions/checkout@")
+    assert len(rules["uses"].split("@", 1)[1].split(" ", 1)[0]) == 40
+    assert rules["with"]["repository"] == "semgrep/semgrep-rules"
+    assert re.fullmatch(r"[0-9a-f]{40}", str(rules["with"]["ref"]))
+    assert rules["with"]["path"] == ".semgrep-rules"
+    assert rules["with"]["persist-credentials"] is False
+    assert "semgrep-sast" in ci["jobs"]["ci-success"]["needs"]
+    aggregate = str(ci["jobs"]["ci-success"]["steps"][0]["run"])
+    assert "semgrep-sast|${{ needs.semgrep-sast.result }}" in aggregate
+
+
+def test_semgrep_catalog_entry_matches_the_blocking_job() -> None:
+    catalog = yaml.safe_load(
+        (REPOSITORY_ROOT / "quality" / "ci-check-catalog.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    ci = next(
+        item
+        for item in catalog["workflows"]
+        if item["path"] == ".github/workflows/ci.yml"
+    )
+    entry = ci["jobs"]["semgrep-sast"]
+    assert entry["profile"] == "required-pr-main"
+    assert entry["needs"] == ["pre-commit-check"]
+    assert entry["check_name_template"] == "Semgrep SAST"
 
 
 # AUD-378 ---------------------------------------------------------------------

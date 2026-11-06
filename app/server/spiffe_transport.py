@@ -6,6 +6,7 @@ import asyncio
 import ssl
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 
 from cryptography import x509
 from spiffe.errors import ArgumentError
@@ -42,6 +43,33 @@ _FAILURES = (
 )
 _HEALTH_INTERVAL = 0.25
 logger = get_logger(__name__)
+
+
+def _stream_transport(transport: asyncio.BaseTransport) -> asyncio.Transport | None:
+    # uvloop's TLS transport implements asyncio's stream contract without
+    # inheriting asyncio.Transport. This checks the interface only; TLS chain,
+    # exact identity and generation authorization remain in TransportGuard.
+    methods = (
+        "get_extra_info",
+        "is_closing",
+        "close",
+        "set_protocol",
+        "get_protocol",
+        "is_reading",
+        "pause_reading",
+        "resume_reading",
+        "set_write_buffer_limits",
+        "get_write_buffer_limits",
+        "get_write_buffer_size",
+        "write",
+        "writelines",
+        "write_eof",
+        "can_write_eof",
+        "abort",
+    )
+    if not all(callable(getattr(transport, method, None)) for method in methods):
+        return None
+    return cast(asyncio.Transport, transport)
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +192,14 @@ class TransportGuard:
             peer_spiffe_id = authorize_verified_leaf(certificate, self.allowed, now)
             expires = min(peer_deadline, generation.expires_at)
             approved = True
-        except _FAILURES:
+        except _FAILURES as error:
+            # Reasons are fixed WorkloadIdentityError messages or exception class
+            # names only: never certificate bytes, headers or request data.
+            logger.warning(
+                "internal_mtls_peer_rejected",
+                reason=type(error).__name__,
+                detail=str(error) if isinstance(error, WorkloadIdentityError) else "",
+            )
             return False
         finally:
             if not approved:
@@ -228,9 +263,13 @@ def guarded_protocols(
         admitted = False
 
         def connection_made(self, transport: asyncio.BaseTransport) -> None:
-            if not isinstance(transport, asyncio.Transport):
-                transport.close()
+            stream = _stream_transport(transport)
+            if stream is None:
+                close = getattr(transport, "close", None)
+                if callable(close):
+                    close()
                 return
+            transport = stream
             self.transport = transport
             try:
                 self.admitted = guard.admit(transport)
@@ -298,9 +337,13 @@ def guarded_protocols(
         admitted = False
 
         def connection_made(self, transport: asyncio.BaseTransport) -> None:
-            if not isinstance(transport, asyncio.Transport):
-                transport.close()
+            stream = _stream_transport(transport)
+            if stream is None:
+                close = getattr(transport, "close", None)
+                if callable(close):
+                    close()
                 return
+            transport = stream
             self.transport = transport
             try:
                 self.admitted = guard.admit(transport)

@@ -556,15 +556,15 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
+            --repository '${{ github.repository }}' \
+            --run-id '${{ github.run_id }}' \
+            --consumer-run-attempt '${{ github.run_attempt }}' \
+            --commit-sha '${{ github.sha }}' \
+            --run-head-sha '${{ github.sha }}' \
+            --event '${{ github.event_name }}' \
             --workflow-path ".github/workflows/manual-mutation-evidence.yml" \
             --artifact-prefix "frontend-mutation-preflight-" \
-            --artifact-suffix "${{ github.sha }}" \
+            --artifact-suffix '${{ github.sha }}' \
             --attempt-policy current-or-earlier
 
       - name: Download selected Stryker preflight candidate
@@ -677,15 +677,15 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
+            --repository '${{ github.repository }}' \
+            --run-id '${{ github.run_id }}' \
+            --consumer-run-attempt '${{ github.run_attempt }}' \
+            --commit-sha '${{ github.sha }}' \
+            --run-head-sha '${{ github.sha }}' \
+            --event '${{ github.event_name }}' \
             --workflow-path ".github/workflows/manual-mutation-evidence.yml" \
             --artifact-prefix "frontend-mutation-preflight-" \
-            --artifact-suffix "${{ github.sha }}" \
+            --artifact-suffix '${{ github.sha }}' \
             --attempt-policy current-or-earlier
 
       - name: Download selected Stryker preflight candidate
@@ -789,12 +789,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/quality/select_same_run_artifact_cli.py \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.sha }}" \
-            --event "${{ github.event_name }}" \
+            --repository '${{ github.repository }}' \
+            --run-id '${{ github.run_id }}' \
+            --consumer-run-attempt '${{ github.run_attempt }}' \
+            --commit-sha '${{ github.sha }}' \
+            --run-head-sha '${{ github.sha }}' \
+            --event '${{ github.event_name }}' \
             --workflow-path ".github/workflows/manual-mutation-evidence.yml" \
             --artifact-prefix "frontend-mutation-validated-" \
             --artifact-suffix "" \

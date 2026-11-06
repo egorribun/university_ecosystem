@@ -3,6 +3,7 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 from packaging.requirements import Requirement
 
@@ -163,6 +164,29 @@ def test_precommit_mypy_installs_the_declared_psycopg_driver() -> None:
     )
     assert isolated.extras == production.extras
     assert isolated.specifier == production.specifier
+
+
+@pytest.mark.parametrize("package_name", ["opentelemetry-sdk", "structlog"])
+def test_precommit_mypy_installs_locked_logging_dependencies(package_name: str) -> None:
+    lock = _read_toml("uv.lock")
+    locked_version = next(
+        package["version"]
+        for package in lock["package"]
+        if package["name"] == package_name
+    )
+    pre_commit = yaml.safe_load(_read_text(".pre-commit-config.yaml"))
+    mypy_repo = next(
+        repo
+        for repo in pre_commit["repos"]
+        if repo["repo"] == "https://github.com/pre-commit/mirrors-mypy"
+    )
+    mypy_hook = next(hook for hook in mypy_repo["hooks"] if hook["id"] == "mypy")
+    requirements = [
+        requirement
+        for requirement in mypy_hook["additional_dependencies"]
+        if Requirement(requirement).name == package_name
+    ]
+    assert requirements == [f"{package_name}=={locked_version}"]
 
 
 def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
@@ -332,14 +356,17 @@ def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:
         assert f"Do not use `{prohibited_bypass}`" in runbook
 
     pre_commit = yaml.safe_load(_read_text(".pre-commit-config.yaml"))
-    semgrep_ids = [
-        hook["id"]
+    semgrep_hooks = [
+        (repository["repo"], hook)
         for repository in pre_commit["repos"]
-        if repository["repo"] == "https://github.com/semgrep/pre-commit"
         for hook in repository["hooks"]
+        if hook.get("id") == "semgrep-docker"
     ]
-    assert len(semgrep_ids) == 1
-    assert f"Do not use `SKIP={semgrep_ids[0]}`" in runbook
+    assert len(semgrep_hooks) == 1
+    semgrep_repo, semgrep_hook = semgrep_hooks[0]
+    assert semgrep_repo == "local"
+    assert semgrep_hook["id"] == "semgrep-docker"
+    assert f"Do not use `SKIP={semgrep_hook['id']}`" in runbook
 
 
 def test_all_external_production_dependencies_have_upper_bounds() -> None:

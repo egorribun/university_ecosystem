@@ -4,7 +4,8 @@
  *
  * Drives the worker's message protocol with the generated WASM exports.
  * Only initialization is replaced so the web-target binary can load in Node.
- * The PBKDF2 one-round RFC vector stays on the independent Node primitive.
+ * PBKDF2 parity uses the RFC vector's password and salt at the application's
+ * minimum accepted work factor, with Node's implementation as the oracle.
  */
 
 import { pbkdf2Sync, scryptSync } from "node:crypto"
@@ -24,8 +25,6 @@ vi.mock("../../../rust-crypto/pkg/uni_wasm_crypto.js", async (importOriginal) =>
 })
 
 // RFC 7914 and RFC 4231 known-answer vectors.
-const PBKDF2_PASSWD_SALT_C1 =
-  "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783" // pragma: allowlist secret
 const HMAC_TC1 = "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7" // pragma: allowlist secret
 const HMAC_TC2 = "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843" // pragma: allowlist secret
 const SCRYPT_V1 =
@@ -61,10 +60,19 @@ afterAll(() => {
 })
 
 describe("crypto.worker PBKDF2 parity", () => {
-  it("checks the one-round RFC 7914 vector only with the independent primitive", () => {
-    expect(pbkdf2Sync("passwd", "salt", 1, 64, "sha256").toString("hex")).toBe(
-      PBKDF2_PASSWD_SALT_C1
-    )
+  it("matches the RFC 7914 password and salt through the worker and WASM", async () => {
+    const iterations = 1_000
+    const keyBytes = 64
+    const msg = await dispatch({
+      type: "PBKDF2",
+      id: 1,
+      payload: { value: "passwd", salt: "salt", iterations, keySize: keyBytes * 8 },
+    })
+
+    expect(msg).toEqual({
+      id: 1,
+      result: pbkdf2Sync("passwd", "salt", iterations, keyBytes, "sha256").toString("hex"),
+    })
   })
 
   it.each([0, 1, 2, 999])("rejects %i PBKDF2 rounds through the worker", async (iterations) => {

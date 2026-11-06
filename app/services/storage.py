@@ -8,6 +8,7 @@ import json
 import os
 import re
 import stat
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -116,6 +117,7 @@ class StaticFSStorage(StorageBackend):
     ) -> None:
         self.base_dir = base_dir
         self.base_url = base_url.rstrip("/") or ""
+        self._pending_cancellable_writes: set[asyncio.Future[None]] = set()
         self.static_origin = validate_static_storage_origin(static_origin)
         if self.base_url.lower().startswith(("http://", "https://")):
             scheme, remainder = self.base_url.split(":", 1)
@@ -333,6 +335,98 @@ class StaticFSStorage(StorageBackend):
             target.parent.mkdir, parents=True, exist_ok=True
         )
         await asyncio.to_thread(target.write_bytes, data)  # codeql[py/path-injection]
+        relative_str = normalized.as_posix()
+        if self.base_url:
+            return f"{self.base_url}/{relative_str}"
+        return f"/{relative_str}"
+
+    async def save_file_cancellable(
+        self,
+        relative_path: str,
+        data: bytes,
+        *,
+        content_type: str | None = None,
+        cache_control: str | None = None,
+    ) -> str:
+        """Save one exclusively owned file and compensate if its caller cancels.
+
+        The worker owns the exact path until the caller commits the write. It
+        performs any abort cleanup itself, so cancellation never races an
+        event-loop unlink against an unfinished executor write.
+        """
+        del content_type, cache_control
+        normalized = self._normalize_relative_path(relative_path)
+        self._resolve_validated_path(normalized)  # RZ-30-02
+        loop = asyncio.get_running_loop()
+        ready: asyncio.Future[None] = loop.create_future()
+        abort = threading.Event()
+        decision = threading.Event()
+
+        def consume_ready_exception(future: asyncio.Future[None]) -> None:
+            future.exception()
+
+        ready.add_done_callback(consume_ready_exception)
+
+        def publish_ready() -> None:
+            ready.set_result(None)
+
+        def remove_owned_target(target: Path) -> None:
+            try:
+                self._unlink_ignore_missing(target)
+            except Exception:  # RZ-22-01-JUSTIFIED: preserve the caller's cancellation or primary write error
+                logger.warning("static_write_cleanup_failed")
+
+        def write_owned_target() -> None:
+            target: Path | None = None
+            owned = False
+            try:
+                if abort.is_set():
+                    return
+                target = self._resolve_validated_path(normalized)  # RZ-30-02
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if abort.is_set():
+                    return
+                with target.open("xb") as output:
+                    owned = True
+                    output.write(data)
+                if abort.is_set():
+                    remove_owned_target(target)
+                    return
+                loop.call_soon_threadsafe(publish_ready)
+                decision.wait()
+                if abort.is_set():
+                    remove_owned_target(target)
+            except Exception:
+                if owned and target is not None:
+                    remove_owned_target(target)
+                raise
+
+        write_future = loop.run_in_executor(None, write_owned_target)
+        self._pending_cancellable_writes.add(write_future)
+
+        def release_write_future(future: asyncio.Future[None]) -> None:
+            self._pending_cancellable_writes.discard(future)
+            if future.cancelled():
+                ready.set_exception(
+                    RuntimeError(
+                        "Static write executor stopped before the upload started"
+                    )
+                )
+                return
+            error = future.exception()
+            if error is not None:
+                ready.set_exception(error)
+
+        write_future.add_done_callback(release_write_future)
+        committed = False
+        try:
+            await asyncio.shield(ready)
+            committed = True
+        finally:
+            if not committed:
+                abort.set()
+            decision.set()
+
         relative_str = normalized.as_posix()
         if self.base_url:
             return f"{self.base_url}/{relative_str}"

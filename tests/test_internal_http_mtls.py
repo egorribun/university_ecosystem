@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import runpy
+import ssl
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -107,6 +109,54 @@ def test_probe_validates_peer_before_http(
     )
 
 
+@pytest.mark.parametrize(
+    ("failure", "step", "error", "detail"),
+    [
+        (
+            "connect",
+            "workload_api_connect",
+            OSError("connection refused"),
+            "error=OSError: connection refused",
+        ),
+        (
+            "current",
+            "workload_api_current",
+            mtls.WorkloadIdentityError("local workload trust bundle is missing"),
+            "error=WorkloadIdentityError: local workload trust bundle is missing",
+        ),
+    ],
+)
+def test_workload_api_cli_failure_names_the_failing_step(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failure: str,
+    step: str,
+    error: Exception,
+    detail: str,
+) -> None:
+    source = Mock()
+    connect_source = Mock(return_value=source)
+    if failure == "connect":
+        connect_source.side_effect = error
+    else:
+        source.current.side_effect = error
+    monkeypatch.setattr(mtls.WorkloadContexts, "connect", connect_source)
+    for key, value in environment().items():
+        monkeypatch.setenv(key, value)
+
+    assert mtls.main(["probe", "/health/ready"]) == 1
+    assert (
+        capsys.readouterr().err == f"internal_mtls_probe_failed step={step} {detail}\n"
+    )
+    connect_source.assert_called_once_with(
+        environment()[mtls.SOCKET_ENV], IDENTITY, server=False, timeout=1.0
+    )
+    if failure == "current":
+        source.close.assert_called_once()
+    else:
+        source.close.assert_not_called()
+
+
 def test_plaintext_probe_only_when_explicitly_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -188,16 +238,148 @@ def test_probe_cli_status(monkeypatch: pytest.MonkeyPatch, result: bool) -> None
     assert mtls.main(["probe", "/health/ready"]) == (0 if result else 1)
 
 
-def test_probe_cli_failure_does_not_print_material(
+def test_probe_cli_failure_redacts_material(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    token = "A" * 48
+    standard = "Ab/c+Ab" * 6 + "=="
+    urlsafe = "Ab_c-Ab" * 6 + "=="
+    safe_detail = "error=Connection refused"
+    secret = "-----BEGIN PRIVATE KEY-----\nMIIBVQIBADANBgkq\n-----END PRIVATE KEY-----"
     monkeypatch.setattr(
         mtls,
         "probe",
-        Mock(side_effect=InternalHTTPMTLSConfigError("private diagnostic")),
+        Mock(
+            side_effect=InternalHTTPMTLSConfigError(
+                f"bad {secret} {token} {standard} {urlsafe} {safe_detail}"
+            ),
+        ),
     )
     assert mtls.main(["probe", "/health/ready"]) == 2
-    assert "private diagnostic" not in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert err == (
+        "internal_mtls_probe_unavailable "
+        "error=InternalHTTPMTLSConfigError: bad [redacted-pem] [redacted] "
+        "[redacted] [redacted] error=Connection refused\n"
+    )
+
+
+def test_sanitizer_bounds_and_redacts_diagnostics() -> None:
+    assert len(mtls._sanitize("word " * 100)) == 200
+    assert mtls._sanitize("x" * 500) == "[redacted]"
+    assert mtls._sanitize("line one\nline\ttwo") == "line one line two"
+    assert mtls._sanitize(
+        "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----"
+    ) == ("[redacted-pem]")
+
+
+def _secure_connection(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    peer: str = IDENTITY,
+    connect_error: Exception | None = None,
+    status: int = 200,
+) -> Mock:
+    monkeypatch.setattr(mtls.WorkloadContexts, "connect", Mock(return_value=Mock()))
+    connection = Mock()
+    der = leaf((peer,)).public_bytes(Encoding.DER)
+    connection.sock.getpeercert.return_value = der
+    connection.sock.get_verified_chain.return_value = [der]
+    connection.getresponse.return_value.status = status
+    if connect_error is not None:
+        connection.connect.side_effect = connect_error
+    monkeypatch.setattr(
+        mtls.http.client, "HTTPSConnection", Mock(return_value=connection)
+    )
+    clock = Mock()
+    clock.now.return_value = NOW
+    monkeypatch.setattr(mtls, "datetime", clock)
+    return connection
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        (
+            {
+                "connect_error": ssl.SSLCertVerificationError(
+                    1, "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"
+                )
+            },
+            "internal_mtls_probe_failed step=tls_connect error=SSLCertVerificationError: "
+            "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed\n",
+        ),
+        (
+            {"peer": "spiffe://university.ecosystem/impostor"},
+            "internal_mtls_probe_failed step=certificate_policy "
+            "error=WorkloadIdentityError: peer workload identity is not authorized\n",
+        ),
+        (
+            {"status": 503},
+            "internal_mtls_probe_failed step=http_response status=503\n",
+        ),
+    ],
+)
+def test_secure_probe_failure_names_step_and_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    kwargs: dict[str, Any],
+    expected: str,
+) -> None:
+    connection = _secure_connection(monkeypatch, **kwargs)
+    assert not mtls.probe("/health/ready", 8000, environment())
+    assert capsys.readouterr().err == expected
+    connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("sock", None, "step=peer_certificate error=TLSSocketMissing"),
+        ("der", None, "step=peer_certificate error=PeerCertificateMissing"),
+        ("chain", [b"other"], "step=verified_chain error=VerifiedChainMismatch"),
+    ],
+)
+def test_secure_probe_incomplete_proof_names_step(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    value: object,
+    expected: str,
+) -> None:
+    connection = _secure_connection(monkeypatch)
+    if field == "sock":
+        connection.sock = None
+    elif field == "der":
+        connection.sock.getpeercert.return_value = None
+    else:
+        connection.sock.get_verified_chain.return_value = value
+    assert not mtls.probe("/health/ready", 8000, environment())
+    assert expected in capsys.readouterr().err
+    connection.request.assert_not_called()
+
+
+def test_plaintext_probe_failure_names_step(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    connection = Mock()
+    connection.request.side_effect = OSError("connection refused")
+    monkeypatch.setattr(
+        mtls.http.client, "HTTPConnection", Mock(return_value=connection)
+    )
+    assert not mtls.probe("/health/ready", 8000, {})
+    assert capsys.readouterr().err == (
+        "internal_mtls_probe_failed step=plain_http_request "
+        "error=OSError: connection refused\n"
+    )
+
+
+def test_successful_probe_writes_no_diagnostics(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _secure_connection(monkeypatch)
+    assert mtls.probe("/health/ready", 8000, environment())
+    assert capsys.readouterr().err == ""
 
 
 def test_actual_image_selects_transport_worker_and_shared_probe() -> None:

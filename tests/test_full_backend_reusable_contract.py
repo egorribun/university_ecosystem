@@ -76,6 +76,33 @@ _REVIEWED_NIGHTLY_HUNKS = (
 
 """,
     ),
+    # AUD-322: reverse only the reviewed resilience JUnit receipt delta.
+    (
+        """        run: |
+          report="$RUNNER_TEMP/chaos-resilience.xml"
+          set +e
+          uv run pytest tests/chaos/ -v -m chaos --tb=short --junitxml="$report"
+          pytest_status=$?
+          uv run python scripts/quality/validate_chaos_resilience_junit.py "$report"
+          validator_status=$?
+          if [[ "$pytest_status" -ne 0 ]]; then
+            exit "$pytest_status"
+          fi
+          exit "$validator_status"
+
+      - name: Upload AUD-322 chaos receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-chaos-resilience-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/chaos-resilience.xml
+          if-no-files-found: ignore
+
+""",
+        """        run: uv run pytest tests/chaos/ -v -m chaos --tb=short
+
+""",
+    ),
     (
         "      - browser-matrix\n      - live-realtime-visual\n      - schemathesis-api-tests\n",
         "      - browser-matrix\n      - schemathesis-api-tests\n",
@@ -201,9 +228,376 @@ _REVIEWED_MUTATION_SHARD_HUNKS = {
 }
 
 
+_GITHUB_REPOSITORY = "${{ github.repository }}"
+_GITHUB_RUN_ID = "${{ github.run_id }}"
+_GITHUB_RUN_ATTEMPT = "${{ github.run_attempt }}"
+_GITHUB_SHA = "${{ github.sha }}"
+_GITHUB_EVENT_NAME = "${{ github.event_name }}"
+_GITHUB_WORKFLOW_PATH = (
+    "${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}"
+)
+_GITHUB_HELM_ARTIFACT_PREFIX = (
+    "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}"
+)
+_GITHUB_MUTMUT_ARTIFACT_PREFIX = (
+    "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}"
+    "-mutmut-generation-base-"
+)
+_GITHUB_ARTIFACT_NAMESPACE = (
+    "${{ needs.verify-full-mutation-provenance.outputs.artifact_namespace }}"
+)
+
+
+def _yaml_mapping_nodes(node: yaml.Node) -> dict[str, tuple[yaml.Node, yaml.Node]]:
+    assert isinstance(node, yaml.MappingNode)
+    result: dict[str, tuple[yaml.Node, yaml.Node]] = {}
+    for key_node, value_node in node.value:
+        assert isinstance(key_node, yaml.ScalarNode)
+        result[key_node.value] = (key_node, value_node)
+    return result
+
+
+def _yaml_scalar(node: yaml.Node) -> str:
+    assert isinstance(node, yaml.ScalarNode)
+    return node.value
+
+
+def _selector_env(artifact_prefix: str) -> dict[str, str]:
+    return {
+        "GH_TOKEN": "${{ github.token }}",
+        "REPOSITORY": _GITHUB_REPOSITORY,
+        "RUN_ID": _GITHUB_RUN_ID,
+        "CONSUMER_RUN_ATTEMPT": _GITHUB_RUN_ATTEMPT,
+        "COMMIT_SHA": _GITHUB_SHA,
+        "RUN_HEAD_SHA": _GITHUB_SHA,
+        "EVENT_NAME": _GITHUB_EVENT_NAME,
+        "WORKFLOW_PATH": _GITHUB_WORKFLOW_PATH,
+        "ARTIFACT_PREFIX": artifact_prefix,
+    }
+
+
+def _reviewed_step_source_specs(name: str) -> dict[tuple[str, str], dict[str, object]]:
+    if name == "nightly-full-gate.yml":
+        gh_token = {"GH_TOKEN": "${{ github.token }}"}
+        common = (
+            (
+                '--repository "$GITHUB_REPOSITORY"',
+                f'--repository "{_GITHUB_REPOSITORY}"',
+            ),
+            ('--run-id "$GITHUB_RUN_ID"', f'--run-id "{_GITHUB_RUN_ID}"'),
+            (
+                '--consumer-run-attempt "$GITHUB_RUN_ATTEMPT"',
+                f'--consumer-run-attempt "{_GITHUB_RUN_ATTEMPT}"',
+            ),
+            ('--commit-sha "$GITHUB_SHA"', f'--commit-sha "{_GITHUB_SHA}"'),
+            ('--run-head-sha "$GITHUB_SHA"', f'--run-head-sha "{_GITHUB_SHA}"'),
+            ('--event "$GITHUB_EVENT_NAME"', f'--event "{_GITHUB_EVENT_NAME}"'),
+        )
+        preflight = (
+            *common,
+            ('--artifact-suffix "$GITHUB_SHA"', f'--artifact-suffix "{_GITHUB_SHA}"'),
+        )
+        return {
+            (
+                "frontend-mutation-shards",
+                "Select immutable same-run Stryker preflight candidate",
+            ): {
+                "env": gh_token,
+                "remove_env": (),
+                "replacements": preflight,
+            },
+            ("frontend-mutation-shards", "Select immutable cached shard publication"): {
+                "env": {
+                    **gh_token,
+                    "PRODUCER_ATTEMPT": "${{ steps.validate_cached_shard.outputs.producer_attempt }}",
+                    "SHARD_INDEX": "${{ matrix.shard-index }}",
+                },
+                "remove_env": ("SHARD_INDEX",),
+                "replacements": (
+                    *common,
+                    (
+                        '--shard-index "$SHARD_INDEX"',
+                        '--shard-index "${{ matrix.shard-index }}"',
+                    ),
+                ),
+            },
+            (
+                "frontend-mutation-tests-full",
+                "Select immutable same-run Stryker preflight candidate",
+            ): {
+                "env": gh_token,
+                "remove_env": (),
+                "replacements": preflight,
+            },
+            (
+                "frontend-mutation-roundtrip",
+                "Select immutable same-run validated Stryker evidence candidate",
+            ): {
+                "env": gh_token,
+                "remove_env": (),
+                "replacements": common,
+            },
+        }
+    if name == "manual-mutation-evidence.yml":
+        gh_token = {"GH_TOKEN": "${{ github.token }}"}
+        common = (
+            (
+                "--repository '${{ github.repository }}'",
+                f'--repository "{_GITHUB_REPOSITORY}"',
+            ),
+            ("--run-id '${{ github.run_id }}'", f'--run-id "{_GITHUB_RUN_ID}"'),
+            (
+                "--consumer-run-attempt '${{ github.run_attempt }}'",
+                f'--consumer-run-attempt "{_GITHUB_RUN_ATTEMPT}"',
+            ),
+            ("--commit-sha '${{ github.sha }}'", f'--commit-sha "{_GITHUB_SHA}"'),
+            ("--run-head-sha '${{ github.sha }}'", f'--run-head-sha "{_GITHUB_SHA}"'),
+            ("--event '${{ github.event_name }}'", f'--event "{_GITHUB_EVENT_NAME}"'),
+        )
+        preflight = (
+            *common,
+            (
+                "--artifact-suffix '${{ github.sha }}'",
+                f'--artifact-suffix "{_GITHUB_SHA}"',
+            ),
+        )
+        return {
+            (
+                "manual-frontend-mutation-shards",
+                "Select immutable same-run Stryker preflight candidate",
+            ): {
+                "env": gh_token,
+                "remove_env": (),
+                "replacements": preflight,
+            },
+            (
+                "manual-frontend-mutation-aggregate",
+                "Select immutable same-run Stryker preflight candidate",
+            ): {
+                "env": gh_token,
+                "remove_env": (),
+                "replacements": preflight,
+            },
+            (
+                "manual-frontend-mutation-roundtrip",
+                "Select immutable same-run validated Stryker evidence candidate",
+            ): {
+                "env": gh_token,
+                "remove_env": (),
+                "replacements": common,
+            },
+        }
+    if name == "reusable-full-backend-mutation.yml":
+        specs: dict[tuple[str, str], dict[str, object]] = {}
+        selectors = (
+            (
+                "mutation-tests-full-generation-base",
+                "Select same-run Helm dependency artifact",
+                _GITHUB_HELM_ARTIFACT_PREFIX,
+                False,
+            ),
+            (
+                "mutation-tests-full-stats",
+                "Select immutable same-run mutmut generation base",
+                _GITHUB_MUTMUT_ARTIFACT_PREFIX,
+                True,
+            ),
+            (
+                "mutation-tests-full-stats",
+                "Select same-run Helm dependency artifact",
+                _GITHUB_HELM_ARTIFACT_PREFIX,
+                False,
+            ),
+            (
+                "mutation-tests-full-plan",
+                "Select immutable same-run mutmut generation base",
+                _GITHUB_MUTMUT_ARTIFACT_PREFIX,
+                True,
+            ),
+            (
+                "mutation-tests-full-plan",
+                "Select same-run Helm dependency artifact",
+                _GITHUB_HELM_ARTIFACT_PREFIX,
+                False,
+            ),
+            (
+                "mutation-tests-full",
+                "Select immutable same-run mutmut generation base",
+                _GITHUB_MUTMUT_ARTIFACT_PREFIX,
+                True,
+            ),
+            (
+                "mutation-tests-full",
+                "Select same-run Helm dependency artifact",
+                _GITHUB_HELM_ARTIFACT_PREFIX,
+                False,
+            ),
+        )
+        for job_id, step_name, artifact_prefix, strict in selectors:
+            replacements = (
+                ('--repository "$REPOSITORY"', f'--repository "{_GITHUB_REPOSITORY}"'),
+                ('--run-id "$RUN_ID"', f'--run-id "{_GITHUB_RUN_ID}"'),
+                (
+                    '--consumer-run-attempt "$CONSUMER_RUN_ATTEMPT"',
+                    f'--consumer-run-attempt "{_GITHUB_RUN_ATTEMPT}"',
+                ),
+                ('--commit-sha "$COMMIT_SHA"', f'--commit-sha "{_GITHUB_SHA}"'),
+                ('--run-head-sha "$RUN_HEAD_SHA"', f'--run-head-sha "{_GITHUB_SHA}"'),
+                ('--event "$EVENT_NAME"', f'--event "{_GITHUB_EVENT_NAME}"'),
+                (
+                    '--workflow-path "$WORKFLOW_PATH"',
+                    f'--workflow-path "{_GITHUB_WORKFLOW_PATH}"',
+                ),
+                (
+                    '--artifact-prefix "$ARTIFACT_PREFIX"',
+                    f'--artifact-prefix "{artifact_prefix}"',
+                ),
+                (
+                    "--attempt-policy current-or-earlier",
+                    "--attempt-policy current-or-earlier",
+                ),
+            )
+            specs[(job_id, step_name)] = {
+                "env": _selector_env(artifact_prefix),
+                "remove_env": (
+                    "REPOSITORY",
+                    "RUN_ID",
+                    "CONSUMER_RUN_ATTEMPT",
+                    "COMMIT_SHA",
+                    "RUN_HEAD_SHA",
+                    "EVENT_NAME",
+                    "WORKFLOW_PATH",
+                    "ARTIFACT_PREFIX",
+                ),
+                "replacements": replacements,
+                "strict": strict,
+            }
+        for job_id, step_name, prefix in (
+            (
+                "mutation-tests-full-plan",
+                "Require all full mutmut stats shards",
+                "mutmut-stats",
+            ),
+            (
+                "mutation-tests-full-aggregate",
+                "Require all full mutmut execution shards",
+                "mutmut-shards",
+            ),
+        ):
+            suffix = (
+                "mutmut-stats-${RUN_ID}-${RUN_ATTEMPT}-${shard}"
+                if prefix == "mutmut-stats"
+                else "mutmut-shard-${RUN_ID}-${RUN_ATTEMPT}-${shard}"
+            )
+            specs[(job_id, step_name)] = {
+                "env": {
+                    "RUN_ID": _GITHUB_RUN_ID,
+                    "RUN_ATTEMPT": _GITHUB_RUN_ATTEMPT,
+                    "ARTIFACT_NAMESPACE": _GITHUB_ARTIFACT_NAMESPACE,
+                },
+                "remove_env": ("ARTIFACT_NAMESPACE",),
+                "strict": True,
+                "replacements": (
+                    (
+                        f"{prefix}/${{ARTIFACT_NAMESPACE}}-{suffix}",
+                        f"{prefix}/{_GITHUB_ARTIFACT_NAMESPACE}-{suffix}",
+                    ),
+                ),
+            }
+        return specs
+    return {}
+
+
+def _normalize_reviewed_step_sources(name: str, source: bytes) -> bytes:
+    specs = _reviewed_step_source_specs(name)
+    if not specs:
+        return source
+
+    root = yaml.compose(source.decode("utf-8"))
+    assert root is not None
+    jobs_node = _yaml_mapping_nodes(root)["jobs"][1]
+    edits: list[tuple[int, int, bytes]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for job_id, (_job_key, job_node) in _yaml_mapping_nodes(jobs_node).items():
+        job_fields = _yaml_mapping_nodes(job_node)
+        steps_entry = job_fields.get("steps")
+        if steps_entry is None:
+            continue
+        steps_node = steps_entry[1]
+        assert isinstance(steps_node, yaml.SequenceNode)
+        for step_node in steps_node.value:
+            fields = _yaml_mapping_nodes(step_node)
+            name_field = fields.get("name")
+            if name_field is None:
+                continue
+            identity = (job_id, _yaml_scalar(name_field[1]))
+            spec = specs.get(identity)
+            if spec is None:
+                continue
+            assert identity not in seen
+            seen.add(identity)
+            shell_field = fields.get("shell")
+            assert shell_field is not None and _yaml_scalar(shell_field[1]) == "bash"
+
+            env_nodes: dict[str, yaml.Node] = {}
+            actual_env: dict[str, str] = {}
+            env_field = fields.get("env")
+            if env_field is not None:
+                for key, (key_node, value_node) in _yaml_mapping_nodes(
+                    env_field[1]
+                ).items():
+                    env_nodes[key] = key_node
+                    actual_env[key] = _yaml_scalar(value_node)
+            assert actual_env == spec["env"], (
+                f"reviewed env mapping changed for {identity}"
+            )
+
+            run_node = fields["run"][1]
+            assert isinstance(run_node, yaml.ScalarNode)
+            run_text = run_node.value
+            raw_run = source[run_node.start_mark.index : run_node.end_mark.index]
+            default_strict = name != "reusable-full-backend-mutation.yml" or (
+                "Require all full mutmut" in identity[1]
+            )
+            strict = bool(spec.get("strict", default_strict))
+            assert run_text.startswith("set -euo pipefail\n") is strict
+            for current, frozen in spec["replacements"]:
+                current_bytes, frozen_bytes = (
+                    current.encode("utf-8"),
+                    frozen.encode("utf-8"),
+                )
+                assert run_text.count(current) == 1, (
+                    f"reviewed argv changed for {identity}"
+                )
+                assert raw_run.count(current_bytes) == 1, (
+                    f"reviewed run bytes changed for {identity}"
+                )
+                run_text = run_text.replace(current, frozen, 1)
+                raw_run = raw_run.replace(current_bytes, frozen_bytes, 1)
+            edits.append((run_node.start_mark.index, run_node.end_mark.index, raw_run))
+
+            for env_key in spec["remove_env"]:
+                key_node = env_nodes[env_key]
+                line_start = source.rfind(b"\n", 0, key_node.start_mark.index) + 1
+                line_end = source.find(b"\n", key_node.start_mark.index)
+                assert line_end >= 0
+                edits.append((line_start, line_end + 1, b""))
+
+    assert seen == set(specs), (
+        f"reviewed step population changed for {name}: "
+        f"missing={set(specs) - seen!r}, extra={seen - set(specs)!r}"
+    )
+    for start, end, replacement in sorted(
+        edits, key=lambda edit: edit[0], reverse=True
+    ):
+        source = source[:start] + replacement + source[end:]
+    return source
+
+
 def _normalize_reviewed_workflow_pins(name: str, source: bytes) -> bytes:
     for current, frozen in _REVIEWED_MUTATION_SHARD_HUNKS.get(name, ()):
-        current_bytes, frozen_bytes = current.encode("utf-8"), frozen.encode("utf-8")
+        current_bytes, frozen_bytes = current.encode(), frozen.encode()
         assert source.count(current_bytes) == 1 and frozen_bytes not in source, (
             "reviewed mutation shard hunk changed"
         )
@@ -214,6 +608,7 @@ def _normalize_reviewed_workflow_pins(name: str, source: bytes) -> bytes:
                 "reviewed nightly hunk changed"
             )
             source = source.replace(current.encode("utf-8"), frozen.encode("utf-8"), 1)
+    source = _normalize_reviewed_step_sources(name, source)
     counts = _REVIEWED_WORKFLOW_PIN_COUNTS[name]
     for (current, frozen), count in zip(
         _REVIEWED_WORKFLOW_PIN_REPLACEMENTS, counts, strict=True
@@ -293,6 +688,12 @@ def _load(path: Path) -> dict[str, object]:
     return value
 
 
+def _load_current(path: Path) -> dict[str, object]:
+    value = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert isinstance(value, dict)
+    return value
+
+
 def _on(workflow: dict[str, object]) -> dict[str, object]:
     value = workflow.get("on", workflow.get(True))
     assert isinstance(value, dict)
@@ -313,6 +714,48 @@ def _steps(job: dict[str, object]) -> list[dict[str, object]]:
 
 def _step(job: dict[str, object], name: str) -> dict[str, object]:
     return next(step for step in _steps(job) if step.get("name") == name)
+
+
+def _selector_run(arguments: tuple[str, ...], *, strict: bool) -> str:
+    lines = ["python3 scripts/quality/select_same_run_artifact_cli.py \\"]
+    lines.extend(f"  {argument} \\" for argument in arguments[:-1])
+    lines.append(f"  {arguments[-1]}")
+    prefix = "set -euo pipefail\n" if strict else ""
+    return prefix + "\n".join(lines) + "\n"
+
+
+def _assert_selector(
+    step: dict[str, object],
+    expected_env: dict[str, str],
+    arguments: tuple[str, ...],
+    *,
+    strict: bool,
+) -> None:
+    assert step.get("shell") == "bash"
+    assert step.get("env", {}) == expected_env
+    assert step.get("run") == _selector_run(arguments, strict=strict)
+
+
+def _assert_backend_artifact_selector(
+    step: dict[str, object], artifact_prefix: str, *, strict: bool
+) -> None:
+    _assert_selector(
+        step,
+        _selector_env(artifact_prefix),
+        (
+            '--repository "$REPOSITORY"',
+            '--run-id "$RUN_ID"',
+            '--consumer-run-attempt "$CONSUMER_RUN_ATTEMPT"',
+            '--commit-sha "$COMMIT_SHA"',
+            '--run-head-sha "$RUN_HEAD_SHA"',
+            '--event "$EVENT_NAME"',
+            '--workflow-path "$WORKFLOW_PATH"',
+            '--artifact-prefix "$ARTIFACT_PREFIX"',
+            '--artifact-suffix ""',
+            "--attempt-policy current-or-earlier",
+        ),
+        strict=strict,
+    )
 
 
 _APPROVED_ACTION_PIN_REFRESHES: dict[tuple[str, str], dict[str, tuple[str, int]]] = {
@@ -815,7 +1258,7 @@ def test_full_backend_is_a_trusted_reusable_workflow_with_same_run_artifacts() -
 
 
 def test_full_mutmut_generation_is_retry_bound_and_reused_by_eligible_phases() -> None:
-    jobs = _jobs(_load(FULL_BACKEND))
+    jobs = _jobs(_load_current(FULL_BACKEND))
     generation = jobs["mutation-tests-full-generation-base"]
     assert generation["permissions"] == {"contents": "read", "actions": "read"}
     assert generation["timeout-minutes"] == 45
@@ -857,9 +1300,9 @@ def test_full_mutmut_generation_is_retry_bound_and_reused_by_eligible_phases() -
     for job in consumers:
         steps = _steps(job)
         selector = _step(job, "Select immutable same-run mutmut generation base")
-        assert "--attempt-policy current-or-earlier" in selector["run"]
-        assert '--run-id "${{ github.run_id }}"' in selector["run"]
-        assert '--commit-sha "${{ github.sha }}"' in selector["run"]
+        _assert_backend_artifact_selector(
+            selector, _GITHUB_MUTMUT_ARTIFACT_PREFIX, strict=True
+        )
 
         download = _step(job, "Download selected same-run mutmut generation base")
         assert (
@@ -1424,7 +1867,7 @@ def test_full_backend_execution_steps_match_original_except_reusable_boundaries(
 
 
 def test_reusable_helm_consumer_uses_same_run_verified_artifact_before_build() -> None:
-    reusable = _jobs(_load(FULL_BACKEND))
+    reusable = _jobs(_load_current(FULL_BACKEND))
     provenance = _step(
         reusable["verify-full-mutation-provenance"],
         "Validate caller, reusable source, and same-run Helm artifact",
@@ -1440,19 +1883,11 @@ def test_reusable_helm_consumer_uses_same_run_verified_artifact_before_build() -
     ):
         job = reusable[job_id]
         names = [step.get("name") for step in _steps(job)]
-        selector = _step(job, "Select same-run Helm dependency artifact")["run"]
-        assert "select_same_run_artifact_cli.py" in selector
-        assert '"${{ github.run_id }}"' in selector
-        assert '"${{ github.run_attempt }}"' in selector
-        assert (
-            '"${{ needs.verify-full-mutation-provenance.outputs.workflow_path }}"'
-            in selector
+        _assert_backend_artifact_selector(
+            _step(job, "Select same-run Helm dependency artifact"),
+            _GITHUB_HELM_ARTIFACT_PREFIX,
+            strict=False,
         )
-        assert (
-            '"${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}"'
-            in selector
-        )
-        assert "--attempt-policy current-or-earlier" in selector
         download = _step(job, "Download same-run Helm dependency artifact")
         assert (
             download["with"]["artifact-ids"]
@@ -1472,6 +1907,237 @@ def test_reusable_helm_consumer_uses_same_run_verified_artifact_before_build() -
         helm = _step(job, "Resolve Helm chart dependencies")["run"]
         assert "--skip-refresh" in helm
         assert "helm dependency build" not in helm
+
+
+def test_parser_friendly_selector_bindings_preserve_values_and_shard_checks() -> None:
+    nightly = _jobs(_load_current(NIGHTLY))
+    nightly_common = (
+        '--repository "$GITHUB_REPOSITORY"',
+        '--run-id "$GITHUB_RUN_ID"',
+        '--consumer-run-attempt "$GITHUB_RUN_ATTEMPT"',
+        '--commit-sha "$GITHUB_SHA"',
+        '--run-head-sha "$GITHUB_SHA"',
+        '--event "$GITHUB_EVENT_NAME"',
+        '--workflow-path ".github/workflows/nightly-full-gate.yml"',
+    )
+    nightly_preflight = (
+        *nightly_common,
+        '--artifact-prefix "frontend-mutation-preflight-"',
+        '--artifact-suffix "$GITHUB_SHA"',
+        "--attempt-policy current-or-earlier",
+    )
+    gh_token = {"GH_TOKEN": "${{ github.token }}"}
+    _assert_selector(
+        _step(
+            nightly["frontend-mutation-shards"],
+            "Select immutable same-run Stryker preflight candidate",
+        ),
+        gh_token,
+        nightly_preflight,
+        strict=True,
+    )
+    _assert_selector(
+        _step(
+            nightly["frontend-mutation-tests-full"],
+            "Select immutable same-run Stryker preflight candidate",
+        ),
+        gh_token,
+        nightly_preflight,
+        strict=True,
+    )
+    _assert_selector(
+        _step(
+            nightly["frontend-mutation-shards"],
+            "Select immutable cached shard publication",
+        ),
+        {
+            **gh_token,
+            "PRODUCER_ATTEMPT": "${{ steps.validate_cached_shard.outputs.producer_attempt }}",
+            "SHARD_INDEX": "${{ matrix.shard-index }}",
+        },
+        (
+            *nightly_common,
+            '--artifact-prefix "nightly-frontend-mutation-shard-"',
+            '--artifact-suffix ""',
+            '--producer-attempt "$PRODUCER_ATTEMPT"',
+            '--shard-index "$SHARD_INDEX"',
+            '--shard-count "$STRYKER_SHARD_COUNT"',
+            "--attempt-policy current-or-earlier",
+            "--allow-empty",
+        ),
+        strict=True,
+    )
+    _assert_selector(
+        _step(
+            nightly["frontend-mutation-roundtrip"],
+            "Select immutable same-run validated Stryker evidence candidate",
+        ),
+        gh_token,
+        (
+            *nightly_common,
+            '--artifact-prefix "frontend-mutation-validated-"',
+            '--artifact-suffix ""',
+            "--attempt-policy current-or-earlier",
+        ),
+        strict=True,
+    )
+
+    manual = _jobs(_load_current(MANUAL))
+    manual_common = (
+        "--repository '${{ github.repository }}'",
+        "--run-id '${{ github.run_id }}'",
+        "--consumer-run-attempt '${{ github.run_attempt }}'",
+        "--commit-sha '${{ github.sha }}'",
+        "--run-head-sha '${{ github.sha }}'",
+        "--event '${{ github.event_name }}'",
+        '--workflow-path ".github/workflows/manual-mutation-evidence.yml"',
+    )
+    manual_preflight = (
+        *manual_common,
+        '--artifact-prefix "frontend-mutation-preflight-"',
+        "--artifact-suffix '${{ github.sha }}'",
+        "--attempt-policy current-or-earlier",
+    )
+    _assert_selector(
+        _step(
+            manual["manual-frontend-mutation-shards"],
+            "Select immutable same-run Stryker preflight candidate",
+        ),
+        gh_token,
+        manual_preflight,
+        strict=True,
+    )
+    _assert_selector(
+        _step(
+            manual["manual-frontend-mutation-aggregate"],
+            "Select immutable same-run Stryker preflight candidate",
+        ),
+        gh_token,
+        manual_preflight,
+        strict=True,
+    )
+    _assert_selector(
+        _step(
+            manual["manual-frontend-mutation-roundtrip"],
+            "Select immutable same-run validated Stryker evidence candidate",
+        ),
+        gh_token,
+        (
+            *manual_common,
+            '--artifact-prefix "frontend-mutation-validated-"',
+            '--artifact-suffix ""',
+            "--attempt-policy current-or-earlier",
+        ),
+        strict=True,
+    )
+
+    full = _jobs(_load_current(FULL_BACKEND))
+    for job_id in (
+        "mutation-tests-full-generation-base",
+        "mutation-tests-full-stats",
+        "mutation-tests-full-plan",
+        "mutation-tests-full",
+    ):
+        _assert_backend_artifact_selector(
+            _step(full[job_id], "Select same-run Helm dependency artifact"),
+            _GITHUB_HELM_ARTIFACT_PREFIX,
+            strict=False,
+        )
+    for job_id in (
+        "mutation-tests-full-stats",
+        "mutation-tests-full-plan",
+        "mutation-tests-full",
+    ):
+        _assert_backend_artifact_selector(
+            _step(full[job_id], "Select immutable same-run mutmut generation base"),
+            _GITHUB_MUTMUT_ARTIFACT_PREFIX,
+            strict=True,
+        )
+
+    expected_namespace_env = {
+        "RUN_ID": _GITHUB_RUN_ID,
+        "RUN_ATTEMPT": _GITHUB_RUN_ATTEMPT,
+        "ARTIFACT_NAMESPACE": _GITHUB_ARTIFACT_NAMESPACE,
+    }
+    stats = _step(
+        full["mutation-tests-full-plan"], "Require all full mutmut stats shards"
+    )
+    assert stats["shell"] == "bash"
+    assert stats["env"] == expected_namespace_env
+    assert "expected=8\n" in stats["run"]
+    assert "for shard in $(seq 0 7); do" in stats["run"]
+    assert (
+        "mutmut-stats/${ARTIFACT_NAMESPACE}-mutmut-stats-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-stats.json"
+        in stats["run"]
+    )
+
+    execution = _step(
+        full["mutation-tests-full-aggregate"],
+        "Require all full mutmut execution shards",
+    )
+    assert execution["shell"] == "bash"
+    assert execution["env"] == expected_namespace_env
+    assert "expected=128\n" in execution["run"]
+    assert "for shard in $(seq 1 128); do" in execution["run"]
+    assert (
+        "mutmut-shards/${ARTIFACT_NAMESPACE}-mutmut-shard-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-cicd-stats.json"
+        in execution["run"]
+    )
+
+
+def _replace_step_block_source(
+    source: bytes,
+    job_id: str,
+    step_name: str,
+    current: bytes,
+    replacement: bytes,
+) -> bytes:
+    job_marker = f"  {job_id}:\n".encode()
+    step_marker = f"      - name: {step_name}\n".encode()
+    job_start = source.find(job_marker)
+    assert job_start >= 0
+    step_start = source.find(step_marker, job_start)
+    assert step_start >= 0
+    next_step = source.find(b"      - name: ", step_start + len(step_marker))
+    step_end = len(source) if next_step < 0 else next_step
+    step_source = source[step_start:step_end]
+    assert step_source.count(current) == 1
+    return (
+        source[:step_start]
+        + step_source.replace(current, replacement, 1)
+        + source[step_end:]
+    )
+
+
+@pytest.mark.parametrize(
+    ("current", "replacement", "failure"),
+    [
+        (
+            b"RUN_ID: ${{ github.run_id }}",
+            b"RUN_ID: ${{ github.run_attempt }}",
+            "reviewed env mapping changed",
+        ),
+        (
+            b"--attempt-policy current-or-earlier",
+            b"--attempt-policy all",
+            "reviewed argv changed",
+        ),
+    ],
+    ids=["wrong-run-id-env", "wrong-attempt-policy-argv"],
+)
+def test_selector_source_normalizer_rejects_env_and_argv_drift(
+    current: bytes, replacement: bytes, failure: str
+) -> None:
+    source = bytes(FULL_BACKEND.read_bytes())
+    changed = _replace_step_block_source(
+        source,
+        "mutation-tests-full-generation-base",
+        "Select same-run Helm dependency artifact",
+        current,
+        replacement,
+    )
+    with pytest.raises(AssertionError, match=failure):
+        _normalize_reviewed_step_sources(FULL_BACKEND.name, changed)
 
 
 def _binding_diagnostic_input(
@@ -1736,6 +2402,56 @@ def test_reviewed_nightly_hunks_accept_only_exact_current_bytes(index: int) -> N
     drifted = source.replace(current.encode("utf-8"), b"# drifted reviewed hunk\n", 1)
     with pytest.raises(AssertionError, match="reviewed nightly hunk changed"):
         _normalize_reviewed_workflow_pins(NIGHTLY.name, drifted)
+
+
+def test_load_and_chaos_writes_and_validates_junit_even_on_failure() -> None:
+    job = _jobs(yaml.safe_load(NIGHTLY.read_text(encoding="utf-8")))["load-and-chaos"]
+    assert job["name"] == "Load and chaos resilience"
+    assert job["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    assert job.get("needs", []) == []
+
+    steps = job["steps"]
+    pytest_step = next(
+        step for step in steps if step.get("name") == "Run chaos and resilience tests"
+    )
+    upload = next(
+        step for step in steps if step.get("name") == "Upload AUD-322 chaos receipt"
+    )
+    run = pytest_step["run"]
+    assert 'report="$RUNNER_TEMP/chaos-resilience.xml"' in run
+    assert "set +e" in run
+    assert (
+        'uv run pytest tests/chaos/ -v -m chaos --tb=short --junitxml="$report"' in run
+    )
+    assert "pytest_status=$?" in run
+    assert (
+        'uv run python scripts/quality/validate_chaos_resilience_junit.py "$report"'
+        in run
+    )
+    assert "validator_status=$?" in run
+    assert (
+        run.index("pytest_status=$?")
+        < run.index("validate_chaos_resilience_junit.py")
+        < run.index("validator_status=$?")
+    )
+    assert 'if [[ "$pytest_status" -ne 0 ]]; then' in run
+    assert 'exit "$pytest_status"' in run
+    assert 'exit "$validator_status"' in run
+    assert run.index('exit "$pytest_status"') < run.index('exit "$validator_status"')
+    assert pytest_step.get("continue-on-error", False) is False
+
+    assert upload["if"] == "${{ always() }}"
+    assert upload["uses"] == (
+        "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+    )
+    assert upload["with"]["name"] == (
+        "nightly-chaos-resilience-${{ github.sha }}-${{ github.run_id }}-"
+        "${{ github.run_attempt }}"
+    )
+    assert upload["with"]["path"] == "${{ runner.temp }}/chaos-resilience.xml"
+    assert upload["with"]["if-no-files-found"] == "ignore"
+    # Keep the workflow's configured default artifact retention for this report.
+    assert "retention-days" not in upload["with"]
 
 
 # AUD-346: the chaos dry-run gate must never be satisfied by a fake target.

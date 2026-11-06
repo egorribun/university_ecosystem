@@ -32,7 +32,11 @@ GRAPH = (
 )
 
 
-def messages():
+def messages(go_version=None):
+    if go_version is None:
+        gate = importlib.import_module("scripts.quality.check_caddy_govulncheck")
+        go_version = gate._pinned_builder_go_version()
+    govulncheck_go_version = f"go{go_version}"
     return [
         {
             "config": {
@@ -41,13 +45,13 @@ def messages():
                 "scanner_version": "v1.8.0",
                 "scan_level": "symbol",
                 "scan_mode": "source",
-                "go_version": "go1.26.10",
+                "go_version": govulncheck_go_version,
                 "db": "https://vuln.go.dev",
             }
         },
         {
             "SBOM": {
-                "go_version": "go1.26.10",
+                "go_version": govulncheck_go_version,
                 "roots": [MODULE],
                 "modules": [
                     {"path": MODULE},
@@ -55,7 +59,7 @@ def messages():
                     {"path": PLUGIN, "version": "v0.1.0"},
                     {"path": JOSE, "version": "v3.0.5"},
                     {"path": TEXT, "version": "v0.42.0"},
-                    {"path": "stdlib", "version": "v1.26.10"},
+                    {"path": "stdlib", "version": f"v{go_version}"},
                 ],
             }
         },
@@ -156,7 +160,7 @@ class CaddyReportTests(unittest.TestCase):
             ("protocol_version", "v2"),
             ("scanner_name", "other"),
             ("scanner_version", "v1.7.0"),
-            ("go_version", "go1.25"),
+            ("go_version", "go0.0.0"),
             ("db", "https://example.com"),
         ):
             records = messages()
@@ -180,10 +184,50 @@ class CaddyReportTests(unittest.TestCase):
             self.reject(records)
 
     def test_missing_module_or_wrong_toolchain_blocks(self):
-        for key, value in (("modules", []), ("go_version", "go1.25")):
+        for key, value in (("modules", []), ("go_version", "go0.0.0")):
             records = messages()
             records[1]["SBOM"][key] = value
             self.reject(records)
+
+    def test_stdlib_version_follows_the_digest_pinned_builder(self):
+        gate = self.validator()
+        with tempfile.TemporaryDirectory() as directory:
+            dockerfile = Path(directory) / "Dockerfile"
+            dockerfile.write_text(
+                "FROM golang:1.27.3-alpine3.24@sha256:" + "a" * 64 + " AS builder\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(gate, "CADDY_DOCKERFILE", dockerfile):
+                records = messages(go_version="1.27.3")
+                self.assertEqual(
+                    gate.validate_report(
+                        "\n".join(map(json.dumps, records)), 0, graph=GRAPH
+                    ),
+                    {"reachable": 0, "accepted": 0},
+                )
+
+    def test_missing_unpinned_or_ambiguous_go_builder_blocks(self):
+        gate = self.validator()
+        invalid_dockerfiles = (
+            "FROM caddy:2.11.7-alpine AS runtime\n",
+            "FROM golang:1.26.10-alpine3.24 AS builder\n",
+            "FROM golang:1.26.10-alpine3.24@sha256:short AS builder\n",
+            (
+                "FROM golang:1.26.10-alpine3.24@sha256:"
+                + "a" * 64
+                + " AS builder\nFROM golang:1.26.10-alpine3.24@sha256:"
+                + "b" * 64
+                + " AS second-builder\n"
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            dockerfile = Path(directory) / "Dockerfile"
+            for source in invalid_dockerfiles:
+                with self.subTest(source=source):
+                    dockerfile.write_text(source, encoding="utf-8")
+                    with mock.patch.object(gate, "CADDY_DOCKERFILE", dockerfile):
+                        with self.assertRaises(gate.ReportError):
+                            gate._pinned_builder_go_version()
 
     def test_incomplete_or_different_compiled_module_graph_blocks(self):
         for mutation in ("missing", "wrong_version", "wrong_replacement", "extra"):
@@ -213,7 +257,7 @@ class CaddyReportTests(unittest.TestCase):
             MODULE + "\n",
             GRAPH + f"{JOSE} v3.0.4\n",
             GRAPH + f"{JOSE} v3.0.5 unexpected\n",
-            GRAPH + "stdlib v1.26.10\n",
+            GRAPH + f"stdlib v{self.validator()._pinned_builder_go_version()}\n",
             GRAPH.replace(f"{PLUGIN} v0.1.0\n", ""),
             GRAPH.replace(f"{MODULE} \n", f"{MODULE} v1.0.0\n"),
             GRAPH.replace(f"{JOSE} v3.0.5\n", f"{JOSE} \n"),
@@ -440,6 +484,17 @@ class CaddyReportTests(unittest.TestCase):
                 self.assertEqual(gate.main(), 1)
                 with mock.patch.object(gate, "MAX_REPORT_BYTES", 1):
                     self.assertEqual(gate.main(), 1)
+
+    def test_workflow_go_version_matches_the_caddy_builder_pin(self):
+        workflow_path = ROOT / ".github/workflows/reusable-security-audit.yml"
+        self.assertTrue(workflow_path.is_file(), "Isolated Caddy scan is not wired")
+        workflow = yaml.safe_load(workflow_path.read_text())
+        steps = workflow["jobs"]["govulncheck"]["steps"]
+        gate = self.validator()
+        setup_go = next(step for step in steps if step["name"] == "Set up Go")
+        self.assertEqual(
+            setup_go["with"]["go-version"], gate._pinned_builder_go_version()
+        )
 
     def test_workflow_runs_isolated_gate_and_preserves_operational_failure(self):
         workflow_path = ROOT / ".github/workflows/reusable-security-audit.yml"

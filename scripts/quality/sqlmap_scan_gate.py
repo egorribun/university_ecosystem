@@ -1,19 +1,27 @@
-"""Fail-closed gate for the SQLMap OpenAPI scan (AUD-381).
+"""Fail-closed gate for the two blocking SQLMap scans (AUD-381).
 
-SQLMap can exit 0 after confirming an injection point or stopping early. This
-gate therefore requires all of the following:
+The workflow runs two anonymous scans against the disposable backend:
+
+* scope v1: the ``/api/v1/news`` list, which must also prove that the scanned
+  application executed the seeded news query;
+* scope v2: the complete OpenAPI document, which must test every operation it
+  derives.
+
+SQLMap can exit 0 after confirming an injection point or stopping early. For
+each scan the gate therefore requires all of the following:
 
 * the scan step succeeded (its ``outcome`` is ``success``);
-* the console shows a nonempty OpenAPI target set and SQLMap's multi-target
-  results message, which is emitted after the target loop, before its ending
-  banner (the banner alone is emitted even on interruption);
-* the console reports no interrupted or failed targets and proves that every
-  input in the admitted operation was tested when no injection was found;
+* the console shows exactly one start marker, one target declaration matching
+  the expected target count, SQLMap's multi-target results message and one
+  ending banner, in that order (the banner alone is emitted even on
+  interruption);
+* the console reports no interrupted, timed-out, unreachable or failed targets;
 * the output directory holds a result ``log`` and a valid, empty results CSV;
-* the scanned application executed a news database query during the scan;
 * no output file records a confirmed (or resumed) injection point.
 
-Any missing or unreadable evidence fails closed.
+The news scan additionally requires the seeded news query evidence and every
+admitted parameter's negative result. The OpenAPI scan requires one negative
+result per derived operation. Any missing or unreadable evidence fails closed.
 """
 
 from __future__ import annotations
@@ -33,9 +41,18 @@ END_MARKER = re.compile(rb"\[\*\] ending @ \S")
 TARGET_MARKER = re.compile(
     rb"\[INFO\] derived ([0-9]+) target\(s\) from the OpenAPI/Swagger specification"
 )
-COMPLETION_MARKER = (
+OPENAPI_TARGET_INSTANCE_MARKER = re.compile(
+    rb"\[[0-9]{2}:[0-9]{2}:[0-9]{2}\] \[INFO\] \[([0-9]{1,7})/([0-9]{1,7})\] URL:\r?\n"
+)
+RESULTS_MARKER_PREFIX = (
     b"[INFO] you can find results of scanning in multiple targets mode "
-    b"inside the CSV file 'sqlmap-output/results.csv'"
+    b"inside the CSV file '"
+)
+OPENAPI_OUTPUT_DIR = "sqlmap-openapi-output"
+SCOPED_OPENAPI_NAME = "scoped-openapi.json"
+COMPLETION_MARKER = RESULTS_MARKER_PREFIX + b"sqlmap-output/results.csv'"
+OPENAPI_COMPLETION_MARKER = (
+    RESULTS_MARKER_PREFIX + f"{OPENAPI_OUTPUT_DIR}/results.csv'".encode("ascii")
 )
 TESTED_PARAMETERS = (
     b"GET parameter 'limit' does not seem to be injectable",
@@ -64,12 +81,25 @@ VALID_TECHNIQUE_SETS = frozenset({"B", "E", "U", "BE", "BU", "EU", "BEU"})
 QUERY_EVIDENCE_MARKER = b"SQLMAP SELECT news"
 STEP_OUTCOMES = frozenset({"success", "failure", "cancelled", "skipped"})
 MAX_RECEIPT_COUNT = 1_000_000
+MAX_DECLARED_TARGET_DIGITS = 7
 INCOMPLETE_WARNINGS = (
     b"user aborted",
     b"skipping OpenAPI operation",
     b"skipping external OpenAPI $ref",
     b"skipping dangling OpenAPI $ref",
     b"the web server responded with an HTTP error code",
+    b"time out",
+    b"timed out",
+    b"timeout",
+    b"time-out",
+    b"retry",
+    b"unable to connect",
+    b"connection refused",
+)
+NEGATIVE_RESULT_START = b"all tested parameters do not appear to be injectable."
+NEGATIVE_RESULT_END = b", skipping to the next target"
+HTTP_OPERATION_METHODS = frozenset(
+    {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
 )
 SCOPE_PATH = "/api/v1/news"
 SCOPE_ORIGIN = "http://127.0.0.1:8000"
@@ -97,11 +127,23 @@ def _contains_reference(value: object) -> bool:
     return False
 
 
-def scope_openapi(source: object) -> dict[str, object]:
-    """Keep the versioned anonymous news-list operation from the real schema."""
+def _contains_external_reference(value: object) -> bool:
+    """Reject any reference that does not resolve inside the same document."""
 
-    if not isinstance(source, dict):
-        raise ScanEvidenceError("SQLMap's OpenAPI source must be an object")
+    if isinstance(value, dict):
+        if "$ref" in value:
+            reference = value["$ref"]
+            if not (isinstance(reference, str) and reference.startswith("#/")):
+                return True
+        return any(_contains_external_reference(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_external_reference(item) for item in value)
+    return False
+
+
+def _require_openapi_three(source: dict[str, object]) -> str:
+    """Return the OpenAPI 3 version, rejecting Swagger or ambiguous documents."""
+
     version = source.get("openapi")
     if (
         not isinstance(version, str)
@@ -109,6 +151,15 @@ def scope_openapi(source: object) -> dict[str, object]:
         or "swagger" in source
     ):
         raise ScanEvidenceError("SQLMap requires an unambiguous OpenAPI 3 document")
+    return version
+
+
+def scope_openapi(source: object) -> dict[str, object]:
+    """Keep the versioned anonymous news-list operation from the real schema."""
+
+    if not isinstance(source, dict):
+        raise ScanEvidenceError("SQLMap's OpenAPI source must be an object")
+    version = _require_openapi_three(source)
     paths = source.get("paths")
     path_item = paths.get(SCOPE_PATH) if isinstance(paths, dict) else None
     operation = path_item.get("get") if isinstance(path_item, dict) else None
@@ -157,12 +208,92 @@ def scope_openapi(source: object) -> dict[str, object]:
     }
 
 
-def write_scoped_openapi(source_path: Path, output_path: Path) -> int:
+def scope_full_openapi(source: object) -> dict[str, object]:
+    """Keep every operation of the real schema, pinned to the disposable origin."""
+
+    if not isinstance(source, dict):
+        raise ScanEvidenceError("SQLMap's OpenAPI source must be an object")
+    version = _require_openapi_three(source)
+    paths = source.get("paths")
+    components = source.get("components", {})
+    if not isinstance(paths, dict) or not isinstance(components, dict):
+        raise ScanEvidenceError("SQLMap's OpenAPI source has malformed sections")
+    scoped_paths: dict[str, object] = {}
+    for path, item in paths.items():
+        if not (
+            isinstance(path, str)
+            and path.startswith("/")
+            and not path.startswith("//")
+            and "\\" not in path
+            and "?" not in path
+            and "#" not in path
+            and isinstance(item, dict)
+            and "$ref" not in item
+        ):
+            raise ScanEvidenceError("SQLMap's OpenAPI path items must be inline")
+        scoped_item: dict[str, object] = {}
+        for key, value in item.items():
+            if key in HTTP_OPERATION_METHODS:
+                if not isinstance(value, dict):
+                    raise ScanEvidenceError("SQLMap's OpenAPI operation is malformed")
+                scoped_item[key] = {
+                    name: copy.deepcopy(member)
+                    for name, member in value.items()
+                    # Destination overrides can redirect scanning off the loopback.
+                    if name not in {"servers", "callbacks"}
+                }
+            elif key == "parameters":
+                scoped_item[key] = copy.deepcopy(value)
+        scoped_paths[path] = scoped_item
+    if count_operations(scoped_paths) == 0:
+        raise ScanEvidenceError("SQLMap's OpenAPI source declares no operations")
+    if _contains_external_reference(scoped_paths) or _contains_external_reference(
+        components
+    ):
+        raise ScanEvidenceError("SQLMap's OpenAPI source has an external reference")
+    return {
+        "openapi": version,
+        "info": {"title": "SQLMap full scan scope", "version": "2"},
+        "servers": [{"url": SCOPE_ORIGIN}],
+        "paths": scoped_paths,
+        "components": copy.deepcopy(components),
+        "x-sqlmap-scope": {"version": 2},
+    }
+
+
+def count_operations(paths: dict[object, object]) -> int:
+    """Count HTTP operations in a path map."""
+
+    return sum(
+        1
+        for item in paths.values()
+        if isinstance(item, dict)
+        for method in item
+        if method in HTTP_OPERATION_METHODS
+    )
+
+
+def count_scoped_operations(path: Path) -> int:
+    """Return how many operations the workflow handed to SQLMap."""
+
+    try:
+        document = json.loads(_read_bytes(path).decode("utf-8"))
+    except (UnicodeError, ValueError) as error:
+        raise ScanEvidenceError(
+            "SQLMap scoped OpenAPI document is unreadable"
+        ) from error
+    paths = document.get("paths") if isinstance(document, dict) else None
+    if not isinstance(paths, dict):
+        raise ScanEvidenceError("SQLMap scoped OpenAPI document has no paths")
+    return count_operations(paths)
+
+
+def _write_scope(source_path: Path, output_path: Path, build) -> int:
     """Write a source-derived scope or fail without creating scan evidence."""
 
     try:
         source = json.loads(source_path.read_text(encoding="utf-8"))
-        scoped = scope_openapi(source)
+        scoped = build(source)
         output_path.write_text(json.dumps(scoped, ensure_ascii=True), encoding="utf-8")
     except (OSError, UnicodeError, ValueError) as error:
         print(
@@ -170,6 +301,18 @@ def write_scoped_openapi(source_path: Path, output_path: Path) -> int:
         )
         return 1
     return 0
+
+
+def write_scoped_openapi(source_path: Path, output_path: Path) -> int:
+    """Write the news-only scope (scope v1)."""
+
+    return _write_scope(source_path, output_path, scope_openapi)
+
+
+def write_full_scope(source_path: Path, output_path: Path) -> int:
+    """Write the complete-document scope (scope v2)."""
+
+    return _write_scope(source_path, output_path, scope_full_openapi)
 
 
 def _read_bytes(path: Path) -> bytes:
@@ -181,8 +324,33 @@ def _read_bytes(path: Path) -> bytes:
         ) from error
 
 
-def check_completion(scan_outcome: str, console_log: Path, output_dir: Path) -> bytes:
-    """Validate the target-loop completion evidence and return the console log."""
+def _is_negative_result(line: bytes) -> bool:
+    """SQLMap logs a completed negative target as ERROR in multi-target mode."""
+
+    message = line.split(b"[ERROR]", 1)[1].strip()
+    return message.startswith(NEGATIVE_RESULT_START) and message.endswith(
+        NEGATIVE_RESULT_END
+    )
+
+
+def _declared_targets(console: bytes) -> int | None:
+    """Return the single declared target count, or None when it is ambiguous."""
+
+    targets = list(TARGET_MARKER.finditer(console))
+    if len(targets) != 1 or len(targets[0].group(1)) > MAX_DECLARED_TARGET_DIGITS:
+        return None
+    return int(targets[0].group(1))
+
+
+def _validate_target_loop(
+    scan_outcome: str,
+    console_log: Path,
+    output_dir: Path,
+    *,
+    completion_marker: bytes,
+    expected_targets: int,
+) -> bytes:
+    """Validate the shared target-loop evidence and return the console log."""
 
     if scan_outcome != "success":
         raise ScanEvidenceError(
@@ -194,30 +362,21 @@ def check_completion(scan_outcome: str, console_log: Path, output_dir: Path) -> 
     starts = list(START_MARKER.finditer(console))
     targets = list(TARGET_MARKER.finditer(console))
     ends = list(END_MARKER.finditer(console))
-    completion = console.find(COMPLETION_MARKER)
+    completion = console.find(completion_marker)
     if not (
         len(starts) == len(targets) == len(ends) == 1
-        and int(targets[0].group(1)) == 1
+        and _declared_targets(console) == expected_targets
         and starts[0].start() < targets[0].start() < completion < ends[0].start()
-        and console.count(COMPLETION_MARKER) == 1
+        and console.count(completion_marker) == 1
     ):
         raise ScanEvidenceError("SQLMap console log does not prove the run completed")
     for line in console.splitlines():
         if b"[CRITICAL]" in line:
             raise ScanEvidenceError("SQLMap reported a critical scan error")
-        if b"[ERROR]" in line:
-            message = line.split(b"[ERROR]", 1)[1].strip()
-            # SQLMap logs a completed negative test as ERROR in multi-target mode.
-            if not (
-                message.startswith(
-                    b"all tested parameters do not appear to be injectable."
-                )
-                and message.endswith(b", skipping to the next target")
-            ):
-                raise ScanEvidenceError("SQLMap reported a failed target")
-        if b"[WARNING]" in line and any(
-            marker in line for marker in INCOMPLETE_WARNINGS
-        ):
+        if b"[ERROR]" in line and not _is_negative_result(line):
+            raise ScanEvidenceError("SQLMap reported a failed target")
+        lowered = line.lower()
+        if any(marker.lower() in lowered for marker in INCOMPLETE_WARNINGS):
             raise ScanEvidenceError("SQLMap reported an incomplete target")
     if BLOCKING_HTTP_SUMMARY.search(console):
         raise ScanEvidenceError("SQLMap requests were blocked or rate-limited")
@@ -226,6 +385,19 @@ def check_completion(scan_outcome: str, console_log: Path, output_dir: Path) -> 
         for path in output_dir.rglob("*")
     ):
         raise ScanEvidenceError("SQLMap produced no result log")
+    return console
+
+
+def check_completion(scan_outcome: str, console_log: Path, output_dir: Path) -> bytes:
+    """Validate the news scan's completion and seeded query evidence."""
+
+    console = _validate_target_loop(
+        scan_outcome,
+        console_log,
+        output_dir,
+        completion_marker=COMPLETION_MARKER,
+        expected_targets=1,
+    )
     query_log = output_dir / "db-query-evidence.log"
     if not query_log.is_file():
         raise ScanEvidenceError("SQLMap scan produced no database query evidence")
@@ -233,6 +405,55 @@ def check_completion(scan_outcome: str, console_log: Path, output_dir: Path) -> 
     if not queries or any(query != QUERY_EVIDENCE_MARKER for query in queries):
         raise ScanEvidenceError("SQLMap scan produced no database query evidence")
     return console
+
+
+def check_openapi_completion(
+    scan_outcome: str, console_log: Path, output_dir: Path
+) -> tuple[bytes, int]:
+    """Validate that every derived OpenAPI operation completed a negative result."""
+
+    operations = count_scoped_operations(output_dir / SCOPED_OPENAPI_NAME)
+    if operations == 0:
+        raise ScanEvidenceError("SQLMap OpenAPI scope declares no operations")
+    console = _validate_target_loop(
+        scan_outcome,
+        console_log,
+        output_dir,
+        completion_marker=OPENAPI_COMPLETION_MARKER,
+        expected_targets=operations,
+    )
+    target_marker = TARGET_MARKER.search(console)
+    if target_marker is None:
+        raise ScanEvidenceError("SQLMap did not declare its OpenAPI targets")
+    target_loop = console[
+        target_marker.end() : console.index(OPENAPI_COMPLETION_MARKER)
+    ]
+    # SQLMap 1.10.10 writes an indexed URL header for each multiple-target
+    # iteration. Bind each negative result to that block so duplicates from one
+    # target cannot make up for an operation with no result.
+    target_instances = list(OPENAPI_TARGET_INSTANCE_MARKER.finditer(target_loop))
+    if len(target_instances) != operations or any(
+        int(instance.group(1)) != index or int(instance.group(2)) != operations
+        for index, instance in enumerate(target_instances, start=1)
+    ):
+        raise ScanEvidenceError("SQLMap did not identify every indexed OpenAPI target")
+    for index, instance in enumerate(target_instances):
+        target_end = (
+            target_instances[index + 1].start()
+            if index + 1 < len(target_instances)
+            else len(target_loop)
+        )
+        target_section = target_loop[instance.end() : target_end]
+        negatives = sum(
+            1
+            for line in target_section.splitlines()
+            if b"[ERROR]" in line and _is_negative_result(line)
+        )
+        if negatives != 1:
+            raise ScanEvidenceError(
+                "SQLMap did not complete one negative result for every OpenAPI operation"
+            )
+    return console, operations
 
 
 def _csv_findings(output_dir: Path) -> list[list[str]]:
@@ -293,10 +514,9 @@ def _console_counts(console_log: Path) -> tuple[int | None, int | None]:
         console = ANSI_ESCAPE.sub(b"", _read_bytes(console_log))
     except ScanEvidenceError:
         return None, None
-    targets = list(TARGET_MARKER.finditer(console))
-    target_count = None
-    if len(targets) == 1 and len(targets[0].group(1)) <= 7:
-        target_count = _bounded_count(int(targets[0].group(1)))
+    target_count = _declared_targets(console)
+    if target_count is not None:
+        target_count = _bounded_count(target_count)
     if console.count(COMPLETION_MARKER) != 1:
         return target_count, None
     scan_section = console[: console.index(COMPLETION_MARKER)]
@@ -325,12 +545,71 @@ def _finding_categories(rows: list[list[str]]) -> tuple[list[str], list[str]]:
     return sorted(parameters), sorted(techniques)
 
 
+def _openapi_receipt(
+    output_dir: Path | None, scan_outcome: str, gate_outcome: str
+) -> tuple[dict[str, object], bool]:
+    """Summarize the full-document scan as counts only and report whether it passed."""
+
+    scan = scan_outcome if scan_outcome in STEP_OUTCOMES else "unknown"
+    receipt: dict[str, object] = {
+        "scope": "anonymous-openapi-v2",
+        "scan_outcome": scan,
+        "gate_outcome": gate_outcome if gate_outcome in STEP_OUTCOMES else "unknown",
+        "operations": None,
+        "targets": None,
+        "negative_results": None,
+        "csv_findings": None,
+        "confirmed_injection": None,
+    }
+    if output_dir is None:
+        receipt["status"] = "failed"
+        return receipt, False
+    console_log = output_dir / "scan-console.log"
+    try:
+        receipt["operations"] = _bounded_count(
+            count_scoped_operations(output_dir / SCOPED_OPENAPI_NAME)
+        )
+    except ScanEvidenceError:
+        pass
+    try:
+        receipt["csv_findings"] = _bounded_count(csv_finding_count(output_dir))
+    except ScanEvidenceError:
+        pass
+    try:
+        receipt["confirmed_injection"] = bool(
+            confirmed_injection_files(output_dir, console_log)
+        )
+    except ScanEvidenceError:
+        pass
+    verified = False
+    if scan == gate_outcome == "success":
+        try:
+            console, operations = check_openapi_completion(
+                scan, console_log, output_dir
+            )
+        except ScanEvidenceError:
+            pass
+        else:
+            receipt["targets"] = operations
+            receipt["negative_results"] = operations
+            if any(marker in console for marker in INJECTION_MARKERS):
+                receipt["confirmed_injection"] = True
+            verified = (
+                receipt["csv_findings"] == 0 and receipt["confirmed_injection"] is False
+            )
+    receipt["status"] = "passed" if verified else "failed"
+    return receipt, verified
+
+
 def publish_evidence(
     output_dir: Path,
     scan_outcome: str,
     gate_outcome: str,
     source_sha: str,
     receipt_path: Path,
+    openapi_output_dir: Path | None = None,
+    openapi_scan_outcome: str = "skipped",
+    openapi_gate_outcome: str | None = None,
 ) -> int:
     """Publish only source-bound statuses and counts, never native scan content."""
 
@@ -339,6 +618,11 @@ def publish_evidence(
         return 1
     scan = scan_outcome if scan_outcome in STEP_OUTCOMES else "unknown"
     gate = gate_outcome if gate_outcome in STEP_OUTCOMES else "unknown"
+    openapi_gate = (
+        openapi_gate_outcome
+        if openapi_gate_outcome in STEP_OUTCOMES
+        else (gate if openapi_gate_outcome is None else "unknown")
+    )
     console_log = output_dir / "scan-console.log"
     targets, tested = _console_counts(console_log)
     try:
@@ -367,7 +651,7 @@ def publish_evidence(
             if any(marker in console for marker in INJECTION_MARKERS):
                 confirmed = True
             complete = True
-    verified_success = (
+    news_verified = (
         claimed_success
         and complete
         and targets == 1
@@ -377,8 +661,13 @@ def publish_evidence(
         and csv_findings == 0
         and confirmed is False
     )
+    openapi_receipt, openapi_verified = _openapi_receipt(
+        openapi_output_dir, openapi_scan_outcome, openapi_gate
+    )
+    openapi_claimed = openapi_scan_outcome == "success" and openapi_gate == "success"
+    verified_success = news_verified and openapi_verified
     receipt = {
-        "version": 1,
+        "version": 2,
         "source_sha": source_sha,
         "scope": "anonymous-news-v1",
         "status": "passed" if verified_success else "failed",
@@ -391,6 +680,7 @@ def publish_evidence(
         "finding_parameters": finding_parameters,
         "finding_techniques": finding_techniques,
         "confirmed_injection": confirmed,
+        "openapi": openapi_receipt,
     }
     try:
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -400,10 +690,19 @@ def publish_evidence(
     except OSError:
         print("::error::Could not write SQLMap evidence receipt.", file=sys.stderr)
         return 1
-    if claimed_success and not verified_success:
+    if (claimed_success and not news_verified) or (
+        openapi_claimed and not openapi_verified
+    ):
         print("::error::SQLMap success lacks complete evidence.", file=sys.stderr)
         return 1
     return 0
+
+
+def _summary(summary_path: Path | None, section: str) -> None:
+    if summary_path is None:
+        return
+    with summary_path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(section)
 
 
 def run_gate(
@@ -412,6 +711,8 @@ def run_gate(
     console_log: Path,
     summary_path: Path | None,
 ) -> int:
+    """Gate the news scan (scope v1)."""
+
     try:
         console = check_completion(scan_outcome, console_log, output_dir)
         csv_findings = csv_has_findings(output_dir)
@@ -429,18 +730,16 @@ def run_gate(
         print(f"::error::{error}; the scan result is unknown.", file=sys.stderr)
         return 1
 
-    if summary_path is not None:
-        status = (
-            "injection evidence"
-            if csv_findings and not flagged
-            else ("confirmed injection" if flagged else "no confirmed injection")
-        )
-        with summary_path.open("a", encoding="utf-8", newline="\n") as handle:
-            handle.write(
-                f"### SQLMap scan\n\nScope v1: anonymous GET {SCOPE_PATH}.\n\n"
-                f"Result: {status}. Run completed.\n"
-            )
-
+    status = (
+        "injection evidence"
+        if csv_findings and not flagged
+        else ("confirmed injection" if flagged else "no confirmed injection")
+    )
+    _summary(
+        summary_path,
+        f"### SQLMap scan\n\nScope v1: anonymous GET {SCOPE_PATH}.\n\n"
+        f"Result: {status}. Run completed.\n",
+    )
     if flagged:
         print(
             "::error::SQLMap confirmed SQL injection. "
@@ -459,6 +758,55 @@ def run_gate(
     return 0
 
 
+def run_openapi_gate(
+    scan_outcome: str,
+    output_dir: Path,
+    console_log: Path,
+    summary_path: Path | None,
+) -> int:
+    """Gate the complete-document scan (scope v2)."""
+
+    try:
+        _console, operations = check_openapi_completion(
+            scan_outcome, console_log, output_dir
+        )
+        csv_findings = csv_has_findings(output_dir)
+        flagged = confirmed_injection_files(output_dir, console_log)
+    except ScanEvidenceError as error:
+        print(f"::error::{error}; the OpenAPI scan result is unknown.", file=sys.stderr)
+        return 1
+
+    status = (
+        "confirmed injection"
+        if flagged
+        else ("injection evidence" if csv_findings else "no confirmed injection")
+    )
+    _summary(
+        summary_path,
+        f"### SQLMap OpenAPI scan\n\nScope v2: anonymous complete OpenAPI document, "
+        f"{operations} operation(s).\n\nResult: {status}. Run completed.\n",
+    )
+    if flagged:
+        print(
+            "::error::SQLMap confirmed SQL injection in the OpenAPI scan. "
+            "Review the sanitized SQLMap evidence receipt.",
+            file=sys.stderr,
+        )
+        return 1
+    if csv_findings:
+        print(
+            "::error::SQLMap OpenAPI results CSV contains injection-related evidence. "
+            "Review the sanitized SQLMap evidence receipt.",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        "SQLMap OpenAPI scan tested every operation and reported no confirmed "
+        "injection points."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_arguments = sys.argv[1:] if argv is None else argv
     if raw_arguments[:1] == ["scope-openapi"]:
@@ -467,6 +815,14 @@ def main(argv: list[str] | None = None) -> int:
         scope_parser.add_argument("output", type=Path)
         scope = scope_parser.parse_args(raw_arguments[1:])
         return write_scoped_openapi(scope.source, scope.output)
+    if raw_arguments[:1] == ["scope-full-openapi"]:
+        full_parser = argparse.ArgumentParser(
+            description="Build the complete SQLMap OpenAPI scope"
+        )
+        full_parser.add_argument("source", type=Path)
+        full_parser.add_argument("output", type=Path)
+        full = full_parser.parse_args(raw_arguments[1:])
+        return write_full_scope(full.source, full.output)
     if raw_arguments[:1] == ["publish-evidence"]:
         receipt_parser = argparse.ArgumentParser(description="Publish SQLMap evidence")
         receipt_parser.add_argument("output_dir", type=Path)
@@ -474,6 +830,9 @@ def main(argv: list[str] | None = None) -> int:
         receipt_parser.add_argument("gate_outcome")
         receipt_parser.add_argument("source_sha")
         receipt_parser.add_argument("receipt", type=Path)
+        receipt_parser.add_argument("--openapi-output-dir", type=Path, default=None)
+        receipt_parser.add_argument("--openapi-scan-outcome", default="skipped")
+        receipt_parser.add_argument("--openapi-gate-outcome", default=None)
         receipt = receipt_parser.parse_args(raw_arguments[1:])
         return publish_evidence(
             receipt.output_dir,
@@ -481,20 +840,63 @@ def main(argv: list[str] | None = None) -> int:
             receipt.gate_outcome,
             receipt.source_sha,
             receipt.receipt,
+            receipt.openapi_output_dir,
+            receipt.openapi_scan_outcome,
+            receipt.openapi_gate_outcome,
+        )
+
+    if raw_arguments[:1] == ["gate-news"]:
+        news_parser = argparse.ArgumentParser(description="Gate the seeded news scan")
+        news_parser.add_argument("--scan-outcome", required=True)
+        news_parser.add_argument("--output-dir", type=Path, required=True)
+        news_parser.add_argument("--console-log", type=Path, required=True)
+        news_parser.add_argument("--summary-file", type=Path, default=None)
+        news = news_parser.parse_args(raw_arguments[1:])
+        return run_gate(
+            news.scan_outcome,
+            news.output_dir,
+            news.console_log,
+            news.summary_file,
+        )
+
+    if raw_arguments[:1] == ["gate-openapi"]:
+        openapi_parser = argparse.ArgumentParser(
+            description="Gate the complete anonymous OpenAPI scan"
+        )
+        openapi_parser.add_argument("--scan-outcome", required=True)
+        openapi_parser.add_argument("--output-dir", type=Path, required=True)
+        openapi_parser.add_argument("--console-log", type=Path, required=True)
+        openapi_parser.add_argument("--summary-file", type=Path, default=None)
+        openapi = openapi_parser.parse_args(raw_arguments[1:])
+        return run_openapi_gate(
+            openapi.scan_outcome,
+            openapi.output_dir,
+            openapi.console_log,
+            openapi.summary_file,
         )
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--scan-outcome", required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--console-log", type=Path, required=True)
+    parser.add_argument("--openapi-scan-outcome", required=True)
+    parser.add_argument("--openapi-output-dir", type=Path, required=True)
+    parser.add_argument("--openapi-console-log", type=Path, required=True)
     parser.add_argument("--summary-file", type=Path, default=None)
     arguments = parser.parse_args(raw_arguments)
-    return run_gate(
+    news_status = run_gate(
         arguments.scan_outcome,
         arguments.output_dir,
         arguments.console_log,
         arguments.summary_file,
     )
+    openapi_status = run_openapi_gate(
+        arguments.openapi_scan_outcome,
+        arguments.openapi_output_dir,
+        arguments.openapi_console_log,
+        arguments.summary_file,
+    )
+    return 1 if news_status or openapi_status else 0
 
 
 if __name__ == "__main__":

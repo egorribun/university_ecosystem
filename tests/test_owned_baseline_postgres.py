@@ -64,6 +64,8 @@ class FakeDocker:
         assert kwargs["host_config"] == {
             "port_bindings": {5432: ("127.0.0.1",)},
             "restart_policy": {"Name": "no"},
+            "nano_cpus": owned._CPU_LIMIT_NANO_CPUS,
+            "mem_limit": owned._MEMORY_LIMIT_BYTES,
             "auto_remove": False,
         }
         assert kwargs["ports"] == [5432]
@@ -88,6 +90,8 @@ class FakeDocker:
             "HostConfig": {
                 "Privileged": False,
                 "Binds": None,
+                "NanoCpus": owned._CPU_LIMIT_NANO_CPUS,
+                "Memory": owned._MEMORY_LIMIT_BYTES,
                 "NetworkMode": "default",
                 "PortBindings": {"5432/tcp": [{"HostIp": "127.0.0.1", "HostPort": ""}]},
             },
@@ -96,6 +100,10 @@ class FakeDocker:
             },
             "State": {"Running": False},
         }
+        if self.fail_stage == "resource-cpu":
+            self.data["HostConfig"]["NanoCpus"] = 0
+        elif self.fail_stage == "resource-memory":
+            self.data["HostConfig"]["Memory"] = 128 * 1024 * 1024
         if self.fail_stage == "null-response":
             return None
         if self.fail_stage == "list-response":
@@ -162,12 +170,25 @@ def test_local_client_ignores_operator_environment(
     monkeypatch.setattr(owned.docker, "APIClient", factory)
     assert owned._new_docker_client() is factory.return_value
     factory.assert_called_once_with(
-        base_url="unix:///var/run/docker.sock",
+        base_url=owned._local_docker_endpoint(owned.sys.platform),
         version=owned.DEFAULT_DOCKER_API_VERSION,
         timeout=15,
     )
     assert factory.return_value.trust_env is False
     assert factory.return_value.max_redirects == 0
+
+
+@pytest.mark.parametrize(
+    ("platform", "expected"),
+    [
+        ("win32", "npipe:////./pipe/dockerDesktopLinuxEngine"),
+        ("linux", "unix:///var/run/docker.sock"),
+    ],
+)
+def test_local_endpoint_selector_has_only_fixed_platform_endpoints(
+    platform: str, expected: str
+) -> None:
+    assert owned._local_docker_endpoint(platform) == expected
 
 
 @pytest.mark.parametrize("version", ["0.0.0", "7.2.1"])
@@ -338,12 +359,14 @@ def test_unacknowledged_creation_never_guesses_cleanup_or_retries(
     assert client.calls[-1] == ("close", None)
 
 
-@pytest.mark.parametrize("stage", ["start", "readiness"])
+@pytest.mark.parametrize(
+    "stage", ["start", "readiness", "resource-cpu", "resource-memory"]
+)
 def test_failure_after_acknowledgement_removes_only_verified_owned_container(
     monkeypatch: pytest.MonkeyPatch, stage: str
 ) -> None:
     client = _fake_lifecycle(monkeypatch)
-    if stage == "start":
+    if stage in {"start", "resource-cpu", "resource-memory"}:
         client.fail_stage = stage
     else:
 
@@ -383,6 +406,26 @@ def test_identity_drift_refuses_removal(
             target[path[-1]] = value
     assert not any(name == "remove" for name, _ in client.calls)
     assert client.calls[-1] == ("close", None)
+
+
+@pytest.mark.parametrize(
+    "resource_field,value",
+    [("NanoCpus", 0), ("Memory", 128 * 1024 * 1024)],
+)
+def test_resource_drift_blocks_database_admission_and_removes_owned_container(
+    monkeypatch: pytest.MonkeyPatch, resource_field: str, value: int
+) -> None:
+    client = _fake_lifecycle(monkeypatch)
+    scratch = Mock(side_effect=AssertionError("scratch must not be entered"))
+    monkeypatch.setattr(owned, "_owned_scratch_database", scratch)
+    with pytest.raises(owned.OwnedPostgresError, match="resource limits changed"):
+        with owned.owned_postgres_server() as server:
+            client.data["HostConfig"][resource_field] = value
+            with owned.committed_baseline(server):
+                pytest.fail("resource-mismatched server admitted")
+    assert client.calls.count(("remove", _CONTAINER_ID)) == 1
+    assert client.calls[-1] == ("close", None)
+    scratch.assert_not_called()
 
 
 @pytest.mark.parametrize("absent", [False, True])

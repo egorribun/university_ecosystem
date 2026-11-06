@@ -6,6 +6,8 @@ import type {
 } from "trusted-types/lib"
 
 import { sanitize_rich_text } from "wasm-sanitizer"
+import { htmlToPlainText } from "@/utils/htmlText"
+import { ensureWasmSanitizerInitialized } from "@/utils/wasmSanitizer"
 
 const APP_POLICY_NAME = "app"
 
@@ -89,9 +91,26 @@ export const ensureTrustedTypesPolicies = async (): Promise<void> => {
   ensureAppPolicy(win)
 }
 
+/**
+ * Synchronous accessor for the CSP-approved `app` policy. Returns the existing
+ * policy (creating it through the same helper on first use) or null when
+ * Trusted Types is unavailable, the browser is server-side, or creation failed.
+ */
+export const getAppTrustedTypesPolicy = (): TrustedTypePolicy | null => {
+  if (typeof window === "undefined") return null
+  return ensureAppPolicy(window as TrustedTypesWindow)
+}
+
 export const sanitizeHTML = async (value: string): Promise<string | TrustedHTML> => {
-  if (typeof window === "undefined") return sanitize_rich_text(value)
+  if (typeof window === "undefined") {
+    try {
+      return sanitize_rich_text(value)
+    } catch {
+      return htmlToPlainText(value)
+    }
+  }
   const win = window as TrustedTypesWindow
+  if (!(await ensureWasmSanitizerInitialized())) return htmlToPlainText(value)
   const policy = await ensureSanitizePolicy(win)
   if (policy) {
     // RED-01 (audit Wave 11): Do NOT swallow createHTML errors — a throw here means

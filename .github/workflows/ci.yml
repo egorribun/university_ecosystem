@@ -1007,6 +1007,90 @@ jobs:
       python-version: "3.14"
       node-version: "24.21.0"
 
+  # AUD-380 (owner decision 2026-11-04): blocking Semgrep SAST. Rules come from a
+  # pinned semgrep/semgrep-rules commit (2026-10-21 develop HEAD), not the
+  # registry, so the findings are deterministic. The scan image is read from the
+  # pinned pre-commit semgrep-sast hook and its exact, index-validated
+  # .semgrepignore policy. Every finding must match an exact,
+  # unexpired reviewed disposition in quality/semgrep-dispositions.json, enforced
+  # by scripts/quality/semgrep_dispositions_gate.py, which fails closed.
+  semgrep-sast:
+    name: Semgrep SAST
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: pre-commit-check
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out pinned Semgrep rules
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: semgrep/semgrep-rules
+          # Full commit SHA of semgrep-rules develop HEAD recorded on 2026-11-04
+          # (committed 2026-10-21T21:01:43Z). Change only through review.
+          ref: 16b9e6d45f10649f6a531ec4838ed9924372c3bc
+          path: .semgrep-rules
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv for the Semgrep gate
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Resolve the pinned Semgrep image
+        run: |
+          set -euo pipefail
+          image="$(awk '
+            /^[[:space:]]*-[[:space:]]*id:[[:space:]]*semgrep-docker[[:space:]]*$/ {
+              if (in_hook) exit 1
+              in_hook = 1
+              hooks++
+              next
+            }
+            in_hook && /^[[:space:]]*-[[:space:]]*id:[[:space:]]*/ { in_hook = 0 }
+            in_hook && /^[[:space:]]*entry:/ {
+              entries++
+              if (entries > 1) exit 1
+              for (i = 1; i <= NF; i++) {
+                if ($i ~ /^semgrep\/semgrep:/) {
+                  images++
+                  image = $i
+                }
+              }
+            }
+            END {
+              if (hooks != 1 || entries != 1 || images != 1) exit 1
+              print image
+            }
+          ' .pre-commit-config.yaml)"
+          if [[ ! "$image" =~ ^semgrep/semgrep:[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$ ]]; then
+            echo '::error::Expected one versioned, digest-pinned Semgrep hook image' >&2
+            exit 1
+          fi
+          echo "SEMGREP_IMAGE=$image" >> "$GITHUB_ENV"
+
+      - name: Run Semgrep with the pinned rule set
+        run: |
+          set -euo pipefail
+          uv run --frozen python -I scripts/quality/run_semgrep_gate.py \
+            "$SEMGREP_IMAGE" \
+            --output-directory "$RUNNER_TEMP/semgrep"
+
+      - name: Upload Semgrep SARIF to Code Scanning
+        if: ${{ always() }}
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: ${{ runner.temp }}/semgrep/semgrep.sarif
+          category: semgrep-sast
+
   live-realtime-visual:
     if: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
     permissions:
@@ -1183,37 +1267,7 @@ jobs:
             echo "::error::Gunicorn emitted-log proof failed" >&2
             exit 1
           fi
-          if ! python3 - "$proof_root/receipt.xml" >/dev/null 2>&1 <<'PY'
-          from pathlib import Path
-          import sys
-          from xml.etree import ElementTree as ET
-
-          receipt = Path(sys.argv[1])
-          if receipt.is_symlink() or not receipt.is_file() or receipt.stat().st_size > 131072:
-              raise SystemExit(1)
-          root = ET.parse(receipt).getroot()
-          if root.tag != "testsuites" or len(root) != 1:
-              raise SystemExit(1)
-          suite = root[0]
-          if suite.tag != "testsuite" or any(
-              suite.get(key) != value
-              for key, value in {
-                  "tests": "1", "failures": "0", "errors": "0", "skipped": "0"
-              }.items()
-          ):
-              raise SystemExit(1)
-          cases = list(root.iter("testcase"))
-          if len(cases) != 1 or (
-              cases[0].get("classname"), cases[0].get("name")
-          ) != (
-              "tests.aud178_449_gunicorn_proof",
-              "test_real_gunicorn_worker_emitted_logs_exclude_reset_and_oauth_targets",
-          ):
-              raise SystemExit(1)
-          if any(list(root.iter(tag)) for tag in ("failure", "error", "skipped")):
-              raise SystemExit(1)
-          PY
-          then
+          if ! uv run --frozen --no-sync python -I .github/scripts/ci/verify_aud178_449_gunicorn_receipt.py "$proof_root/receipt.xml" >/dev/null 2>&1; then
             echo "::error::Gunicorn emitted-log proof receipt rejected" >&2
             exit 1
           fi
@@ -1397,6 +1451,7 @@ jobs:
       - name: Lint Postgres Migrations (Squawk)
         id: migration-squawk
         env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
         run: |
@@ -1410,7 +1465,7 @@ jobs:
           printf '%s  %s\n' "$expected_sha256" "$squawk_binary_path" |
             /usr/bin/sha256sum --check --strict
           echo "Linting changed Alembic migrations for ZDD safety..."
-          base_sha="${{ github.event.pull_request.base.sha }}"
+          base_sha="${PR_BASE_SHA}"
           if [ -z "$base_sha" ]; then base_sha="HEAD~1"; fi
           versions_mode="$(git ls-tree --format='%(objectmode)' HEAD -- alembic/versions)"
           if [[ "$versions_mode" != "040000" || ! -d alembic/versions || -L alembic || -L alembic/versions ]]; then
@@ -1515,18 +1570,7 @@ jobs:
       - name: Wait for PostgreSQL
         shell: pwsh
         run: |
-          $timeout = 30
-          $elapsed = 0
-          do {
-            $null = pg_isready -h localhost -p 5432 -U test
-            if ($LASTEXITCODE -eq 0) {
-              return
-            }
-            Start-Sleep -Seconds 1
-            $elapsed++
-          } while ($elapsed -lt $timeout)
-          throw "PostgreSQL was not ready in $timeout seconds"
-
+          pwsh -NoProfile -File .github/scripts/ci/wait_for_postgres.ps1
       # The database stays empty until `alembic upgrade head`. The MVP baseline
       # (AUD-208) rejects any populated public schema, so no ORM create_all and no
       # pre-created pgvector extension may run first; the baseline creates vector
@@ -1628,45 +1672,7 @@ jobs:
           head -c 131072 "$test_log"
           echo "ALEMBIC_RENDERER_LIFECYCLE_TESTS_END"
           receipt_status=0
-          uv run --frozen --no-sync python - "$probe_root/junit.xml" <<'PY_RENDERER_RECEIPT' || receipt_status=$?
-          import json
-          import sys
-          from pathlib import Path
-          from xml.etree import ElementTree
-
-          try:
-              report = Path(sys.argv[1])
-              if (
-                  report.is_symlink()
-                  or not report.is_file()
-                  or not 0 < report.stat().st_size <= 1_048_576
-              ):
-                  raise ValueError
-              root = ElementTree.parse(report).getroot()
-              suites = list(root.iter("testsuite"))
-              if len(suites) != 1:
-                  raise ValueError
-              counts = {
-                  key: int(suites[0].get(key, "-1"))
-                  for key in ("tests", "failures", "errors", "skipped")
-              }
-              if any(value < 0 or value > 41 for value in counts.values()):
-                  raise ValueError
-              print("ALEMBIC_RENDERER_LIFECYCLE_COUNTS " + json.dumps(counts, sort_keys=True))
-              cases = list(root.iter("testcase"))
-              identities = {(case.get("classname"), case.get("name")) for case in cases}
-              expected = {"tests": 41, "failures": 0, "errors": 0, "skipped": 0}
-              if len(cases) != 41 or len(identities) != 41 or counts != expected:
-                  raise ValueError
-              if any(not all(identity) for identity in identities):
-                  raise ValueError
-              if any(list(root.iter(tag)) for tag in ("failure", "error", "skipped")):
-                  raise ValueError
-          except (OSError, ValueError, ElementTree.ParseError):
-              print("ALEMBIC_RENDERER_LIFECYCLE_RECEIPT_REJECTED")
-              raise SystemExit(1) from None
-          print("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 41")
-          PY_RENDERER_RECEIPT
+          uv run --frozen --no-sync python -I .github/scripts/ci/verify_alembic_renderer_lifecycle_receipt.py "$probe_root/junit.xml" || receipt_status=$?
           if [ "$bytes" -gt 131072 ]; then
             echo "::error::Alembic renderer lifecycle output exceeded 131072 bytes"
             receipt_status=1
@@ -1768,15 +1774,7 @@ jobs:
       - name: Verify generated API types are up to date
         shell: pwsh
         run: |
-          git diff --exit-code -- `
-            frontend/openapi.json `
-            frontend/src/api/generated/ `
-            frontend/src/tests/mocks/generated/
-          if ($LASTEXITCODE -ne 0) {
-            echo "::error::Generated OpenAPI, TypeScript SDK, or MSW mocks are not up to date. Run 'npm run generate:api'."
-            exit 1
-          }
-
+          pwsh -NoProfile -File .github/scripts/ci/verify_generated_api_types.ps1
   verify-runtime-reqs:
     name: Verify Runtime Requirements
     runs-on: ubuntu-24.04
@@ -1968,16 +1966,7 @@ jobs:
           timeout --kill-after=5s 30s docker run --rm --interactive --pull=never \
             --name "$container_name" --network none --read-only \
             --cap-drop ALL --security-opt no-new-privileges \
-            --entrypoint /bin/sh "university-ecosystem/caddy:${IMAGE_TAG}" -eu <<'CADDY_PACKAGE_PROOF'
-              release="$(cat /etc/alpine-release)"
-              case "$release" in
-                3.23.*) ;;
-                *) echo "Unexpected Caddy Alpine release: $release" >&2; exit 1 ;;
-              esac
-              printf "Caddy Alpine release: %s\n" "$release"
-              cat /etc/apk/repositories
-              apk --no-network --verbose info --exists "brotli-libs=1.2.1-r0"
-          CADDY_PACKAGE_PROOF
+            --entrypoint /bin/sh "university-ecosystem/caddy:${IMAGE_TAG}" -eu < .github/scripts/ci/verify_caddy_brotli_package.sh
 
       - name: Run Trivy vulnerability scanner
         id: trivy_scan
@@ -2310,54 +2299,7 @@ jobs:
           head -c 131072 "$test_log"
           echo "OWNED_RENDERER_POSTGRES_TESTS_END"
           receipt_status=0
-          uv run --frozen --no-sync python - "$probe_root/junit.xml" <<'PY_RENDERER_PG_RECEIPT' || receipt_status=$?
-          import json
-          import sys
-          from pathlib import Path
-          from xml.etree import ElementTree
-
-          try:
-              report = Path(sys.argv[1])
-              if (
-                  report.is_symlink()
-                  or not report.is_file()
-                  or not 0 < report.stat().st_size <= 1_048_576
-              ):
-                  raise ValueError
-              root = ElementTree.parse(report).getroot()
-              suites = list(root.iter("testsuite"))
-              if len(suites) != 1:
-                  raise ValueError
-              counts = {
-                  key: int(suites[0].get(key, "-1"))
-                  for key in ("tests", "failures", "errors", "skipped")
-              }
-              if any(value < 0 or value > 7 for value in counts.values()):
-                  raise ValueError
-              print("OWNED_RENDERER_POSTGRES_COUNTS " + json.dumps(counts, sort_keys=True))
-              cases = list(root.iter("testcase"))
-              identities = {(case.get("classname"), case.get("name")) for case in cases}
-              names = {
-                  "test_owned_renderer_catalog_rejects_user_objects[" + kind + "]"
-                  for kind in ("relation", "routine", "type", "schema", "extension")
-              }
-              names.update({
-                  "test_owned_live_renderer_root_lifecycle_cleans_up",
-                  "test_owned_live_renderer_create_collision_preserves_existing_database",
-              })
-              expected_identities = {
-                  ("tests.test_alembic_live_sql_render", name) for name in names
-              }
-              expected = {"tests": 7, "failures": 0, "errors": 0, "skipped": 0}
-              if len(cases) != 7 or identities != expected_identities or counts != expected:
-                  raise ValueError
-              if any(list(root.iter(tag)) for tag in ("failure", "error", "skipped")):
-                  raise ValueError
-          except (OSError, ValueError, ElementTree.ParseError):
-              print("OWNED_RENDERER_POSTGRES_RECEIPT_REJECTED")
-              raise SystemExit(1) from None
-          print("OWNED_RENDERER_POSTGRES_VERIFIED_PASS 7")
-          PY_RENDERER_PG_RECEIPT
+          uv run --frozen --no-sync python -I .github/scripts/ci/verify_owned_renderer_postgres_receipt.py "$probe_root/junit.xml" || receipt_status=$?
           if [ "$bytes" -gt 131072 ]; then
             echo "::error::Owned renderer PostgreSQL output exceeded 131072 bytes"
             receipt_status=1
@@ -3722,16 +3664,22 @@ jobs:
         id: select_coverage_producers
         shell: bash
         env:
+          COVERAGE_REPOSITORY: ${{ github.repository }}
+          COVERAGE_RUN_ID: ${{ github.run_id }}
+          COVERAGE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          COVERAGE_COMMIT_SHA: ${{ github.sha }}
+          COVERAGE_RUN_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          COVERAGE_EVENT: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 -m scripts.quality.select_coverage_producer_artifacts \
-            --repository "${{ github.repository }}" \
-            --run-id "${{ github.run_id }}" \
-            --consumer-run-attempt "${{ github.run_attempt }}" \
-            --commit-sha "${{ github.sha }}" \
-            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
-            --event "${{ github.event_name }}" \
+            --repository "${COVERAGE_REPOSITORY}" \
+            --run-id "${COVERAGE_RUN_ID}" \
+            --consumer-run-attempt "${COVERAGE_RUN_ATTEMPT}" \
+            --commit-sha "${COVERAGE_COMMIT_SHA}" \
+            --run-head-sha "${COVERAGE_RUN_HEAD_SHA}" \
+            --event "${COVERAGE_EVENT}" \
             --workflow-path ".github/workflows/ci.yml"
 
       - name: Download Python shard coverage data
@@ -4267,7 +4215,7 @@ jobs:
             --run-attempt "$RUN_ATTEMPT" \
             --event "$WORKFLOW_EVENT" \
             --job coverage-policy-gate \
-            --artifact "quality-evidence-${{ github.sha }}-attempt-${RUN_ATTEMPT}" \
+            --artifact "quality-evidence-${EXPECTED_SHA}-attempt-${RUN_ATTEMPT}" \
             --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --tool-version quality-provenance=2.0.0 \
             --retry-selection-receipt artifacts/coverage/provenance/api-selection.json \
@@ -4773,6 +4721,7 @@ jobs:
       - kyverno-test
       - caddy-emitted-log-proof
       - windows-live-proofs
+      - semgrep-sast
       - live-realtime-visual
 
     steps:
@@ -4836,6 +4785,7 @@ jobs:
             'kyverno-test|${{ needs.kyverno-test.result }}'
             'caddy-emitted-log-proof|${{ needs.caddy-emitted-log-proof.result }}'
             'windows-live-proofs|${{ needs.windows-live-proofs.result }}'
+            'semgrep-sast|${{ needs.semgrep-sast.result }}'
           )
 
           # Coverage is allowed to be skipped only when a direct producer

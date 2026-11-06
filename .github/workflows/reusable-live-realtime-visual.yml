@@ -128,6 +128,7 @@ jobs:
 
       - name: Capture and audit authenticated visual matrix on the full stand
         id: visual
+        # !cancelled() keeps evidence eligible after realtime failure; visual failures still block.
         if: ${{ !cancelled() && steps.start-stand.outcome == 'success' }}
         env:
           SOURCE_SHA: ${{ github.sha }}
@@ -140,18 +141,62 @@ jobs:
           uv run --frozen --no-sync python -m scripts.live_stand verify-endpoints \
             --in-place --state-dir "$LIVE_STATE_DIR" \
             --base-url "${base_urls[0]}" --mailpit-url "${mailpit_urls[0]}"
+          uv run --frozen --no-sync python -m scripts.live_stand seed \
+            --in-place --state-dir "$LIVE_STATE_DIR" --demo
           export ORIGIN="${base_urls[0]}" OUT_DIR="$VISUAL_OUT_DIR"
           export VISUAL_CAPTURE_MATRIX=1 VISUAL_LOCALES=en,ru VISUAL_THEMES=light,dark
           export VISUAL_WIDTHS=390,1440 VISUAL_HEIGHT=900 ROUTES=/dashboard,/events,/news
           cd frontend
-          # Use the audit's existing disposable seeded account defaults, without
-          # duplicating credential-shaped values in another source file.
-          env -u TEST_EMAIL -u TEST_PASSWORD node --input-type=module <<'NODE'
+          node --input-type=module <<'NODE'
           import { spawnSync } from "node:child_process"
-          import { TEST_EMAIL, TEST_PASSWORD } from "./scripts/authenticated-visual-audit.mjs"
+          import process from "node:process"
+          import {
+            createAuthenticatedVisualAuditEnvironment,
+          } from "./scripts/authenticated-visual-audit.mjs"
+
+          const inheritedEnvironment = { ...process.env }
+          delete inheritedEnvironment.TEST_EMAIL
+          delete inheritedEnvironment.TEST_PASSWORD
+          const credentialEnvironment = Object.fromEntries(
+            ["HOME", "LIVE_STATE_DIR", "PATH", "SystemRoot", "TEMP", "TMP", "WINDIR"]
+              .filter((key) => typeof inheritedEnvironment[key] === "string")
+              .map((key) => [key, inheritedEnvironment[key]])
+          )
+          const passwordResolver = [
+            "import argparse",
+            "import os",
+            "from scripts import live_stand",
+            "live_stand._configure_state_mode(argparse.Namespace(command='status', in_place=True, state_dir=os.environ['LIVE_STATE_DIR']))",
+            "owner = live_stand.load_stand_owner(live_stand.WORKTREE)",
+            "print(live_stand.load_or_create_stand_admin_password(live_stand.WORKTREE, owner))",
+          ].join("; ")
+          const credentialResult = spawnSync(
+            "uv",
+            ["run", "--frozen", "--no-sync", "python", "-c", passwordResolver],
+            {
+              cwd: process.env.GITHUB_WORKSPACE,
+              encoding: "utf8",
+              env: credentialEnvironment,
+              timeout: 60_000,
+            }
+          )
+          if (credentialResult.error || credentialResult.status !== 0) {
+            console.error("Could not resolve the owned stand visual credential.")
+            process.exit(1)
+          }
+          const testPassword = credentialResult.stdout.trim()
+          if (!testPassword || testPassword.includes("\n")) {
+            console.error("The owned stand visual credential was empty or malformed.")
+            process.exit(1)
+          }
+          process.stdout.write(`::add-mask::${testPassword}\n`)
+          const auditEnvironment = createAuthenticatedVisualAuditEnvironment(
+            inheritedEnvironment,
+            { email: "test@university.dev", password: testPassword }
+          )
 
           const result = spawnSync(process.execPath, ["./scripts/authenticated-visual-audit.mjs"], {
-            env: { ...process.env, TEST_EMAIL, TEST_PASSWORD },
+            env: auditEnvironment,
             stdio: "inherit",
             timeout: 3_600_000,
           })

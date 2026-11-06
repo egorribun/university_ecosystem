@@ -847,7 +847,15 @@ async def seed_user(db, group: Group) -> User:
     if key_owner is not None:
         raise RuntimeError("canonical demo account ownership key is already occupied")
 
-    hashed = get_password_hash_sync("TestPass@2024x")
+    password = os.environ.get("TEST_PASSWORD")
+    if password is None:
+        if os.environ.get("LIVE_STAND_OWNER_VERIFIED") == "1":
+            raise RuntimeError("TEST_PASSWORD must be set for an owned live stand seed")
+        hashed = get_password_hash_sync("TestPass@2024x")
+    elif not password.strip():
+        raise RuntimeError("TEST_PASSWORD must be a non-empty demo account password")
+    else:
+        hashed = get_password_hash_sync(password)
     user = User.create(
         email=DEMO_PRIMARY_USER_EMAIL,
         hashed_password=hashed,

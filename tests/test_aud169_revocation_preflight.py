@@ -8,7 +8,6 @@ import os
 import runpy
 import secrets
 import sys
-import textwrap
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from urllib.parse import quote
@@ -20,9 +19,12 @@ ROOT = Path(__file__).resolve().parents[1]
 HOST = "sample-revocation-redis-master"
 PASSWORD = f"{secrets.token_hex(8)}:@/{secrets.token_hex(8)}".encode()
 ENCODED = quote(PASSWORD.decode("ascii"), safe="")
+# The current helper also enforces cache/store separation. Keep this synthetic
+# cache credential distinct so the existing URL matrix tests the URL contract.
+CACHE_PASSWORD = PASSWORD + b"-cache"
 
 
-def _workflow_guard() -> str:
+def _workflow_guard() -> Path:
     workflow = yaml.safe_load(
         (ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
     )
@@ -30,32 +32,42 @@ def _workflow_guard() -> str:
     step = next(
         item for item in steps if item.get("name") == "Verify effective Secret contract"
     )
-    prefix = step["run"].split('\' "$revocation_redis_service_host"', 1)[0]
-    return textwrap.dedent(prefix.rsplit("| python3 -c '\n", 1)[1])
+    run = step["run"]
+    helper = ROOT / ".github/scripts/verify_revocation_redis_target.py"
+    assert (
+        "python3 -I .github/scripts/verify_revocation_redis_target.py "
+        '"$revocation_redis_service_host"' in run
+    )
+    assert "3< <(printf '%s' \"$revocation_redis_password_b64\")" in run
+    assert "4< <(printf '%s' \"$cache_redis_password_b64\")" in run
+    assert helper.is_file()
+    return helper
 
 
 def _guard_result(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
     url: str,
     encoded_password: bytes,
+    encoded_cache_password: bytes,
 ) -> int:
-    # Use an in-memory FD-3 substitute so the same test runs on Windows.
-    guard = tmp_path / "guard.py"
-    guard.write_text(_workflow_guard(), encoding="utf-8")
+    # Keep both secret-file descriptors in memory so the test runs on Windows.
+    credentials = {3: encoded_password, 4: encoded_cache_password}
+
+    def open_descriptor(descriptor: int, mode: str) -> io.BytesIO:
+        assert mode == "rb"
+        return io.BytesIO(credentials[descriptor])
+
     output = io.StringIO()
     with monkeypatch.context() as patch:
         patch.setattr(sys, "stdin", io.StringIO(url))
         patch.setattr(sys, "argv", ["revocation-guard", HOST])
-        patch.setattr(
-            os, "fdopen", lambda *args, **kwargs: io.BytesIO(encoded_password)
-        )
+        patch.setattr(os, "fdopen", open_descriptor)
         with (
             redirect_stdout(output),
             redirect_stderr(output),
             pytest.raises(SystemExit) as result,
         ):
-            runpy.run_path(str(guard), run_name="__main__")
+            runpy.run_path(str(_workflow_guard()), run_name="__main__")
     assert output.getvalue() == ""
     return result.value.code
 
@@ -111,23 +123,30 @@ def _guard_result(
 )
 def test_dedicated_store_url_guard_matches_store(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
     url: str,
     password: bytes,
     expected: int,
 ) -> None:
     assert (
-        _guard_result(monkeypatch, tmp_path, url, base64.b64encode(password))
+        _guard_result(
+            monkeypatch,
+            url,
+            base64.b64encode(password),
+            base64.b64encode(CACHE_PASSWORD),
+        )
         == expected
     )
 
 
 def test_malformed_store_credential_is_rejected_without_output(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     assert (
         _guard_result(
-            monkeypatch, tmp_path, f"redis://:{ENCODED}@{HOST}:6379/0", b"bad!"
+            monkeypatch,
+            f"redis://:{ENCODED}@{HOST}:6379/0",
+            b"bad!",
+            base64.b64encode(CACHE_PASSWORD),
         )
         == 1
     )

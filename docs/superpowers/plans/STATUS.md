@@ -1,17 +1,76 @@
 # Статус выпуска MVP v1.0.0
 
-Обновлено: 2026-11-04 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), продукт — [ТЗ MVP](University_Ecosystem_MVP.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
+Обновлено: 2026-11-06 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
+## Текущий статус — продолжение закрытия аудита, 2026-11-06 UTC
 
-## Инвентари сканеров — 2026-11-04 UTC
+Работа продолжается в единственном основном checkout ветки `egorribun`; изменяющие состояние операции Git выполняет root. HEAD `25872c5`, незавершённое слияние `73b47dd`; последний проверенный `origin/egorribun` — `7faf2d9`, `origin/main` — `b85516e`. Полученные изменения включены в исходники; завершение слияний и синхронизация истории ещё требуются.
 
-Baseline **242**, отдельная policy **362**, Gitleaks **27** точных исторических
-fingerprints. Владелец отдельно одобрил ровно одну новую identity публичного
-SHA-256 пина архива SPIRE 0.30.4. Также владелец подтвердил продление двух
-прежних Trivy checksum dispositions; scope и категории не изменены. Все три
-записи действуют до 2027-01-10. Подробности и границы доказательств — в
-[ADR-047](../../adr/ADR-047-risk-based-quality-policy.md). Финальному source
-SHA по-прежнему нужны scanner и required-check receipts; GREEN не заявлен.
+Формальная приёмка остаётся **449/512, 63 open**. Активны baseline **242**, detect-secrets dispositions **494 (490 + 4)**, Gitleaks **27**, Semgrep **15**. Четыре точные записи и шесть companion-привязок Semgrep rows #7/#15 одобрены владельцем и применены вместе с ADR-047. Прежние 490 записей и сроки сохранены. Эти inventories не подтверждают прохождение сканеров или CI.
+
+Полный модуль проверки baseline/dispositions в основном checkout прошёл: **1147 PASS за 64.16 s**, без изменения исходников или index. Три основных policy-контракта прошли; после исправления трёх устаревших ожиданий сверка документов прошла: **5 PASS за 0.53 s**. Ruff check и format check прошли для всех **118** изменённых Python-файлов; последнее форматирование теста сохранило AST.
+
+Helper: **2699 PASS за 45.64 s**, statements **1337/1337**, branches **696/696**, functions **57/57**, 100% scoped floor и 0 exclusions. Alembic: **23 PASS за 0.82 s**, environment **132/132 statements и 16/16 branches**, comparator **33/33 и 12/12**. Отдельный PostgreSQL-кейс подтвердил drift/restoration. Это scoped evidence, без утверждения о глобальном покрытии.
+
+Frontend собран в ограниченном приватном окружении. Два канонических Chromium-сценария login/CSP прошли: SSR/hydration и отрицательные проверки eval, raw HTML sinks, default Trusted Types policy. Backend в этом стенде отсутствовал; full-stack поведение и приёмка находки этим не доказаны.
+
+В первом штатном commit-hook полный SAST прошёл. Detect-secrets, Bandit, mypy и Python-проверки также прошли. Commit был отклонён из-за синтетического HMAC key в frontend-тесте и actionlint warning о порядке перекрывающихся вариантов пути. Ключ заменён на явно тестовые 32 байта без изменения HMAC assertions; focused test и Gitleaks прошли. Те же 88 вариантов Bash case переставлены без изменения множества защищённых путей; actionlint прошёл. Связанные контракты: **74 PASS за 10.12 s**. Повторный полный commit-hook проверяет окончательный снимок; hosted checks остаются обязательными.
+
+Hosted SecurityPolicyIntegrity отказал до file classification: trusted workflow `b855` не совпал с устаревшим PR-base `62de`. Проверка не ослаблялась. После обычных слияний нужны новое PR-событие, все **78 required context/app pairs** и blocking CodeQL для окончательного source SHA.
+
+Cleanup registry содержит один checkout; сохранены local `main`/`egorribun` и remote `main`/`egorribun`/`gh-pages`. История удалённых ветвей сохранена в bundle. Необходимые private proofs сохранены. **GREEN и готовность к merge/release не заявляются.**
+
+Штатный detect-secrets hook обновил только четыре номера строк и время генерации baseline; все 242 identities, настройки и классификации сохранены. Повторная проверка выполняется общим commit-hook.
+
+## Историческая сверка — состояние после policy CAS, до обновления документов, 2026-11-06 11:47 UTC
+
+Семифайловая интеграция точных owner-approved postimages завершена 2026-11-06 в 11:47 UTC, до обновления этих документов. Счётчики active policy сверены после CAS. Этот checkpoint не заявляет прохождение финальных gate или hosted checks.
+
+Защита workflow helpers уже применена в [CODEOWNERS](../../../.github/CODEOWNERS), [security-policy integrity workflow](../../../.github/workflows/security-policy-integrity.yml) и [reusable security audit workflow](../../../.github/workflows/reusable-security-audit.yml), с записью в [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md). Проверка `.github/scripts/**` расширена; все 78 required context/app pairs, hooks, scanners, permissions и thresholds сохранены. Это не подтверждает hosted checks для текущего post-CAS source.
+
+Формальная приёмка остаётся **449 / 512 accepted, 63 open** по [сверке аудита](../../audits/AUDIT-2026-10-30-reconciliation.md#current-63-finding-reconciliation--2026-11-01). Активны detect-secrets baseline **242**, disposition policy **490** (**363 + 106 + 21**), Gitleaks **27** исторических fingerprints и [15 Semgrep rows](../../../quality/semgrep-dispositions.json). Обе owner-approved decisions материализованы в текущей политике и связанных проверках; прежние 106 и новые 21 входят в active 490. Политические записи не подтверждают scanner clearance и не закрывают finding сами по себе. Аудитная приёмка остаётся **449 / 512**.
+
+Сохранённый full-index SAST запуск начался в 11:02 UTC, до policy CAS в 11:47 UTC, поэтому он не проверяет новый active-490 integration. Первичный отчёт охватил 2,587 путей и показал 15 findings без scanner-reported errors; офлайн mapping двух inline HTML срезов дал объединённый отчёт на 2,589 путях, те же 15 findings, 0 дополнительных inline findings и 4 SARIF runs. Исходный runner завершился с кодом 1: строгая проверка inline SARIF namespace отклонила stale namespace, а `run_gate` отдельно получил `FIXPOINT TIMEOUT` для `python.boto3.security.hardcoded-token`. Офлайн merge не является новым сканированием, не снимает timeout и не превращает исходный запуск в PASS; 15 наблюдённых findings не доказывают полный clearance. Gate остаётся удержанным, пока частный refactor оркестрации и targeted timeout proof не завершатся без изменения rules/limits и не будет выполнено новое full-source scan. **GREEN не заявляется.**
+
+Предыдущий N21 detect-secrets preview охватывал только восемь выбранных inputs и использовал 13 filters с `-n`; это не обычный 14-filter hook и не full-tree clearance. Owner approval и последующая интеграция активировали 21 запись в составе 490, но preview не заменяет final-source secret scan и обычный hook.
+
+Ограниченные проверки: backend mypy — **366 source files PASS**; frontend typecheck/lint/format receipts source-rebound на набор **2,245 paths**; Ruff и format — **108 staged Python paths PASS**; выбранный `fc4e` набор — **32 tests PASS**. Три Go services прошли Linux race tests по **19 packages** на отдельном неизменяемом source archive. Node/Caddy проверка pinned Alpine images подтвердила `zlib 1.3.2-r1` на Alpine 3.24.2 и 3.23.6; временные containers удалены. Это scoped evidence, не общий pytest или hosted PASS.
+
+Отдельный Temporal runtime proof был source-bound к отдельному сохранённому snapshot и завершился **PASS за 46.292 секунды**: file processor с `default:write` обработал permissioned workflow; traversal был остановлен до любого MinIO request; public gRPC 7233 подключался, пять JWT negative controls и девять внутренних peer-port negatives прошли. Появились оба scanner workflow-start markers без fatal marker. Это не доказывает scanner polling, поведение неуказанных портов, pprof или hosted acceptance. Cleanup проверен отдельно: Compose down завершился успешно, resources проекта отсутствуют, lease scrubbed, runtime-input root пуст с сохранённым protected ACL, synthetic inputs удалены.
+
+После policy CAS текущему source всё ещё нужны успешные full-source SAST, обычный hook и применимые hosted required checks. Офлайн SARIF mapping, отдельные тестовые receipts и active policy 490 не заменяют эти проверки. **Готовность к merge/release и GREEN не заявляются.**
+
+## Historical hosted snapshot PR #1343 — source 1cc8fb2 — 2026-11-05 11:48 UTC
+
+Опубликованный head PR #1343 — `1cc8fb2dbea1ec40d8c3a2aeb41c613aa427f0e3`.
+Synthetic merge `2e2b9ace84129bcccea234876a2a58234a35291f` имеет то же дерево
+`6f503fd6891769a23cdab7f7168481307cccc5cb`. Этот hosted snapshot относится к
+указанному опубликованному source и не проверяет незакоммиченные изменения
+рабочей копии.
+
+[Matrix run](https://github.com/egorribun/university_ecosystem/actions/runs/42018199162)
+на момент среза содержал 70 jobs: **47 success / 6 skipped / 1 failure /
+10 in progress / 6 queued**. Единственный terminal failure внутри Matrix —
+`live-realtime-visual / Full-stand realtime and visual E2E`,
+[job 127213938374](https://github.com/egorribun/university_ecosystem/actions/runs/42018199162/job/127213938374),
+step 12 `Start the owned full live stand`. Диагностика выдала
+`temporal_worker_scanner_auth=denied` и `temporal_signature=fatal_or_panic`;
+Temporal перезапускался и оставался unhealthy, namespace bootstrap не запускался,
+последующие realtime/visual шаги были пропущены.
+
+На том же head отдельные [kind run](https://github.com/egorribun/university_ecosystem/actions/runs/42018198878/job/127213934089)
+и [Dependency Review](https://github.com/egorribun/university_ecosystem/actions/runs/42018199307/job/127213935955)
+также завершились ошибкой. В kind упал step 3 `Run kind mTLS proof`; в Dependency
+Review — steps 7 и 8. Страницы [checks PR #1343](https://github.com/egorribun/university_ecosystem/pull/1343/checks)
+на момент среза содержали 120 check runs: **83 success / 3 failure / 15 skipped /
+1 neutral / 18 active** (7 queued, 11 in progress).
+
+CodeQL, Security/Policy Integrity, pre-commit, source/test inventory, Contract
+Tests, frontend production build и lint прошли. Frozen-RC smoke/validator,
+main-only vulnerability gate и advisory WebSocket 10k были skipped; это не pass.
+Реестр остаётся **449 / 512 accepted, 63 open** по [текущей сверке](../../audits/AUDIT-2026-10-30-reconciliation.md#current-63-finding-reconciliation--2026-11-01).
+Этот CI snapshot не меняет статус ни одной находки. Matrix и PR проверки ещё
+не завершились; общий GREEN и готовность к merge/release не установлены.
 
 ## Hosted checkpoint 2dc / d1 / aae3 / a55d / 385 — 2026-11-05
 

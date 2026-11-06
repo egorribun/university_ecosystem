@@ -13,7 +13,31 @@ import yaml
 
 from tests.helpers.synthetic_credentials import make_test_marker
 
-WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml"
+
+def _repository_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        if (parent / ".github/workflows/ci.yml").is_file():
+            return parent
+    raise RuntimeError("could not locate the repository CI workflow")
+
+
+REPOSITORY_ROOT = _repository_root()
+WORKFLOW = REPOSITORY_ROOT / ".github/workflows/ci.yml"
+_RENDERER_LIFECYCLE_RECEIPT_HELPER = (
+    REPOSITORY_ROOT / ".github/scripts/ci/verify_alembic_renderer_lifecycle_receipt.py"
+)
+_OWNED_RENDERER_POSTGRES_RECEIPT_HELPER = (
+    REPOSITORY_ROOT / ".github/scripts/ci/verify_owned_renderer_postgres_receipt.py"
+)
+
+
+def _assert_receipt_helper_is_invoked(run: str, helper: Path) -> None:
+    relative_helper = helper.relative_to(REPOSITORY_ROOT).as_posix()
+    invocation = (
+        "uv run --frozen --no-sync python -I "
+        f'{relative_helper} "$probe_root/junit.xml" || receipt_status=$?'
+    )
+    assert run.count(invocation) == 1
 
 
 def _migration_job():
@@ -186,10 +210,7 @@ def _assert_renderer_lifecycle_contract(job):
     assert 'head -c 131072 "$test_log"' in run
     assert "ALEMBIC_RENDERER_LIFECYCLE_TESTS_BEGIN" in run
     assert "ALEMBIC_RENDERER_LIFECYCLE_TESTS_END" in run
-    assert (
-        "uv run --frozen --no-sync python - "
-        "\"$probe_root/junit.xml\" <<'PY_RENDERER_RECEIPT' || receipt_status=$?" in run
-    )
+    _assert_receipt_helper_is_invoked(run, _RENDERER_LIFECYCLE_RECEIPT_HELPER)
     assert (
         'if [ "$bytes" -gt 131072 ]; then\n'
         '  echo "::error::Alembic renderer lifecycle output exceeded 131072 bytes"\n'
@@ -256,12 +277,6 @@ def test_renderer_lifecycle_contract_rejects_dispatch_bypasses(defect) -> None:
 def test_renderer_lifecycle_receipt_rejects_incomplete_results(
     tmp_path, monkeypatch, capsys, defect
 ) -> None:
-    job = _migration_job()
-    run = _renderer_lifecycle_step(job)["run"]
-    opening = "<<'PY_RENDERER_RECEIPT' || receipt_status=$?\n"
-    body = run.split(opening, 1)[1].split("\nPY_RENDERER_RECEIPT\n", 1)[0]
-    script = tmp_path / "receipt.py"
-    script.write_text(body, encoding="utf-8")
     report = tmp_path / "junit.xml"
     cases = [
         f'<testcase classname="owned.renderer" name="case-{index}"/>'
@@ -271,8 +286,12 @@ def test_renderer_lifecycle_receipt_rejects_incomplete_results(
     end = "</testsuite></testsuites>"
     valid = start + "".join(cases) + end
     report.write_text(valid, encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", [str(script), str(report)])
-    runpy.run_path(str(script), run_name="__main__")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(_RENDERER_LIFECYCLE_RECEIPT_HELPER), str(report)],
+    )
+    runpy.run_path(str(_RENDERER_LIFECYCLE_RECEIPT_HELPER), run_name="__main__")
     output = capsys.readouterr()
     assert output.err == ""
     assert output.out.endswith("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 41\n")
@@ -295,7 +314,7 @@ def test_renderer_lifecycle_receipt_rejects_incomplete_results(
         value = private + "x" * 1_048_577
     report.write_text(value, encoding="utf-8")
     with pytest.raises(SystemExit) as failure:
-        runpy.run_path(str(script), run_name="__main__")
+        runpy.run_path(str(_RENDERER_LIFECYCLE_RECEIPT_HELPER), run_name="__main__")
     assert failure.value.code == 1
     output = capsys.readouterr()
     assert output.err == ""
@@ -316,10 +335,7 @@ def test_owned_renderer_postgres_receipt_rejects_failed_or_misattributed_results
     ]
     assert len(matches) == 1
     run = matches[0]["run"]
-    opening = "<<'PY_RENDERER_PG_RECEIPT' || receipt_status=$?\n"
-    body = run.split(opening, 1)[1].split("\nPY_RENDERER_PG_RECEIPT\n", 1)[0]
-    script = tmp_path / "owned_renderer_receipt.py"
-    script.write_text(body, encoding="utf-8")
+    _assert_receipt_helper_is_invoked(run, _OWNED_RENDERER_POSTGRES_RECEIPT_HELPER)
     report = tmp_path / "junit.xml"
     names = [
         "test_owned_renderer_catalog_rejects_user_objects[" + kind + "]"
@@ -339,8 +355,12 @@ def test_owned_renderer_postgres_receipt_rejects_failed_or_misattributed_results
     end = "</testsuite></testsuites>"
     valid = start + "".join(cases) + end
     report.write_text(valid, encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", [str(script), str(report)])
-    runpy.run_path(str(script), run_name="__main__")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [str(_OWNED_RENDERER_POSTGRES_RECEIPT_HELPER), str(report)],
+    )
+    runpy.run_path(str(_OWNED_RENDERER_POSTGRES_RECEIPT_HELPER), run_name="__main__")
     output = capsys.readouterr()
     assert output.err == ""
     assert output.out.endswith("OWNED_RENDERER_POSTGRES_VERIFIED_PASS 7\n")
@@ -370,7 +390,9 @@ def test_owned_renderer_postgres_receipt_rejects_failed_or_misattributed_results
     for value in mutations:
         report.write_text(value, encoding="utf-8")
         with pytest.raises(SystemExit) as failure:
-            runpy.run_path(str(script), run_name="__main__")
+            runpy.run_path(
+                str(_OWNED_RENDERER_POSTGRES_RECEIPT_HELPER), run_name="__main__"
+            )
         assert failure.value.code == 1
         output = capsys.readouterr()
         opaque = private not in output.out + output.err

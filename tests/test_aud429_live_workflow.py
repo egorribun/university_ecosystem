@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import itertools
+import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pytest
 import yaml
@@ -33,6 +37,15 @@ def _embedded_python(name: str) -> str:
     before, delimiter, after = run.partition("<<'PY'\n")
     assert delimiter and before
     body, end, _ = after.partition("\nPY\n")
+    assert end
+    return str(body)
+
+
+def _embedded_node(name: str) -> str:
+    run = _step(name)["run"]
+    before, delimiter, after = run.partition("<<'NODE'\n")
+    assert delimiter and before
+    body, end, _ = after.partition("\nNODE\n")
     assert end
     return str(body)
 
@@ -194,6 +207,10 @@ def test_workflow_runs_the_live_apis_and_uploads_bounded_evidence() -> None:
     assert (
         visual["if"] == "${{ !cancelled() && steps.start-stand.outcome == 'success' }}"
     )
+    assert "steps.realtime.outcome" not in visual["if"]
+    assert "continue-on-error" not in visual
+    assert "load_or_create_stand_admin_password" in visual["run"]
+    assert "::add-mask::" in visual["run"]
     for name in (
         "Upload redacted realtime execution summary",
         "Upload synthetic visual screenshots",
@@ -206,6 +223,193 @@ def test_workflow_runs_the_live_apis_and_uploads_bounded_evidence() -> None:
         "/**/*.png"
     )
     assert "always()" in _step("Stop only the owned stand containers")["if"]
+
+
+def test_visual_diagnostic_runs_after_realtime_failure_and_keeps_the_job_blocking() -> (
+    None
+):
+    visual = _step("Capture and audit authenticated visual matrix on the full stand")
+    realtime = _step("Exercise real realtime sessions without skips")
+    stop = _step("Stop only the owned stand containers")
+    job = _workflow(REUSABLE)["jobs"]["live-realtime-visual"]
+
+    # Model the checked-in status expression with mocked step outcomes. GitHub's
+    # cancelled() status function removes the implicit success() condition.
+    expression = visual["if"]
+    assert "!cancelled()" in expression
+    assert "steps.start-stand.outcome == 'success'" in expression
+    assert "steps.realtime.outcome" not in expression
+    assert "continue-on-error" not in job
+    assert "continue-on-error" not in realtime
+
+    def evaluate(
+        *,
+        stand: str,
+        cancelled: bool,
+        realtime_result: str,
+        visual_result: str = "success",
+    ) -> tuple[bool, bool, bool]:
+        visual_runs = not cancelled and stand == "success"
+        cleanup_runs = stand != "skipped" and "always()" in stop["if"]
+        job_fails = not cancelled and (
+            realtime_result != "success"
+            or not visual_runs
+            or (visual_runs and visual_result != "success")
+        )
+        return visual_runs, cleanup_runs, job_fails
+
+    assert evaluate(stand="success", cancelled=False, realtime_result="failure") == (
+        True,
+        True,
+        True,
+    )
+    assert evaluate(stand="success", cancelled=False, realtime_result="success") == (
+        True,
+        True,
+        False,
+    )
+    assert evaluate(
+        stand="success",
+        cancelled=False,
+        realtime_result="success",
+        visual_result="failure",
+    ) == (True, True, True)
+    assert evaluate(stand="failure", cancelled=False, realtime_result="skipped") == (
+        False,
+        True,
+        True,
+    )
+    assert evaluate(stand="success", cancelled=True, realtime_result="cancelled") == (
+        False,
+        True,
+        False,
+    )
+
+
+def test_visual_runner_masks_owned_password_and_isolates_audit_environment(
+    tmp_path: Path,
+) -> None:
+    source = _embedded_node(
+        "Capture and audit authenticated visual matrix on the full stand"
+    )
+    source = source.replace(
+        'import { spawnSync } from "node:child_process"',
+        "const spawnSync = globalThis.__mockSpawnSync",
+    )
+    source = source.replace(
+        'import {\n  createAuthenticatedVisualAuditEnvironment,\n} from "./scripts/authenticated-visual-audit.mjs"',
+        "const { createAuthenticatedVisualAuditEnvironment } = globalThis.__visualHelpers",
+    )
+    assert "__mockSpawnSync" in source
+    assert "__visualHelpers" in source
+
+    runner = tmp_path / "visual-runner.mjs"
+    runner.write_text(source, encoding="utf-8")
+    harness = tmp_path / "mock-workflow.mjs"
+    harness.write_text(
+        """import process from 'node:process'
+import { pathToFileURL } from 'node:url'
+
+const calls = []
+const maskedOutput = []
+let helperInput
+const originalWrite = process.stdout.write.bind(process.stdout)
+process.stdout.write = (chunk) => {
+  maskedOutput.push(String(chunk))
+  return true
+}
+globalThis.__mockSpawnSync = (command, args, options) => {
+  const environment = options.env
+  calls.push({
+    command,
+    args,
+    cwd: options.cwd,
+    env: {
+      testEmailPresent: Object.hasOwn(environment, 'TEST_EMAIL'),
+      testPasswordPresent: Object.hasOwn(environment, 'TEST_PASSWORD'),
+      testEmail: environment.TEST_EMAIL,
+      testPasswordMatchesOwned: environment.TEST_PASSWORD === process.env.MOCK_TEST_PASSWORD,
+      tokenPresent: Object.hasOwn(environment, 'GITHUB_TOKEN'),
+    },
+    stdio: options.stdio,
+  })
+  return calls.length === 1
+    ? { status: 0, stdout: `${process.env.MOCK_TEST_PASSWORD}\\n` }
+    : { status: 0 }
+}
+globalThis.__visualHelpers = {
+  createAuthenticatedVisualAuditEnvironment(environment, credentials) {
+    helperInput = {
+      testEmailPresent: Object.hasOwn(environment, 'TEST_EMAIL'),
+      testPasswordPresent: Object.hasOwn(environment, 'TEST_PASSWORD'),
+      tokenPresent: Object.hasOwn(environment, 'GITHUB_TOKEN'),
+      credentialsMatchOwnedPassword:
+        credentials.password === process.env.MOCK_TEST_PASSWORD,
+    }
+    return {
+      PATH: environment.PATH,
+      ORIGIN: environment.ORIGIN,
+      SOURCE_SHA: environment.SOURCE_SHA,
+      TEST_EMAIL: credentials.email,
+      TEST_PASSWORD: credentials.password,
+    }
+  },
+}
+await import(pathToFileURL(process.argv[2]).href)
+process.stdout.write = originalWrite
+originalWrite(JSON.stringify({
+  calls,
+  maskCommandCorrect: maskedOutput.length === 1 &&
+    maskedOutput[0] === `::add-mask::${process.env.MOCK_TEST_PASSWORD}\\n`,
+  helperInput,
+}))
+""",
+        encoding="utf-8",
+    )
+
+    node = shutil.which("node")
+    assert node is not None, "Node.js is required for the mocked workflow runner"
+    owned_password = f"runtime-{uuid4()}"
+    ambient_password = f"ambient-{uuid4()}"
+    ambient_token = f"ambient-{uuid4()}"
+    environment = {
+        **os.environ,
+        "MOCK_TEST_PASSWORD": owned_password,
+        "LIVE_STATE_DIR": str(tmp_path / "owned-state"),
+        "GITHUB_WORKSPACE": str(tmp_path / "workspace"),
+        "TEST_EMAIL": "ambient@example.test",
+        "TEST_PASSWORD": ambient_password,
+        "GITHUB_TOKEN": ambient_token,
+        "ORIGIN": "http://127.0.0.1:18000",
+        "SOURCE_SHA": "b" * 40,
+    }
+    result = subprocess.run(  # noqa: S603  # fixed Node interpreter executes the mocked workflow wrapper
+        [node, str(harness), str(runner)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=environment,
+    )
+    assert result.returncode == 0, result.stderr
+    outcome = json.loads(result.stdout)
+    assert len(outcome["calls"]) == 2
+    assert outcome["calls"][0]["cwd"] == environment["GITHUB_WORKSPACE"]
+    assert outcome["calls"][0]["env"]["testEmailPresent"] is False
+    assert outcome["calls"][0]["env"]["testPasswordPresent"] is False
+    assert outcome["calls"][0]["env"]["tokenPresent"] is False
+    assert outcome["calls"][1]["env"]["testEmail"] == "test@university.dev"
+    assert outcome["calls"][1]["env"]["testPasswordMatchesOwned"] is True
+    assert outcome["calls"][1]["env"]["tokenPresent"] is False
+    assert outcome["calls"][1]["stdio"] == "inherit"
+    assert outcome["helperInput"]["testEmailPresent"] is False
+    assert outcome["helperInput"]["testPasswordPresent"] is False
+    assert outcome["helperInput"]["tokenPresent"] is True
+    assert outcome["helperInput"]["credentialsMatchOwnedPassword"] is True
+    assert outcome["maskCommandCorrect"] is True
+    assert owned_password not in result.stderr
+    assert ambient_password not in result.stdout
+    assert ambient_token not in result.stdout
 
 
 def test_nightly_runs_and_reports_the_same_live_workflow_on_main() -> None:

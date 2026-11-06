@@ -69,6 +69,87 @@ async def test_seed_user_reuses_matching_partial_state(capsys) -> None:
         capsys.readouterr()
 
 
+async def test_owned_seed_uses_an_explicit_test_password(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from tests.helpers.synthetic_credentials import make_test_password
+
+    class RecordingSession:
+        def __init__(self) -> None:
+            self.users = []
+            self.objects = []
+
+        async def scalar(self, _statement):
+            return self.users[0] if self.users else None
+
+        def add(self, entity) -> None:
+            self.objects.append(entity)
+            if isinstance(entity, seed_demo_data.User):
+                if entity.id is None:
+                    entity.id = uuid4()
+                self.users.append(entity)
+
+        async def flush(self) -> None:
+            return None
+
+    password = make_test_password()
+    observed_passwords: list[str] = []
+    monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
+    monkeypatch.setenv("TEST_PASSWORD", password)
+    monkeypatch.setattr(
+        seed_demo_data,
+        "get_password_hash_sync",
+        lambda value: observed_passwords.append(value) or "synthetic-hash",
+    )
+
+    database = RecordingSession()
+    try:
+        user = await seed_demo_data.seed_user(database, SimpleNamespace(id=uuid4()))
+        assert observed_passwords == [password]
+        assert user.hashed_password == "synthetic-hash"
+        assert password not in capsys.readouterr().out
+    finally:
+        capsys.readouterr()
+
+
+@pytest.mark.parametrize("password", [None, " \t "])
+async def test_owned_seed_rejects_missing_or_blank_test_password(
+    monkeypatch: pytest.MonkeyPatch, capsys, password: str | None
+) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    class RecordingSession:
+        def __init__(self) -> None:
+            self.objects = []
+
+        async def scalar(self, _statement):
+            return None
+
+        def add(self, entity) -> None:
+            self.objects.append(entity)
+
+        async def flush(self) -> None:
+            return None
+
+    monkeypatch.setenv("LIVE_STAND_OWNER_VERIFIED", "1")
+    if password is None:
+        monkeypatch.delenv("TEST_PASSWORD", raising=False)
+    else:
+        monkeypatch.setenv("TEST_PASSWORD", password)
+    database = RecordingSession()
+
+    try:
+        with pytest.raises(RuntimeError, match="TEST_PASSWORD"):
+            await seed_demo_data.seed_user(database, SimpleNamespace(id=uuid4()))
+        assert database.objects == []
+    finally:
+        capsys.readouterr()
+
+
 async def test_seed_user_repairs_missing_demo_relations(
     db_session, user_factory, capsys
 ):

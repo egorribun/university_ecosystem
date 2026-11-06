@@ -198,8 +198,8 @@ jobs:
   # Complements Nuclei (CVE/template-based) with active probing for injection,
   # auth bypass, misconfiguration, and other dynamic vulnerabilities.
   #
-  # SHA pinned to zaproxy/action-full-scan@v0.10.0 — verify with:
-  #   gh api repos/zaproxy/action-full-scan/git/refs/tags/v0.10.0
+  # SHA pinned to zaproxy/action-full-scan@v0.13.0 — verify with:
+  #   gh api repos/zaproxy/action-full-scan/git/refs/tags/v0.13.0
   # ---------------------------------------------------------------------------
   zap:
     name: OWASP ZAP Full Scan
@@ -217,22 +217,27 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: main
+          # The preflight enforces main; keep the rules at the event's source SHA.
+          ref: ${{ github.sha }}
           sparse-checkout: |
+            .github/workflows/dast.yml
             .zap
+            scripts/quality
           sparse-checkout-cone-mode: false
 
       - name: Validate ZAP target URL
         env:
           TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
         run: |
-          echo "::add-mask::$TARGET_URL"
           if [ -z "$TARGET_URL" ]; then
             echo "::error::No target URL configured. Set DAST_TARGET_URL secret or pass target_url input."
             exit 1
           fi
+          python3 -m scripts.quality.dast_privacy validate-target
+          echo "::add-mask::$TARGET_URL"
 
       - name: ZAP Full Scan
+        id: zap_scan
         uses: zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c # v0.13.0
         env:
           TARGET_URL: ${{ inputs.target_url || secrets.DAST_TARGET_URL }}
@@ -243,11 +248,43 @@ jobs:
           # -a: active scan, -j: Ajax spider, -T 60: max active scan duration 60 min
           cmd_options: "-a -j -T 60"
           # Upload SARIF to Code Scanning
-          artifact_name: zap-results-${{ github.run_id }}
+          artifact_name: zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          allow_issue_writing: false
+
+      - name: Validate ZAP SARIF provenance
+        id: zap_sarif_provenance
+        if: ${{ always() }}
+        shell: bash
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          SCAN_OUTCOME: ${{ steps.zap_scan.outcome }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          ARTIFACT_NAME: zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          python3 -m scripts.quality.zap_sarif_provenance \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --expected-sha "$EVENT_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --artifact-name "$ARTIFACT_NAME" \
+            --scan-outcome "$SCAN_OUTCOME" \
+            --sarif "$GITHUB_WORKSPACE/zap-results.sarif" \
+            --output "$GITHUB_WORKSPACE/zap-sarif-provenance.json"
 
       - name: Upload ZAP SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
-        if: always()
+        if: ${{ always() && steps.zap_sarif_provenance.outcome == 'success' && hashFiles('zap-results.sarif') != '' }}
         with:
           sarif_file: zap-results.sarif
           category: zap-dast
+
+      - name: Upload ZAP provenance receipt
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() && steps.zap_sarif_provenance.outcome == 'success' && hashFiles('zap-sarif-provenance.json') != '' }}
+        with:
+          name: zap-sarif-provenance-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: zap-sarif-provenance.json
+          retention-days: 90
+          if-no-files-found: error

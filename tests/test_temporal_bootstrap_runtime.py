@@ -76,6 +76,21 @@ function docker {
             if ($null -eq $entry) { Fail-Fixture }
             return (ConvertTo-Json -InputObject ([string]$entry.Value) -Compress)
         }
+        if ($a[3] -ceq '{"Labels":{{json .Config.Labels}},"Mounts":{{json .Mounts}}}') {
+            $label = $f.peerLabels.PSObject.Properties[$a[-1]]
+            $entry = $f.peerMounts.PSObject.Properties[$a[-1]]
+            if ($null -eq $label -or $null -eq $entry) { Fail-Fixture }
+            if ($entry.Value -is [string] -and $entry.Value -ceq 'null') {
+                $mounts = $null
+            } elseif ($entry.Value -is [string] -and $entry.Value -ceq '[]') {
+                $mounts = @()
+            } elseif ($entry.Value -is [string]) {
+                $mounts = [string]$entry.Value
+            } else {
+                $mounts = @($entry.Value)
+            }
+            return (ConvertTo-Json -InputObject @{ Labels=$label.Value; Mounts=$mounts } -Depth 30 -Compress)
+        }
         if ($a[3] -ceq '{{json .Mounts}}') {
             $entry = $f.peerMounts.PSObject.Properties[$a[-1]]
             if ($null -eq $entry) { Fail-Fixture }
@@ -119,6 +134,7 @@ def fixture(state: Path, repo: Path) -> tuple[dict, str]:
         "POSTGRES_USER": "ue_temporal",
         "POSTGRES_PWD": secret,
         "TEMPORAL_JWKS_URL": "https://caddy:8443/.well-known/jwks.json",
+        "TEMPORAL_SERVICES": "frontend,history,matching,worker,internal-frontend",
     }
 
     def labels(name):
@@ -232,6 +248,10 @@ def fixture(state: Path, repo: Path) -> tuple[dict, str]:
         "server": server,
         "init": init,
         "runningIds": [SERVER_ID, peer_id],
+        "peerLabels": {
+            SERVER_ID: labels("temporal"),
+            peer_id: labels("file-processor"),
+        },
         "peerModes": {SERVER_ID: PROJECT + "_internal", peer_id: "bridge"},
         "peerPidModes": {SERVER_ID: "", peer_id: ""},
         "peerMounts": {
@@ -611,6 +631,24 @@ class RuntimeGuard(unittest.TestCase):
                 ),
             ),
             (
+                "server-service-list-changed",
+                lambda x: x["server"]["Config"]["Env"].__setitem__(
+                    5, "TEMPORAL_SERVICES=frontend,history,matching,worker"
+                ),
+            ),
+            (
+                "model-service-list-changed",
+                lambda x: x["model"]["services"]["temporal"]["environment"].__setitem__(
+                    "TEMPORAL_SERVICES", "frontend,history,matching,worker"
+                ),
+            ),
+            (
+                "model-env-extra",
+                lambda x: x["model"]["services"]["temporal"]["environment"].__setitem__(
+                    "UNREVIEWED_TEMPORAL_SETTING", "enabled"
+                ),
+            ),
+            (
                 "init-env-extra",
                 lambda x: x["init"]["Config"]["Env"].append("TEMPORAL_API_KEY=bad"),
             ),
@@ -630,6 +668,19 @@ class RuntimeGuard(unittest.TestCase):
                 "server-entrypoint-source",
                 lambda x: x["server"]["Mounts"][1].__setitem__(
                     "Source", str(self.repo / "evil")
+                ),
+            ),
+            ("server-mount-omitted", lambda x: x["server"]["Mounts"].pop()),
+            (
+                "server-extra-mount",
+                lambda x: x["server"]["Mounts"].append(
+                    copy.deepcopy(x["server"]["Mounts"][0])
+                ),
+            ),
+            (
+                "server-config-source",
+                lambda x: x["server"]["Mounts"][0].__setitem__(
+                    "Source", str(self.repo / "evil-config.yaml")
                 ),
             ),
             (

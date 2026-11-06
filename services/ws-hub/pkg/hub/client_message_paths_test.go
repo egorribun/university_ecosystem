@@ -1237,6 +1237,7 @@ func TestClientDisconnect_DefaultHubContextClosesSend(t *testing.T) {
 // doubled. Replay signing, room admission, WritePump and transport teardown are real.
 func TestAUD334MidstreamFetchOutcomeAfterDeliveredCheckpoint(t *testing.T) {
 	const room = "8ef3bb0c-a893-4f74-bdb4-01544a532626"
+	const replayUserID = "00000000-0000-4000-8000-000000000001"
 	payload := json.RawMessage(`{
 		"type": "new_message",
 		"chat_id": "8ef3bb0c-a893-4f74-bdb4-01544a532626",
@@ -1263,12 +1264,12 @@ func TestAUD334MidstreamFetchOutcomeAfterDeliveredCheckpoint(t *testing.T) {
 			enableSecureReplayForTest(h)
 			h.enableJetStream = true
 			server, peer := newConnPair(t)
-			client := newClientOn(h, server, "midstream-"+test.name, "replay-user")
+			client := newClientOn(h, server, "midstream-"+test.name, replayUserID)
 			h.handleRegister(client.ctx, client)
 			record := replayMessage(10)
 			record.Subject = "chat." + room
 			recordData, err := json.Marshal(map[string]any{
-				"type": "new_message", "room": room, "payload": payload,
+				"type": "new_message", "room": room, "audience": []string{replayUserID}, "payload": payload,
 			})
 			require.NoError(t, err)
 			record.Data = recordData

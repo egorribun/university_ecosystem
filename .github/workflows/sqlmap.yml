@@ -79,7 +79,7 @@ jobs:
         run: |
           set -euo pipefail
           unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
-          mkdir -p sqlmap-output
+          mkdir -p sqlmap-output sqlmap-openapi-output
           printf '%s\n' "$GITHUB_SHA" > sqlmap-output/source-sha.txt
           export DATABASE_URL="sqlite+aiosqlite:///$RUNNER_TEMP/sqlmap-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.db"
           SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
@@ -156,6 +156,8 @@ jobs:
           fi
           python3 scripts/quality/sqlmap_scan_gate.py scope-openapi \
             sqlmap-output/source-openapi.json sqlmap-output/scoped-openapi.json
+          python3 scripts/quality/sqlmap_scan_gate.py scope-full-openapi \
+            sqlmap-output/source-openapi.json sqlmap-openapi-output/scoped-openapi.json
 
           # Prove that anonymous requests execute the seeded query, with cache
           # disabled, and that the admitted limit changes the real result set.
@@ -178,16 +180,45 @@ jobs:
           # Only queries issued after readiness count as scan execution proof.
           : > "$SQLMAP_QUERY_EVIDENCE"
 
-      - name: Run SQLMap Scan on API
-        id: sqlmap-scan
+      - name: Run SQLMap scan for every anonymous OpenAPI operation
+        id: sqlmap-openapi-scan
+        continue-on-error: true
         run: |
-          set -o pipefail
+          set -euo pipefail
+          unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
+          mkdir -p sqlmap-openapi-output
+          # The scope builder retains every HTTP operation and pins its origin
+          # to the disposable local backend. No Authorization header is sent.
+          # Keep the original complete-surface BEU scan settings from c3693dbed.
+          uv run sqlmap --openapi="sqlmap-openapi-output/scoped-openapi.json" \
+            --openapi-base="http://127.0.0.1:8000" \
+            --headers="Accept-Encoding: identity\nX-Request-ID: sqlmap-aud-381" \
+            --ignore-redirects \
+            --answers='refresh=N' \
+            --scope='^http://127[.]0[.]0[.]1:8000/' \
+            --batch \
+            --crawl=0 \
+            --technique=BEU \
+            --risk=1 \
+            --level=1 \
+            --threads=2 \
+            --timeout=5 \
+            --retries=0 \
+            --output-dir=sqlmap-openapi-output \
+            --results-file=sqlmap-openapi-output/results.csv \
+            --flush-session \
+            > sqlmap-openapi-output/scan-console.log 2>&1
+
+      - name: Run SQLMap Scan on API
+        id: sqlmap-news-scan
+        continue-on-error: true
+        run: |
+          set -euo pipefail
           unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY all_proxy ALL_PROXY
           mkdir -p sqlmap-output
-          # --batch: non-interactive mode
-          # Scope v1 covers the anonymous news-list operation, not the full API.
-          # Time-based probes are excluded from this bounded BEU scan.
-          # --risk=1 --level=1: lightweight scan for CI speed
+          # Keep query evidence specific to this anonymous /api/v1/news scan.
+          : > sqlmap-output/db-query-evidence.log
+          # --scope admits only the seeded news-list operation for this proof.
           uv run sqlmap --openapi="sqlmap-output/scoped-openapi.json" \
             --openapi-base="http://127.0.0.1:8000" \
             --headers="Accept-Encoding: identity\nX-Request-ID: sqlmap-aud-381" \
@@ -207,41 +238,61 @@ jobs:
             --flush-session \
             > sqlmap-output/scan-console.log 2>&1
 
-      # AUD-381: sqlmap exits 0 even when it confirms an injection point, and a
-      # run can stop early while still printing its ending banner. Require the
-      # native post-loop message and results CSV, reject failed or interrupted
-      # targets and injection evidence, and retain the files for review.
-      - name: Gate SQLMap scan result
-        id: sqlmap-gate
+      # Both gates require SQLMap's post-loop CSV marker, one ending banner,
+      # exact target counts and no injection, timeout or incomplete-target evidence.
+      - name: Gate SQLMap complete OpenAPI scan
+        id: sqlmap-openapi-gate
         if: ${{ always() }}
         shell: bash
         env:
-          SCAN_OUTCOME: ${{ steps.sqlmap-scan.outcome }}
+          SCAN_OUTCOME: ${{ steps.sqlmap-openapi-scan.outcome }}
         run: |
           set -euo pipefail
-          python3 scripts/quality/sqlmap_scan_gate.py \
+          python3 scripts/quality/sqlmap_scan_gate.py gate-openapi \
+            --scan-outcome "$SCAN_OUTCOME" \
+            --output-dir sqlmap-openapi-output \
+            --console-log sqlmap-openapi-output/scan-console.log \
+            --summary-file "$GITHUB_STEP_SUMMARY"
+
+      - name: Gate SQLMap seeded news proof scan
+        id: sqlmap-news-gate
+        if: ${{ always() }}
+        shell: bash
+        env:
+          SCAN_OUTCOME: ${{ steps.sqlmap-news-scan.outcome }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/sqlmap_scan_gate.py gate-news \
             --scan-outcome "$SCAN_OUTCOME" \
             --output-dir sqlmap-output \
             --console-log sqlmap-output/scan-console.log \
             --summary-file "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish sanitized SQLMap evidence
+      - name: Publish sanitized SQLMap evidence receipt
         if: ${{ always() }}
         env:
-          SCAN_OUTCOME: ${{ steps.sqlmap-scan.outcome }}
-          GATE_OUTCOME: ${{ steps.sqlmap-gate.outcome }}
+          NEWS_SCAN_OUTCOME: ${{ steps.sqlmap-news-scan.outcome }}
+          NEWS_GATE_OUTCOME: ${{ steps.sqlmap-news-gate.outcome }}
+          OPENAPI_SCAN_OUTCOME: ${{ steps.sqlmap-openapi-scan.outcome }}
+          OPENAPI_GATE_OUTCOME: ${{ steps.sqlmap-openapi-gate.outcome }}
           SOURCE_SHA: ${{ github.sha }}
         run: |
           python3 scripts/quality/sqlmap_scan_gate.py publish-evidence \
-            sqlmap-output "$SCAN_OUTCOME" "$GATE_OUTCOME" "$SOURCE_SHA" \
-            sqlmap-evidence/receipt.json
+            sqlmap-output "$NEWS_SCAN_OUTCOME" "$NEWS_GATE_OUTCOME" "$SOURCE_SHA" \
+            sqlmap-evidence/receipt.json \
+            --openapi-output-dir sqlmap-openapi-output \
+            --openapi-scan-outcome "$OPENAPI_SCAN_OUTCOME" \
+            --openapi-gate-outcome "$OPENAPI_GATE_OUTCOME"
 
-      - name: Upload SQLMap result logs
+      - name: Upload SQLMap reports and evidence receipt
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sqlmap-output-${{ github.run_id }}-${{ github.run_attempt }}
-          path: sqlmap-evidence/receipt.json
+          path: |
+            sqlmap-output/
+            sqlmap-openapi-output/
+            sqlmap-evidence/receipt.json
           if-no-files-found: error
           retention-days: 90
 
