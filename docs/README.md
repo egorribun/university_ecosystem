@@ -89,7 +89,7 @@ handoffs are intentionally not part of the canonical index.
   records, 106 previously owner-approved identities now materialized, 21
   previously approved exact identities, four previously approved exact identities,
   and eight newly approved zlib APK integrity identities. The eight exact
-  `public_integrity_digest` records are owned by `egorribun` and valid through
+  `public_integrity_digest` records are owned by the repository owner and valid through
   2027-01-10 inclusive. The category inventory grows from 298 to 306 records;
   all prior 494 records, their order, metadata and expiry values remain unchanged.
   The inventory is not evidence of a passing scan or required checks; each

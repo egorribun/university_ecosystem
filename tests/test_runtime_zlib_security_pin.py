@@ -33,7 +33,7 @@ def _archive_prefix(branch: str) -> str:
         f' aarch64) zlib_sha256="{hashes["aarch64"]}" ;;'
         ' *) echo "Unsupported zlib architecture: $zlib_arch" >&2; exit 1 ;;'
         " esac"
-        " && wget -O /tmp/zlib.apk"
+        " && wget -q -O /tmp/zlib.apk"
         f' "https://dl-cdn.alpinelinux.org/alpine/v{branch}/main/'
         '${zlib_arch}/zlib-1.3.2-r1.apk"'
         " && printf '%s  %s\\n' \"$zlib_sha256\" /tmp/zlib.apk | sha256sum -c -"
@@ -224,7 +224,8 @@ def test_runtime_contract_accepts_repository_install_forms(run: str) -> None:
         ("zlib-1.3.2-r1.apk", "zlib-1.3.2-r0.apk"),
         ("$(apk --print-arch)", "x86_64"),
         ("exit 1 ;;", "exit 0 ;;"),
-        ("wget -O", "wget --no-check-certificate -O"),
+        ("wget -q -O", "wget -q --no-check-certificate -O"),
+        ("wget -q -O", "wget -O"),
         ("| sha256sum -c -", "| cat"),
         ("| sha256sum -c -", "| sha256sum -c - || true"),
         ("&& apk add --no-cache", "; apk add --no-cache"),
@@ -305,7 +306,7 @@ def test_runtime_archive_shell_fails_closed(
     else:
         assert result.returncode == 0, result.stderr
         assert commands[1] == (
-            "wget -O /tmp/zlib.apk https://dl-cdn.alpinelinux.org/alpine/"
+            "wget -q -O /tmp/zlib.apk https://dl-cdn.alpinelinux.org/alpine/"
             f"v{branch}/main/{arch}/zlib-1.3.2-r1.apk"
         )
         install = next(
