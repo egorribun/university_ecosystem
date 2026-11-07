@@ -746,3 +746,35 @@ def test_diagnostic_sni_callback_correlates_without_changing_tls_authority(
         assert connection.probe_id is None
     finally:
         guard.close()
+
+
+@pytest.mark.parametrize("foreign_observer", [False, True])
+def test_handshake_diagnostics_do_not_claim_connections_they_do_not_own(
+    monkeypatch, foreign_observer
+):
+    observer = transport_module.HandshakeDiagnostics()
+    owner = transport_module.HandshakeDiagnostics()
+    if foreign_observer:
+        connection = _diagnostic_connection(owner)
+        owner.client_hello(connection, "aud373-" + "a" * 32 + ".invalid")
+    else:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        connection = context.wrap_bio(
+            ssl.MemoryBIO(), ssl.MemoryBIO(), server_side=True
+        )
+    initial_context = connection.context
+    logger = Mock()
+    monkeypatch.setattr(transport_module, "logger", logger)
+    observer.client_hello(connection, "aud373-" + "b" * 32 + ".invalid")
+    observer.record(connection, _missing_certificate())
+    assert connection.context is initial_context
+    assert observer.remaining == 64
+    logger.warning.assert_not_called()
+    if foreign_observer:
+        assert connection.probe_id == "a" * 32
+        owner.record(connection, _missing_certificate())
+        logger.warning.assert_called_once_with(
+            "internal_mtls_handshake_rejected",
+            probe_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            reason="PEER_DID_NOT_RETURN_A_CERTIFICATE",
+        )

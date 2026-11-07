@@ -324,3 +324,33 @@ async def test_presence_pubsub_start_and_stop_wrappers() -> None:
         await presence.stop_presence_pubsub()
     init.assert_awaited_once()
     stop.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_presence_listener_accepts_synchronous_close_after_subscribe_failure() -> (
+    None
+):
+    from app.api.ws import presence
+
+    pubsub = MagicMock()
+    pubsub.subscribe = AsyncMock(side_effect=ConnectionError("subscription failed"))
+    pubsub.close = MagicMock(return_value=None)
+    redis = MagicMock()
+    redis.pubsub.return_value = pubsub
+    listener = presence.PresencePubSub()
+    listener._redis = redis
+    handler = AsyncMock()
+    with (
+        patch.object(
+            presence, "settings", SimpleNamespace(presence_pubsub_channel="presence")
+        ),
+        patch.object(presence, "_handle_presence_pubsub", handler),
+        patch.object(presence, "logger") as logger,
+    ):
+        await listener._listen_for_updates()
+    pubsub.subscribe.assert_awaited_once_with("presence")
+    pubsub.close.assert_called_once_with()
+    pubsub.listen.assert_not_called()
+    pubsub.unsubscribe.assert_not_called()
+    handler.assert_not_awaited()
+    logger.error.assert_called_once()
