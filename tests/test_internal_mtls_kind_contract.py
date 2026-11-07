@@ -827,7 +827,7 @@ GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
 run_probe() {{
   case "$1" in
     gateway-hop) printf 'STATUS=200\\nBODY_HAS_KEYS=True\\n' ;;
-    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=REJECTED\\n' ;;
+    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=REJECTED\\nNO_SVID_STAGE=READ_ALERT\\nNO_SVID_EVENT=CERTIFICATE_REQUIRED\\nNO_SVID_PROBE_ID=%032d\\n' ;;
     plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
   esac
 }}
@@ -2385,7 +2385,13 @@ def test_file_processor_startup_and_gateway_health_keep_real_dependencies_ordere
 @pytest.mark.parametrize(
     ("payload", "command_status", "valid"),
     [
-        ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED\n", 0, True),
+        (
+            "NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED\nNO_SVID_STAGE=READ_ALERT\nNO_SVID_EVENT=CERTIFICATE_REQUIRED\nNO_SVID_PROBE_ID="
+            + "0" * 32
+            + "\n",
+            0,
+            True,
+        ),
         ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED\n", 37, False),
         ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=ERROR\nNO_SVID_TLS=REJECTED\n", 0, False),
         ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED secret\n", 0, False),
@@ -2449,7 +2455,7 @@ GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
 run_probe() {{
   case "$1" in
     gateway-hop) printf 'STATUS=200\\nBODY_HAS_KEYS=True\\n' ;;
-    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=REJECTED\\n' ;;
+    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=REJECTED\\nNO_SVID_STAGE=READ_ALERT\\nNO_SVID_EVENT=CERTIFICATE_REQUIRED\\nNO_SVID_PROBE_ID=%032d\\n' ;;
     plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
   esac
 }}
@@ -2736,3 +2742,150 @@ def test_generated_proof_backend_uses_the_built_manifest_digest():
         "digest": digest,
         "pullPolicy": "Always",
     }
+
+
+def _complete_no_svid_markers() -> dict[str, str]:
+    return {
+        "NO_SVID_PROBE_ID": bytes(range(16)).hex(),
+        "NO_SVID_STAGE": "READ_ALERT",
+        "NO_SVID_EVENT": "CERTIFICATE_REQUIRED",
+        "NO_SVID_TCP": "CONNECTED",
+        "NO_SVID_TLS": "REJECTED",
+    }
+
+
+@pytest.mark.parametrize("missing", [None, "all", *_complete_no_svid_markers()])
+def test_probe_sanitizer_requires_complete_no_svid_schema(missing, tmp_path):
+    fields = _complete_no_svid_markers()
+    if missing == "all":
+        fields.clear()
+    elif missing is not None:
+        fields.pop(missing)
+    raw = tmp_path / "markers"
+    raw.write_text("".join(f"{key}={value}\n" for key, value in fields.items()))
+    command = f"""set -euo pipefail
+{_shell_function("sanitize_probe_output")}
+status=0
+sanitize_probe_output no-svid-tls < {shlex.quote(_bash_path(raw))} || status=$?
+printf 'STATUS=%s\\n' "$status"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    text = result.stdout.decode()
+    assert ("PROBE_OUTPUT=VALID\n" in text) is (missing is None)
+    assert ("STATUS=0\n" in text) is (missing is None)
+
+
+@pytest.mark.parametrize(
+    ("failed_phase", "container_exit", "expected"),
+    [
+        ("none", "0", 0),
+        ("none", "7", 7),
+        ("none", "", 125),
+        ("none", "256", 125),
+        ("none", "0\n0", 125),
+        ("run", "0", 125),
+        ("wait", "0", 125),
+        ("get", "0", 125),
+        ("logs", "0", 125),
+        ("delete", "0", 125),
+        ("uid-before", "0", 125),
+        ("uid-after", "0", 125),
+        ("run-uid-invalid", "0", 125),
+        ("logs-empty", "0", 1),
+        ("logs-incomplete", "0", 1),
+    ],
+)
+def test_detached_probe_collects_finished_logs_and_real_exit(
+    failed_phase, container_exit, expected, tmp_path
+):
+    uid = "-".join("0" * width for width in (8, 4, 4, 4, 12))
+    calls = tmp_path / "calls"
+    raw = tmp_path / "logs"
+    raw.write_text(
+        "".join(f"{k}={v}\n" for k, v in _complete_no_svid_markers().items())
+    )
+    command = f"""set -euo pipefail
+{_shell_function("run_probe")}
+{_shell_function("sanitize_probe_output")}
+{_shell_function("capture_probe")}
+DIAG_DIR={shlex.quote(_bash_path(tmp_path / "diagnostics"))}
+NAMESPACE=proof; BACKEND_IMAGE=owned-image; BACKEND_SVC=backend; GATEWAY_SVC=gateway
+BACKEND_PORT=8000; GATEWAY_PORT=8080; RUN_SUFFIX=owned-run
+timeout() {{
+  [[ "$1" == --kill-after=5s ]] || return 92
+  shift
+  printf 'BOUND %s\\n' "$1" >> {shlex.quote(_bash_path(calls))}
+  shift
+  "$@"
+}}
+kubectl() {{
+  [[ "$1" == -n && "$2" == proof ]] || return 90
+  shift 2
+  printf '%s\\n' "$*" >> {shlex.quote(_bash_path(calls))}
+  if [[ "$1" == {shlex.quote(failed_phase)} ]]; then
+    printf 'PRIVATE-DIAGNOSTIC\\n' >&2
+    return 41
+  fi
+  case "$1" in
+    run)
+      [[ "$*" == *'--attach=false'* && "$*" != *'--rm'* ]] || return 93
+      if [[ {shlex.quote(failed_phase)} == run-uid-invalid ]]; then printf 'invalid'; else printf '%s' {shlex.quote(uid)}; fi ;;
+
+    wait) [[ "$*" == *'.state.terminated.exitCode}}'* ]] ;;
+    get)
+      if [[ "$*" == *'.state.terminated.exitCode'* ]]; then
+        observed={shlex.quote(uid)}
+        if [[ {shlex.quote(failed_phase)} == uid-before ]]; then observed=changed; fi
+        printf '%s|%s' "$observed" {shlex.quote(container_exit)}
+      else
+        if [[ {shlex.quote(failed_phase)} == uid-after ]]; then printf 'changed'; else printf '%s' {shlex.quote(uid)}; fi
+      fi ;;
+
+    logs)
+      case {shlex.quote(failed_phase)} in
+        logs-empty) return 0 ;;
+        logs-incomplete) printf 'NO_SVID_TCP=CONNECTED\\n' ;;
+        *) cat {shlex.quote(_bash_path(raw))} ;;
+      esac ;;
+
+    delete)
+      [[ "$*" == *'--raw /api/v1/namespaces/proof/pods/ue-r9-aud373-probe-no-svid-tls-owned-run -f -'* ]] || return 94
+      body="$(cat)"
+      [[ "$body" == *'"uid":"{uid}"'* ]] || return 95
+      return 0 ;;
+
+    *) return 91 ;;
+  esac
+}}
+status=0
+capture_probe no-svid-tls ignored || status=$?
+printf 'CAPTURE_STATUS=%s\\n' "$status"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    text = result.stdout.decode()
+    assert f"CAPTURE_STATUS={expected}\n" in text
+    probe_exit = 0 if failed_phase in {"logs-empty", "logs-incomplete"} else expected
+    assert f"PROBE_EXIT={probe_exit}\n" in text
+    assert "PRIVATE" not in text + result.stderr.decode()
+    events = calls.read_text().splitlines()
+    operations = [line.split()[0] for line in events if not line.startswith("BOUND")]
+    assert operations.count("run") == 1
+    assert ("delete" in operations) is (failed_phase not in {"run", "run-uid-invalid"})
+    if failed_phase == "none" and container_exit in {"0", "7"}:
+        assert operations == ["run", "wait", "get", "logs", "get", "delete"]
+        assert "PROBE_OUTPUT=VALID\n" in text
+        assert [line for line in events if line.startswith("BOUND")] == [
+            "BOUND 30",
+            "BOUND 180",
+            "BOUND 15",
+            "BOUND 30",
+            "BOUND 15",
+            "BOUND 20",
+        ]
+    if "logs" in operations:
+        logs = next(line for line in events if line.startswith("logs "))
+        assert "--container=ue-r9-aud373-probe-no-svid-tls-owned-run" in logs
+        assert "--tail=-1" in logs
+        assert "--limit-bytes" not in logs
