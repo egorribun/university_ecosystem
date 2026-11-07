@@ -1067,8 +1067,8 @@ run_probe() {
       --for="jsonpath=${terminated}" --timeout=170s >/dev/null 2>&1 || exit 125
     status_record="$(timeout --kill-after=5s 15 kubectl -n "$NAMESPACE" get pod "$pod" \
       -o "jsonpath={.metadata.uid}|${terminated}" 2>/dev/null)" || exit 125
-    observed_uid="${status_record%%|*}"
-    exit_status="${status_record#*|}"
+    observed_uid="${status_record%%'|'*}"
+    exit_status="${status_record#*'|'}"
     [[ "$observed_uid" == "$created_uid" && "$status_record" == *'|'* ]] || exit 125
     [[ "$exit_status" =~ ^(0|[1-9][0-9]{0,2})$ && "$exit_status" -le 255 ]] || exit 125
     timeout --kill-after=5s 30 kubectl -n "$NAMESPACE" logs "$pod" --container="$pod" \
