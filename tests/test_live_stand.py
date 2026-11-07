@@ -934,6 +934,9 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         | None = None,
     ) -> None:
         assert checked_owner == owner
+        assert reset_probe_markers == json.loads(
+            playwright_runs[-1][1]["LIVE_AUD178_PROBE_MARKERS"]
+        )
         assert output_directory.is_dir()
         assert finished_at_ms >= started_at_ms
         assert password_nonce == probe_nonce
@@ -4156,9 +4159,14 @@ def test_live_playwright_failure_source_allowlist_matches_tracked_full_suite(
         if path.startswith("frontend/tests/e2e-live/")
         and path.endswith(".live.spec.ts")
     )
-    expected_sources = {source: source for source in tracked_sources}
+    audit_sources = (
+        "tests/e2e/audit375-service-worker.spec.ts",
+        "tests/e2e/rate-limit-ux.spec.ts",
+    )
+    declared_sources = (*tracked_sources, *audit_sources)
+    expected_sources = {source: source for source in declared_sources}
     expected_sources.update(
-        {source.replace("/", "\\"): source for source in tracked_sources}
+        {source.replace("/", "\\"): source for source in declared_sources}
     )
     expected_frame_sources = {
         **expected_sources,
@@ -4167,11 +4175,9 @@ def test_live_playwright_failure_source_allowlist_matches_tracked_full_suite(
     }
 
     assert tracked_sources
-    assert len(live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES) == len(
-        tracked_sources
-    )
+    assert live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES == declared_sources
     assert len(set(live_stand._PLAYWRIGHT_FAILURE_DECLARATION_SOURCES)) == len(
-        tracked_sources
+        declared_sources
     )
     assert live_stand._PLAYWRIGHT_FAILURE_SOURCES == expected_sources
     assert live_stand._PLAYWRIGHT_FAILURE_FRAME_SOURCES == expected_frame_sources
@@ -5259,6 +5265,7 @@ def test_live_e2e_probe_admission_is_bounded_and_keeps_nonprobe_defaults(
         | None = None,
     ) -> None:
         assert checked_owner == owner
+        assert reset_probe_markers is None
         assert output_path.is_dir()
         assert finished_at_ms >= started_at_ms
         assert password_nonce == nonce
@@ -8352,6 +8359,9 @@ def test_live_overlay_replaces_every_publication_with_loopback_port_variables() 
         assert environment["SMTP_HOST"] == "mailpit"
         assert environment["VAPID_PRIVATE_KEY"].startswith("${LIVE_VAPID_PRIVATE_KEY:?")
     assert set(services["caddy"]) == {"ports"}
+    mailpit_limits = services["mailpit"]["deploy"]["resources"]["limits"]
+    assert services["mailpit"]["pids_limit"] == 64
+    assert mailpit_limits == {"cpus": "0.25", "memory": "512M", "pids": 64}
 
 
 def test_live_overlay_reserves_per_user_logout_budget_for_session_cleanup() -> None:

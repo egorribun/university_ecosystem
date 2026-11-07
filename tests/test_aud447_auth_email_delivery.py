@@ -2328,7 +2328,11 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
                 selected = tuple(item["name"] for item in statement.column_descriptions)
                 if selected == ("DeadLetterJob",):
                     return ready
-                assert selected == ("job_type", "job_hash", "payload")
+                assert selected == (
+                    "job_type",
+                    "job_hash",
+                    "payload",
+                )
                 assert statement.compile().params == {"job_hash_1": job_hash}
                 row = SimpleNamespace(
                     job_type=job.job_type,
@@ -2348,6 +2352,7 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
             }
             assert parameters["payload"] == _QUARANTINED_AUTH_PAYLOAD
             assert parameters["error_message"] == _QUARANTINED_AUTH_PAYLOAD
+            assert parameters["job_type_1"] == name
             if (
                 parameters["job_hash_1"] != job.job_hash
                 or parameters["job_type_1"] != job.job_type
@@ -2356,7 +2361,7 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
                 return SimpleNamespace(rowcount=0)
             quarantine_writes.append(parameters)
             # ORM UPDATE uses synchronize_session="auto": the loaded matching
-            # instance receives both privacy tombstones in the CAS update.
+            # instance receives the complete replacement, not partial JSON edits.
             job.payload = parameters["payload"]
             job.error_message = parameters["error_message"]
             return SimpleNamespace(rowcount=1)
@@ -2431,8 +2436,9 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
         assert await apply_boundary() == (0, 1)
         assert job.status == "pending"
         assert job.retry_count == 2
-        quarantined_error = job.error_message == _QUARANTINED_AUTH_PAYLOAD
-        assert quarantined_error
+        # The quarantined payload is unreadable auth work: error scrubbing
+        # fails closed to the fixed tombstone rather than retaining diagnostics.
+        assert job.error_message == _QUARANTINED_AUTH_PAYLOAD
     assert js.publish.await_count == 0
     if boundary == "dedup":
         assert quarantine_writes == []
@@ -2443,6 +2449,8 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
     else:
         (replacement,) = quarantine_writes
         assert replacement["job_hash_1"] == job_hash
+        assert replacement["job_type_1"] == name
+        assert replacement["error_message"] == _QUARANTINED_AUTH_PAYLOAD
         assert replacement["payload_1"] == bad_bytes
         complete_quarantine = job.payload == _QUARANTINED_AUTH_PAYLOAD
         assert complete_quarantine, "replay did not apply the complete quarantine"

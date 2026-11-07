@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import errno
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -125,29 +126,36 @@ def test_symlink_probes_propagate_unrecognized_errors(
     assert raised.value is error
 
 
-@pytest.mark.parametrize(
-    "error_name",
-    [
-        pytest.param(
-            name,
-            marks=pytest.mark.skipif(
-                getattr(errno, name, None) is None,
-                reason=f"{name} is not defined on this platform",
-            ),
-        )
-        for name in ("ENOSYS", "ENOTSUP", "EOPNOTSUPP")
-    ],
-)
+@pytest.mark.parametrize("missing_name", [None, "ENOSYS", "ENOTSUP", "EOPNOTSUPP"])
 def test_posix_explicit_symlink_support_errors_are_unavailable(
-    monkeypatch: pytest.MonkeyPatch, error_name: str
+    monkeypatch: pytest.MonkeyPatch, missing_name: str | None
 ) -> None:
-    monkeypatch.setattr(symlink_support, "os", SimpleNamespace(name="posix"))
-
-    error_number = getattr(errno, error_name, None)
-    assert error_number is not None
-    assert symlink_support._symlink_capability_unavailable(
-        OSError(error_number, "synthetic unsupported POSIX symlink operation")
+    # Model constants at source initialization, independently of the host's errno.
+    numbers = {"ENOSYS": 1001, "ENOTSUP": 1002, "EOPNOTSUPP": 1003}
+    available = {name: value for name, value in numbers.items() if name != missing_name}
+    spec = importlib.util.spec_from_file_location(
+        "_symlink_support_errno_contract", symlink_support.__file__
     )
+    assert spec is not None and spec.loader is not None
+    source = importlib.util.module_from_spec(spec)
+
+    def refuse_symlink(
+        self: Path, target: object, target_is_directory: bool = False
+    ) -> None:
+        raise _SyntheticWindowsError(errno.EACCES, 1314)
+
+    with monkeypatch.context() as source_import:
+        source_import.setitem(
+            sys.modules, "errno", SimpleNamespace(EPERM=errno.EPERM, **available)
+        )
+        source_import.setattr(Path, "symlink_to", refuse_symlink)
+        spec.loader.exec_module(source)
+    source.os = SimpleNamespace(name="posix")
+    source.sys = SimpleNamespace(platform="darwin")
+    for error_name, error_number in numbers.items():
+        assert source._symlink_capability_unavailable(
+            OSError(error_number, "synthetic POSIX symlink operation")
+        ) is (error_name != missing_name)
 
 
 def test_linux_symlink_filesystem_eperm_is_unavailable(

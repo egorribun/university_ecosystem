@@ -20,7 +20,7 @@ import app.core.nats_broker as nats_module
 import app.services.auth_service as auth_module
 import app.tasks.email as email_tasks
 from app.models.dead_letter import DeadLetterJob
-from app.workers.dead_letter_queue import DeadLetterQueue
+from app.workers.dead_letter_queue import _QUARANTINED_AUTH_PAYLOAD, DeadLetterQueue
 
 _AUTH_TASK = "app.tasks.email.send_auth_email"
 
@@ -56,7 +56,14 @@ def _message() -> SimpleNamespace:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("boundary", ["dedup", "replay"])
 @pytest.mark.parametrize(
-    "bad_case", ["malformed_json", "duplicate_keys", "hash_mismatch"]
+    "bad_case",
+    [
+        "malformed_json",
+        "duplicate_keys",
+        "hash_mismatch",
+        "tampered",
+        "non_object_json",
+    ],
 )
 async def test_aud447_invalid_retained_auth_rows_do_not_keep_plaintext_after_uow(
     monkeypatch: pytest.MonkeyPatch,
@@ -190,6 +197,15 @@ async def test_aud447_invalid_retained_auth_rows_do_not_keep_plaintext_after_uow
         except json.JSONDecodeError:
             malformed = True
         assert malformed
+    elif bad_case == "non_object_json":
+        bad_bytes = json.dumps([link])
+    elif bad_case == "tampered":
+        tampered = json.loads(protected_row["payload"])
+        envelope = tampered["args"][1]
+        index = len(envelope) // 2
+        replacement = "A" if envelope[index] != "A" else "B"
+        tampered["args"][1] = envelope[:index] + replacement + envelope[index + 1 :]
+        bad_bytes = json.dumps(tampered)
     elif bad_case == "duplicate_keys":
         bad_bytes = (
             '{"args": '
@@ -235,7 +251,8 @@ async def test_aud447_invalid_retained_auth_rows_do_not_keep_plaintext_after_uow
     before = await _stored_row(retained_auth_sessions)
     seeded_invalid_bytes = before["payload"] == bad_bytes
     has_plaintext = any(value in before["payload"] for value in (marker, other_marker))
-    assert seeded_invalid_bytes and has_plaintext
+    assert seeded_invalid_bytes
+    assert has_plaintext is (bad_case != "tampered")
 
     transport.reset_mock()
     delivered.clear()
@@ -268,6 +285,7 @@ async def test_aud447_invalid_retained_auth_rows_do_not_keep_plaintext_after_uow
         rejected_message.nak.assert_not_awaited()
         assert after["retry_count"] == 2
         assert after["next_retry_at"] > before["next_retry_at"]
+        assert after["error_message"] == _QUARANTINED_AUTH_PAYLOAD
     input_unchanged = (
         json.dumps(incoming, sort_keys=True) == input_before
         and json.dumps(task.model_dump(), sort_keys=True) == task_before
@@ -278,7 +296,9 @@ async def test_aud447_invalid_retained_auth_rows_do_not_keep_plaintext_after_uow
     )
     assert safe_error, "rejection persisted a synthetic marker in error details"
 
-    # This final assertion is the expected semantic RED on current source.
+    # A complete committed tombstone proves rejection, including encrypted
+    # corruption whose bytes never contained the plaintext marker.
+    assert after["payload"] == _QUARANTINED_AUTH_PAYLOAD
     # Opaque errors, no publication and an in-memory repair are not storage proof.
     persisted_private = all(
         value not in after["payload"] for value in (marker, other_marker)

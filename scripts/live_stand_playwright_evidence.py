@@ -81,6 +81,8 @@ _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES = (
     "tests/e2e-live/story-viewer-reduced-motion.live.spec.ts",
     "tests/e2e-live/totp-recovery.live.spec.ts",
     "tests/e2e-live/zzz-aud174-prehydration-caddy-log.live.spec.ts",
+    "tests/e2e/audit375-service-worker.spec.ts",
+    "tests/e2e/rate-limit-ux.spec.ts",
 )
 _PLAYWRIGHT_FAILURE_SOURCES = {
     **{source: source for source in _PLAYWRIGHT_FAILURE_DECLARATION_SOURCES},

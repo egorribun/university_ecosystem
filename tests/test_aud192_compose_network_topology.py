@@ -85,7 +85,6 @@ _SERVICE_CLIENT_CONNECTIONS = (
     ("outbox-worker", "postgres", "db_net"),
     ("outbox-worker", "valkey", "cache_net"),
     ("temporal-ui", "temporal", "service_net"),
-    ("temporal-namespace-init", "temporal", "service_net"),
 )
 
 
@@ -110,6 +109,78 @@ def _effective_network_names(services: dict[str, Any], service_name: str) -> set
         target = mode.removeprefix("service:")
         assert target in services, f"unknown network namespace: {target}"
         current = target
+
+
+def _assert_temporal_initializer_namespace(
+    model: dict[str, Any], required_network: str
+) -> None:
+    """The initializer reaches loopback by sharing only Temporal's namespace."""
+    services = model["services"]
+    initializer = services["temporal-namespace-init"]
+    temporal = services["temporal"]
+    assert initializer.get("network_mode") == "service:temporal", (
+        "initializer namespace"
+    )
+    assert not initializer.get("networks"), "initializer own networks"
+    assert not initializer.get("ports"), "initializer published ports"
+    assert temporal.get("network_mode") is None, "Temporal namespace indirection"
+    networks = _network_names(temporal)
+    assert required_network in networks, "Temporal private network"
+    assert model["networks"][required_network].get("internal") is True, (
+        "Temporal network must be internal"
+    )
+    assert networks.isdisjoint({"frontend_net", "public"}), (
+        "Temporal frontend reachability"
+    )
+
+
+@pytest.mark.parametrize(
+    ("filename", "required_network"),
+    [("docker-compose.yml", "service_net"), ("docker-compose.full.yml", "internal")],
+)
+@pytest.mark.parametrize(
+    ("change", "reason"),
+    [
+        ("host", "initializer namespace"),
+        ("other_service", "initializer namespace"),
+        ("opaque_container", "initializer namespace"),
+        ("own_network", "initializer own networks"),
+        ("published_port", "initializer published ports"),
+        ("provider_indirection", "Temporal namespace indirection"),
+        ("missing_private", "Temporal private network"),
+        ("external_private", "Temporal network must be internal"),
+        ("frontend", "Temporal frontend reachability"),
+        ("public", "Temporal frontend reachability"),
+    ],
+)
+def test_temporal_initializer_namespace_rejects_unsafe_models(
+    filename: str, required_network: str, change: str, reason: str
+) -> None:
+    model = _compose(filename)
+    initializer = model["services"]["temporal-namespace-init"]
+    temporal = model["services"]["temporal"]
+    if change == "host":
+        initializer["network_mode"] = "host"
+    elif change == "other_service":
+        initializer["network_mode"] = "service:backend"
+    elif change == "opaque_container":
+        initializer["network_mode"] = "container:opaque"
+    elif change == "own_network":
+        initializer["networks"] = [required_network]
+    elif change == "published_port":
+        initializer["ports"] = ["7233:7233"]
+    elif change == "provider_indirection":
+        temporal["network_mode"] = "service:backend"
+    elif change == "missing_private":
+        temporal["networks"].remove(required_network)
+    elif change == "external_private":
+        model["networks"][required_network]["internal"] = False
+    elif change in {"frontend", "public"}:
+        temporal["networks"].append(
+            "frontend_net" if change == "frontend" else "public"
+        )
+    with pytest.raises(AssertionError, match=reason):
+        _assert_temporal_initializer_namespace(model, required_network)
 
 
 def _assert_frontend_segment(model: dict[str, Any]) -> None:
@@ -274,6 +345,7 @@ def test_default_and_layered_stacks_isolate_frontend_and_keep_local_access(
     networks = model["networks"]
 
     _assert_frontend_segment(model)
+    _assert_temporal_initializer_namespace(model, "service_net")
     frontend_networks = _network_names(services["frontend"])
     assert {"public", "service_net", "frontend_net"} <= _network_names(
         services["caddy"]
@@ -402,6 +474,7 @@ def test_full_stack_frontend_ssr_is_confined_to_internal_frontend_network(
     services = model["services"]
 
     _assert_frontend_segment(model)
+    _assert_temporal_initializer_namespace(model, "internal")
     backend_networks = _network_names(services["backend"])
     caddy_networks = _network_names(services["caddy"])
     assert "frontend_net" in backend_networks
@@ -462,7 +535,6 @@ def test_full_stack_frontend_ssr_is_confined_to_internal_frontend_network(
         ("ws-hub", "redis"),
         ("file-processor", "minio"),
         ("file-processor", "temporal"),
-        ("temporal-namespace-init", "temporal"),
     ):
         assert "internal" in _effective_network_names(services, client_name)
         assert "internal" in _effective_network_names(services, provider_name)

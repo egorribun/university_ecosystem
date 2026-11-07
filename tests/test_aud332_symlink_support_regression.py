@@ -13,7 +13,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-MAIN_SOURCE_PATH = REPOSITORY_ROOT / "tests" / "symlink_support.py"
+MAIN_SOURCE_PATH = REPOSITORY_ROOT / Path("tests/symlink_support.py")
 SOURCE_PATH = Path(
     os.environ.get("AUD332_SOURCE_PATH", str(MAIN_SOURCE_PATH))
 ).resolve()

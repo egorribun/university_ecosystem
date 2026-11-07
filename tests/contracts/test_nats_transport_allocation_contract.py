@@ -156,13 +156,16 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
         "artifacts/coverage/python/pytest-shard-${{ inputs.shard-id }}.json"
     )
     assert pytest_step["shell"] == "pwsh"
-    assert pytest_step["run"].strip() == ". ./scripts/ci/backend-run-pytest.ps1"
-    pytest_runner = BACKEND_PYTEST_RUNNER.read_text(encoding="utf-8")
-    assert '"--cov=app"' in pytest_runner
-    assert '"--cov=alembic/versions"' in pytest_runner
-    assert '"--junitxml=pytest-report.xml"' in pytest_runner
-    assert '"--ignore=tests/test_schemathesis_api.py"' in pytest_runner
-    assert '"--ignore=tests/test_live_nats_transport.py"' not in pytest_runner
+    assert pytest_step["run"] == ". ./scripts/ci/backend-run-pytest.ps1\n"
+    for owner in (reusable, reusable["jobs"]["unit-tests"]):
+        assert "working-directory" not in (owner.get("defaults") or {}).get("run", {})
+    assert "working-directory" not in pytest_step
+    pytest_source = BACKEND_PYTEST_RUNNER.read_text(encoding="utf-8")
+    assert '"--cov=app"' in pytest_source
+    assert '"--cov=alembic/versions"' in pytest_source
+    assert '"--junitxml=pytest-report.xml"' in pytest_source
+    assert '"--ignore=tests/test_schemathesis_api.py"' in pytest_source
+    assert '"--ignore=tests/test_live_nats_transport.py"' not in pytest_source
 
     provenance = _step(unit_steps, "Write backend shard coverage provenance")["run"]
     assert "pytest-node-manifest" in provenance
@@ -179,6 +182,67 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
     assert names.index("Verify backend test-universe manifests") < names.index(
         "Combine Python shard coverage"
     )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "unchanged",
+        "invocation",
+        "shell",
+        "workflow-directory",
+        "job-directory",
+        "step-directory",
+        "application-coverage",
+        "migration-coverage",
+        "junit",
+        "schemathesis-exclusion",
+        "transport-exclusion",
+    ],
+)
+def test_transport_allocation_rejects_extracted_runner_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    workflow = yaml.safe_load(BACKEND_WORKFLOW.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["unit-tests"]
+    step = _step(job["steps"], "Run pytest")
+    source = (ROOT / "scripts/ci/backend-run-pytest.ps1").read_text(encoding="utf-8")
+    if mutation == "unchanged":
+        pass
+    elif mutation == "invocation":
+        step["run"] = ". ./scripts/ci/unreviewed-runner.ps1\n"
+    elif mutation == "shell":
+        step["shell"] = "bash"
+    elif mutation.endswith("-directory"):
+        owner = {"workflow-directory": workflow, "job-directory": job}.get(mutation)
+        if owner is None:
+            step["working-directory"] = "elsewhere"
+        else:
+            owner["defaults"] = {"run": {"working-directory": "elsewhere"}}
+    elif mutation == "transport-exclusion":
+        source += '\n$pytestArgs += "--ignore=tests/test_live_nats_transport.py"\n'
+    else:
+        removed = {
+            "application-coverage": "--cov=app",
+            "migration-coverage": "--cov=alembic/versions",
+            "junit": "--junitxml=pytest-report.xml",
+            "schemathesis-exclusion": "--ignore=tests/test_schemathesis_api.py",
+        }[mutation]
+        assert source.count(removed) == 1
+        source = source.replace(removed, "")
+    helper = tmp_path / "scripts/ci/backend-run-pytest.ps1"
+    helper.parent.mkdir(parents=True)
+    helper.write_text(source, encoding="utf-8")
+    workflow_path = tmp_path / "reusable-backend-tests.yml"
+    workflow_path.write_text(yaml.safe_dump(workflow), encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    monkeypatch.setattr(sys.modules[__name__], "BACKEND_WORKFLOW", workflow_path)
+    monkeypatch.setattr(sys.modules[__name__], "BACKEND_PYTEST_RUNNER", helper)
+    if mutation == "unchanged":
+        test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_universe()
+    else:
+        with pytest.raises(AssertionError):
+            test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_universe()
 
 
 # Ordered argv population from 1a3954e99f06bf7b1660ad2df609a84b022daefa.
@@ -547,6 +611,10 @@ def _assert_contract_dispatch(
     assert dispatched["consumer"]["pgid"] != dispatched["security-disposition"]["pgid"]
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" or os.name != "posix",
+    reason="requires Linux POSIX process groups, Bash, and setsid; exercised on Ubuntu CI",
+)
 @pytest.mark.parametrize("consumer_status,policy_status", [(0, 0), (9, 0), (0, 7)])
 def test_contract_runner_bounds_workers_preserves_population_and_propagates_failures(
     tmp_path: Path, consumer_status: int, policy_status: int
@@ -570,6 +638,10 @@ def test_contract_runner_bounds_workers_preserves_population_and_propagates_fail
     )
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux" or os.name != "posix",
+    reason="requires Linux POSIX process groups, Bash, and setsid; exercised on Ubuntu CI",
+)
 @pytest.mark.parametrize(
     "old,new,reason",
     [

@@ -8,6 +8,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -514,6 +515,9 @@ def test_backend_disables_uvicorn_access_logging_with_query_strings(
 
     # Behavioural proof: build the real worker from the gunicorn defaults the
     # image uses (no access logfile) and check that uvicorn.access stays silent.
+    if sys.platform == "win32":
+        pytest.importorskip("grp", reason="Gunicorn requires the Unix-only grp module.")
+
     from gunicorn.config import Config
     from gunicorn.glogging import Logger
 
@@ -1577,8 +1581,24 @@ def test_local_frontend_documentation_uses_caddy_as_supported_entry() -> None:
     assert "Единый цифровой хаб (Caddy edge, включая Frontend SSR)" in _read(
         "README.ru.md"
     )
-    assert "supported host entry" in _read("docs/DEPLOY.en.md")
-    assert "поддерживаемая точка входа с хоста" in _read("docs/DEPLOY.md")
+    english_deploy = _read("docs/DEPLOY.en.md")
+    assert "host ports `80` and `443`" in english_deploy
+    assert "full-Compose Caddyfile serves the app on `:80`" in english_deploy
+    assert "Caddy proxies requests to `frontend:3000`" in english_deploy
+    russian_deploy = _read("docs/DEPLOY.md")
+    russian_frontend_line = next(
+        line for line in russian_deploy.splitlines() if "`frontend_net`" in line
+    )
+    assert all(
+        detail in russian_frontend_line
+        for detail in (
+            "Caddy",
+            "`80`",
+            "`443`",
+            "`:80`",
+            "`frontend:3000`",
+        )
+    )
 
     for relative_path in ("docs/DEPLOY.md", "docs/DEPLOY.en.md"):
         document = _read(relative_path)
@@ -3462,8 +3482,8 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
         "github.com/go-jose/go-jose/v4@v4.1.7",
         "github.com/spiffe/go-spiffe/v2@v2.9.0",
         "google.golang.org/grpc@v1.84.0",
-        "golang.org/x/net@v0.60.0",
-        "golang.org/x/text@v0.42.0",
+        "golang.org/x/net@v0.62.0",
+        "golang.org/x/text@v0.43.0",
     ):
         assert dependency in health_probe
     assert "go mod download" in health_probe

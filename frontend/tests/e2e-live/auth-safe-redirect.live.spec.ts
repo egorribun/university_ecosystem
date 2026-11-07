@@ -1,4 +1,4 @@
-import { expect, ROLES, test } from "./fixtures"
+import { expect, loginPasswordForRole, ROLES, test } from "./fixtures"
 
 const untrustedRedirectTargets = [
   {
@@ -27,7 +27,7 @@ for (const { label, target } of untrustedRedirectTargets) {
     // Submit the actual form with the disposable live-stand student account.
     await expect(page.getByRole("textbox", { name: "E-mail" })).toBeVisible()
     await page.getByRole("textbox", { name: "E-mail" }).fill(ROLES.student.email)
-    await page.getByLabel("Пароль", { exact: true }).fill(ROLES.student.password)
+    await page.getByLabel("Пароль", { exact: true }).fill(loginPasswordForRole("student"))
     await page.getByRole("button", { name: "Войти" }).click()
 
     await expect(page).toHaveURL(new URL("/dashboard", loginUrl.origin).href)

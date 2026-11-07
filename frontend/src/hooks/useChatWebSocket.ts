@@ -439,11 +439,6 @@ export function useChatWebSocket({
         rooms.delete(chatId)
         return
       }
-      if (!mountedRef.current) {
-        state.pending = false
-        rooms.delete(chatId)
-        return
-      }
 
       const delay = Math.max(0, state.nextAllowedAt - Date.now())
       if (delay > 0) {

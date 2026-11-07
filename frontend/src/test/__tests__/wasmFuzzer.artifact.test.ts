@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process"
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { createRequire } from "node:module"
 import { dirname, join, resolve } from "node:path"
+import { pathToFileURL } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import {
@@ -10,6 +12,7 @@ import {
 } from "../../../scripts/wasm-fuzzer.mjs"
 
 const frontendDir = resolve(dirname(SANITIZER_WASM_PATH), "../..")
+const require = createRequire(import.meta.url)
 
 describe("wasm fuzzer artifact failures", () => {
   let root: string
@@ -26,7 +29,18 @@ describe("wasm fuzzer artifact failures", () => {
 
     script = join(scriptsDir, "wasm-fuzzer.mjs")
     sanitizerPath = join(sanitizerDir, "wasm_sanitizer_bg.wasm")
-    copyFileSync(resolve(dirname(SANITIZER_WASM_PATH), "../../scripts/wasm-fuzzer.mjs"), script)
+    const source = readFileSync(
+      resolve(dirname(SANITIZER_WASM_PATH), "../../scripts/wasm-fuzzer.mjs"),
+      "utf8"
+    )
+    // The temporary script stays isolated while using the installed parser and its dependencies.
+    writeFileSync(
+      script,
+      source.replace(
+        'from "parse5"',
+        `from ${JSON.stringify(pathToFileURL(require.resolve("parse5")).href)}`
+      )
+    )
     copyFileSync(SANITIZER_WASM_PATH, sanitizerPath)
     copyFileSync(CRYPTO_WASM_PATH, join(cryptoDir, "uni_wasm_crypto_bg.wasm"))
     writeFileSync(join(sanitizerDir, "package.json"), JSON.stringify({ type: "module" }))

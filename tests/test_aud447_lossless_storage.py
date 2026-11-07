@@ -453,15 +453,22 @@ def test_aud447_link_token_extraction_reads_only_authenticated_links(
     assert _auth_link_tokens(_AUTH_TASK, json.dumps(sealed)) == (token,)
     assert _auth_link_tokens(_AUTH_TASK, json.dumps(plain)) == (token,)
     assert _auth_link_tokens(_NOTIFICATION_TASK, json.dumps(plain)) == ()
-    unreadable = _auth_link_tokens(_AUTH_TASK, "not json")
-    assert unreadable == (None,)
-    assert _scrub_error_text("smtp timeout", unreadable) == _QUARANTINED_AUTH_PAYLOAD
-    assert _auth_link_tokens(
-        _AUTH_TASK, json.dumps({"args": ["a", 5], "kwargs": {}})
-    ) == (None,)
     tampered = json.loads(json.dumps(sealed))
     tampered["args"][1] = "gAAAAA" + secrets.token_urlsafe(40)
-    assert _auth_link_tokens(_AUTH_TASK, json.dumps(tampered)) == (None,)
+    invalid_auth = _auth_link_tokens(_AUTH_TASK, "not json")
+    assert invalid_auth == (None,)
+    assert _scrub_error_text("smtp timeout", invalid_auth) == _QUARANTINED_AUTH_PAYLOAD
+    for unreadable in (
+        "not json",
+        json.dumps({"args": ["a", 5], "kwargs": {}}),
+        json.dumps(tampered),
+    ):
+        tokens = _auth_link_tokens(_AUTH_TASK, unreadable)
+        assert tokens == (None,)
+        # Unknown auth material must scrub even a standalone echoed token.
+        assert _scrub_error_text(f"provider rejected {token}", tokens) == (
+            _QUARANTINED_AUTH_PAYLOAD
+        )
 
 
 def _only(rows: list[dict[str, Any]]) -> dict[str, Any]:

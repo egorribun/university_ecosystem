@@ -16,7 +16,10 @@ import {
   isLiveAdminNotificationsScenario,
   isLiveAuthRoleDenialScenario,
 } from "./page-error-diagnostic"
-import { requireLiveAdminPassword } from "../../scripts/live-e2e-credentials.mjs"
+import {
+  requireLiveAdminPassword,
+  resolveLiveRolePassword,
+} from "../../scripts/live-e2e-credentials.mjs"
 import {
   readPlaywrightTestSlotDeadlineAtMs,
   REGISTRATION_MAX_TEST_TIMEOUT_MS,
@@ -865,10 +868,15 @@ export async function loginAs(
   await loginWith(
     page,
     ROLES[role].email,
-    ROLES[role].password,
+    loginPasswordForRole(role),
     cleanupDeadlineAtMs,
     maximumOperationTimeoutMs
   )
+}
+
+/** Resolve the fresh seeded student's per-stand password only inside the owner fixture. */
+export function loginPasswordForRole(role: Role): string {
+  return resolveLiveRolePassword(role, ROLES[role].password, activeOwnedSessionScope !== undefined)
 }
 
 /**
