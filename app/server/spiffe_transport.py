@@ -8,6 +8,7 @@ import ssl
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
+from uuid import UUID
 
 from cryptography import x509
 from spiffe.errors import ArgumentError
@@ -95,7 +96,7 @@ class HandshakeDiagnostics:
         self.remaining -= 1
         logger.warning(
             "internal_mtls_handshake_rejected",
-            probe_id=probe_id,
+            probe_id=str(UUID(hex=probe_id)),
             reason="PEER_DID_NOT_RETURN_A_CERTIFICATE",
         )
 

@@ -182,8 +182,8 @@ backend:
   env:
     AUD373_TLS_DIAGNOSTICS: "1"  # Bounded, opt-in proof telemetry only.
     ALLOWED_HOSTS: "localhost,127.0.0.1,testserver,${BACKEND_SVC},${GATEWAY_SVC}"
-  image:
-    repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend"
+  image: {repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend",
+    digest: "${BACKEND_IMAGE_DIGEST:-}"}
   config:
     internalHMACSecret: "$(random_hex)"
     wsHubInternalSecret: "$(random_hex)"
@@ -1243,8 +1243,22 @@ capture_probe() {
   return "$status"
 }
 
+prepare_no_svid_evidence() {
+  python3 "${ROOT_DIR}/scripts/kind/mtls_rejection_evidence.py" prepare \
+    --namespace "$NAMESPACE" --deployment "$BACKEND_SVC" --service "$BACKEND_SVC" \
+    --image "${LOCAL_REGISTRY_ADDRESS}/university-backend@${BACKEND_IMAGE_DIGEST}" \
+    --state "${WORK_DIR}/no-svid-server-state.json"
+}
+
+verify_no_svid_evidence() {
+  python3 "${ROOT_DIR}/scripts/kind/mtls_rejection_evidence.py" verify \
+    --state "${WORK_DIR}/no-svid-server-state.json" \
+    --probe "${DIAG_DIR}/probe-no-svid-tls.txt" \
+    --output "${DIAG_DIR}/no-svid-server-evidence.txt"
+}
+
 run_proofs() {
-  local output
+  local output server_evidence_prepared=no
   if output="$(capture_probe gateway-hop "$GATEWAY_HOP_PY")" &&
     grep -qx 'STATUS=200' <<<"$output" && grep -qx 'BODY_HAS_KEYS=True' <<<"$output"; then
     record "a-gateway-to-backend-mtls-hop" yes
@@ -1258,10 +1272,17 @@ run_proofs() {
     record "d-backend-logs-gateway-peer-spiffe-id" no
   fi
 
-  if output="$(capture_probe no-svid-tls "$NO_SVID_TLS_PY")" &&
-    grep -qx 'NO_SVID_TCP=CONNECTED' <<<"$output" &&
-    grep -qx 'NO_SVID_TLS=REJECTED' <<<"$output"; then
-    record "b-no-svid-tls-client-rejected" yes
+  if prepare_no_svid_evidence; then server_evidence_prepared=yes; fi
+  if output="$(capture_probe no-svid-tls "$NO_SVID_TLS_PY")"; then
+    if grep -qx 'NO_SVID_TCP=CONNECTED' <<<"$output" &&
+      grep -qx 'NO_SVID_TLS=REJECTED' <<<"$output"; then
+      record "b-no-svid-tls-client-rejected" yes
+    elif [[ "$server_evidence_prepared" == yes ]] && verify_no_svid_evidence; then
+      # This is a server-correlated fatal rejection, not a synthetic client alert.
+      record "b-no-svid-tls-client-rejected" yes
+    else
+      record "b-no-svid-tls-client-rejected" no
+    fi
   else
     record "b-no-svid-tls-client-rejected" no
   fi

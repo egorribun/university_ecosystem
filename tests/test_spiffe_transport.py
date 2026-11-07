@@ -635,7 +635,7 @@ def test_handshake_diagnostics_bound_and_deduplicate_events(monkeypatch):
     assert logger.warning.call_count == 64
     assert logger.warning.call_args_list[0] == call(
         "internal_mtls_handshake_rejected",
-        probe_id=f"{0:032x}",
+        probe_id="-".join("0" * count for count in (8, 4, 4, 4, 12)),
         reason="PEER_DID_NOT_RETURN_A_CERTIFICATE",
     )
     assert "deliberately private" not in str(logger.mock_calls)

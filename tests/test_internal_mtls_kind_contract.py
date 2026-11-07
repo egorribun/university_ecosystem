@@ -2608,7 +2608,7 @@ def test_public_sslobject_handshake_observer(
             if require_certificate:
                 log.warning.assert_called_once_with(
                     "internal_mtls_handshake_rejected",
-                    probe_id=hellos[0][1][7:-8],
+                    probe_id=str(__import__("uuid").UUID(hex=hellos[0][1][7:-8])),
                     reason="PEER_DID_NOT_RETURN_A_CERTIFICATE",
                 )
                 assert not admitted
@@ -2673,3 +2673,61 @@ if finish_deploy; then printf 'PROBES_ALLOWED\\n'; else printf 'PROBES_BLOCKED\\
         assert "PROBES_ALLOWED" not in output
         assert "deployment/file-processor" not in output
         assert "deployment/gateway" not in output
+
+
+@pytest.mark.parametrize("prepared", [True, False])
+@pytest.mark.parametrize("captured", [True, False])
+@pytest.mark.parametrize("verified", [True, False])
+def test_server_proof_requires_prepared_successful_capture_and_verified_evidence(
+    prepared, captured, verified
+):
+    command = f"""set -euo pipefail
+{_shell_function("record")}
+{_shell_function("run_proofs")}
+FAILURES=0
+GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
+backend_logged_gateway_peer() {{ return 0; }}
+prepare_no_svid_evidence() {{ return {0 if prepared else 1}; }}
+verify_no_svid_evidence() {{ printf 'VERIFIER_CALLED\\n'; return {0 if verified else 1}; }}
+capture_probe() {{
+  case "$1" in
+    gateway-hop) printf 'STATUS=200\\nBODY_HAS_KEYS=True\\n' ;;
+    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=ERROR\\n'; return {0 if captured else 1} ;;
+    plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
+  esac
+}}
+run_proofs
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    output = result.stdout.decode()
+    assert ("VERIFIER_CALLED" in output) is (prepared and captured)
+    expected = "PASS" if prepared and captured and verified else "FAIL"
+    assert f"{expected} b-no-svid-tls-client-rejected" in output
+
+
+def test_server_evidence_helpers_use_owned_pinned_backend_and_private_state():
+    prepare = _shell_function("prepare_no_svid_evidence")
+    verify = _shell_function("verify_no_svid_evidence")
+    assert '--deployment "$BACKEND_SVC" --service "$BACKEND_SVC"' in prepare
+    assert (
+        "${LOCAL_REGISTRY_ADDRESS}/university-backend@${BACKEND_IMAGE_DIGEST}"
+        in prepare
+    )
+    assert "${WORK_DIR}/no-svid-server-state.json" in prepare
+    assert "${WORK_DIR}/no-svid-server-state.json" in verify
+    assert "${DIAG_DIR}/probe-no-svid-tls.txt" in verify
+    assert "${DIAG_DIR}/no-svid-server-evidence.txt" in verify
+    assert 'digest: "${BACKEND_IMAGE_DIGEST:-}"' in _script()
+
+
+def test_generated_proof_backend_uses_the_built_manifest_digest(monkeypatch):
+    import hashlib
+
+    digest = "sha256:" + hashlib.sha256(b"owned source image fixture").hexdigest()
+    monkeypatch.setenv("BACKEND_IMAGE_DIGEST", digest)
+    values = _generated_proof_values()
+    assert values["backend"]["image"] == {
+        "repository": "127.0.0.1:32768/university-backend",
+        "digest": digest,
+    }
