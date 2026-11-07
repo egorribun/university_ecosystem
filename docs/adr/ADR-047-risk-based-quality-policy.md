@@ -2247,3 +2247,18 @@ required checks, coverage floors, or mutation-stage policy.
 ### 2026-11-07: restore the previously approved zlib integrity suffix
 
 Merge fbddf32 omitted the eight exact zlib APK integrity dispositions published in 2cfa54cc. Reintegration preserves all 497 current records in order and appends those same eight records, for 505 total and 309 public_integrity_digest records. The paths, detector types, finding digests, owner egorribun, reviewed date 2026-11-06 and expiry 2027-01-10 remain unchanged. This restores the existing finite approval, not new identities or an expiry extension. The baseline remains 242 and Gitleaks remains 27. Signed Alpine archives preserve zlib 1.3.2-r1 after moving indexes stop listing it; SHA-256 and ordinary APK signature verification remain mandatory, with no allow-untrusted or mutable fallback. Source-line evidence is updated only to the exact restored locations. Every new source SHA still requires its own checks.
+
+## Owner-approved AUD-373 Kind source binding (2026-11-07 UTC)
+
+The owner approved the exact current-source test guard for
+`scripts/kind/aud373_internal_mtls_proof.sh` in commit `f03b62ba7`. The
+SHA-256 binding moved from `99db5a3d...88a96f` to `5c255778...b84ecb6` for
+the script with a bounded arithmetic retry loop and explicit error handling
+for probe capture. The guard matches the full digest, retained with the
+private decision receipt.
+
+The decision applies to that script revision only. Scanner identities,
+categories, expiry dates and gates retain their existing values. Later Kind
+revisions and the Seed, Temporal and zlib 1.4 proposals require separate
+decisions. The hosted A/B/C/D Kind proof still requires passing evidence from
+the reviewed source.
