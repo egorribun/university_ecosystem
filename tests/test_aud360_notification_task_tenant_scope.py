@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -198,3 +199,30 @@ async def test_notification_task_rejects_malformed_tenant_before_opening_session
 
     with pytest.raises(ValueError, match="tenant identity"):
         await _invoke_task("event", tenant_id="not-a-uuid")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("task_name", ["news", "event", "comment"])
+@pytest.mark.parametrize("tenant_id", [7, [], {"tenant_id": str(_TENANT_A)}])
+async def test_notification_task_rejects_non_string_tenant_without_side_effects(
+    task_name: str, tenant_id: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "mvp_tenant_id", _TENANT_A)
+    monkeypatch.setattr(
+        notifications,
+        "async_session",
+        lambda: pytest.fail("invalid tenant opened a database session"),
+    )
+    ambient_tenant = tenant_id_ctx.set(str(_TENANT_B))
+    ambient_bypass = bypass_rls_ctx.set(True)
+    try:
+        with pytest.raises(
+            ValueError, match=r"^Invalid notification task tenant identity$"
+        ):
+            await _invoke_task(task_name, tenant_id=tenant_id)
+
+        assert get_current_tenant() == str(_TENANT_B)
+        assert get_bypass_rls() is True
+    finally:
+        bypass_rls_ctx.reset(ambient_bypass)
+        tenant_id_ctx.reset(ambient_tenant)

@@ -827,7 +827,7 @@ GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
 run_probe() {{
   case "$1" in
     gateway-hop) printf 'STATUS=200\\nBODY_HAS_KEYS=True\\n' ;;
-    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=REJECTED\\n' ;;
+    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=REJECTED\\nNO_SVID_STAGE=READ_ALERT\\nNO_SVID_EVENT=CERTIFICATE_REQUIRED\\nNO_SVID_PROBE_ID=%032d\\n' ;;
     plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
   esac
 }}
@@ -2385,7 +2385,13 @@ def test_file_processor_startup_and_gateway_health_keep_real_dependencies_ordere
 @pytest.mark.parametrize(
     ("payload", "command_status", "valid"),
     [
-        ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED\n", 0, True),
+        (
+            "NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED\nNO_SVID_STAGE=READ_ALERT\nNO_SVID_EVENT=CERTIFICATE_REQUIRED\nNO_SVID_PROBE_ID="
+            + "0" * 32
+            + "\n",
+            0,
+            True,
+        ),
         ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED\n", 37, False),
         ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=ERROR\nNO_SVID_TLS=REJECTED\n", 0, False),
         ("NO_SVID_TCP=CONNECTED\nNO_SVID_TLS=REJECTED secret\n", 0, False),
@@ -2449,7 +2455,7 @@ GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
 run_probe() {{
   case "$1" in
     gateway-hop) printf 'STATUS=200\\nBODY_HAS_KEYS=True\\n' ;;
-    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=REJECTED\\n' ;;
+    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=REJECTED\\nNO_SVID_STAGE=READ_ALERT\\nNO_SVID_EVENT=CERTIFICATE_REQUIRED\\nNO_SVID_PROBE_ID=%032d\\n' ;;
     plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
   esac
 }}
@@ -2736,3 +2742,450 @@ def test_generated_proof_backend_uses_the_built_manifest_digest():
         "digest": digest,
         "pullPolicy": "Always",
     }
+
+
+def _complete_no_svid_markers() -> dict[str, str]:
+    return {
+        "NO_SVID_PROBE_ID": bytes(range(16)).hex(),
+        "NO_SVID_STAGE": "READ_ALERT",
+        "NO_SVID_EVENT": "CERTIFICATE_REQUIRED",
+        "NO_SVID_TCP": "CONNECTED",
+        "NO_SVID_TLS": "REJECTED",
+    }
+
+
+@pytest.mark.parametrize("missing", [None, "all", *_complete_no_svid_markers()])
+def test_probe_sanitizer_requires_complete_no_svid_schema(missing, tmp_path):
+    fields = _complete_no_svid_markers()
+    if missing == "all":
+        fields.clear()
+    elif missing is not None:
+        fields.pop(missing)
+    raw = tmp_path / "markers"
+    raw.write_text("".join(f"{key}={value}\n" for key, value in fields.items()))
+    command = f"""set -euo pipefail
+{_shell_function("sanitize_probe_output")}
+status=0
+sanitize_probe_output no-svid-tls < {shlex.quote(_bash_path(raw))} || status=$?
+printf 'STATUS=%s\\n' "$status"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    text = result.stdout.decode()
+    assert ("PROBE_OUTPUT=VALID\n" in text) is (missing is None)
+    assert ("STATUS=0\n" in text) is (missing is None)
+
+
+@pytest.mark.parametrize(
+    ("failed_phase", "container_exit", "expected"),
+    [
+        ("none", "0", 0),
+        ("none", "7", 7),
+        ("none", "", 125),
+        ("none", "255", 255),
+        ("none", "256", 125),
+        ("none", "0|7", 125),
+        ("none", "|0", 125),
+        ("none", "00", 125),
+        ("none", "-1", 125),
+        ("none", " 0", 125),
+        ("none", "0\n0", 125),
+        ("run", "0", 125),
+        ("wait", "0", 125),
+        ("get", "0", 125),
+        ("logs", "0", 125),
+        ("delete", "0", 125),
+        ("uid-before", "0", 125),
+        ("uid-after", "0", 125),
+        ("run-uid-invalid", "0", 125),
+        ("logs-empty", "0", 1),
+        ("logs-incomplete", "0", 1),
+    ],
+)
+def test_detached_probe_collects_finished_logs_and_real_exit(
+    failed_phase, container_exit, expected, tmp_path
+):
+    uid = "-".join("0" * width for width in (8, 4, 4, 4, 12))
+    calls = tmp_path / "calls"
+    raw = tmp_path / "logs"
+    raw.write_text(
+        "".join(f"{k}={v}\n" for k, v in _complete_no_svid_markers().items())
+    )
+    command = f"""set -euo pipefail
+{_shell_function("run_probe")}
+{_shell_function("sanitize_probe_output")}
+{_shell_function("capture_probe")}
+DIAG_DIR={shlex.quote(_bash_path(tmp_path / "diagnostics"))}
+NAMESPACE=proof; BACKEND_IMAGE=owned-image; BACKEND_SVC=backend; GATEWAY_SVC=gateway
+BACKEND_PORT=8000; GATEWAY_PORT=8080; RUN_SUFFIX=owned-run
+timeout() {{
+  [[ "$1" == --kill-after=5s ]] || return 92
+  shift
+  printf 'BOUND %s\\n' "$1" >> {shlex.quote(_bash_path(calls))}
+  shift
+  "$@"
+}}
+kubectl() {{
+  [[ "$1" == -n && "$2" == proof ]] || return 90
+  shift 2
+  printf '%s\\n' "$*" >> {shlex.quote(_bash_path(calls))}
+  if [[ "$1" == {shlex.quote(failed_phase)} ]]; then
+    printf 'PRIVATE-DIAGNOSTIC\\n' >&2
+    return 41
+  fi
+  case "$1" in
+    run)
+      [[ "$*" == *'--attach=false'* && "$*" != *'--rm'* ]] || return 93
+      if [[ {shlex.quote(failed_phase)} == run-uid-invalid ]]; then printf 'invalid'; else printf '%s' {shlex.quote(uid)}; fi ;;
+
+    wait) [[ "$*" == *'.state.terminated.exitCode}}'* ]] ;;
+    get)
+      if [[ "$*" == *'.state.terminated.exitCode'* ]]; then
+        observed={shlex.quote(uid)}
+        if [[ {shlex.quote(failed_phase)} == uid-before ]]; then observed=changed; fi
+        printf '%s|%s' "$observed" {shlex.quote(container_exit)}
+      else
+        if [[ {shlex.quote(failed_phase)} == uid-after ]]; then printf 'changed'; else printf '%s' {shlex.quote(uid)}; fi
+      fi ;;
+
+    logs)
+      case {shlex.quote(failed_phase)} in
+        logs-empty) return 0 ;;
+        logs-incomplete) printf 'NO_SVID_TCP=CONNECTED\\n' ;;
+        *) cat {shlex.quote(_bash_path(raw))} ;;
+      esac ;;
+
+    delete)
+      [[ "$*" == *'--raw /api/v1/namespaces/proof/pods/ue-r9-aud373-probe-no-svid-tls-owned-run -f -'* ]] || return 94
+      body="$(cat)"
+      [[ "$body" == *'"uid":"{uid}"'* ]] || return 95
+      return 0 ;;
+
+    *) return 91 ;;
+  esac
+}}
+status=0
+capture_probe no-svid-tls ignored || status=$?
+printf 'CAPTURE_STATUS=%s\\n' "$status"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    text = result.stdout.decode()
+    assert f"CAPTURE_STATUS={expected}\n" in text
+    probe_exit = 0 if failed_phase in {"logs-empty", "logs-incomplete"} else expected
+    assert f"PROBE_EXIT={probe_exit}\n" in text
+    assert "PRIVATE" not in text + result.stderr.decode()
+    events = calls.read_text().splitlines()
+    operations = [line.split()[0] for line in events if not line.startswith("BOUND")]
+    assert operations.count("run") == 1
+    assert ("delete" in operations) is (failed_phase not in {"run", "run-uid-invalid"})
+    if failed_phase == "none" and container_exit in {"0", "7"}:
+        assert operations == ["run", "wait", "get", "logs", "get", "delete"]
+        assert "PROBE_OUTPUT=VALID\n" in text
+        assert [line for line in events if line.startswith("BOUND")] == [
+            "BOUND 30",
+            "BOUND 180",
+            "BOUND 15",
+            "BOUND 30",
+            "BOUND 15",
+            "BOUND 20",
+        ]
+    if "logs" in operations:
+        logs = next(line for line in events if line.startswith("logs "))
+        assert "--container=ue-r9-aud373-probe-no-svid-tls-owned-run" in logs
+        assert "--tail=-1" in logs
+        assert "--limit-bytes" not in logs
+
+
+def _gateway_probe_source() -> str:
+    return _script().split("GATEWAY_HOP_PY='\n", 1)[1].split("\n'", 1)[0]
+
+
+def _run_mocked_gateway_probe(tmp_path, monkeypatch, capsys, error, phase="OPEN"):
+    import runpy
+    import urllib.request
+
+    calls = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            if phase == "ENTER":
+                raise error
+            return self
+
+        def read(self, size):
+            calls.append(("read", size))
+            if phase == "READ":
+                raise error
+            return b'{"keys":[]}'
+
+        def __exit__(self, *_):
+            if phase == "CLOSE":
+                raise error
+
+    def urlopen(url, *, timeout):
+        calls.append(("open", url, timeout))
+        if phase == "OPEN" and error is not None:
+            raise error
+        return Response()
+
+    monkeypatch.setenv("TARGET_GATEWAY", "private-gateway.invalid")
+    monkeypatch.setenv("TARGET_GATEWAY_PORT", "8080")
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    script = tmp_path / "gateway_probe.py"
+    script.write_text(_gateway_probe_source(), encoding="utf-8")
+    runpy.run_path(str(script))
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert calls[0] == (
+        "open",
+        "http://private-gateway.invalid:8080/.well-known/jwks.json",
+        20,
+    )
+    assert sum(call[0] == "open" for call in calls) == 1
+    assert all(call == ("read", 65536) for call in calls[1:])
+    assert "private" not in output.out
+    return output.out
+
+
+def _gateway_error_fixture(case):
+    import http.client
+    import urllib.error
+
+    class HostileError(Exception):
+        def __str__(self):
+            raise AssertionError("exception text must not be inspected")
+
+        def __repr__(self):
+            raise AssertionError("exception representation must not be inspected")
+
+    class AmbiguousError(TimeoutError, ConnectionRefusedError):
+        pass
+
+    class UnsupportedURL(urllib.error.URLError):
+        reason_reads = 0
+
+        def __getattribute__(self, name):
+            if name == "reason":
+                type(self).reason_reads += 1
+                raise AssertionError("subclass reason must not be inspected")
+            return super().__getattribute__(name)
+
+    socket_timeout = socket.timeout
+
+    direct = {
+        "dns": (socket.gaierror("private-error"), "DNS"),
+        "refused": (ConnectionRefusedError("private-error"), "REFUSED"),
+        "timeout": (TimeoutError("private-error"), "TIMEOUT"),
+        "socket-timeout": (socket_timeout("private-error"), "TIMEOUT"),
+        "reset": (ConnectionResetError("private-error"), "RESET"),
+        "eof": (EOFError("private-error"), "EOF"),
+        "remote-eof": (http.client.RemoteDisconnected("private-error"), "EOF"),
+        "incomplete-read": (http.client.IncompleteRead(b"private-body"), "EOF"),
+        "ssl-eof": (ssl.SSLEOFError("private-error"), "EOF"),
+        "os-error": (OSError("private-error"), "OTHER"),
+        "unknown": (ValueError("private-error"), "OTHER"),
+        "hostile": (HostileError(), "OTHER"),
+        "ambiguous": (AmbiguousError(), "OTHER"),
+        "same-name": (type("TimeoutError", (Exception,), {})(), "OTHER"),
+        "url-subclass": (UnsupportedURL("private-url"), "OTHER"),
+        "url-string": (urllib.error.URLError("private-url"), "URL_ERROR"),
+        "url-hostile": (urllib.error.URLError(HostileError()), "URL_ERROR"),
+        "url-http": (
+            urllib.error.URLError(
+                urllib.error.HTTPError("private-url", 503, "private-error", {}, None)
+            ),
+            "URL_ERROR",
+        ),
+    }
+    if case in direct:
+        return direct[case]
+    if case == "url-cycle":
+        error = urllib.error.URLError(None)
+        error.reason = error
+        return error, "URL_ERROR"
+    if case == "url-missing-reason":
+        error = urllib.error.URLError(None)
+        del error.reason
+        return error, "URL_ERROR"
+    depth = {"url-one": 1, "url-four": 4, "url-five": 5}[case]
+    error = ConnectionRefusedError("private-error")
+    for _ in range(depth):
+        error = urllib.error.URLError(error)
+    return error, "REFUSED" if depth <= 4 else "URL_ERROR"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "dns",
+        "refused",
+        "timeout",
+        "socket-timeout",
+        "reset",
+        "eof",
+        "remote-eof",
+        "incomplete-read",
+        "ssl-eof",
+        "os-error",
+        "unknown",
+        "hostile",
+        "ambiguous",
+        "same-name",
+        "url-subclass",
+        "url-string",
+        "url-hostile",
+        "url-http",
+        "url-cycle",
+        "url-missing-reason",
+        "url-one",
+        "url-four",
+        "url-five",
+    ],
+)
+@pytest.mark.parametrize("phase", ["OPEN", "ENTER", "READ", "CLOSE"])
+def test_gateway_probe_reports_only_finite_error_diagnostics(
+    case, phase, tmp_path, monkeypatch, capsys
+):
+    error, classification = _gateway_error_fixture(case)
+    output = _run_mocked_gateway_probe(tmp_path, monkeypatch, capsys, error, phase)
+    stage = "OPEN" if phase == "ENTER" else phase
+    assert output == (
+        f"ERROR=ERROR\nGATEWAY_STAGE={stage}\nGATEWAY_ERROR={classification}\n"
+    )
+    assert "STATUS=" not in output and "BODY_HAS_KEYS=" not in output
+    if case == "url-subclass":
+        assert type(error).reason_reads == 0
+
+
+def test_gateway_probe_success_schema_and_http_error_precedence(
+    tmp_path, monkeypatch, capsys
+):
+    import urllib.error
+
+    assert _run_mocked_gateway_probe(tmp_path, monkeypatch, capsys, None) == (
+        "STATUS=200\nBODY_HAS_KEYS=True\n"
+    )
+    error = urllib.error.HTTPError("private-url", 503, "private-error", {}, None)
+    assert _run_mocked_gateway_probe(tmp_path, monkeypatch, capsys, error) == (
+        "STATUS=503\nBODY_HAS_KEYS=False\n"
+    )
+
+
+def _sanitize_gateway_markers(raw_text, tmp_path):
+    raw = tmp_path / "gateway-markers"
+    raw.write_bytes(raw_text.encode("utf-8"))
+    command = f"""set -euo pipefail
+{_shell_function("sanitize_probe_output")}
+sanitize_probe_output gateway-hop < {shlex.quote(_bash_path(raw))}
+"""
+    return _bash_command(command)
+
+
+@pytest.mark.parametrize("stage", ["OPEN", "READ", "CLOSE"])
+@pytest.mark.parametrize(
+    "classification",
+    ["DNS", "REFUSED", "TIMEOUT", "RESET", "EOF", "URL_ERROR", "OTHER"],
+)
+def test_gateway_error_sanitizer_preserves_finite_complete_schema(
+    stage, classification, tmp_path
+):
+    raw = f"ERROR=ERROR\nGATEWAY_STAGE={stage}\nGATEWAY_ERROR={classification}\n"
+    result = _sanitize_gateway_markers(raw, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.decode() == raw + "PROBE_OUTPUT=VALID\n"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "",
+        "ERROR=ERROR\n",
+        "ERROR=URLError\n",
+        "ERROR=ERROR\nGATEWAY_STAGE=OPEN\n",
+        "ERROR=ERROR\nGATEWAY_ERROR=DNS\n",
+        "GATEWAY_STAGE=OPEN\nGATEWAY_ERROR=DNS\n",
+        "ERROR=ERROR\nGATEWAY_STAGE=OPEN\nGATEWAY_ERROR=DNS\nSTATUS=200\nBODY_HAS_KEYS=True\n",
+        "ERROR=ERROR\nERROR=ERROR\nGATEWAY_STAGE=OPEN\nGATEWAY_ERROR=DNS\n",
+        "ERROR=ERROR\nGATEWAY_STAGE=OPEN\nGATEWAY_STAGE=OPEN\nGATEWAY_ERROR=DNS\n",
+        "ERROR=ERROR\nGATEWAY_STAGE=OPEN\nGATEWAY_ERROR=DNS\nGATEWAY_ERROR=DNS\n",
+        "ERROR=ERROR\nGATEWAY_STAGE=UNKNOWN\nGATEWAY_ERROR=DNS\n",
+        "ERROR=ERROR\nGATEWAY_STAGE=OPEN\nGATEWAY_ERROR=PrivateClass\n",
+        "ERROR=ERROR\nGATEWAY_STAGE=OPEN\nGATEWAY_ERROR=DNS\nGATEWAY_HOST=private-host\n",
+        "ERROR=ERROR\nGATEWAY_STAGE=OPEN\nGATEWAY_ERROR=DNS\nPROBE_EXIT=0\n",
+        "ERROR=ERROR\nGATEWAY_STAGE=OPEN\nGATEWAY_ERROR=DNS",
+        "ERROR=ERROR\nGATEWAY_STAGE=OPEN\nGATEWAY_ERROR=" + "x" * 129 + "\n",
+        "ERROR=ERROR\nGATEWAY_STAGE=OPEN\nGATEWAY_ERROR=DNŚ\n",
+    ],
+)
+def test_gateway_error_sanitizer_rejects_partial_or_unsafe_schema(raw, tmp_path):
+    result = _sanitize_gateway_markers(raw, tmp_path)
+    assert result.returncode == 1, result.stderr
+    assert result.stdout.decode().endswith("PROBE_OUTPUT=INVALID\n")
+    assert b"PrivateClass" not in result.stdout
+    assert b"private-host" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    "raw", ["STATUS=200\nBODY_HAS_KEYS=True\n", "STATUS=503\nBODY_HAS_KEYS=False\n"]
+)
+def test_gateway_success_sanitizer_schema_stays_unchanged(raw, tmp_path):
+    result = _sanitize_gateway_markers(raw, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.decode() == raw + "PROBE_OUTPUT=VALID\n"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        *[
+            f"ERROR=ERROR\nGATEWAY_STAGE={stage}\nGATEWAY_ERROR={error}\n"
+            for stage in ("OPEN", "READ", "CLOSE")
+            for error in (
+                "DNS",
+                "REFUSED",
+                "TIMEOUT",
+                "RESET",
+                "EOF",
+                "URL_ERROR",
+                "OTHER",
+            )
+        ],
+        "STATUS=200\nBODY_HAS_KEYS=True\nERROR=ERROR\nGATEWAY_STAGE=CLOSE\nGATEWAY_ERROR=OTHER\n",
+        "STATUS=200\nBODY_HAS_KEYS=False\n",
+        "STATUS=503\nBODY_HAS_KEYS=True\n",
+    ],
+)
+def test_gateway_error_diagnostics_never_satisfy_success_gate(raw, tmp_path):
+    markers = tmp_path / "gateway-markers"
+    markers.write_text(raw, encoding="utf-8")
+    no_svid = "".join(f"{k}={v}\n" for k, v in _complete_no_svid_markers().items())
+    command = f"""set -euo pipefail
+{_shell_function("sanitize_probe_output")}
+{_shell_function("capture_probe")}
+{_shell_function("record")}
+{_shell_function("run_proofs")}
+DIAG_DIR={shlex.quote(_bash_path(tmp_path / "diagnostics"))}
+FAILURES=0
+GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
+run_probe() {{
+  case "$1" in
+    gateway-hop) cat {shlex.quote(_bash_path(markers))} ;;
+    no-svid-tls) printf '%s' {shlex.quote(no_svid)} ;;
+    plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
+  esac
+}}
+backend_logged_gateway_peer() {{ return 0; }}
+prepare_no_svid_evidence() {{ return 0; }}
+verify_no_svid_evidence() {{ return 1; }}
+run_proofs
+printf 'FAILURES=%s\\n' "$FAILURES"
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    text = result.stdout.decode()
+    assert "FAIL a-gateway-to-backend-mtls-hop\n" in text
+    assert "FAILURES=1\n" in text
+    assert text.count("PASS ") == 3

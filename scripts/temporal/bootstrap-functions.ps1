@@ -502,6 +502,90 @@ function Assert-InPlaceTemporalBootstrapVolumeSafety {
     }
 }
 
+function Add-TemporalBootstrapDockerErrorClass {
+    param(
+        [Parameter(Mandatory=$true)][hashtable]$State,
+        [Parameter(Mandatory=$true)][System.Management.Automation.ErrorRecord]$Record
+    )
+    # Classify a bounded prefix in memory; retain only finite classifications.
+    # The shared hashtable survives ForEach-Object's pipeline scope without
+    # collecting ErrorRecords or their potentially sensitive messages.
+    $State.Seen = $true
+    $exceptionType = $Record.Exception.GetType().FullName
+    if ($exceptionType -ceq 'System.Management.Automation.NativeCommandExitException') {
+        # PowerShell can emit this after the real stderr records. It is an exit
+        # status notification, not an additional explanation from the daemon.
+        return
+    }
+    if ($State.Records -ge 8) { $State.Capped = $true; return }
+    $State.Records++
+    $kind = 'unknown'
+    if ($exceptionType -ceq 'System.Management.Automation.CommandNotFoundException') {
+        $kind = 'command-unavailable'
+    } else {
+        $message = [string]$Record.Exception.Message
+        $remaining = 8192 - $State.Characters
+        if ($remaining -le 0) { $State.Capped = $true; return }
+        $length = [Math]::Min(2048, $remaining)
+        if ($message.Length -gt $length) {
+            $State.Capped = $true
+            $message = $message.Substring(0, $length)
+        }
+        $State.Characters += $message.Length
+        $classes = [System.Collections.Generic.List[string]]::new()
+        if ($message -match '(?i)template parsing error|error parsing template|can.t evaluate field|template:.*executing') { $classes.Add('format-template') }
+        if ($message -match '(?i)no such (image|container|object)|no such object:') { $classes.Add('missing-object') }
+        if ($message -match '(?i)cannot connect to the docker daemon|is the docker daemon running|error during connect|connection refused') { $classes.Add('daemon-unreachable') }
+        if ($message -match '(?i)permission denied|access is denied|access denied|unauthorized|authentication required') { $classes.Add('access-denied') }
+        if ($message -match '(?i)context .*does not exist|context .*not found|unable to resolve docker endpoint') { $classes.Add('context-unavailable') }
+        if ($message -match '(?i)client version .*too (old|new)|client is newer than server|minimum supported api version|unsupported api version') { $classes.Add('client-api') }
+        if ($message -match '(?i)x509:|tls handshake|certificate signed by unknown authority|certificate has expired') { $classes.Add('tls') }
+        if ($classes.Count -eq 1) { $kind = $classes[0] }
+        elseif ($classes.Count -gt 1) { $kind = 'multiple' }
+    }
+    if ($State.Kind -ceq 'none') { $State.Kind = $kind }
+    elseif ($State.Kind -cne $kind) { $State.Kind = 'multiple' }
+}
+
+function Write-TemporalBootstrapDockerInspectDiagnostic {
+    param(
+        [Parameter(Mandatory=$true)]
+        [ValidateSet(
+            'temporal-server-image', 'temporal-init-image',
+            'temporal-server-container', 'temporal-init-container',
+            'network-namespace-target', 'network-namespace-mode',
+            'pid-namespace-target', 'pid-namespace-mode',
+            'peer-network-mode', 'peer-pid-mode', 'peer-mount-metadata'
+        )][string]$Phase,
+        [Parameter(Mandatory=$true)][ValidateSet('command-failed', 'invalid-output-shape', 'invalid-json')][string]$Result,
+        [Parameter(Mandatory=$true)][hashtable]$State,
+        [Parameter(Mandatory=$true)][bool]$CommandThrew,
+        [AllowNull()]$ExitCode
+    )
+    try {
+        $kind = [string]$State.Kind
+        if ($kind -cnotin @('none', 'unknown', 'command-unavailable', 'format-template', 'missing-object', 'daemon-unreachable', 'access-denied', 'context-unavailable', 'client-api', 'tls', 'multiple')) { $kind = 'unknown' }
+        if ($State.Capped) { $kind = 'bounded' }
+        $exitClass = if ($null -eq $ExitCode) { 'unavailable' } elseif ($ExitCode -eq 0) { 'zero' } else { 'nonzero' }
+        $platform = 'other'
+        if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) { $platform = 'windows' }
+        elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Linux)) { $platform = 'linux' }
+        elseif ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::OSX)) { $platform = 'macos' }
+        $edition = if ($PSVersionTable.PSEdition -ceq 'Core') { 'core' } elseif ($PSVersionTable.PSEdition -ceq 'Desktop') { 'desktop' } else { 'other' }
+        $nativePreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+        $nativeErrors = if ($null -eq $nativePreference) { 'unavailable' } elseif ($nativePreference.Value -eq $true) { 'enabled' } else { 'disabled' }
+        $errorAction = if ($ErrorActionPreference -eq 'Stop') { 'stop' } elseif ($ErrorActionPreference -eq 'Continue') { 'continue' } else { 'other' }
+        $command = Get-Command -Name docker -ErrorAction SilentlyContinue
+        $commandKind = if ($null -eq $command) { 'unresolved' } elseif ($command.CommandType -eq 'Application') { 'application' } elseif ($command.CommandType -eq 'Function') { 'function' } elseif ($command.CommandType -eq 'Alias') { 'alias' } else { 'other' }
+        $hostSet = -not [string]::IsNullOrEmpty($env:DOCKER_HOST)
+        $contextSet = -not [string]::IsNullOrEmpty($env:DOCKER_CONTEXT)
+        $configSet = -not [string]::IsNullOrEmpty($env:DOCKER_CONFIG)
+        $tlsVerifySet = -not [string]::IsNullOrEmpty($env:DOCKER_TLS_VERIFY)
+        $apiVersionSet = -not [string]::IsNullOrEmpty($env:DOCKER_API_VERSION)
+        [Console]::Error.WriteLine("TEMPORAL_BOOTSTRAP_RUNTIME_INSPECT phase=$Phase result=$Result error_class=$kind error_present=$([bool]$State.Seen) error_capped=$([bool]$State.Capped) command_threw=$CommandThrew exit=$exitClass platform=$platform edition=$edition native_errors=$nativeErrors error_action=$errorAction docker_command=$commandKind docker_host_set=$hostSet docker_context_set=$contextSet docker_config_set=$configSet docker_tls_verify_set=$tlsVerifySet docker_api_version_set=$apiVersionSet")
+    } catch { }
+}
+
 function Get-TemporalBootstrapDockerObject {
     param(
         [Parameter(Mandatory=$true)]
@@ -515,18 +599,38 @@ function Get-TemporalBootstrapDockerObject {
         [string]$Phase,
         [Parameter(Mandatory=$true)][string[]]$Arguments
     )
-    $output = @(docker @Arguments 2>$null)
-    if ($LASTEXITCODE -ne 0) {
-        try { [Console]::Error.WriteLine("TEMPORAL_BOOTSTRAP_RUNTIME_INSPECT phase=$Phase result=command-failed") } catch { }
+    $errorClass = @{ Seen = $false; Capped = $false; Records = 0; Characters = 0; Kind = 'none' }
+    $commandThrew = $false
+    $commandExitCode = $null
+    try {
+        $output = @(docker @Arguments 2>&1 | ForEach-Object {
+            if ($_ -is [System.Management.Automation.ErrorRecord]) {
+                try { Add-TemporalBootstrapDockerErrorClass -State $errorClass -Record $_ }
+                catch { $errorClass.Seen = $true; $errorClass.Kind = 'unknown' }
+            } else { $_ }
+        })
+        $commandExitCode = $LASTEXITCODE
+    } catch {
+        $commandThrew = $true
+        # Only a native exit exception guarantees LASTEXITCODE was refreshed.
+        # Launch/PowerShell failures must not report an inherited stale value.
+        if ($_.Exception.GetType().FullName -ceq 'System.Management.Automation.NativeCommandExitException') {
+            $commandExitCode = $LASTEXITCODE
+        }
+        try { Add-TemporalBootstrapDockerErrorClass -State $errorClass -Record $_ }
+        catch { $errorClass.Seen = $true; $errorClass.Kind = 'unknown' }
+    }
+    if ($commandThrew -or $commandExitCode -ne 0) {
+        Write-TemporalBootstrapDockerInspectDiagnostic -Phase $Phase -Result 'command-failed' -State $errorClass -CommandThrew $commandThrew -ExitCode $commandExitCode
         throw 'Cannot inspect Temporal bootstrap runtime identity.'
     }
     if ($output.Count -ne 1) {
-        try { [Console]::Error.WriteLine("TEMPORAL_BOOTSTRAP_RUNTIME_INSPECT phase=$Phase result=invalid-output-shape") } catch { }
+        Write-TemporalBootstrapDockerInspectDiagnostic -Phase $Phase -Result 'invalid-output-shape' -State $errorClass -CommandThrew $commandThrew -ExitCode $commandExitCode
         throw 'Cannot inspect Temporal bootstrap runtime identity.'
     }
     try { return ($output[0] | ConvertFrom-Json -ErrorAction Stop) }
     catch {
-        try { [Console]::Error.WriteLine("TEMPORAL_BOOTSTRAP_RUNTIME_INSPECT phase=$Phase result=invalid-json") } catch { }
+        Write-TemporalBootstrapDockerInspectDiagnostic -Phase $Phase -Result 'invalid-json' -State $errorClass -CommandThrew $commandThrew -ExitCode $commandExitCode
         throw 'Cannot parse Temporal bootstrap runtime identity.'
     }
 }
@@ -656,7 +760,7 @@ function Test-TemporalBootstrapSharedNamespace {
         $reference = $Mode.Substring('container:'.Length)
         if ($reference -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$') { throw 'A running network namespace reference is invalid.' }
         $targetPhase = if ($Field -ceq 'NetworkMode') { 'network-namespace-target' } else { 'pid-namespace-target' }
-        $targetId = [string](Get-TemporalBootstrapDockerObject -Phase $targetPhase -Arguments @('container', 'inspect', '--format', '{{json .Id}}', $reference))
+        $targetId = [string](Get-TemporalBootstrapDockerObject -Phase $targetPhase -Arguments @('container', 'inspect', '--format', '{{json .ID}}', $reference))
         if ($targetId -cnotmatch '^[0-9a-f]{64}$' -or -not $seen.Add($targetId)) { throw 'A running network namespace chain is invalid.' }
         if ($targetId -ceq $ServerId -or $targetId -ceq $InitId) { return $true }
         $format = if ($Field -ceq 'NetworkMode') { '{{json .HostConfig.NetworkMode}}' } else { '{{json .HostConfig.PidMode}}' }
@@ -779,7 +883,7 @@ function Assert-InPlaceTemporalBootstrapRuntime {
     }
     $serverModel = $ComposeModel.services.PSObject.Properties['temporal'].Value
     $initModel = $ComposeModel.services.PSObject.Properties['temporal-namespace-init'].Value
-    $imageFormat = '{"Id":{{json .Id}},"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}}}}'
+    $imageFormat = '{"Id":{{json .ID}},"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}}}}'
     $serverImage = Get-TemporalBootstrapDockerObject -Phase 'temporal-server-image' -Arguments @('image', 'inspect', '--format', $imageFormat, [string]$serverModel.image)
     $initImage = Get-TemporalBootstrapDockerObject -Phase 'temporal-init-image' -Arguments @('image', 'inspect', '--format', $imageFormat, [string]$initModel.image)
     if ([string]$serverImage.Id -cnotmatch '^sha256:[0-9a-f]{64}$' -or
@@ -789,17 +893,15 @@ function Assert-InPlaceTemporalBootstrapRuntime {
     $initId = Get-TemporalBootstrapContainerId -Service 'temporal-namespace-init'
     # Select only the owned containers' fields required for identity. In
     # particular, never request State.Health.Log or raw container diagnostics.
-    # Docker can omit optional fields in raw inspect JSON. Normalize only
-    # those fields to null and let the runtime checks enforce their presence.
-    $format = '{"Id":{{json .Id}},"Image":{{json .Image}},' +
+    $format = '{"Id":{{json .ID}},"Image":{{json .Image}},' +
         '"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}},"Labels":{{json .Config.Labels}},' +
-        '"Entrypoint":{{json .Config.Entrypoint}},"Cmd":{{json .Config.Cmd}},"Healthcheck":{{json (index .Config "Healthcheck")}}},' +
+        '"Entrypoint":{{json .Config.Entrypoint}},"Cmd":{{json .Config.Cmd}},"Healthcheck":{{json .Config.Healthcheck}}},' +
         '"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},' +
-        '"Health":{{if index .State "Health"}}{"Status":{{json .State.Health.Status}}}{{else}}null{{end}}},' +
+        '"Health":{{if .State.Health}}{"Status":{{json .State.Health.Status}}}{{else}}null{{end}}},' +
         '"HostConfig":{"NetworkMode":{{json .HostConfig.NetworkMode}},"ReadonlyRootfs":{{json .HostConfig.ReadonlyRootfs}},' +
         '"Privileged":{{json .HostConfig.Privileged}},"CapDrop":{{json .HostConfig.CapDrop}},"CapAdd":{{json .HostConfig.CapAdd}},' +
         '"SecurityOpt":{{json .HostConfig.SecurityOpt}},"PidMode":{{json .HostConfig.PidMode}},"UsernsMode":{{json .HostConfig.UsernsMode}},' +
-        '"Devices":{{json .HostConfig.Devices}},"DeviceCgroupRules":{{json .HostConfig.DeviceCgroupRules}},"Tmpfs":{{json (index .HostConfig "Tmpfs")}}},' +
+        '"Devices":{{json .HostConfig.Devices}},"DeviceCgroupRules":{{json .HostConfig.DeviceCgroupRules}},"Tmpfs":{{json .HostConfig.Tmpfs}}},' +
         '"Mounts":{{json .Mounts}}}'
     $server = Get-TemporalBootstrapDockerObject -Phase 'temporal-server-container' -Arguments @('container', 'inspect', '--format', $format, $serverId)
     $init = Get-TemporalBootstrapDockerObject -Phase 'temporal-init-container' -Arguments @('container', 'inspect', '--format', $format, $initId)

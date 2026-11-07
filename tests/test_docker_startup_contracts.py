@@ -9,6 +9,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from ipaddress import IPv4Address
 from pathlib import Path
 
 import pytest
@@ -1145,6 +1146,65 @@ def test_base_worker_metrics_are_reachable_only_through_loopback_publish() -> No
     # interfaces, while keeping the published host socket on loopback.
     assert worker["environment"]["NOTIFICATIONS_WORKER_METRICS_HOST"] == "0.0.0.0"  # noqa: S104 - container bind; host port remains loopback-only
     assert "127.0.0.1:9102:9101" in worker["ports"]
+
+
+@pytest.mark.parametrize("live_overlay", [False, True], ids=["full", "full-live"])
+def test_full_worker_metrics_bind_for_internal_prometheus(live_overlay: bool) -> None:
+    worker = _compose("docker-compose.full.yml")["services"]["notifications-worker"]
+    environment = dict(worker["environment"])
+    if live_overlay:
+        # Compose merges environment mappings by variable name. Delivery settings
+        # in the live overlay must not revert the worker to its loopback default.
+        live = _compose("docker-compose.live.yml")["services"]["notifications-worker"]
+        environment.update(live.get("environment", {}))
+
+    assert environment.get("NOTIFICATIONS_WORKER_METRICS_HOST") == str(IPv4Address(0))
+    assert environment.get("NOTIFICATIONS_WORKER_METRICS_PORT") == "9101"
+
+    prometheus = _compose("infrastructure/observability/prometheus.yml")
+    jobs = [
+        job
+        for job in prometheus["scrape_configs"]
+        if job["job_name"] == "notifications-worker"
+    ]
+    assert len(jobs) == 1
+    assert jobs[0]["static_configs"] == [{"targets": ["notifications-worker:9101"]}]
+    assert jobs[0].get("scheme", "http") == "http"
+    assert jobs[0].get("metrics_path", "/metrics") == "/metrics"
+
+
+@pytest.mark.parametrize("live_overlay", [False, True], ids=["full", "full-live"])
+def test_full_worker_monitor_stays_on_unpublished_internal_network(
+    live_overlay: bool,
+) -> None:
+    models = [_compose("docker-compose.full.yml")]
+    if live_overlay:
+        models.append(_compose("docker-compose.live.yml"))
+
+    worker_networks = set()
+    prometheus_networks = set()
+    network_config = {}
+    for model in models:
+        worker = model["services"]["notifications-worker"]
+        assert not worker.get("ports"), "worker monitoring must not publish a host port"
+        assert not worker.get("network_mode"), (
+            "worker must use its own bridge namespace"
+        )
+        worker_networks.update(worker.get("networks", []))
+        prometheus = model["services"]["prometheus"]
+        assert not prometheus.get("network_mode"), (
+            "scraper must use its bridge networks"
+        )
+        prometheus_networks.update(prometheus.get("networks", []))
+        for name, config in model.get("networks", {}).items():
+            network_config[name] = {**network_config.get(name, {}), **(config or {})}
+
+    assert worker_networks == {"internal"}
+    assert "internal" in prometheus_networks
+    assert network_config["internal"].get("internal") is True
+    assert not network_config["internal"].get("external")
+    worker = models[0]["services"]["notifications-worker"]
+    assert "http://127.0.0.1:9101/healthz" in " ".join(worker["healthcheck"]["test"])
 
 
 def test_backend_compose_healthchecks_use_lean_readiness_endpoint() -> None:

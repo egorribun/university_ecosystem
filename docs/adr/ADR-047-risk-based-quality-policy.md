@@ -2381,3 +2381,13 @@ flow mapping and explicit test fixture now preserve all protected line and
 context bindings. The shared backend/init image digest, pull policy and
 mTLS proof criteria are unchanged from the approved repair. The full
 source still needs its own scanner and hosted Kind results.
+
+## Owner-approved AUD-313 seed test source binding (2026-11-08)
+
+The owner approved the current-source SHA-256 binding for
+`tests/test_seed_demo_data.py` from `9e764210...ea33ce` to
+`33a2aafb...a3652a`. The test provides a read-only mount fixture for the
+owned seed record. The approval covers only the whole-file test binding.
+The existing source-line and context bindings, scanner inventories and
+disposition expiries retain their scope. AUD-313 still needs the owned
+Compose mount and cleanup proof.

@@ -328,6 +328,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
       ENABLE_OTEL_LOGS: "false"
       ENABLE_OTEL_METRICS: "false"
+      NOTIFICATIONS_WORKER_METRICS_HOST: "0.0.0.0"
+      NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
     depends_on:
       postgres:
         condition: service_healthy

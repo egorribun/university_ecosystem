@@ -102,13 +102,40 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.useRealTimers()
   vi.unstubAllGlobals()
-  vi.restoreAllMocks()
   Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true })
 })
 
 describe("replay REST recovery timer edges", () => {
+  it("does not recreate a cooldown timer when an in-flight refresh settles after unmount", async () => {
+    const session = await connected()
+    let finishRefresh!: () => void
+    session.invalidateQueries.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRefresh = resolve
+        })
+    )
+
+    markRefreshRequired(session.socket)
+    await flush()
+    expect(session.invalidateQueries).toHaveBeenCalledTimes(2)
+
+    session.unmount()
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout")
+    await act(async () => {
+      finishRefresh()
+    })
+
+    expect(timeoutSpy.mock.calls.filter(([, delay]) => delay === 60_000)).toEqual([])
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(session.invalidateQueries).toHaveBeenCalledTimes(2)
+  })
+
   it("releases an idle room recovery entry at the cooldown boundary", async () => {
     const session = await connected()
     markRefreshRequired(session.socket)

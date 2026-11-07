@@ -1030,30 +1030,101 @@ EOF
 }
 
 run_probe() {
-  local name="$1" script="$2"
-  timeout 300 kubectl -n "$NAMESPACE" run "ue-r9-aud373-probe-${name}-${RUN_SUFFIX}" \
-    --image="$BACKEND_IMAGE" --image-pull-policy=IfNotPresent \
-    --labels="university-ecosystem.io/aud373-probe=${RUN_SUFFIX}" \
-    --restart=Never --rm --attach --quiet --pod-running-timeout=180s \
-    --env="TARGET_BACKEND=${BACKEND_SVC}" --env="TARGET_GATEWAY=${GATEWAY_SVC}" \
-    --env="AUD373_TLS_DIAGNOSTICS=1" \
-    --env="TARGET_BACKEND_PORT=${BACKEND_PORT}" --env="TARGET_GATEWAY_PORT=${GATEWAY_PORT}" \
-    --command -- python -c "$script" 2>&1
+  # Read retained logs only after termination; live attach may miss early output.
+  # Each operation is bounded. Never rerun a probe or infer success from EOF.
+  (
+    local name="$1" script="$2" pod created=no exit_status created_uid observed_uid status_record
+    pod="ue-r9-aud373-probe-${name}-${RUN_SUFFIX}"
+    trap '
+      status=$?
+      trap - EXIT
+      if [[ "$created" == yes ]]; then
+        if [[ "$created_uid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+          # The API precondition cannot delete a same-name replacement Pod.
+          if ! printf "{\"apiVersion\":\"v1\",\"kind\":\"DeleteOptions\",\"preconditions\":{\"uid\":\"%s\"}}" "$created_uid" |
+            timeout --kill-after=5s 20 kubectl -n "$NAMESPACE" delete \
+              --raw "/api/v1/namespaces/${NAMESPACE}/pods/${pod}" -f - >/dev/null 2>&1; then
+            status=125
+          fi
+        else
+          status=125
+        fi
+      fi
+      exit "$status"
+    ' EXIT
+    created_uid="$(timeout --kill-after=5s 30 kubectl -n "$NAMESPACE" run "$pod" \
+      --image="$BACKEND_IMAGE" --image-pull-policy=IfNotPresent \
+      --labels="university-ecosystem.io/aud373-probe=${RUN_SUFFIX}" \
+      --restart=Never --attach=false --quiet -o jsonpath='{.metadata.uid}' \
+      --env="TARGET_BACKEND=${BACKEND_SVC}" --env="TARGET_GATEWAY=${GATEWAY_SVC}" \
+      --env="AUD373_TLS_DIAGNOSTICS=1" \
+      --env="TARGET_BACKEND_PORT=${BACKEND_PORT}" --env="TARGET_GATEWAY_PORT=${GATEWAY_PORT}" \
+      --command -- python -c "$script" 2>/dev/null)" || exit 125
+    created=yes
+    [[ "$created_uid" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || exit 125
+    local terminated="{.status.containerStatuses[?(@.name==\"${pod}\")].state.terminated.exitCode}"
+    timeout --kill-after=5s 180 kubectl -n "$NAMESPACE" wait "pod/${pod}" \
+      --for="jsonpath=${terminated}" --timeout=170s >/dev/null 2>&1 || exit 125
+    status_record="$(timeout --kill-after=5s 15 kubectl -n "$NAMESPACE" get pod "$pod" \
+      -o "jsonpath={.metadata.uid}|${terminated}" 2>/dev/null)" || exit 125
+    observed_uid="${status_record%%'|'*}"
+    exit_status="${status_record#*'|'}"
+    [[ "$observed_uid" == "$created_uid" && "$status_record" == *'|'* ]] || exit 125
+    [[ "$exit_status" =~ ^(0|[1-9][0-9]{0,2})$ && "$exit_status" -le 255 ]] || exit 125
+    timeout --kill-after=5s 30 kubectl -n "$NAMESPACE" logs "$pod" --container="$pod" \
+      --tail=-1 2>/dev/null || exit 125
+    observed_uid="$(timeout --kill-after=5s 15 kubectl -n "$NAMESPACE" get pod "$pod" \
+      -o jsonpath='{.metadata.uid}' 2>/dev/null)" || exit 125
+    [[ "$observed_uid" == "$created_uid" ]] || exit 125
+    exit "$exit_status"
+  )
 }
 
 GATEWAY_HOP_PY='
-import os, urllib.error, urllib.request
+import http.client, os, socket, ssl, urllib.error, urllib.request
+
+def error_class(error):
+    wrapped = False
+    # Exact types avoid interpreting names/messages or arbitrary subclass hooks.
+    # At most four URL wrappers are examined; cycles/deeper chains stay unknown.
+    for _ in range(4):
+        if type(error) is not urllib.error.URLError:
+            break
+        wrapped = True
+        error = getattr(error, "reason", None)
+    for kind, label in (
+        (socket.gaierror, "DNS"),
+        (ConnectionRefusedError, "REFUSED"),
+        (TimeoutError, "TIMEOUT"),
+        (ConnectionResetError, "RESET"),
+        (EOFError, "EOF"),
+        (http.client.RemoteDisconnected, "EOF"),
+        (http.client.IncompleteRead, "EOF"),
+        (ssl.SSLEOFError, "EOF"),
+    ):
+        if type(error) is kind:
+            return label
+    return "URL_ERROR" if wrapped else "OTHER"
+
 url = "http://%s:%s/.well-known/jwks.json" % (os.environ["TARGET_GATEWAY"], os.environ["TARGET_GATEWAY_PORT"])
+stage = "OPEN"
 try:
     with urllib.request.urlopen(url, timeout=20) as response:
+        stage = "READ"
         body = response.read(65536)
-        print("STATUS=%d" % response.status)
-        print("BODY_HAS_KEYS=%s" % (b"\"keys\"" in body))
+        status = response.status
+        body_has_keys = b"\"keys\"" in body
+        stage = "CLOSE"
+    # Do not emit partial success if reading or closing the response fails.
+    print("STATUS=%d" % status)
+    print("BODY_HAS_KEYS=%s" % body_has_keys)
 except urllib.error.HTTPError as error:
     print("STATUS=%d" % error.code)
     print("BODY_HAS_KEYS=False")
 except Exception as error:
-    print("ERROR=%s" % type(error).__name__)
+    print("ERROR=ERROR")
+    print("GATEWAY_STAGE=%s" % stage)
+    print("GATEWAY_ERROR=%s" % error_class(error))
 '
 
 NO_SVID_TLS_PY='
@@ -1183,7 +1254,11 @@ sanitize_probe_output() {
   python3 -c '
 import re, sys
 allowed = {
-    "gateway-hop": {"STATUS": r"[1-5][0-9]{2}", "BODY_HAS_KEYS": r"True|False", "ERROR": r"[A-Za-z]+"},
+    "gateway-hop": {
+        "STATUS": r"[1-5][0-9]{2}", "BODY_HAS_KEYS": r"True|False", "ERROR": r"ERROR",
+        "GATEWAY_STAGE": r"OPEN|READ|CLOSE",
+        "GATEWAY_ERROR": r"DNS|REFUSED|TIMEOUT|RESET|EOF|URL_ERROR|OTHER",
+    },
     "no-svid-tls": {
         "NO_SVID_PROBE_ID": r"[0-9a-f]{32}",
         "NO_SVID_TCP": r"CONNECTED|ERROR", "NO_SVID_TLS": r"REJECTED|ANSWERED|ERROR",
@@ -1211,10 +1286,16 @@ while True:
         if key in seen or not sep or not re.fullmatch(allowed[key], value):
             invalid = True
         else:
-            # Gateway exceptions are deliberately reduced, never echo their names.
-            seen[key] = "ERROR" if key == "ERROR" else value
-    elif text.startswith(("NO_SVID_", "PLAINTEXT", "STATUS", "BODY_HAS_KEYS", "ERROR", "PROBE_")):
+            seen[key] = value
+    elif text.startswith(("NO_SVID_", "PLAINTEXT", "STATUS", "BODY_HAS_KEYS", "ERROR", "GATEWAY_", "PROBE_")):
         invalid = True
+required = {
+    "gateway-hop": {"ERROR", "GATEWAY_STAGE", "GATEWAY_ERROR"} if "ERROR" in seen else {"STATUS", "BODY_HAS_KEYS"},
+    "no-svid-tls": set(allowed),
+    "plaintext": set(allowed),
+}[sys.argv[1]]
+if set(seen) != required:
+    invalid = True
 for key, value in seen.items():
     print("%s=%s" % (key, value))
 print("PROBE_OUTPUT=%s" % ("INVALID" if invalid else "VALID"))
