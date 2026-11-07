@@ -1081,18 +1081,50 @@ run_probe() {
 }
 
 GATEWAY_HOP_PY='
-import os, urllib.error, urllib.request
+import http.client, os, socket, ssl, urllib.error, urllib.request
+
+def error_class(error):
+    wrapped = False
+    # Exact types avoid interpreting names/messages or arbitrary subclass hooks.
+    # At most four URL wrappers are examined; cycles/deeper chains stay unknown.
+    for _ in range(4):
+        if type(error) is not urllib.error.URLError:
+            break
+        wrapped = True
+        error = getattr(error, "reason", None)
+    for kind, label in (
+        (socket.gaierror, "DNS"),
+        (ConnectionRefusedError, "REFUSED"),
+        (TimeoutError, "TIMEOUT"),
+        (ConnectionResetError, "RESET"),
+        (EOFError, "EOF"),
+        (http.client.RemoteDisconnected, "EOF"),
+        (http.client.IncompleteRead, "EOF"),
+        (ssl.SSLEOFError, "EOF"),
+    ):
+        if type(error) is kind:
+            return label
+    return "URL_ERROR" if wrapped else "OTHER"
+
 url = "http://%s:%s/.well-known/jwks.json" % (os.environ["TARGET_GATEWAY"], os.environ["TARGET_GATEWAY_PORT"])
+stage = "OPEN"
 try:
     with urllib.request.urlopen(url, timeout=20) as response:
+        stage = "READ"
         body = response.read(65536)
-        print("STATUS=%d" % response.status)
-        print("BODY_HAS_KEYS=%s" % (b"\"keys\"" in body))
+        status = response.status
+        body_has_keys = b"\"keys\"" in body
+        stage = "CLOSE"
+    # Do not emit partial success if reading or closing the response fails.
+    print("STATUS=%d" % status)
+    print("BODY_HAS_KEYS=%s" % body_has_keys)
 except urllib.error.HTTPError as error:
     print("STATUS=%d" % error.code)
     print("BODY_HAS_KEYS=False")
 except Exception as error:
-    print("ERROR=%s" % type(error).__name__)
+    print("ERROR=ERROR")
+    print("GATEWAY_STAGE=%s" % stage)
+    print("GATEWAY_ERROR=%s" % error_class(error))
 '
 
 NO_SVID_TLS_PY='
@@ -1222,7 +1254,11 @@ sanitize_probe_output() {
   python3 -c '
 import re, sys
 allowed = {
-    "gateway-hop": {"STATUS": r"[1-5][0-9]{2}", "BODY_HAS_KEYS": r"True|False", "ERROR": r"[A-Za-z]+"},
+    "gateway-hop": {
+        "STATUS": r"[1-5][0-9]{2}", "BODY_HAS_KEYS": r"True|False", "ERROR": r"ERROR",
+        "GATEWAY_STAGE": r"OPEN|READ|CLOSE",
+        "GATEWAY_ERROR": r"DNS|REFUSED|TIMEOUT|RESET|EOF|URL_ERROR|OTHER",
+    },
     "no-svid-tls": {
         "NO_SVID_PROBE_ID": r"[0-9a-f]{32}",
         "NO_SVID_TCP": r"CONNECTED|ERROR", "NO_SVID_TLS": r"REJECTED|ANSWERED|ERROR",
@@ -1250,12 +1286,11 @@ while True:
         if key in seen or not sep or not re.fullmatch(allowed[key], value):
             invalid = True
         else:
-            # Gateway exceptions are deliberately reduced, never echo their names.
-            seen[key] = "ERROR" if key == "ERROR" else value
-    elif text.startswith(("NO_SVID_", "PLAINTEXT", "STATUS", "BODY_HAS_KEYS", "ERROR", "PROBE_")):
+            seen[key] = value
+    elif text.startswith(("NO_SVID_", "PLAINTEXT", "STATUS", "BODY_HAS_KEYS", "ERROR", "GATEWAY_", "PROBE_")):
         invalid = True
 required = {
-    "gateway-hop": {"ERROR"} if "ERROR" in seen else {"STATUS", "BODY_HAS_KEYS"},
+    "gateway-hop": {"ERROR", "GATEWAY_STAGE", "GATEWAY_ERROR"} if "ERROR" in seen else {"STATUS", "BODY_HAS_KEYS"},
     "no-svid-tls": set(allowed),
     "plaintext": set(allowed),
 }[sys.argv[1]]
