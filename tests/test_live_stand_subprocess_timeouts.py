@@ -179,6 +179,7 @@ if role == "parent":
     })
     print("owned parent stdout", flush=True)
     print("owned parent stderr", file=sys.stderr, flush=True)
+    # Bounded fixture delay: the parent releases after 7.5 seconds.
     time.sleep(7.5)
 elif role == "grandchild":
     launcher_pid, launcher_created = int(sys.argv[3]), int(sys.argv[4])
@@ -192,6 +193,7 @@ elif role == "grandchild":
     })
     print("owned grandchild stdout", flush=True)
     print("owned grandchild stderr", file=sys.stderr, flush=True)
+    # Bounded fixture delay: the parent passes a fixed 4.5-second release.
     time.sleep(release_after)
     write_record(directory / "grandchild-done.json", {"pid": pid, "creation": created})
 else:

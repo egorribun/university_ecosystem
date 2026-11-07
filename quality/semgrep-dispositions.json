@@ -186,7 +186,7 @@
         },
         {
           "path": "scripts/live_stand.py",
-          "sha256": "171c312ae7dcf3e2cfcc18beb9679136a47f712f38b018df6261f77ef825e813"
+          "sha256": "fec319a400dadb6994ff30ef4e0041d84cbd2f5c307c285d8c006df3cea7d2a5"
         },
         {
           "path": "tests/test_owned_nats_process.py",
@@ -226,7 +226,7 @@
         },
         {
           "path": "tests/test_mfa_deploy_workflow_contract.py",
-          "sha256": "d8cd88866c1a12a1bec6191579b8cf3e475f8797b79a8ef1d261892b11a3c667"
+          "sha256": "7f5914b3ebab9d59e6fec587fad9c0808185f56f37393f1bcbae61024546cded"
         },
         {
           "path": "tests/test_aud382_mfa_smoke_private_files.py",
@@ -254,7 +254,7 @@
         },
         {
           "path": "tests/test_mfa_deploy_workflow_contract.py",
-          "sha256": "d8cd88866c1a12a1bec6191579b8cf3e475f8797b79a8ef1d261892b11a3c667"
+          "sha256": "7f5914b3ebab9d59e6fec587fad9c0808185f56f37393f1bcbae61024546cded"
         },
         {
           "path": "tests/test_aud382_mfa_smoke_private_files.py",
@@ -282,7 +282,7 @@
         },
         {
           "path": "tests/test_mfa_deploy_workflow_contract.py",
-          "sha256": "d8cd88866c1a12a1bec6191579b8cf3e475f8797b79a8ef1d261892b11a3c667"
+          "sha256": "7f5914b3ebab9d59e6fec587fad9c0808185f56f37393f1bcbae61024546cded"
         },
         {
           "path": "tests/test_aud382_mfa_smoke_private_files.py",
@@ -482,7 +482,7 @@
         },
         {
           "path": "frontend/package-lock.json",
-          "sha256": "4dc1c1a432696691466de8362061eb5b0b35053289d55b9ead0fe650047b7c03"
+          "sha256": "a009f2a56d7552d287a9e9babeeab0b4935ab000836eb46503d0a05ebec7d20c"
         }
       ],
       "context": {

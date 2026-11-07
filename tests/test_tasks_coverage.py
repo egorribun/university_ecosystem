@@ -17,6 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+_TASK_TENANT_ID = uuid.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -235,7 +237,9 @@ class TestNotificationTasks:
         ):
             from app.tasks.notifications import enqueue_news_notification_task
 
-            await enqueue_news_notification_task(news_id, locale="ru")
+            await enqueue_news_notification_task(
+                news_id, locale="ru", tenant_id=_TASK_TENANT_ID
+            )
             mock_notify.assert_awaited_once()
             db.commit.assert_awaited_once()
 
@@ -252,7 +256,9 @@ class TestNotificationTasks:
         ):
             from app.tasks.notifications import enqueue_news_notification_task
 
-            await enqueue_news_notification_task(uuid.uuid4())
+            await enqueue_news_notification_task(
+                uuid.uuid4(), tenant_id=_TASK_TENANT_ID
+            )
             mock_notify.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -271,7 +277,9 @@ class TestNotificationTasks:
         ):
             from app.tasks.notifications import enqueue_event_notification_task
 
-            await enqueue_event_notification_task(event_id, locale="en")
+            await enqueue_event_notification_task(
+                event_id, locale="en", tenant_id=_TASK_TENANT_ID
+            )
             mock_notify.assert_awaited_once()
             db.commit.assert_awaited_once()
 
@@ -286,7 +294,9 @@ class TestNotificationTasks:
         ):
             from app.tasks.notifications import enqueue_event_notification_task
 
-            await enqueue_event_notification_task(uuid.uuid4())
+            await enqueue_event_notification_task(
+                uuid.uuid4(), tenant_id=_TASK_TENANT_ID
+            )
             mock_notify.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -317,6 +327,7 @@ class TestNotificationTasks:
                 comment_id=uuid.uuid4(),
                 user_id=uuid.uuid4(),
                 locale="ru",
+                tenant_id=_TASK_TENANT_ID,
             )
             mock_notify.assert_awaited_once()
             db.commit.assert_awaited_once()
@@ -343,5 +354,6 @@ class TestNotificationTasks:
                 news_id=uuid.uuid4(),
                 comment_id=uuid.uuid4(),
                 user_id=uuid.uuid4(),
+                tenant_id=_TASK_TENANT_ID,
             )
             mock_notify.assert_not_awaited()

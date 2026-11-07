@@ -257,7 +257,11 @@ def test_pytest_report_upload_runs_when_failed_and_file_exists() -> None:
         step for step in unit_steps if step.get("name") == "Upload pytest report"
     )
 
-    assert "--junitxml=pytest-report.xml" in run_step["run"]
+    assert run_step["run"].strip() == ". ./scripts/ci/backend-run-pytest.ps1"
+    runner_script = (
+        REPOSITORY_ROOT / "scripts" / "ci" / "backend-run-pytest.ps1"
+    ).read_text(encoding="utf-8")
+    assert "--junitxml=pytest-report.xml" in runner_script
     assert upload_step["if"] == (
         "${{ always() && hashFiles('pytest-report.xml') != '' }}"
     )

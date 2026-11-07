@@ -60,6 +60,13 @@ def test_configuration_reference_tracks_runtime_defaults_and_security_semantics(
         assert variable in rows
         assert expected in rows[variable]
 
+    assert (
+        "backend also accepts it as an alias for `SERVICE_VERSION`"
+        in rows["APP_VERSION"]
+    )
+    assert "Empty (backend, same as `SERVICE_VERSION`)" in rows["APP_VERSION"]
+    assert "not through `Settings`" in rows["NATS_TASK_MAX_DELIVERIES"]
+
     cdc_row = rows["EMBEDDED_CDC_OUTBOX_WORKER_ENABLED"].lower()
     for semantic in ("unsupported", "rejected", "polling", "adr-037"):
         assert semantic in cdc_row

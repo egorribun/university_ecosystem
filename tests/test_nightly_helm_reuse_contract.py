@@ -88,9 +88,10 @@ def test_nightly_helm_archives_have_one_producer_and_hash_bound_consumers() -> N
         selector_run = selector["run"]
         assert "select_same_run_artifact_cli.py" in selector_run
         assert (
-            '--artifact-prefix "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}"'
-            in selector_run
+            selector["env"]["ARTIFACT_PREFIX"]
+            == "${{ needs.verify-full-mutation-provenance.outputs.helm_artifact_prefix }}"
         )
+        assert '--artifact-prefix "$ARTIFACT_PREFIX"' in selector_run
         assert "--attempt-policy current-or-earlier" in selector_run
         download = _step(job, "Download same-run Helm dependency artifact")
         assert download["with"]["artifact-ids"] == (

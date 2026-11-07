@@ -94,6 +94,24 @@ def _network_names(service: dict[str, Any]) -> set[str]:
     return set(configured if isinstance(configured, list) else configured.keys())
 
 
+def _effective_network_names(services: dict[str, Any], service_name: str) -> set[str]:
+    """Resolve Compose service namespace sharing to its provider's networks."""
+    seen: set[str] = set()
+    current = service_name
+    while True:
+        assert current not in seen, f"network namespace cycle: {service_name}"
+        seen.add(current)
+        service = services[current]
+        mode = service.get("network_mode")
+        if mode is None:
+            return _network_names(service)
+        if not isinstance(mode, str) or not mode.startswith("service:"):
+            return set()
+        target = mode.removeprefix("service:")
+        assert target in services, f"unknown network namespace: {target}"
+        current = target
+
+
 def _assert_frontend_segment(model: dict[str, Any]) -> None:
     """Check the frontend bridge, including shared network namespaces."""
     services = model["services"]
@@ -318,8 +336,8 @@ def test_default_and_layered_stacks_isolate_frontend_and_keep_local_access(
     for client_name, provider_name, shared_network in _SERVICE_CLIENT_CONNECTIONS:
         if client_name not in services:
             continue
-        assert shared_network in _network_names(services[client_name])
-        assert shared_network in _network_names(services[provider_name])
+        assert shared_network in _effective_network_names(services, client_name)
+        assert shared_network in _effective_network_names(services, provider_name)
 
     for client_name, provider_name in (
         ("caddy", "backend"),
@@ -327,8 +345,8 @@ def test_default_and_layered_stacks_isolate_frontend_and_keep_local_access(
         ("caddy", "imgproxy"),
         ("backend", "minio"),
     ):
-        assert "service_net" in _network_names(services[client_name])
-        assert "service_net" in _network_names(services[provider_name])
+        assert "service_net" in _effective_network_names(services, client_name)
+        assert "service_net" in _effective_network_names(services, provider_name)
 
     if "docker-compose.go.yml" in files:
         assert {"gateway", "ws-hub", "file-processor"} <= services.keys()
@@ -446,5 +464,5 @@ def test_full_stack_frontend_ssr_is_confined_to_internal_frontend_network(
         ("file-processor", "temporal"),
         ("temporal-namespace-init", "temporal"),
     ):
-        assert "internal" in _network_names(services[client_name])
-        assert "internal" in _network_names(services[provider_name])
+        assert "internal" in _effective_network_names(services, client_name)
+        assert "internal" in _effective_network_names(services, provider_name)

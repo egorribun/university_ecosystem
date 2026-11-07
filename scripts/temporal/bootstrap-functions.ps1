@@ -243,10 +243,10 @@ function Test-TemporalBootstrapNoHostPathCreation {
     if ($null -eq $bindProperty -or $bindProperty.Value -isnot [pscustomobject]) {
         return $false
     }
-    # Compose serializes the false bool with omitempty, producing bind: {}.
-    # Reject explicit null, strings and numbers rather than coercing them.
+    # An omitted create_host_path permits Compose's default host-path creation.
+    # Only an explicit false bool proves that creation is disabled.
     $createProperty = $bindProperty.Value.PSObject.Properties['create_host_path']
-    if ($null -eq $createProperty) { return $true }
+    if ($null -eq $createProperty) { return $false }
     return ($createProperty.Value -is [bool] -and $createProperty.Value -eq $false)
 }
 

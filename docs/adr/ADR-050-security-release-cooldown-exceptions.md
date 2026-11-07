@@ -1,6 +1,6 @@
-# ADR-050: Two exact security-release cooldown exceptions
+# ADR-050: Exact security-release cooldown exceptions
 
-- Status: accepted for the two named updates only; implementation validation pending.
+- Status: accepted for the two 2026-10-31 updates and the exact Undici 8.12.4 exception below; amended 2026-11-06. Implementation validation pending.
 - Date: 2026-10-31.
 - Decision owner: repository owner.
 - Scope: egorribun/university_ecosystem, branch egorribun; no merge or deployment authorization.
@@ -25,14 +25,19 @@ includes security fixes and compatibility changes, including limits of 32
 signatures/recipients and stricter malformed-key handling. The separate
 go-jose/v3 advisory is not fixed by this decision.
 
+## Owner-approved Undici exception (exact one-time scope)
+
+The npm registry published `undici` 8.12.4 at 2026-11-05T08:55:59.361Z. Its normal seven-day maturity point is 2026-11-12T08:55:59.361Z. The current frontend lockfile entry is 8.12.2. The [GHSA-mqg3-3v4r-cm32 advisory](https://github.com/nodejs/undici/security/advisories/GHSA-mqg3-3v4r-cm32) identifies a high-severity redirect-cache issue affecting 8.12.2 and 8.12.3; the [GHSA-r4pc-4jcp-7pqc advisory](https://github.com/nodejs/undici/security/advisories/GHSA-r4pc-4jcp-7pqc) identifies an SRI whitespace bypass fixed by 8.12.4.
+
+The owner-approved one-time exception is limited to changing the single `packages.node_modules/undici` record in `frontend/package-lock.json` from 8.12.2 to 8.12.4, updating only that record's version, resolved URL and integrity. `frontend/package.json`, every other lock record, and the `seroval` 1.6.12 lock/override remain unchanged. This lock record is marked development-only; this approval would make no claim about production runtime use.
+
+The approved exception is usable only for this exact lockfile update and only before 2026-11-12T08:55:59.361Z. After that timestamp, the normal seven-day rule is satisfied and no exception is needed. Keep `frontend/.npmrc`, including `min-release-age=7`, and Renovate's routine seven-day minimum release age unchanged. The registry tarball's recorded SRI and SHA-1 were verified against the downloaded package bytes. A bounded loopback SRI negative-control probe corroborated the whitespace fix; that diagnostic is not install, maturity, full-suite or hosted-check evidence.
+
+This ADR records only the cooldown exception; the separately approved Semgrep row #15 companion rebind and exact `public_integrity_digest` disposition are recorded in ADR-047 and the owner packet. Their exact scopes remain separate and are integrated with this lock change only as authorized. No baseline entry is requested.
+
 ## Decision and limits
 
-This is a finite manual maturity exception for these two exact release
-identities, not a global cooldown removal or permission for other versions,
-packages, prereleases, overrides or future updates. Each exception is consumed
-by its named reviewed update. Preserve frontend/.npmrc, all routine
-minimumReleaseAge policies, engine/script restrictions, lock integrity,
-scanner gates and the existing quality thresholds.
+The two accepted maturity exceptions above remain finite and exact. The Undici exception is approved only for the one exact lockfile update described above and is consumed by that update. None of these decisions removes the global cooldown or permits other versions, packages, prereleases, overrides or future updates. Preserve frontend/.npmrc, all routine minimumReleaseAge policies, engine/script restrictions, lock integrity, scanner gates and existing quality thresholds.
 
 Before integration, verify authoritative source metadata and hashes, prove the
 whole graph delta is confined to the approved package, review compatibility
@@ -48,6 +53,6 @@ not sufficient.
 Temporary metadata capture is diagnostic, never a scanner waiver. Remove each
 capture and its temporary expectations when its verified dependency update
 is committed. Do not print raw environments, credentials or unbounded
-download diagnostics. These two approvals do not authorize new secret/hash
+download diagnostics. These approvals do not authorize new secret/hash
 dispositions, baseline entries, Gitleaks changes, Squawk admission, production
-database maintenance or bypass of a system safety restriction.
+database maintenance or bypass of a system safety restriction. The exact Undici exception likewise authorizes none of those actions.

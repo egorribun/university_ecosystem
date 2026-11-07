@@ -33,13 +33,41 @@ def _documented_default_cells() -> dict[str, str]:
 
 
 def _settings_variables() -> set[str]:
-    return {name.upper() for name in Settings.model_fields}
+    """Canonical and validation-alias environment names accepted by Settings."""
+    names: set[str] = set()
+    for field_name, field in Settings.model_fields.items():
+        names.add(field_name.upper())
+        if isinstance(field.alias, str) and field.alias:
+            names.add(field.alias.upper())
+        validation_alias = field.validation_alias
+        if isinstance(validation_alias, str) and validation_alias:
+            names.add(validation_alias.upper())
+        for choice in getattr(validation_alias, "choices", ()):
+            if isinstance(choice, str) and choice:
+                names.add(choice.upper())
+    return names
 
 
-def test_configuration_reference_documents_every_settings_field() -> None:
+def test_configuration_reference_documents_every_settings_environment_name() -> None:
     missing = sorted(_settings_variables() - _documented_variables())
 
     assert missing == []
+
+
+def test_settings_environment_inventory_includes_validation_aliases() -> None:
+    assert {"APP_VERSION", "ENABLE_RESPONSE_COMPRESSION"} <= _settings_variables()
+
+
+def test_validation_alias_documented_default_matches_target_setting() -> None:
+    rows = _documented_default_cells()
+    field = Settings.model_fields["response_compression_enabled"]
+
+    expected = (
+        str(field.default).lower()
+        if type(field.default) is bool
+        else str(field.default)
+    )
+    assert rows["ENABLE_RESPONSE_COMPRESSION"] == f"`{expected}`"
 
 
 def test_timeout_poll_and_retention_settings_are_documented() -> None:

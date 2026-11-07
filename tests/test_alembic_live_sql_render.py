@@ -62,6 +62,7 @@ def test_ddl_recorder_preserves_leading_directives_and_lock_copy_order() -> None
         rename,
         "INSERT INTO public.events SELECT * FROM public.events_prepart_old",
     ]
+    assert recorder.has_lintable_ddl
 
 
 def test_ddl_recorder_keeps_parameterized_dml_as_a_non_ddl_comment() -> None:
@@ -79,6 +80,7 @@ def test_ddl_recorder_keeps_parameterized_dml_as_a_non_ddl_comment() -> None:
         in (recorder.statements[0])
     )
     assert "secret-value" not in recorder.statements[0]
+    assert not recorder.has_lintable_ddl
 
 
 def test_ddl_recorder_does_not_duplicate_transaction_events_as_cursor_sql() -> None:
@@ -92,6 +94,49 @@ def test_ddl_recorder_does_not_duplicate_transaction_events_as_cursor_sql() -> N
         "-- observed SQLAlchemy begin event; transaction-event representation, "
         "not cursor text\nBEGIN"
     ]
+
+
+def test_ddl_recorder_preserves_do_and_select_guard_sql_without_bound_values() -> None:
+    recorder = renderer._DdlRecorder()
+    recorder.active = True
+    guard = (
+        "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = "
+        "'guard_role') THEN RAISE EXCEPTION 'missing'; END IF; END $$"
+    )
+    select = "SELECT cron.schedule(%(job_name)s, %(schedule)s, %(command)s)"
+    context = SimpleNamespace(compiled=SimpleNamespace(binds={"job_name": object()}))
+
+    recorder(None, None, guard, None, None, False)
+    recorder(
+        None,
+        None,
+        select,
+        {
+            "job_name": "private-job-name",
+            "schedule": "private-schedule",
+            "command": "private-command",
+        },
+        context,
+        False,
+    )
+
+    assert recorder.statements == [guard, select]
+    assert "private-job-name" not in "\n".join(recorder.statements)
+    assert "private-schedule" not in "\n".join(recorder.statements)
+    assert "private-command" not in "\n".join(recorder.statements)
+    assert not recorder.has_lintable_ddl
+
+
+def test_ddl_recorder_fails_closed_on_an_unsupported_migration_operation() -> None:
+    recorder = renderer._DdlRecorder()
+    recorder.active = True
+
+    with pytest.raises(
+        renderer.LiveRenderError, match="unsupported migration SQL operation"
+    ):
+        recorder(None, None, "CALL public.guard_side_effect()", None, None, False)
+
+    assert recorder.statements == []
 
 
 class _FakeAdminConnection:
@@ -212,6 +257,69 @@ def test_live_renderer_records_rollback_and_removes_listeners_on_failure(
     _assert_recorder_listeners_removed(recorders[0])
 
 
+def test_live_renderer_fails_closed_when_only_transaction_events_were_captured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = "postgresql+psycopg://renderer@localhost/university"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+
+    def fake_upgrade(_config: object, destination: str) -> None:
+        if destination == "parent":
+            return
+        engine = sa.create_engine("sqlite://")
+        try:
+            with engine.begin():
+                pass
+        finally:
+            engine.dispose()
+
+    admin, recorders = _patch_renderer_runtime(monkeypatch, fake_upgrade)
+
+    with pytest.raises(
+        renderer.LiveRenderError,
+        match="PostgreSQL migration emitted no lintable DDL",
+    ):
+        renderer.render_revision_sql(Path("target.py"), database_url)
+
+    statements = recorders[0].statements
+    assert any(statement.endswith("\nBEGIN") for statement in statements)
+    assert any(statement.endswith("\nCOMMIT") for statement in statements)
+    assert admin.disposed
+    assert os.environ["DATABASE_URL"] == database_url
+    _assert_recorder_listeners_removed(recorders[0])
+
+
+def test_live_renderer_fails_closed_when_only_guard_sql_was_captured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = "postgresql+psycopg://renderer@localhost/university"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    guard = "DO $$ BEGIN RAISE NOTICE 'guard only'; END $$"
+    select = "SELECT cron.schedule('job', '0 * * * *', 'SELECT 1')"
+    recorders: list[renderer._DdlRecorder] = []
+
+    def fake_upgrade(_config: object, destination: str) -> None:
+        if destination == "parent":
+            return
+        recorder = recorders[0]
+        recorder(None, None, guard, None, None, False)
+        recorder(None, None, select, None, None, False)
+
+    admin, recorders = _patch_renderer_runtime(monkeypatch, fake_upgrade)
+
+    with pytest.raises(
+        renderer.LiveRenderError,
+        match="PostgreSQL migration emitted no lintable DDL",
+    ):
+        renderer.render_revision_sql(Path("target.py"), database_url)
+
+    assert recorders[0].statements == [guard, select]
+    assert not recorders[0].has_lintable_ddl
+    assert admin.disposed
+    assert os.environ["DATABASE_URL"] == database_url
+    _assert_recorder_listeners_removed(recorders[0])
+
+
 def test_main_requires_a_migration_and_an_output_path(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -297,6 +405,38 @@ def test_main_keeps_unexpected_migration_failure_context_private(
     assert captured.out == ""
     assert captured.err == "error: live migration rendering failed\n"
     assert marker not in captured.err
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("diagnostic", "expected"),
+    [
+        (
+            "PostgreSQL migration emitted no lintable DDL",
+            "PostgreSQL migration emitted no lintable DDL",
+        ),
+        ("unsupported migration SQL operation", "unsupported migration SQL operation"),
+    ],
+)
+def test_main_reports_renderer_fail_closed_diagnostics_without_writing_output(
+    diagnostic: str,
+    expected: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    output = tmp_path / "rendered.sql"
+    monkeypatch.setenv("DATABASE_URL", _UNREACHABLE_DATABASE_URL)
+
+    def fail_render(_migration: Path, _url: str) -> str:
+        raise renderer.LiveRenderError(diagnostic)
+
+    monkeypatch.setattr(renderer, "render_revision_sql", fail_render)
+
+    assert renderer.main([str(_BASELINE_MIGRATION), str(output)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"error: {expected}\n"
     assert not output.exists()
 
 
@@ -759,6 +899,17 @@ def _scratch_case(
     def upgrade(_config: object, revision: str) -> None:
         admin.upgrades.append(revision)
         admin.timeline.append(f"upgrade:{revision}")
+        if revision == "target":
+            for _target, event_name, listener in admin.listeners:
+                if event_name == "before_cursor_execute":
+                    listener(
+                        None,
+                        None,
+                        "CREATE TABLE public.renderer_probe (id integer)",
+                        None,
+                        None,
+                        False,
+                    )
 
     monkeypatch.setattr(renderer.event, "listen", record_listener)
     monkeypatch.setattr(renderer.command, "upgrade", upgrade)
@@ -784,7 +935,9 @@ def test_scratch_requires_template0_and_empty_catalog_before_upgrade(
     admin, environment, migration = _scratch_case(monkeypatch, tmp_path)
     previous = dict(environment)
 
-    assert renderer.render_revision_sql(migration, environment["DATABASE_URL"]) == ""
+    assert renderer.render_revision_sql(migration, environment["DATABASE_URL"]) == (
+        "CREATE TABLE public.renderer_probe (id integer);\n"
+    )
 
     assert re.search(
         r"\bTEMPLATE\s*(?:=\s*)?[\"']?template0\b", admin.statements[0], re.I
@@ -1500,7 +1653,9 @@ def test_renderer_restores_unset_environment_after_owned_scratch(
     assert database_url is not None
     environment.writes.clear()
 
-    assert renderer.render_revision_sql(migration, database_url) == ""
+    assert renderer.render_revision_sql(migration, database_url) == (
+        "CREATE TABLE public.renderer_probe (id integer);\n"
+    )
 
     assert "DATABASE_URL" not in environment
     assert environment.writes == ["DATABASE_URL", "DATABASE_URL"]

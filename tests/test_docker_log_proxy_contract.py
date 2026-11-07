@@ -53,6 +53,15 @@ def _network_names(service: dict) -> set[str]:
     return set(networks)
 
 
+def _effective_network_names(service_name: str, services: dict) -> set[str]:
+    service = services[service_name]
+    network_mode = service.get("network_mode")
+    if isinstance(network_mode, str) and network_mode.startswith("service:"):
+        target = network_mode.removeprefix("service:")
+        return _network_names(services[target])
+    return _network_names(service)
+
+
 @pytest.mark.parametrize(
     "compose_path",
     ("docker-compose.full.yml", "docker-compose.observability.yml"),
@@ -177,7 +186,7 @@ def test_full_compose_separates_published_data_services_from_frontend() -> None:
         "temporal-namespace-init",
     }
     for client in postgres_clients | temporal_clients:
-        assert "internal" in _network_names(services[client]), client
+        assert "internal" in _effective_network_names(client, services), client
 
 
 def test_proxy_image_is_nonroot_and_has_a_local_healthcheck() -> None:

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -1813,8 +1814,9 @@ async def test_cancelled_reservation_task_skips_cas_and_consumes_cancelled_resul
 
 
 async def test_cancelled_reservation_set_error_cas_cleans_possible_owner(
-    monkeypatch, capsys
+    monkeypatch, caplog
 ):
+    caplog.set_level(logging.WARNING, logger=cs_module.__name__)
     (
         cache,
         uow,
@@ -1859,8 +1861,11 @@ async def test_cancelled_reservation_set_error_cas_cleans_possible_owner(
         assert len(change_calls) == 1
         assert change_calls[0][0][:2] == (key, stored_values[0])
         assert await cache.get(key) is None
-        captured = capsys.readouterr()
-        assert "chat_message_idempotency_reservation_ack_failed" in captured.out
+        assert any(
+            record.name == cs_module.__name__
+            and "chat_message_idempotency_reservation_ack_failed" in record.getMessage()
+            for record in caplog.records
+        )
         _assert_reservation_cancel_stopped_before_phase2(attachment_service, uow)
     finally:
         acknowledge_set.set()
@@ -1872,8 +1877,9 @@ async def test_cancelled_reservation_set_error_cas_cleans_possible_owner(
 
 
 async def test_cancelled_reservation_cas_error_preserves_caller_cancellation(
-    monkeypatch, capsys
+    monkeypatch, caplog
 ):
+    caplog.set_level(logging.WARNING, logger=cs_module.__name__)
     (
         cache,
         uow,
@@ -1917,8 +1923,11 @@ async def test_cancelled_reservation_cas_error_preserves_caller_cancellation(
         assert len(change_calls) == 1
         assert change_calls[0][0][:2] == (key, stored_values[0])
         assert await cache.get(key) == stored_values[0]
-        captured = capsys.readouterr()
-        assert "chat_message_idempotency_cleanup_failed" in captured.out
+        assert any(
+            record.name == cs_module.__name__
+            and "chat_message_idempotency_cleanup_failed" in record.getMessage()
+            for record in caplog.records
+        )
         _assert_reservation_cancel_stopped_before_phase2(attachment_service, uow)
     finally:
         acknowledge_set.set()

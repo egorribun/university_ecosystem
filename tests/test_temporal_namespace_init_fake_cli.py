@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+_POSIX_SHELL = shutil.which("sh")
 SCRIPT = ROOT / "scripts/temporal/namespace-init.sh"
 WORKER_TOKEN = secrets.token_urlsafe(32)
 ADMIN_TOKEN = secrets.token_urlsafe(32)
@@ -81,9 +82,11 @@ def _run_case(
     worker: str | None = WORKER_TOKEN,
     admin: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    shell = shutil.which("sh")
-    if os.name == "nt" or not shell:
-        pytest.skip("POSIX shell is required for the fake CLI contract")
+    shell = _POSIX_SHELL
+    if os.name == "nt" or shell is None:
+        raise RuntimeError(
+            "POSIX shell marker was bypassed in an unsupported environment"
+        )
 
     root = tmp_path / mode
     runtime = root / "runtime"
@@ -160,6 +163,10 @@ def _recorded_cli_calls(log: str) -> list[tuple[str, ...]]:
     return calls
 
 
+@pytest.mark.skipif(
+    os.name == "nt" or _POSIX_SHELL is None,
+    reason="POSIX shell is required for the fake CLI contract",
+)
 def test_worker_token_succeeds_without_minting_admin_profile(tmp_path: Path) -> None:
     result = _run_case(tmp_path, mode="worker-success")
     assert result.returncode == 0, result.stderr
@@ -179,6 +186,10 @@ def test_worker_token_succeeds_without_minting_admin_profile(tmp_path: Path) -> 
     assert not (tmp_path / "worker-success/runtime/worker.toml").exists()
 
 
+@pytest.mark.skipif(
+    os.name == "nt" or _POSIX_SHELL is None,
+    reason="POSIX shell is required for the fake CLI contract",
+)
 def test_admin_profile_creates_then_reverifies_namespace(tmp_path: Path) -> None:
     result = _run_case(
         tmp_path,
@@ -233,6 +244,10 @@ def test_admin_profile_creates_then_reverifies_namespace(tmp_path: Path) -> None
         "admin-bad-profile",
         "admin-reverify-fails",
     ],
+)
+@pytest.mark.skipif(
+    os.name == "nt" or _POSIX_SHELL is None,
+    reason="POSIX shell is required for the fake CLI contract",
 )
 def test_invalid_credentials_and_unverified_namespace_fail_closed(
     tmp_path: Path,

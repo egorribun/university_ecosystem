@@ -116,4 +116,3 @@ export async function exportScheduleAsPdf(
 }
 
 export { generateGoogleCalendarUrl, selectGoogleCalendarLesson } from "./scheduleCalendarExport"
-export type { GoogleCalendarOccurrence, ScheduleExportLabels } from "./scheduleCalendarExport"

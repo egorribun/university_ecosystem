@@ -38,7 +38,12 @@ _DNS_SUBDOMAIN = re.compile(
 _KUBECTL_TIMEOUT = 30.0
 _CLEANUP_SUBPROCESS_BUDGET = 24.0
 _MAX_FAULTS = 16
+_MIN_FAULT_FAILURE_RATE_PERCENT = 20
 _RECOVERY_POLL_BUDGET_SEC = 15.0
+_FAULT_STATUS_POLL_BUDGET_SEC = 15.0
+_FAULT_STATUS_POLL_INTERVAL_SEC = 0.5
+_FAULT_STATUS_MONITOR_INTERVAL_SEC = 0.25
+_FAULT_STATUS_QUERY_TIMEOUT_SEC = 2.0
 _DRY_RUN_NOT_EVALUATED = "NOT EVALUATED (dry-run)"
 
 
@@ -131,12 +136,19 @@ class ChaosLoadTestOrchestrator:
         target_url: str,
         dry_run: bool = False,
         verbose: bool = False,
+        require_fault_impact: bool = False,
     ) -> None:
         self.manifest_path = pathlib.Path(manifest_path)
         self.duration = float(duration)
         self.target_url = target_url
         self.dry_run = dry_run
         self.verbose = verbose
+        self.require_fault_impact = require_fault_impact
+        self._fault_status_confirmed = False
+        self._fault_status_confirmed_during_monitor = False
+        self._fault_status_confirmed_after_monitor = False
+        self._recovery_probe_confirmed = False
+        self._fault_status_observations: dict[str, dict[str, Any]] = {}
         self.results: dict[str, PhaseMetrics] = {}
         self._kubectl_bin = ""
         self._context = ""
@@ -145,7 +157,9 @@ class ChaosLoadTestOrchestrator:
         self._server_sha256 = ""
         self._run_id = ""
         self._owned_faults: list[_FaultIdentity] = []
+        self._proof_faults: list[_FaultIdentity] = []
         self._pending_fault: _FaultIdentity | None = None
+        self._cleanup_verified = False
         self._cleanup_in_progress = False
         self._shutdown_requested = False
         self._kubectl_in_progress = False
@@ -379,6 +393,126 @@ class ChaosLoadTestOrchestrator:
             f"--server={self._server}",
         ]
 
+    def _fault_status_confirms_injection(self, identity: _FaultIdentity) -> bool:
+        # Confirm the exact run-owned object recorded an applied target fault.
+        resource = _CHAOS_RESOURCES[identity.kind]
+        try:
+            result = self._run_kubectl(
+                [
+                    *self._bound_kubectl(),
+                    f"--namespace={identity.namespace}",
+                    "get",
+                    f"{resource}.chaos-mesh.org",
+                    identity.name,
+                    "-o",
+                    "json",
+                ],
+                timeout=_FAULT_STATUS_QUERY_TIMEOUT_SEC,
+            )
+            document = json.loads(result.stdout)
+        except (subprocess.SubprocessError, OSError, ValueError, TypeError):
+            return False
+
+        if not isinstance(document, dict):
+            return False
+        metadata = document.get("metadata")
+        if (
+            document.get("apiVersion") != _CHAOS_API_VERSION
+            or document.get("kind") != identity.kind
+            or not isinstance(metadata, dict)
+            or metadata.get("name") != identity.name
+            or metadata.get("namespace") != identity.namespace
+            or metadata.get("uid") != identity.uid
+        ):
+            return False
+        annotations = metadata.get("annotations")
+        if (
+            not isinstance(annotations, dict)
+            or annotations.get(_RUN_ANNOTATION) != self._run_id
+        ):
+            return False
+
+        status = document.get("status")
+        if not isinstance(status, dict):
+            return False
+        conditions = status.get("conditions")
+        if not isinstance(conditions, list):
+            return False
+        for expected_type in ("Selected", "AllInjected"):
+            matching = [
+                condition
+                for condition in conditions
+                if isinstance(condition, dict)
+                and condition.get("type") == expected_type
+            ]
+            if len(matching) != 1 or matching[0].get("status") != "True":
+                return False
+        experiment = status.get("experiment")
+        records = (
+            experiment.get("containerRecords") if isinstance(experiment, dict) else None
+        )
+        if not isinstance(records, list):
+            return False
+        validated_records: list[dict[str, Any]] = []
+        for record in records:
+            if (
+                not isinstance(record, dict)
+                or record.get("phase") != "Injected"
+                or type(record.get("injectedCount")) is not int
+                or record["injectedCount"] < 1
+                or not isinstance(record.get("id"), str)
+                or not record["id"].startswith(f"{identity.namespace}/")
+                or not record["id"][len(identity.namespace) + 1 :]
+            ):
+                continue
+            events = record.get("events")
+            if isinstance(events, list) and any(
+                isinstance(event, dict)
+                and event.get("operation") == "Apply"
+                and event.get("type") == "Succeeded"
+                for event in events
+            ):
+                validated_records.append(
+                    {
+                        "phase": "Injected",
+                        "injected_count": record["injectedCount"],
+                        "apply_event": {"operation": "Apply", "type": "Succeeded"},
+                    }
+                )
+        if not validated_records:
+            return False
+        self._fault_status_observations[identity.uid] = {
+            "conditions": [
+                {"type": "Selected", "status": "True"},
+                {"type": "AllInjected", "status": "True"},
+            ],
+            "records": validated_records,
+        }
+        return True
+
+    def _all_owned_faults_confirmed(self) -> bool:
+        return bool(self._owned_faults) and all(
+            self._fault_status_confirms_injection(identity)
+            for identity in self._owned_faults
+        )
+
+    async def _wait_for_injection_status(self) -> bool:
+        deadline = time.monotonic() + _FAULT_STATUS_POLL_BUDGET_SEC
+        while not self._shutdown_requested and time.monotonic() < deadline:
+            if self._all_owned_faults_confirmed():
+                self._fault_status_confirmed = True
+                logger.info(
+                    "Chaos Mesh confirmed successful injection for every run-owned fault."
+                )
+                return True
+            await asyncio.sleep(_FAULT_STATUS_POLL_INTERVAL_SEC)
+        if self._shutdown_requested:
+            raise _TerminationRequested
+        logger.error(
+            "ASSERTION FAILED: Chaos Mesh did not confirm an injected target for every run-owned fault."
+        )
+        return False
+
     def _log_manual_fault(self, identity: _FaultIdentity, reason: str) -> None:
         logger.error(
             "%s for %s %s/%s in context %s; server-origin=%s server-sha256=%s "
@@ -548,6 +682,7 @@ class ChaosLoadTestOrchestrator:
                         identity.kind, identity.namespace, identity.name, uid
                     )
                 )
+                self._proof_faults.append(self._owned_faults[-1])
                 self._pending_fault = None
                 logger.info(
                     "Created chaos resource %s/%s", identity.namespace, identity.name
@@ -576,7 +711,43 @@ class ChaosLoadTestOrchestrator:
                 _DRY_RUN_NOT_EVALUATED,
             )
             return PhaseMetrics(phase_name="Phase 4: Fault Injection")
-        metrics = await self._run_http_load("Phase 4: Fault Injection", self.duration)
+        if self.require_fault_impact:
+            monitor_task = asyncio.create_task(
+                self._run_http_load("Phase 4: Fault Injection", self.duration)
+            )
+            status_confirmed = True
+            status_observations = 0
+            try:
+                await asyncio.sleep(0)
+                while not monitor_task.done():
+                    if self._shutdown_requested:
+                        raise _TerminationRequested
+                    if not self._all_owned_faults_confirmed():
+                        status_confirmed = False
+                        logger.error(
+                            "Run-owned Chaos Mesh injection status was lost during the fault traffic window."
+                        )
+                    status_observations += 1
+                    await asyncio.sleep(_FAULT_STATUS_MONITOR_INTERVAL_SEC)
+                metrics = await monitor_task
+            finally:
+                if not monitor_task.done():
+                    monitor_task.cancel()
+                    try:
+                        await monitor_task
+                    except asyncio.CancelledError:
+                        pass
+            self._fault_status_confirmed_during_monitor = (
+                status_confirmed and status_observations > 0
+            )
+            if not self._fault_status_confirmed_during_monitor:
+                logger.error(
+                    "Fault traffic was not continuously bounded by successful run-owned Chaos Mesh status observations."
+                )
+        else:
+            metrics = await self._run_http_load(
+                "Phase 4: Fault Injection", self.duration
+            )
         logger.info(
             "Fault phase completed: %d requests, %s success rate, avg latency: %.2fms",
             metrics.total_requests,
@@ -654,6 +825,7 @@ class ChaosLoadTestOrchestrator:
 
     async def phase6_verify_recovery(self) -> PhaseMetrics:
         logger.info("=== Phase 6/7: Check Post-Fault Health & Load ===")
+        self._recovery_probe_confirmed = False
         if self.dry_run:
             logger.info(
                 "[DRY-RUN] Recovery verification %s; no traffic sent.",
@@ -672,6 +844,7 @@ class ChaosLoadTestOrchestrator:
             await asyncio.sleep(1.0)
 
         if recovered:
+            self._recovery_probe_confirmed = True
             logger.info("System health endpoint responded successfully post-fault.")
         else:
             logger.warning("System recovery check timed out after %.1fs.", max_wait)
@@ -752,6 +925,11 @@ class ChaosLoadTestOrchestrator:
         # dry-run. Dry-run only avoids applying faults; the same thresholds
         # decide the exit status, so a dry-run cannot pass without recovery traffic.
         success = True
+        if self.require_fault_impact and not self._recovery_probe_confirmed:
+            logger.error(
+                "ASSERTION FAILED: The post-fault health probe did not recover after cleanup."
+            )
+            success = False
         if p6.total_requests == 0:
             logger.error("ASSERTION FAILED: No recovery requests were recorded.")
             success = False
@@ -762,6 +940,39 @@ class ChaosLoadTestOrchestrator:
             )
             success = False
 
+        if self.require_fault_impact:
+            if (
+                not self._fault_status_confirmed
+                or not self._fault_status_confirmed_during_monitor
+                or not self._fault_status_confirmed_after_monitor
+            ):
+                logger.error(
+                    "ASSERTION FAILED: Run-owned Chaos Mesh injection status was not confirmed across the fault window."
+                )
+                success = False
+            elif p2.total_requests == 0 or p2.failed_requests != 0:
+                logger.error(
+                    "ASSERTION FAILED: Target was not healthy during the baseline window."
+                )
+                success = False
+            elif (
+                p4.total_requests == 0
+                or p4.failed_requests == 0
+                or p4.failed_requests * 100
+                < p4.total_requests * _MIN_FAULT_FAILURE_RATE_PERCENT
+            ):
+                logger.error(
+                    "ASSERTION FAILED: No qualifying target degradation was observed while Chaos Mesh reported the fault injected (at least %d%% of measured requests must fail).",
+                    _MIN_FAULT_FAILURE_RATE_PERCENT,
+                )
+                success = False
+            else:
+                logger.info(
+                    "Causal fault-impact assertion passed: Chaos Mesh reported injection and %d/%d under-fault requests failed.",
+                    p4.failed_requests,
+                    p4.total_requests,
+                )
+
         if success:
             scope = " (dry-run: no fault was injected)" if self.dry_run else ""
             logger.info("Recovery availability assertion passed%s.", scope)
@@ -769,6 +980,121 @@ class ChaosLoadTestOrchestrator:
             logger.error("Recovery availability assertion failed.")
 
         return success
+
+    def _build_success_receipt(self) -> dict[str, Any] | None:
+        """Return a normalized, secret-free receipt only after every live gate passes."""
+        if (
+            not self.require_fault_impact
+            or re.fullmatch(r"[0-9a-f]{32}", self._run_id) is None
+            or not self._fault_status_confirmed
+            or not self._fault_status_confirmed_during_monitor
+            or not self._fault_status_confirmed_after_monitor
+            or not self._recovery_probe_confirmed
+            or not self._cleanup_verified
+            or self._owned_faults
+            or self._pending_fault is not None
+            or not self._proof_faults
+        ):
+            return None
+
+        baseline = self.results.get("phase2")
+        under_fault = self.results.get("phase4")
+        recovery = self.results.get("phase6")
+        if (
+            baseline is None
+            or under_fault is None
+            or recovery is None
+            or baseline.total_requests <= 0
+            or baseline.failed_requests != 0
+            or under_fault.total_requests <= 0
+            or under_fault.failed_requests * 100
+            < under_fault.total_requests * _MIN_FAULT_FAILURE_RATE_PERCENT
+            or recovery.total_requests <= 0
+            or recovery.success_rate < 80.0
+        ):
+            return None
+
+        faults: list[dict[str, Any]] = []
+        seen_uids: set[str] = set()
+        for identity in sorted(
+            self._proof_faults,
+            key=lambda item: (item.namespace, item.name, item.uid),
+        ):
+            if (
+                identity.kind not in _CHAOS_RESOURCES
+                or not identity.uid
+                or identity.uid in seen_uids
+            ):
+                return None
+            observation = self._fault_status_observations.get(identity.uid)
+            if observation is None:
+                return None
+            seen_uids.add(identity.uid)
+            faults.append(
+                {
+                    "api_version": _CHAOS_API_VERSION,
+                    "kind": identity.kind,
+                    "namespace": identity.namespace,
+                    "name": identity.name,
+                    "uid": identity.uid,
+                    "annotations": {_RUN_ANNOTATION: self._run_id},
+                    "status": observation,
+                }
+            )
+
+        return {
+            "schema": "university-ecosystem/aud346-live-success-receipt/v1",
+            "result": "pass",
+            "run_id": self._run_id,
+            "faults": faults,
+            "status_windows": {
+                "before_fault_traffic": True,
+                "during_fault_traffic": True,
+                "after_fault_traffic": True,
+            },
+            "traffic": {
+                "baseline": {
+                    "requests": baseline.total_requests,
+                    "failed": baseline.failed_requests,
+                    "healthy": True,
+                },
+                "under_fault": {
+                    "requests": under_fault.total_requests,
+                    "failed": under_fault.failed_requests,
+                    "failure_rate_percent": round(
+                        100.0
+                        * under_fault.failed_requests
+                        / under_fault.total_requests,
+                        2,
+                    ),
+                    "minimum_failure_rate_percent": _MIN_FAULT_FAILURE_RATE_PERCENT,
+                },
+                "recovery": {
+                    "health_probe": "passed",
+                    "requests": recovery.total_requests,
+                    "successful": recovery.successful_requests,
+                    "success_rate_percent": round(recovery.success_rate, 2),
+                    "minimum_success_rate_percent": 80.0,
+                },
+            },
+            "cleanup": {
+                "uid_preconditioned_delete_verified": True,
+                "deleted_uids": sorted(seen_uids),
+            },
+        }
+
+    def _emit_success_receipt(self) -> bool:
+        receipt = self._build_success_receipt()
+        if receipt is None:
+            logger.error(
+                "ASSERTION FAILED: The live proof could not be bound to a complete successful receipt."
+            )
+            return False
+        logger.info(
+            "AUD346_SUCCESS_RECEIPT %s",
+            json.dumps(receipt, sort_keys=True, separators=(",", ":")),
+        )
+        return True
 
     async def execute(self) -> int:
         self.setup_logging()
@@ -778,6 +1104,11 @@ class ChaosLoadTestOrchestrator:
         try:
             if self._shutdown_requested:
                 raise _TerminationRequested
+            if self.dry_run and self.require_fault_impact:
+                logger.error(
+                    "--require-fault-impact cannot be evaluated in dry-run mode."
+                )
+                return 1
             if self._owned_faults or self._pending_fault is not None:
                 logger.error("Previous chaos resources require manual inspection")
                 return 1
@@ -785,15 +1116,37 @@ class ChaosLoadTestOrchestrator:
                 return 1
 
             await self.phase2_baseline_load()
+            if self.require_fault_impact:
+                baseline = self.results.get("phase2")
+                if (
+                    baseline is None
+                    or baseline.total_requests == 0
+                    or baseline.failed_requests
+                ):
+                    logger.error(
+                        "ASSERTION FAILED: The target must return successful baseline traffic before injection."
+                    )
+                    return 1
 
             try:
                 applied = self.phase3_apply_fault()
+                if applied and self.require_fault_impact:
+                    applied = await self._wait_for_injection_status()
                 if applied:
                     await self.phase4_monitor_fault()
+                    if self.require_fault_impact:
+                        self._fault_status_confirmed_after_monitor = (
+                            self._all_owned_faults_confirmed()
+                        )
+                        if not self._fault_status_confirmed_after_monitor:
+                            logger.error(
+                                "Chaos Mesh no longer reports the run-owned fault injected across the traffic window."
+                            )
             finally:
                 self._cleanup_in_progress = True
                 try:
                     removed = self.phase5_remove_fault()
+                    self._cleanup_verified = removed
                 finally:
                     self._cleanup_in_progress = False
 
@@ -805,6 +1158,8 @@ class ChaosLoadTestOrchestrator:
             await self.phase6_verify_recovery()
 
             if not self.phase7_assert_and_report():
+                return 1
+            if self.require_fault_impact and not self._emit_success_receipt():
                 return 1
 
             return 0
@@ -844,6 +1199,14 @@ def main() -> None:
         help="Run in dry-run mode without applying actual K8s chaos manifests",
     )
     parser.add_argument(
+        "--require-fault-impact",
+        action="store_true",
+        help=(
+            "Require a healthy baseline, successful run-owned Chaos Mesh injection status, "
+            "observed under-fault degradation, and post-cleanup recovery"
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose debug logging",
@@ -856,6 +1219,7 @@ def main() -> None:
         target_url=args.target_url,
         dry_run=args.dry_run,
         verbose=args.verbose,
+        require_fault_impact=args.require_fault_impact,
     )
     previous_sigterm = signal.signal(signal.SIGTERM, orchestrator._request_termination)
     try:

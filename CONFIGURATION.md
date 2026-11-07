@@ -100,7 +100,7 @@ corresponding plaintext variable.
 | `REVOCATION_REDIS_URL` | Dedicated persistent/noeviction Redis URL for session revocation. The Go gateway defaults to `redis://redis:6379/0`, while ws-hub defaults to `redis://revocation-redis:6379/0`; deployment configuration must supply the intended store. | Required outside development |
 | `NATS_URL` | NATS message bus endpoint | `nats://127.0.0.1:4222` |
 | `NATS_AUTH_TOKEN` | NATS authentication token | Empty locally; required in production |
-| `NATS_TASK_MAX_DELIVERIES` | Delivery attempts of a background task before it is parked in the dead-letter queue (`/admin/dlq`) | `5` |
+| `NATS_TASK_MAX_DELIVERIES` | Delivery attempts of a background task before it is parked in the dead-letter queue (`/admin/dlq`). Read directly from the process environment in `app/core/nats_broker.py`, not through `Settings`. | `5` |
 | `NATS_TASK_RETRY_BASE_DELAY_SECONDS` | First redelivery delay of a failed task; doubles per attempt up to 300 s. Read with `os.environ` in `app/core/nats_broker.py`, not through `Settings` | `5` |
 | `RATE_LIMIT_ENABLED` | Enable rate limiting | `true` |
 | `RATE_LIMIT_DEFAULT` | Default rate | `200/minute` |
@@ -458,7 +458,7 @@ and are not part of this inventory.
 | `SENTRY_ENVIRONMENT` | Sentry environment. Defined in `app/core/config/observability.py`. | Empty |
 | `SENTRY_PROFILES_SAMPLE_RATE` | Sentry profiles sample rate. Defined in `app/core/config/observability.py`. | `0.0` |
 | `SENTRY_TRACES_SAMPLE_RATE` | Sentry traces sample rate. The Go gateway defaults to `1.0`; the backend field is defined in `app/core/config/observability.py`. | `0.0` (backend) |
-| `SERVICE_VERSION` | Service version. Defined in `app/core/config/observability.py`. | Empty |
+| `SERVICE_VERSION` | Backend telemetry service version; the backend also accepts `APP_VERSION` as an alias. Defined in `app/core/config/observability.py`. | Empty |
 
 ### `app/core/config/security.py`
 
@@ -500,6 +500,7 @@ and are not part of this inventory.
 | `MINIO_ENDPOINT` | Minio endpoint. Defined in `app/core/config/storage.py`. | `minio:9000` |
 | `MINIO_SECURE` | Minio secure. Defined in `app/core/config/storage.py`. | `false` |
 | `RESPONSE_COMPRESSION_ENABLED` | Response compression enabled. Defined in `app/core/config/storage.py`. | `true` |
+| `ENABLE_RESPONSE_COMPRESSION` | Backward-compatible alias for `RESPONSE_COMPRESSION_ENABLED`. | `true` |
 | `STATIC_DIR` | Static dir. Defined in `app/core/config/storage.py`. | `app/static` |
 | `STORAGE_S3_ACCESS_KEY_ID` | Storage S3 access key ID. Defined in `app/core/config/storage.py`. | Empty |
 | `STORAGE_S3_BASE_URL` | Storage S3 base URL. Defined in `app/core/config/storage.py`. | Empty |
@@ -567,7 +568,7 @@ precedence over the unprefixed name.
 | `GATEWAY_H3_ALT_SVC_MAX_AGE` | `Alt-Svc` max-age advertised for HTTP/3, in seconds. | `2592000` |
 | `GATEWAY_TRUSTED_PROXIES` | Comma-separated proxy addresses whose forwarded client IP is trusted. | Unset (no trusted proxies) |
 | `ALLOWED_ORIGINS` | Comma-separated browser origins accepted by the gateway for CORS. | `http://localhost:3000,http://localhost:5173` |
-| `APP_VERSION` | Version label reported by the gateway. | `unknown` |
+| `APP_VERSION` | Version label reported by the gateway; the backend also accepts it as an alias for `SERVICE_VERSION`. | `unknown` (Go gateway); Empty (backend, same as `SERVICE_VERSION`) |
 | `VITE_ENVIRONMENT` | Environment name the gateway reads for its runtime mode (`development`, `staging` or `production`). | `development` |
 | `GIN_MODE` | Gin mode; the gateway switches to test mode when it is `test`. Read, not set by operators in production. | Unset |
 | `BACKEND_URL` | Gateway upstream URL for the backend service. | `http://backend:8000` |

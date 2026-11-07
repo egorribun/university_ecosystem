@@ -1134,6 +1134,23 @@
             "review_required": false
           }
         },
+        "frontend-dist-attestation": {
+          "profile": "advisory",
+          "check_name_template": "Frontend Dist Attestation",
+          "expected_timeout_minutes": 5,
+          "expected_duration_seconds": 300,
+          "guard": "${{ github.event_name == 'push' }}",
+          "needs": [
+            "frontend-tests"
+          ],
+          "artifacts": [],
+          "retry_policy": {
+            "mode": "none",
+            "first_failure_preserved": true,
+            "classifier": "not_applicable",
+            "review_required": false
+          }
+        },
         "e2e-wasm-build": {
           "profile": "required-pr-main",
           "check_name_template": "E2E WASM Build",
@@ -1193,9 +1210,11 @@
           "check_name_template": "SLSA Provenance Dry-Run",
           "expected_timeout_minutes": 10,
           "expected_duration_seconds": 600,
-          "guard": "workflow trigger",
+          "guard": "${{ always() && !cancelled() }}",
           "needs": [
-            "pre-commit-check"
+            "pre-commit-check",
+            "frontend-tests",
+            "frontend-dist-attestation"
           ],
           "artifacts": [],
           "retry_policy": {
@@ -3690,7 +3709,7 @@
       "events": [
         {
           "event": "workflow_call",
-          "guard": "{\"inputs\":{\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version to use\",\"required\":false,\"type\":\"string\"},\"run-e2e\":{\"default\":false,\"description\":\"Run Playwright E2E tests\",\"required\":false,\"type\":\"boolean\"},\"run-lighthouse\":{\"default\":false,\"description\":\"Run Lighthouse audits\",\"required\":false,\"type\":\"boolean\"},\"wasm-artifact-digest\":{\"default\":\"\",\"description\":\"Optional same-run WASM artifact archive digest\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-id\":{\"default\":\"\",\"description\":\"Optional same-run server-issued WASM artifact id\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-name\":{\"default\":\"\",\"description\":\"Optional same-run WASM artifact name\",\"required\":false,\"type\":\"string\"},\"working-directory\":{\"default\":\"frontend\",\"description\":\"Frontend directory\",\"required\":false,\"type\":\"string\"}}}"
+          "guard": "{\"inputs\":{\"node-version\":{\"default\":\"24\",\"description\":\"Node.js version to use\",\"required\":false,\"type\":\"string\"},\"run-e2e\":{\"default\":false,\"description\":\"Run Playwright E2E tests\",\"required\":false,\"type\":\"boolean\"},\"run-lighthouse\":{\"default\":false,\"description\":\"Run Lighthouse audits\",\"required\":false,\"type\":\"boolean\"},\"wasm-artifact-digest\":{\"default\":\"\",\"description\":\"Optional same-run WASM artifact archive digest\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-id\":{\"default\":\"\",\"description\":\"Optional same-run server-issued WASM artifact id\",\"required\":false,\"type\":\"string\"},\"wasm-artifact-name\":{\"default\":\"\",\"description\":\"Optional same-run WASM artifact name\",\"required\":false,\"type\":\"string\"},\"working-directory\":{\"default\":\"frontend\",\"description\":\"Frontend directory\",\"required\":false,\"type\":\"string\"}},\"outputs\":{\"bundle-artifact-digest\":{\"description\":\"SHA-256 digest of the production frontend-dist archive\",\"value\":\"${{ jobs.build.outputs.bundle-artifact-digest }}\"},\"bundle-artifact-id\":{\"description\":\"GitHub artifact ID of the production frontend-dist archive\",\"value\":\"${{ jobs.build.outputs.bundle-artifact-id }}\"}}}"
         }
       ],
       "jobs": {

@@ -21,7 +21,7 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
   текущим сертификатом. Ручная сертификация в `cwv-field-certification.yml` и
   production-only certificate guard остаются для будущих внешних развёртываний;
   они не являются предусловием выпуска `v1.0.0`.
-- Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/static` и `/storage`.
+- В production браузерный трафик к frontend, API и asset-маршрутам должен идти через HTTPS, чтобы браузер не блокировал mixed content при загрузке `/static` и `/storage`. Поддерживаемый локальный full-Compose стек намеренно открывает приложение на том же origin по `http://localhost` через Caddy на порту 80; это HTTP-исключение только для локальной разработки.
 - Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` и URI, полученный из защищённого хранилища через переменные окружения, включает общий сторедж для middleware и чувствительных эндпоинтов; не помещайте учётные данные в URL или историю shell. Для однопроцессного режима разработки и тестирования задайте `RATE_LIMIT_STORAGE_BACKEND=memory` и `RATE_LIMIT_STORAGE_URI=memory://`. В staging и production обязательны `RATE_LIMIT_STORAGE_BACKEND=redis` и корректный Redis URI; режим memory отклоняется при валидации настроек.
 - Хранилище отзыва сессий обязано быть единым и выделенным для всех сервисов: backend, gateway и ws-hub используют только `REVOCATION_REDIS_URL`. В штатных Compose/Helm-конфигурациях это отдельный Redis/Valkey с AOF, персистентным томом и `maxmemory-policy noeviction`; кэш (`CACHE_REDIS_URL`) и rate-limit Redis (`REDIS_URL`, DB 3) не являются источниками security-state. Совместное использование cache/rate-limit процесса запрещено: вытеснение `revoked:jti:*` может повторно сделать отозванный JWT действительным.
 - Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами:
@@ -344,10 +344,10 @@ PY
 
 ## Docker image
 
-- `frontend.Dockerfile` использует отдельные stages для сборки Rust/WASM, установки build/runtime-зависимостей и TanStack Start SSR. Финальный образ основан на закреплённом по digest `node:24-alpine`, запускается непривилегированным пользователем `node` и содержит только production-зависимости, WASM-пакеты, `dist/` и SSR launcher.
+- `frontend.Dockerfile` использует отдельные stages для сборки Rust/WASM, установки build/runtime-зависимостей и TanStack Start SSR. Финальный образ использует закреплённую по digest ссылку `node:24.21.0-alpine`, запускается непривилегированным пользователем `node` и содержит только production-зависимости, WASM-пакеты, `dist/` и SSR launcher.
 - `VITE_BACKEND_ORIGIN` остаётся build-time fallback для фронтенда. Node SSR сначала читает runtime-переменную `BACKEND_ORIGIN`, поэтому один immutable image можно безопасно использовать с разными Compose/Helm service names; chart и Compose уже задают внутренний адрес backend. Браузерные API-запросы остаются same-origin и идут через gateway.
 - Статику и SSR отдаёт `frontend/scripts/server-prod.mjs`: хешированные файлы в `assets/` получают `Cache-Control: public, max-age=31536000, immutable`, HTML — `no-cache`/`no-store`.
-- Контейнер слушает порт `3000` во внутренней сети `frontend_net`; поддерживаемая точка входа с хоста — Caddy на портах `80`/`443`, который проксирует запросы на `frontend:3000`. Docker healthcheck проверяет `/healthz` внутри контейнера, а `start-docker.ps1` отдельно проверяет отрисованный `/login` через Caddy.
+- Контейнер слушает порт `3000` во внутренней сети `frontend_net`; Compose публикует Caddy на хостовых портах `80` и `443`. Локальный full-Compose Caddyfile обслуживает приложение на `:80` без HTTPS redirect; в production браузерный трафик должен идти через HTTPS. Caddy проксирует запросы на `frontend:3000`. Docker healthcheck проверяет `/healthz` внутри контейнера, а `start-docker.ps1` отдельно проверяет отрисованный `/login` через Caddy.
 
 ```bash
 # пример локальной сборки

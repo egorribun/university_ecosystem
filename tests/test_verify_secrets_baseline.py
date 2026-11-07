@@ -542,6 +542,44 @@ _PRE_SQUASH_SOURCE_BLOBS = {
 }
 
 
+_AUD427_428_CURRENT_TEST_SOURCE_SHA256 = bytes(
+    (
+        89,
+        11,
+        186,
+        193,
+        96,
+        226,
+        29,
+        104,
+        213,
+        164,
+        200,
+        188,
+        26,
+        41,
+        91,
+        240,
+        175,
+        31,
+        67,
+        207,
+        204,
+        26,
+        187,
+        73,
+        86,
+        36,
+        184,
+        20,
+        37,
+        41,
+        43,
+        144,
+    )
+)
+
+
 def _pre_squash_source_bytes(
     path: str, *, repository_root: Path | None = None
 ) -> bytes:
@@ -1036,7 +1074,7 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
         repository_root=root, today=verifier.date(2026, 11, 6)
     )
-    assert len(validated) == 494
+    assert len(validated) == 497
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
 
 
@@ -8320,6 +8358,7 @@ def _assert_conditional_owner_source_bindings(
     ]
     | None = None,
     replaced_companion_targets: tuple[tuple[str, int, str], ...] | None = None,
+    companion_source_targets: tuple[tuple[str, int, str], ...] | None = None,
 ) -> None:
     """Check exact current pins and the six finite prior N21 source replacements."""
     source_sha256 = (
@@ -8350,6 +8389,11 @@ def _assert_conditional_owner_source_bindings(
         if replaced_companion_targets is None
         else replaced_companion_targets
     )
+    companion_source_targets = (
+        _AUD380_CI58_COMPANION_SOURCE_TARGETS
+        if companion_source_targets is None
+        else companion_source_targets
+    )
     assert source_sha256 == _AUD380_CURRENT_DELTA_SOURCE_SHA256, (
         "conditional disposition source hash bindings changed"
     )
@@ -8368,13 +8412,18 @@ def _assert_conditional_owner_source_bindings(
     assert replaced_companion_targets == _AUD380_N21_REPLACED_COMPANION_TARGETS, (
         "historical N21 replacement companion bindings changed"
     )
-    assert len(identity_source_lines) == 19  # 15 current N21 plus four N4.
+    assert companion_source_targets == _AUD380_CI58_COMPANION_SOURCE_TARGETS, (
+        "CI58 companion source bindings changed"
+    )
+    assert (
+        len(identity_source_lines) == 21
+    )  # 15 N21 survivors, three N4, N5 and two N6.
     assert len(replaced_identity_source_lines) == 6
     assert len(_AUD380_N21_UNCHANGED_IDENTITY_SOURCE_LINES) == 15
     assert len(source_line_hashes) == (
         len(identity_source_lines) + len(companion_source_lines)
     )
-    assert len(source_sha256) == 54
+    assert len(source_sha256) == 55
     assert all(len(digest) == 32 for digest in source_sha256.values())
     expected_source_paths = {path for path, *_rest in identity_source_lines} | {
         path for path, _line_number in companion_source_lines
@@ -8416,9 +8465,15 @@ def _assert_conditional_owner_source_bindings(
         (path, finding_type, digest)
         for path, finding_type, digest, _category, _line in identity_source_lines
     }
-    assert current_identity_keys == unchanged_n21_keys | set(
-        _AUD380_N4_PENDING_OWNER_IDENTITIES
-    ), "current source identities differ from exact N21 survivors plus N4"
+    current_n4_keys = set(_AUD380_N4_PENDING_OWNER_IDENTITIES) - {
+        _AUD380_N4_PUBLIC_LEDGER_IDENTITY
+    }
+    assert current_identity_keys == (
+        unchanged_n21_keys
+        | current_n4_keys
+        | set(_AUD380_N5_PENDING_OWNER_IDENTITIES)
+        | set(_AUD380_N6_EXPECTED_IDENTITIES)
+    ), "current source identities differ from exact N21 survivors plus current N4/N5/N6"
     assert not (current_identity_keys & replaced_keys), (
         "replaced historical N21 identity is still claimed as current"
     )
@@ -8438,10 +8493,15 @@ def _assert_conditional_owner_source_bindings(
         for record in [
             *_AUD380_PENDING_OWNER_RECORDS,
             *_AUD380_N4_PENDING_OWNER_RECORDS,
+            *_AUD380_N5_PENDING_OWNER_RECORDS,
+            *_AUD380_N6_PENDING_OWNER_RECORDS,
         ]
     }
-    assert set(pending_by_identity) == n21_identity_keys | set(
-        _AUD380_N4_PENDING_OWNER_IDENTITIES
+    assert set(pending_by_identity) == (
+        n21_identity_keys
+        | set(_AUD380_N4_PENDING_OWNER_IDENTITIES)
+        | set(_AUD380_N5_PENDING_OWNER_IDENTITIES)
+        | set(_AUD380_N6_EXPECTED_IDENTITIES)
     )
     for row in _AUD380_PENDING_OWNER_RECORDS:
         assert row["approval_status"] == "NOT_APPROVED"
@@ -8479,6 +8539,17 @@ def _assert_conditional_owner_source_bindings(
         assert hashlib.sha256(line).digest() == line_sha256
         assert hashlib.sha256(context).digest() == context_sha256
 
+    for path, line_number, target_path in companion_source_targets:
+        assert path in source_bytes_by_path and target_path in source_bytes_by_path
+        raw_line = source_bytes_by_path[path].splitlines(keepends=True)[line_number - 1]
+        sha_fields = re.findall(rb'"sha256"\s*:\s*"([0-9a-f]{64})"', raw_line)
+        assert len(sha_fields) == 1, (
+            f"expected one companion SHA at {path}:{line_number}"
+        )
+        assert sha_fields[0] == source_sha256[target_path].hex().encode("ascii"), (
+            f"companion SHA does not match pinned target: {path}:{line_number}"
+        )
+
     old_records_by_key = {
         _aud380_identity_key(record): record for record in _AUD380_PENDING_OWNER_RECORDS
     }
@@ -8489,6 +8560,10 @@ def _assert_conditional_owner_source_bindings(
     n4_records_by_key = {
         _aud380_identity_key(record): record
         for record in _AUD380_N4_PENDING_OWNER_RECORDS
+    }
+    n5_records_by_key = {
+        _aud380_identity_key(record): record
+        for record in _AUD380_N5_PENDING_OWNER_RECORDS
     }
     location_to_old_key = {
         (path, line_number): (path, finding_type, digest)
@@ -8523,9 +8598,26 @@ def _assert_conditional_owner_source_bindings(
         old_evidence = old_records_by_key[old_key]["evidence"]
         assert f"{path}:{line_number}" in old_evidence
         if line_number == 189:
-            assert current_key in n4_records_by_key
+            assert current_key in _AUD380_N6_EXPECTED_IDENTITIES
+            assert current_key in {
+                _aud380_identity_key(record)
+                for record in _AUD380_N6_PENDING_OWNER_RECORDS
+            }
+            assert n4_records_by_key[_AUD380_N4_PUBLIC_LEDGER_IDENTITY]["category"] == (
+                "public_integrity_digest"
+            )
+        elif line_number == 229:
+            assert current_key in _AUD380_N6_EXPECTED_IDENTITIES
+            assert current_key in {
+                _aud380_identity_key(record)
+                for record in _AUD380_N6_PENDING_OWNER_RECORDS
+            }
+        elif line_number == 485:
+            assert current_key in n5_records_by_key, (
+                f"current row15 package-lock value is not exact N5: {path}:{line_number}"
+            )
             assert (
-                n4_records_by_key[current_key]["category"] == "public_integrity_digest"
+                n5_records_by_key[current_key]["category"] == "public_integrity_digest"
             )
         else:
             assert current_key in active_records_by_key, (
@@ -8535,6 +8627,7 @@ def _assert_conditional_owner_source_bindings(
                 active_records_by_key[current_key]["category"]
                 == "public_integrity_digest"
             )
+    _aud380_assert_n4_historical_row7_observation(source_bytes_by_path)
 
 
 def _document(*findings: Finding) -> dict[str, Any]:
@@ -16874,6 +16967,20 @@ _POSTGRES_RECEIPT_VALIDATION = (
 
 def _reviewed_live_scanner_source_bytes(path: str) -> bytes:
     original = _pre_squash_source_bytes(path)
+    if path == "tests/test_aud427_428_contract_quality.py":
+        current = (Path(__file__).resolve().parents[1] / path).read_bytes()
+        assert (
+            hashlib.sha256(current).digest() == _AUD427_428_CURRENT_TEST_SOURCE_SHA256
+        ), "reviewed AUD-427/428 helper contract source changed"
+        assert (
+            current.count(
+                b'    assert run.strip() == ". ./scripts/ci/backend-run-integration-tests.ps1"'
+            )
+            == 1
+        )
+        assert current.count(b"    assert launcher in wrapper") == 1
+        assert b"    assert launcher in run" not in current
+        return current
     if path != ".github/workflows/reusable-backend-tests.yml":
         return original
     # Retain the immutable setup-python review, allowing only the supported
@@ -17177,6 +17284,39 @@ def test_still_live_scanner_sources_keep_their_exact_reviewed_bytes(path: str) -
         ), "reviewed parser-friendly workflow bytes changed"
     else:
         _assert_live_scanner_source_bytes(path, actual)
+
+
+@pytest.mark.parametrize("mutation", ["call-site", "helper-location", "appended-byte"])
+def test_aud427_428_current_source_binding_rejects_mutations(mutation: str) -> None:
+    path = "tests/test_aud427_428_contract_quality.py"
+    reviewed = _reviewed_live_scanner_source_bytes(path)
+    if mutation == "call-site":
+        anchor = b'    assert run.strip() == ". ./scripts/ci/backend-run-integration-tests.ps1"'
+        replacement = b'    assert run.strip() == "uv run pytest @pytestArgs"'
+        assert reviewed.count(anchor) == 1
+        mutated = reviewed.replace(anchor, replacement, 1)
+    elif mutation == "helper-location":
+        anchor = b"    assert launcher in wrapper"
+        replacement = b"    assert launcher in run"
+        assert reviewed.count(anchor) == 1
+        mutated = reviewed.replace(anchor, replacement, 1)
+    else:
+        mutated = reviewed + b"\n"
+    assert mutated != reviewed
+    with pytest.raises(AssertionError, match="exact reviewed bytes"):
+        _assert_live_scanner_source_bytes(path, mutated)
+
+
+def test_aud427_428_current_source_context_pins_sourced_helper_invocation() -> None:
+    reviewed = _reviewed_live_scanner_source_bytes(
+        "tests/test_aud427_428_contract_quality.py"
+    )
+    assert (
+        b'    assert run.strip() == ". ./scripts/ci/backend-run-integration-tests.ps1"'
+        in reviewed
+    )
+    assert b"    assert launcher in wrapper" in reviewed
+    assert b"    assert launcher in run" not in reviewed
 
 
 def _reviewed_live_aud447_allocation_function() -> ast.FunctionDef:
@@ -17842,23 +17982,33 @@ def _aud380_read_live_policy() -> dict[str, Any]:
     return json.loads(policy_path.read_text(encoding="utf-8"))
 
 
-def _aud380_assert_live_policy_is_exact_494(
+def _aud380_assert_live_policy_is_exact_497(
     live_policy: dict[str, Any], historical_490: dict[str, Any]
 ) -> None:
     live_records = live_policy.get("records")
     assert isinstance(live_records, list), "live disposition records changed"
-    assert len(live_records) == 494, "live disposition row count changed"
-    assert {key: value for key, value in live_policy.items() if key != "records"} == {
+    assert len(live_records) == 497, "live disposition row count changed"
+    expected_header = {
         key: value for key, value in historical_490.items() if key != "records"
-    }, "live disposition header changed"
+    }
+    actual_header = {
+        key: value for key, value in live_policy.items() if key != "records"
+    }
+    assert actual_header == expected_header, "live disposition header changed"
     assert live_records[:490] == historical_490["records"], (
         "live approved 490-row prefix changed"
     )
-    _assert_aud380_n4_conditional_policy(live_policy, historical_490)
+    live_494 = {key: value for key, value in live_policy.items() if key != "records"}
+    live_494["records"] = copy.deepcopy(live_records[:494])
+    _assert_aud380_n4_conditional_policy(live_494, historical_490)
+    live_495 = copy.deepcopy(live_494)
+    live_495["records"] = copy.deepcopy(live_records[:495])
+    _assert_aud380_n5_conditional_policy(live_495, live_494)
+    _assert_aud380_n6_conditional_policy(live_policy, live_495)
     accepted = verifier.validate_false_positive_dispositions(
-        live_policy, today=verifier.date(2026, 11, 6)
+        live_policy, today=verifier.date(2026, 11, 7)
     )
-    assert len(accepted) == 494, "live approved disposition count changed"
+    assert len(accepted) == 497, "live approved disposition count changed"
 
 
 def _aud380_historical_490_from_live_policy(
@@ -17866,7 +18016,7 @@ def _aud380_historical_490_from_live_policy(
 ) -> dict[str, Any]:
     live_records = live_policy.get("records")
     assert isinstance(live_records, list), "live disposition records changed"
-    assert len(live_records) == 494, "live disposition row count changed"
+    assert len(live_records) == 497, "live disposition row count changed"
 
     history = _reviewed_pre_retirement_dispositions()
     expected_base_records = _aud380_expected_active_363(history)
@@ -17875,12 +18025,12 @@ def _aud380_historical_490_from_live_policy(
     }
     historical_490["records"] = copy.deepcopy(live_records[:490])
     _assert_aud380_conditional_policy(historical_490, expected_base_records)
-    _aud380_assert_live_policy_is_exact_494(live_policy, historical_490)
+    _aud380_assert_live_policy_is_exact_497(live_policy, historical_490)
     return historical_490
 
 
 def _aud380_conditional_policy() -> dict[str, Any]:
-    """Return the exact historical 490 prefix after validating live 494 bytes."""
+    """Return the exact historical 490 prefix after validating live 497 bytes."""
     return _aud380_historical_490_from_live_policy(_aud380_read_live_policy())
 
 
@@ -17955,7 +18105,7 @@ def test_aud380_conditional_owner_projection_is_exact_current_delta(
     policy = _aud380_conditional_policy()
     _assert_aud380_conditional_policy(policy, _aud380_expected_active_363(history))
     accepted = verifier.validate_false_positive_dispositions(
-        policy, today=verifier.date(2026, 11, 6)
+        policy, today=verifier.date(2026, 11, 7)
     )
     assert len(accepted) == 469 + len(_AUD380_PENDING_OWNER_IDENTITIES)
 
@@ -18070,7 +18220,7 @@ def test_aud380_validator_requires_exact_kind_secret_reference_evidence() -> Non
     for row in secret_rows:
         single_record_policy = {"schema_version": 1, "records": [row]}
         accepted = verifier.validate_false_positive_dispositions(
-            single_record_policy, today=verifier.date(2026, 11, 6)
+            single_record_policy, today=verifier.date(2026, 11, 7)
         )
         assert len(accepted) == 1
 
@@ -18084,7 +18234,7 @@ def test_aud380_validator_requires_exact_kind_secret_reference_evidence() -> Non
         with pytest.raises(verifier.BaselineArtifactError, match="evidence"):
             verifier.validate_false_positive_dispositions(
                 {"schema_version": 1, "records": [changed_row]},
-                today=verifier.date(2026, 11, 6),
+                today=verifier.date(2026, 11, 7),
             )
 
 
@@ -18155,6 +18305,14 @@ def test_aud380_conditional_source_bindings_and_mutations(
         _assert_conditional_owner_source_bindings(
             source_root,
             replaced_companion_targets=tuple(changed_replacement_targets),
+        )
+
+    changed_source_targets = list(_AUD380_CI58_COMPANION_SOURCE_TARGETS)
+    path, line_number, target_path = changed_source_targets[0]
+    changed_source_targets[0] = (path, line_number, target_path + ".unreviewed")
+    with pytest.raises(AssertionError, match="CI58 companion source bindings changed"):
+        _assert_conditional_owner_source_bindings(
+            source_root, companion_source_targets=tuple(changed_source_targets)
         )
 
     mutated_root = tmp_path
@@ -25652,7 +25810,7 @@ def test_aud380_n3_conditional_493_projection_is_exact_append(
         _AUD380_N3_PENDING_OWNER_IDENTITIES
     )
     accepted = verifier.validate_false_positive_dispositions(
-        conditional, today=verifier.date(2026, 11, 6)
+        conditional, today=verifier.date(2026, 11, 7)
     )
     assert len(accepted) == 493
     assert active_policy["records"] == _aud380_conditional_policy()["records"]
@@ -25677,7 +25835,7 @@ def test_aud380_n3_category_requires_exact_test_sentinel_identity(
     ):
         verifier.validate_false_positive_dispositions(
             {"schema_version": 1, "records": [record]},
-            today=verifier.date(2026, 11, 6),
+            today=verifier.date(2026, 11, 7),
         )
 
 
@@ -25811,8 +25969,8 @@ def test_aud380_n3_source_bindings_and_fail_closed_mutations(tmp_path: Path) -> 
 
 
 def test_aud380_safehtml_wasm_provenance_and_license_restore_are_consistent() -> None:
-    repository_root = _aud380_history_repository_root()
     candidate_root = Path(__file__).resolve().parents[1]
+    repository_root = candidate_root
     ledger = json.loads(
         (candidate_root / "quality/semgrep-dispositions.json").read_text(
             encoding="utf-8"
@@ -25995,27 +26153,27 @@ def _assert_aud380_n4_conditional_policy(
         "header",
     ],
 )
-def test_aud380_live_approved_policy_requires_exact_494_projection(
+def test_aud380_live_approved_policy_requires_exact_497_projection(
     mutation: str,
 ) -> None:
     live_policy = _aud380_read_live_policy()
     historical_490 = _aud380_conditional_policy()
-    _aud380_assert_live_policy_is_exact_494(live_policy, historical_490)
+    _aud380_assert_live_policy_is_exact_497(live_policy, historical_490)
 
     changed = copy.deepcopy(live_policy)
     if mutation == "extra_row":
-        changed["records"].append(copy.deepcopy(changed["records"][490]))
+        changed["records"].append(copy.deepcopy(changed["records"][495]))
     elif mutation == "changed_prefix":
         changed["records"][0]["owner"] = "unreviewed-owner"
     elif mutation == "changed_suffix":
-        changed["records"][490]["approval_status"] = "NOT_APPROVED"
+        changed["records"][495]["approval_status"] = "NOT_APPROVED"
     elif mutation == "changed_suffix_digest":
-        changed["records"][490]["identity"]["hashed_secret_bytes"][0] ^= 1
+        changed["records"][495]["identity"]["hashed_secret_bytes"][0] ^= 1
     else:
         changed["schema_version"] = 2
 
     with pytest.raises(AssertionError):
-        _aud380_assert_live_policy_is_exact_494(changed, historical_490)
+        _aud380_assert_live_policy_is_exact_497(changed, historical_490)
 
 
 def test_aud380_n4_conditional_494_projection_is_exact_append() -> None:
@@ -26023,7 +26181,7 @@ def test_aud380_n4_conditional_494_projection_is_exact_append() -> None:
     conditional = _aud380_n4_conditional_policy()
     _assert_aud380_n4_conditional_policy(conditional, active)
     accepted = verifier.validate_false_positive_dispositions(
-        conditional, today=verifier.date(2026, 11, 6)
+        conditional, today=verifier.date(2026, 11, 7)
     )
     assert len(accepted) == 494
     assert active["records"] == _aud380_conditional_policy()["records"]
@@ -26137,7 +26295,7 @@ def test_aud380_n4_exact_n3_sentinels_and_row7_digest_are_finite() -> None:
         assert (
             len(
                 verifier.validate_false_positive_dispositions(
-                    _disposition_document(record), today=verifier.date(2026, 11, 6)
+                    _disposition_document(record), today=verifier.date(2026, 11, 7)
                 )
             )
             == 1
@@ -26147,11 +26305,3934 @@ def test_aud380_n4_exact_n3_sentinels_and_row7_digest_are_finite() -> None:
             changed["identity"][field] += ".unreviewed"
             with pytest.raises(verifier.BaselineArtifactError):
                 verifier.validate_false_positive_dispositions(
-                    _disposition_document(changed), today=verifier.date(2026, 11, 6)
+                    _disposition_document(changed), today=verifier.date(2026, 11, 7)
                 )
         changed = copy.deepcopy(record)
         changed["identity"]["hashed_secret_bytes"][0] ^= 1
         with pytest.raises(verifier.BaselineArtifactError):
             verifier.validate_false_positive_dispositions(
-                _disposition_document(changed), today=verifier.date(2026, 11, 6)
+                _disposition_document(changed), today=verifier.date(2026, 11, 7)
             )
+
+
+# AUD380 N5 is a single pending public integrity digest; it is not active.
+_AUD380_N5_PENDING_OWNER_RECORDS = [
+    {
+        "approval_status": "NOT_APPROVED",
+        "category": "public_integrity_digest",
+        "evidence": "Public source-integrity metadata: this detector identity is the SHA-1 fingerprint of the new SHA-256 companion pin for frontend/package-lock.json in SafeHtml disposition row 15 at quality/semgrep-dispositions.json:485. It identifies a repository lockfile postimage and is not credential material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                96,
+                135,
+                12,
+                114,
+                127,
+                194,
+                180,
+                71,
+                8,
+                90,
+                146,
+                143,
+                73,
+                137,
+                107,
+                158,
+                44,
+                94,
+                243,
+                94,
+            ],
+            "path": "quality/semgrep-dispositions.json",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    }
+]
+_AUD380_N5_PUBLIC_LEDGER_IDENTITY = (
+    "quality/semgrep-dispositions.json",
+    "Hex High Entropy String",
+    (
+        96,
+        135,
+        12,
+        114,
+        127,
+        194,
+        180,
+        71,
+        8,
+        90,
+        146,
+        143,
+        73,
+        137,
+        107,
+        158,
+        44,
+        94,
+        243,
+        94,
+    ),
+)
+_AUD380_N5_PENDING_OWNER_IDENTITIES = frozenset((_AUD380_N5_PUBLIC_LEDGER_IDENTITY,))
+_AUD380_N5_PENDING_ADDITIONS_SHA256 = bytes(
+    (
+        226,
+        200,
+        163,
+        222,
+        9,
+        31,
+        98,
+        121,
+        145,
+        64,
+        80,
+        251,
+        191,
+        26,
+        102,
+        36,
+        227,
+        117,
+        15,
+        243,
+        83,
+        221,
+        88,
+        60,
+        209,
+        141,
+        52,
+        90,
+        89,
+        117,
+        79,
+        94,
+    )
+)
+_AUD380_N5_IDENTITY_SOURCE_LINES = (
+    (
+        "quality/semgrep-dispositions.json",
+        "Hex High Entropy String",
+        _AUD380_N5_PUBLIC_LEDGER_IDENTITY[2],
+        "public_integrity_digest",
+        485,
+    ),
+)
+_AUD380_N5_LINE_SHA256 = bytes(
+    (
+        224,
+        31,
+        98,
+        118,
+        25,
+        22,
+        102,
+        183,
+        93,
+        225,
+        78,
+        232,
+        151,
+        138,
+        185,
+        184,
+        202,
+        44,
+        1,
+        41,
+        94,
+        227,
+        23,
+        223,
+        44,
+        75,
+        214,
+        50,
+        100,
+        147,
+        187,
+        110,
+    )
+)
+_AUD380_N5_CONTEXT_SHA256 = bytes(
+    (
+        39,
+        190,
+        98,
+        72,
+        116,
+        252,
+        11,
+        15,
+        141,
+        166,
+        169,
+        114,
+        71,
+        7,
+        175,
+        36,
+        195,
+        176,
+        101,
+        152,
+        188,
+        199,
+        55,
+        28,
+        174,
+        146,
+        42,
+        163,
+        230,
+        226,
+        233,
+        139,
+    )
+)
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": bytes(
+        (
+            132,
+            233,
+            4,
+            127,
+            17,
+            236,
+            0,
+            94,
+            87,
+            2,
+            197,
+            78,
+            105,
+            181,
+            135,
+            143,
+            204,
+            216,
+            66,
+            154,
+            235,
+            201,
+            246,
+            248,
+            22,
+            57,
+            114,
+            47,
+            57,
+            169,
+            109,
+            120,
+        )
+    ),
+    "frontend/package-lock.json": bytes(
+        (
+            160,
+            9,
+            242,
+            165,
+            109,
+            117,
+            82,
+            210,
+            135,
+            169,
+            233,
+            186,
+            190,
+            234,
+            176,
+            180,
+            147,
+            90,
+            176,
+            0,
+            131,
+            110,
+            180,
+            101,
+            3,
+            208,
+            160,
+            94,
+            190,
+            199,
+            210,
+            12,
+        )
+    ),
+}
+_AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES = (
+    *_AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES,
+    *_AUD380_N5_IDENTITY_SOURCE_LINES,
+)
+_AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
+    *(
+        (path, line, _AUD380_N5_LINE_SHA256, _AUD380_N5_CONTEXT_SHA256)
+        if path == "quality/semgrep-dispositions.json" and line == 485
+        else (path, line, line_hash, context_hash)
+        for path, line, line_hash, context_hash in _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES
+    ),
+    (
+        "quality/semgrep-dispositions.json",
+        485,
+        _AUD380_N5_LINE_SHA256,
+        _AUD380_N5_CONTEXT_SHA256,
+    ),
+)
+
+
+def _aud380_n5_conditional_policy() -> dict[str, Any]:
+    active_494 = _aud380_n4_conditional_policy()
+    conditional = copy.deepcopy(active_494)
+    appended = copy.deepcopy(_AUD380_N5_PENDING_OWNER_RECORDS)
+    for row in appended:
+        row["approval_status"] = "approved"
+    conditional["records"].extend(appended)
+    assert _aud380_canonical_records_digest(_AUD380_N5_PENDING_OWNER_RECORDS) == (
+        _AUD380_N5_PENDING_ADDITIONS_SHA256
+    )
+    return conditional
+
+
+def _assert_aud380_n5_conditional_policy(
+    conditional: dict[str, Any], active_494: dict[str, Any]
+) -> None:
+    assert len(active_494["records"]) == 494
+    assert len(conditional.get("records", [])) == 495
+    expected_header = {
+        key: value for key, value in active_494.items() if key != "records"
+    }
+    actual_header = {
+        key: value for key, value in conditional.items() if key != "records"
+    }
+    assert actual_header == expected_header, "conditional N5 policy header changed"
+    records = conditional["records"]
+    assert records[:494] == active_494["records"], "approved 494-row prefix changed"
+    pending = copy.deepcopy(_AUD380_N5_PENDING_OWNER_RECORDS)
+    assert len(pending) == 1
+    assert pending[0]["approval_status"] == "NOT_APPROVED"
+    assert pending[0]["reviewed_on"] == "2026-11-06"
+    assert pending[0]["expires_on"] == "2027-01-10"
+    assert _aud380_identity_key(pending[0]) == _AUD380_N5_PUBLIC_LEDGER_IDENTITY
+    expected_suffix = copy.deepcopy(pending)
+    expected_suffix[0]["approval_status"] = "approved"
+    assert records[494:] == expected_suffix, "conditional N5 suffix changed"
+    assert (
+        _aud380_canonical_records_digest(pending) == _AUD380_N5_PENDING_ADDITIONS_SHA256
+    )
+    keys = [_aud380_identity_key(row) for row in records]
+    assert len(keys) == len(set(keys)), "conditional N5 identities duplicated"
+    assert not (
+        {_aud380_identity_key(row) for row in active_494["records"]}
+        & set(_AUD380_N5_PENDING_OWNER_IDENTITIES)
+    )
+    expected_counts = Counter(
+        row["category"] for row in active_494["records"]
+    ) + Counter({"public_integrity_digest": 1})
+    assert Counter(row["category"] for row in records) == expected_counts
+
+
+def test_aud380_n5_conditional_495_projection_is_exact_append() -> None:
+    active_494 = _aud380_n4_conditional_policy()
+    conditional = _aud380_n5_conditional_policy()
+    _assert_aud380_n5_conditional_policy(conditional, active_494)
+    accepted = verifier.validate_false_positive_dispositions(
+        conditional, today=verifier.date(2026, 11, 7)
+    )
+    assert len(accepted) == 495
+    assert active_494["records"] == _aud380_n4_conditional_policy()["records"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "header",
+        "prefix",
+        "path",
+        "finding_type",
+        "digest",
+        "category",
+        "owner",
+        "date",
+        "expiry",
+        "evidence",
+        "status",
+        "missing",
+        "extra",
+        "duplicate",
+    ],
+)
+def test_aud380_n5_conditional_495_projection_rejects_mutations(mutation: str) -> None:
+    active_494 = _aud380_n4_conditional_policy()
+    changed = _aud380_n5_conditional_policy()
+    row = changed["records"][494]
+    if mutation == "header":
+        changed["schema_version"] = 2
+    elif mutation == "prefix":
+        changed["records"][0]["owner"] = "unreviewed-owner"
+    elif mutation == "path":
+        row["identity"]["path"] += ".unreviewed"
+    elif mutation == "finding_type":
+        row["identity"]["type"] = "unreviewed detector"
+    elif mutation == "digest":
+        row["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        row["category"] = "ci_test_contract_sentinel"
+    elif mutation == "owner":
+        row["owner"] = "unreviewed-owner"
+    elif mutation == "date":
+        row["reviewed_on"] = "2026-11-05"
+    elif mutation == "expiry":
+        row["expires_on"] = "2027-01-11"
+    elif mutation == "evidence":
+        row["evidence"] += " changed"
+    elif mutation == "status":
+        row["approval_status"] = "NOT_APPROVED"
+    elif mutation == "missing":
+        changed["records"].pop()
+    elif mutation == "extra":
+        changed["records"].append(copy.deepcopy(row))
+    else:
+        changed["records"][493], changed["records"][494] = (
+            changed["records"][494],
+            changed["records"][493],
+        )
+    with pytest.raises(AssertionError):
+        _assert_aud380_n5_conditional_policy(changed, active_494)
+
+
+def test_aud380_n5_pending_status_expiry_and_exact_source_binding() -> None:
+    pending = copy.deepcopy(_AUD380_N5_PENDING_OWNER_RECORDS[0])
+    assert pending["approval_status"] == "NOT_APPROVED"
+    assert _aud380_identity_key(pending) == (
+        "quality/semgrep-dispositions.json",
+        "Hex High Entropy String",
+        _AUD380_N5_PUBLIC_LEDGER_IDENTITY[2],
+    )
+    approved = copy.deepcopy(pending)
+    approved["approval_status"] = "approved"
+    for today in (verifier.date(2026, 11, 6), verifier.date(2027, 1, 10)):
+        assert (
+            len(
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(approved), today=today
+                )
+            )
+            == 1
+        )
+    for today in (verifier.date(2026, 11, 5), verifier.date(2027, 1, 11)):
+        with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(approved), today=today
+            )
+    _assert_conditional_owner_source_bindings(Path(__file__).resolve().parents[1])
+
+
+# CI58 source rebind: exact current staged files and row7-10 overlay inputs.
+_AUD380_CI58_SOURCE_LINE_HASH_OVERRIDES = {
+    ("quality/semgrep-dispositions.json", 189): (
+        bytes(
+            (
+                151,
+                203,
+                152,
+                100,
+                184,
+                0,
+                234,
+                81,
+                65,
+                102,
+                211,
+                114,
+                8,
+                183,
+                143,
+                132,
+                81,
+                44,
+                249,
+                214,
+                78,
+                127,
+                137,
+                158,
+                100,
+                247,
+                162,
+                237,
+                228,
+                148,
+                160,
+                200,
+            )
+        ),
+        bytes(
+            (
+                105,
+                100,
+                76,
+                15,
+                77,
+                87,
+                226,
+                10,
+                238,
+                208,
+                152,
+                210,
+                98,
+                124,
+                56,
+                103,
+                143,
+                191,
+                147,
+                144,
+                102,
+                78,
+                223,
+                18,
+                193,
+                169,
+                43,
+                84,
+                2,
+                197,
+                239,
+                53,
+            )
+        ),
+    ),
+    ("quality/semgrep-dispositions.json", 229): (
+        bytes(
+            (
+                124,
+                204,
+                33,
+                9,
+                47,
+                7,
+                193,
+                167,
+                104,
+                194,
+                118,
+                32,
+                22,
+                75,
+                189,
+                232,
+                13,
+                143,
+                73,
+                19,
+                44,
+                150,
+                181,
+                5,
+                188,
+                21,
+                222,
+                54,
+                193,
+                156,
+                126,
+                45,
+            )
+        ),
+        bytes(
+            (
+                42,
+                89,
+                97,
+                51,
+                8,
+                247,
+                195,
+                203,
+                81,
+                53,
+                30,
+                114,
+                47,
+                100,
+                228,
+                8,
+                83,
+                4,
+                243,
+                186,
+                49,
+                131,
+                184,
+                227,
+                202,
+                127,
+                189,
+                21,
+                31,
+                118,
+                177,
+                235,
+            )
+        ),
+    ),
+    ("quality/semgrep-dispositions.json", 257): (
+        bytes(
+            (
+                124,
+                204,
+                33,
+                9,
+                47,
+                7,
+                193,
+                167,
+                104,
+                194,
+                118,
+                32,
+                22,
+                75,
+                189,
+                232,
+                13,
+                143,
+                73,
+                19,
+                44,
+                150,
+                181,
+                5,
+                188,
+                21,
+                222,
+                54,
+                193,
+                156,
+                126,
+                45,
+            )
+        ),
+        bytes(
+            (
+                42,
+                89,
+                97,
+                51,
+                8,
+                247,
+                195,
+                203,
+                81,
+                53,
+                30,
+                114,
+                47,
+                100,
+                228,
+                8,
+                83,
+                4,
+                243,
+                186,
+                49,
+                131,
+                184,
+                227,
+                202,
+                127,
+                189,
+                21,
+                31,
+                118,
+                177,
+                235,
+            )
+        ),
+    ),
+    ("quality/semgrep-dispositions.json", 285): (
+        bytes(
+            (
+                124,
+                204,
+                33,
+                9,
+                47,
+                7,
+                193,
+                167,
+                104,
+                194,
+                118,
+                32,
+                22,
+                75,
+                189,
+                232,
+                13,
+                143,
+                73,
+                19,
+                44,
+                150,
+                181,
+                5,
+                188,
+                21,
+                222,
+                54,
+                193,
+                156,
+                126,
+                45,
+            )
+        ),
+        bytes(
+            (
+                42,
+                89,
+                97,
+                51,
+                8,
+                247,
+                195,
+                203,
+                81,
+                53,
+                30,
+                114,
+                47,
+                100,
+                228,
+                8,
+                83,
+                4,
+                243,
+                186,
+                49,
+                131,
+                184,
+                227,
+                202,
+                127,
+                189,
+                21,
+                31,
+                118,
+                177,
+                235,
+            )
+        ),
+    ),
+    ("tests/test_helm_rendered_target_overlay.py", 96): (
+        bytes(
+            (
+                146,
+                226,
+                31,
+                5,
+                222,
+                243,
+                226,
+                181,
+                187,
+                185,
+                194,
+                118,
+                228,
+                134,
+                244,
+                73,
+                30,
+                55,
+                177,
+                49,
+                192,
+                225,
+                211,
+                84,
+                82,
+                240,
+                214,
+                221,
+                219,
+                157,
+                69,
+                180,
+            )
+        ),
+        bytes(
+            (
+                107,
+                84,
+                46,
+                14,
+                42,
+                204,
+                12,
+                225,
+                16,
+                171,
+                200,
+                28,
+                239,
+                151,
+                46,
+                23,
+                68,
+                255,
+                161,
+                220,
+                109,
+                215,
+                216,
+                6,
+                93,
+                63,
+                243,
+                235,
+                216,
+                173,
+                5,
+                125,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1352): (
+        bytes(
+            (
+                16,
+                124,
+                35,
+                133,
+                35,
+                161,
+                226,
+                95,
+                5,
+                139,
+                227,
+                189,
+                86,
+                81,
+                113,
+                165,
+                203,
+                15,
+                217,
+                254,
+                86,
+                221,
+                174,
+                116,
+                233,
+                234,
+                42,
+                123,
+                202,
+                79,
+                46,
+                235,
+            )
+        ),
+        bytes(
+            (
+                199,
+                7,
+                20,
+                149,
+                183,
+                172,
+                202,
+                181,
+                111,
+                176,
+                71,
+                49,
+                71,
+                83,
+                152,
+                16,
+                54,
+                83,
+                179,
+                144,
+                36,
+                67,
+                114,
+                174,
+                242,
+                229,
+                67,
+                8,
+                28,
+                109,
+                227,
+                22,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1353): (
+        bytes(
+            (
+                173,
+                210,
+                68,
+                88,
+                43,
+                111,
+                176,
+                61,
+                35,
+                184,
+                65,
+                90,
+                190,
+                205,
+                52,
+                107,
+                12,
+                159,
+                70,
+                107,
+                111,
+                117,
+                43,
+                6,
+                129,
+                137,
+                206,
+                126,
+                154,
+                45,
+                195,
+                80,
+            )
+        ),
+        bytes(
+            (
+                78,
+                75,
+                233,
+                41,
+                217,
+                89,
+                73,
+                157,
+                80,
+                108,
+                185,
+                110,
+                169,
+                2,
+                141,
+                96,
+                199,
+                57,
+                99,
+                143,
+                45,
+                165,
+                179,
+                196,
+                184,
+                178,
+                85,
+                253,
+                183,
+                20,
+                159,
+                144,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1931): (
+        bytes(
+            (
+                222,
+                178,
+                84,
+                83,
+                126,
+                36,
+                163,
+                17,
+                233,
+                39,
+                92,
+                98,
+                25,
+                158,
+                106,
+                1,
+                220,
+                155,
+                144,
+                205,
+                235,
+                13,
+                126,
+                18,
+                110,
+                44,
+                193,
+                149,
+                157,
+                186,
+                78,
+                203,
+            )
+        ),
+        bytes(
+            (
+                197,
+                127,
+                202,
+                103,
+                65,
+                22,
+                177,
+                24,
+                247,
+                173,
+                181,
+                42,
+                31,
+                254,
+                115,
+                234,
+                51,
+                56,
+                220,
+                139,
+                56,
+                161,
+                150,
+                97,
+                144,
+                133,
+                147,
+                14,
+                203,
+                255,
+                150,
+                39,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1936): (
+        bytes(
+            (
+                1,
+                186,
+                71,
+                25,
+                200,
+                11,
+                111,
+                233,
+                17,
+                176,
+                145,
+                167,
+                192,
+                81,
+                36,
+                182,
+                78,
+                238,
+                206,
+                150,
+                78,
+                9,
+                192,
+                88,
+                239,
+                143,
+                152,
+                5,
+                218,
+                202,
+                84,
+                107,
+            )
+        ),
+        bytes(
+            (
+                159,
+                147,
+                169,
+                56,
+                126,
+                9,
+                12,
+                68,
+                9,
+                9,
+                250,
+                173,
+                61,
+                166,
+                229,
+                57,
+                190,
+                120,
+                104,
+                168,
+                48,
+                193,
+                156,
+                29,
+                169,
+                180,
+                29,
+                196,
+                108,
+                118,
+                48,
+                184,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1937): (
+        bytes(
+            (
+                1,
+                186,
+                71,
+                25,
+                200,
+                11,
+                111,
+                233,
+                17,
+                176,
+                145,
+                167,
+                192,
+                81,
+                36,
+                182,
+                78,
+                238,
+                206,
+                150,
+                78,
+                9,
+                192,
+                88,
+                239,
+                143,
+                152,
+                5,
+                218,
+                202,
+                84,
+                107,
+            )
+        ),
+        bytes(
+            (
+                230,
+                186,
+                51,
+                9,
+                171,
+                252,
+                74,
+                154,
+                86,
+                37,
+                35,
+                1,
+                226,
+                254,
+                80,
+                7,
+                209,
+                154,
+                234,
+                73,
+                171,
+                210,
+                133,
+                188,
+                48,
+                172,
+                176,
+                126,
+                207,
+                196,
+                214,
+                145,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1945): (
+        bytes(
+            (
+                214,
+                191,
+                40,
+                19,
+                134,
+                197,
+                180,
+                21,
+                241,
+                28,
+                225,
+                129,
+                125,
+                236,
+                9,
+                100,
+                81,
+                94,
+                51,
+                202,
+                85,
+                12,
+                95,
+                175,
+                62,
+                213,
+                55,
+                36,
+                94,
+                147,
+                77,
+                14,
+            )
+        ),
+        bytes(
+            (
+                27,
+                3,
+                42,
+                255,
+                170,
+                69,
+                232,
+                215,
+                87,
+                34,
+                156,
+                58,
+                238,
+                175,
+                192,
+                164,
+                104,
+                187,
+                65,
+                151,
+                141,
+                152,
+                220,
+                109,
+                114,
+                226,
+                190,
+                204,
+                75,
+                120,
+                250,
+                52,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1949): (
+        bytes(
+            (
+                232,
+                231,
+                5,
+                208,
+                159,
+                144,
+                192,
+                62,
+                55,
+                86,
+                70,
+                19,
+                37,
+                246,
+                54,
+                189,
+                99,
+                49,
+                26,
+                67,
+                230,
+                16,
+                39,
+                117,
+                121,
+                156,
+                150,
+                229,
+                71,
+                115,
+                126,
+                91,
+            )
+        ),
+        bytes(
+            (
+                116,
+                164,
+                214,
+                9,
+                65,
+                165,
+                213,
+                95,
+                160,
+                87,
+                149,
+                61,
+                6,
+                160,
+                239,
+                251,
+                91,
+                15,
+                130,
+                114,
+                240,
+                210,
+                41,
+                233,
+                47,
+                240,
+                186,
+                254,
+                79,
+                47,
+                222,
+                34,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1953): (
+        bytes(
+            (
+                31,
+                224,
+                62,
+                121,
+                166,
+                212,
+                172,
+                64,
+                100,
+                229,
+                57,
+                30,
+                1,
+                173,
+                142,
+                136,
+                91,
+                160,
+                62,
+                238,
+                146,
+                197,
+                45,
+                93,
+                169,
+                120,
+                12,
+                94,
+                216,
+                247,
+                117,
+                119,
+            )
+        ),
+        bytes(
+            (
+                33,
+                16,
+                232,
+                191,
+                230,
+                42,
+                251,
+                111,
+                50,
+                127,
+                88,
+                197,
+                63,
+                209,
+                172,
+                124,
+                202,
+                73,
+                75,
+                254,
+                206,
+                87,
+                97,
+                70,
+                169,
+                208,
+                99,
+                99,
+                223,
+                83,
+                44,
+                176,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1981): (
+        bytes(
+            (
+                242,
+                162,
+                10,
+                208,
+                58,
+                169,
+                25,
+                243,
+                131,
+                134,
+                100,
+                232,
+                57,
+                78,
+                97,
+                215,
+                29,
+                233,
+                235,
+                95,
+                26,
+                201,
+                225,
+                2,
+                252,
+                16,
+                124,
+                110,
+                180,
+                136,
+                245,
+                189,
+            )
+        ),
+        bytes(
+            (
+                45,
+                49,
+                57,
+                120,
+                200,
+                125,
+                148,
+                51,
+                46,
+                154,
+                128,
+                91,
+                47,
+                22,
+                114,
+                69,
+                95,
+                122,
+                9,
+                120,
+                80,
+                91,
+                54,
+                142,
+                163,
+                112,
+                128,
+                124,
+                203,
+                134,
+                155,
+                82,
+            )
+        ),
+    ),
+    ("tests/test_temporal_namespace_init_fake_cli.py", 41): (
+        bytes(
+            (
+                239,
+                168,
+                37,
+                242,
+                201,
+                36,
+                162,
+                2,
+                255,
+                254,
+                64,
+                184,
+                71,
+                101,
+                111,
+                148,
+                106,
+                140,
+                191,
+                203,
+                39,
+                244,
+                127,
+                95,
+                95,
+                12,
+                15,
+                176,
+                243,
+                118,
+                136,
+                68,
+            )
+        ),
+        bytes(
+            (
+                197,
+                130,
+                66,
+                30,
+                4,
+                100,
+                138,
+                16,
+                246,
+                78,
+                238,
+                191,
+                118,
+                22,
+                59,
+                100,
+                126,
+                71,
+                160,
+                194,
+                240,
+                8,
+                128,
+                87,
+                150,
+                162,
+                12,
+                83,
+                41,
+                140,
+                3,
+                8,
+            )
+        ),
+    ),
+    ("tests/test_temporal_namespace_init_fake_cli.py", 45): (
+        bytes(
+            (
+                18,
+                175,
+                55,
+                152,
+                205,
+                196,
+                237,
+                110,
+                90,
+                16,
+                3,
+                209,
+                92,
+                42,
+                166,
+                144,
+                112,
+                63,
+                192,
+                255,
+                96,
+                248,
+                190,
+                2,
+                17,
+                108,
+                195,
+                166,
+                167,
+                63,
+                157,
+                163,
+            )
+        ),
+        bytes(
+            (
+                49,
+                81,
+                208,
+                167,
+                109,
+                182,
+                181,
+                198,
+                22,
+                220,
+                145,
+                231,
+                104,
+                125,
+                98,
+                209,
+                137,
+                183,
+                56,
+                171,
+                180,
+                86,
+                58,
+                108,
+                21,
+                190,
+                37,
+                163,
+                107,
+                180,
+                212,
+                154,
+            )
+        ),
+    ),
+}
+_AUD380_CI58_COMPANION_SOURCE_TARGETS = (
+    (
+        "quality/semgrep-dispositions.json",
+        229,
+        "tests/test_mfa_deploy_workflow_contract.py",
+    ),
+    (
+        "quality/semgrep-dispositions.json",
+        257,
+        "tests/test_mfa_deploy_workflow_contract.py",
+    ),
+    (
+        "quality/semgrep-dispositions.json",
+        285,
+        "tests/test_mfa_deploy_workflow_contract.py",
+    ),
+)
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    "scripts/kind/aud373_internal_mtls_proof.sh": bytes(
+        (
+            57,
+            29,
+            30,
+            130,
+            36,
+            155,
+            172,
+            136,
+            8,
+            225,
+            236,
+            221,
+            46,
+            134,
+            143,
+            195,
+            70,
+            109,
+            127,
+            78,
+            249,
+            97,
+            60,
+            135,
+            12,
+            18,
+            188,
+            249,
+            108,
+            6,
+            154,
+            61,
+        )
+    ),
+    "tests/test_helm_rendered_target_overlay.py": bytes(
+        (
+            175,
+            126,
+            44,
+            156,
+            149,
+            34,
+            254,
+            217,
+            204,
+            125,
+            246,
+            188,
+            22,
+            172,
+            5,
+            167,
+            0,
+            250,
+            11,
+            173,
+            106,
+            64,
+            128,
+            164,
+            53,
+            124,
+            29,
+            49,
+            174,
+            205,
+            107,
+            218,
+        )
+    ),
+    "tests/test_internal_mtls_kind_contract.py": bytes(
+        (
+            3,
+            84,
+            28,
+            181,
+            179,
+            169,
+            123,
+            104,
+            32,
+            94,
+            12,
+            182,
+            228,
+            136,
+            253,
+            150,
+            222,
+            226,
+            3,
+            246,
+            212,
+            56,
+            1,
+            183,
+            76,
+            116,
+            83,
+            104,
+            220,
+            224,
+            222,
+            93,
+        )
+    ),
+    "tests/test_temporal_namespace_init_fake_cli.py": bytes(
+        (
+            215,
+            142,
+            41,
+            127,
+            176,
+            24,
+            213,
+            252,
+            240,
+            144,
+            131,
+            32,
+            122,
+            202,
+            44,
+            54,
+            15,
+            39,
+            240,
+            184,
+            26,
+            254,
+            112,
+            83,
+            3,
+            72,
+            227,
+            122,
+            151,
+            203,
+            194,
+            70,
+        )
+    ),
+    "scripts/live_stand.py": bytes(
+        (
+            34,
+            131,
+            218,
+            123,
+            17,
+            54,
+            118,
+            129,
+            104,
+            89,
+            148,
+            25,
+            240,
+            79,
+            205,
+            172,
+            13,
+            253,
+            84,
+            66,
+            14,
+            21,
+            17,
+            237,
+            196,
+            174,
+            233,
+            55,
+            207,
+            163,
+            174,
+            24,
+        )
+    ),
+    "quality/semgrep-dispositions.json": bytes(
+        (
+            16,
+            230,
+            73,
+            26,
+            70,
+            156,
+            243,
+            1,
+            31,
+            131,
+            1,
+            71,
+            66,
+            184,
+            216,
+            182,
+            87,
+            61,
+            93,
+            44,
+            48,
+            196,
+            180,
+            253,
+            181,
+            149,
+            70,
+            126,
+            23,
+            7,
+            179,
+            191,
+        )
+    ),
+    "frontend/package-lock.json": bytes(
+        (
+            160,
+            9,
+            242,
+            165,
+            109,
+            117,
+            82,
+            210,
+            135,
+            169,
+            233,
+            186,
+            190,
+            234,
+            176,
+            180,
+            147,
+            90,
+            176,
+            0,
+            131,
+            110,
+            180,
+            101,
+            3,
+            208,
+            160,
+            94,
+            190,
+            199,
+            210,
+            12,
+        )
+    ),
+    "tests/test_mfa_deploy_workflow_contract.py": bytes(
+        (
+            127,
+            89,
+            20,
+            179,
+            235,
+            171,
+            157,
+            89,
+            230,
+            254,
+            197,
+            135,
+            250,
+            217,
+            192,
+            128,
+            129,
+            133,
+            245,
+            111,
+            55,
+            57,
+            63,
+            27,
+            203,
+            174,
+            97,
+            2,
+            69,
+            70,
+            205,
+            237,
+        )
+    ),
+}
+_AUD380_N3_SOURCE_SHA256 = {
+    **_AUD380_N3_SOURCE_SHA256,
+    "tests/test_temporal_namespace_init_fake_cli.py": bytes(
+        (
+            215,
+            142,
+            41,
+            127,
+            176,
+            24,
+            213,
+            252,
+            240,
+            144,
+            131,
+            32,
+            122,
+            202,
+            44,
+            54,
+            15,
+            39,
+            240,
+            184,
+            26,
+            254,
+            112,
+            83,
+            3,
+            72,
+            227,
+            122,
+            151,
+            203,
+            194,
+            70,
+        )
+    ),
+}
+_AUD380_N3_SOURCE_LINE_HASHES = (
+    (
+        "tests/test_seed_demo_data.py",
+        112,
+        bytes(
+            (
+                40,
+                85,
+                172,
+                159,
+                248,
+                155,
+                29,
+                5,
+                95,
+                156,
+                33,
+                13,
+                240,
+                181,
+                142,
+                125,
+                150,
+                83,
+                83,
+                169,
+                40,
+                43,
+                138,
+                195,
+                62,
+                76,
+                122,
+                112,
+                95,
+                232,
+                91,
+                16,
+            )
+        ),
+        bytes(
+            (
+                29,
+                58,
+                151,
+                107,
+                191,
+                10,
+                41,
+                4,
+                74,
+                49,
+                50,
+                138,
+                88,
+                112,
+                51,
+                182,
+                172,
+                251,
+                79,
+                224,
+                249,
+                21,
+                255,
+                49,
+                86,
+                135,
+                65,
+                138,
+                183,
+                43,
+                25,
+                238,
+            )
+        ),
+    ),
+    (
+        "tests/test_temporal_namespace_init_fake_cli.py",
+        45,
+        bytes(
+            (
+                18,
+                175,
+                55,
+                152,
+                205,
+                196,
+                237,
+                110,
+                90,
+                16,
+                3,
+                209,
+                92,
+                42,
+                166,
+                144,
+                112,
+                63,
+                192,
+                255,
+                96,
+                248,
+                190,
+                2,
+                17,
+                108,
+                195,
+                166,
+                167,
+                63,
+                157,
+                163,
+            )
+        ),
+        bytes(
+            (
+                49,
+                81,
+                208,
+                167,
+                109,
+                182,
+                181,
+                198,
+                22,
+                220,
+                145,
+                231,
+                104,
+                125,
+                98,
+                209,
+                137,
+                183,
+                56,
+                171,
+                180,
+                86,
+                58,
+                108,
+                21,
+                190,
+                37,
+                163,
+                107,
+                180,
+                212,
+                154,
+            )
+        ),
+    ),
+    (
+        "tests/test_temporal_namespace_init_fake_cli.py",
+        41,
+        bytes(
+            (
+                239,
+                168,
+                37,
+                242,
+                201,
+                36,
+                162,
+                2,
+                255,
+                254,
+                64,
+                184,
+                71,
+                101,
+                111,
+                148,
+                106,
+                140,
+                191,
+                203,
+                39,
+                244,
+                127,
+                95,
+                95,
+                12,
+                15,
+                176,
+                243,
+                118,
+                136,
+                68,
+            )
+        ),
+        bytes(
+            (
+                197,
+                130,
+                66,
+                30,
+                4,
+                100,
+                138,
+                16,
+                246,
+                78,
+                238,
+                191,
+                118,
+                22,
+                59,
+                100,
+                126,
+                71,
+                160,
+                194,
+                240,
+                8,
+                128,
+                87,
+                150,
+                162,
+                12,
+                83,
+                41,
+                140,
+                3,
+                8,
+            )
+        ),
+    ),
+)
+_AUD380_CURRENT_DELTA_COMPANION_SOURCE_LINES = (
+    *_AUD380_CURRENT_DELTA_COMPANION_SOURCE_LINES,
+    ("quality/semgrep-dispositions.json", 229),
+    ("quality/semgrep-dispositions.json", 257),
+    ("quality/semgrep-dispositions.json", 285),
+)
+_AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = tuple(
+    (
+        path,
+        line_number,
+        *_AUD380_CI58_SOURCE_LINE_HASH_OVERRIDES.get(
+            (path, line_number), (line_sha256, context_sha256)
+        ),
+    )
+    for path, line_number, line_sha256, context_sha256 in (
+        *_AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES,
+        ("quality/semgrep-dispositions.json", 229, b"", b""),
+        ("quality/semgrep-dispositions.json", 257, b"", b""),
+        ("quality/semgrep-dispositions.json", 285, b"", b""),
+    )
+)
+
+
+# Exact current source snapshot after the final N6 companion rebind.
+_AUD380_N6_FINAL_SOURCE_SHA256 = {
+    "quality/semgrep-dispositions.json": bytes(
+        (
+            243,
+            63,
+            43,
+            79,
+            8,
+            193,
+            197,
+            224,
+            5,
+            231,
+            103,
+            82,
+            164,
+            13,
+            64,
+            217,
+            108,
+            176,
+            127,
+            228,
+            244,
+            242,
+            35,
+            33,
+            36,
+            166,
+            225,
+            27,
+            174,
+            116,
+            191,
+            18,
+        )
+    ),
+    "scripts/kind/aud373_internal_mtls_proof.sh": bytes(
+        (
+            153,
+            219,
+            90,
+            61,
+            137,
+            188,
+            116,
+            236,
+            132,
+            113,
+            68,
+            4,
+            178,
+            10,
+            209,
+            238,
+            135,
+            248,
+            242,
+            45,
+            119,
+            48,
+            38,
+            175,
+            253,
+            6,
+            200,
+            47,
+            223,
+            136,
+            169,
+            111,
+        )
+    ),
+    "scripts/live_stand.py": bytes(
+        (
+            254,
+            195,
+            25,
+            164,
+            0,
+            218,
+            219,
+            105,
+            148,
+            255,
+            48,
+            239,
+            78,
+            0,
+            65,
+            216,
+            76,
+            189,
+            47,
+            92,
+            48,
+            124,
+            40,
+            93,
+            140,
+            0,
+            109,
+            243,
+            206,
+            167,
+            210,
+            165,
+        )
+    ),
+    "tests/test_internal_mtls_kind_contract.py": bytes(
+        (
+            6,
+            209,
+            138,
+            41,
+            217,
+            119,
+            148,
+            173,
+            168,
+            138,
+            79,
+            238,
+            175,
+            52,
+            251,
+            111,
+            162,
+            77,
+            79,
+            208,
+            208,
+            53,
+            72,
+            85,
+            240,
+            239,
+            72,
+            192,
+            141,
+            248,
+            235,
+            174,
+        )
+    ),
+}
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    **_AUD380_N6_FINAL_SOURCE_SHA256,
+}
+_AUD380_N6_FINAL_SOURCE_LINE_HASHES = {
+    ("quality/semgrep-dispositions.json", 189): (
+        bytes(
+            (
+                240,
+                6,
+                139,
+                79,
+                64,
+                4,
+                249,
+                232,
+                62,
+                152,
+                230,
+                169,
+                148,
+                117,
+                80,
+                26,
+                226,
+                58,
+                42,
+                9,
+                33,
+                222,
+                78,
+                82,
+                239,
+                93,
+                145,
+                70,
+                122,
+                165,
+                81,
+                140,
+            )
+        ),
+        bytes(
+            (
+                223,
+                43,
+                84,
+                246,
+                49,
+                176,
+                217,
+                135,
+                180,
+                30,
+                39,
+                202,
+                152,
+                120,
+                94,
+                43,
+                192,
+                79,
+                213,
+                198,
+                203,
+                78,
+                162,
+                197,
+                96,
+                211,
+                170,
+                141,
+                249,
+                152,
+                29,
+                134,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1352): (
+        bytes(
+            (
+                32,
+                7,
+                138,
+                24,
+                251,
+                63,
+                67,
+                149,
+                37,
+                241,
+                96,
+                174,
+                246,
+                41,
+                35,
+                224,
+                72,
+                159,
+                112,
+                51,
+                12,
+                78,
+                138,
+                213,
+                34,
+                193,
+                114,
+                207,
+                199,
+                186,
+                192,
+                138,
+            )
+        ),
+        bytes(
+            (
+                165,
+                207,
+                147,
+                249,
+                42,
+                7,
+                210,
+                181,
+                238,
+                164,
+                167,
+                32,
+                88,
+                81,
+                177,
+                136,
+                130,
+                221,
+                54,
+                113,
+                149,
+                160,
+                56,
+                5,
+                151,
+                117,
+                246,
+                81,
+                218,
+                54,
+                158,
+                117,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1353): (
+        bytes(
+            (
+                153,
+                243,
+                200,
+                176,
+                21,
+                68,
+                4,
+                114,
+                15,
+                186,
+                186,
+                107,
+                107,
+                117,
+                237,
+                220,
+                192,
+                127,
+                17,
+                0,
+                87,
+                221,
+                108,
+                225,
+                200,
+                27,
+                227,
+                17,
+                116,
+                208,
+                81,
+                201,
+            )
+        ),
+        bytes(
+            (
+                193,
+                105,
+                47,
+                46,
+                253,
+                123,
+                240,
+                240,
+                33,
+                200,
+                129,
+                173,
+                213,
+                167,
+                121,
+                62,
+                148,
+                163,
+                25,
+                5,
+                9,
+                149,
+                161,
+                14,
+                212,
+                190,
+                179,
+                85,
+                128,
+                121,
+                18,
+                165,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1931): (
+        bytes(
+            (
+                210,
+                34,
+                220,
+                230,
+                225,
+                210,
+                212,
+                205,
+                159,
+                145,
+                22,
+                29,
+                242,
+                106,
+                98,
+                118,
+                127,
+                35,
+                65,
+                165,
+                51,
+                148,
+                79,
+                116,
+                132,
+                190,
+                33,
+                92,
+                144,
+                30,
+                38,
+                67,
+            )
+        ),
+        bytes(
+            (
+                222,
+                106,
+                150,
+                156,
+                161,
+                188,
+                217,
+                1,
+                73,
+                84,
+                255,
+                161,
+                242,
+                138,
+                206,
+                191,
+                152,
+                24,
+                240,
+                6,
+                250,
+                233,
+                72,
+                148,
+                218,
+                123,
+                98,
+                214,
+                210,
+                173,
+                126,
+                207,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1936): (
+        bytes(
+            (
+                247,
+                142,
+                71,
+                19,
+                160,
+                165,
+                216,
+                218,
+                3,
+                231,
+                120,
+                138,
+                230,
+                54,
+                49,
+                173,
+                254,
+                156,
+                143,
+                9,
+                164,
+                96,
+                206,
+                141,
+                169,
+                146,
+                52,
+                102,
+                82,
+                194,
+                24,
+                241,
+            )
+        ),
+        bytes(
+            (
+                42,
+                53,
+                178,
+                84,
+                192,
+                73,
+                244,
+                7,
+                184,
+                134,
+                103,
+                90,
+                46,
+                24,
+                212,
+                27,
+                247,
+                190,
+                228,
+                228,
+                25,
+                69,
+                254,
+                55,
+                113,
+                138,
+                10,
+                250,
+                42,
+                232,
+                84,
+                161,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1937): (
+        bytes(
+            (
+                83,
+                55,
+                229,
+                84,
+                50,
+                45,
+                214,
+                106,
+                49,
+                86,
+                76,
+                54,
+                123,
+                155,
+                79,
+                232,
+                165,
+                143,
+                240,
+                147,
+                217,
+                138,
+                179,
+                154,
+                98,
+                166,
+                237,
+                174,
+                72,
+                20,
+                142,
+                235,
+            )
+        ),
+        bytes(
+            (
+                99,
+                151,
+                250,
+                188,
+                225,
+                244,
+                210,
+                10,
+                235,
+                82,
+                6,
+                162,
+                26,
+                70,
+                237,
+                70,
+                103,
+                248,
+                170,
+                249,
+                47,
+                106,
+                226,
+                122,
+                143,
+                151,
+                29,
+                146,
+                159,
+                227,
+                127,
+                18,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1945): (
+        bytes(
+            (
+                147,
+                226,
+                218,
+                201,
+                91,
+                115,
+                250,
+                30,
+                15,
+                67,
+                248,
+                126,
+                129,
+                228,
+                74,
+                88,
+                13,
+                36,
+                159,
+                168,
+                77,
+                123,
+                15,
+                216,
+                17,
+                3,
+                161,
+                23,
+                72,
+                119,
+                164,
+                248,
+            )
+        ),
+        bytes(
+            (
+                53,
+                111,
+                49,
+                58,
+                37,
+                155,
+                66,
+                140,
+                207,
+                107,
+                184,
+                147,
+                198,
+                241,
+                152,
+                137,
+                109,
+                85,
+                9,
+                34,
+                205,
+                170,
+                125,
+                77,
+                255,
+                171,
+                244,
+                166,
+                52,
+                186,
+                71,
+                175,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1949): (
+        bytes(
+            (
+                24,
+                8,
+                236,
+                68,
+                225,
+                251,
+                143,
+                5,
+                225,
+                49,
+                17,
+                90,
+                31,
+                121,
+                31,
+                130,
+                99,
+                59,
+                138,
+                195,
+                219,
+                34,
+                19,
+                174,
+                48,
+                252,
+                172,
+                224,
+                64,
+                105,
+                174,
+                230,
+            )
+        ),
+        bytes(
+            (
+                244,
+                22,
+                69,
+                159,
+                244,
+                83,
+                121,
+                218,
+                75,
+                108,
+                215,
+                136,
+                145,
+                155,
+                189,
+                117,
+                213,
+                118,
+                116,
+                249,
+                83,
+                122,
+                161,
+                49,
+                139,
+                221,
+                204,
+                197,
+                182,
+                124,
+                49,
+                96,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1953): (
+        bytes(
+            (
+                143,
+                232,
+                92,
+                165,
+                95,
+                198,
+                163,
+                215,
+                165,
+                208,
+                191,
+                22,
+                229,
+                208,
+                155,
+                217,
+                146,
+                54,
+                246,
+                198,
+                57,
+                197,
+                145,
+                125,
+                159,
+                15,
+                97,
+                186,
+                96,
+                66,
+                122,
+                43,
+            )
+        ),
+        bytes(
+            (
+                49,
+                155,
+                67,
+                192,
+                55,
+                132,
+                179,
+                238,
+                98,
+                86,
+                139,
+                195,
+                176,
+                140,
+                27,
+                76,
+                43,
+                124,
+                85,
+                165,
+                236,
+                153,
+                117,
+                134,
+                245,
+                217,
+                177,
+                92,
+                170,
+                120,
+                113,
+                109,
+            )
+        ),
+    ),
+    ("tests/test_internal_mtls_kind_contract.py", 1981): (
+        bytes(
+            (
+                83,
+                55,
+                229,
+                84,
+                50,
+                45,
+                214,
+                106,
+                49,
+                86,
+                76,
+                54,
+                123,
+                155,
+                79,
+                232,
+                165,
+                143,
+                240,
+                147,
+                217,
+                138,
+                179,
+                154,
+                98,
+                166,
+                237,
+                174,
+                72,
+                20,
+                142,
+                235,
+            )
+        ),
+        bytes(
+            (
+                75,
+                85,
+                112,
+                209,
+                129,
+                115,
+                206,
+                182,
+                186,
+                127,
+                253,
+                85,
+                30,
+                104,
+                151,
+                124,
+                113,
+                71,
+                59,
+                146,
+                211,
+                151,
+                51,
+                40,
+                181,
+                182,
+                252,
+                171,
+                124,
+                63,
+                96,
+                147,
+            )
+        ),
+    ),
+}
+_AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = tuple(
+    (
+        path,
+        line_number,
+        *_AUD380_N6_FINAL_SOURCE_LINE_HASHES.get(
+            (path, line_number), (line_sha256, context_sha256)
+        ),
+    )
+    for path, line_number, line_sha256, context_sha256 in _AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES
+)
+
+
+# N6 is a conditional two-record append. Source rows remain NOT_APPROVED.
+# N6 is a conditional two-record append. Source rows remain NOT_APPROVED.
+_AUD380_N6_PENDING_OWNER_RECORDS = [
+    {
+        "approval_status": "NOT_APPROVED",
+        "category": "public_integrity_digest",
+        "evidence": "Public source-integrity metadata: the detector identity is the SHA-1 "
+        "fingerprint of the current SHA-256 companion pin for "
+        "scripts/live_stand.py in Semgrep disposition row 7 at "
+        "quality/semgrep-dispositions.json:189. This identifies a public "
+        "repository source digest and is not credential material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                1,
+                73,
+                101,
+                252,
+                84,
+                24,
+                53,
+                242,
+                126,
+                68,
+                82,
+                250,
+                129,
+                60,
+                114,
+                134,
+                253,
+                153,
+                43,
+                46,
+            ],
+            "path": "quality/semgrep-dispositions.json",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    },
+    {
+        "approval_status": "NOT_APPROVED",
+        "category": "public_integrity_digest",
+        "evidence": "Public source-integrity metadata: the detector identity is the SHA-1 "
+        "fingerprint of the current SHA-256 companion pin for "
+        "tests/test_mfa_deploy_workflow_contract.py, shared by Semgrep "
+        "disposition rows 8, 9, and 10; the finding is at "
+        "quality/semgrep-dispositions.json:229. This identifies a public "
+        "repository test-source digest and is not credential material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                42,
+                115,
+                152,
+                130,
+                13,
+                167,
+                15,
+                147,
+                189,
+                116,
+                17,
+                6,
+                78,
+                24,
+                118,
+                143,
+                178,
+                142,
+                190,
+                218,
+            ],
+            "path": "quality/semgrep-dispositions.json",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    },
+]
+
+_AUD380_N6_EXPECTED_IDENTITIES = frozenset(
+    {
+        (
+            "quality/semgrep-dispositions.json",
+            "Hex High Entropy String",
+            (
+                1,
+                73,
+                101,
+                252,
+                84,
+                24,
+                53,
+                242,
+                126,
+                68,
+                82,
+                250,
+                129,
+                60,
+                114,
+                134,
+                253,
+                153,
+                43,
+                46,
+            ),
+        ),
+        (
+            "quality/semgrep-dispositions.json",
+            "Hex High Entropy String",
+            (
+                42,
+                115,
+                152,
+                130,
+                13,
+                167,
+                15,
+                147,
+                189,
+                116,
+                17,
+                6,
+                78,
+                24,
+                118,
+                143,
+                178,
+                142,
+                190,
+                218,
+            ),
+        ),
+    }
+)
+
+_AUD380_N6_IDENTITY_SOURCE_LINES = (
+    (
+        "quality/semgrep-dispositions.json",
+        "Hex High Entropy String",
+        (
+            1,
+            73,
+            101,
+            252,
+            84,
+            24,
+            53,
+            242,
+            126,
+            68,
+            82,
+            250,
+            129,
+            60,
+            114,
+            134,
+            253,
+            153,
+            43,
+            46,
+        ),
+        "public_integrity_digest",
+        189,
+    ),
+    (
+        "quality/semgrep-dispositions.json",
+        "Hex High Entropy String",
+        (
+            42,
+            115,
+            152,
+            130,
+            13,
+            167,
+            15,
+            147,
+            189,
+            116,
+            17,
+            6,
+            78,
+            24,
+            118,
+            143,
+            178,
+            142,
+            190,
+            218,
+        ),
+        "public_integrity_digest",
+        229,
+    ),
+)
+
+_AUD380_N6_PENDING_ADDITIONS_SHA256 = bytes(
+    (
+        94,
+        207,
+        46,
+        236,
+        239,
+        192,
+        255,
+        245,
+        76,
+        77,
+        22,
+        193,
+        21,
+        131,
+        159,
+        190,
+        74,
+        234,
+        17,
+        240,
+        189,
+        164,
+        227,
+        166,
+        41,
+        182,
+        33,
+        198,
+        81,
+        138,
+        133,
+        235,
+    )
+)
+
+_AUD380_N6_SOURCE_LINE_HASHES = (
+    (
+        "quality/semgrep-dispositions.json",
+        189,
+        bytes(
+            (
+                240,
+                6,
+                139,
+                79,
+                64,
+                4,
+                249,
+                232,
+                62,
+                152,
+                230,
+                169,
+                148,
+                117,
+                80,
+                26,
+                226,
+                58,
+                42,
+                9,
+                33,
+                222,
+                78,
+                82,
+                239,
+                93,
+                145,
+                70,
+                122,
+                165,
+                81,
+                140,
+            )
+        ),
+        bytes(
+            (
+                223,
+                43,
+                84,
+                246,
+                49,
+                176,
+                217,
+                135,
+                180,
+                30,
+                39,
+                202,
+                152,
+                120,
+                94,
+                43,
+                192,
+                79,
+                213,
+                198,
+                203,
+                78,
+                162,
+                197,
+                96,
+                211,
+                170,
+                141,
+                249,
+                152,
+                29,
+                134,
+            )
+        ),
+    ),
+    (
+        "quality/semgrep-dispositions.json",
+        229,
+        bytes(
+            (
+                124,
+                204,
+                33,
+                9,
+                47,
+                7,
+                193,
+                167,
+                104,
+                194,
+                118,
+                32,
+                22,
+                75,
+                189,
+                232,
+                13,
+                143,
+                73,
+                19,
+                44,
+                150,
+                181,
+                5,
+                188,
+                21,
+                222,
+                54,
+                193,
+                156,
+                126,
+                45,
+            )
+        ),
+        bytes(
+            (
+                42,
+                89,
+                97,
+                51,
+                8,
+                247,
+                195,
+                203,
+                81,
+                53,
+                30,
+                114,
+                47,
+                100,
+                228,
+                8,
+                83,
+                4,
+                243,
+                186,
+                49,
+                131,
+                184,
+                227,
+                202,
+                127,
+                189,
+                21,
+                31,
+                118,
+                177,
+                235,
+            )
+        ),
+    ),
+)
+
+_AUD380_N4_HISTORICAL_LIVE_STAND_SOURCE_SHA256 = bytes(
+    (
+        23,
+        28,
+        49,
+        42,
+        231,
+        220,
+        243,
+        226,
+        207,
+        204,
+        24,
+        190,
+        185,
+        103,
+        145,
+        54,
+        164,
+        127,
+        113,
+        47,
+        56,
+        176,
+        24,
+        223,
+        98,
+        97,
+        247,
+        126,
+        248,
+        37,
+        232,
+        19,
+    )
+)
+_AUD380_N4_HISTORICAL_LEDGER_LINE_SHA256 = bytes(
+    (
+        44,
+        159,
+        169,
+        165,
+        166,
+        149,
+        178,
+        220,
+        213,
+        245,
+        84,
+        64,
+        128,
+        13,
+        55,
+        205,
+        84,
+        229,
+        29,
+        53,
+        19,
+        196,
+        221,
+        20,
+        219,
+        43,
+        108,
+        171,
+        132,
+        210,
+        26,
+        178,
+    )
+)
+_AUD380_N4_HISTORICAL_LEDGER_CONTEXT_SHA256 = bytes(
+    (
+        14,
+        222,
+        230,
+        189,
+        171,
+        75,
+        75,
+        102,
+        38,
+        213,
+        235,
+        40,
+        238,
+        36,
+        119,
+        192,
+        72,
+        90,
+        59,
+        219,
+        7,
+        151,
+        181,
+        75,
+        46,
+        12,
+        179,
+        248,
+        91,
+        9,
+        193,
+        249,
+    )
+)
+
+# The old N4 row7 observation remains in the immutable policy prefix, but the
+# current row is now the exact N6 source identity. Keep this historical proof
+# separate from the live source identity set.
+_AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES = (
+    tuple(
+        row
+        for row in _AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES
+        if not (
+            row[0] == "quality/semgrep-dispositions.json"
+            and row[4] == 189
+            and tuple(row[2]) == _AUD380_N4_PUBLIC_LEDGER_IDENTITY[2]
+        )
+    )
+    + _AUD380_N6_IDENTITY_SOURCE_LINES
+)
+
+# Row229 is already pinned as a Semgrep companion line; duplicate the exact
+# line/context binding because it is also the first-occurrence N6 identity.
+_AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES = (
+    *_AUD380_CURRENT_DELTA_SOURCE_LINE_HASHES,
+    *_AUD380_N6_SOURCE_LINE_HASHES[1:2],
+)
+
+
+def _aud380_n6_conditional_policy() -> dict[str, Any]:
+    active_495 = _aud380_n5_conditional_policy()
+    conditional = copy.deepcopy(active_495)
+    appended = copy.deepcopy(_AUD380_N6_PENDING_OWNER_RECORDS)
+    for row in appended:
+        row["approval_status"] = "approved"
+    conditional["records"].extend(appended)
+    assert _aud380_canonical_records_digest(_AUD380_N6_PENDING_OWNER_RECORDS) == (
+        _AUD380_N6_PENDING_ADDITIONS_SHA256
+    )
+    return conditional
+
+
+def _assert_aud380_n6_conditional_policy(
+    conditional: dict[str, Any], active_495: dict[str, Any]
+) -> None:
+    assert len(active_495["records"]) == 495
+    assert len(conditional.get("records", [])) == 497
+    expected_header = {
+        key: value for key, value in active_495.items() if key != "records"
+    }
+    actual_header = {
+        key: value for key, value in conditional.items() if key != "records"
+    }
+    assert actual_header == expected_header, "conditional N6 policy header changed"
+    records = conditional["records"]
+    assert records[:495] == active_495["records"], "approved 495-row prefix changed"
+    pending = copy.deepcopy(_AUD380_N6_PENDING_OWNER_RECORDS)
+    assert len(pending) == 2
+    assert all(row["approval_status"] == "NOT_APPROVED" for row in pending)
+    assert tuple(row["reviewed_on"] for row in pending) == ("2026-11-06", "2026-11-06")
+    assert all(row["expires_on"] == "2027-01-10" for row in pending)
+    assert {_aud380_identity_key(row) for row in pending} == set(
+        _AUD380_N6_EXPECTED_IDENTITIES
+    )
+    assert Counter(row["category"] for row in pending) == Counter(
+        {"public_integrity_digest": 2}
+    )
+    expected_suffix = copy.deepcopy(pending)
+    for row in expected_suffix:
+        row["approval_status"] = "approved"
+    assert records[495:] == expected_suffix, "conditional N6 suffix changed"
+    identities = [_aud380_identity_key(row) for row in records]
+    assert len(identities) == len(set(identities)), (
+        "conditional N6 identities duplicated"
+    )
+    assert not (
+        {_aud380_identity_key(row) for row in active_495["records"]}
+        & set(_AUD380_N6_EXPECTED_IDENTITIES)
+    )
+    expected_counts = Counter(
+        row["category"] for row in active_495["records"]
+    ) + Counter({"public_integrity_digest": 2})
+    assert Counter(row["category"] for row in records) == expected_counts
+
+
+def _aud380_assert_live_policy_is_exact_497(
+    live_policy: dict[str, Any], historical_490: dict[str, Any]
+) -> None:
+    live_records = live_policy.get("records")
+    assert isinstance(live_records, list), "live disposition records changed"
+    assert len(live_records) == 497, "live disposition row count changed"
+    expected_header = {
+        key: value for key, value in historical_490.items() if key != "records"
+    }
+    actual_header = {
+        key: value for key, value in live_policy.items() if key != "records"
+    }
+    assert actual_header == expected_header, "live disposition header changed"
+    assert live_records[:490] == historical_490["records"], (
+        "live approved 490-row prefix changed"
+    )
+    live_494 = {key: value for key, value in live_policy.items() if key != "records"}
+    live_494["records"] = copy.deepcopy(live_records[:494])
+    _assert_aud380_n4_conditional_policy(live_494, historical_490)
+    live_495 = copy.deepcopy(live_494)
+    live_495["records"] = copy.deepcopy(live_records[:495])
+    _assert_aud380_n5_conditional_policy(live_495, live_494)
+    _assert_aud380_n6_conditional_policy(live_policy, live_495)
+    accepted = verifier.validate_false_positive_dispositions(
+        live_policy, today=verifier.date(2026, 11, 7)
+    )
+    assert len(accepted) == 497, "live approved disposition count changed"
+
+
+def _aud380_assert_n4_historical_row7_observation(
+    source_bytes_by_path: dict[str, bytes],
+    *,
+    historical_source_sha256: bytes | None = None,
+) -> None:
+    old_source = (
+        _AUD380_N4_HISTORICAL_LIVE_STAND_SOURCE_SHA256
+        if historical_source_sha256 is None
+        else historical_source_sha256
+    )
+    assert len(old_source) == 32
+    row7_identity = _AUD380_N4_PUBLIC_LEDGER_IDENTITY
+    assert hashlib.sha1(
+        old_source.hex().encode("ascii"), usedforsecurity=False
+    ).digest() == bytes(row7_identity[2])
+    ledger_path = "quality/semgrep-dispositions.json"
+    target_path = "scripts/live_stand.py"
+    lines = source_bytes_by_path[ledger_path].splitlines(keepends=True)
+    current_source = _AUD380_CURRENT_DELTA_SOURCE_SHA256[target_path]
+    current_text = current_source.hex().encode("ascii")
+    old_text = old_source.hex().encode("ascii")
+    raw_line = lines[188]
+    assert raw_line.count(current_text) == 1, "current row7 source pin is not exact"
+    historical_line = raw_line.replace(current_text, old_text, 1)
+    historical_context = (
+        b"".join(lines[186:188]) + historical_line + b"".join(lines[189:191])
+    )
+    assert (
+        hashlib.sha256(historical_line).digest()
+        == _AUD380_N4_HISTORICAL_LEDGER_LINE_SHA256
+    )
+    assert (
+        hashlib.sha256(historical_context).digest()
+        == _AUD380_N4_HISTORICAL_LEDGER_CONTEXT_SHA256
+    )
+    assert _AUD380_N4_PUBLIC_LEDGER_IDENTITY not in {
+        (path, finding_type, digest)
+        for path, finding_type, digest, _category, _line in _AUD380_CURRENT_DELTA_IDENTITY_SOURCE_LINES
+    }
+    n21_old = [
+        row
+        for row in _AUD380_N21_REPLACED_IDENTITY_SOURCE_LINES
+        if row[0] == ledger_path and row[4] == 189
+    ]
+    assert len(n21_old) == 1
+    assert n21_old[0][2] != row7_identity[2]
+    historical_n21_hashes = [
+        row
+        for row in _AUD380_N21_HISTORICAL_SOURCE_LINE_HASHES
+        if row[0] == ledger_path and row[1] == 189
+    ]
+    assert len(historical_n21_hashes) == 2
+    assert all(len(row[2]) == 32 and len(row[3]) == 32 for row in historical_n21_hashes)
+
+
+def test_aud380_n6_exact_records_and_current_source_bindings_are_finite() -> None:
+    assert len(_AUD380_N6_PENDING_OWNER_RECORDS) == 2
+    assert all(
+        row["approval_status"] == "NOT_APPROVED"
+        for row in _AUD380_N6_PENDING_OWNER_RECORDS
+    )
+    assert tuple(row["reviewed_on"] for row in _AUD380_N6_PENDING_OWNER_RECORDS) == (
+        "2026-11-06",
+        "2026-11-06",
+    )
+    assert all(
+        row["expires_on"] == "2027-01-10" for row in _AUD380_N6_PENDING_OWNER_RECORDS
+    )
+    assert {
+        _aud380_identity_key(row) for row in _AUD380_N6_PENDING_OWNER_RECORDS
+    } == set(_AUD380_N6_EXPECTED_IDENTITIES)
+    assert (
+        _aud380_canonical_records_digest(_AUD380_N6_PENDING_OWNER_RECORDS)
+        == _AUD380_N6_PENDING_ADDITIONS_SHA256
+    )
+    assert len(_AUD380_N6_IDENTITY_SOURCE_LINES) == 2
+    assert {
+        (row[0], row[1], row[2]) for row in _AUD380_N6_IDENTITY_SOURCE_LINES
+    } == set(_AUD380_N6_EXPECTED_IDENTITIES)
+    assert tuple((row[0], row[1]) for row in _AUD380_N6_SOURCE_LINE_HASHES) == tuple(
+        (row[0], row[4]) for row in _AUD380_N6_IDENTITY_SOURCE_LINES
+    )
+    source_by_identity = {row[:3]: row for row in _AUD380_N6_IDENTITY_SOURCE_LINES}
+    for target_path in (
+        "scripts/live_stand.py",
+        "tests/test_mfa_deploy_workflow_contract.py",
+    ):
+        source_sha = _AUD380_CURRENT_DELTA_SOURCE_SHA256[target_path]
+        derived = tuple(
+            hashlib.sha1(
+                source_sha.hex().encode("ascii"), usedforsecurity=False
+            ).digest()
+        )
+        assert any(key[2] == derived for key in source_by_identity)
+    source_root = Path(__file__).resolve().parents[1]
+    _assert_conditional_owner_source_bindings(source_root)
+
+
+def test_aud380_n6_conditional_497_projection_is_exact_append() -> None:
+    active_495 = _aud380_n5_conditional_policy()
+    conditional = _aud380_n6_conditional_policy()
+    _assert_aud380_n6_conditional_policy(conditional, active_495)
+    accepted = verifier.validate_false_positive_dispositions(
+        conditional, today=verifier.date(2026, 11, 7)
+    )
+    assert len(accepted) == 497
+    assert conditional["records"][:495] == active_495["records"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "header",
+        "prefix",
+        "path",
+        "finding_type",
+        "digest",
+        "category",
+        "owner",
+        "date",
+        "expiry",
+        "evidence",
+        "status",
+        "missing",
+        "extra",
+        "duplicate",
+        "order",
+    ],
+)
+def test_aud380_n6_conditional_497_projection_rejects_mutations(mutation: str) -> None:
+    active_495 = _aud380_n5_conditional_policy()
+    changed = _aud380_n6_conditional_policy()
+    records = changed["records"]
+    target = records[495]
+    if mutation == "header":
+        changed["schema_version"] = 2
+    elif mutation == "prefix":
+        records[0]["owner"] = "unreviewed-owner"
+    elif mutation == "path":
+        target["identity"]["path"] += ".unreviewed"
+    elif mutation == "finding_type":
+        target["identity"]["type"] = "unreviewed type"
+    elif mutation == "digest":
+        target["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "category":
+        target["category"] = "ci_test_contract_sentinel"
+    elif mutation == "owner":
+        target["owner"] = "unreviewed-owner"
+    elif mutation == "date":
+        target["reviewed_on"] = "2026-11-05"
+    elif mutation == "expiry":
+        target["expires_on"] = "2027-01-11"
+    elif mutation == "evidence":
+        target["evidence"] += " changed"
+    elif mutation == "status":
+        target["approval_status"] = "NOT_APPROVED"
+    elif mutation == "missing":
+        records.pop()
+    elif mutation == "extra":
+        records.append(copy.deepcopy(records[495]))
+    elif mutation == "duplicate":
+        records[496] = copy.deepcopy(records[495])
+    else:
+        records[495], records[496] = records[496], records[495]
+    with pytest.raises(AssertionError):
+        _assert_aud380_n6_conditional_policy(changed, active_495)
+
+
+def test_aud380_n6_pending_rows_keep_exact_expiry_and_reject_digest_mutations() -> None:
+    pending = copy.deepcopy(_AUD380_N6_PENDING_OWNER_RECORDS)
+    assert all(row["approval_status"] == "NOT_APPROVED" for row in pending)
+    approved = copy.deepcopy(pending)
+    for row in approved:
+        row["approval_status"] = "approved"
+    for row in approved:
+        reviewed_on = verifier.date.fromisoformat(row["reviewed_on"])
+        expires_on = verifier.date.fromisoformat(row["expires_on"])
+        for today in (reviewed_on, expires_on):
+            assert (
+                len(
+                    verifier.validate_false_positive_dispositions(
+                        _disposition_document(row), today=today
+                    )
+                )
+                == 1
+            )
+        for today in (
+            verifier.date.fromordinal(reviewed_on.toordinal() - 1),
+            verifier.date.fromordinal(expires_on.toordinal() + 1),
+        ):
+            with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+                verifier.validate_false_positive_dispositions(
+                    _disposition_document(row), today=today
+                )
+    assert {_aud380_identity_key(row) for row in approved} == set(
+        _AUD380_N6_EXPECTED_IDENTITIES
+    )
+    _assert_conditional_owner_source_bindings(Path(__file__).resolve().parents[1])

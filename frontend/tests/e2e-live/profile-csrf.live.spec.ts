@@ -184,6 +184,11 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
         },
         body: JSON.stringify({ full_name: candidateName }),
       })
+      // Capture the first 403's cookie before cleanup so a response replacement is observable.
+      const cookieAfterInvalidProofResponse = document.cookie
+        .split(";")
+        .map((part) => part.trim())
+        .find((part) => part.startsWith("csrf_token="))
       document.cookie = `csrf_token=; Max-Age=0; Path=/; SameSite=Lax${secureAttribute}`
       const cookieAfterDeletion = document.cookie
         .split(";")
@@ -208,6 +213,12 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
         status: response.status,
         cookiePresent: installedToken !== null,
         proofMatchesCookie: installedToken === forgedToken,
+        invalidProofCookiePresentAfterRejectedRequest:
+          cookieAfterInvalidProofResponse !== undefined,
+        invalidProofCookieMatchesSubmittedProof:
+          cookieAfterInvalidProofResponse !== undefined &&
+          decodeURIComponent(cookieAfterInvalidProofResponse.slice("csrf_token=".length)) ===
+            forgedToken,
         missingCookieStatus: missingCookieResponse.status,
         missingCookieAbsent,
         cookieClearedAfterRejectedRequest: cookieAfterRejectedRequest === undefined,
@@ -221,6 +232,10 @@ test("authenticated profile update rejects missing and invalid CSRF proof", asyn
       "forged cookie and header match so the server must validate the signature"
     ).toBe(true)
     expect(invalidCsrfAttempt.status, "invalid signed CSRF proof is rejected").toBe(403)
+    expect(
+      invalidCsrfAttempt.invalidProofCookieMatchesSubmittedProof,
+      "the invalid-proof response does not replace the submitted CSRF cookie before cleanup"
+    ).toBe(true)
     expect(
       invalidCsrfAttempt.missingCookieAbsent,
       "the second same-origin mutation is sent after removing the CSRF cookie"

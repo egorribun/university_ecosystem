@@ -829,11 +829,15 @@ def test_redis_launcher_is_bound_to_the_existing_integration_services() -> None:
     )
     assert step["shell"] == "pwsh"
     run = step["run"]
+    wrapper = (root / "scripts/ci/backend-run-integration-tests.ps1").read_text(
+        encoding="utf-8"
+    )
     launcher = "uv run python scripts/quality/run_owned_redis_contracts.py @pytestArgs"
-    assert launcher in run
-    assert "uv run pytest @pytestArgs" not in run
-    assert '"-x"' in run
-    assert "$pytestArgs += $integrationShardArgs" in run
+    assert run.strip() == ". ./scripts/ci/backend-run-integration-tests.ps1"
+    assert launcher in wrapper
+    assert "uv run pytest @pytestArgs" not in wrapper
+    assert '"-x"' in wrapper
+    assert "$pytestArgs += $integrationShardArgs" in wrapper
 
 
 @pytest.mark.parametrize("pytest_status", [0, 7])

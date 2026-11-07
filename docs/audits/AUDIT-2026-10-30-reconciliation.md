@@ -1,6 +1,98 @@
 # Post-pause reconciliation — 2026-10-30
 
-## Current 63-finding reconciliation — 2026-11-01
+
+
+<a id="current-34-finding-reconciliation--2026-11-07"></a>
+
+## Current 34-finding reconciliation — 2026-11-07 UTC
+
+The [60-row reassessment](AUDIT-2026-11-06-full-reassessment.md) preserves the 476/36 checkpoint as dated history, adds the root-adjudicated AUD-422 and AUD-423 scoped acceptances, and updates AUD-346 from U to S after its source correction was integrated. The formal total is **478 / 512 (93.4%), with 34 open**. AUD-384 remains a separate false-positive retraction.
+
+Current classifications are **20S / 13P / 0U / 1N = 34**. S means source fixed with finding-specific proof still pending; P partial; U unfixed; N unproven. These are explicit current-tree classifications, not an automatic projection from primary implementation fields. The reviewed source/index tree is `ea381c19bda1`. AUD-346 remains open pending the owner-authorized live Kind proof; AUD-208 PostgreSQL/Squawk proof remains unproven; AUD-484 remains P on partial alert inventory evidence.
+
+- **S (20):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-208, AUD-226, AUD-272, AUD-321, AUD-334, AUD-346, AUD-347, AUD-375, AUD-378, AUD-416, AUD-429, AUD-438, AUD-454, AUD-478, AUD-501.
+- **P (13):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-428, AUD-432, AUD-480, AUD-483, AUD-484.
+- **U (0):** none.
+- **N (1):** AUD-420.
+
+AUD-269 remains accepted only for its reconciled schema/index endpoint and native PostgreSQL metapage tuple; performance and expanded catalog flags are not established. AUD-474 remains accepted only for its synthetic-response test oracle, not a full live stand. The dated 476/36 cohort and older 452/60 and November 1 matrices remain unchanged below. This update does not claim full CI GREEN or release readiness.
+
+<a id="previous-36-finding-reconciliation--2026-11-06-2359-utc"></a>
+<a id="current-36-finding-reconciliation--2026-11-07"></a>
+
+## Dated 36-finding cohort snapshot — 2026-11-06 23:59 UTC
+
+This preserved checkpoint recorded **476 / 512 (93.0%), with 36 open**, and classes **19S / 15P / 1U / 1N**. Relative to this snapshot, AUD-422 and AUD-423 are now accepted only for their documented source-alignment criteria, and AUD-346 moves U→S because its source fix is integrated while the live Kind proof is pending.
+
+- **S (19):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-208, AUD-226, AUD-272, AUD-321, AUD-334, AUD-347, AUD-375, AUD-378, AUD-416, AUD-429, AUD-438, AUD-454, AUD-478, AUD-501.
+- **P (15):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-422, AUD-423, AUD-428, AUD-432, AUD-480, AUD-483, AUD-484.
+- **U (1):** AUD-346.
+- **N (1):** AUD-420.
+
+This is a dated classification snapshot, not the current complement. The original 60-row report and November 1 rows below remain as recorded history.
+
+<a id="current-60-finding-reconciliation--2026-11-06"></a>
+
+## Historical 60-finding reconciliation — 2026-11-06
+
+The [AUD-231 decision](AUDIT-2026-10.md#scoped-aud-231-acceptance-of-compiled-ssr-csp-and-nonce-proof--2026-11-06)
+preserves the 450 accepted IDs at the preceding checkpoint and adds AUD-231
+at the dated 451/61 intermediate checkpoint. The subsequent [AUD-449
+decision](AUDIT-2026-10.md#scoped-aud-449-acceptance-for-caddy-and-gunicorn-access-log-redaction--2026-11-06)
+adds only AUD-449. Together with the earlier scoped AUD-426 acceptance, these
+decisions produce **452 accepted / 60 open**. The [cumulative scoped
+review](AUDIT-2026-11-06-review.md) records the three criteria and their
+separate evidence boundaries.
+
+The complement is **13S / 35P / 9U / 3N = 60**. S means
+source-fixed/proof-pending, P partial, U unfixed, and N unverified or
+original-cause-unproven. AUD-231 and AUD-449 leave S; all other classifications
+carry forward unchanged from the dated 450/62 checkpoint.
+
+- **S (13):** AUD-073, AUD-154, AUD-309, AUD-321, AUD-322, AUD-332, AUD-347, AUD-384, AUD-392, AUD-436, AUD-450, AUD-474, AUD-501.
+- **P (35):** AUD-164, AUD-167, AUD-169, AUD-178, AUD-188, AUD-189, AUD-208, AUD-226, AUD-251, AUD-269, AUD-275, AUD-278, AUD-334, AUD-348, AUD-350, AUD-360, AUD-375, AUD-381, AUD-393, AUD-414, AUD-416, AUD-422, AUD-423, AUD-428, AUD-429, AUD-432, AUD-434, AUD-438, AUD-447, AUD-454, AUD-478, AUD-480, AUD-482, AUD-483, AUD-506.
+- **U (9):** AUD-245, AUD-272, AUD-313, AUD-327, AUD-346, AUD-373, AUD-378, AUD-380, AUD-433.
+- **N (3):** AUD-277, AUD-420, AUD-484.
+
+AUD-231 is limited to the compiled SSR /login CSP and nonce browser behavior;
+the broader preflight map has six later input differences, and no full-current-
+tree build, live through-Caddy browser run, or backend report-ingestion result
+is claimed. AUD-449 covers the checked-in TLS and development Caddy
+configurations and production Gunicorn command with synthetic callback input;
+it does not cover unrelated application logs, app.main, the full backend image,
+or a live Spotify request. The AUD-426 hosted job remained failed after an
+AUD-447 failure. These criterion-specific acceptances do not establish overall
+CI or release readiness.
+
+<a id="current-62-finding-reconciliation--2026-11-06"></a>
+
+## Historical 62-finding reconciliation — 2026-11-06
+
+
+The [scoped AUD-426 decision](AUDIT-2026-10.md#scoped-aud-426-acceptance-after-hosted-postgresql-proof--2026-11-06)
+preserves all 449 previous acceptances and adds only AUD-426:
+**450 accepted / 62 open**. The [complete scoped review](AUDIT-2026-11-06-review.md)
+records the source-bound hosted evidence and its limits.
+
+After this decision the complement is **15S / 35P / 9U / 3N = 62**. S means
+source-fixed/proof-pending, P partial, U unfixed, and N unverified or
+original-cause-unproven. Only AUD-426 leaves P; all other classifications
+carry forward unchanged.
+
+- **S (15):** AUD-073, AUD-154, AUD-231, AUD-309, AUD-321, AUD-322, AUD-332, AUD-347, AUD-384, AUD-392, AUD-436, AUD-449, AUD-450, AUD-474, AUD-501.
+- **P (35):** AUD-164, AUD-167, AUD-169, AUD-178, AUD-188, AUD-189, AUD-208, AUD-226, AUD-251, AUD-269, AUD-275, AUD-278, AUD-334, AUD-348, AUD-350, AUD-360, AUD-375, AUD-381, AUD-393, AUD-414, AUD-416, AUD-422, AUD-423, AUD-428, AUD-429, AUD-432, AUD-434, AUD-438, AUD-447, AUD-454, AUD-478, AUD-480, AUD-482, AUD-483, AUD-506.
+- **U (9):** AUD-245, AUD-272, AUD-313, AUD-327, AUD-346, AUD-373, AUD-378, AUD-380, AUD-433.
+- **N (3):** AUD-277, AUD-420, AUD-484.
+
+The two named AUD-426 cases passed in the hosted PostgreSQL job. A later
+AUD-447 case failed, so the job remains red; its six-case XML validator did
+not run. This finding-specific acceptance does not claim overall CI or release
+readiness. The following 63-finding section preserves the November 1 state as
+a dated historical snapshot and retains its original link anchor.
+
+<a id="current-63-finding-reconciliation--2026-11-01"></a>
+
+## Historical 63-finding reconciliation — 2026-11-01
 
 The [seven original-criterion decisions](AUDIT-2026-10.md#scoped-seven-finding-acceptance-after-b72-review-2026-11-01)
 preserve all 442 previous acceptances and add only **AUD-270 / 274 / 311 / 351 / 456 / 490 / 503**:
@@ -39,7 +131,7 @@ raw Squawk/admission failure and Caddy v3 advisory/license identity remain
 separate blockers. The b72 RSS-cap failure is historical: own-953 unauthenticated
 smoke succeeded, without establishing the cause of build-memory variance or
 changing its budget. No operational data was inspected or changed.
-Current inventories are policy361, baseline242 and Gitleaks27; these facts add no audit acceptance and preserve the 449/63 partition. At the dated 2026-11-01 checkpoint, policy502 and Gitleaks26 remained unchanged. Baseline305 reflected only the separate [ten-identity retirement](../adr/ADR-047-risk-based-quality-policy.md#ten-obsolete-test-baseline-identities-retired-2026-11-01), eight line moves and scan date. That 2026-11-01 cleanup added no acceptance or disposition and retained the older20 stale identities; the 449/63 partition and dated source/receipt classifications above did not change. The separate [2026-11-02 deleted-source retirement](../adr/ADR-047-risk-based-quality-policy.md#deleted-source-baseline-retirement-2026-11-02) now removes those20 and42 migration identities, leaving the current baseline242 without adding audit acceptance.
+Retained inventory note from earlier reconciliation revisions: policy361, baseline242 and Gitleaks27 were observed; this inventory note did not change the then-published 449/63 partition. At the dated 2026-11-01 checkpoint, policy502 and Gitleaks26 remained unchanged. Baseline305 reflected only the separate [ten-identity retirement](../adr/ADR-047-risk-based-quality-policy.md#ten-obsolete-test-baseline-identities-retired-2026-11-01), eight line moves and scan date. That 2026-11-01 cleanup added no acceptance or disposition and retained the older20 stale identities; the 449/63 partition and dated source/receipt classifications above did not change. The separate [2026-11-02 deleted-source retirement](../adr/ADR-047-risk-based-quality-policy.md#deleted-source-baseline-retirement-2026-11-02) now removes those20 and42 migration identities, leaving the current baseline242 without adding audit acceptance.
 
 The following70 / 71 /other sections remain dated history, not competing current
 counters or newly inherited runtime results.

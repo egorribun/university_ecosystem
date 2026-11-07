@@ -26,13 +26,13 @@ try:
         key: int(suites[0].get(key, "-1"))
         for key in ("tests", "failures", "errors", "skipped")
     }
-    if any(value < 0 or value > 41 for value in counts.values()):
+    if any(value < 0 or value > 47 for value in counts.values()):
         raise ValueError
     print("ALEMBIC_RENDERER_LIFECYCLE_COUNTS " + json.dumps(counts, sort_keys=True))
     cases = list(root.iter("testcase"))
     identities = {(case.get("classname"), case.get("name")) for case in cases}
-    expected = {"tests": 41, "failures": 0, "errors": 0, "skipped": 0}
-    if len(cases) != 41 or len(identities) != 41 or counts != expected:
+    expected = {"tests": 47, "failures": 0, "errors": 0, "skipped": 0}
+    if len(cases) != 47 or len(identities) != 47 or counts != expected:
         raise ValueError
     if any(not all(identity) for identity in identities):
         raise ValueError
@@ -41,4 +41,4 @@ try:
 except (OSError, ValueError, ElementTree.ParseError, DefusedXmlException):
     print("ALEMBIC_RENDERER_LIFECYCLE_RECEIPT_REJECTED")
     raise SystemExit(1) from None
-print("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 41")
+print("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 47")

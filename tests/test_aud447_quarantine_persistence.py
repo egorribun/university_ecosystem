@@ -17,6 +17,7 @@ import app.tasks.email as email_tasks
 from app.models.dead_letter import DeadLetterJob
 from app.workers.dead_letter_queue import (
     _QUARANTINED_AUTH_PAYLOAD,
+    DeadLetterQuarantineContentionError,
     DeadLetterQueue,
     _protect_retained_auth_payload,
 )
@@ -118,9 +119,19 @@ async def test_aud447_quarantine_replaces_only_the_bytes_it_judged_unprotectable
     assert params["job_hash_1"] == "f" * 64
     # Compare-and-set: only the exact bytes that were read are replaced.
     assert params["payload_1"] == malformed
-    # Identity, status and retry budget are not part of the replacement; the
-    # model's onupdate timestamp is the only other column the statement sets.
-    assert set(params) == {"payload", "updated_at", "job_hash_1", "payload_1"}
+    # The observed type, hash, and payload constrain the compare-and-set.
+    # Identity, status, and retry budget stay untouched; only payload, error,
+    # and the model's onupdate timestamp are changed.
+    assert params["error_message"] == _QUARANTINED_AUTH_PAYLOAD
+    assert params["job_type_1"] == _AUTH_TASK
+    assert set(params) == {
+        "payload",
+        "error_message",
+        "updated_at",
+        "job_hash_1",
+        "job_type_1",
+        "payload_1",
+    }
 
 
 @pytest.mark.asyncio
@@ -158,12 +169,18 @@ async def test_aud447_quarantine_declines_a_row_that_is_protectable_now(
 
 
 @pytest.mark.asyncio
-async def test_aud447_quarantine_reports_a_lost_compare_and_set() -> None:
+async def test_aud447_quarantine_raises_after_bounded_lost_compare_and_set() -> None:
     malformed = json.dumps({"args": ["x"]})[:-1]
     session = _RecordingSession(update_rowcount=0)
     session.row = _retained_row(malformed)
 
-    assert await DeadLetterQueue(session).quarantine_auth_payload("f" * 64) is False
+    with pytest.raises(DeadLetterQuarantineContentionError):
+        await DeadLetterQueue(session).quarantine_auth_payload("f" * 64)
+
+    updates = [
+        statement for statement in session.statements if isinstance(statement, Update)
+    ]
+    assert len(updates) == 3
 
 
 @pytest.mark.asyncio
@@ -183,14 +200,14 @@ async def test_aud447_quarantine_scrubs_the_error_field_in_the_same_statement() 
 
 
 @pytest.mark.asyncio
-async def test_aud447_quarantine_keeps_an_error_field_without_a_link() -> None:
+async def test_aud447_quarantine_tombstones_an_error_field_without_a_link() -> None:
     malformed = json.dumps({"args": ["x"]})[:-1]
     session = _RecordingSession()
     session.row = _retained_row(malformed, error_message="SMTP timeout after 30s")
 
     assert await DeadLetterQueue(session).quarantine_auth_payload("f" * 64) is True
 
-    assert "error_message" not in _update_params(session)
+    assert _update_params(session)["error_message"] == _QUARANTINED_AUTH_PAYLOAD
 
 
 @pytest.mark.asyncio

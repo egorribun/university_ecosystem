@@ -930,6 +930,8 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         correlation_ids: Mapping[str, str],
         container_pin: tuple[str, str],
         docker_context: object | None = None,
+        reset_probe_markers: Mapping[str, Mapping[str, Mapping[str, str]]]
+        | None = None,
     ) -> None:
         assert checked_owner == owner
         assert output_directory.is_dir()
@@ -938,6 +940,34 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         assert dict(correlation_ids) == probe_correlation_ids
         assert container_pin == expected_container_pin
         assert docker_context is expected_docker_context
+        assert reset_probe_markers is not None
+        assert set(reset_probe_markers) == set(live_stand.LIVE_CADDY_PROBE_PROJECTS)
+        reset_marker_values: list[str] = []
+        for project in live_stand.LIVE_CADDY_PROBE_PROJECTS:
+            project_markers = reset_probe_markers[project]
+            assert set(project_markers) == {"query", "path"}
+            for source in ("query", "path"):
+                binding = project_markers[source]
+                assert set(binding) == {"marker", "correlationId"}
+                marker = binding["marker"]
+                correlation_id = binding["correlationId"]
+                assert re.fullmatch(r"[0-9a-f]{32}", marker) is not None
+                assert re.fullmatch(r"[0-9a-f]{32}", correlation_id) is not None
+                reset_marker_values.extend((marker, correlation_id))
+        assert len(set(reset_marker_values)) == 8
+        assert set(reset_marker_values).isdisjoint(
+            {password_nonce, *correlation_ids.values()}
+        )
+        expected_reset_markers = {
+            project: {
+                source: dict(reset_probe_markers[project][source])
+                for source in ("query", "path")
+            }
+            for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
+        }
+        assert json.loads(playwright_runs[-1][1]["LIVE_AUD178_PROBE_MARKERS"]) == (
+            expected_reset_markers
+        )
         probe_log_calls.append(
             (
                 started_at_ms,
@@ -5225,6 +5255,8 @@ def test_live_e2e_probe_admission_is_bounded_and_keeps_nonprobe_defaults(
         correlation_ids: Mapping[str, str],
         container_pin: tuple[str, str],
         docker_context: object | None = None,
+        reset_probe_markers: Mapping[str, Mapping[str, Mapping[str, str]]]
+        | None = None,
     ) -> None:
         assert checked_owner == owner
         assert output_path.is_dir()
@@ -5233,6 +5265,7 @@ def test_live_e2e_probe_admission_is_bounded_and_keeps_nonprobe_defaults(
         assert dict(correlation_ids) == expected_correlation_ids
         assert container_pin == expected_container_pin
         assert docker_context is expected_docker_context
+        assert reset_probe_markers is None
         events.append(("log-proof", None, docker_context))
         verification_calls.append(
             {
@@ -10311,7 +10344,10 @@ def test_compose_resource_projection_preserves_core_selection_errors(
     ["invalid-project", "os-error", "process-error", "invalid-json", "none-output"],
 )
 def test_compose_resource_wrapper_preserves_preprojection_failures(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, case: str
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    case: str,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     ports = _port_map()
     stdout: Any = json.dumps(_projection_model())
@@ -10324,7 +10360,11 @@ def test_compose_resource_wrapper_preserves_preprojection_failures(
         error = OSError("synthetic process failure")
         message = "cannot verify resolved Compose resource ownership"
     elif case == "process-error":
-        error = subprocess.CalledProcessError(1, ["docker", "compose"])
+        error = subprocess.CalledProcessError(
+            1,
+            ["docker", "compose"],
+            stderr="required variable TEST_PLACEHOLDER is missing: canary-never-log",
+        )
         message = "cannot verify resolved Compose resource ownership"
     elif case == "invalid-json":
         stdout = "{"
@@ -10352,6 +10392,240 @@ def test_compose_resource_wrapper_preserves_preprojection_failures(
     assert len(calls) == (0 if case == "invalid-project" else 1)
     if case != "invalid-project":
         assert caught.value.__suppress_context__ is True
+    if case == "process-error":
+        diagnostic = capsys.readouterr().err
+        assert diagnostic == (
+            "live_stand_compose_config_diagnostic="
+            "category:required_interpolation;exit:1\n"
+        )
+        assert "TEST_PLACEHOLDER" not in diagnostic
+        assert "canary-never-log" not in diagnostic
+
+
+def _called_process_error_with_noninteger_status() -> subprocess.CalledProcessError:
+    error = subprocess.CalledProcessError(22, ["docker", "compose"], stderr="")
+    error.returncode = None
+    return error
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            subprocess.TimeoutExpired(["docker", "compose"], 1),
+            ("compose_timeout", "unavailable"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                3,
+                ["docker", "compose"],
+                stderr="required variable SECRET_VALUE is missing",
+            ),
+            ("required_interpolation", "3"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                4,
+                ["docker", "compose"],
+                stderr="variable ENV_NAME is not set",
+            ),
+            ("required_interpolation", "4"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                5,
+                ["docker", "compose"],
+                stderr="variable is present but set explicitly",
+            ),
+            ("compose_nonzero_unclassified", "5"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                6,
+                ["docker", "compose"],
+                stderr="required variable SECRET_VALUE and unknown flag",
+            ),
+            ("required_interpolation", "6"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                7, ["docker", "compose"], stderr="unknown flag --bad"
+            ),
+            ("unsupported_compose_option", "7"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                8, ["docker", "compose"], stderr="unknown shorthand flag: -x"
+            ),
+            ("unsupported_compose_option", "8"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                9, ["docker", "compose"], stderr="permission denied reading config"
+            ),
+            ("compose_input_permission", "9"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                10, ["docker", "compose"], stderr="no such file or directory"
+            ),
+            ("missing_or_unreadable_input", "10"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                11, ["docker", "compose"], stderr="env file not found"
+            ),
+            ("missing_or_unreadable_input", "11"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                12, ["docker", "compose"], stderr="cannot open config"
+            ),
+            ("missing_or_unreadable_input", "12"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                13, ["docker", "compose"], stderr="failed to read env file"
+            ),
+            ("missing_or_unreadable_input", "13"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                14, ["docker", "compose"], stderr="yaml parse error"
+            ),
+            ("compose_parse_or_schema", "14"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                15, ["docker", "compose"], stderr="unmarshal error"
+            ),
+            ("compose_parse_or_schema", "15"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                16, ["docker", "compose"], stderr="invalid compose model"
+            ),
+            ("compose_parse_or_schema", "16"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                17,
+                ["docker", "compose"],
+                stderr="cannot connect to the Docker daemon",
+            ),
+            ("unexpected_daemon_dependency", "17"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                18, ["docker", "compose"], stderr="unclassified synthetic failure"
+            ),
+            ("compose_nonzero_unclassified", "18"),
+        ),
+        (
+            subprocess.CalledProcessError(
+                19, ["docker", "compose"], stderr=b"required variable NAME missing"
+            ),
+            ("required_interpolation", "19"),
+        ),
+        (
+            subprocess.CalledProcessError(20, ["docker", "compose"], stderr=None),
+            ("compose_nonzero_unclassified", "20"),
+        ),
+        (
+            subprocess.CalledProcessError(21, ["docker", "compose"], stderr=object()),
+            ("compose_nonzero_unclassified", "21"),
+        ),
+        (
+            _called_process_error_with_noninteger_status(),
+            ("compose_nonzero_unclassified", "unavailable"),
+        ),
+        (FileNotFoundError("synthetic"), ("compose_executable_missing", "unavailable")),
+        (PermissionError("synthetic"), ("compose_process_permission", "unavailable")),
+        (OSError("synthetic"), ("compose_process_io", "unavailable")),
+        (UnicodeError("synthetic"), ("compose_output_encoding", "unavailable")),
+        (
+            live_stand.StandError("synthetic"),
+            ("compose_ownership_precondition", "unavailable"),
+        ),
+        (RuntimeError("synthetic"), ("compose_process_failure", "unavailable")),
+    ],
+    ids=(
+        "timeout",
+        "required-variable",
+        "variable-unset",
+        "variable-other",
+        "required-variable-precedence",
+        "unknown-flag",
+        "unknown-shorthand-flag",
+        "permission-denied",
+        "no-such-file",
+        "not-found",
+        "cannot-open",
+        "failed-to-read",
+        "yaml",
+        "unmarshal",
+        "invalid-compose",
+        "daemon-dependency",
+        "unclassified-stderr",
+        "bytes-stderr",
+        "none-stderr",
+        "other-stderr-type",
+        "noninteger-status",
+        "missing-executable",
+        "process-permission",
+        "process-io",
+        "output-encoding",
+        "ownership-precondition",
+        "fallback",
+    ),
+)
+def test_compose_resource_failure_category_is_allowlisted(
+    error: BaseException, expected: tuple[str, str]
+) -> None:
+    assert live_stand._compose_resource_failure_category(error) == expected
+
+
+@pytest.mark.parametrize(
+    "write_error",
+    [OSError("write failed"), UnicodeError("write failed"), ValueError("write failed")],
+    ids=("os-error", "unicode-error", "value-error"),
+)
+def test_compose_resource_wrapper_keeps_generic_error_when_diagnostic_write_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, write_error: Exception
+) -> None:
+    ports = _port_map()
+    command_error = subprocess.CalledProcessError(
+        1,
+        ["docker", "compose"],
+        stderr="required variable TEST_SECRET is missing: hidden-sentinel",
+    )
+    _install_projection_process(
+        monkeypatch,
+        tmp_path,
+        ports,
+        json.dumps(_projection_model()),
+        error=command_error,
+    )
+    attempted_diagnostics: list[str] = []
+
+    class FailingDiagnosticStream:
+        def write(self, value: str) -> int:
+            attempted_diagnostics.append(value)
+            raise write_error
+
+    monkeypatch.setattr(
+        live_stand, "sys", SimpleNamespace(stderr=FailingDiagnosticStream())
+    )
+    with pytest.raises(live_stand.StandError) as caught:
+        live_stand._compose_resource_evidence(tmp_path, _PROJECTION_PROJECT, ports)
+
+    assert str(caught.value) == "cannot verify resolved Compose resource ownership"
+    assert caught.value.__suppress_context__ is True
+    assert attempted_diagnostics == [
+        "live_stand_compose_config_diagnostic=category:required_interpolation;exit:1\n"
+    ]
+    assert "TEST_SECRET" not in attempted_diagnostics[0]
+    assert "hidden-sentinel" not in attempted_diagnostics[0]
 
 
 def _aud174_access_log_row(

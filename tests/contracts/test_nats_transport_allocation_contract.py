@@ -18,6 +18,7 @@ from scripts.owned_nats_outage import Deadline
 ROOT = Path(__file__).resolve().parents[2]
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 BACKEND_WORKFLOW = ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
+BACKEND_PYTEST_RUNNER = ROOT / "scripts" / "ci" / "backend-run-pytest.ps1"
 TRANSPORT_TEST = ROOT / "tests" / "test_live_nats_transport.py"
 TRANSPORT_SELECTOR = "tests/test_live_nats_transport.py"
 FULL_BACKEND_REUSABLE_CONTRACT_SELECTOR = "tests/test_full_backend_reusable_contract.py"
@@ -154,11 +155,14 @@ def test_transport_suite_moves_to_contract_job_and_stays_in_full_backend_univers
     assert pytest_step["env"]["PYTEST_SHARD_MANIFEST"] == (
         "artifacts/coverage/python/pytest-shard-${{ inputs.shard-id }}.json"
     )
-    assert "--cov=app" in pytest_step["run"]
-    assert "--cov=alembic/versions" in pytest_step["run"]
-    assert "--junitxml=pytest-report.xml" in pytest_step["run"]
-    assert "--ignore=tests/test_schemathesis_api.py" in pytest_step["run"]
-    assert "--ignore=tests/test_live_nats_transport.py" not in pytest_step["run"]
+    assert pytest_step["shell"] == "pwsh"
+    assert pytest_step["run"].strip() == ". ./scripts/ci/backend-run-pytest.ps1"
+    pytest_runner = BACKEND_PYTEST_RUNNER.read_text(encoding="utf-8")
+    assert '"--cov=app"' in pytest_runner
+    assert '"--cov=alembic/versions"' in pytest_runner
+    assert '"--junitxml=pytest-report.xml"' in pytest_runner
+    assert '"--ignore=tests/test_schemathesis_api.py"' in pytest_runner
+    assert '"--ignore=tests/test_live_nats_transport.py"' not in pytest_runner
 
     provenance = _step(unit_steps, "Write backend shard coverage provenance")["run"]
     assert "pytest-node-manifest" in provenance

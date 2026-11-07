@@ -79,18 +79,18 @@ def test_bundle_analysis_downloads_both_conditional_wasm_artifacts_as_build_does
         assert checkout_index < index < install_index
 
 
-def test_bundle_parser_is_an_exact_locked_direct_dev_dependency() -> None:
+def test_bundle_parser_is_an_exact_locked_direct_runtime_dependency() -> None:
     manifest = json.loads(
         (ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
     )
     lock = json.loads(
         (ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8")
     )
-    assert manifest["devDependencies"]["parse5"] == "8.0.1"
-    assert lock["packages"][""]["devDependencies"]["parse5"] == "8.0.1"
+    assert manifest["dependencies"]["parse5"] == "8.0.1"
+    assert lock["packages"][""]["dependencies"]["parse5"] == "8.0.1"
     installed = lock["packages"]["node_modules/parse5"]
     assert installed["version"] == "8.0.1"
-    assert installed["dev"] is True
+    assert installed.get("dev", False) is False
 
 
 def test_bundle_analysis_installs_locked_dependencies_with_lifecycle_scripts() -> None:

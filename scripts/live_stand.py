@@ -2464,7 +2464,15 @@ def _compose_resource_evidence(
         StandError,
         UnicodeError,
         subprocess.SubprocessError,
-    ):
+    ) as error:
+        category, exit_status = _compose_resource_failure_category(error)
+        try:
+            sys.stderr.write(
+                "live_stand_compose_config_diagnostic="
+                f"category:{category};exit:{exit_status}\n"
+            )
+        except (OSError, UnicodeError, ValueError):
+            pass
         raise StandError("cannot verify resolved Compose resource ownership") from None
     try:
         project = json.loads(completed_stdout)
@@ -2478,6 +2486,56 @@ def _compose_resource_evidence(
         service_roots=service_roots,
         legacy_projection=legacy_projection,
     )
+
+
+def _compose_resource_failure_category(error: BaseException) -> tuple[str, str]:
+    """Return only allowlisted Compose failure metadata; never render exception data."""
+    if isinstance(error, subprocess.TimeoutExpired):
+        return "compose_timeout", "unavailable"
+    if isinstance(error, subprocess.CalledProcessError):
+        raw_stderr = error.stderr
+        if isinstance(raw_stderr, bytes):
+            stderr = raw_stderr.decode("utf-8", errors="replace").casefold()
+        elif isinstance(raw_stderr, str):
+            stderr = raw_stderr.casefold()
+        else:
+            stderr = ""
+        if "required variable" in stderr or (
+            "variable" in stderr and "is not set" in stderr
+        ):
+            category = "required_interpolation"
+        elif "unknown flag" in stderr or "unknown shorthand flag" in stderr:
+            category = "unsupported_compose_option"
+        elif "permission denied" in stderr:
+            category = "compose_input_permission"
+        elif any(
+            marker in stderr
+            for marker in ("no such file", "not found", "cannot open", "failed to read")
+        ):
+            category = "missing_or_unreadable_input"
+        elif any(
+            marker in stderr for marker in ("yaml", "unmarshal", "invalid compose")
+        ):
+            category = "compose_parse_or_schema"
+        elif "cannot connect to the docker daemon" in stderr:
+            category = "unexpected_daemon_dependency"
+        else:
+            category = "compose_nonzero_unclassified"
+        exit_status = (
+            str(error.returncode) if type(error.returncode) is int else "unavailable"
+        )
+        return category, exit_status
+    if isinstance(error, FileNotFoundError):
+        return "compose_executable_missing", "unavailable"
+    if isinstance(error, PermissionError):
+        return "compose_process_permission", "unavailable"
+    if isinstance(error, OSError):
+        return "compose_process_io", "unavailable"
+    if isinstance(error, UnicodeError):
+        return "compose_output_encoding", "unavailable"
+    if isinstance(error, StandError):
+        return "compose_ownership_precondition", "unavailable"
+    return "compose_process_failure", "unavailable"
 
 
 def _compose_resource_evidence_from_project(

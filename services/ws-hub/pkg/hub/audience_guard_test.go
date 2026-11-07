@@ -17,11 +17,11 @@ func audienceFixtureID(number int) string {
 
 func TestDecodeChatAudiencePresenceAndFailClosedValidation(t *testing.T) {
 	tests := []struct {
-		name        string
-		data        string
-		present     bool
-		wantIDs     []string
-		wantError   bool
+		name      string
+		data      string
+		present   bool
+		wantIDs   []string
+		wantError bool
 	}{
 		{
 			name:    "legacy field is absent",
@@ -34,10 +34,10 @@ func TestDecodeChatAudiencePresenceAndFailClosedValidation(t *testing.T) {
 			present: true,
 		},
 		{
-			name:      "canonical UUID list is retained",
-			data:      fmt.Sprintf(`{"room":"room","audience":[%q]}`, audienceFixtureID(1)),
-			present:   true,
-			wantIDs:   []string{audienceFixtureID(1)},
+			name:    "canonical UUID list is retained",
+			data:    fmt.Sprintf(`{"room":"room","audience":[%q]}`, audienceFixtureID(1)),
+			present: true,
+			wantIDs: []string{audienceFixtureID(1)},
 		},
 		{name: "null is not legacy", data: `{"room":"room","audience":null}`, present: true, wantError: true},
 		{name: "wrong type is rejected", data: `{"room":"room","audience":"user"}`, present: true, wantError: true},
@@ -105,10 +105,10 @@ func oversizedAudienceJSON(t *testing.T) string {
 
 func TestChatAudienceLiveFilterIntersectsCurrentRoomMembership(t *testing.T) {
 	const (
-		roomID      = "room"
-		allowedID   = "00000000-0000-4000-8000-000000000001"
-		staleID     = "00000000-0000-4000-8000-000000000002"
-		externalID  = "00000000-0000-4000-8000-000000000003"
+		roomID     = "room"
+		allowedID  = "00000000-0000-4000-8000-000000000001"
+		staleID    = "00000000-0000-4000-8000-000000000002"
+		externalID = "00000000-0000-4000-8000-000000000003"
 	)
 	h := setupTestHub()
 	allowed := &Client{ID: "allowed-conn", UserID: allowedID}
@@ -309,8 +309,8 @@ func TestChatAudienceMissingLiveCheckpointRefreshesPersistedTypes(t *testing.T) 
 				"type": eventType,
 				"room": "room",
 				"payload": map[string]any{
-					"type": eventType,
-					"chat_id": "room",
+					"type":           eventType,
+					"chat_id":        "room",
 					"secret_content": "must-not-reach-browser",
 				},
 			})
@@ -354,8 +354,8 @@ func TestChatAudienceMissingLiveCheckpointOmitsRefreshForEphemeralAndUnknownType
 				"type": test.envelopeType,
 				"room": "room",
 				"payload": map[string]any{
-					"type": test.payloadType,
-					"chat_id": "room",
+					"type":           test.payloadType,
+					"chat_id":        "room",
 					"secret_content": "must-not-reach-browser",
 				},
 			})

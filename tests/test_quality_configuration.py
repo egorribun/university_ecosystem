@@ -429,6 +429,8 @@ def test_test_image_context_preserves_required_and_safe_inputs() -> None:
         "!.gitignore",
     )
     required_safety_exclusions = (
+        ".temporal-bootstrap/",
+        "**/.temporal-bootstrap/",
         ".secrets/",
         "**/.secrets/",
         ".codex-uv-cache/",

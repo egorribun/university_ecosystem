@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 set -euo pipefail
 scope_dir="$(mktemp -d "${RUNNER_TEMP%/}/osv-go-stdlib.XXXXXXXX")"
 cleanup() {

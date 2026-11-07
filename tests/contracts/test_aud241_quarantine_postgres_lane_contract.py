@@ -9,6 +9,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "reusable-backend-tests.yml"
+BACKEND_PYTEST_RUNNER = ROOT / "scripts" / "ci" / "backend-run-pytest.ps1"
+BACKEND_INTEGRATION_RUNNER = (
+    ROOT / "scripts" / "ci" / "backend-run-integration-tests.ps1"
+)
 RESERVATION_TEST = (
     ROOT / "tests" / "integration" / "test_quarantine_reservations_postgres.py"
 )
@@ -82,7 +86,10 @@ def test_backend_lanes_exclude_from_unit_and_include_in_postgresql() -> None:
     unit_steps = reusable["jobs"]["unit-tests"]["steps"]
     unit_pytest = _step(unit_steps, "Run pytest")
     assert unit_pytest["env"]["TEST_PATTERN"] == "${{ inputs.test-pattern }}"
-    assert unit_pytest["run"].count(f"--ignore={RESERVATION_SELECTOR}") == 1
+    assert unit_pytest["shell"] == "pwsh"
+    assert unit_pytest["run"].strip() == ". ./scripts/ci/backend-run-pytest.ps1"
+    pytest_runner = BACKEND_PYTEST_RUNNER.read_text(encoding="utf-8")
+    assert pytest_runner.count(f'"--ignore={RESERVATION_SELECTOR}"') == 1
 
     integration_job = reusable["jobs"]["integration-tests"]
     assert integration_job["if"] == "${{ inputs.run-integration-tests }}"
@@ -93,4 +100,9 @@ def test_backend_lanes_exclude_from_unit_and_include_in_postgresql() -> None:
         integration_step["env"]["INTEGRATION_TEST_PATTERN"]
         == "${{ inputs.integration-test-pattern }}"
     )
-    assert "$env:INTEGRATION_TEST_PATTERN" in integration_step["run"]
+    assert integration_step["shell"] == "pwsh"
+    assert integration_step["run"].strip() == (
+        ". ./scripts/ci/backend-run-integration-tests.ps1"
+    )
+    integration_runner = BACKEND_INTEGRATION_RUNNER.read_text(encoding="utf-8")
+    assert "$env:INTEGRATION_TEST_PATTERN" in integration_runner

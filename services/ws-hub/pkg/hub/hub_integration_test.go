@@ -347,12 +347,12 @@ func TestIntegration_BroadcastOversizedMessageDropped(t *testing.T) {
 	// Build payload that exceeds 60 KB after json.Marshal. The inner text is
 	// 70 KB of 'a'; total marshaled JSON is ~70.1 KB — well past the threshold.
 	bigText := strings.Repeat("a", 70*1024)
-	payload := Message{
-		Type:    "chat.message",
-		Room:    "big-room",
-		Payload: json.RawMessage(fmt.Sprintf(`{"text":%q}`, bigText)),
-	}
-	body, err := json.Marshal(payload)
+	body, err := json.Marshal(map[string]any{
+		"type":     "chat.message",
+		"room":     "big-room",
+		"audience": []string{"00000000-0000-4000-8000-000000000001"},
+		"payload":  json.RawMessage(fmt.Sprintf(`{"chat_id":"big-room","text":%q}`, bigText)),
+	})
 	require.NoError(t, err)
 	require.Greater(t, len(body), 60*1024,
 		"test setup: marshaled payload must exceed 60 KB to trigger drop branch")
@@ -372,12 +372,12 @@ func TestIntegration_BroadcastOversizedMessageDropped(t *testing.T) {
 	afterOversized := testutil.ToFloat64(BroadcastDropsTotal)
 
 	// Sanity: a small message must NOT trigger the drop branch.
-	smallPayload := Message{
-		Type:    "chat.message",
-		Room:    "small",
-		Payload: json.RawMessage(`{"text":"ok"}`),
-	}
-	sBody, err := json.Marshal(smallPayload)
+	sBody, err := json.Marshal(map[string]any{
+		"type":     "chat.message",
+		"room":     "small",
+		"audience": []string{"00000000-0000-4000-8000-000000000001"},
+		"payload":  json.RawMessage(`{"chat_id":"small","text":"ok"}`),
+	})
 	require.NoError(t, err)
 	require.NoError(t, nc.Publish("chat.small", sBody))
 	require.NoError(t, nc.Flush())

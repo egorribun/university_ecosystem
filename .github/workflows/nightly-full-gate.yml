@@ -841,6 +841,10 @@ jobs:
           uv_python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/nats-chaos.yaml --duration 5
           uv_python scripts/chaos/run_chaos_loadtest.py --dry-run --manifest k8s/chaos/gateway-backend-disconnect.yaml --duration 5
 
+      - name: Run owned Kind Chaos Mesh fault and recovery proof
+        timeout-minutes: 9
+        run: bash scripts/chaos/aud346_live_kind_proof.sh
+
   load-and-chaos:
     name: Load and chaos resilience
     if: ${{ github.ref == 'refs/heads/main' }}

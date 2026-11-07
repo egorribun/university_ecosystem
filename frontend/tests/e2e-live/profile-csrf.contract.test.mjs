@@ -2,6 +2,9 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import { URL } from "node:url"
 import test from "node:test"
+import { runInNewContext } from "node:vm"
+
+import { parse } from "@babel/parser"
 
 const specUrl = new URL("./profile-csrf.live.spec.ts", import.meta.url)
 const configUrl = new URL("../../playwright.live.config.ts", import.meta.url)
@@ -86,6 +89,24 @@ test("live profile mutation proves CSRF rejection and the real UI path", async (
     spec,
     /expect\(\s*invalidCsrfAttempt\.cookieClearedAfterRejectedRequest,[\s\S]*?\.toBe\(true\)/u
   )
+  assert.match(
+    spec,
+    /expect\(\s*invalidCsrfAttempt\.invalidProofCookieMatchesSubmittedProof,[\s\S]*?\.toBe\(true\)/u
+  )
+  const invalidProofResponse = spec.indexOf('const response = await fetch("/api/v1/users/me"')
+  const invalidProofObservation = spec.indexOf(
+    "const cookieAfterInvalidProofResponse = document.cookie",
+    invalidProofResponse
+  )
+  const invalidProofCleanup = spec.indexOf(
+    "document.cookie = `csrf_token=; Max-Age=0;",
+    invalidProofObservation
+  )
+  assert.ok(invalidProofResponse >= 0, "the forged-proof request exists")
+  assert.ok(
+    invalidProofObservation > invalidProofResponse && invalidProofObservation < invalidProofCleanup,
+    "the first rejected response is observed before deleting its cookie"
+  )
   const rejectedWrites = [
     ...spec.matchAll(
       /expect\(\(await readOwnerProfile\(page\)\)\.full_name\)\.toBe\(initialName\)/gu
@@ -124,4 +145,97 @@ test("live profile mutation proves CSRF rejection and the real UI path", async (
   assert.equal((fixtures.match(/page\.route\(/gu) ?? []).length, 1)
   assert.match(fixtures, /await page\.route\(["']https:\/\/api\.pwnedpasswords\.com\/\*\*["']/u)
   assert.match(config, /testMatch:\s*\/\.\*\\\.live\\\.spec\\\.ts\$\//u)
+})
+
+test("the invalid-signature 403 cookie snapshot precedes cleanup and detects replacement", async () => {
+  const source = await readFile(specUrl, "utf8")
+  const syntax = parse(source, { sourceType: "module", plugins: ["typescript"] })
+  const findNodes = (node, predicate) => {
+    if (!node || typeof node !== "object") return []
+    if (Array.isArray(node)) return node.flatMap((entry) => findNodes(entry, predicate))
+    return [
+      ...(predicate(node) ? [node] : []),
+      ...Object.values(node).flatMap((entry) => findNodes(entry, predicate)),
+    ]
+  }
+  const attempts = findNodes(
+    syntax,
+    (node) => node.type === "VariableDeclarator" && node.id?.name === "invalidCsrfAttempt"
+  )
+  assert.equal(attempts.length, 1)
+  const callback = attempts[0].init?.argument.arguments[0]
+  assert.equal(callback?.type, "ArrowFunctionExpression")
+  const statements = callback.body.body
+  const observationIndex = statements.findIndex(
+    (statement) =>
+      statement.type === "VariableDeclaration" &&
+      statement.declarations.some(
+        (declaration) => declaration.id?.name === "cookieAfterInvalidProofResponse"
+      )
+  )
+  assert.ok(observationIndex >= 0, "the invalid-signature 403 cookie is observed")
+  const observation = statements[observationIndex]
+  const cleanup = statements[observationIndex + 1]
+  assert.equal(cleanup?.type, "ExpressionStatement")
+  assert.equal(cleanup.expression?.type, "AssignmentExpression")
+  assert.equal(cleanup.expression.left?.object?.name, "document")
+  assert.equal(cleanup.expression.left?.property?.name, "cookie")
+
+  const callbackSource = source.slice(callback.start, callback.end)
+  const cleanupBeforeObservation =
+    source.slice(callback.start, observation.start) +
+    source.slice(cleanup.start, cleanup.end) +
+    source.slice(observation.end, cleanup.start) +
+    source.slice(observation.start, observation.end) +
+    source.slice(cleanup.end, callback.end)
+
+  const simulate = async (callbackText, setCookieOnFirstRejection) => {
+    const cookies = new Map([["csrf_token", "initial-csrf-token"]])
+    const document = {
+      get cookie() {
+        return [...cookies].map(([name, value]) => `${name}=${value}`).join("; ")
+      },
+      set cookie(value) {
+        const [pair, ...attributes] = value.split(";")
+        const separator = pair.indexOf("=")
+        const name = pair.slice(0, separator)
+        const cookieValue = pair.slice(separator + 1)
+        if (attributes.some((attribute) => attribute.trim() === "Max-Age=0")) {
+          cookies.delete(name)
+        } else {
+          cookies.set(name, cookieValue)
+        }
+      },
+    }
+    let requestCount = 0
+    const fetch = async () => {
+      requestCount += 1
+      if (requestCount === 1 && setCookieOnFirstRejection) {
+        document.cookie = `csrf_token=${encodeURIComponent("response-cookie")}; Path=/; SameSite=Lax`
+      }
+      return { status: 403 }
+    }
+    const evaluate = runInNewContext(`(${callbackText})`, {
+      document,
+      fetch,
+      location: { protocol: "http:" },
+    })
+    return evaluate("Synthetic CSRF profile")
+  }
+
+  const baseline = await simulate(callbackSource, false)
+  assert.equal(baseline.invalidProofCookiePresentAfterRejectedRequest, true)
+  assert.equal(baseline.invalidProofCookieMatchesSubmittedProof, true)
+
+  const injected = await simulate(callbackSource, true)
+  assert.equal(injected.invalidProofCookiePresentAfterRejectedRequest, true)
+  assert.equal(injected.invalidProofCookieMatchesSubmittedProof, false)
+
+  const reordered = await simulate(cleanupBeforeObservation, true)
+  assert.equal(reordered.invalidProofCookiePresentAfterRejectedRequest, false)
+  assert.equal(
+    reordered.invalidProofCookiePresentAfterRejectedRequest === false,
+    true,
+    "the old no-cookie check would falsely pass after cleanup"
+  )
 })

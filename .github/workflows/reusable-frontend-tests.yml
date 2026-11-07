@@ -42,6 +42,13 @@ on:
         required: false
         type: string
         default: ""
+    outputs:
+      bundle-artifact-id:
+        description: "GitHub artifact ID of the production frontend-dist archive"
+        value: ${{ jobs.build.outputs.bundle-artifact-id }}
+      bundle-artifact-digest:
+        description: "SHA-256 digest of the production frontend-dist archive"
+        value: ${{ jobs.build.outputs.bundle-artifact-digest }}
 jobs:
   # Validate or (for compatibility callers) compile the immutable WASM
   # packages once per workflow attempt. The CI caller supplies the shared E2E
@@ -868,6 +875,7 @@ jobs:
     needs: wasm-build
     outputs:
       bundle-artifact-id: ${{ steps.upload-production-bundle.outputs.artifact-id }}
+      bundle-artifact-digest: ${{ steps.upload-production-bundle.outputs.artifact-digest }}
       metadata-artifact-id: ${{ steps.upload-maplibre-metadata.outputs.artifact-id }}
       html-artifact-id: ${{ steps.upload-final-html-inventory.outputs.artifact-id }}
       metadata-sha256: ${{ steps.capture-maplibre-metadata.outputs.metadata-sha256 }}

@@ -170,12 +170,12 @@ async def test_exact_images_mounts_and_negative_controls(tmp_path: Path) -> None
 
     good = _model(state, repo)
     assert await validate(good, expected=True)
-    canonical = copy.deepcopy(good)
-    for service in canonical["services"].values():
+    omitted_defaults = copy.deepcopy(good)
+    for service in omitted_defaults["services"].values():
         for mount in service.get("volumes", []):
             if mount.get("type") == "bind":
                 mount["bind"] = {}
-    assert await validate(canonical, expected=True)
+    assert not await validate(omitted_defaults)
     token_path.unlink()
     assert not await validate(good)
     token_path.write_text("synthetic-worker-token", encoding="ascii")
@@ -195,12 +195,12 @@ async def test_exact_images_mounts_and_negative_controls(tmp_path: Path) -> None
             {"create_host_path": "false"},
             {"create_host_path": 0},
         ):
-            altered = copy.deepcopy(canonical)
+            altered = copy.deepcopy(good)
             altered["services"][service_name]["volumes"][mount_index]["bind"] = (
                 bind_value
             )
             bad_models.append(altered)
-        altered = copy.deepcopy(canonical)
+        altered = copy.deepcopy(good)
         del altered["services"][service_name]["volumes"][mount_index]["bind"]
         bad_models.append(altered)
     for service, field, value in (

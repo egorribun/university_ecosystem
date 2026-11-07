@@ -115,6 +115,11 @@ def test_tenant_context_diagnostic_is_separate_bounded_and_fail_closed() -> None
 _RENDERER_LIFECYCLE_NAMES = (
     "test_live_renderer_records_transaction_events_and_removes_listeners_on_success",
     "test_live_renderer_records_rollback_and_removes_listeners_on_failure",
+    "test_ddl_recorder_preserves_do_and_select_guard_sql_without_bound_values",
+    "test_ddl_recorder_fails_closed_on_an_unsupported_migration_operation",
+    "test_live_renderer_fails_closed_when_only_transaction_events_were_captured",
+    "test_live_renderer_fails_closed_when_only_guard_sql_was_captured",
+    "test_main_reports_renderer_fail_closed_diagnostics_without_writing_output",
     "test_scratch_requires_template0_and_empty_catalog_before_upgrade",
     "test_scratch_create_failure_never_drops_or_changes_execution_state",
     "test_scratch_nonempty_or_unverifiable_catalog_blocks_upgrade",
@@ -280,9 +285,9 @@ def test_renderer_lifecycle_receipt_rejects_incomplete_results(
     report = tmp_path / "junit.xml"
     cases = [
         f'<testcase classname="owned.renderer" name="case-{index}"/>'
-        for index in range(41)
+        for index in range(47)
     ]
-    start = '<testsuites><testsuite tests="41" failures="0" errors="0" skipped="0">'
+    start = '<testsuites><testsuite tests="47" failures="0" errors="0" skipped="0">'
     end = "</testsuite></testsuites>"
     valid = start + "".join(cases) + end
     report.write_text(valid, encoding="utf-8")
@@ -294,13 +299,13 @@ def test_renderer_lifecycle_receipt_rejects_incomplete_results(
     runpy.run_path(str(_RENDERER_LIFECYCLE_RECEIPT_HELPER), run_name="__main__")
     output = capsys.readouterr()
     assert output.err == ""
-    assert output.out.endswith("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 41\n")
+    assert output.out.endswith("ALEMBIC_RENDERER_LIFECYCLE_VERIFIED_PASS 47\n")
     counts = json.loads(output.out.splitlines()[0].split(" ", 1)[1])
-    assert counts == {"tests": 41, "failures": 0, "errors": 0, "skipped": 0}
+    assert counts == {"tests": 47, "failures": 0, "errors": 0, "skipped": 0}
 
     private = make_test_marker(length=32)
     if defect == "count":
-        value = valid.replace('tests="41"', 'tests="40"')
+        value = valid.replace('tests="47"', 'tests="46"')
     elif defect == "duplicate":
         value = start + "".join([cases[0], *cases[:-1]]) + end
     elif defect == "skipped":

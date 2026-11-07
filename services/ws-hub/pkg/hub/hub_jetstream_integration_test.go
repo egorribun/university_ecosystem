@@ -260,6 +260,7 @@ func TestIntegration_OwnedStreamCleanupPreservesForeignStreams(t *testing.T) {
 }
 
 func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
+	const replayUserID = "00000000-0000-4000-8000-000000000001"
 	nc, js := startJetStreamNATSContainer(t)
 	namespace := integrationNamespace(t)
 	chatStream := "CHAT_" + strings.ToUpper(namespace)
@@ -288,7 +289,7 @@ func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
 			Subject: "chat." + room,
 			Header:  nats.Header{},
 			Data: []byte(fmt.Sprintf(
-				`{"type":"new_message","room":%q,"payload":{"index":%s}}`, room, strconv.Itoa(index),
+				`{"type":"new_message","room":%q,"audience":[%q],"payload":{"index":%s}}`, room, replayUserID, strconv.Itoa(index),
 			)),
 		}
 		message.Header.Set("Nats-Msg-Id", id)
@@ -298,7 +299,7 @@ func TestIntegration_ClientReplayOfflineMessagesFromJetStream(t *testing.T) {
 
 	client := &Client{
 		ID:     "replay-client",
-		UserID: "replay-user",
+		UserID: replayUserID,
 		Hub:    h,
 		ctx:    context.Background(),
 		Send:   make(chan []byte, 10),

@@ -444,7 +444,7 @@ def _sealed_payload_for(link: str, secret: str) -> dict[str, Any]:
 def test_aud447_link_token_extraction_reads_only_authenticated_links(
     secret: str,
 ) -> None:
-    from app.workers.dead_letter_queue import _auth_link_tokens
+    from app.workers.dead_letter_queue import _auth_link_tokens, _scrub_error_text
 
     token = secrets.token_urlsafe(48)
     sealed = _auth_payload("sealed", _link_for(token), secret)
@@ -453,14 +453,15 @@ def test_aud447_link_token_extraction_reads_only_authenticated_links(
     assert _auth_link_tokens(_AUTH_TASK, json.dumps(sealed)) == (token,)
     assert _auth_link_tokens(_AUTH_TASK, json.dumps(plain)) == (token,)
     assert _auth_link_tokens(_NOTIFICATION_TASK, json.dumps(plain)) == ()
-    assert _auth_link_tokens(_AUTH_TASK, "not json") == ()
-    assert (
-        _auth_link_tokens(_AUTH_TASK, json.dumps({"args": ["a", 5], "kwargs": {}}))
-        == ()
-    )
+    unreadable = _auth_link_tokens(_AUTH_TASK, "not json")
+    assert unreadable == (None,)
+    assert _scrub_error_text("smtp timeout", unreadable) == _QUARANTINED_AUTH_PAYLOAD
+    assert _auth_link_tokens(
+        _AUTH_TASK, json.dumps({"args": ["a", 5], "kwargs": {}})
+    ) == (None,)
     tampered = json.loads(json.dumps(sealed))
     tampered["args"][1] = "gAAAAA" + secrets.token_urlsafe(40)
-    assert _auth_link_tokens(_AUTH_TASK, json.dumps(tampered)) == ()
+    assert _auth_link_tokens(_AUTH_TASK, json.dumps(tampered)) == (None,)
 
 
 def _only(rows: list[dict[str, Any]]) -> dict[str, Any]:

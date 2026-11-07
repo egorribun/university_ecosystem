@@ -2784,3 +2784,76 @@ def test_index_change_during_scan_fails_closed(
     )
     assert consistency["status"] == "mismatch"
     assert consistency["changed_paths"] == ["app/example.py"]
+
+
+@pytest.mark.parametrize(
+    ("writer", "report"),
+    [
+        (gate._write_semgrep_json, {"results": [{"check_id": "rule.test"}]}),
+        (gate._write_semgrep_sarif, {"version": "2.1.0", "runs": []}),
+    ],
+)
+def test_merged_report_writer_replaces_container_owned_report_atomically(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    writer: Any,
+    report: dict[str, Any],
+) -> None:
+    output_path = tmp_path / "semgrep.json"
+    output_path.write_text('{"results":[]}', encoding="utf-8")
+    original_open = Path.open
+    original_replace = gate.os.replace
+    target_write_attempts: list[str] = []
+    replaced: list[Path] = []
+
+    def deny_target_write(
+        path: Path, mode: str = "r", *args: Any, **kwargs: Any
+    ) -> Any:
+        if path == output_path and any(flag in mode for flag in "wax+"):
+            target_write_attempts.append(mode)
+            raise PermissionError("simulated container-owned report")
+        return original_open(path, mode, *args, **kwargs)
+
+    def observe_replace(source: Path, destination: Path) -> None:
+        source_path = Path(source)
+        destination_path = Path(destination)
+        assert source_path.parent == output_path.parent
+        assert destination_path == output_path
+        assert source_path.name.startswith(f".{output_path.name}.")
+        assert json.loads(source_path.read_text(encoding="utf-8")) == report
+        replaced.append(destination_path)
+        original_replace(source_path, destination_path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", deny_target_write)
+        patch.setattr(gate.os, "replace", observe_replace)
+        writer(output_path, report)
+
+    assert target_write_attempts == []
+    assert replaced == [output_path]
+    assert json.loads(output_path.read_text(encoding="utf-8")) == report
+    assert list(tmp_path.glob(f".{output_path.name}.*.tmp")) == []
+
+
+@pytest.mark.parametrize(
+    "writer",
+    [gate._write_semgrep_json, gate._write_semgrep_sarif],
+)
+def test_merged_report_replace_failure_keeps_original_and_cleans_temporary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    writer: Any,
+) -> None:
+    output_path = tmp_path / "semgrep.json"
+    original = b"previous scan output\n"
+    output_path.write_bytes(original)
+
+    def deny_replace(_source: Path, _destination: Path) -> None:
+        raise PermissionError("simulated atomic replace failure")
+
+    monkeypatch.setattr(gate.os, "replace", deny_replace)
+    with pytest.raises(gate.SemgrepGateError, match="cannot write merged Semgrep"):
+        writer(output_path, {"results": []})
+
+    assert output_path.read_bytes() == original
+    assert list(tmp_path.glob(f".{output_path.name}.*.tmp")) == []

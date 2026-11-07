@@ -10,6 +10,7 @@ import importlib.machinery
 import importlib.util
 import io
 import json
+import os
 import re
 import shutil
 import ssl
@@ -2129,28 +2130,63 @@ def _merge_sarif_reports(
     return merged
 
 
-def _write_semgrep_json(path: Path, report: dict[str, Any]) -> None:
+def _write_merged_semgrep_report(
+    path: Path, report: dict[str, Any], *, format_name: str
+) -> None:
     if path.is_symlink() or path.is_junction() or not path.is_file():
         raise SemgrepGateError(
-            f"Semgrep JSON output path is missing or linked: {path.name}"
+            f"Semgrep {format_name} output path is missing or linked: {path.name}"
         )
     payload = json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    file_descriptor: int | None = None
+    temporary_path: Path | None = None
     try:
-        path.write_text(payload, encoding="utf-8", newline="\n")
+        file_descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        temporary_path = Path(temporary_name)
+        stream = os.fdopen(file_descriptor, "w", encoding="utf-8", newline="\n")
+        file_descriptor = None
+        with stream:
+            stream.write(payload)
+        if (
+            temporary_path.is_symlink()
+            or temporary_path.is_junction()
+            or not temporary_path.is_file()
+        ):
+            raise SemgrepGateError(
+                "temporary merged Semgrep report is missing or linked"
+            )
+        if path.is_symlink() or path.is_junction() or not path.is_file():
+            raise SemgrepGateError(
+                f"Semgrep {format_name} output path is missing or linked: {path.name}"
+            )
+        os.replace(temporary_path, path)
+        temporary_path = None
     except OSError as exc:
-        raise SemgrepGateError(f"cannot write merged Semgrep JSON: {exc}") from exc
+        raise SemgrepGateError(
+            f"cannot write merged Semgrep {format_name}: {exc}"
+        ) from exc
+    finally:
+        if file_descriptor is not None:
+            os.close(file_descriptor)
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise SemgrepGateError(
+                    f"cannot remove temporary merged Semgrep {format_name}: {exc}"
+                ) from exc
+
+
+def _write_semgrep_json(path: Path, report: dict[str, Any]) -> None:
+    _write_merged_semgrep_report(path, report, format_name="JSON")
 
 
 def _write_semgrep_sarif(path: Path, report: dict[str, Any]) -> None:
-    if path.is_symlink() or path.is_junction() or not path.is_file():
-        raise SemgrepGateError(
-            f"Semgrep SARIF output path is missing or linked: {path.name}"
-        )
-    payload = json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-    try:
-        path.write_text(payload, encoding="utf-8", newline="\n")
-    except OSError as exc:
-        raise SemgrepGateError(f"cannot write merged Semgrep SARIF: {exc}") from exc
+    _write_merged_semgrep_report(path, report, format_name="SARIF")
 
 
 def _workflow_rules_commit(repository_root: Path) -> str:

@@ -27,8 +27,15 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
+import app.services.auth_service as auth_service
 from app.models.dead_letter import DeadLetterJob
-from app.workers.dead_letter_queue import _QUARANTINED_AUTH_PAYLOAD, DeadLetterQueue
+from app.tasks.email import prepare_auth_email_payload
+from app.workers.dead_letter_queue import (
+    _QUARANTINED_AUTH_PAYLOAD,
+    DeadLetterQueue,
+    _protected_auth_payload_bytes,
+    compute_job_hash,
+)
 
 _URL = os.getenv("AUD447_DLQ_DISPOSABLE_PG_URL", "")
 _OPTED_IN = os.getenv("AUD447_DLQ_DISPOSABLE") == "1"
@@ -43,21 +50,14 @@ pytestmark = [
 _AUTH_JOB = "app.tasks.email.send_auth_email"
 _LINK_TOKEN = "pg-leak-" + uuid.uuid4().hex
 _JOB_HASH = "c" * 64
-_MALFORMED = json.dumps(
-    {
-        "args": [
-            "student@example.test",
-            f"https://portal.example.test/reset-password#token={_LINK_TOKEN}",
-        ],
-        "kwargs": {},
-    }
-)[:-1]
-_REPAIRED = json.dumps(
-    {
-        "args": ["student@example.test", "gAAAA-envelope"],
-        "kwargs": {"encrypted_link": True},
-    }
-)
+_LOGICAL_PAYLOAD = {
+    "args": [
+        "student@example.test",
+        f"https://portal.example.test/reset-password#token={_LINK_TOKEN}",
+    ],
+    "kwargs": {},
+}
+_MALFORMED = json.dumps(_LOGICAL_PAYLOAD)[:-1]
 _TABLE = DeadLetterJob.__table__
 
 
@@ -126,11 +126,11 @@ async def _insert(engine: AsyncEngine, **values: Any) -> None:
         await connection.execute(_TABLE.insert().values(**values))
 
 
-async def _row(engine: AsyncEngine) -> Any:
+async def _row(engine: AsyncEngine, job_hash: str = _JOB_HASH) -> Any:
     async with engine.connect() as connection:
         return (
             await connection.execute(
-                _TABLE.select().where(_TABLE.c.job_hash == _JOB_HASH)
+                _TABLE.select().where(_TABLE.c.job_hash == job_hash)
             )
         ).one()
 
@@ -142,11 +142,26 @@ def _sessions(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
 @pytest.mark.asyncio
 async def test_quarantine_never_overwrites_bytes_repaired_after_they_were_read(
     dlq_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # This interleaving must use a genuinely authenticated protected payload
+    # with the matching logical job hash. An arbitrary envelope placeholder or
+    # unrelated hash is still unprotectable, so the production retry is right
+    # to quarantine it after re-reading.
+    test_secret = uuid.uuid4().hex
+    monkeypatch.setattr(auth_service, "_token_hmac_secret", lambda: test_secret)
+    repaired, logical = prepare_auth_email_payload(_LOGICAL_PAYLOAD)
+    repaired_payload = json.dumps(repaired)
+    job_hash = compute_job_hash(_AUTH_JOB, logical)
+    assert (
+        _protected_auth_payload_bytes(_AUTH_JOB, job_hash, repaired_payload)
+        == repaired_payload
+    )
+
     await _insert(
         dlq_engine,
         job_type=_AUTH_JOB,
-        job_hash=_JOB_HASH,
+        job_hash=job_hash,
         payload=_MALFORMED,
         status="pending",
         retry_count=1,
@@ -157,8 +172,8 @@ async def test_quarantine_never_overwrites_bytes_repaired_after_they_were_read(
         async with dlq_engine.begin() as connection:
             await connection.execute(
                 update(_TABLE)
-                .where(_TABLE.c.job_hash == _JOB_HASH)
-                .values(payload=_REPAIRED)
+                .where(_TABLE.c.job_hash == job_hash)
+                .values(payload=repaired_payload)
             )
 
     async with _sessions(dlq_engine)() as session:
@@ -170,10 +185,10 @@ async def test_quarantine_never_overwrites_bytes_repaired_after_they_were_read(
                 ),
             )
         )
-        assert await queue.quarantine_auth_payload(_JOB_HASH) is False
+        assert await queue.quarantine_auth_payload(job_hash) is False
         await session.commit()
 
-    assert (await _row(dlq_engine)).payload == _REPAIRED
+    assert (await _row(dlq_engine, job_hash)).payload == repaired_payload
 
 
 @pytest.mark.asyncio

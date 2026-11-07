@@ -39,87 +39,104 @@ func decodeChatAudience(data []byte) (map[string]struct{}, bool, error) {
 		return nil, false, fmt.Errorf("chat envelope is not a JSON object")
 	}
 
-	var rawAudience json.RawMessage
-	audiencePresent := false
-	for decoder.More() {
-		token, err = decoder.Token()
-		if err != nil {
-			return nil, false, fmt.Errorf("read chat envelope key: %w", err)
-		}
-		key, ok := token.(string)
-		if !ok {
-			return nil, false, fmt.Errorf("chat envelope key is not a string")
-		}
-
-		var value json.RawMessage
-		if err := decoder.Decode(&value); err != nil {
-			return nil, false, fmt.Errorf("read chat envelope value: %w", err)
-		}
-		if !strings.EqualFold(key, "audience") {
-			continue
-		}
-		if key != "audience" {
-			return nil, false, fmt.Errorf("chat audience key is not canonical")
-		}
-		if audiencePresent {
-			return nil, false, fmt.Errorf("chat audience key is duplicated")
-		}
-		rawAudience = value
-		audiencePresent = true
-	}
-
-	token, err = decoder.Token()
-	if err != nil || token != json.Delim('}') {
-		return nil, false, fmt.Errorf("chat envelope object is incomplete")
-	}
-	var trailing json.RawMessage
-	if err := decoder.Decode(&trailing); err != io.EOF {
-		if err == nil {
-			return nil, false, fmt.Errorf("chat envelope has trailing JSON")
-		}
-		return nil, false, fmt.Errorf("read trailing chat envelope data: %w", err)
+	rawAudience, audiencePresent, err := readChatAudienceField(decoder)
+	if err != nil {
+		return nil, false, err
 	}
 	if !audiencePresent {
 		return nil, false, nil
 	}
 
+	return decodeChatAudienceMembers(rawAudience)
+}
+
+func readChatAudienceField(decoder *json.Decoder) (json.RawMessage, bool, error) {
+	var rawAudience json.RawMessage
+	audiencePresent := false
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, audiencePresent, fmt.Errorf("read chat envelope key: %w", err)
+		}
+		// Token returns strings for keys while the decoder is inside an object;
+		// malformed non-string keys are rejected by Token itself.
+		key := token.(string)
+
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return nil, audiencePresent, fmt.Errorf("read chat envelope value: %w", err)
+		}
+		if !strings.EqualFold(key, "audience") {
+			continue
+		}
+		if key != "audience" {
+			return nil, audiencePresent, fmt.Errorf("chat audience key is not canonical")
+		}
+		if audiencePresent {
+			return nil, audiencePresent, fmt.Errorf("chat audience key is duplicated")
+		}
+		rawAudience = value
+		audiencePresent = true
+	}
+
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('}') {
+		return nil, audiencePresent, fmt.Errorf("chat envelope object is incomplete")
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return nil, audiencePresent, fmt.Errorf("chat envelope has trailing JSON")
+		}
+		return nil, audiencePresent, fmt.Errorf("read trailing chat envelope data: %w", err)
+	}
+	return rawAudience, audiencePresent, nil
+}
+
+func decodeChatAudienceMembers(rawAudience json.RawMessage) (map[string]struct{}, bool, error) {
 	trimmed := bytes.TrimSpace(rawAudience)
 	if len(trimmed) == 0 || trimmed[0] != '[' {
 		return nil, true, fmt.Errorf("chat audience must be an array")
 	}
 	arrayDecoder := json.NewDecoder(bytes.NewReader(trimmed))
-	token, err = arrayDecoder.Token()
+	allowed, err := decodeChatAudienceArray(arrayDecoder)
+	return allowed, true, err
+}
+
+func decodeChatAudienceArray(arrayDecoder *json.Decoder) (map[string]struct{}, error) {
+	token, err := arrayDecoder.Token()
 	if err != nil || token != json.Delim('[') {
-		return nil, true, fmt.Errorf("chat audience is not a JSON array")
+		return nil, fmt.Errorf("chat audience is not a JSON array")
 	}
 	allowed := make(map[string]struct{})
 	for arrayDecoder.More() {
 		if len(allowed) >= maxChatAudienceMembers {
-			return nil, true, fmt.Errorf("chat audience exceeds %d members", maxChatAudienceMembers)
+			return nil, fmt.Errorf("chat audience exceeds %d members", maxChatAudienceMembers)
 		}
 		var userID string
 		if err := arrayDecoder.Decode(&userID); err != nil {
-			return nil, true, fmt.Errorf("decode chat audience member: %w", err)
+			return nil, fmt.Errorf("decode chat audience member: %w", err)
 		}
 		if !isCanonicalAudienceUUID(userID) {
-			return nil, true, fmt.Errorf("chat audience contains a non-canonical user ID")
+			return nil, fmt.Errorf("chat audience contains a non-canonical user ID")
 		}
 		if _, duplicate := allowed[userID]; duplicate {
-			return nil, true, fmt.Errorf("chat audience contains a duplicate user ID")
+			return nil, fmt.Errorf("chat audience contains a duplicate user ID")
 		}
 		allowed[userID] = struct{}{}
 	}
 	token, err = arrayDecoder.Token()
 	if err != nil || token != json.Delim(']') {
-		return nil, true, fmt.Errorf("chat audience array is incomplete")
+		return nil, fmt.Errorf("chat audience array is incomplete")
 	}
+	var trailing json.RawMessage
 	if err := arrayDecoder.Decode(&trailing); err != io.EOF {
 		if err == nil {
-			return nil, true, fmt.Errorf("chat audience has trailing JSON")
+			return nil, fmt.Errorf("chat audience has trailing JSON")
 		}
-		return nil, true, fmt.Errorf("read trailing chat audience data: %w", err)
+		return nil, fmt.Errorf("read trailing chat audience data: %w", err)
 	}
-	return allowed, true, nil
+	return allowed, nil
 }
 
 func isCanonicalAudienceUUID(value string) bool {
@@ -133,10 +150,13 @@ func isCanonicalAudienceUUID(value string) bool {
 			}
 			continue
 		}
-		character := value[index]
-		if !('0' <= character && character <= '9') && !('a' <= character && character <= 'f') {
+		if !isLowerHexASCII(value[index]) {
 			return false
 		}
 	}
 	return true
+}
+
+func isLowerHexASCII(character byte) bool {
+	return '0' <= character && character <= '9' || 'a' <= character && character <= 'f'
 }

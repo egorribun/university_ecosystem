@@ -4,17 +4,24 @@
 
 ## Текущий снимок
 
-- HEAD `25872c5`, MERGE_HEAD `73b47dd`, последний проверенный remote `7faf2d9`, main `b85516e`. Полученный source интегрирован; завершение слияний и синхронизация истории ожидаются.
-- Формальная приёмка **449/512, 63 open**; активны baseline **242**, dispositions **494 (490 + 4)**, Gitleaks **27**, Semgrep **15**. Четыре записи и шесть companion-привязок rows #7/#15 одобрены и применены с ADR-047; прежние записи и сроки сохранены.
-- Основной checkout: полный policy-модуль **1147 PASS / 64.16 s**; три основных policy-контракта прошли. Исправленная сверка документов: **5 PASS / 0.53 s**. Ruff check/format всех **118** изменённых Python-файлов прошли.
-- Helper **2699 PASS / 45.64 s**: statements 1337/1337, branches 696/696, functions 57/57. Alembic **23 PASS / 0.82 s**: environment 132/132 statements и 16/16 branches, comparator 33/33 и 12/12. Scoped floors сохранены; отдельный PostgreSQL-кейс подтвердил drift/restoration.
-- Приватная frontend build прошла; два канонических Chromium login/CSP сценария прошли. Без backend это не full-stack acceptance.
-- Первый штатный commit-hook: полный SAST, detect-secrets, Bandit и mypy прошли. Commit отклонён из-за тестового HMAC key и actionlint warning. Исправления ограничены синтетическим 32-byte key и порядком тех же 88 вариантов пути; focused test, Gitleaks и actionlint прошли, связанные контракты **74 PASS / 10.12 s**. Повторный полный hook проверяет окончательный снимок.
-- Hosted SecurityPolicyIntegrity отказал до file classification из-за workflow `b855` / stale PR-base `62de`. Нужны обычные слияния remote egorribun/main в `egorribun`, новое PR-событие и все **78 required checks** плюс blocking CodeQL. Обходы запрещены.
-- Один checkout; local `main`/`egorribun`, remote `main`/`egorribun` и сохранённая владельцем `gh-pages`. История удалённых ветвей в bundle; нужные private receipts сохранены. **GREEN не заявляется.**
+
+## Текущее дополнение — 2026-11-07 UTC
+
+Формальная сверка обновлена до **478/512 (93,4%), 34 открытых**, классы **20S/13P/0U/1N**. Сохранены прежние 452 решения; текущий набор включает 25 scoped acceptances и отдельную ретракцию AUD-384. [Полный обзор 60 ID](../../audits/AUDIT-2026-11-06-full-reassessment.md); [текущий список 34 ID](../../audits/AUDIT-2026-10-30-reconciliation.md#current-34-finding-reconciliation--2026-11-07). Предыдущий checkpoint 476/512, 36 открытых (19S/15P/1U/1N) от 2026-11-06 23:59 UTC сохранён в обоих документах как dated history.
+
+Reviewed index tree — `ea381c19bda1`; inventory остаётся 497 dispositions, baseline 242, Gitleaks 27 и Semgrep 15. AUD-422 принят только по документации/inventory-contract (24/24 actual-main tests, independent review pass). AUD-423 принят для source-alignment поверхностей; его 118+6 тестовых результатов связаны с `aa5777f68db6`, а последующая CSPRNG fixture правка в `ea381c19bda1` проверена отдельным actual-main набором 7 tests + 6 subtests с 142 неизменными pins; полный набор 118+6 повторно не заявляется. AUD-346 перемещён U→S после интеграции source fix и 43 focused passes; live Kind injection/degradation/recovery proof остаётся незавершённым. AUD-208: отдельный local native Squawk прогон трёх SQL-входов дал 0 issues; реальные PostgreSQL cases остаются unproven. Текущие source-focused checks включают 1191 aggregate passes, отдельные 6/6 AUD-427 passes и 257 focused quality/catalog passes без предупреждений. Exact cached-byte binding (guard `db118…`) explicitly owner-approved and applied; policy records remain unchanged. Это не full CI GREEN, hosted-check или release claim.
+
+## Историческая запись контрольных снимков
 
 
-Штатный detect-secrets hook обновил только четыре номера строк и время генерации baseline; все 242 identities, настройки и классификации сохранены. Повторная проверка выполняется общим commit-hook.
+- Последний опубликованный HEAD и проверенный remote — `8a4367b`; main `b85516e` включён обычным слиянием. MERGE_HEAD отсутствует. Следующий пакет исправлений CI находится в основном checkout и проходит составные проверки; remote observer отслеживает новые коммиты.
+- Формальная приёмка **452/512, 60 open**; классификация **13S/35P/9U/3N**; активны baseline **242**, dispositions **495**, Gitleaks **27**, Semgrep **15**. AUD-426 остаётся принятым только по двум именованным hosted PostgreSQL тестам; поздний AUD-447 отказ оставил job красным, а XML-проверка шести случаев не запускалась. AUD-231 принят только для compiled SSR /login CSP/nonce по двум Chromium прогонам 2/2 каждый; шесть расхождений широкой карты, включая production `scheduleExport`, не позволяют назвать это full-current-tree build. AUD-449 принят по четырём Caddy и одному Gunicorn proof для checked-in конфигураций/production worker command с synthetic callback input; нет доказательства для unrelated app logs, полного backend image или live Spotify. [Текущая сверка](../../audits/AUDIT-2026-10-30-reconciliation.md#current-60-finding-reconciliation--2026-11-06); [review](../../audits/AUDIT-2026-11-06-review.md).
+- Обычные hooks прошли на `ac06540` и `b8dbffd`, включая полный SAST и секретные сканеры; pre-push frontend typecheck прошёл. Baseline изменился только по четырём номерам строк и времени генерации, без новых identities.
+- Hosted `b8dbffd`: **149 checks — 100 success, 24 skipped, 23 failure, 2 neutral**. Четыре failing aggregates включены в число failures. CodeQL и SecurityPolicyIntegrity прошли. Для нового SHA обязательны новые **78 context/app pairs** и blocking CodeQL.
+- Root интегрирует проверенные исправления CI contracts, source inventory, shell portability, тестовых audience/CAS fixtures и атомарной записи SAST reports. В основном checkout уже прошли **95 SAST runner tests** и **4 frontend artifact tests**. Изолированный PostgreSQL proof подтвердил корректность production CAS; исправлена недействительная тестовая конкурентная запись.
+- Policy **1147 PASS / 64.16 s**, helper **2699 PASS**, Alembic **23 PASS** и два Chromium frontend-only сценария сохранены как scoped evidence своих source slices, без заявления полного GREEN на следующем SHA.
+- Пакеты provenance/attestation и Undici с точечными scanner-привязками остаются приватными до соответствующих решений владельца. Неопределённый Kind no-SVID отказ требует диагностики; TLS-критерий не ослабляется. Chaos proof не прошёл: nested cgroup delegation остановила запуск до инъекции.
+- Один checkout; local `main`/`egorribun`, remote `main`/`egorribun` и сохранённая владельцем `gh-pages`. Нужные приватные receipts и кандидаты сохранены; отказ автоматической проверки удаления отдельных временных остатков не обходился. **GREEN не заявляется.**
 
 > Раздел ниже и его текст — историческая запись прежней паузы, не действующие инструкции.
 

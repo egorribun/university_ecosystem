@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+_TASK_TENANT_ID = uuid.UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+
 # ---------------------------------------------------------------------------
 # app/tasks/cleanups.py
 # ---------------------------------------------------------------------------
@@ -328,7 +330,7 @@ class TestEnqueueNewsNotificationTask:
                 notif_tasks.enqueue_news_notification_task,
             )
             if callable(inner):
-                await inner(news_id=news_id, locale="en")
+                await inner(news_id=news_id, locale="en", tenant_id=_TASK_TENANT_ID)
 
             mock_notify.assert_called_once_with(mock_db, mock_news, locale="en")
             mock_db.commit.assert_called_once()
@@ -357,7 +359,7 @@ class TestEnqueueNewsNotificationTask:
                 notif_tasks.enqueue_news_notification_task,
             )
             if callable(inner):
-                await inner(news_id=news_id)
+                await inner(news_id=news_id, tenant_id=_TASK_TENANT_ID)
 
             mock_notify.assert_not_called()
 
@@ -389,7 +391,7 @@ class TestEnqueueEventNotificationTask:
                 notif_tasks.enqueue_event_notification_task,
             )
             if callable(inner):
-                await inner(event_id=event_id, locale="ru")
+                await inner(event_id=event_id, locale="ru", tenant_id=_TASK_TENANT_ID)
 
             mock_notify.assert_called_once_with(mock_db, mock_event, locale="ru")
 
@@ -426,7 +428,11 @@ class TestEnqueueCommentNotificationTask:
             )
             if callable(inner):
                 await inner(
-                    news_id=news_id, comment_id=comment_id, user_id=user_id, locale="en"
+                    news_id=news_id,
+                    comment_id=comment_id,
+                    user_id=user_id,
+                    locale="en",
+                    tenant_id=_TASK_TENANT_ID,
                 )
 
             mock_notify.assert_called_once_with(
@@ -460,6 +466,11 @@ class TestEnqueueCommentNotificationTask:
                 notif_tasks.enqueue_comment_notification_task,
             )
             if callable(inner):
-                await inner(news_id=news_id, comment_id=comment_id, user_id=user_id)
+                await inner(
+                    news_id=news_id,
+                    comment_id=comment_id,
+                    user_id=user_id,
+                    tenant_id=_TASK_TENANT_ID,
+                )
 
             mock_notify.assert_not_called()

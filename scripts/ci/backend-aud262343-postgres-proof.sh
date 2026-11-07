@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 set -euo pipefail
 probe_root="$(mktemp -d "$RUNNER_TEMP/aud262343-postgres.XXXXXX")"
 trap 'rm -rf -- "$probe_root"' EXIT

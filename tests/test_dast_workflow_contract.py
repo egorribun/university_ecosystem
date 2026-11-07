@@ -88,7 +88,7 @@ def test_dast_active_scans_reject_pr_controlled_workflow_sources() -> None:
         expected_sparse_paths = (
             {".github", "scripts/quality"}
             if job_name == "nuclei"
-            else {".zap", "scripts/quality"}
+            else {".github/workflows/dast.yml", ".zap", "scripts/quality"}
         )
         assert set(checkout["with"]["sparse-checkout"].split()) == expected_sparse_paths
         assert checkout["with"]["persist-credentials"] is False
@@ -633,13 +633,14 @@ def test_zap_action_keeps_the_authorized_target_and_scan_configuration() -> None
     assert zap_action.get("continue-on-error", False) is False
     assert zap_action == {
         "name": "ZAP Full Scan",
+        "id": "zap_scan",
         "uses": "zaproxy/action-full-scan@3c58388149901b9a03b7718852c5ba889646c27c",
         "env": {"TARGET_URL": TARGET_EXPRESSION},
         "with": {
             "target": TARGET_EXPRESSION,
             "rules_file_name": ".zap/rules.tsv",
             "cmd_options": "-a -j -T 60",
-            "artifact_name": "zap-results-${{ github.run_id }}",
+            "artifact_name": "zap-results-${{ github.run_id }}-attempt-${{ github.run_attempt }}",
             "allow_issue_writing": False,
         },
     }

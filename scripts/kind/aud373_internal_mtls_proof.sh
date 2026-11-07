@@ -540,7 +540,7 @@ EOF
 
 wait_for_file_process_stream() {
   local attempt pods pod logs
-  for attempt in $(seq 1 120); do
+  for ((attempt = 1; attempt <= 120; attempt++)); do
     pods="$(kubectl -n "$NAMESPACE" get pods \
       -l "app.kubernetes.io/instance=${RELEASE},app.kubernetes.io/component=backend" \
       --output=name)" || return 1
@@ -1225,7 +1225,9 @@ capture_probe() {
     if [[ "${statuses[0]}" != 0 ]]; then exit "${statuses[0]}"; fi
     exit "${statuses[1]}"
   )" || status=$?
-  if ! { mkdir -p "$DIAG_DIR" && printf '%s\n' "$output" >"${DIAG_DIR}/probe-${name}.txt"; } 2>/dev/null; then
+  if { mkdir -p "$DIAG_DIR" && printf '%s\n' "$output" >"${DIAG_DIR}/probe-${name}.txt"; } 2>/dev/null; then
+    :
+  else
     return 125
   fi
   printf '%s\n' "$output"

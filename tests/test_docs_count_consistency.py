@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_DISPOSITION_RECORDS = 494
+EXPECTED_DISPOSITION_RECORDS = 497
 
 
 def _baseline_identities() -> int:
@@ -50,7 +50,7 @@ def test_docs_index_states_the_workspace_baseline_and_disposition_counts() -> No
     )
     assert (
         "363 previously active records, 106 previously owner-approved identities now materialized, "
-        "21 previously approved exact identities, and four newly approved exact identities"
+        "21 previously approved exact identities, and five newly approved exact identities"
     ) in document
     assert (
         "The inventory is not evidence of a passing scan or required checks; each "

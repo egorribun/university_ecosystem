@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process"
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
@@ -10,6 +9,8 @@ import {
   wasmArtifactProblem,
 } from "../../../scripts/wasm-fuzzer.mjs"
 
+const frontendDir = resolve(dirname(SANITIZER_WASM_PATH), "../..")
+
 describe("wasm fuzzer artifact failures", () => {
   let root: string
   let script: string
@@ -17,7 +18,7 @@ describe("wasm fuzzer artifact failures", () => {
   let sanitizerPath: string
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), "wasm-fuzzer-artifacts-"))
+    root = mkdtempSync(join(frontendDir, ".wasm-fuzzer-artifacts-"))
     const scriptsDir = join(root, "frontend", "scripts")
     sanitizerDir = join(root, "frontend", "wasm-sanitizer", "pkg")
     const cryptoDir = join(root, "frontend", "rust-crypto", "pkg")

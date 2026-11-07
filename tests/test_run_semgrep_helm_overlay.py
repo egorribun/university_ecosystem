@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -441,6 +442,8 @@ def _run_case(
         lambda _commit, _destination, *, command_runner: rules_root,
     )
     base_tests._stub_ignore_validator(monkeypatch)
+    # This test calls the package import, separate from base_tests.gate.
+    monkeypatch.setattr(gate, "_validate_semgrep_ignore_policy", lambda _root: None)
     base_runner, calls, snapshots = base_tests._runner_for_scan(
         repository_root, index_blobs=index_blobs
     )
@@ -703,6 +706,7 @@ class _FakeHTTPResponse:
 
     def read(self, size: int) -> bytes:
         if self._delay_seconds:
+            # Bounded fixture delay: the deadline test supplies 0.01 seconds.
             time.sleep(self._delay_seconds)
         result = self._data[self._offset : self._offset + size]
         self._offset += len(result)
@@ -768,10 +772,11 @@ def test_download_streams_only_the_pinned_official_archive(
     destination = gate._download_helm_archive(pin, tmp_path / "helm.archive")
 
     assert destination.read_bytes() == archive
+    expected_path = urlsplit(pin["archive_url"]).path
     assert connections[0].requests == [
         (
             "GET",
-            "/helm-v4.2.4-windows-amd64.zip",
+            expected_path,
             {"User-Agent": "university-ecosystem-semgrep-gate"},
         )
     ]

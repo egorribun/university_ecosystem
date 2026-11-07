@@ -125,15 +125,26 @@ def test_symlink_probes_propagate_unrecognized_errors(
     assert raised.value is error
 
 
-@pytest.mark.parametrize("error_name", ["ENOSYS", "ENOTSUP", "EOPNOTSUPP"])
+@pytest.mark.parametrize(
+    "error_name",
+    [
+        pytest.param(
+            name,
+            marks=pytest.mark.skipif(
+                getattr(errno, name, None) is None,
+                reason=f"{name} is not defined on this platform",
+            ),
+        )
+        for name in ("ENOSYS", "ENOTSUP", "EOPNOTSUPP")
+    ],
+)
 def test_posix_explicit_symlink_support_errors_are_unavailable(
     monkeypatch: pytest.MonkeyPatch, error_name: str
 ) -> None:
     monkeypatch.setattr(symlink_support, "os", SimpleNamespace(name="posix"))
 
     error_number = getattr(errno, error_name, None)
-    if error_number is None:
-        pytest.skip(f"{error_name} is not defined on this platform")
+    assert error_number is not None
     assert symlink_support._symlink_capability_unavailable(
         OSError(error_number, "synthetic unsupported POSIX symlink operation")
     )

@@ -16795,6 +16795,108 @@
       },
       "owner": "egorribun",
       "reviewed_on": "2026-11-06"
+    },
+    {
+      "approval_status": "approved",
+      "category": "public_integrity_digest",
+      "evidence": "Public source-integrity metadata: this detector identity is the SHA-1 fingerprint of the new SHA-256 companion pin for frontend/package-lock.json in SafeHtml disposition row 15 at quality/semgrep-dispositions.json:485. It identifies a repository lockfile postimage and is not credential material.",
+      "expires_on": "2027-01-10",
+      "identity": {
+        "hashed_secret_bytes": [
+          96,
+          135,
+          12,
+          114,
+          127,
+          194,
+          180,
+          71,
+          8,
+          90,
+          146,
+          143,
+          73,
+          137,
+          107,
+          158,
+          44,
+          94,
+          243,
+          94
+        ],
+        "path": "quality/semgrep-dispositions.json",
+        "type": "Hex High Entropy String"
+      },
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-06"
+    },
+    {
+      "approval_status": "approved",
+      "category": "public_integrity_digest",
+      "evidence": "Public source-integrity metadata: the detector identity is the SHA-1 fingerprint of the current SHA-256 companion pin for scripts/live_stand.py in Semgrep disposition row 7 at quality/semgrep-dispositions.json:189. This identifies a public repository source digest and is not credential material.",
+      "expires_on": "2027-01-10",
+      "identity": {
+        "hashed_secret_bytes": [
+          1,
+          73,
+          101,
+          252,
+          84,
+          24,
+          53,
+          242,
+          126,
+          68,
+          82,
+          250,
+          129,
+          60,
+          114,
+          134,
+          253,
+          153,
+          43,
+          46
+        ],
+        "path": "quality/semgrep-dispositions.json",
+        "type": "Hex High Entropy String"
+      },
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-06"
+    },
+    {
+      "approval_status": "approved",
+      "category": "public_integrity_digest",
+      "evidence": "Public source-integrity metadata: the detector identity is the SHA-1 fingerprint of the current SHA-256 companion pin for tests/test_mfa_deploy_workflow_contract.py, shared by Semgrep disposition rows 8, 9, and 10; the finding is at quality/semgrep-dispositions.json:229. This identifies a public repository test-source digest and is not credential material.",
+      "expires_on": "2027-01-10",
+      "identity": {
+        "hashed_secret_bytes": [
+          42,
+          115,
+          152,
+          130,
+          13,
+          167,
+          15,
+          147,
+          189,
+          116,
+          17,
+          6,
+          78,
+          24,
+          118,
+          143,
+          178,
+          142,
+          190,
+          218
+        ],
+        "path": "quality/semgrep-dispositions.json",
+        "type": "Hex High Entropy String"
+      },
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-06"
     }
   ],
   "schema_version": 1

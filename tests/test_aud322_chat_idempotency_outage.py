@@ -197,7 +197,13 @@ async def test_unexpected_cache_errors_and_cancellation_propagate(
         sender = command_service.ChatMessageDispatcher(
             uow_from_session(db_session), MagicMock(), MagicMock()
         )
-        with pytest.raises(failure_type, match="unexpected cache failure"):
+        # asyncio.shield propagates SET-task cancellation without its message.
+        failure_message = (
+            None
+            if failure_type is asyncio.CancelledError and phase == "set"
+            else "unexpected cache failure"
+        )
+        with pytest.raises(failure_type, match=failure_message):
             await sender.send_message(
                 chat_id, user, "must not commit", [], "en", idempotency_key=key
             )

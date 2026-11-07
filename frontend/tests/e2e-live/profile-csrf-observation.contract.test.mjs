@@ -44,10 +44,10 @@ const readCallbacks = async () => {
     (statement) =>
       statement.type === "VariableDeclaration" &&
       statement.declarations.some(
-        (declaration) => declaration.id?.name === "cookieAfterRejectedRequest"
+        (declaration) => declaration.id?.name === "cookieAfterInvalidProofResponse"
       )
   )
-  assert.ok(observationIndex >= 0, "the rejected response has a cookie observation")
+  assert.ok(observationIndex >= 0, "the invalid-signature 403 has a cookie observation")
   const observation = statements[observationIndex]
   const cleanup = statements[observationIndex + 1]
   assert.equal(cleanup?.type, "ExpressionStatement")
@@ -80,7 +80,7 @@ after(async () => {
   await browser?.close()
 })
 
-const observe = async (callbackSource, setCookieOnRejection) => {
+const observe = async (callbackSource, setCookieOnRequest = null) => {
   const context = await browser.newContext()
   const requests = []
   try {
@@ -100,7 +100,7 @@ const observe = async (callbackSource, setCookieOnRejection) => {
         await route.fulfill({
           status: 403,
           headers:
-            setCookieOnRejection && requests.length === 2
+            setCookieOnRequest === requests.length
               ? { "set-cookie": "csrf_token=response-cookie; Path=/; SameSite=Lax" }
               : {},
           body: "rejected",
@@ -151,17 +151,27 @@ const observe = async (callbackSource, setCookieOnRejection) => {
   }
 }
 
-test("live observation accepts a 403 that does not create a CSRF cookie", async () => {
-  const observation = await observe(callbacks.callbackSource, false)
+test("invalid-signature rejection preserves the submitted cookie when no response cookie is set", async () => {
+  const observation = await observe(callbacks.callbackSource)
+  assert.equal(observation.invalidProofCookiePresentAfterRejectedRequest, true)
+  assert.equal(observation.invalidProofCookieMatchesSubmittedProof, true)
   assert.equal(observation.cookieClearedAfterRejectedRequest, true)
 })
 
-test("live observation detects a CSRF cookie created by a 403 before cleanup", async () => {
-  const observation = await observe(callbacks.callbackSource, true)
+test("invalid-signature 403 observation detects a replacement cookie before cleanup", async () => {
+  const observation = await observe(callbacks.callbackSource, 1)
+  assert.equal(observation.invalidProofCookiePresentAfterRejectedRequest, true)
+  assert.equal(observation.invalidProofCookieMatchesSubmittedProof, false)
+})
+
+test("cleanup before first-response observation recreates the false no-cookie result", async () => {
+  const observation = await observe(callbacks.reordered, 1)
+  assert.equal(observation.invalidProofCookiePresentAfterRejectedRequest, false)
+  assert.equal(observation.invalidProofCookieMatchesSubmittedProof, false)
+  assert.equal(observation.cookieClearedAfterRejectedRequest, true)
+})
+
+test("missing-cookie 403 observation detects a cookie before cleanup", async () => {
+  const observation = await observe(callbacks.callbackSource, 2)
   assert.equal(observation.cookieClearedAfterRejectedRequest, false)
-})
-
-test("cleanup before observation reproduces the original false pass", async () => {
-  const observation = await observe(callbacks.reordered, true)
-  assert.equal(observation.cookieClearedAfterRejectedRequest, true)
 })

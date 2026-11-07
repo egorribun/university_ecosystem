@@ -2120,3 +2120,125 @@ A normal 14-filter hook reconciliation confirmed the three test sentinels at the
 The detect-secrets baseline remains 242 identities, Gitleaks remains at 27 immutable historical fingerprints, all 78 required CI context/app pairs and existing thresholds/hooks remain unchanged, and the Semgrep ledger remains at 15 rows. No baseline entry, category change, wildcard, exclusion, pragma, bypass, or expiry extension is approved.
 
 [Semgrep dispositions](../../quality/semgrep-dispositions.json), [detect-secrets disposition policy](../../quality/security-false-positive-dispositions.json), [validator](../../scripts/verify_secrets_baseline.py), and [baseline contract tests](../../tests/test_verify_secrets_baseline.py).
+
+## Owner-approved Undici 8.12.4 update, row #15 rebind and one exact disposition (2026-11-06 UTC)
+
+On 2026-11-06 UTC, the owner approved a one-time seven-day maturity exception for the exact `undici` lockfile update from 8.12.2 to 8.12.4, alongside one Semgrep row #15 companion refresh and one exact detect-secrets disposition. The accepted scope changes only version, resolved URL and integrity in `frontend/package-lock.json` at `packages.node_modules/undici`; `frontend/package.json`, other lock records, and the `seroval` 1.6.12 lock entry and override remain unchanged. The Undici lock entry is development-only; this approval makes no claim of production runtime exposure. The published 8.12.4 tarball matched npm registry integrity and SHA-1 metadata.
+
+Semgrep row #15 retains its finding identity, rule, primary path and span, rationale, owner, approval date and expiry; only its `frontend/package-lock.json` companion pin changes. The exact row-bound source and package postimages are recorded in the private owner packet.
+
+The normal 14-filter candidate-ledger preview found one new `Hex High Entropy String` identity at `quality/semgrep-dispositions.json:485`; its value is the new public SHA-256 source-companion pin. The disposition is categorized `public_integrity_digest`, expires 2027-01-10, and is public source-integrity metadata, not credential material. The original 242-entry baseline had no matching identity; no baseline entry is added. The 495-record policy postimage preserves all 494 previously approved record objects and expiry values unchanged, then adds this one exact identity.
+
+The scan was a direct one-file preview with detect-secrets 1.5.0, 27 plugins and 14 filters; it is not normal pre-commit hook parity or full-tree clearance. The retained result is 93 identities, 92 matching the active 494 policy records and one matching this pending record, with zero matches in the frozen original baseline. A separate bounded loopback SRI probe showed 8.12.2 accepted a mismatched tab-prefixed digest while 8.12.4 rejected it; it is diagnostic, not install, maturity, full-suite or hosted-check evidence. Final-source scans, install/audit/test results and required checks remain necessary for the integrated source.
+
+This decision leaves the seven-day npm release-age rule, `.npmrc`, Renovate policy, the 242-entry baseline, Gitleaks inventory, all other policy records and their expiry values, Semgrep rule behavior, hooks, thresholds and required contexts unchanged. It authorizes no other dependency update, new identity, baseline addition, broad exclusion, bypass, expiry extension, merge or deployment. See [ADR-050](ADR-050-security-release-cooldown-exceptions.md) for the exact cooldown boundary and [the disposition policy](../../quality/security-false-positive-dispositions.json).
+
+<a id="proposed-aud-378-decision-verify-the-frontend-ci-application-artifact"></a>
+
+## Owner-approved AUD-378 decision: verify the frontend CI application artifact
+
+**Status: explicitly owner-approved on 2026-11-06 UTC; hosted attestation and final-source validation remain pending.**
+
+The CI application artifact for this decision is the immutable `frontend-dist`
+Actions archive produced by the existing `Frontend Tests / Production Build`
+job in `.github/workflows/reusable-frontend-tests.yml`. Its subject is the
+SHA-256 digest of the raw uploaded archive, not a locally re-created ZIP, a
+digest of the extracted directory, or a release container image. The upload
+action's artifact ID and digest outputs are surfaced through the existing
+`frontend-tests` reusable-workflow call.
+
+For `push` events, a single isolated job in `.github/workflows/ci.yml` attaches
+SLSA v1 build provenance to that exact digest. The job is the signer, so its
+certificate is checked against the top-level `ci.yml` `workflow_ref` identity.
+It does not check out the repository or execute repository scripts. The
+read-only provenance check downloads the raw archive by the artifact ID,
+cross-checks the Actions artifact and workflow-run API records, hashes the
+archive bytes, then performs real `gh attestation verify` verification and
+exactly checks the verified subject, source repository ID, source commit/ref,
+event, workflow identity, run ID, run attempt, and GitHub-hosted runner claim.
+The helper fails closed unless the runner-installed GitHub CLI is at least
+2.102.0, bounds the version check and attestation-verification subprocesses,
+and reports the verified CLI version.
+The existing pinned `slsa-verifier` self-attestation check remains in place.
+
+This adds an application-artifact provenance gate through the existing
+`SLSA Provenance Dry-Run` result consumed by `CI Success`. It does not add,
+rename, remove, or weaken a required CI context or app pair, and it does not
+change quality thresholds. The only job granted `id-token: write` and
+`attestations: write` is the isolated attester. The artifact build job remains
+read-only. The verifier receives only `actions: read` and `attestations: read`.
+
+Application-artifact attestations are limited to repository `push` events.
+For `pull_request`, including fork pull requests, no job requests or receives
+attestation-write capability and the application-artifact verifier records
+that the scope does not apply; the existing frontend tests and pinned-tool
+self-attestation check still run. GitHub documents that fork pull-request
+`GITHUB_TOKEN` write permissions are downgraded to read-only unless an
+administrator opts into write tokens. Requiring signed provenance for every
+fork pull request would therefore need a separate, owner-approved architecture
+and event policy; it is not inferred by this decision.
+
+The dated `b85516e` run and its artifact are
+historical metadata only. That run failed frontend checks and predates this
+decision. A passing hosted run from the approved postimage must establish the
+real certificate fields and archive digest before this gate can be reported as
+operational. Synthetic parser fixtures are tests only and are not attestations
+or trusted-root evidence.
+
+
+## Owner-approved four Semgrep companion rebindings and two exact detect-secrets identities (2026-11-06 UTC)
+
+On 2026-11-06 UTC, the owner approved exactly four companion-hash updates for existing Semgrep rows #7, #8, #9, and #10. The 15-row ledger count remains unchanged. Row #7 binds `scripts/live_stand.py`; rows #8, #9, and #10 share `tests/test_mfa_deploy_workflow_contract.py`. All Semgrep finding identities, rules, primary paths and spans, rationales, owners, approval dates, and expiries remain unchanged. The already approved row #15 lockfile companion remains unchanged.
+
+The owner also approved exactly two new `public_integrity_digest` detect-secrets identities at `quality/semgrep-dispositions.json:189` and `:229`, bound respectively to those row #7 and rows #8–#10 companion pins. Both records expire on 2027-01-10. The previous 495 approved records and their expiry values remain unchanged; the integrated policy contains 497 exact records. The 242-identity baseline remains unchanged, and neither identity matched the frozen baseline. No other identity, category, baseline entry, wildcard, exclusion, pragma, bypass, reclassification, or expiry extension is approved.
+
+A direct detect-secrets 1.5.0 preview used 27 plugins, 14 filters, verification enabled, no exclusions, and five scoped input files. It recorded 100 identities: 98 matched the existing approved 495-record policy, none matched the frozen baseline, and the two approved identities were the only new matches. This bounded CLI preview is not normal-hook parity or full-tree clearance. Current-source full scans, the ordinary hook, and required checks remain necessary. The guard and test additions enforce these exact records and do not broaden matching behavior.
+
+This update changes neither ADR-050's one-time Undici maturity decision nor the global seven-day release-age rule. Gitleaks remains at 27 historical fingerprints, and the existing required checks and thresholds remain unchanged. See [the Semgrep ledger](../../quality/semgrep-dispositions.json), [the detect-secrets disposition policy](../../quality/security-false-positive-dispositions.json), and [the validator contract](../../tests/test_verify_secrets_baseline.py).
+
+
+## Owner-approved AUD-427/428 current-source binding (2026-11-07 UTC)
+
+The owner explicitly approved the exact current-source binding for
+`tests/test_aud427_428_contract_quality.py` (SHA-256 prefix `590bbac160e2`)
+and guard patch `3a3de5a1ab6c`. The contract now checks the reviewed sourced
+`scripts/ci/backend-run-integration-tests.ps1` helper instead of the previous
+inline workflow body. The guard retains the immutable historical source pin
+and adds the exact current-source byte pin, positive context checks, and
+call-site, helper-location, and appended-byte negative controls.
+
+This decision changes no finding identity, category, approval status, expiry,
+baseline entry, scanner configuration, exclusion, or bypass. The active
+disposition inventory remains 497, the baseline remains 242, and Gitleaks
+remains at 27 historical fingerprints. Private focused validation passed six
+cases; independent review passed. A detect-secrets 1.5.0 direct guard preview
+found three existing approved identities and no new identities. These scoped
+results do not establish ordinary-hook, full-source, or hosted-check success.
+All existing required checks and quality thresholds remain in force.
+
+
+## One-time owner-approved AUD-420 private recovery replacement (2026-11-07 UTC)
+
+The owner explicitly authorized exactly one standalone private full-history
+bundle of the existing `egorribun` head `8a4367b` and one new value-free archive
+inventory CSV. This is a one-time exception to the master plan and audit index
+prohibition on routine rescue-bundle creation; it grants no general permission
+to copy, distribute, restore, or extract credential-shaped history.
+
+The operation completed in an owner-private external directory. Every existing
+path component and the target was checked for reparse points before writing.
+The protected DACL grants access only to the verified owner, SYSTEM, and
+Administrators. The Git bundle is 184,867,508 bytes (SHA-256 prefix
+`0c9976ebd3a1`), has no prerequisite commits, passes `git bundle verify`, and
+advertises only the approved existing head/ref. The new CSV is 12,461 bytes
+(SHA-256 prefix `167dc54faccd7`); its 120 path/mode/blob-OID/size rows cover
+112 archived audits and eight plans, totaling 3,981,581 listed blob bytes.
+All OID/type/size entries were checked against retained Git metadata.
+
+The historical bundle and CSV remain absent; their historical checksums and
+disposition/transfer fields were not reproduced. The new checksums identify
+new artifacts only. Exact private locators, full hashes, ACL and verification
+receipts are retained privately by the owner. No archive content was printed,
+extracted, or published, and no source, index, ref, or worktree was changed by
+the recovery operation. This decision does not change scanner dispositions,
+required checks, coverage floors, or mutation-stage policy.

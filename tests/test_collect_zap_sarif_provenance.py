@@ -9,15 +9,7 @@ from typing import Any
 import pytest
 import yaml
 
-
-def _repository_root() -> Path:
-    for candidate in Path(__file__).resolve().parents:
-        if (candidate / ".github/workflows/dast.yml").is_file():
-            return candidate
-    raise AssertionError("Could not locate the projected DAST workflow")
-
-
-REPOSITORY_ROOT = _repository_root()
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 COLLECTOR_PATH = Path(__file__).with_name("collect_zap_sarif_provenance.py")
 if not COLLECTOR_PATH.is_file():
     COLLECTOR_PATH = REPOSITORY_ROOT / "scripts/quality/zap_sarif_provenance.py"

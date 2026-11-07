@@ -1,8 +1,9 @@
 """Execute the migration lint step with controlled external commands.
 
 These tests do not run migrations or admit a database. They exercise the actual
-workflow shell body; only Actions interpolation and the test scanner's checksum
-are substituted to model the runner and an executable under test control.
+workflow shell body; only runner-provided environment values and the test
+scanner's checksum are controlled to model the runner and an executable under
+test control.
 """
 
 from __future__ import annotations
@@ -58,7 +59,16 @@ def _lint_step_script() -> str:
 def migration_gate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pytester: pytest.Pytester
 ) -> MigrationGate:
-    script = _lint_step_script()
+    job = yaml.safe_load(
+        (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )["jobs"]["alembic-migrations"]
+    lint_step = next(
+        step for step in job["steps"] if step.get("id") == "migration-squawk"
+    )
+    assert (
+        lint_step["env"]["PR_BASE_SHA"] == "${{ github.event.pull_request.base.sha }}"
+    )
+    script = str(lint_step["run"])
 
     binary_dir = tmp_path / "bin"
     runner_temp = tmp_path / "runner"
@@ -162,9 +172,7 @@ fi
         script,
     )
     assert substitutions == 1
-    expression = "${{ github.event.pull_request.base.sha }}"
-    assert script.count(expression) == 1
-    script = script.replace(expression, "controlled-base")
+    monkeypatch.setenv("PR_BASE_SHA", "controlled-base")
     script_path = tmp_path / "actual-workflow-step.sh"
     script_path.write_text(script, encoding="utf-8", newline="\n")
 
@@ -457,8 +465,14 @@ def _run_readiness_step(
     steps = [step for step in job["steps"] if step.get("name") == "Wait for PostgreSQL"]
     assert len(steps) == 1
     assert steps[0]["shell"] == "pwsh"
+    assert steps[0]["run"].strip() == (
+        "pwsh -NoProfile -File .github/scripts/ci/wait_for_postgres.ps1"
+    )
     step_path = tmp_path / "workflow-readiness.ps1"
-    step_path.write_text(steps[0]["run"], encoding="utf-8", newline="\n")
+    readiness_script = (ROOT / ".github/scripts/ci/wait_for_postgres.ps1").read_text(
+        encoding="utf-8"
+    )
+    step_path.write_text(readiness_script, encoding="utf-8", newline="\n")
 
     state_path = tmp_path / "readiness-state.json"
     state_path.write_text(

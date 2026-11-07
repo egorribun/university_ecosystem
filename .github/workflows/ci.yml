@@ -986,6 +986,42 @@ jobs:
       wasm-artifact-name: ${{ needs.e2e-wasm-build.outputs.artifact_name }}
       wasm-artifact-digest: ${{ needs.e2e-wasm-build.outputs.artifact_digest }}
 
+  # Attest the exact immutable frontend-dist upload from the existing reusable
+  # build. This job runs only for repository pushes and contains no checkout or
+  # repository-controlled scripts. Its token permissions are job-scoped.
+  frontend-dist-attestation:
+    name: Frontend Dist Attestation
+    needs: frontend-tests
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Validate uploaded frontend-dist receipt
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ needs.frontend-tests.outputs.bundle-artifact-id }}
+          ARTIFACT_DIGEST: ${{ needs.frontend-tests.outputs.bundle-artifact-digest }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$ARTIFACT_ID" =~ ^[1-9][0-9]{0,19}$ ]]; then
+            echo "::error::Frontend artifact ID is missing or invalid." >&2
+            exit 1
+          fi
+          if [[ ! "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::Frontend artifact SHA-256 output is missing or invalid." >&2
+            exit 1
+          fi
+
+      - name: Attest exact frontend-dist archive digest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: frontend-dist
+          subject-digest: sha256:${{ needs.frontend-tests.outputs.bundle-artifact-digest }}
+
   # Build the generated WASM packages once for all frontend and Playwright
   # jobs. Consumers bind the server-issued artifact outputs to this run.
   e2e-wasm-build:
@@ -1126,17 +1162,23 @@ jobs:
           path: sbom.spdx.json
           retention-days: 90
 
-  # MOD-22-04 (audit 2026-03-25 Wave 22): SLSA provenance dry-run.
-  # Validates that SLSA provenance tooling (slsa-verifier) is available
-  # and the configuration is valid.  Does NOT publish attestations —
-  # that is handled by the release workflow.
+  # MOD-22-04 (audit 2026-03-25 Wave 22): verify pinned-tool provenance and
+  # the application artifact attestation. The isolated frontend-dist-attestation
+  # job publishes only the frontend archive claim; release image attestations
+  # remain owned by the release workflow.
   provenance-check:
     name: SLSA Provenance Dry-Run
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    needs: pre-commit-check
+    needs:
+      - pre-commit-check
+      - frontend-tests
+      - frontend-dist-attestation
+    if: ${{ always() && !cancelled() }}
     permissions:
       contents: read
+      actions: read
+      attestations: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1195,6 +1237,21 @@ jobs:
             exit 1
           fi
           echo "SLSA provenance attestation verified for the pinned slsa-verifier."
+
+      - name: Verify frontend-dist application artifact attestation
+        if: ${{ github.event_name == 'push' }}
+        env:
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
+          FRONTEND_DIST_ARTIFACT_ID: ${{ needs.frontend-tests.outputs.bundle-artifact-id }}
+          FRONTEND_DIST_ARTIFACT_DIGEST: ${{ needs.frontend-tests.outputs.bundle-artifact-digest }}
+          FRONTEND_TESTS_RESULT: ${{ needs.frontend-tests.result }}
+          FRONTEND_ATTESTATION_RESULT: ${{ needs.frontend-dist-attestation.result }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/quality/verify_frontend_dist_provenance.py
+
+      - name: Record pull-request artifact provenance boundary
+        if: ${{ github.event_name == 'pull_request' }}
+        run: echo "Application artifact attestations are limited to push runs; fork pull-request tokens remain read-only."
 
   # AUD-449: the emitted-log redaction proof runs against the real Caddy edge
   # image built from this commit. It is local-only in the ordinary suite and is
@@ -1652,6 +1709,11 @@ jobs:
             -n 0 -vv --tb=short --show-capture=no --no-cov --maxfail=0 \
             tests/test_alembic_live_sql_render.py::test_live_renderer_records_transaction_events_and_removes_listeners_on_success \
             tests/test_alembic_live_sql_render.py::test_live_renderer_records_rollback_and_removes_listeners_on_failure \
+            tests/test_alembic_live_sql_render.py::test_ddl_recorder_preserves_do_and_select_guard_sql_without_bound_values \
+            tests/test_alembic_live_sql_render.py::test_ddl_recorder_fails_closed_on_an_unsupported_migration_operation \
+            tests/test_alembic_live_sql_render.py::test_live_renderer_fails_closed_when_only_transaction_events_were_captured \
+            tests/test_alembic_live_sql_render.py::test_live_renderer_fails_closed_when_only_guard_sql_was_captured \
+            tests/test_alembic_live_sql_render.py::test_main_reports_renderer_fail_closed_diagnostics_without_writing_output \
             tests/test_alembic_live_sql_render.py::test_scratch_requires_template0_and_empty_catalog_before_upgrade \
             tests/test_alembic_live_sql_render.py::test_scratch_create_failure_never_drops_or_changes_execution_state \
             tests/test_alembic_live_sql_render.py::test_scratch_nonempty_or_unverifiable_catalog_blocks_upgrade \

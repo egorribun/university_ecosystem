@@ -19,7 +19,9 @@
 
 set -eu
 # shellcheck disable=SC3040
-set -o pipefail 2>/dev/null || true
+if (set -o pipefail) 2>/dev/null; then
+  set -o pipefail
+fi
 
 # Render config.yaml with env-var substitution.
 # Both POSTGRES_USER + POSTGRES_PWD are required (provided by docker-compose

@@ -382,7 +382,7 @@ def _validate_password_policy(password: str, *, locale: str | None = None) -> No
 
 def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
     """Synchronous verification (CPU blocking)."""
-    if hashed_password.startswith("$argon2"):
+    if hashed_password.startswith("$argon2id$"):
         try:
             argon2_hasher.verify(hashed_password, plain_password)
             return True
@@ -390,12 +390,13 @@ def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
             return False
         except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — unknown argon2 error returns False (reviewed TD-27-04)
             # TD-W8-01: Hash format is invalid or argon2 raised an unexpected error.
-            # Do NOT fall back to bcrypt — a malformed $argon2 hash is not a bcrypt
+            # Do NOT fall back to bcrypt — a malformed $argon2id$ hash is not a
+            # bcrypt
             # hash, and bcrypt silently ignores unrecognised prefixes, meaning a
             # crafted argon2-prefixed string could pass bcrypt verification.
             # Return False: caller gets an authentication failure (safe default).
             _logger.warning(
-                "argon2 verify raised unexpected error for $argon2-prefix hash — "
+                "argon2 verify raised unexpected error for $argon2id$ hash — "
                 "returning False (no bcrypt fallback): %s",
                 type(exc).__name__,
             )
@@ -444,7 +445,7 @@ def verify_and_update_password_sync(
 ) -> tuple[bool, str | None]:
     """Synchronous verify and update (CPU blocking)."""
     # Check if we should upgrade/verify with native argon2 first
-    if hashed_password.startswith("$argon2"):
+    if hashed_password.startswith("$argon2id$"):
         try:
             argon2_hasher.verify(hashed_password, plain_password)
             # Check if rehash is needed

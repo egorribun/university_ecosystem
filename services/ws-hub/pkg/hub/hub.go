@@ -1214,35 +1214,7 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 	case msg.Type == "notification":
 		return h.collectNotificationRecipientsLocked(msg, span)
 	case msg.Room != "":
-		clients, ok := h.Rooms[msg.Room]
-		if !ok {
-			return nil
-		}
-		if msg.audiencePresent {
-			recipients := make([]recipient, 0, min(len(clients), len(msg.audienceUserIDs)))
-			for client := range clients {
-				if client == nil {
-					continue
-				}
-				if _, allowed := msg.audienceUserIDs[client.UserID]; allowed {
-					recipients = append(recipients, recipient{client: client})
-				}
-			}
-			if span != nil && span.IsRecording() {
-				span.SetAttributes(attribute.Int("recipient.count", len(recipients)))
-			}
-			return recipients
-		}
-		if span != nil && span.IsRecording() {
-			span.SetAttributes(attribute.Int("recipient.count", len(clients)))
-		}
-		recipients := make([]recipient, len(clients))
-		i := 0
-		for c := range clients {
-			recipients[i] = recipient{client: c}
-			i++
-		}
-		return recipients
+		return h.collectRoomRecipientsLocked(msg, span)
 	case msg.To != "":
 		c, ok := h.Clients[msg.To]
 		if !ok {
@@ -1264,6 +1236,39 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 		}
 		return recipients
 	}
+}
+
+// collectRoomRecipientsLocked requires Hub.mu to be held for reading.
+func (h *Hub) collectRoomRecipientsLocked(msg *Message, span trace.Span) []recipient {
+	clients, ok := h.Rooms[msg.Room]
+	if !ok {
+		return nil
+	}
+	if msg.audiencePresent {
+		recipients := make([]recipient, 0, min(len(clients), len(msg.audienceUserIDs)))
+		for client := range clients {
+			if client == nil {
+				continue
+			}
+			if _, allowed := msg.audienceUserIDs[client.UserID]; allowed {
+				recipients = append(recipients, recipient{client: client})
+			}
+		}
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(attribute.Int("recipient.count", len(recipients)))
+		}
+		return recipients
+	}
+	if span != nil && span.IsRecording() {
+		span.SetAttributes(attribute.Int("recipient.count", len(clients)))
+	}
+	recipients := make([]recipient, len(clients))
+	i := 0
+	for client := range clients {
+		recipients[i] = recipient{client: client}
+		i++
+	}
+	return recipients
 }
 
 // collectNotificationRecipientsLocked requires Hub.mu to be held for reading.

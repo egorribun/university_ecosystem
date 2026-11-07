@@ -64,6 +64,9 @@ handoffs are intentionally not part of the canonical index.
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
+- [Current full audit reassessment, 2026-11-07 UTC](audits/AUDIT-2026-11-06-full-reassessment.md) — 478 / 512 accepted or resolved, 34 open; 25 criterion-specific acceptance scopes plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Dated previous cohort checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#previous-cohort-checkpoint--2026-11-06-2359-utc) — 476 / 512, 36 open (19S / 15P / 1U / 1N), retained as history.
+- [Dated cumulative scoped audit review, 2026-11-06](audits/AUDIT-2026-11-06-review.md) — AUD-426 PostgreSQL, AUD-231 compiled SSR CSP/nonce, and AUD-449 Caddy/Gunicorn log-redaction acceptances with separate evidence limits; overall CI and release readiness are not accepted.
 - [Full platform audit, October 2026](audits/AUDIT-2026-10.md) — current
   open-finding register; [dependency closure checkpoint (2026-10-15)](audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15)
   records frozen dependency selection and source-bound local evidence. The
@@ -81,16 +84,23 @@ handoffs are intentionally not part of the canonical index.
   conditional 250-overlay result. The policy approvals do not establish passing
   tests, final-source validation, or hosted-check results. Git and PR #1343 determine published source
   and hosted status. At HEAD `1cc8fb2db`, the detect-secrets disposition file
-  contains 362 records. At the 2026-11-05 checkpoint, the working tree contained 363 after adding
-  the owner-approved Semgrep rules-checkout pin; that interim staged update was
-  unpublished and still required source-bound validation. Following the exact
-  2026-11-06 owner decisions and staged policy integration, the 2026-11-06
-  working tree contains 494 approved disposition records: 363 previously active
-  records, 106 previously owner-approved identities now materialized, 21
-  previously approved exact identities, and four newly approved exact identities.
-  The inventory is not evidence of a passing scan or required checks; each
-  source SHA requires its own validation. The separate finite Gitleaks approval
-  covers 27 historical fingerprints.
+  contained 362 records. At the 2026-11-05 checkpoint, the working tree
+  contained 363 after adding the owner-approved Semgrep rules-checkout pin; that
+  interim staged update was unpublished and still required source-bound
+  validation. At the N5 integration snapshot on 2026-11-06, the working tree
+  contained 495 approved disposition records: 363 previously active records,
+  106 previously owner-approved identities now materialized, 21 previously
+  approved exact identities, and five newly approved exact identities (two
+  `public_integrity_digest` and three `ci_test_contract_sentinel`). The prior
+  494-record set remained unchanged, including expiry values; the additional
+  `public_integrity_digest` identity expires 2027-01-10. The inventory is not evidence of a passing scan or required checks; each source SHA requires its own validation.
+  This historical inventory did not establish passing tests, final-source validation, or hosted-check results.
+  The separate finite Gitleaks approval covers 27 historical fingerprints.
+  The subsequent N6 decisions approve four Semgrep companion-hash refreshes
+  for rows #7–#10 and exactly two `public_integrity_digest` identities. After
+  atomic integration, the working tree contains 497 approved disposition records;
+  expiry values remain unchanged, and the two additions expire 2027-01-10. The
+  baseline remains at 242 identities and Gitleaks at 27 historical fingerprints.
   See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](adr/ADR-047-risk-based-quality-policy.md#one-exact-historical-public-test-password-hash-fingerprint-2026-11-01).
   See the [two-identity update](audits/AUDIT-2026-10.md#owner-approved-two-identity-follow-up-2026-10-16)
   and the [nine-identity update](audits/AUDIT-2026-10.md#owner-approved-nine-go-source-contract-identifiers-2026-10-16).
@@ -114,7 +124,7 @@ implementation guidance.
 | Enforced quality and check inventory          | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
 | Operator procedures                           | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/)                                                                                    |
 | Finding traceability and historical retention | [Audit index](audits/INDEX.md)                                                                                                          |
-| Current open findings                         | [Platform audit, October 2026](audits/AUDIT-2026-10.md)                                                                                 |
+| Current open findings                         | [Current 34-finding reassessment, 2026-11-07 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-34-finding-complement)                 |
 
 Update the canonical source before adjusting summaries or translations. Keep
 commands, versions and configuration descriptions aligned with executable

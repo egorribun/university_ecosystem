@@ -39,7 +39,8 @@ from scripts.quality.read_alembic_revision import (
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SQL_OPERATION = re.compile(
     r"^(CREATE|ALTER|DROP|COMMENT|GRANT|REVOKE|TRUNCATE|RENAME|SET|LOCK|"
-    r"INSERT|UPDATE|DELETE|MERGE)\b",
+    r"INSERT|UPDATE|DELETE|MERGE|DO|SELECT|WITH|BEGIN|START|COMMIT|ROLLBACK|"
+    r"SAVEPOINT|RELEASE)\b",
     re.IGNORECASE,
 )
 _DDL_OPERATIONS = {
@@ -52,6 +53,25 @@ _DDL_OPERATIONS = {
     "TRUNCATE",
     "RENAME",
     "SET",
+}
+_GUARD_SQL_OPERATIONS = {"DO", "SELECT", "WITH"}
+_LINTABLE_DDL_OPERATIONS = {
+    "CREATE",
+    "ALTER",
+    "DROP",
+    "COMMENT",
+    "GRANT",
+    "REVOKE",
+    "TRUNCATE",
+    "RENAME",
+}
+_TRANSACTION_OPERATIONS = {
+    "BEGIN",
+    "START",
+    "COMMIT",
+    "ROLLBACK",
+    "SAVEPOINT",
+    "RELEASE",
 }
 _PARAMETERIZED_DML_NOTE = (
     "-- observed parameterized DML template; non-DDL observation only, "
@@ -147,6 +167,8 @@ _SAFE_CLI_DIAGNOSTICS: dict[type[Exception], frozenset[str]] = {
             "PostgreSQL scratch catalog check failed",
             "PostgreSQL scratch creation failed",
             "PostgreSQL scratch cleanup failed",
+            "PostgreSQL migration emitted no lintable DDL",
+            "unsupported migration SQL operation",
         }
     ),
 }
@@ -170,6 +192,7 @@ class _DdlRecorder:
     def __init__(self) -> None:
         self.active = False
         self.statements: list[str] = []
+        self.has_lintable_ddl = False
 
     @staticmethod
     def _first_operation(statement: str) -> str | None:
@@ -232,14 +255,26 @@ class _DdlRecorder:
 
         operation = self._first_operation(statement)
         if operation is None:
+            raise LiveRenderError("unsupported migration SQL operation")
+
+        if operation in _TRANSACTION_OPERATIONS:
             return
 
         if operation in _DDL_OPERATIONS or operation == "LOCK":
             self.statements.append(statement.strip())
+            if operation in _LINTABLE_DDL_OPERATIONS:
+                self.has_lintable_ddl = True
+            return
+
+        if operation in _GUARD_SQL_OPERATIONS:
+            # Guard and catalog SQL must remain visible to the lint stream.
+            # Parameters are not interpolated: only the statement template is
+            # recorded, just as for other cursor observations.
+            self.statements.append(statement.strip())
             return
 
         if operation not in {"INSERT", "UPDATE", "DELETE", "MERGE"}:
-            return
+            raise LiveRenderError("unsupported migration SQL operation")
 
         compiled = getattr(context, "compiled", None)
         compiled_binds = getattr(compiled, "binds", {})
@@ -473,6 +508,8 @@ def render_revision_sql(migration: Path, database_url: str) -> str:
             finally:
                 # Keep the recorder active during Alembic's rollback on failure.
                 recorder.active = False
+            if not recorder.has_lintable_ddl:
+                raise LiveRenderError("PostgreSQL migration emitted no lintable DDL")
         finally:
             recorder.active = False
             try:

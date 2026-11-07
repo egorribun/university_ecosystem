@@ -216,8 +216,17 @@ try {
         Copy-Item -LiteralPath $Helper -Destination (Join-Path $projectScripts 'bootstrap-functions.ps1')
         $script:ProjectRoot = $State
         $ProjectRoot = $State
-        $selection = $ast.Find({param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.StartLineNumber -ge 850 -and $n.Extent.StartLineNumber -le 855 -and $n.Extent.Text.StartsWith('if ($LiveStateMode)')}, $true)
-        $prepareLease = $ast.Find({param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.StartLineNumber -ge 3375 -and $n.Extent.StartLineNumber -le 3390 -and $n.Extent.Text.StartsWith('if ($script:TemporalBootstrapRequested)')}, $true)
+        $selection = $ast.Find({
+            param($n)
+            $n -is [System.Management.Automation.Language.IfStatementAst] -and
+            $n.Extent.Text.StartsWith('if ($LiveStateMode)') -and
+            $n.Extent.Text.Contains('$prepareManagedFull')
+        }, $true)
+        $prepareLease = $ast.Find({
+            param($n)
+            $n -is [System.Management.Automation.Language.IfStatementAst] -and
+            $n.Extent.Text.StartsWith('if ($script:TemporalBootstrapRequested)')
+        }, $true)
         if ($null -eq $selection -or $null -eq $prepareLease) { throw 'managed prepare selection or lease guard missing' }
         Invoke-Expression $selection.Extent.Text
         Invoke-Expression $bootstrapAssignment.Extent.Text

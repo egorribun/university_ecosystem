@@ -16,18 +16,9 @@ from typing import Any
 
 import pytest
 
-
-def _repository_root() -> Path:
-    for candidate in Path(__file__).resolve().parents:
-        if (candidate / "charts").is_dir() and (candidate / "pyproject.toml").is_file():
-            return candidate
-    raise RuntimeError("could not locate the repository root from this test file")
-
-
-REPOSITORY_ROOT = _repository_root()
-CANDIDATE_ROOT = Path(__file__).resolve().parents[1]
-HELPER_PATH = CANDIDATE_ROOT / "scripts/quality/helm_rendered_target_overlay.py"
-REGISTRY_PATH = CANDIDATE_ROOT / "scripts/quality/helm_semgrep_profile_registry.json"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+HELPER_PATH = REPOSITORY_ROOT / "scripts/quality/helm_rendered_target_overlay.py"
+REGISTRY_PATH = REPOSITORY_ROOT / "scripts/quality/helm_semgrep_profile_registry.json"
 
 _spec = importlib.util.spec_from_file_location(
     "helm_rendered_target_overlay_candidate", HELPER_PATH

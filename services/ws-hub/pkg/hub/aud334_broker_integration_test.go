@@ -64,6 +64,7 @@ func aud334AwaitPump(t *testing.T, done <-chan struct{}) {
 }
 
 func TestIntegrationAUD334RejectedResumeReconnectsAndReplaysFromJetStream(t *testing.T) {
+	const replayUserID = "00000000-0000-4000-8000-000000000001"
 	nc, js := startJetStreamNATSContainer(t)
 	stream, room, created := aud334OwnedStream(t, js)
 	subject := "chat." + room
@@ -80,13 +81,13 @@ func TestIntegrationAUD334RejectedResumeReconnectsAndReplaysFromJetStream(t *tes
 	t.Cleanup(h.Stop)
 
 	baseline, err := js.Publish(subject, []byte(fmt.Sprintf(
-		`{"type":"new_message","room":%q,"payload":{"chat_id":%q,"text":"baseline"}}`, room, room)))
+		`{"type":"new_message","room":%q,"audience":[%q],"payload":{"chat_id":%q,"text":"baseline"}}`, room, replayUserID, room)))
 	require.NoError(t, err)
 	missed, err := js.Publish(subject, []byte(fmt.Sprintf(
-		`{"type":"new_message","room":%q,"payload":{"chat_id":%q,"text":"missed"}}`, room, room)))
+		`{"type":"new_message","room":%q,"audience":[%q],"payload":{"chat_id":%q,"text":"missed"}}`, room, replayUserID, room)))
 	require.NoError(t, err)
 	require.Equal(t, baseline.Sequence+1, missed.Sequence)
-	token, err := h.issueResumeToken("replay-user", room, stream, baseline.Sequence)
+	token, err := h.issueResumeToken(replayUserID, room, stream, baseline.Sequence)
 	require.NoError(t, err)
 	payload, err := json.Marshal(joinPayload{ResumeToken: token})
 	require.NoError(t, err)
@@ -94,7 +95,7 @@ func TestIntegrationAUD334RejectedResumeReconnectsAndReplaysFromJetStream(t *tes
 	require.NoError(t, err)
 
 	firstServer, firstBrowser := newConnPair(t)
-	rejected := newClientOn(h, firstServer, "rejected", "replay-user")
+	rejected := newClientOn(h, firstServer, "rejected", replayUserID)
 	rejected.Send = make(chan []byte, 1)
 	rejected.Send <- []byte("pending")
 	rejected.replayJoinLimiter = rate.NewLimiter(0, 0)

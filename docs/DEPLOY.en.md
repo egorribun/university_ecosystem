@@ -22,7 +22,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
   `cwv-field-certification.yml` workflow and production-only certificate guard
   remain for future external deployments; they are not prerequisites for the
   `v1.0.0` release.
-- Backend and frontend must run over HTTPS, otherwise the browser blocks `/static` and `/storage` assets.
+- Production browser traffic to the frontend, API, and asset routes must use HTTPS so browsers do not block mixed content from `/static` or `/storage`. The supported local full-Compose stack intentionally serves the app at same-origin `http://localhost` through Caddy on port 80; this HTTP exception is for local development only.
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The `redis` backend and a URI supplied from a protected store through environment variables enable shared storage for middleware and sensitive endpoints; keep credentials out of URLs and shell history. For single-process development/testing, set `RATE_LIMIT_STORAGE_BACKEND=memory` and `RATE_LIMIT_STORAGE_URI=memory://`. Staging and production require `RATE_LIMIT_STORAGE_BACKEND=redis` with a valid Redis URI; memory mode is rejected during settings validation.
 - Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
 - Control the object-storage health probe with `HEALTH_STORAGE_PROBE_ENABLED` (run a write/delete check when set to `true`) and `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` (cache probe results between intervals). When disabled, the probe uses cheap bucket/list calls when available, which is friendlier to external providers.
@@ -337,10 +337,10 @@ PY
 
 ## Docker image
 
-- `frontend.Dockerfile` uses separate stages for Rust/WASM compilation, build/runtime dependency installation, and the TanStack Start SSR build. The final image is based on digest-pinned `node:24-alpine`, runs as the unprivileged `node` user, and contains only production dependencies, WASM packages, `dist/`, and the SSR launcher.
+- `frontend.Dockerfile` uses separate stages for Rust/WASM compilation, build/runtime dependency installation, and the TanStack Start SSR build. The final image uses the digest-pinned `node:24.21.0-alpine` reference, runs as the unprivileged `node` user, and contains only production dependencies, WASM packages, `dist/`, and the SSR launcher.
 - `VITE_BACKEND_ORIGIN` remains the frontend build-time fallback. Node SSR first reads the runtime `BACKEND_ORIGIN`, so one immutable image works with different Compose/Helm service names; the chart and Compose already provide the internal backend address. Browser API requests stay same-origin and flow through the gateway.
 - Static files and SSR are served by `frontend/scripts/server-prod.mjs`: hashed files in `assets/` receive `Cache-Control: public, max-age=31536000, immutable`, while HTML receives `no-cache`/`no-store`.
-- The container listens on port `3000` on the internal `frontend_net`; Caddy on ports `80`/`443` is the supported host entry and proxies requests to `frontend:3000`. Docker health checks `/healthz` inside the container, while `start-docker.ps1` separately verifies the rendered `/login` route through Caddy.
+- The container listens on port `3000` on the internal `frontend_net`; Compose publishes Caddy on host ports `80` and `443`. The local full-Compose Caddyfile serves the app on `:80` without an HTTPS redirect; production browser access must use HTTPS. Caddy proxies requests to `frontend:3000`. Docker health checks `/healthz` inside the container, while `start-docker.ps1` separately verifies the rendered `/login` route through Caddy.
 
 ```bash
 # example local build
