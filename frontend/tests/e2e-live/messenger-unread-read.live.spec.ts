@@ -108,19 +108,25 @@ async function registerSyntheticUser(page: Page, account: SyntheticAccount): Pro
   expect(registrationResponse.ok(), "the unique synthetic account registers in the live app").toBe(
     true
   )
-  const registration = (await registrationResponse.json()) as { id?: unknown }
-  if (typeof registration.id !== "string" || registration.id.length === 0) {
-    throw new Error("Synthetic Messenger account registration returned no account id")
-  }
-  account.id = registration.id
+  expect(await registrationResponse.json()).toEqual({ status: "ok" })
 
   await expect(page).toHaveURL(/\/login$/u)
   await loginWith(page, account.email, account.password)
   const identityResponse = await page.request.get("/api/v1/users/me")
   expect(identityResponse.ok()).toBe(true)
-  const identity = (await identityResponse.json()) as { id: string; role: string }
-  expect(identity.id).toBe(account.id)
+  const identity = (await identityResponse.json()) as {
+    id?: unknown
+    email?: unknown
+    full_name?: unknown
+    role?: unknown
+  }
+  if (typeof identity.id !== "string" || identity.id.length === 0) {
+    throw new Error("Authenticated synthetic messenger account returned no account id")
+  }
+  expect(identity.email).toBe(account.email)
+  expect(identity.full_name).toBe(account.fullName)
   expect(identity.role).toBe("student")
+  account.id = identity.id
 }
 
 async function createDirectChat(
