@@ -111,3 +111,79 @@ export function classifySmokeFailures({
     networkFailures,
   }
 }
+
+// Public diagnostics are bounded metadata, never serialized axe results or DOM nodes.
+const AXE_DIAGNOSTIC_ROUTES = new Set([
+  "/dashboard",
+  "/events",
+  "/news",
+  "/schedule",
+  "/profile",
+  "/settings",
+  "/map",
+  "/activity",
+  "/messenger",
+])
+const AXE_DIAGNOSTIC_IMPACTS = new Set(["minor", "moderate", "serious", "critical"])
+const MAX_AXE_DIAGNOSTIC_ENTRIES = 20
+const MAX_AXE_DIAGNOSTIC_OUTPUT_LENGTH = 4096
+
+export function summarizeAxeDiagnostics(route, violations, trustedRuleIds) {
+  if (!Array.isArray(violations)) throw new TypeError("Invalid axe diagnostics")
+  const totalViolationCount = violations.length
+  if (!Number.isSafeInteger(totalViolationCount) || totalViolationCount < 0) {
+    throw new TypeError("Invalid axe diagnostics")
+  }
+  let routeLabel = "unknown-route"
+  if (typeof route === "string" && route.length <= 64) {
+    if (AXE_DIAGNOSTIC_ROUTES.has(route)) routeLabel = route
+    else if (
+      /^\/messenger\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+        route
+      )
+    ) {
+      routeLabel = "/messenger/:id"
+    }
+  }
+  const entries = []
+  for (
+    let index = 0;
+    index < Math.min(totalViolationCount, MAX_AXE_DIAGNOSTIC_ENTRIES);
+    index += 1
+  ) {
+    const violation = violations[index]
+    const { id, impact, nodes } = violation && typeof violation === "object" ? violation : {}
+    const nodeCount = Array.isArray(nodes) ? nodes.length : 0
+    entries.push({
+      id:
+        typeof id === "string" &&
+        /^[a-z][a-z0-9-]{0,63}$/u.test(id) &&
+        Set.prototype.has.call(trustedRuleIds, id)
+          ? id
+          : "unknown-rule",
+      impact: AXE_DIAGNOSTIC_IMPACTS.has(impact) ? impact : "unknown-impact",
+      nodeCount: Number.isSafeInteger(nodeCount) && nodeCount >= 0 ? nodeCount : 0,
+    })
+  }
+  return {
+    route: routeLabel,
+    totalViolationCount,
+    omittedViolationCount: totalViolationCount - entries.length,
+    violations: entries,
+  }
+}
+
+export function emitAxeDiagnostics(route, violations, loadTrustedRuleIds, write) {
+  // Catalog, projection, serialization and output faults cannot affect audit gates.
+  try {
+    const summary = summarizeAxeDiagnostics(route, violations, loadTrustedRuleIds())
+    const encoded = JSON.stringify(summary)
+    if (typeof encoded !== "string") return
+    const line = "axe-diagnostics " + encoded
+    if (line.length > MAX_AXE_DIAGNOSTIC_OUTPUT_LENGTH) return
+    const output = write ?? console.log
+    output(line)
+  } catch {
+    // Never serialize the diagnostic error or retry a failing output sink.
+  }
+}

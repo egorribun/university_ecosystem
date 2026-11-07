@@ -1528,6 +1528,8 @@ export function summarizeAuthenticatedVisualDiagnostics({
     httpStatusClassCounts,
   }
 }
+import { emitAxeDiagnostics } from "./visual-smoke-contract.mjs"
+
 async function auditRoute(page, routePath, outDir, captureConfig = null, sourceSha = null) {
   const consoleMessages = []
   const networkRequests = []
@@ -1765,6 +1767,18 @@ async function auditRoute(page, routePath, outDir, captureConfig = null, sourceS
       )
     } catch (err) {
       axeError = err.message
+    }
+    if (axeError === null) {
+      emitAxeDiagnostics(
+        routePath,
+        axeViolations,
+        () =>
+          new Set(
+            requireFromProject("axe-core")
+              .getRules()
+              .map((rule) => rule.ruleId)
+          )
+      )
     }
   } catch (err) {
     navError = err
