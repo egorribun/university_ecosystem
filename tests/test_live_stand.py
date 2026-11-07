@@ -930,8 +930,13 @@ def test_e2e_reuses_owner_scoped_admin_password_across_reruns(
         correlation_ids: Mapping[str, str],
         container_pin: tuple[str, str],
         docker_context: object | None = None,
+        reset_probe_markers: Mapping[str, Mapping[str, Mapping[str, str]]]
+        | None = None,
     ) -> None:
         assert checked_owner == owner
+        assert reset_probe_markers == json.loads(
+            playwright_runs[-1][1]["LIVE_AUD178_PROBE_MARKERS"]
+        )
         assert output_directory.is_dir()
         assert finished_at_ms >= started_at_ms
         assert password_nonce == probe_nonce
@@ -5225,8 +5230,11 @@ def test_live_e2e_probe_admission_is_bounded_and_keeps_nonprobe_defaults(
         correlation_ids: Mapping[str, str],
         container_pin: tuple[str, str],
         docker_context: object | None = None,
+        reset_probe_markers: Mapping[str, Mapping[str, Mapping[str, str]]]
+        | None = None,
     ) -> None:
         assert checked_owner == owner
+        assert reset_probe_markers is None
         assert output_path.is_dir()
         assert finished_at_ms >= started_at_ms
         assert password_nonce == nonce
