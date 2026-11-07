@@ -68,11 +68,15 @@ describe("census classification", () => {
   it.each([
     ["it('n', () => {})", true],
     ["test('n', () => {})", true],
+    ["test.concurrent('n', () => {})", true],
+    ["test.sequential.each([1])('n', () => {})", true],
     // Built at runtime: the repository's focus-marker scan matches the literal suffix.
     [`it.${["o", "nly"].join("")}('n', () => {})`, true],
     ["it.each([1])('n', () => {})", true],
     ["test.each([1])('n', () => {})", true],
     ["test.beforeEach(() => {})", false],
+    ["test.use({ serviceWorkers: 'block' })", false],
+    ["test.extend({ fixture: async ({}, use) => use(1) })", false],
     ["test.describe('g', () => {})", false],
     ["it.skip('n', () => {})", false],
     ["other('n', () => {})", false],
@@ -106,7 +110,7 @@ describe("census classification", () => {
     expect([...collectFunctionBodies(source).keys()].sort()).toStrictEqual(["arrow", "named"])
   })
 
-  it("finds an assertion root, an assert-prefixed call and a known helper", () => {
+  it("finds direct assertion roots and a known helper", () => {
     const body = (code: string) => {
       const source = parseTypeScript("c.ts", `const f = () => { ${code} }`)
       return collectFunctionBodies(source).get("f")!
@@ -141,6 +145,9 @@ describe("census classification", () => {
     const files = testFiles(join(FRONTEND_ROOT, "src", "test"))
     expect(files).toContain(
       join(FRONTEND_ROOT, "src", "test", "__tests__", "testAssertionCensus.test.ts")
+    )
+    expect(testFiles(join(FRONTEND_ROOT, "scripts"))).toContain(
+      join(FRONTEND_ROOT, "scripts", "lhci-windows-fallback.test.mjs")
     )
     expect(repoRelative(FRONTEND_ROOT, join(FRONTEND_ROOT, "src", "a", "b.ts"))).toBe("src/a/b.ts")
     expect(callsOf(parseTypeScript("x.ts", "f()"))).toHaveLength(1)
@@ -201,6 +208,67 @@ describe("census helper resolution across modules", () => {
     expect(names).toStrictEqual(["asserts nothing"])
   })
 
+  it("rejects assertion-shaped no-ops and non-matcher calls", () => {
+    const body = (code: string) => {
+      const source = parseTypeScript("c.ts", `const f = () => { ${code} }`)
+      return collectFunctionBodies(source).get("f")!
+    }
+
+    const nonAssertions = [
+      "expect(1)",
+      "expect.assertions(1)",
+      "expect(1).toString()",
+      "expect(1).toBe",
+      "assertWidget(1)",
+    ]
+    expect(nonAssertions.map((code) => containsAssertion(body(code), new Set()))).toStrictEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+    ])
+
+    expect(containsAssertion(body("expect(1).toBe(1)"), new Set())).toBe(true)
+    expect(containsAssertion(body("assert.ok(1)"), new Set())).toBe(true)
+  })
+
+  it("does not count assertions inside an uncalled local helper", () => {
+    const source = parseTypeScript(
+      FIXTURE_PATH,
+      "it('target', () => { const unused = () => { expect(1).toBe(1) } })"
+    )
+    const census = createAssertionCensus(FRONTEND_ROOT)
+    const callback = testCallback(
+      callsOf(source).find((call) => testCallback(call) !== undefined)!
+    )!
+    const helpers = census.fileHelpers(source, FIXTURE_PATH)
+
+    expect(helpers.has("unused")).toBe(true)
+    expect(containsAssertion(callback, helpers)).toBe(false)
+  })
+
+  it("recognises fail-fast guards and assertion helpers unpacked from a table", () => {
+    const source = parseTypeScript(
+      FIXTURE_PATH,
+      [
+        "const verifyOne = () => { expect(1).toBe(1) }",
+        'const contracts = [["one", verifyOne]]',
+        "for (const [, verify] of contracts) { it('table helper', () => verify()) }",
+        "const requireCondition = (condition: boolean) => { if (!condition) throw new Error('failed') }",
+        "it('guard helper', () => requireCondition(false))",
+      ].join("\n")
+    )
+    const helpers = createAssertionCensus(FRONTEND_ROOT).fileHelpers(source, FIXTURE_PATH)
+    const callbacks = callsOf(source)
+      .map((call) => testCallback(call))
+      .filter((callback): callback is ts.FunctionLikeDeclaration => callback !== undefined)
+
+    expect(helpers.has("verify")).toBe(true)
+    expect(callbacks).toHaveLength(2)
+    expect(callbacks.every((callback) => containsAssertion(callback, helpers))).toBe(true)
+  })
+
   it("memoises module helper sets and reuses the same answer on a second query", () => {
     const census = createAssertionCensus(FRONTEND_ROOT)
     const helpersPath = join(FRONTEND_ROOT, "src", "tests", "helpers", "expectInlineBackground.ts")
@@ -233,15 +301,40 @@ describe("census on temporary repositories", () => {
     writeFileSync(path, "it('does nothing', () => {\n  const value = 1\n  void value\n})\n")
     const census = createAssertionCensus(root)
     expect(census.unassertedTests(path)).toStrictEqual(["src/unchecked.test.ts:1"])
-    expect(census.run()).toStrictEqual({
+    expect(census.run(["src"])).toStrictEqual({
       files: 1,
+      blocks: 1,
       flagged: ["src/unchecked.test.ts:1"],
+      unsupported: [],
     })
   })
 
   it("treats a missing census root as an empty source tree", () => {
     const root = mkdtempSync(join(tmpdir(), "census-empty-"))
-    expect(createAssertionCensus(root).run()).toStrictEqual({ files: 0, flagged: [] })
+    expect(createAssertionCensus(root).run([])).toStrictEqual({
+      files: 0,
+      blocks: 0,
+      flagged: [],
+      unsupported: [],
+    })
+  })
+
+  it("fails closed on parser errors and unknown test-call modifiers", () => {
+    const root = mkdtempSync(join(tmpdir(), "census-unsupported-"))
+    mkdirSync(join(root, "src"))
+    writeFileSync(join(root, "src", "unknown.test.ts"), "it.retry('unmodeled', () => {})\n")
+    writeFileSync(join(root, "src", "broken.test.ts"), "it('broken', () => {\n")
+
+    const result = createAssertionCensus(root).run(["src"])
+    expect(result.blocks).toBe(0)
+    expect(result.flagged).toStrictEqual([])
+    expect(result.unsupported).toHaveLength(2)
+    expect(result.unsupported).toContain("src/unknown.test.ts:1: unsupported test-call form")
+    expect(
+      result.unsupported.some(
+        (entry) => entry.includes("src/broken.test.ts:") && entry.endsWith("parse diagnostic")
+      )
+    ).toBe(true)
   })
 })
 
@@ -258,9 +351,11 @@ describe("AUD-428 TypeScript test result census", () => {
 
   it("finds the frontend test sources", () => {
     expect(result.files).toBeGreaterThan(500)
+    expect(result.blocks).toBeGreaterThan(10_000)
   })
 
   it("has no unasserted test block in frontend test sources", () => {
     expect(result.flagged).toStrictEqual([])
+    expect(result.unsupported).toStrictEqual([])
   })
 })

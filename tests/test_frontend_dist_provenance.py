@@ -49,7 +49,7 @@ def _fixture() -> list[dict[str, Any]]:
 def test_accepts_one_complete_synthetic_verified_cli_result() -> None:
     # This validates our policy parser only. gh performs the live signature,
     # transparency-log, subject-file and trusted-root verification in CI.
-    provenance.validate_verified_output(_fixture(), _binding())
+    assert (provenance.validate_verified_output(_fixture(), _binding())) is None
 
 
 @pytest.mark.parametrize("version", ["2.102.0", "2.102.1", "3.0.0"])

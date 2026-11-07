@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import deque
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -45,8 +46,10 @@ def _sleep_then_cancel(n_before_cancel: int = 1):
 @pytest.mark.asyncio
 async def test_cleanup_loop_prunes_old_keeps_recent_skips_empty(monkeypatch):
     now = time.time()
-    memory._memory_windows["old"] = deque([now - 7200.0])  # < cutoff (now - 3600)
-    memory._memory_windows["recent"] = deque([now - 5.0])  # within window
+    old_timestamp = now - 7200.0
+    recent_timestamp = now - 5.0
+    memory._memory_windows["old"] = deque([old_timestamp])  # < cutoff (now - 3600)
+    memory._memory_windows["recent"] = deque([recent_timestamp])  # within window
     memory._memory_windows["empty"] = deque()  # falsy → `if not window: continue`
 
     monkeypatch.setattr(cleanup.asyncio, "sleep", _sleep_then_cancel())
@@ -55,23 +58,36 @@ async def test_cleanup_loop_prunes_old_keeps_recent_skips_empty(monkeypatch):
 
     assert "old" not in memory._memory_windows  # pruned to empty → popped
     assert "recent" in memory._memory_windows  # retained
+    assert memory._memory_windows["recent"] == deque([recent_timestamp])
     assert "empty" in memory._memory_windows  # continue branch left it untouched
+    assert not memory._memory_windows["empty"]
 
 
 @pytest.mark.asyncio
 async def test_cleanup_loop_swallows_unexpected_errors(monkeypatch):
     """A raise inside the prune body is logged and the loop survives (handler-nak)."""
-    memory._memory_windows["k"] = deque([time.time()])
+    timestamp = time.time()
+    memory._memory_windows["k"] = deque([timestamp])
+    failure = RuntimeError("shard lock failure")
 
     def _boom(_key):
-        raise RuntimeError("shard lock failure")
+        raise failure
 
     monkeypatch.setattr(cleanup, "_shard_lock", _boom)
     monkeypatch.setattr(cleanup.asyncio, "sleep", _sleep_then_cancel())
+    log = MagicMock()
+    monkeypatch.setattr(cleanup, "logger", log)
 
     # Must not propagate — `except Exception` logs and the loop continues to the
     # next sleep, which raises CancelledError and breaks cleanly.
     await cleanup._memory_cleanup_loop(interval_seconds=1)
+
+    log.error.assert_called_once()
+    assert log.error.call_args.args == (
+        "Error in memory rate limit cleanup task: %s",
+        failure,
+    )
+    assert memory._memory_windows["k"] == deque([timestamp])
 
 
 @pytest.mark.asyncio

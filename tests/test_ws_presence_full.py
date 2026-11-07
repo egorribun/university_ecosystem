@@ -134,7 +134,8 @@ class TestPresenceCacheInvalidation:
             cache_instance.enabled = False
             mock_cache.return_value = cache_instance
 
-            await invalidate_presence_audience_cache(uuid.uuid4())
+            assert (await invalidate_presence_audience_cache(uuid.uuid4())) is None
+            cache_instance.invalidate.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_invalidate_chat_participants(self):
@@ -157,7 +158,8 @@ class TestPresenceCacheInvalidation:
             cache_instance.enabled = False
             mock_cache.return_value = cache_instance
 
-            await invalidate_chat_participants_cache(uuid.uuid4())
+            assert (await invalidate_chat_participants_cache(uuid.uuid4())) is None
+            cache_instance.invalidate.assert_not_called()
 
 
 # ===========================================================================
@@ -325,8 +327,19 @@ class TestPresencePubSub:
     @pytest.mark.asyncio
     async def test_publish_disabled(self):
         ps = PresencePubSub()
-        # No redis, no error
-        await ps.publish({"user_id": str(uuid.uuid4()), "active": True})
+        assert (
+            await ps.publish({"user_id": str(uuid.uuid4()), "active": True})
+        ) is None
+        assert ps._redis is None
+
+        mock_redis = AsyncMock()
+        ps._redis = mock_redis
+        with patch("app.api.ws.presence.settings") as mock_settings:
+            mock_settings.presence_pubsub_enabled = False
+            assert (
+                await ps.publish({"user_id": str(uuid.uuid4()), "active": True})
+            ) is None
+        mock_redis.publish.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_publish_with_redis(self):
@@ -360,7 +373,11 @@ class TestPresencePubSub:
     @pytest.mark.asyncio
     async def test_shutdown_no_task(self):
         ps = PresencePubSub()
-        await ps.shutdown()  # noop
+        redis = AsyncMock()
+        ps._redis = redis
+        assert (await ps.shutdown()) is None  # noop
+        assert ps._pubsub_task is None
+        assert ps._redis is redis
 
     @pytest.mark.asyncio
     async def test_initialize_disabled(self):

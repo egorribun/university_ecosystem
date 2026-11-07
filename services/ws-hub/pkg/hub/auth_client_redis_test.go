@@ -37,7 +37,9 @@ func newMiniredisClient(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
 
 func TestStartEviction_NoOpIsSafe(t *testing.T) {
 	c := mustNewTestAuthClient(t, "http://localhost", "", nil)
-	c.StartEviction(context.Background()) // no-op since Wave 7; just exercises it
+	// StartEviction is a documented no-op because the LRU bounds its own memory.
+	// This control asserts only that the compatibility hook remains safe to call.
+	require.NotPanics(t, func() { c.StartEviction(context.Background()) })
 }
 
 func TestCanJoinRoom_RedisL2Hit(t *testing.T) {

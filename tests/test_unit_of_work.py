@@ -136,10 +136,12 @@ async def test_uow_no_session_ops():
     uow = UnitOfWork(session_factory)
 
     # These should not raise exceptions if session is None (guarded by if self._session)
-    await uow.commit()
-    await uow.rollback()
-    await uow.flush()
-    await uow._close()
+    assert (await uow.commit()) is None
+    assert (await uow.rollback()) is None
+    assert (await uow.flush()) is None
+    assert (await uow._close()) is None
+    session_factory.assert_not_called()
+    assert uow._session is None
 
 
 @pytest.mark.asyncio

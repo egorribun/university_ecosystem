@@ -268,7 +268,7 @@ def test_binding_accepts_inclusive_security_boundaries(
     overrides: dict[str, object], accepted: bool
 ) -> None:
     del accepted
-    _validate_binding(_binding(**overrides))
+    assert (_validate_binding(_binding(**overrides))) is None
 
 
 @pytest.mark.parametrize(

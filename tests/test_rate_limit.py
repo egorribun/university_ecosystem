@@ -3,7 +3,7 @@ import uuid
 
 import httpx
 import pytest
-from fastapi import Depends, FastAPI, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from hypothesis import HealthCheck, given
 from hypothesis import settings as hypo_settings
 from hypothesis import strategies as st
@@ -94,13 +94,15 @@ async def test_rate_limit_per_ip():
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
         endpoint = "/api/v1/news"
-        for _ in range(5):
+        for remaining in range(4, -1, -1):
             response = await client.get(endpoint)
             assert response.status_code == 200
             assert response.headers.get("X-RateLimit-Limit") == "5"
+            assert response.headers.get("X-RateLimit-Remaining") == str(remaining)
 
         response = await client.get(endpoint)
         assert response.status_code == 429
+        assert response.headers.get("X-RateLimit-Remaining") == "0"
 
 
 @pytest.mark.asyncio
@@ -319,7 +321,9 @@ async def test_login_route_limit_is_not_replaced_by_generic_sensitive_limit(
 
     monkeypatch.setitem(settings.__dict__, "rate_limit_sensitive_value", "1/minute")
     monkeypatch.setattr(settings, "rate_limit_storage_backend", "memory")
-    rate_limit.clear_memory_state()
+    from app.core.ratelimit.strategies import memory
+
+    monkeypatch.setattr(memory, "_memory_windows", {})
 
     request = Request(
         {
@@ -335,8 +339,18 @@ async def test_login_route_limit_is_not_replaced_by_generic_sensitive_limit(
         }
     )
 
-    await login_dependency(request)
-    await login_dependency(request)
+    # The pinned login route captures its own ``5/minute`` setting at import;
+    # the generic sensitive-route setting above must not reduce that budget to 1.
+    for _ in range(5):
+        assert await login_dependency(request) is None
+
+    with pytest.raises(HTTPException) as blocked:
+        await login_dependency(request)
+
+    assert blocked.value.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    retry_after = blocked.value.headers["Retry-After"]
+    assert retry_after.isdigit()
+    assert 0 < int(retry_after) <= 60
 
 
 @pytest.mark.asyncio

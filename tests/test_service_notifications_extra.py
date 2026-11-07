@@ -168,23 +168,25 @@ async def test_cleanup_stale_notifications_no_db(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_start_notifications_scheduler(monkeypatch):
-    # start_notifications_scheduler does a local `from app.workers.notifications
-    # import start_notifications_scheduler as _start`, so patching the module-level
-    # name '_start' on the scheduler module has no effect — it is never read.
-    # We must patch the function on the workers module directly and also cancel
-    # the background task that start_notifications_scheduler creates in the
-    # event loop to prevent leaking it into subsequent tests.
+    # The wrapper imports the worker function locally, so inject a stub module.
+    # Returning a callback verifies the wrapper's result without starting a task.
     import sys
 
     mock_worker_notifications = MagicMock()
-    mock_start = AsyncMock(return_value=None)
+    stop_callback = AsyncMock()
+    mock_start = AsyncMock(return_value=stop_callback)
     mock_worker_notifications.start_notifications_scheduler = mock_start
     monkeypatch.setitem(
         sys.modules, "app.workers.notifications", mock_worker_notifications
     )
 
-    await start_notifications_scheduler()
-    mock_start.assert_called_once()
+    result = await start_notifications_scheduler(
+        poll_seconds=17, window_minutes=9, max_backoff_seconds=120
+    )
+    assert result is stop_callback
+    mock_start.assert_awaited_once_with(
+        poll_seconds=17, window_minutes=9, max_backoff_seconds=120
+    )
 
 
 @pytest.mark.asyncio
@@ -213,7 +215,14 @@ async def test_scheduler_loop(monkeypatch):
         _workers_pkg, "notifications", mock_worker_module, raising=False
     )
 
-    await _scheduler_loop()
+    await _scheduler_loop(17, 9, max_backoff_seconds=120)
+    mock_worker_module.NotificationsScheduler.assert_called_once_with(
+        poll_seconds=17,
+        window_minutes=9,
+        max_backoff_seconds=120,
+        metrics=None,
+    )
+    mock_scheduler.run_forever.assert_awaited_once_with()
 
 
 def test_build_schedule_reminder_message():

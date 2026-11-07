@@ -1,7 +1,7 @@
 """Observability configuration and worker runtime-path tests."""
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -253,32 +253,40 @@ async def test_start_worker_monitoring_server_old_uvicorn():
     mock_server.started = mock_event
     mock_server.should_exit = False
 
-    async def mock_serve():
+    async def serve() -> None:
         mock_event.set()
 
-    mock_server.serve = mock_serve
+    mock_server.serve = AsyncMock(side_effect=serve)
 
     with patch("uvicorn.Server", return_value=mock_server):
         stop_fn = await app.core.observability.start_worker_monitoring_server(
             MagicMock(), host="127.0.0.1", port=8000
         )
+        assert mock_event.is_set()
         await stop_fn()
+        mock_server.serve.assert_awaited_once()
+        assert mock_server.should_exit is True
 
 
 def test_configure_worker_observability():
+    engine = MagicMock()
+    tracer_provider = MagicMock()
     with (
         patch("app.core.observability.settings") as mock_settings,
-        patch("app.core.observability._configure_logging"),
+        patch("app.core.observability._configure_logging") as mock_configure_logging,
         patch("app.core.observability._configure_otel") as mock_conf_otel,
         patch("app.core.observability._logger") as mock_logger,
+        patch("app.core.observability.trace") as mock_trace,
     ):
         mock_settings.enable_otel = True
-        mock_conf_otel.return_value = MagicMock()
+        mock_conf_otel.return_value = tracer_provider
 
         app.core.observability.configure_worker_observability(
-            worker_name="test_worker", engine=MagicMock()
+            worker_name="test_worker", engine=engine
         )
-        mock_conf_otel.assert_called_once()
+        mock_configure_logging.assert_called_once_with()
+        mock_conf_otel.assert_called_once_with(engine)
+        mock_trace.set_tracer_provider.assert_called_once_with(tracer_provider)
         mock_logger.info.assert_called_once_with(
             "Worker %s observability configured", "test_worker"
         )

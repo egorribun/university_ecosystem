@@ -49,8 +49,8 @@ UNSUPPORTED_PERFORMANCE_CLAIMS = (
 )
 
 
-def read(relative_path: str) -> str:
-    return (ROOT / relative_path).read_text(encoding="utf-8")
+def read(repository_path: Path) -> str:
+    return repository_path.read_text(encoding="utf-8")
 
 
 def has_current_cache_metric_names(document: str, auth_source: str) -> bool:
@@ -191,12 +191,12 @@ def budget_values(document: str, row_label: str) -> set[int]:
 
 class DocsSourceAlignmentTests(unittest.TestCase):
     def test_readme_profiles_and_budgets_are_source_bound(self) -> None:
-        readme = read("README.md")
-        readme_ru = read("README.ru.md")
-        rust_bench = read("native/rust_ext/benches/conflict_bench.rs")
-        rust_source = read("native/rust_ext/src/lib.rs")
-        websocket_profile = read("tests/performance/ws_hub_10k_test.js")
-        bundle_source = read("frontend/scripts/check-bundle-budget.mjs")
+        readme = read(ROOT / "README.md")
+        readme_ru = read(ROOT / "README.ru.md")
+        rust_bench = read(ROOT / "native/rust_ext/benches/conflict_bench.rs")
+        rust_source = read(ROOT / "native/rust_ext/src/lib.rs")
+        websocket_profile = read(ROOT / "tests/performance/ws_hub_10k_test.js")
+        bundle_source = read(ROOT / "frontend/scripts/check-bundle-budget.mjs")
 
         self.assertRegex(rust_bench, r"for size in \[10, 50, 100, 500\]")
         self.assertRegex(rust_bench, r"n\s*<=\s*576")
@@ -255,9 +255,9 @@ class DocsSourceAlignmentTests(unittest.TestCase):
         self.assertTrue(has_unsupported_performance_claim(stale_readme))
 
     def test_xfetch_semantics_and_prometheus_names_match_gateway_source(self) -> None:
-        auth_source = read("services/gateway/middleware/auth.go")
-        readme = read("README.md")
-        readme_ru = read("README.ru.md")
+        auth_source = read(ROOT / "services/gateway/middleware/auth.go")
+        readme = read(ROOT / "README.md")
+        readme_ru = read(ROOT / "README.ru.md")
 
         self.assertIn("Cache only positive revocation tombstones.", auth_source)
         self.assertIn(
@@ -279,16 +279,16 @@ class DocsSourceAlignmentTests(unittest.TestCase):
     def test_security_fallback_is_bounded_local_429_and_password_claim_is_scoped(
         self,
     ) -> None:
-        security_doc = read("SECURITY.md")
-        limiter_source = read("services/gateway/middleware/ratelimit.go")
-        auth_source = read("app/auth/security.py")
+        security_doc = read(ROOT / "SECURITY.md")
+        limiter_source = read(ROOT / "services/gateway/middleware/ratelimit.go")
+        auth_source = read(ROOT / "app/auth/security.py")
 
         self.assertTrue(has_correct_fallback_claim(security_doc, limiter_source))
         self.assertIn("rl.getClientIPKey(c)", limiter_source)
         self.assertIn('rl.allow(c, ctx, "user:"+userID)', limiter_source)
         self.assertIn("if rl.limiter == nil", limiter_source)
         self.assertIn("if err != nil", limiter_source)
-        revocation_source = read("services/gateway/middleware/auth.go")
+        revocation_source = read(ROOT / "services/gateway/middleware/auth.go")
         self.assertIn(
             "return false, failSecure, errRevocationStoreUnavailable", revocation_source
         )
@@ -330,12 +330,12 @@ class DocsSourceAlignmentTests(unittest.TestCase):
         )
 
     def test_local_http_and_production_https_scope_matches_edge_sources(self) -> None:
-        deploy_en = read("docs/DEPLOY.en.md")
-        deploy_ru = read("docs/DEPLOY.md")
-        readme = read("README.md")
-        readme_ru = read("README.ru.md")
-        caddy = read("infrastructure/Caddyfile")
-        compose = read("docker-compose.full.yml")
+        deploy_en = read(ROOT / "docs/DEPLOY.en.md")
+        deploy_ru = read(ROOT / "docs/DEPLOY.md")
+        readme = read(ROOT / "README.md")
+        readme_ru = read(ROOT / "README.ru.md")
+        caddy = read(ROOT / "infrastructure/Caddyfile")
+        compose = read(ROOT / "docker-compose.full.yml")
 
         self.assertTrue(has_local_https_scope(deploy_en, caddy, compose))
         self.assertIn("production браузерный трафик", deploy_ru)
@@ -363,15 +363,15 @@ class DocsSourceAlignmentTests(unittest.TestCase):
     def test_documented_image_tags_match_current_digest_pinned_dockerfiles(
         self,
     ) -> None:
-        agents = read("AGENTS.md")
-        deploy_en = read("docs/DEPLOY.en.md")
-        deploy_ru = read("docs/DEPLOY.md")
-        backend_dockerfile = read("backend.Dockerfile")
-        frontend_dockerfile = read("frontend.Dockerfile")
+        agents = read(ROOT / "AGENTS.md")
+        deploy_en = read(ROOT / "docs/DEPLOY.en.md")
+        deploy_ru = read(ROOT / "docs/DEPLOY.md")
+        backend_dockerfile = read(ROOT / "backend.Dockerfile")
+        frontend_dockerfile = read(ROOT / "frontend.Dockerfile")
         go_dockerfiles = (
-            read("services/gateway/Dockerfile"),
-            read("services/ws-hub/Dockerfile"),
-            read("services/file-processor/Dockerfile"),
+            read(ROOT / "services/gateway/Dockerfile"),
+            read(ROOT / "services/ws-hub/Dockerfile"),
+            read(ROOT / "services/file-processor/Dockerfile"),
         )
 
         exact_tags = (

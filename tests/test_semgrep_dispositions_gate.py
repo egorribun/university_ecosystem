@@ -1055,7 +1055,7 @@ def test_gate_rejects_a_symlinked_semgrepignore_file(tmp_path: Path) -> None:
 
 
 def test_live_repository_semgrepignore_matches_the_reviewed_pattern_set() -> None:
-    gate.validate_semgrep_ignore_policy(gate.REPOSITORY_ROOT)
+    assert (gate.validate_semgrep_ignore_policy(gate.REPOSITORY_ROOT)) is None
 
 
 @pytest.mark.parametrize(

@@ -193,15 +193,20 @@ async def test_save_attachment_blocked_extension() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_static_file_scenarios(tmp_path: Path) -> None:
-    # 1. Invalid URL scheme or missing path
-    with patch("app.utils.files.settings") as mock_settings:
-        mock_settings.storage_backend = "local"
-        mock_settings.static_dir_path = tmp_path
-        mock_settings.storage_static_base_url = "http://localhost/"
-        mock_settings.storage_static_origin = "http://localhost:8000"
+    from app.services.storage import StaticFSStorage
 
-        # Non-matching URL
+    avatar_path = tmp_path / "avatar.png"
+    avatar_path.write_bytes(b"keep local avatar")
+    backend = StaticFSStorage(
+        base_dir=tmp_path,
+        base_url="http://localhost/",
+        static_origin="http://localhost:8000",
+    )
+    with patch("app.utils.files._get_storage_backend", return_value=backend):
+        # A URL from another origin must not be treated as a local file key.
         await delete_static_file("http://external-domain.com/avatar.png")
+        assert avatar_path.read_bytes() == b"keep local avatar"
 
-        # Empty URL
+        # An empty reference must not remove any local file.
         await delete_static_file("")
+        assert avatar_path.read_bytes() == b"keep local avatar"

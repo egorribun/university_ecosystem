@@ -676,7 +676,7 @@ def test_optimize_image_accepts_the_minimum_inclusive_pixel_budget():
 
 def test_validate_image_dimensions_accepts_one_pixel_budget():
     """A 1x1 raster exactly consumes, but does not exceed, budget one."""
-    img_mod.validate_image_dimensions(1, 1, max_pixels=1)
+    assert (img_mod.validate_image_dimensions(1, 1, max_pixels=1)) is None
 
 
 @pytest.mark.parametrize(

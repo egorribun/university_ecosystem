@@ -351,15 +351,26 @@ func TestHandleCacheInvalidation_InvalidIdentifiersAreTermed(t *testing.T) {
 }
 
 func TestHandleCacheInvalidation_ValidSignatureWithoutAuthClient(t *testing.T) {
+	oldAck, oldTerm := jetStreamAckFunc, jetStreamTermFunc
+	t.Cleanup(func() { jetStreamAckFunc, jetStreamTermFunc = oldAck, oldTerm })
+	ackCalls, termCalls := 0, 0
+	jetStreamAckFunc = func(*nats.Msg) error { ackCalls++; return nil }
+	jetStreamTermFunc = func(*nats.Msg) error { termCalls++; return nil }
+
 	h := newNatsTestHub(nil, "internal-secret", 10) // pragma: allowlist secret
-	h.handleCacheInvalidation(context.Background())(&nats.Msg{
+	msg := &nats.Msg{
 		Subject: "cache.invalidate",
 		Data: signedInvalidationPayload(t, "internal-secret", invalidationData{
 			RoomID:    "22222222-2222-2222-2222-222222222222",
 			Timestamp: 1234,
 			UserID:    "11111111-1111-1111-1111-111111111111",
 		}),
+	}
+	require.NotPanics(t, func() {
+		h.handleCacheInvalidation(context.Background())(msg)
 	})
+	assert.Equal(t, 1, ackCalls, "a valid signed message is acknowledged even without an auth client")
+	assert.Zero(t, termCalls, "a valid message is not terminated")
 }
 
 func TestHandleCacheInvalidationAcceptsPythonEvictionSignature(t *testing.T) {
@@ -953,7 +964,9 @@ func TestRunLoop_GlobalBroadcastEvictsFullClient(t *testing.T) {
 func TestStop_IsIdempotent(t *testing.T) {
 	h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 10)
 	h.Stop()
-	h.Stop() // second call must be a no-op (stopOnce)
+	assert.True(t, h.stopped.Load(), "first stop closes hub admission")
+	require.NotPanics(t, h.Stop, "second call must be safe under stopOnce")
+	assert.True(t, h.stopped.Load(), "idempotent stop leaves hub stopped")
 }
 
 func TestHasJWKSCache_FalseWithoutSetup(t *testing.T) {

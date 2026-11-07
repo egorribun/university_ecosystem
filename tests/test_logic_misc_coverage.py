@@ -114,29 +114,41 @@ def test_cost_visitor_all_list_fields():
 
 @pytest.mark.asyncio
 async def test_query_cost_extension_low_cost():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
     from app.graphql.extensions import QueryCostExtension, _CostVisitor
 
     ext = object.__new__(QueryCostExtension)
-    ext.execution_context = MagicMock()
-    ext.execution_context.errors = None
+    errors: list[object] = []
     mock_doc = MagicMock()
-    ext.execution_context.graphql_document = mock_doc
-    ext.execution_context.context = MagicMock()
-    ext.execution_context.context.current_user = None
+    ext.execution_context = SimpleNamespace(
+        pre_execution_errors=errors,
+        graphql_document=mock_doc,
+        context=SimpleNamespace(current_user=None, request=None),
+    )
 
     visitor_instance = MagicMock(spec=_CostVisitor)
     visitor_instance.cost = 10  # under max
+    consume = AsyncMock(return_value=(True, 10))
 
     with (
-        patch("app.graphql.extensions.visit"),
-        patch("app.graphql.extensions._CostVisitor", return_value=visitor_instance),
+        patch("app.graphql.extensions.visit") as visit,
+        patch(
+            "app.graphql.extensions._CostVisitor", return_value=visitor_instance
+        ) as cost_visitor,
+        patch("app.graphql.extensions._consume_token_bucket", new=consume),
     ):
         gen = ext.on_validate()
         await gen.__anext__()
-        try:
+        with pytest.raises(StopAsyncIteration):
             await gen.__anext__()
-        except StopAsyncIteration:
-            pass
+
+    cost_visitor.assert_called_once_with()
+    visit.assert_called_once_with(mock_doc, visitor_instance)
+    consume.assert_awaited_once()
+    assert consume.await_args.kwargs["cost"] == 10
+    assert errors == []
 
 
 @pytest.mark.asyncio
@@ -168,35 +180,68 @@ async def test_query_cost_extension_high_cost():
 
 @pytest.mark.asyncio
 async def test_query_cost_extension_prior_errors():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    from graphql import GraphQLError
+
     from app.graphql.extensions import QueryCostExtension
 
     ext = object.__new__(QueryCostExtension)
-    ext.execution_context = MagicMock()
-    ext.execution_context.errors = ["some error"]
+    prior_error = GraphQLError("some error")
+    errors = [prior_error]
+    ext.execution_context = SimpleNamespace(
+        pre_execution_errors=errors,
+        graphql_document=MagicMock(),
+        context=SimpleNamespace(current_user=None, request=None),
+    )
 
-    gen = ext.on_validate()
-    await gen.__anext__()
-    try:
+    consume = AsyncMock()
+    with (
+        patch("app.graphql.extensions.visit") as visit,
+        patch("app.graphql.extensions._consume_token_bucket", new=consume),
+    ):
+        gen = ext.on_validate()
         await gen.__anext__()
-    except StopAsyncIteration:
-        pass
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
+
+    visit.assert_not_called()
+    consume.assert_not_awaited()
+    assert ext.execution_context.pre_execution_errors is errors
+    assert errors == [prior_error]
+    assert errors[0] is prior_error
 
 
 @pytest.mark.asyncio
 async def test_query_cost_extension_no_document():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
     from app.graphql.extensions import QueryCostExtension
 
     ext = object.__new__(QueryCostExtension)
-    # execution_context has no .errors, no .graphql_document
-    ctx = MagicMock(spec=[])
+    errors: list[object] = []
+    ctx = SimpleNamespace(
+        pre_execution_errors=errors,
+        graphql_document=None,
+        context=None,
+    )
     ext.execution_context = ctx
 
-    gen = ext.on_validate()
-    await gen.__anext__()
-    try:
+    consume = AsyncMock()
+    with (
+        patch("app.graphql.extensions.visit") as visit,
+        patch("app.graphql.extensions._consume_token_bucket", new=consume),
+    ):
+        gen = ext.on_validate()
         await gen.__anext__()
-    except StopAsyncIteration:
-        pass
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
+
+    visit.assert_not_called()
+    consume.assert_not_awaited()
+    assert errors == []
 
 
 # ---------------------------------------------------------------------------

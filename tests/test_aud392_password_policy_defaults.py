@@ -57,7 +57,7 @@ def test_policy_rejects_zxcvbn_score_below_two_under_the_defaults() -> None:
 
 
 def test_policy_accepts_a_twelve_character_strong_password() -> None:
-    security._validate_password_policy(TWELVE_CHARACTERS)
+    assert (security._validate_password_policy(TWELVE_CHARACTERS)) is None
 
 
 async def test_set_and_change_paths_hash_only_policy_compliant_passwords() -> None:

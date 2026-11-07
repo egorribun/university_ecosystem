@@ -225,7 +225,9 @@ func TestInternalAPIAuthClient_CanJoinRoom_RejectsInvalidIDs(t *testing.T) {
 
 func TestInternalAPIAuthClient_StartEviction(t *testing.T) {
 	client := mustNewTestAuthClient(t, "http://localhost", "", nil)
-	client.StartEviction(context.Background())
+	// StartEviction is a documented no-op because the LRU bounds its own memory.
+	// This control asserts only that the compatibility hook remains safe to call.
+	require.NotPanics(t, func() { client.StartEviction(context.Background()) })
 }
 
 func TestInternalAPIAuthClient_DoRequest_NewRequestError(t *testing.T) {

@@ -566,7 +566,7 @@ async def test_redis_cache_close_no_client() -> None:
     cache._client_lock = asyncio.Lock()
 
     # Should not raise
-    await cache.close()
+    assert (await cache.close()) is None
 
 
 # ---------------------------------------------------------------------------

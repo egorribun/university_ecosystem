@@ -173,8 +173,9 @@ async def test_task_registry_shutdown_empty() -> None:
     from app.core.task_registry import TaskRegistry
 
     registry = TaskRegistry()
-    # Should return immediately with no tasks
-    await registry.shutdown(timeout=1.0)
+    # No work is pending, so shutdown leaves the registry empty.
+    assert (await registry.shutdown(timeout=1.0)) is None
+    assert registry._tasks == set()
 
 
 @pytest.mark.asyncio

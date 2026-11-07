@@ -13,6 +13,7 @@ from app.cli.infra import check_infra, main
 
 @pytest.mark.asyncio
 async def test_infra_check_reports_storage_backend_failure():
+    output = StringIO()
     with (
         patch("app.cli.infra.engine") as engine,
         patch("app.cli.infra.get_cache", return_value=MagicMock()),
@@ -22,7 +23,10 @@ async def test_infra_check_reports_storage_backend_failure():
             "app.services.storage.get_storage_backend",
             side_effect=OSError("storage offline"),
         ),
-        patch("app.cli.infra.console.print"),
+        patch(
+            "app.cli.infra.console",
+            Console(file=output, no_color=True, width=120),
+        ),
     ):
         engine.connect.return_value.__aenter__.return_value.execute = AsyncMock()
         nats = MagicMock()
@@ -31,7 +35,14 @@ async def test_infra_check_reports_storage_backend_failure():
         get_nats.return_value = nats
         settings.storage_backend = "s3"
 
-        await check_infra()
+        assert (await check_infra()) is None
+
+    rendered = output.getvalue()
+    assert "S3" in rendered
+    assert "OFFLINE" in rendered
+    assert "storage offline" in rendered
+    nats.connect.assert_awaited_once()
+    nats.close.assert_awaited_once()
 
 
 def test_infra_typer_entrypoint_runs_async_check():

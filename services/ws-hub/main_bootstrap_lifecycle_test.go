@@ -304,13 +304,18 @@ func TestRunServer_UsesDefaultWebTransportPortAndReportsHTTPShutdownError(t *tes
 type errorResponseWriter struct {
 	header http.Header
 	status int
+	writes int
 }
 
 func (w *errorResponseWriter) Header() http.Header { return w.header }
 
 func (w *errorResponseWriter) WriteHeader(status int) { w.status = status }
 
-func (w *errorResponseWriter) Write([]byte) (int, error) {
+func (w *errorResponseWriter) Write(_ []byte) (int, error) {
+	w.writes++
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
 	return 0, errors.New("response write failed")
 }
 
@@ -319,10 +324,21 @@ func TestSetupHandlers_EncoderAndTransportBranches(t *testing.T) {
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, &config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)), nil, nil)
 
-	for _, path := range []string{"/health/live", "/health", "/health/ready", "/wt"} {
-		writer := &errorResponseWriter{header: make(http.Header)}
-		req := httptest.NewRequest(http.MethodGet, path, nil)
-		mux.ServeHTTP(writer, req)
+	for _, tc := range []struct {
+		path       string
+		wantStatus int
+	}{
+		{path: "/health/live", wantStatus: http.StatusOK},
+		{path: "/health", wantStatus: http.StatusOK},
+		{path: "/health/ready", wantStatus: http.StatusServiceUnavailable},
+		{path: "/wt", wantStatus: http.StatusUnauthorized},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			writer := &errorResponseWriter{header: make(http.Header)}
+			mux.ServeHTTP(writer, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			assert.Equal(t, tc.wantStatus, writer.status)
+			assert.Equal(t, 1, writer.writes, "handler must attempt exactly one encoded response")
+		})
 	}
 }
 

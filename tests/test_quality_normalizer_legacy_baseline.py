@@ -30,7 +30,7 @@ def _load_mutated_contract(
     normalizer: ModuleType,
     tmp_path: Path,
     mutate: Callable[[dict[str, Any]], None],
-) -> object:
+) -> Any:
     contract = with_historical_legacy_migration_policy(
         json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
     )
@@ -61,7 +61,20 @@ def test_historical_fixture_loads_before_legacy_expiry(
     normalizer: ModuleType,
     tmp_path: Path,
 ) -> None:
-    _load_mutated_contract(normalizer, tmp_path, lambda _contract: None)
+    loaded = _load_mutated_contract(normalizer, tmp_path, lambda _contract: None)
+    loaded_tier0 = loaded.contract.get("tier0")
+    assert isinstance(loaded_tier0, dict)
+    loaded_policy = loaded_tier0.get("legacy_migration_baselines")
+    assert isinstance(loaded_policy, dict)
+
+    expected_contract = with_historical_legacy_migration_policy(
+        json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+    )
+    expected_tier0 = expected_contract.get("tier0")
+    assert isinstance(expected_tier0, dict)
+    expected_policy = expected_tier0.get("legacy_migration_baselines")
+    assert isinstance(expected_policy, dict)
+    assert loaded_policy == expected_policy
 
 
 def test_stale_generated_at_cannot_keep_expired_legacy_exemption(

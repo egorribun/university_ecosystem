@@ -2065,7 +2065,7 @@ def test_gateway_crd_ownership_check_ignores_unrelated_api_groups(
         "spec": {"group": "cert-manager.io"},
     }
 
-    tool._verify_owned_gateway_crds(_run_state(), [unrelated])
+    assert (tool._verify_owned_gateway_crds(_run_state(), [unrelated])) is None
 
 
 def test_prepare_marks_new_crds_and_controller_after_verified_install(

@@ -30,7 +30,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: http
-          image: python:3.14-slim-bookworm
+          image: python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83
           imagePullPolicy: IfNotPresent
           command: ["python", "-B", "-c"]
           args:

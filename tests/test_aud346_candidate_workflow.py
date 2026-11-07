@@ -1,10 +1,23 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _canonical_backend_python_image() -> str:
+    dockerfile = (ROOT / "backend.Dockerfile").read_text(encoding="utf-8")
+    references = re.findall(
+        r"^FROM\s+(python:3\.14\.8-slim-bookworm@sha256:[0-9a-f]{64})"
+        r"(?:\s+AS\s+\w+)?\s*$",
+        dockerfile,
+        re.MULTILINE,
+    )
+    assert references and len(set(references)) == 1
+    return references[0]
 
 
 def test_candidate_workflow_keeps_offline_validation_then_runs_live_proof() -> None:
@@ -115,10 +128,8 @@ def test_candidate_manifests_select_only_one_aud346_target() -> None:
     assert namespace["metadata"]["annotations"] == {"chaos-mesh.org/inject": "enabled"}
     assert deployment["metadata"]["namespace"] == "aud346"
     assert deployment["spec"]["replicas"] == 1
-    assert (
-        deployment["spec"]["template"]["spec"]["containers"][0]["image"]
-        == "python:3.14-slim-bookworm"
-    )
+    image = deployment["spec"]["template"]["spec"]["containers"][0]["image"]
+    assert image == _canonical_backend_python_image()
     assert service["metadata"]["namespace"] == "aud346"
 
     chaos_doc = yaml.safe_load(

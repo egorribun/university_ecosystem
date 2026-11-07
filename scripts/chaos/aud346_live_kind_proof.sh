@@ -15,7 +15,8 @@ readonly HELM_URL="https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
 readonly CHAOS_MESH_VERSION="2.8.7"
 readonly TARGET_NAMESPACE="aud346"
 readonly TARGET_SERVICE="aud346-chaos-target"
-readonly RUN_ID="$(openssl rand -hex 6)"
+RUN_ID="$(openssl rand -hex 6)"
+readonly RUN_ID
 readonly CLUSTER_NAME="ue-gw-${RUN_ID}"
 readonly NODE_CONTAINER="${CLUSTER_NAME}-control-plane"
 readonly CONTEXT="kind-${CLUSTER_NAME}"
@@ -54,7 +55,8 @@ readonly STATE_DIR="${WORK_DIR}/kind-state"
 readonly KUBECONFIG="${WORK_DIR}/kubeconfig"
 readonly STATE_FILE="${STATE_DIR}/${CLUSTER_NAME}.json"
 readonly DIAG_DIR="${WORK_DIR}/diagnostics"
-mkdir -m 0700 -p "$STATE_DIR" "$DIAG_DIR" "${WORK_DIR}/bin" \
+# umask 077 keeps every directory created under the private WORK_DIR private.
+mkdir -p "$STATE_DIR" "$DIAG_DIR" "${WORK_DIR}/bin" \
   "${WORK_DIR}/uv-cache" \
   "${WORK_DIR}/helm/config" "${WORK_DIR}/helm/cache" "${WORK_DIR}/helm/data" \
   "${WORK_DIR}/docker"
@@ -231,8 +233,6 @@ if [[ "${#NODE_IMAGES[@]}" != 1 ]]; then
   exit 1
 fi
 readonly NODE_IMAGE="${NODE_IMAGES[0]}"
-readonly KIND_HELPER_CLUSTER_NAME="ue-gw-${RUN_ID}"
-
 mkdir -p "${WORK_DIR}/bin"
 download_verified "$KIND_URL" "${KIND_URL}.sha256sum" \
   "${WORK_DIR}/bin/kind" kind-linux-amd64

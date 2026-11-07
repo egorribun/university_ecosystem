@@ -80,7 +80,7 @@ def test_approved_suppression_is_valid_even_when_semgrep_returns_findings(
 ) -> None:
     report, policy = _write_inputs(tmp_path, _report(_result()))
 
-    validator.validate_report(report, policy, scanner_status=1)
+    assert (validator.validate_report(report, policy, scanner_status=1)) is None
 
 
 def test_github_upload_drops_only_exact_policy_approved_in_source_results(

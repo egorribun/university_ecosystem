@@ -50,21 +50,38 @@ async def test_get_version_resolves_cache_from_global_when_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_increment_noop_for_disabled_non_redis_and_global() -> None:
+async def test_increment_disabled_and_global_are_noops_non_redis_rotates() -> None:
     mgr = CacheVersionManager(prefix="x:list")
-    await mgr.increment(NullCache())  # disabled → early return
-    await mgr.increment(MemoryCache())  # enabled non-redis → isinstance false
+    disabled = NullCache()
+    assert await mgr.get_version(disabled) == "0"
+    assert (await mgr.increment(disabled)) is None
+    assert await mgr.get_version(disabled) == "0"
+
+    memory = MemoryCache()
+    before = await mgr.get_version(memory)
+    assert (await mgr.increment(memory)) is None
+    assert await mgr.get_version(memory) != before
+
     set_cache_backend(NullCache())
-    await mgr.increment()  # cache None → resolved from global
+    assert (await mgr.increment()) is None
+    assert await mgr.get_version() == "0"
 
 
 @pytest.mark.asyncio
-async def test_reset_noop_for_disabled_non_redis_and_global() -> None:
+async def test_reset_disabled_and_global_are_noops_non_redis_rotates() -> None:
     mgr = CacheVersionManager(prefix="x:list")
-    await mgr.reset(NullCache())
-    await mgr.reset(MemoryCache())
+    disabled = NullCache()
+    assert (await mgr.reset(disabled)) is None
+    assert await mgr.get_version(disabled) == "0"
+
+    memory = MemoryCache()
+    before = await mgr.get_version(memory)
+    assert (await mgr.reset(memory)) is None
+    assert await mgr.get_version(memory) != before
+
     set_cache_backend(NullCache())
-    await mgr.reset()
+    assert (await mgr.reset()) is None
+    assert await mgr.get_version() == "0"
 
 
 def test_version_key_property() -> None:

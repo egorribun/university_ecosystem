@@ -69,9 +69,18 @@ def test_setup_slow_query_logging_idempotence():
     mock_settings.slow_query_logging_enabled = True
     mock_settings.slow_query_threshold_ms = 500.0
 
-    with patch("sqlalchemy.event.contains", return_value=True):
-        _setup_slow_query_logging(mock_engine, mock_settings)
-        # Should return early and not call event.listen
+    with (
+        patch("sqlalchemy.event.contains", return_value=True) as contains,
+        patch("sqlalchemy.event.listen") as listen,
+    ):
+        assert (_setup_slow_query_logging(mock_engine, mock_settings)) is None
+
+    contains.assert_called_once_with(
+        mock_engine.sync_engine,
+        "before_cursor_execute",
+        db_module._before_cursor_execute,
+    )
+    listen.assert_not_called()
 
 
 def test_after_cursor_execute_fallback():
@@ -147,11 +156,31 @@ def test_lazy_proxy_dunder_methods():
     assert "haystack" not in proxy
 
 
-def test_init_database_double_check_lock():
-    # If database is already initialized, call init_database() again with current_settings=None
-    # This triggers double-checked locking fast paths (line 588)
-    init_database()
-    init_database()
+def test_init_database_double_check_lock(monkeypatch):
+    # Another initializer can finish after the fast path but before this lock body.
+    initialized_engine = object()
+    monkeypatch.setattr(db_module, "_engine", None)
+
+    class LockAfterConcurrentInitialization:
+        entered = False
+
+        def __enter__(self):
+            self.entered = True
+            db_module._engine = initialized_engine
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    init_lock = LockAfterConcurrentInitialization()
+    create_factory = MagicMock()
+    monkeypatch.setattr(db_module, "_init_lock", init_lock)
+    monkeypatch.setattr(db_module, "create_session_factory", create_factory)
+
+    assert init_database() is None
+    assert init_lock.entered is True
+    create_factory.assert_not_called()
+    assert db_module._engine is initialized_engine
 
 
 @pytest.mark.asyncio

@@ -1,14 +1,48 @@
 # Post-pause reconciliation — 2026-10-30
 
+## Current reconciliation — 2026-11-07
 
+The current formal total is **484/512 (94.5%) accepted or resolved, 28 open**:
+**16S / 12P / 0U / 0N**. The six additional scoped decisions are AUD-208,
+AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The prior **478/34** and
+**476/36** checkpoints and their earlier current-status wording remain below
+as dated history; this supplement supersedes their totals.
+
+[Decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
+The reviewed supplemental evidence is bound to its individual source pins,
+including earlier 20d4/13693/ea381 evidence snapshots. The supplemental v4
+packet was captured at index tree 8ba3ea986595; the first 484 documentation
+draft was prepared after staged-tree capture 6dd3cc904fff. That draft tree is
+historical, not a current-index or coverage assertion; the working index has
+since advanced, and no checks are claimed for the later index or these doc
+updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
+remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
+Inventory remains **497 dispositions / 242 baseline identities / 27 Gitleaks
+fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
+pairs, blocking CodeQL, hooks and quality floors remain in force.
+
+<a id="current-28-finding-reconciliation--2026-11-07"></a>
+
+### Current 28-finding complement
+
+- **S (16):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-226, AUD-272, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-429, AUD-438, AUD-454, AUD-501.
+- **P (12):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-428, AUD-432, AUD-483, AUD-484.
+- **U (0):** none.
+- **N (0):** none.
+
+AUD-154 and AUD-321 retain their explicit non-skipped browser acceptance requirements. AUD-272's later attempt stopped before PostgreSQL. AUD-322's separate live NATS outage pass is not the required CRUD/auth and five-case chaos proof. None of these leaves the open set.
+
+---
 
 <a id="current-34-finding-reconciliation--2026-11-07"></a>
 
-## Current 34-finding reconciliation — 2026-11-07 UTC
+<a id="previous-public-34-finding-reconciliation--2026-11-07"></a>
 
-The [60-row reassessment](AUDIT-2026-11-06-full-reassessment.md) preserves the 476/36 checkpoint as dated history, adds the root-adjudicated AUD-422 and AUD-423 scoped acceptances, and updates AUD-346 from U to S after its source correction was integrated. The formal total is **478 / 512 (93.4%), with 34 open**. AUD-384 remains a separate false-positive retraction.
+## Dated public 34-finding checkpoint — 2026-11-07 UTC (478/34)
 
-Current classifications are **20S / 13P / 0U / 1N = 34**. S means source fixed with finding-specific proof still pending; P partial; U unfixed; N unproven. These are explicit current-tree classifications, not an automatic projection from primary implementation fields. The reviewed source/index tree is `ea381c19bda1`. AUD-346 remains open pending the owner-authorized live Kind proof; AUD-208 PostgreSQL/Squawk proof remains unproven; AUD-484 remains P on partial alert inventory evidence.
+At this dated public checkpoint, the [60-row reassessment](AUDIT-2026-11-06-full-reassessment.md) preserved the 476/36 history, added the root-adjudicated AUD-422 and AUD-423 scoped acceptances, and updated AUD-346 from U to S after source integration. The recorded total was **478 / 512 (93.4%), with 34 open**. AUD-384 remained a separate false-positive retraction; the newer 484/28 supplement above supersedes this checkpoint.
+
+The classifications at this 478/34 checkpoint were **20S / 13P / 0U / 1N = 34**. S means source fixed with finding-specific proof still pending; P partial; U unfixed; N unproven. These are explicit current-tree classifications, not an automatic projection from primary implementation fields. The reviewed source/index tree at that checkpoint was `ea381c19bda1`. AUD-346 remains open pending the owner-authorized live Kind proof; AUD-208 PostgreSQL/Squawk proof remains unproven; AUD-484 remains P on partial alert inventory evidence.
 
 - **S (20):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-208, AUD-226, AUD-272, AUD-321, AUD-334, AUD-346, AUD-347, AUD-375, AUD-378, AUD-416, AUD-429, AUD-438, AUD-454, AUD-478, AUD-501.
 - **P (13):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-428, AUD-432, AUD-480, AUD-483, AUD-484.

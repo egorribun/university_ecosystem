@@ -56,8 +56,8 @@ async def test_static_fs_delete_file(static_storage, tmp_path):
 @pytest.mark.asyncio
 async def test_static_fs_delete_non_existent(static_storage):
     """Test deleting non-existent file doesn't crash."""
-    await static_storage.delete_file("/static/missing.jpg")
-    # No exception
+    assert (await static_storage.delete_file("/static/missing.jpg")) is None
+    assert not (static_storage.base_dir / "missing.jpg").exists()
 
 
 def test_static_fs_extract_path(static_storage):

@@ -123,8 +123,13 @@ async def test_sensitive_route_limit_disabled(monkeypatch):
 
     dependency = sensitive_route_limit(limit=1, window_sec=60)
     mock_request = MagicMock()
-    # Should return early (line 44)
-    await dependency(mock_request)
+    with patch(
+        "app.core.ratelimit.fastapi.enforce_rate_limit", new_callable=AsyncMock
+    ) as enforce:
+        # Disabled limiting returns FastAPI's no-value dependency result directly.
+        assert await dependency(mock_request) is None
+
+    enforce.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -133,8 +138,13 @@ async def test_sensitive_route_limit_invalid_limit(monkeypatch):
 
     dependency = sensitive_route_limit(limit=0, window_sec=60)
     mock_request = MagicMock()
-    # Should return early (line 47)
-    await dependency(mock_request)
+    with patch(
+        "app.core.ratelimit.fastapi.enforce_rate_limit", new_callable=AsyncMock
+    ) as enforce:
+        # A nonpositive limit is treated as an explicitly disabled dependency.
+        assert await dependency(mock_request) is None
+
+    enforce.assert_not_awaited()
 
 
 @pytest.mark.asyncio

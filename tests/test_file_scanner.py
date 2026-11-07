@@ -134,19 +134,31 @@ async def _isolate_clamav_breaker():
 
 @pytest.mark.anyio
 async def test_scan_for_malware_disabled():
-    with patch("app.services.file_scanner.settings") as mock_settings:
+    with (
+        patch("app.services.file_scanner.settings") as mock_settings,
+        patch(
+            "app.services.file_scanner._scan_bytes_with_clamd",
+            new_callable=AsyncMock,
+        ) as scan,
+    ):
         mock_settings.event_file_scanner_enabled = False
-        # Should return early without scanning
-        await scan_for_malware(b"some-data")
+        assert (await scan_for_malware(b"some-data")) is None
+    scan.assert_not_awaited()
 
 
 @pytest.mark.anyio
 async def test_scan_for_malware_empty():
-    with patch("app.services.file_scanner.settings") as mock_settings:
+    with (
+        patch("app.services.file_scanner.settings") as mock_settings,
+        patch(
+            "app.services.file_scanner._scan_bytes_with_clamd",
+            new_callable=AsyncMock,
+        ) as scan,
+    ):
         mock_settings.event_file_scanner_enabled = True
         mock_settings.event_file_scanner_max_size_mb = 5.0
-        # Empty bytes should return early
-        await scan_for_malware(b"")
+        assert (await scan_for_malware(b"")) is None
+    scan.assert_not_awaited()
 
 
 @pytest.mark.anyio

@@ -57,7 +57,7 @@ def test_accepts_multiple_complete_results_for_the_current_invocation() -> None:
     result = _fixture()
     result.append(copy.deepcopy(result[0]))
 
-    provenance.validate_verified_output(result, _binding())
+    assert (provenance.validate_verified_output(result, _binding())) is None
 
 
 def test_accepts_a_prior_run_result_only_alongside_the_current_run() -> None:
@@ -72,7 +72,7 @@ def test_accepts_a_prior_run_result_only_alongside_the_current_run() -> None:
     )
     result.append(prior)
 
-    provenance.validate_verified_output(result, binding)
+    assert (provenance.validate_verified_output(result, binding)) is None
 
 
 def test_rejects_prior_run_results_without_the_current_invocation() -> None:

@@ -84,14 +84,14 @@ class TestRequireTeacherOrAdmin:
         user = MagicMock()
         user.role = "admin"
 
-        require_teacher_or_admin(user, "ru")
+        assert (require_teacher_or_admin(user, "ru")) is None
 
     def test_passes_for_teacher(self):
         """Should not raise for teacher user."""
         user = MagicMock()
         user.role = "teacher"
 
-        require_teacher_or_admin(user, "ru")
+        assert (require_teacher_or_admin(user, "ru")) is None
 
     def test_raises_for_student(self):
         """Should raise 403 for student user."""

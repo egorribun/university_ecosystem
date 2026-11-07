@@ -190,7 +190,7 @@ function sourceLock() {
   }
   for (const [name, version] of [
     ["body-parser", "1.20.9"],
-    ["undici", "8.12.2"],
+    ["undici", "8.12.4"],
     ["@puppeteer/browsers", "3.2.4"],
     ["chromium-bidi", "157.0.8090-0"],
     ["puppeteer-core", "25.13.0"],

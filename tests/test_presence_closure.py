@@ -165,11 +165,20 @@ async def test_presence_pubsub_initialize_without_redis_does_not_start_listener(
         cache_redis_url="",
         presence_pubsub_channel="presence:updates",
     )
-    with patch.object(presence, "settings", settings):
+    get_cache_client = AsyncMock()
+    with (
+        patch.object(presence, "settings", settings),
+        patch("app.deps.cache.get_cache_client", new=get_cache_client),
+        patch.object(presence.Redis, "from_url") as from_url,
+        patch.object(presence.asyncio, "create_task") as create_task,
+    ):
         pubsub = presence.PresencePubSub()
         await pubsub.initialize()
     assert pubsub._redis is None
     assert pubsub._pubsub_task is None
+    get_cache_client.assert_not_awaited()
+    from_url.assert_not_called()
+    create_task.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -218,10 +227,17 @@ async def test_presence_listener_processes_messages_and_cancellation() -> None:
 async def test_presence_listener_handles_no_redis_and_connection_error() -> None:
     from app.api.ws import presence
 
-    await presence.PresencePubSub()._listen_for_updates()
+    no_redis_listener = presence.PresencePubSub()
+    no_redis_handler = AsyncMock()
+    with patch.object(presence, "_handle_presence_pubsub", new=no_redis_handler):
+        await no_redis_listener._listen_for_updates()
+    assert no_redis_listener._redis is None
+    no_redis_handler.assert_not_awaited()
 
     pubsub_client = MagicMock()
     pubsub_client.subscribe = AsyncMock()
+    pubsub_client.unsubscribe = AsyncMock()
+    pubsub_client.close = AsyncMock()
 
     async def failing_messages():
         raise ConnectionError("pubsub disconnected")
@@ -236,11 +252,19 @@ async def test_presence_listener_handles_no_redis_and_connection_error() -> None
         presence, "settings", SimpleNamespace(presence_pubsub_channel="presence")
     ):
         await listener._listen_for_updates()
+    redis.pubsub.assert_called_once_with()
+    pubsub_client.subscribe.assert_awaited_once_with("presence")
+    pubsub_client.close.assert_awaited_once_with()
+    pubsub_client.unsubscribe.assert_not_awaited()
 
     normal_ps = MagicMock()
     normal_ps.subscribe = AsyncMock()
+    normal_ps.unsubscribe = AsyncMock()
+    normal_ps.close = AsyncMock()
+    normal_messages_seen = []
 
     async def normal_messages():
+        normal_messages_seen.append("subscribe")
         yield {"type": "subscribe"}
 
     normal_ps.listen.return_value = normal_messages()
@@ -252,12 +276,20 @@ async def test_presence_listener_handles_no_redis_and_connection_error() -> None
         presence, "settings", SimpleNamespace(presence_pubsub_channel="presence")
     ):
         await normal_listener._listen_for_updates()
+    normal_ps.subscribe.assert_awaited_once_with("presence")
+    normal_ps.listen.assert_called_once_with()
+    normal_ps.unsubscribe.assert_not_awaited()
+    normal_ps.close.assert_not_awaited()
+    assert normal_messages_seen == ["subscribe"]
 
     class FalseyPubSub:
+        def __init__(self):
+            self.subscribe = AsyncMock()
+            self.unsubscribe = AsyncMock()
+            self.close = AsyncMock()
+
         def __bool__(self):
             return False
-
-        subscribe = AsyncMock()
 
         def listen(self):
             async def cancelled_messages():
@@ -275,6 +307,9 @@ async def test_presence_listener_handles_no_redis_and_connection_error() -> None
         presence, "settings", SimpleNamespace(presence_pubsub_channel="presence")
     ):
         await falsey_listener._listen_for_updates()
+    falsey_ps.subscribe.assert_awaited_once_with("presence")
+    falsey_ps.unsubscribe.assert_not_awaited()
+    falsey_ps.close.assert_not_awaited()
 
 
 @pytest.mark.asyncio

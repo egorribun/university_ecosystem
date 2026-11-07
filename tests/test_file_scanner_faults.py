@@ -78,10 +78,13 @@ async def test_scan_upload_with_clamd_exceptions() -> None:
 
 @pytest.mark.asyncio
 async def test_check_file_scanner_health_disabled() -> None:
-    with patch("app.services.file_scanner.settings") as mock_settings:
+    with (
+        patch("app.services.file_scanner.settings") as mock_settings,
+        patch("app.services.file_scanner._check_clamd_health") as check_health,
+    ):
         mock_settings.event_file_scanner_enabled = False
-        # Should return early without exception
-        await check_file_scanner_health()
+        assert (await check_file_scanner_health()) is None
+    check_health.assert_not_called()
 
 
 @pytest.mark.asyncio

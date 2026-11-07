@@ -43,7 +43,7 @@ def test_live_seed_configuration_must_match_owned_identity(
 def test_live_seed_configuration_accepts_exact_identity(monkeypatch) -> None:
     with seed_tenant_context(PROJECT) as identity:
         monkeypatch.setattr(seed_tenant.settings, "mvp_tenant_id", identity)
-        seed_tenant.validate_seed_tenant_configuration(PROJECT)
+        assert (seed_tenant.validate_seed_tenant_configuration(PROJECT)) is None
 
 
 def test_unconfigured_smoke_does_not_enable_runtime_routing(monkeypatch) -> None:

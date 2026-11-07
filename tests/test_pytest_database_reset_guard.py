@@ -145,13 +145,19 @@ def test_known_explicit_targets_are_still_authorized(
     monkeypatch: pytest.MonkeyPatch, isolated_environment: None
 ) -> None:
     monkeypatch.setenv("UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET", "1")
-    fixture_database._require_safe_database_reset(
-        "postgresql+asyncpg://test@localhost:5432/test"
-    )
-    fixture_database._require_safe_database_reset(
-        "sqlite+aiosqlite:///custom-test.db?timeout=15&uri=false"
-    )
-    fixture_database._require_safe_database_reset("sqlite+aiosqlite:///:memory:")
+    assert (
+        fixture_database._require_safe_database_reset(
+            "postgresql+asyncpg://test@localhost:5432/test"
+        )
+    ) is None
+    assert (
+        fixture_database._require_safe_database_reset(
+            "sqlite+aiosqlite:///custom-test.db?timeout=15&uri=false"
+        )
+    ) is None
+    assert (
+        fixture_database._require_safe_database_reset("sqlite+aiosqlite:///:memory:")
+    ) is None
 
 
 @pytest.mark.parametrize("key", ["database", "host", "port", "user"])

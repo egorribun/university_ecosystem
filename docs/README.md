@@ -1,5 +1,28 @@
 # University Ecosystem documentation
 
+## Current reconciliation — 2026-11-07
+
+The current formal total is **484/512 (94.5%) accepted or resolved, 28 open**:
+**16S / 12P / 0U / 0N**. The six additional scoped decisions are AUD-208,
+AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The prior **478/34** and
+**476/36** checkpoints and their earlier current-status wording remain below
+as dated history; this supplement supersedes their totals.
+
+[Decision scopes and evidence limits](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
+The reviewed supplemental evidence is bound to its individual source pins,
+including earlier 20d4/13693/ea381 evidence snapshots. The supplemental v4
+packet was captured at index tree 8ba3ea986595; the first 484 documentation
+draft was prepared after staged-tree capture 6dd3cc904fff. That draft tree is
+historical, not a current-index or coverage assertion; the working index has
+since advanced, and no checks are claimed for the later index or these doc
+updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
+remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
+Inventory remains **497 dispositions / 242 baseline identities / 27 Gitleaks
+fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
+pairs, blocking CodeQL, hooks and quality floors remain in force.
+
+---
+
 This directory contains the durable operating, architecture, API, and quality
 documentation for University Ecosystem. Temporary execution notes and completed
 handoffs are intentionally not part of the canonical index.
@@ -64,9 +87,10 @@ handoffs are intentionally not part of the canonical index.
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
-- [Current full audit reassessment, 2026-11-07 UTC](audits/AUDIT-2026-11-06-full-reassessment.md) — 478 / 512 accepted or resolved, 34 open; 25 criterion-specific acceptance scopes plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Current full audit reassessment, 2026-11-07 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07) — 484 / 512 accepted or resolved (94.5%), 28 open; 31 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Dated prior public checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#previous-public-checkpoint--2026-11-07) — 478 / 512, 34 open (20S / 13P / 0U / 1N); superseded and retained as history.
 - [Dated previous cohort checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#previous-cohort-checkpoint--2026-11-06-2359-utc) — 476 / 512, 36 open (19S / 15P / 1U / 1N), retained as history.
-- [Dated cumulative scoped audit review, 2026-11-06](audits/AUDIT-2026-11-06-review.md) — AUD-426 PostgreSQL, AUD-231 compiled SSR CSP/nonce, and AUD-449 Caddy/Gunicorn log-redaction acceptances with separate evidence limits; overall CI and release readiness are not accepted.
+- [Dated cumulative scoped audit review, 2026-11-06](audits/AUDIT-2026-11-06-review.md) — AUD-426 PostgreSQL, AUD-231 compiled SSR CSP/nonce, and AUD-449 log-redaction acceptances for Caddy and the Python application server with separate evidence limits; overall CI and release readiness are not accepted.
 - [Full platform audit, October 2026](audits/AUDIT-2026-10.md) — current
   open-finding register; [dependency closure checkpoint (2026-10-15)](audits/AUDIT-2026-10.md#dependency-closure-supplement-2026-10-15)
   records frozen dependency selection and source-bound local evidence. The
@@ -124,7 +148,7 @@ implementation guidance.
 | Enforced quality and check inventory          | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
 | Operator procedures                           | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/)                                                                                    |
 | Finding traceability and historical retention | [Audit index](audits/INDEX.md)                                                                                                          |
-| Current open findings                         | [Current 34-finding reassessment, 2026-11-07 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-34-finding-complement)                 |
+| Current open findings                         | [Current 28-finding complement, 2026-11-07 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-28-finding-reconciliation--2026-11-07)                 |
 
 Update the canonical source before adjusting summaries or translations. Keep
 commands, versions and configuration descriptions aligned with executable

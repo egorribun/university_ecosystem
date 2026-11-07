@@ -27,7 +27,7 @@ def test_check_resolved_fails_closed_for_malformed_and_blocked_addresses():
 
 
 def test_sync_validation_accepts_public_ip_literal():
-    validate_url_not_internal("https://93.184.216.34/resource")
+    assert (validate_url_not_internal("https://93.184.216.34/resource")) is None
 
 
 @pytest.mark.asyncio

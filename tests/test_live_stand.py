@@ -10673,25 +10673,38 @@ def _aud174_docker_read_context(
     )
 
 
-def test_live_caddy_probe_accepts_distinct_project_correlations_and_successful_gets() -> (
-    None
-):
+def test_live_caddy_probe_accepts_distinct_project_correlations_and_successful_gets(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
     nonce = "0123456789abcdef" * 2
     correlations = {
         "desktop": "1" * 32,
         "mobile": "2" * 32,
     }
     assert correlations["desktop"] != correlations["mobile"]
-    for project, correlation_id in correlations.items():
-        redacted_uri = f"/login?probe={correlation_id}&password=REDACTED"
-        output = _aud174_access_log_row(redacted_uri, status=200)
+    owner, directory, pin, completed_at, context = _aud174_diagnostic_verifier_inputs(
+        monkeypatch,
+        tmp_path,
+        password_nonce=nonce,
+        correlations=correlations,
+    )
 
-        live_stand._assert_live_caddy_probe_redaction(
-            output,
-            password_nonce=nonce,
-            correlation_id=correlation_id,
-            project=project,
-        )
+    live_stand._verify_live_caddy_probe_log(
+        owner,
+        directory,
+        started_at_ms=min(completed_at.values()) - 1_000,
+        finished_at_ms=max(completed_at.values()) + 1_000,
+        password_nonce=nonce,
+        correlation_ids=correlations,
+        container_pin=pin,
+        docker_context=context,
+    )
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert captured.out == "live Caddy access-log redaction=verified projects=2\n"
 
 
 @pytest.mark.parametrize(
@@ -11180,10 +11193,10 @@ def test_live_caddy_probe_reads_one_union_window_from_reverified_pinned_containe
     assert [call[2:] for call in parser_calls] == [
         (
             project,
-            max(1, timestamp - live_stand._LIVE_CADDY_PROBE_WINDOW_MS),
-            timestamp + live_stand._LIVE_CADDY_PROBE_WINDOW_MS,
+            max(1, completed_at[project] - live_stand._LIVE_CADDY_PROBE_WINDOW_MS),
+            completed_at[project] + live_stand._LIVE_CADDY_PROBE_WINDOW_MS,
         )
-        for project, timestamp in completed_at.items()
+        for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
     ]
     assert parser_calls[0][0] is parser_calls[1][0]
     assert parser_calls[0][1] is parser_calls[1][1]
@@ -11204,12 +11217,40 @@ def test_live_caddy_probe_accepts_timestamped_project_rows_on_stderr(
         stdout=b"",
         stderr=_aud174_two_project_rows(completed_at, correlations),
     )
+    expected_stderr = completed.stderr
     context = _aud174_docker_read_context(tmp_path)
+    parser_calls: list[tuple[bytes, bytes, str, str, int | None, int | None]] = []
+    original_parser = live_stand._assert_live_caddy_probe_redaction
+
+    def record_parser(
+        output: bytes,
+        *,
+        stderr: bytes,
+        password_nonce: str,
+        correlation_id: str,
+        project: str,
+        since_ms: int | None = None,
+        until_ms: int | None = None,
+    ) -> None:
+        parser_calls.append(
+            (output, stderr, correlation_id, project, since_ms, until_ms)
+        )
+        original_parser(
+            output,
+            stderr=stderr,
+            password_nonce=password_nonce,
+            correlation_id=correlation_id,
+            project=project,
+            since_ms=since_ms,
+            until_ms=until_ms,
+        )
+
     monkeypatch.setattr(
         live_stand,
         "_run_live_bounded_read",
         lambda *_args, **_kwargs: completed,
     )
+    monkeypatch.setattr(live_stand, "_assert_live_caddy_probe_redaction", record_parser)
     monkeypatch.setattr(
         live_stand,
         "_assert_live_caddy_container_pin",
@@ -11225,6 +11266,48 @@ def test_live_caddy_probe_accepts_timestamped_project_rows_on_stderr(
         deadline=live_stand.time.monotonic() + 30,
         docker_context=context,
     )
+
+    expected_parser_calls = [
+        (
+            b"",
+            expected_stderr,
+            correlations[project],
+            project,
+            max(
+                1,
+                completed_at[project] - live_stand._LIVE_CADDY_PROBE_WINDOW_MS,
+            ),
+            completed_at[project] + live_stand._LIVE_CADDY_PROBE_WINDOW_MS,
+        )
+        for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
+    ]
+    assert parser_calls == expected_parser_calls
+    assert completed.stdout == completed.stderr == b""
+
+    accepted_rows: dict[str, tuple[str, str, int]] = {}
+    for _, stderr, correlation_id, project, _, _ in parser_calls:
+        matching_rows = [
+            line
+            for line in stderr.splitlines()
+            if correlation_id.encode("ascii") in line
+        ]
+        assert len(matching_rows) == 1
+        _, payload_bytes = matching_rows[0].split(b" ", 1)
+        payload = json.loads(payload_bytes)
+        request = payload["request"]
+        accepted_rows[project] = (
+            request["method"],
+            request["uri"],
+            payload["status"],
+        )
+    assert accepted_rows == {
+        project: (
+            "GET",
+            f"/login?probe={correlations[project]}&password=REDACTED",
+            200,
+        )
+        for project in live_stand.LIVE_CADDY_PROBE_PROJECTS
+    }
 
 
 @pytest.mark.parametrize(

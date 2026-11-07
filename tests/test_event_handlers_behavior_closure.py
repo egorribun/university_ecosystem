@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
 import pytest
@@ -28,19 +28,53 @@ from app.services import event_handlers
 
 @pytest.mark.asyncio
 async def test_simple_event_handlers_accept_normal_and_optional_payloads():
-    await event_handlers.log_all_events(UserCreated(user_id=1, email="a@example.com"))
-    await event_handlers.handle_user_created(UserCreated(user_id=1))
-    await event_handlers.handle_user_logged_in(UserLoggedIn(user_id=1, ip_address=None))
-    await event_handlers.handle_mfa_enabled(MfaEnabled(user_id=1, method="totp"))
-    await event_handlers.handle_event_created(
-        EventCreated(event_id_entity=2, organizer_id=3, title="Event")
+    logged = UserCreated(user_id=1, email="a@example.com")
+    created = UserCreated(user_id=1)
+    login = UserLoggedIn(user_id=1, ip_address=None)
+    mfa = MfaEnabled(user_id=1, method="totp")
+    event = EventCreated(event_id_entity=2, organizer_id=3, title="Event")
+    registration = EventRegistration(event_id_entity=2, user_id=3)
+    notification = NotificationSent(
+        notification_id="n-1", user_id=3, notification_type="push"
     )
-    await event_handlers.handle_event_registration(
-        EventRegistration(event_id_entity=2, user_id=3)
-    )
-    await event_handlers.handle_notification_sent(
-        NotificationSent(notification_id="n-1", user_id=3, notification_type="push")
-    )
+
+    with (
+        patch.object(event_handlers.logger, "info") as info,
+        patch.object(event_handlers.logger, "debug") as debug,
+    ):
+        assert (await event_handlers.log_all_events(logged)) is None
+        assert (await event_handlers.handle_user_created(created)) is None
+        assert (await event_handlers.handle_user_logged_in(login)) is None
+        assert (await event_handlers.handle_mfa_enabled(mfa)) is None
+        assert (await event_handlers.handle_event_created(event)) is None
+        assert (await event_handlers.handle_event_registration(registration)) is None
+        assert (await event_handlers.handle_notification_sent(notification)) is None
+
+    assert info.call_args_list == [
+        call("Domain event: %s (id=%s)", logged.event_type, logged.event_id),
+        call("New user registered: user_id=%d", created.user_id),
+        call("MFA enabled: user_id=%d, method=%s", mfa.user_id, mfa.method),
+        call(
+            "Event created: event_id=%s, organizer=%s, title=%s",
+            event.event_id_entity,
+            event.organizer_id,
+            event.title,
+        ),
+    ]
+    assert debug.call_args_list == [
+        call("User login: user_id=%d, ip=%s", login.user_id, "unknown"),
+        call(
+            "Event registration: event_id=%d, user_id=%d",
+            registration.event_id_entity,
+            registration.user_id,
+        ),
+        call(
+            "Notification sent: notification_id=%s, user_id=%d, type=%s",
+            notification.notification_id,
+            notification.user_id,
+            notification.notification_type,
+        ),
+    ]
 
 
 def _session(db: AsyncMock) -> MagicMock:
@@ -782,22 +816,44 @@ async def test_audit_only_producers_have_explicit_durable_acknowledgement(
         "NOTIFICATION_DEAD_LETTER_PURGE",
     }
     bus = EventBus()
+    acknowledge = AsyncMock()
+    monkeypatch.setattr(event_handlers, "acknowledge_audit_only_event", acknowledge)
     monkeypatch.setattr(event_handlers, "event_bus", bus)
     monkeypatch.setattr(outbox_module, "event_bus", bus)
     event_handlers.configure_event_handlers()
-    worker = outbox_module.OutboxWorker()
-
-    for event_type in sorted(audit_only):
-        await worker._dispatch_event(
-            StoredEvent(
-                id=uuid4(),
-                event_type=event_type,
-                aggregate_type="audit",
-                aggregate_id="test",
-                payload={},
-                metadata_={},
-            )
+    stored_events = [
+        StoredEvent(
+            id=uuid4(),
+            event_type=event_type,
+            aggregate_type="audit",
+            aggregate_id="test",
+            payload={},
+            metadata_={},
+            error_count=0,
+            last_error=None,
         )
+        for event_type in sorted(audit_only)
+    ]
+    selected = MagicMock()
+    selected.scalars.return_value.all.return_value = stored_events
+    pending = MagicMock()
+    pending.scalar_one.return_value = len(stored_events)
+    outbox_db = AsyncMock()
+    outbox_db.execute.side_effect = [selected, pending]
+    monkeypatch.setattr(outbox_module, "async_session", lambda: _session(outbox_db))
+
+    processed = await outbox_module.OutboxWorker(
+        batch_size=len(stored_events)
+    ).process_batch()
+
+    assert processed == len(stored_events)
+    assert all(event.processed_at is not None for event in stored_events)
+    assert all(
+        event.error_count == 0 and event.last_error is None for event in stored_events
+    )
+    dispatched_types = [call.args[0].event_type for call in acknowledge.await_args_list]
+    assert sorted(dispatched_types) == sorted(audit_only)
+    outbox_db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

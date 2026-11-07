@@ -7,7 +7,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
 import ts from "typescript"
 
-export const CENSUS_ROOTS = ["src", "tests"] as const
+export const CENSUS_ROOTS = ["src", "tests", "scripts"] as const
 const TEST_FILE = /\.(?:test|spec)\.(?:ts|tsx|mjs|js)$/u
 export const ASSERTION_ROOTS: ReadonlySet<string> = new Set([
   "expect",
@@ -16,11 +16,131 @@ export const ASSERTION_ROOTS: ReadonlySet<string> = new Set([
   "assert",
   "withExpectedConsole",
 ])
+const EXPECTATION_MATCHERS: ReadonlySet<string> = new Set([
+  "toBe",
+  "toBeAttached",
+  "toBeChecked",
+  "toBeCloseTo",
+  "toBeDefined",
+  "toBeDisabled",
+  "toBeEmptyDOMElement",
+  "toBeEnabled",
+  "toBeFalsy",
+  "toBeFocused",
+  "toBeGreaterThan",
+  "toBeGreaterThanOrEqual",
+  "toBeHidden",
+  "toBeInTheDocument",
+  "toBeInViewport",
+  "toBeInstanceOf",
+  "toBeLessThan",
+  "toBeLessThanOrEqual",
+  "toBeNull",
+  "toBeTruthy",
+  "toBeTypeOf",
+  "toBeUndefined",
+  "toBeVisible",
+  "toContain",
+  "toContainElement",
+  "toContainEqual",
+  "toContainHTML",
+  "toContainText",
+  "toEqual",
+  "toEqualTypeOf",
+  "toHaveAccessibleDescription",
+  "toHaveAccessibleName",
+  "toHaveAttribute",
+  "toHaveBeenCalled",
+  "toHaveBeenCalledExactlyOnceWith",
+  "toHaveBeenCalledOnce",
+  "toHaveBeenCalledTimes",
+  "toHaveBeenCalledWith",
+  "toHaveBeenLastCalledWith",
+  "toHaveBeenNthCalledWith",
+  "toHaveClass",
+  "toHaveCount",
+  "toHaveCSS",
+  "toHaveFocus",
+  "toHaveLength",
+  "toHaveNoViolations",
+  "toHaveProperty",
+  "toHaveReturnedWith",
+  "toHaveScreenshot",
+  "toHaveStyle",
+  "toHaveText",
+  "toHaveTextContent",
+  "toHaveURL",
+  "toHaveValue",
+  "toMatch",
+  "toMatchObject",
+  "toMatchSnapshot",
+  "toMatchTypeOf",
+  "toPass",
+  "toSatisfy",
+  "toStrictEqual",
+  "toThrow",
+  "toThrowError",
+])
 const TEST_BLOCK_ROOTS: ReadonlySet<string> = new Set(["it", "test"])
+const EXECUTED_TEST_MODIFIERS: ReadonlySet<string> = new Set([
+  "only",
+  "concurrent",
+  "sequential",
+  "fails",
+  "each",
+  "skipIf",
+  "runIf",
+])
+const TEST_MODIFIER_FACTORIES: ReadonlySet<string> = new Set(["each", "skipIf", "runIf"])
+const NON_EXECUTED_TEST_MODIFIERS: ReadonlySet<string> = new Set(["skip", "todo"])
+const GROUP_OR_HOOK_MODIFIERS: ReadonlySet<string> = new Set([
+  "describe",
+  "context",
+  "beforeAll",
+  "beforeEach",
+  "afterAll",
+  "afterEach",
+])
+const NON_BLOCK_TEST_MODIFIERS: ReadonlySet<string> = new Set([
+  ...GROUP_OR_HOOK_MODIFIERS,
+  "use",
+  "extend",
+  "setTimeout",
+  "slow",
+  "fail",
+  "fixme",
+  "info",
+  "step",
+  "expect",
+])
 
 export function parseTypeScript(path: string, text: string): ts.SourceFile {
   const kind = path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
   return ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, kind)
+}
+
+function parserDiagnosticOffsets(source: ts.SourceFile): readonly number[] | undefined {
+  // The pinned compiler exposes this at runtime, but its public SourceFile type
+  // does not. Fail closed if the diagnostic positions are no longer readable.
+  const diagnostics: unknown = (source as ts.SourceFile & { readonly parseDiagnostics?: unknown })
+    .parseDiagnostics
+  if (!Array.isArray(diagnostics)) return undefined
+  const entries: readonly unknown[] = diagnostics
+  const offsets: number[] = []
+  for (const entry of entries) {
+    if (typeof entry !== "object" || entry === null) return undefined
+    const start = "start" in entry ? entry.start : undefined
+    if (start === undefined) offsets.push(0)
+    else if (
+      typeof start === "number" &&
+      Number.isInteger(start) &&
+      start >= 0 &&
+      start <= source.end
+    ) {
+      offsets.push(start)
+    } else return undefined
+  }
+  return offsets
 }
 
 export function testFiles(directory: string): string[] {
@@ -55,34 +175,78 @@ export function isFunctionLike(node: ts.Node | undefined): node is ts.FunctionLi
   )
 }
 
+export type TestCallback = ts.FunctionLikeDeclaration | ts.Identifier
+
 // A test block is a call of `it` or `test` (or their `.each` table form, or `.only`) whose
 // callback is the last function argument. Hooks and grouping calls such as `test.beforeEach`
 // and `test.describe` are not test blocks; skipped and todo blocks are not executed.
 export function isTestCallee(expression: ts.Expression): boolean {
-  if (ts.isIdentifier(expression)) return TEST_BLOCK_ROOTS.has(expression.text)
-  if (ts.isPropertyAccessExpression(expression)) {
-    return (
-      ts.isIdentifier(expression.expression) &&
-      TEST_BLOCK_ROOTS.has(expression.expression.text) &&
-      expression.name.text === "only"
-    )
-  }
-  if (ts.isCallExpression(expression)) {
-    const callee = expression.expression
-    return (
-      ts.isPropertyAccessExpression(callee) &&
-      callee.name.text === "each" &&
-      ts.isIdentifier(callee.expression) &&
-      TEST_BLOCK_ROOTS.has(callee.expression.text)
-    )
-  }
-  return false
+  if (ts.isPropertyAccessExpression(expression) && expression.name.text === "each") return false
+  const { root, modifiers } = testCalleeParts(expression)
+  return root !== undefined && modifiers.every((modifier) => EXECUTED_TEST_MODIFIERS.has(modifier))
 }
 
-export function testCallback(call: ts.CallExpression): ts.FunctionLikeDeclaration | undefined {
-  if (!isTestCallee(call.expression)) return undefined
-  const last = call.arguments.at(-1)
-  return isFunctionLike(last) ? last : undefined
+function testCalleeParts(expression: ts.Expression): {
+  root: string | undefined
+  modifiers: string[]
+} {
+  const modifiers: string[] = []
+  const visit = (current: ts.Expression): string | undefined => {
+    if (ts.isIdentifier(current))
+      return TEST_BLOCK_ROOTS.has(current.text) ? current.text : undefined
+    if (ts.isPropertyAccessExpression(current)) {
+      modifiers.unshift(current.name.text)
+      return visit(current.expression)
+    }
+    if (ts.isElementAccessExpression(current)) {
+      modifiers.unshift("<element-access>")
+      return visit(current.expression)
+    }
+    if (ts.isCallExpression(current)) return visit(current.expression)
+    return undefined
+  }
+  return { root: visit(expression), modifiers }
+}
+
+function isNonExecutedTest(expression: ts.Expression): boolean {
+  const { root, modifiers } = testCalleeParts(expression)
+  return (
+    root !== undefined && modifiers.some((modifier) => NON_EXECUTED_TEST_MODIFIERS.has(modifier))
+  )
+}
+
+function looksLikeUnsupportedTestCall(call: ts.CallExpression): boolean {
+  const { root, modifiers } = testCalleeParts(call.expression)
+  const factoryOnly =
+    ts.isPropertyAccessExpression(call.expression) &&
+    TEST_MODIFIER_FACTORIES.has(call.expression.name.text)
+  const isNonBlockCall = modifiers.some((modifier) => NON_BLOCK_TEST_MODIFIERS.has(modifier))
+  return (
+    root !== undefined &&
+    !factoryOnly &&
+    !isNonBlockCall &&
+    !isNonExecutedTest(call.expression) &&
+    (!modifiers.every((modifier) => EXECUTED_TEST_MODIFIERS.has(modifier)) ||
+      testCallback(call) === undefined) &&
+    call.arguments.length > 0
+  )
+}
+
+export function testCallback(call: ts.CallExpression): TestCallback | undefined {
+  if (
+    !isTestCallee(call.expression) ||
+    (ts.isPropertyAccessExpression(call.expression) &&
+      TEST_MODIFIER_FACTORIES.has(call.expression.name.text))
+  ) {
+    return undefined
+  }
+  for (let index = call.arguments.length - 1; index >= 0; index -= 1) {
+    const candidate = call.arguments[index]
+    if (candidate !== undefined && (isFunctionLike(candidate) || ts.isIdentifier(candidate))) {
+      return candidate
+    }
+  }
+  return undefined
 }
 
 export function collectFunctionBodies(source: ts.SourceFile): Map<string, ts.Node> {
@@ -106,14 +270,56 @@ export function collectFunctionBodies(source: ts.SourceFile): Map<string, ts.Nod
 }
 
 export function containsAssertion(node: ts.Node, helpers: ReadonlySet<string>): boolean {
+  const branchThrowsError = (statement: ts.Statement): boolean => {
+    let foundErrorThrow = false
+    const findThrow = (child: ts.Node) => {
+      if (foundErrorThrow) return
+      if (
+        ts.isThrowStatement(child) &&
+        ts.isNewExpression(child.expression) &&
+        rootIdentifier(child.expression.expression)?.endsWith("Error")
+      ) {
+        foundErrorThrow = true
+        return
+      }
+      if (child !== statement && isFunctionLike(child)) return
+      ts.forEachChild(child, findThrow)
+    }
+    findThrow(statement)
+    return foundErrorThrow
+  }
+
   let found = false
   const visit = (child: ts.Node) => {
     if (found) return
+    if (
+      child !== node &&
+      (ts.isFunctionDeclaration(child) ||
+        (isFunctionLike(child) &&
+          ts.isVariableDeclaration(child.parent) &&
+          child.parent.initializer === child))
+    ) {
+      return
+    }
+    if (
+      ts.isIfStatement(child) &&
+      (branchThrowsError(child.thenStatement) ||
+        (child.elseStatement !== undefined && branchThrowsError(child.elseStatement)))
+    ) {
+      found = true
+      return
+    }
     if (ts.isCallExpression(child)) {
       const root = rootIdentifier(child.expression)
+      const isExpectationMatcher =
+        (root === "expect" || root === "expectTypeOf") &&
+        ts.isPropertyAccessExpression(child.expression) &&
+        EXPECTATION_MATCHERS.has(child.expression.name.text)
       if (
         root !== undefined &&
-        (ASSERTION_ROOTS.has(root) || root.startsWith("assert") || helpers.has(root))
+        (isExpectationMatcher ||
+          (ASSERTION_ROOTS.has(root) && root !== "expect" && root !== "expectTypeOf") ||
+          helpers.has(root))
       ) {
         found = true
         return
@@ -165,7 +371,12 @@ export interface AssertionCensus {
   fileHelpers(source: ts.SourceFile, path: string): Set<string>
   moduleHelpers(path: string): Set<string>
   unassertedTests(path: string): string[]
-  run(): { files: number; flagged: string[] }
+  run(roots?: readonly string[]): {
+    files: number
+    blocks: number
+    flagged: string[]
+    unsupported: string[]
+  }
 }
 
 // Creates a census bound to one frontend root. The helper memo lives on the instance so
@@ -204,6 +415,50 @@ export function createAssertionCensus(frontendRoot: string): AssertionCensus {
           changed = true
         }
       }
+      const arrays = new Map<string, ts.ArrayLiteralExpression>()
+      const collectArrays = (node: ts.Node) => {
+        if (
+          ts.isVariableDeclaration(node) &&
+          ts.isIdentifier(node.name) &&
+          node.initializer !== undefined &&
+          ts.isArrayLiteralExpression(node.initializer)
+        ) {
+          arrays.set(node.name.text, node.initializer)
+        }
+        ts.forEachChild(node, collectArrays)
+      }
+      collectArrays(source)
+      const collectAssertioningLoopBindings = (node: ts.Node) => {
+        if (ts.isForOfStatement(node) && ts.isVariableDeclarationList(node.initializer)) {
+          const [declaration] = node.initializer.declarations
+          const rows = ts.isIdentifier(node.expression)
+            ? arrays.get(node.expression.text)
+            : ts.isArrayLiteralExpression(node.expression)
+              ? node.expression
+              : undefined
+          if (
+            declaration &&
+            ts.isArrayBindingPattern(declaration.name) &&
+            rows !== undefined &&
+            rows.elements.length > 0
+          ) {
+            declaration.name.elements.forEach((binding, index) => {
+              if (!ts.isBindingElement(binding) || !ts.isIdentifier(binding.name)) return
+              const everyRowChecks = rows.elements.every((row) => {
+                if (!ts.isArrayLiteralExpression(row)) return false
+                const value = row.elements[index]
+                return value !== undefined && ts.isIdentifier(value) && helpers.has(value.text)
+              })
+              if (everyRowChecks && !helpers.has(binding.name.text)) {
+                helpers.add(binding.name.text)
+                changed = true
+              }
+            })
+          }
+        }
+        ts.forEachChild(node, collectAssertioningLoopBindings)
+      }
+      collectAssertioningLoopBindings(source)
     }
     return helpers
   }
@@ -219,33 +474,70 @@ export function createAssertionCensus(frontendRoot: string): AssertionCensus {
     return helpers
   }
 
-  function unassertedTests(path: string): string[] {
+  function censusFile(path: string): { blocks: number; flagged: string[]; unsupported: string[] } {
     const source = parseTypeScript(path, readFileSync(path, "utf8"))
+    const offsets = parserDiagnosticOffsets(source)
+    if (offsets === undefined) {
+      return {
+        blocks: 0,
+        flagged: [],
+        unsupported: [
+          `${repoRelative(frontendRoot, path)}:1: unsupported parser diagnostics shape`,
+        ],
+      }
+    }
+    if (offsets.length > 0) {
+      const unsupported = offsets.map((offset) => {
+        const { line } = source.getLineAndCharacterOfPosition(offset)
+        return `${repoRelative(frontendRoot, path)}:${line + 1}: parse diagnostic`
+      })
+      return { blocks: 0, flagged: [], unsupported }
+    }
     const helpers = fileHelpers(source, path)
     const flagged: string[] = []
+    const unsupported: string[] = []
+    let blocks = 0
     const visit = (node: ts.Node) => {
       if (ts.isCallExpression(node)) {
         const callback = testCallback(node)
-        if (callback && !containsAssertion(callback, helpers)) {
+        if (callback) {
+          blocks += 1
+          const hasResultCheck = ts.isIdentifier(callback)
+            ? helpers.has(callback.text)
+            : containsAssertion(callback, helpers)
+          if (!hasResultCheck) {
+            const { line } = source.getLineAndCharacterOfPosition(node.getStart(source))
+            flagged.push(`${repoRelative(frontendRoot, path)}:${line + 1}`)
+          }
+        } else if (looksLikeUnsupportedTestCall(node)) {
           const { line } = source.getLineAndCharacterOfPosition(node.getStart(source))
-          flagged.push(`${repoRelative(frontendRoot, path)}:${line + 1}`)
+          unsupported.push(
+            `${repoRelative(frontendRoot, path)}:${line + 1}: unsupported test-call form`
+          )
         }
       }
       ts.forEachChild(node, visit)
     }
     visit(source)
-    return flagged
+    return { blocks, flagged, unsupported }
   }
 
-  function run() {
-    const files = CENSUS_ROOTS.flatMap((root) => {
-      try {
-        return testFiles(join(frontendRoot, root))
-      } catch {
-        return []
-      }
+  function unassertedTests(path: string): string[] {
+    return censusFile(path).flagged
+  }
+
+  function run(roots: readonly string[] = CENSUS_ROOTS) {
+    const files = roots.flatMap((root) => {
+      const directory = join(frontendRoot, root)
+      return isFile(directory) ? [] : testFiles(directory)
     })
-    return { files: files.length, flagged: files.flatMap(unassertedTests) }
+    const reports = files.map(censusFile)
+    return {
+      files: files.length,
+      blocks: reports.reduce((total, report) => total + report.blocks, 0),
+      flagged: reports.flatMap((report) => report.flagged),
+      unsupported: reports.flatMap((report) => report.unsupported),
+    }
   }
 
   return { frontendRoot, fileHelpers, moduleHelpers, unassertedTests, run }

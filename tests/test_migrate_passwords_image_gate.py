@@ -142,7 +142,7 @@ def test_cli_result_accepts_only_the_expected_clean_or_remaining_state(
     result = subprocess.CompletedProcess(
         args=["docker"], returncode=exit_code, stdout=f"{stdout}\n", stderr=""
     )
-    _assert_cli_result(result, exit_code=exit_code, stdout=stdout)
+    assert _assert_cli_result(result, exit_code=exit_code, stdout=stdout) is None
 
 
 def test_cli_result_allows_safe_startup_output_before_final_status() -> None:
@@ -152,8 +152,11 @@ def test_cli_result_allows_safe_startup_output_before_final_status() -> None:
         stdout="masked startup message\nNo active legacy bcrypt accounts found.\n",
         stderr="",
     )
-    _assert_cli_result(
-        result, exit_code=0, stdout="No active legacy bcrypt accounts found."
+    assert (
+        _assert_cli_result(
+            result, exit_code=0, stdout="No active legacy bcrypt accounts found."
+        )
+        is None
     )
 
 

@@ -1,13 +1,36 @@
 # Рабочая контрольная точка — продолжение закрытия аудита, 2026-11-06
 
+## Current reconciliation — 2026-11-07
+
+The current formal total is **484/512 (94.5%) accepted or resolved, 28 open**:
+**16S / 12P / 0U / 0N**. The six additional scoped decisions are AUD-208,
+AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The prior **478/34** and
+**476/36** checkpoints and their earlier current-status wording remain below
+as dated history; this supplement supersedes their totals.
+
+[Decision scopes and evidence limits](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
+The reviewed supplemental evidence is bound to its individual source pins,
+including earlier 20d4/13693/ea381 evidence snapshots. The supplemental v4
+packet was captured at index tree 8ba3ea986595; the first 484 documentation
+draft was prepared after staged-tree capture 6dd3cc904fff. That draft tree is
+historical, not a current-index or coverage assertion; the working index has
+since advanced, and no checks are claimed for the later index or these doc
+updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
+remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
+Inventory remains **497 dispositions / 242 baseline identities / 27 Gitleaks
+fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
+pairs, blocking CodeQL, hooks and quality floors remain in force.
+
+---
+
 Работа продолжается в единственном основном checkout `egorribun`. Изменяющие состояние Git операции выполняет root. Актуальная сводка — [STATUS.md](STATUS.md); историческая пауза ниже не является командой остановки.
 
-## Текущий снимок
+## Датированный исходный снимок перед supplement 484
 
 
-## Текущее дополнение — 2026-11-07 UTC
+## Датированный checkpoint 478/34 — 2026-11-07 UTC (superseded above)
 
-Формальная сверка обновлена до **478/512 (93,4%), 34 открытых**, классы **20S/13P/0U/1N**. Сохранены прежние 452 решения; текущий набор включает 25 scoped acceptances и отдельную ретракцию AUD-384. [Полный обзор 60 ID](../../audits/AUDIT-2026-11-06-full-reassessment.md); [текущий список 34 ID](../../audits/AUDIT-2026-10-30-reconciliation.md#current-34-finding-reconciliation--2026-11-07). Предыдущий checkpoint 476/512, 36 открытых (19S/15P/1U/1N) от 2026-11-06 23:59 UTC сохранён в обоих документах как dated history.
+Формальная сверка обновлена до **478/512 (93,4%), 34 открытых**, классы **20S/13P/0U/1N**. Сохранены прежние 452 решения; текущий набор включает 25 scoped acceptances и отдельную ретракцию AUD-384. [Полный обзор 60 ID](../../audits/AUDIT-2026-11-06-full-reassessment.md); [датированный список 34 ID](../../audits/AUDIT-2026-10-30-reconciliation.md#previous-public-34-finding-reconciliation--2026-11-07). Предыдущий checkpoint 476/512, 36 открытых (19S/15P/1U/1N) от 2026-11-06 23:59 UTC сохранён в обоих документах как dated history.
 
 Reviewed index tree — `ea381c19bda1`; inventory остаётся 497 dispositions, baseline 242, Gitleaks 27 и Semgrep 15. AUD-422 принят только по документации/inventory-contract (24/24 actual-main tests, independent review pass). AUD-423 принят для source-alignment поверхностей; его 118+6 тестовых результатов связаны с `aa5777f68db6`, а последующая CSPRNG fixture правка в `ea381c19bda1` проверена отдельным actual-main набором 7 tests + 6 subtests с 142 неизменными pins; полный набор 118+6 повторно не заявляется. AUD-346 перемещён U→S после интеграции source fix и 43 focused passes; live Kind injection/degradation/recovery proof остаётся незавершённым. AUD-208: отдельный local native Squawk прогон трёх SQL-входов дал 0 issues; реальные PostgreSQL cases остаются unproven. Текущие source-focused checks включают 1191 aggregate passes, отдельные 6/6 AUD-427 passes и 257 focused quality/catalog passes без предупреждений. Exact cached-byte binding (guard `db118…`) explicitly owner-approved and applied; policy records remain unchanged. Это не full CI GREEN, hosted-check или release claim.
 

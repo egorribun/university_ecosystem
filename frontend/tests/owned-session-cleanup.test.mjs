@@ -22,9 +22,13 @@ const state = vi.hoisted(() => ({
   deadlineReads: [],
 }))
 
-vi.mock("../scripts/live-e2e-credentials.mjs", () => ({
-  requireLiveAdminPassword: () => "synthetic-only-unused",
-}))
+vi.mock("../scripts/live-e2e-credentials.mjs", async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    requireLiveAdminPassword: () => "synthetic-only-unused",
+  }
+})
 
 vi.mock("../scripts/live-registration-admission.mjs", () => ({
   REGISTRATION_MAX_TEST_TIMEOUT_MS: 360_000,

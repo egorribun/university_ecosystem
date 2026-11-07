@@ -480,7 +480,7 @@ async def test_enforce_fresh_mfa_success(mock_request):
         from app.api.deps import _enforce_fresh_mfa
 
         # Should not raise
-        _enforce_fresh_mfa(mock_request)
+        assert (_enforce_fresh_mfa(mock_request)) is None
 
 
 import hashlib

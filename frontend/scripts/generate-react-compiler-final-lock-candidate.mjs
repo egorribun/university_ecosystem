@@ -200,7 +200,7 @@ function assertSharedSourceLock(lock) {
   assert.equal(lock.lockfileVersion, 3)
   for (const [path, version] of [
     ["node_modules/body-parser", "1.20.9"],
-    ["node_modules/undici", "8.12.2"],
+    ["node_modules/undici", "8.12.4"],
     [COMPILER, "19.1.0-rc.2"],
     [HOOKS, "7.1.1"],
     ["node_modules/eslint", "10.13.0"],

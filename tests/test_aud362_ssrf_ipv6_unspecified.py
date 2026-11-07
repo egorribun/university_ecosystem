@@ -100,4 +100,8 @@ def test_global_ipv6_remains_allowed() -> None:
 
 
 def test_async_validator_allows_global_ipv6_literal() -> None:
-    asyncio.run(validate_url_not_internal_async(f"https://[{PUBLIC_IPV6}]/resource"))
+    assert (
+        asyncio.run(
+            validate_url_not_internal_async(f"https://[{PUBLIC_IPV6}]/resource")
+        )
+    ) is None

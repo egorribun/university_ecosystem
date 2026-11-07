@@ -453,12 +453,14 @@ class TestAuditService:
         from app.services.audit_service import SecurityEvent, audit_service
 
         # audit_service.log should not raise
-        audit_service.log(
-            SecurityEvent.ACCESS_DENIED,
-            user_id=uuid.uuid4(),
-            reason="test",
-            action="test_action",
-        )
+        assert (
+            audit_service.log(
+                SecurityEvent.ACCESS_DENIED,
+                user_id=uuid.uuid4(),
+                reason="test",
+                action="test_action",
+            )
+        ) is None
 
     def test_security_event_enum(self):
         from app.services.audit_service import SecurityEvent
@@ -570,8 +572,22 @@ class TestSessionRepository:
         from app.repositories.session_repository import SessionRepository
 
         repo = SessionRepository(db_session)
-        # Should not raise even for nonexistent JTI
-        await repo.touch_by_jti("nonexistent-jti")
+        statements_and_rowcounts = []
+        execute = db_session.execute
+
+        async def execute_and_capture(statement, *args, **kwargs):
+            result = await execute(statement, *args, **kwargs)
+            statements_and_rowcounts.append((statement, result.rowcount))
+            return result
+
+        with patch.object(db_session, "execute", new=execute_and_capture):
+            assert (await repo.touch_by_jti("nonexistent-jti")) is None
+
+        assert len(statements_and_rowcounts) == 1
+        statement, rowcount = statements_and_rowcounts[0]
+        assert "active_sessions.jti" in str(statement)
+        assert "nonexistent-jti" in statement.compile().params.values()
+        assert rowcount == 0
 
 
 class TestGraphQLAdvancedCoverage:

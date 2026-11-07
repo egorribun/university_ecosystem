@@ -45,7 +45,7 @@ def _write_report(path: Path, root: ElementTree.Element) -> None:
 def test_report_accepts_the_six_named_passes(tmp_path: Path) -> None:
     report = tmp_path / "junit.xml"
     _write_report(report, _report())
-    proof.validate_report(report)
+    assert (proof.validate_report(report)) is None
 
 
 @pytest.mark.parametrize(

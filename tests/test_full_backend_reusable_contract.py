@@ -58,6 +58,15 @@ _REVIEWED_NIGHTLY_HUNKS = (
 """,
         "",
     ),
+    # AUD-346: reverse only the reviewed live Kind Chaos Mesh proof step.
+    (
+        """      - name: Run owned Kind Chaos Mesh fault and recovery proof
+        timeout-minutes: 9
+        run: bash scripts/chaos/aud346_live_kind_proof.sh
+
+""",
+        "",
+    ),
     # AUD-347: reverse only the reviewed S3 receipt delta.
     (
         """          uv run pytest tests/chaos/ -v -m chaos --tb=short --junitxml="$RUNNER_TEMP/chaos-s3.xml"

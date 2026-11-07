@@ -52,4 +52,8 @@ async def test_async_channel_double_check_yields_channel_created_while_waiting(
 async def test_close_global_channel_is_noop_when_channel_is_absent(monkeypatch):
     monkeypatch.setattr(spicedb, "_global_channel", None)
 
-    await spicedb.close_global_spicedb_channel()
+    with patch.object(spicedb.logger, "debug") as debug:
+        assert (await spicedb.close_global_spicedb_channel()) is None
+
+    assert spicedb._global_channel is None
+    debug.assert_not_called()

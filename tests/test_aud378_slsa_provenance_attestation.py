@@ -45,4 +45,8 @@ def test_provenance_check_verifies_slsa_attestation_of_pinned_verifier() -> None
     assert "--proto '=https'" in run
     assert "--tlsv1.2" in run
     assert "${{" not in run
-    assert job["permissions"] == {"contents": "read"}
+    assert job["permissions"] == {
+        "contents": "read",
+        "actions": "read",
+        "attestations": "read",
+    }

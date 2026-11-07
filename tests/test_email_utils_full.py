@@ -238,11 +238,14 @@ def test_build_reset_email_content_link_verbatim():
 def test_build_reset_email_content_utf8_in_name():
     """Names with non-ASCII characters are handled without encoding errors."""
     link = "https://example.com/reset"
-    subject, plain, html = build_reset_email_content(link, "Mohammed Ali")
-    assert "Mohammed Ali" in html
-    html.encode("utf-8")
-    plain.encode("utf-8")
-    subject.encode("utf-8")
+    name = "Zoë 李"
+    subject, plain, html = build_reset_email_content(link, name)
+    assert name in html
+    html_bytes = html.encode("utf-8")
+    assert name.encode("utf-8") in html_bytes
+    assert html_bytes.decode("utf-8") == html
+    assert plain.encode("utf-8").decode("utf-8") == plain
+    assert subject.encode("utf-8").decode("utf-8") == subject
 
 
 # ---------------------------------------------------------------------------
@@ -275,9 +278,14 @@ def test_build_lockout_email_content_name_suffix_empty():
 
 def test_build_lockout_email_content_utf8_name():
     """Non-ASCII names encode cleanly."""
-    _, plain, html = build_lockout_email_content("Angstrom Bjork")
-    html.encode("utf-8")
-    plain.encode("utf-8")
+    name = "İpek Şahin"
+    subject, plain, html = build_lockout_email_content(name)
+    assert name in html
+    html_bytes = html.encode("utf-8")
+    assert name.encode("utf-8") in html_bytes
+    assert html_bytes.decode("utf-8") == html
+    assert plain.encode("utf-8").decode("utf-8") == plain
+    assert subject.encode("utf-8").decode("utf-8") == subject
 
 
 # ---------------------------------------------------------------------------

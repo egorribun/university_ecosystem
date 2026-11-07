@@ -67,13 +67,19 @@ def test_worker_run_executes_async_main(
 def test_worker_run_treats_keyboard_interrupt_as_clean_shutdown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    received: list[Coroutine[Any, Any, None]] = []
+
     def interrupt(coroutine: Coroutine[Any, Any, None]) -> None:
+        received.append(coroutine)
         coroutine.close()
         raise KeyboardInterrupt
 
     monkeypatch.setattr(asyncio, "run", interrupt)
 
     worker.run()
+
+    assert len(received) == 1
+    assert inspect.getcoroutinestate(received[0]) == inspect.CORO_CLOSED
 
 
 def test_root_module_main_delegates_to_typer_app(

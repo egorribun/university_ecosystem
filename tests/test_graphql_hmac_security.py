@@ -34,7 +34,7 @@ def test_gateway_signature_accepts_user_and_session(
         }
     )
 
-    _verify_gateway_identity_signature(request, "user", "session", "")
+    assert (_verify_gateway_identity_signature(request, "user", "session", "")) is None
 
 
 def test_gateway_signature_accepts_tenant_binding(
@@ -51,7 +51,9 @@ def test_gateway_signature_accepts_tenant_binding(
         }
     )
 
-    _verify_gateway_identity_signature(request, "user", "session", "tenant")
+    assert (
+        _verify_gateway_identity_signature(request, "user", "session", "tenant")
+    ) is None
 
 
 def test_gateway_signature_rejects_invalid_value(
@@ -96,7 +98,9 @@ def test_gateway_signature_can_be_disabled_for_development(
     monkeypatch.setattr(settings, "environment", "testing")
     monkeypatch.setattr(settings, "internal_hmac_secret", "")
 
-    _verify_gateway_identity_signature(_request({}), "user", "session", "")
+    assert (
+        _verify_gateway_identity_signature(_request({}), "user", "session", "")
+    ) is None
 
 
 def test_gateway_signature_defaults_are_fail_closed_and_secret_is_required(

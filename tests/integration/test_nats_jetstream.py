@@ -220,7 +220,9 @@ async def test_publish_core_skips_when_not_connected() -> None:
     broker = NatsTaskBroker()
     # Deliberately leave _nc = None (disconnected state)
     # Should be a no-op, not an exception.
-    await broker.publish_core("chat.direct", {"msg": "hello"})  # must not raise
+    assert (
+        await broker.publish_core("chat.direct", {"msg": "hello"})
+    ) is None  # must not raise
 
 
 async def test_publish_core_publishes_when_connected() -> None:

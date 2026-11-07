@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
@@ -525,7 +526,18 @@ async def test_outbox_worker_run_stop(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_outbox_worker_heartbeat_without_path_returns():
-    await OutboxWorker()._heartbeat_loop()
+    worker = OutboxWorker()
+    worker._is_running = True
+
+    with (
+        patch("app.workers.outbox.asyncio.sleep", new_callable=AsyncMock) as sleep,
+        patch("app.workers.outbox.Path.write_text") as write_text,
+    ):
+        await worker._heartbeat_loop()
+
+    sleep.assert_not_awaited()
+    write_text.assert_not_called()
+    assert worker._is_running is True
 
 
 @pytest.mark.asyncio

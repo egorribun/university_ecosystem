@@ -82,25 +82,29 @@ async def client(app: FastAPI) -> AsyncClient:
 @pytest.mark.asyncio
 async def test_non_http_scope_passthrough():
     """Non-HTTP scopes (e.g. lifespan) pass through without interference."""
-    test_app = _build_test_app()
+    incoming_event = {"type": "lifespan.startup"}
+    observed_scopes: list[dict] = []
     received_events: list[dict] = []
 
     async def mock_receive():
-        return {"type": "lifespan.startup"}
+        return incoming_event
 
     async def mock_send(message):
         received_events.append(message)
 
-    middleware = ContentSizeLimitMiddleware(test_app, max_bytes=100)
-    scope = {"type": "lifespan"}
+    async def controlled_inner_app(scope, receive, send):
+        observed_scopes.append(scope)
+        event = await receive()
+        assert event == incoming_event
+        await send({"type": "lifespan.startup.complete"})
 
-    # Should delegate to inner app without error
-    # Inner app will fail because scope is not HTTP, but the middleware itself
-    # should not block. We catch the inner error to prove passthrough.
-    try:
-        await middleware(scope, mock_receive, mock_send)
-    except Exception:  # noqa: S110
-        pass  # Inner app doesn't handle lifespan — expected
+    middleware = ContentSizeLimitMiddleware(controlled_inner_app, max_bytes=100)
+    scope = {"type": "lifespan", "asgi": {"version": "3.0"}}
+
+    await middleware(scope, mock_receive, mock_send)
+
+    assert observed_scopes == [scope]
+    assert received_events == [{"type": "lifespan.startup.complete"}]
 
 
 # ---------------------------------------------------------------------------

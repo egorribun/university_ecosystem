@@ -343,15 +343,30 @@ function Assert-InPlaceTemporalBootstrapModel {
     }
     $comparison = if ([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) { [StringComparison]::OrdinalIgnoreCase } else { [StringComparison]::Ordinal }
     $seen = @{}
-    if (@($init.volumes).Count -ne $expected.Count) { throw 'Temporal bootstrap Compose mount count is invalid.' }
+    if (@($init.volumes).Count -ne $expected.Count) {
+        throw 'Temporal bootstrap Compose mount rejected (mount_count).'
+    }
     foreach ($mount in $init.volumes) {
         $target = [string]$mount.target
-        if (-not $expected.ContainsKey($target) -or $seen.ContainsKey($target) -or
-            [string]$mount.type -cne 'bind' -or $mount.read_only -ne $true -or
-            -not (Test-TemporalBootstrapNoHostPathCreation -Mount $mount) -or
-            -not [System.IO.Path]::IsPathFullyQualified([string]$mount.source) -or
-            -not [string]::Equals([System.IO.Path]::GetFullPath([string]$mount.source), $expected[$target], $comparison)) {
-            throw 'Temporal bootstrap Compose mount is not exact and read-only.'
+        if (-not $expected.ContainsKey($target) -or $seen.ContainsKey($target)) {
+            throw 'Temporal bootstrap Compose mount rejected (target_or_duplicate).'
+        }
+        if ([string]$mount.type -cne 'bind') {
+            throw 'Temporal bootstrap Compose mount rejected (mount_type).'
+        }
+        if ($mount.read_only -ne $true) {
+            throw 'Temporal bootstrap Compose mount rejected (read_only).'
+        }
+        if (-not (Test-TemporalBootstrapNoHostPathCreation -Mount $mount)) {
+            throw 'Temporal bootstrap Compose mount rejected (create_host_path).'
+        }
+        $source = [string]$mount.source
+        if (-not [System.IO.Path]::IsPathFullyQualified($source)) {
+            throw 'Temporal bootstrap Compose mount rejected (source_not_absolute).'
+        }
+        $canonicalSource = [System.IO.Path]::GetFullPath($source)
+        if (-not [string]::Equals($canonicalSource, $expected[$target], $comparison)) {
+            throw 'Temporal bootstrap Compose mount rejected (source_not_exact).'
         }
         $seen[$target] = $true
     }

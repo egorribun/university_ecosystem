@@ -114,13 +114,22 @@ def test_email_otp_constructor_accepts_only_aes_gcm_key_lengths(
 ) -> None:
     """Delivery KEKs use exactly the AES-GCM key sizes supported by the cipher."""
 
-    EmailOtpService(
-        hmac_keys={"active": b"h" * 32},
+    hmac_keys = {"active": b"h" * 32}
+    delivery_keks = {"active": b"k" * kek_length}
+    limiter = _Limiter()
+    service = EmailOtpService(
+        hmac_keys=hmac_keys,
         active_hmac_key_id="active",
-        delivery_keks={"active": b"k" * kek_length},
+        delivery_keks=delivery_keks,
         active_kek_id="active",
-        rate_limiter=_Limiter(),
+        rate_limiter=limiter,
     )
+
+    assert service._hmac_keys == hmac_keys
+    assert service._active_hmac_key_id == "active"
+    assert service._delivery_keks == delivery_keks
+    assert service._active_kek_id == "active"
+    assert service._rate_limiter is limiter
 
 
 def test_email_otp_constructor_rejects_non_aes_gcm_key_length() -> None:

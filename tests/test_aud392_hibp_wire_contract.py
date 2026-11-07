@@ -51,7 +51,9 @@ async def test_valid_clean_and_padded_records_are_accepted(
 ) -> None:
     suffix, other = _suffixes(candidate)
     body = f"{other.lower()}:12\r\n{suffix.lower()}:0\r\n"
-    await _check_response(monkeypatch, candidate, body, fail_open=fail_open)
+    assert (
+        await _check_response(monkeypatch, candidate, body, fail_open=fail_open)
+    ) is None
 
 
 @pytest.mark.parametrize("fail_open", [False, True])

@@ -20,7 +20,7 @@ def test_validate_session_expiry_tzinfo_none(auth_security_service):
     session.expires_at = session.expires_at.replace(tzinfo=None)
 
     # Should not raise exception
-    auth_security_service.validate_session_expiry(session)
+    assert (auth_security_service.validate_session_expiry(session)) is None
 
 
 def test_validate_session_expiry_expired(auth_security_service):

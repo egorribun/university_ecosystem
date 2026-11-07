@@ -5,6 +5,7 @@ Provider: Optimizer
 
 from __future__ import annotations
 
+import json
 import sys
 
 import pytest
@@ -89,3 +90,47 @@ def test_detect_conflicts_grpc_contract(pact: Pact) -> None:
             "application/grpc",
         )
     )
+
+    interactions = list(pact.interactions(kind="Sync"))
+    assert len(interactions) == 1
+    [interaction] = interactions
+    assert interaction.description == "a gRPC request for DetectConflicts"
+
+    request_contents = interaction.request_contents.contents
+    assert isinstance(request_contents, (str, bytes))
+    assert json.loads(request_contents) == {
+        "target": {
+            "weekday": "Monday",
+            "start_time": {"seconds": 1710000000, "nanos": 0},
+            "end_time": {"seconds": 1710003600, "nanos": 0},
+            "parity": "both",
+            "room": "404",
+            "teacher": "Dr. Smith",
+        },
+        "existing": [
+            {
+                "weekday": "Monday",
+                "start_time": {"seconds": 1710000000, "nanos": 0},
+                "end_time": {"seconds": 1710003600, "nanos": 0},
+                "parity": "both",
+                "room": "404",
+                "teacher": "Dr. Smith",
+            }
+        ],
+    }
+    responses = list(interaction.response_contents)
+    assert len(responses) == 1
+    response_contents = responses[0].contents
+    assert isinstance(response_contents, (str, bytes))
+    assert json.loads(response_contents) == {
+        "conflicts": [
+            {
+                "weekday": "Monday",
+                "start_time": {"seconds": 1710000000, "nanos": 0},
+                "end_time": {"seconds": 1710003600, "nanos": 0},
+                "parity": "both",
+                "room": "404",
+                "teacher": "Dr. Smith",
+            }
+        ]
+    }

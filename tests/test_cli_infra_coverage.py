@@ -1,6 +1,8 @@
+from io import StringIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from rich.console import Console
 
 from app.cli.infra import check_infra
 from app.deps.cache import RedisCache
@@ -73,11 +75,15 @@ async def test_infra_check_all_failures():
 
 @pytest.mark.asyncio
 async def test_infra_check_redis_skipped():
+    output = StringIO()
     with (
         patch("app.cli.infra.engine") as mock_engine,
         patch("app.cli.infra.get_cache") as mock_get_cache,
         patch("app.cli.infra.get_nats_service") as mock_nats,
-        patch("rich.console.Console.print"),
+        patch(
+            "app.cli.infra.console",
+            Console(file=output, no_color=True, width=120),
+        ),
     ):
         # Mock other services to pass or fail, doesn't matter
         mock_engine.connect.return_value.__aenter__.return_value.execute = AsyncMock()
@@ -86,7 +92,12 @@ async def test_infra_check_redis_skipped():
         # Redis not RedisCache
         mock_get_cache.return_value = MagicMock()  # Not RedisCache instance
 
-        await check_infra()
+        assert (await check_infra()) is None
+
+    rendered = output.getvalue()
+    assert "Redis" in rendered
+    assert "SKIPPED" in rendered
+    assert "MagicMock" in rendered
 
 
 @pytest.mark.asyncio

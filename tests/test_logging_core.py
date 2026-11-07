@@ -207,6 +207,21 @@ def test_is_logger_enabled():
 
 
 def test_bind_and_clear_context():
-    """Verify bind_context and clear_context modify context vars."""
-    bind_context(request_id="abc-123")
-    clear_context()
+    """Verify bound fields are visible and clear_context removes them."""
+    contextvars = logging_mod.structlog.contextvars
+    previous_context = contextvars.get_contextvars()
+    try:
+        clear_context()
+        assert contextvars.get_contextvars() == {}
+
+        bind_context(request_id="abc-123", user_id=42)
+        assert contextvars.get_contextvars() == {
+            "request_id": "abc-123",
+            "user_id": 42,
+        }
+
+        clear_context()
+        assert contextvars.get_contextvars() == {}
+    finally:
+        clear_context()
+        bind_context(**previous_context)

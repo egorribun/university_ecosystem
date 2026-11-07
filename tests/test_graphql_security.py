@@ -310,8 +310,12 @@ class TestAPQRequirementR1:
         ext.execution_context.extensions = None
 
         with patch("app.core.config.settings.environment", "development"):
-            async for _ in ext.on_validate():
-                pass
+            validation = ext.on_validate()
+            assert await validation.__anext__() is None
+            with pytest.raises(StopAsyncIteration):
+                await validation.__anext__()
+
+        assert ext.execution_context.query == "query { unpersisted }"
 
 
 # ---------------------------------------------------------------------------

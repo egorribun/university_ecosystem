@@ -1,12 +1,35 @@
 # Статус выпуска MVP v1.0.0
 
+## Current reconciliation — 2026-11-07
+
+The current formal total is **484/512 (94.5%) accepted or resolved, 28 open**:
+**16S / 12P / 0U / 0N**. The six additional scoped decisions are AUD-208,
+AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The prior **478/34** and
+**476/36** checkpoints and their earlier current-status wording remain below
+as dated history; this supplement supersedes their totals.
+
+[Decision scopes and evidence limits](../../audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
+The reviewed supplemental evidence is bound to its individual source pins,
+including earlier 20d4/13693/ea381 evidence snapshots. The supplemental v4
+packet was captured at index tree 8ba3ea986595; the first 484 documentation
+draft was prepared after staged-tree capture 6dd3cc904fff. That draft tree is
+historical, not a current-index or coverage assertion; the working index has
+since advanced, and no checks are claimed for the later index or these doc
+updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
+remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
+Inventory remains **497 dispositions / 242 baseline identities / 27 Gitleaks
+fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
+pairs, blocking CodeQL, hooks and quality floors remain in force.
+
+---
+
 Обновлено: 2026-11-07 (UTC). План — [MVP_MASTER_PLAN.md](MVP_MASTER_PLAN.md), качество — [ADR-047](../../adr/ADR-047-risk-based-quality-policy.md).
 
-## Текущий статус — продолжение закрытия аудита, 2026-11-07 UTC
+## Датированный checkpoint 478/34 — 2026-11-07 UTC (superseded above)
 
 Работа продолжается в основном checkout ветки `egorribun`; изменяющие состояние Git операции выполняет root. Локальный checkout HEAD — `8a4367b`; текущий reviewed index tree — `ea381c19bda1`. Синхронизация local/remote не заявляется.
 
-Формальная приёмка составляет **478/512 (93,4%), 34 открытых**: сохранены прежние 452 решения, добавлены 25 scoped acceptances и оставлена отдельная ретракция false-positive AUD-384. Текущие классы — **20S/13P/0U/1N** ([текущий список 34 ID](../../audits/AUDIT-2026-10-30-reconciliation.md#current-34-finding-reconciliation--2026-11-07); [полный 60-строчный отчёт](../../audits/AUDIT-2026-11-06-full-reassessment.md)). Срез 476/512 и 36 открытых от 2026-11-06 23:59 UTC сохранён как dated history.
+Формальная приёмка составляет **478/512 (93,4%), 34 открытых**: сохранены прежние 452 решения, добавлены 25 scoped acceptances и оставлена отдельная ретракция false-positive AUD-384. Текущие классы — **20S/13P/0U/1N** ([датированный список 34 ID](../../audits/AUDIT-2026-10-30-reconciliation.md#previous-public-34-finding-reconciliation--2026-11-07); [полный 60-строчный отчёт](../../audits/AUDIT-2026-11-06-full-reassessment.md)). Срез 476/512 и 36 открытых от 2026-11-06 23:59 UTC сохранён как dated history.
 
 Текущий reviewed index tree — `ea381c19bda1`; inventory содержит **497** security dispositions, baseline **242**, Gitleaks **27**, Semgrep **15**. Это счётчики inventory, не scanner PASS. AUD-422 принят только по документации и inventory-contract: три названных модуля прошли **24/24**, независимый review прошёл. AUD-423 принят для source-alignment на обновлённых документационных поверхностях; его 118+6 тестовых результатов привязаны к tree `aa5777f68db6`, а последующий tree `ea381c19bda1` меняет только CSPRNG fixture password в Argon2 test; после CSPRNG-правки отдельный actual-main набор из 7 тестов и 6 subtests прошёл на `ea381c19bda1` с 142 неизменными pins; повторный запуск полного набора 118+6 не заявляется. AUD-346 перемещён U→S: source fix интегрирован; **43 focused tests** прошли, но owner-authorized live Kind injection/degradation/recovery proof остаётся невыполненным. Для AUD-208 отдельная local native Squawk проверка трёх SQL-входов прошла с 0 issues; реальные PostgreSQL cases пока не подтверждены.
 

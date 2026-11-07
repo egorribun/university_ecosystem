@@ -1,5 +1,28 @@
 # Audit trail
 
+## Current reconciliation — 2026-11-07
+
+The current formal total is **484/512 (94.5%) accepted or resolved, 28 open**:
+**16S / 12P / 0U / 0N**. The six additional scoped decisions are AUD-208,
+AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The prior **478/34** and
+**476/36** checkpoints and their earlier current-status wording remain below
+as dated history; this supplement supersedes their totals.
+
+[Decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
+The reviewed supplemental evidence is bound to its individual source pins,
+including earlier 20d4/13693/ea381 evidence snapshots. The supplemental v4
+packet was captured at index tree 8ba3ea986595; the first 484 documentation
+draft was prepared after staged-tree capture 6dd3cc904fff. That draft tree is
+historical, not a current-index or coverage assertion; the working index has
+since advanced, and no checks are claimed for the later index or these doc
+updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
+remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
+Inventory remains **497 dispositions / 242 baseline identities / 27 Gitleaks
+fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
+pairs, blocking CodeQL, hooks and quality floors remain in force.
+
+---
+
 This index holds the retained platform findings and historical-evidence policy.
 Historical classifications describe their recorded source revision. Current
 release claims require fresh evidence under the master plan.
@@ -18,13 +41,15 @@ These new artifacts replace the missing recovery-material function. They do
 not reproduce the absent historical files, old hashes, or old CSV transfer
 fields. The historical restore commands below remain historical, and routine
 copying, publication, extraction, or further bundle creation remains forbidden.
-This evidence is available for AUD-420 adjudication; formal audit totals below
-remain the separately recorded cohort until its next reconciliation.
+This evidence supports the one-time criterion-specific AUD-420 acceptance
+recorded in the current reassessment. It does not recreate the missing historical
+files or authorize routine backup, copying, publication, or distribution.
 
 ## Current quality-closure roadmap
 
-- [Current accepted audit lower bound: 478 / 512 (93.4%)](AUDIT-2026-11-06-full-reassessment.md#decision-summary) — preserves the prior 452 decisions, adds 25 scoped acceptances and retains the AUD-384 false-positive retraction. [Current 34-ID complement](AUDIT-2026-10-30-reconciliation.md#current-34-finding-reconciliation--2026-11-07): 20S / 13P / 0U / 1N. Evidence is bounded to reviewed index tree ea381c; overall CI and release readiness are not accepted.
-- [Dated previous cohort checkpoint: 476 / 512 (93.0%), 36 open](AUDIT-2026-11-06-full-reassessment.md#previous-cohort-checkpoint--2026-11-06-2359-utc) — class counts 19S / 15P / 1U / 1N; superseded by the current 478/34 overlay.
+- [Current accepted audit lower bound: 484 / 512 (94.5%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07) — preserves the prior 452 decisions, adds 31 scoped acceptances and retains the AUD-384 false-positive retraction. [Current 28-ID complement](AUDIT-2026-10-30-reconciliation.md#current-28-finding-reconciliation--2026-11-07): 16S / 12P / 0U / 0N. Evidence is bound to its source snapshots, not the later current index; overall CI and release readiness are not accepted.
+- [Dated prior public checkpoint: 478 / 512 (93.4%), 34 open](AUDIT-2026-11-06-full-reassessment.md#previous-public-checkpoint--2026-11-07) — 25 scoped acceptances plus the AUD-384 false-positive retraction; retained as dated history.
+- [Dated previous cohort checkpoint: 476 / 512 (93.0%), 36 open](AUDIT-2026-11-06-full-reassessment.md#previous-cohort-checkpoint--2026-11-06-2359-utc) — class counts 19S / 15P / 1U / 1N; superseded by the 478/34 and then 484/28 overlays.
 - [Historical accepted audit lower bound: 452 / 512 (88.3%)](AUDIT-2026-10.md#scoped-aud-449-acceptance-for-caddy-and-gunicorn-access-log-redaction--2026-11-06) — preserves all 450 IDs at the dated AUD-426 checkpoint and adds only AUD-231 and AUD-449 afterward. [Dated 60-ID complement](AUDIT-2026-10-30-reconciliation.md#current-60-finding-reconciliation--2026-11-06): 13 source-fixed/proof-pending, 35 partial, 9 unfixed, and 3 unverified. [Cumulative Nov 6 review](AUDIT-2026-11-06-review.md) records separate source-bound AUD-426, Chromium AUD-231, and Caddy/Gunicorn AUD-449 evidence; it does not claim overall CI or release acceptance.
 
 - [Historical accepted audit lower bound: 450 / 512 (87.9%)](AUDIT-2026-10.md#scoped-aud-426-acceptance-after-hosted-postgresql-proof--2026-11-06) — preserves all 449 earlier IDs and adds only AUD-426 at that dated checkpoint. [Dated 62-ID complement](AUDIT-2026-10-30-reconciliation.md#current-62-finding-reconciliation--2026-11-06): 15 source-fixed/proof-pending, 35 partial, 9 unfixed, and 3 unverified. The PostgreSQL job later failed on a separate AUD-447 test; its XML validator did not run.
