@@ -2332,27 +2332,30 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
                     "job_type",
                     "job_hash",
                     "payload",
-                    "error_message",
                 )
                 assert statement.compile().params == {"job_hash_1": job_hash}
                 row = SimpleNamespace(
                     job_type=job.job_type,
                     job_hash=job.job_hash,
                     payload=job.payload,
-                    error_message=job.error_message,
                 )
                 return SimpleNamespace(one_or_none=lambda: row)
             assert isinstance(statement, Update)
             parameters = dict(statement.compile().params)
             assert set(parameters) == {
                 "payload",
+                "error_message",
                 "updated_at",
                 "job_hash_1",
+                "job_type_1",
                 "payload_1",
             }
             assert parameters["payload"] == _QUARANTINED_AUTH_PAYLOAD
+            assert parameters["error_message"] == _QUARANTINED_AUTH_PAYLOAD
+            assert parameters["job_type_1"] == name
             if (
                 parameters["job_hash_1"] != job.job_hash
+                or parameters["job_type_1"] != job.job_type
                 or parameters["payload_1"] != job.payload
             ):
                 return SimpleNamespace(rowcount=0)
@@ -2360,6 +2363,7 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
             # ORM UPDATE uses synchronize_session="auto": the loaded matching
             # instance receives the complete replacement, not partial JSON edits.
             job.payload = parameters["payload"]
+            job.error_message = parameters["error_message"]
             return SimpleNamespace(rowcount=1)
 
         monkeypatch.setattr(
@@ -2432,10 +2436,9 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
         assert await apply_boundary() == (0, 1)
         assert job.status == "pending"
         assert job.retry_count == 2
-        opaque_error = (
-            job.error_message == "Authentication email payload protection failed"
-        )
-        assert opaque_error
+        # The quarantined payload is unreadable auth work: error scrubbing
+        # fails closed to the fixed tombstone rather than retaining diagnostics.
+        assert job.error_message == _QUARANTINED_AUTH_PAYLOAD
     assert js.publish.await_count == 0
     if boundary == "dedup":
         assert quarantine_writes == []
@@ -2446,6 +2449,8 @@ async def test_aud447_invalid_retained_rows_fail_without_partial_payload_or_publ
     else:
         (replacement,) = quarantine_writes
         assert replacement["job_hash_1"] == job_hash
+        assert replacement["job_type_1"] == name
+        assert replacement["error_message"] == _QUARANTINED_AUTH_PAYLOAD
         assert replacement["payload_1"] == bad_bytes
         complete_quarantine = job.payload == _QUARANTINED_AUTH_PAYLOAD
         assert complete_quarantine, "replay did not apply the complete quarantine"

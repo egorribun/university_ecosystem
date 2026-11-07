@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import Update
+from sqlalchemy import Select, Update
 
 import app.core.database as database_module
 import app.core.nats_broker as nats_module
@@ -17,6 +17,7 @@ import app.tasks.email as email_tasks
 from app.models.dead_letter import DeadLetterJob
 from app.workers.dead_letter_queue import (
     _QUARANTINED_AUTH_PAYLOAD,
+    DeadLetterQuarantineContentionError,
     DeadLetterQueue,
     _protect_retained_auth_payload,
 )
@@ -118,9 +119,18 @@ async def test_aud447_quarantine_replaces_only_the_bytes_it_judged_unprotectable
     assert params["job_hash_1"] == "f" * 64
     # Compare-and-set: only the exact bytes that were read are replaced.
     assert params["payload_1"] == malformed
-    # Identity, status and retry budget are not part of the replacement; the
-    # model's onupdate timestamp is the only other column the statement sets.
-    assert set(params) == {"payload", "updated_at", "job_hash_1", "payload_1"}
+    assert params["job_type_1"] == _AUTH_TASK
+    assert params["error_message"] == _QUARANTINED_AUTH_PAYLOAD
+    # The type fence and payload CAS identify the observed auth row. Identity,
+    # status, retry budget and schedule remain outside the replacement.
+    assert set(params) == {
+        "payload",
+        "error_message",
+        "updated_at",
+        "job_hash_1",
+        "job_type_1",
+        "payload_1",
+    }
 
 
 @pytest.mark.asyncio
@@ -163,7 +173,16 @@ async def test_aud447_quarantine_reports_a_lost_compare_and_set() -> None:
     session = _RecordingSession(update_rowcount=0)
     session.row = _retained_row(malformed)
 
-    assert await DeadLetterQueue(session).quarantine_auth_payload("f" * 64) is False
+    with pytest.raises(
+        DeadLetterQuarantineContentionError,
+        match=r"^Auth payload quarantine did not converge after bounded retries$",
+    ):
+        await DeadLetterQueue(session).quarantine_auth_payload("f" * 64)
+    # Three failed writes followed by a final current-row read: contention is
+    # visible and bounded, rather than silently declaring invalid bytes safe.
+    assert sum(isinstance(s, Update) for s in session.statements) == 3
+    assert sum(isinstance(s, Select) for s in session.statements) == 4
+    assert session.row.payload == malformed
 
 
 @pytest.mark.asyncio
@@ -183,14 +202,17 @@ async def test_aud447_quarantine_scrubs_the_error_field_in_the_same_statement() 
 
 
 @pytest.mark.asyncio
-async def test_aud447_quarantine_keeps_an_error_field_without_a_link() -> None:
+async def test_aud447_quarantine_tombstones_an_error_without_a_link_for_invalid_auth() -> (
+    None
+):
     malformed = json.dumps({"args": ["x"]})[:-1]
     session = _RecordingSession()
     session.row = _retained_row(malformed, error_message="SMTP timeout after 30s")
 
     assert await DeadLetterQueue(session).quarantine_auth_payload("f" * 64) is True
 
-    assert "error_message" not in _update_params(session)
+    # Invalid auth bytes cannot prove which bare tokens old diagnostics carry.
+    assert _update_params(session)["error_message"] == _QUARANTINED_AUTH_PAYLOAD
 
 
 @pytest.mark.asyncio
