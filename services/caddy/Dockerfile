@@ -54,6 +54,8 @@ RUN zlib_arch="$(apk --print-arch)" \
     && printf '%s  %s\n' "$zlib_sha256" /tmp/zlib.apk | sha256sum -c - \
     && apk update \
     && apk add --no-cache \
+      musl=1.2.5-r24 \
+      musl-utils=1.2.5-r24 \
       libapk=3.0.8-r0 \
       apk-tools=3.0.8-r0 \
       libcrypto3=3.5.9-r0 \

@@ -243,10 +243,12 @@ function Test-TemporalBootstrapNoHostPathCreation {
     if ($null -eq $bindProperty -or $bindProperty.Value -isnot [pscustomobject]) {
         return $false
     }
-    # An omitted create_host_path permits Compose's default host-path creation.
-    # Only an explicit false bool proves that creation is disabled.
+    # This is normalized Compose JSON, not source YAML: compose-go omits a
+    # false CreateHostPath bool. Explicit false renders as bind: {}; short
+    # syntax and host-creating mounts render create_host_path: true. Keep the
+    # bind object mandatory and reject non-boolean explicit values.
     $createProperty = $bindProperty.Value.PSObject.Properties['create_host_path']
-    if ($null -eq $createProperty) { return $false }
+    if ($null -eq $createProperty) { return $true }
     return ($createProperty.Value -is [bool] -and $createProperty.Value -eq $false)
 }
 

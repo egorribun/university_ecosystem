@@ -2553,3 +2553,84 @@ def test_real_uvloop_no_svid_eof_remains_error_with_stage_diagnostics(
         import uvloop
 
         uvloop.run(exercise())
+
+
+@pytest.mark.parametrize("require_certificate", [True, False])
+def test_public_sslobject_handshake_observer(
+    tmp_path, require_certificate, monkeypatch
+):
+    from unittest.mock import Mock
+
+    from app.server import spiffe_transport as transport_module
+
+    monkeypatch.setenv("AUD373_TLS_DIAGNOSTICS", "1")
+    log = Mock()
+    monkeypatch.setattr(transport_module, "logger", log)
+    observer = transport_module.HandshakeDiagnostics()
+    hellos = []
+    admitted = []
+
+    context = _server_tls_context(tmp_path)
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.verify_mode = ssl.CERT_REQUIRED if require_certificate else ssl.CERT_NONE
+    context.sslobject_class = observer.sslobject_class
+
+    def client_hello(connection, name, initial):
+        hellos.append((connection, name))
+        observer.client_hello(connection, name)
+
+    context.sni_callback = client_hello
+
+    async def exercise():
+        class Respond(asyncio.Protocol):
+            def connection_made(self, transport):
+                admitted.append(True)
+                self.transport = transport
+
+            def data_received(self, data):
+                self.transport.write(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                self.transport.close()
+
+        loop = asyncio.get_running_loop()
+        server = await loop.create_server(Respond, "127.0.0.1", 0, ssl=context)
+        try:
+            result = await asyncio.to_thread(
+                _probe_result,
+                "NO_SVID_TLS_PY",
+                "localhost",
+                server.sockets[0].getsockname()[1],
+            )
+            assert result.returncode == 0
+            assert len(hellos) == 1
+            assert re.fullmatch(r"aud373-[0-9a-f]{32}\.invalid", hellos[0][1])
+            assert "NO_SVID_PROBE_ID=" + hellos[0][1][7:-8] in result.stdout
+            if require_certificate:
+                log.warning.assert_called_once_with(
+                    "internal_mtls_handshake_rejected",
+                    probe_id=hellos[0][1][7:-8],
+                    reason="PEER_DID_NOT_RETURN_A_CERTIFICATE",
+                )
+                assert not admitted
+                if (
+                    sys.platform == "win32"
+                    and "NO_SVID_EVENT=CERTIFICATE_REQUIRED" in result.stdout
+                ):
+                    assert "NO_SVID_TLS=REJECTED" in result.stdout
+                else:
+                    assert "NO_SVID_EVENT=EOF" in result.stdout
+                    assert "NO_SVID_TLS=ERROR" in result.stdout
+            else:
+                log.warning.assert_not_called()
+                assert admitted == [True]
+                assert "NO_SVID_TLS=ANSWERED" in result.stdout
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    if sys.platform == "win32":
+        asyncio.run(exercise())
+    else:
+        import uvloop
+
+        uvloop.run(exercise())

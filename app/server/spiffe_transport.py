@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import ssl
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -43,6 +44,60 @@ _FAILURES = (
 )
 _HEALTH_INTERVAL = 0.25
 logger = get_logger(__name__)
+
+
+class HandshakeDiagnostics:
+    """Opt-in, finite proof telemetry; never a TLS authorization decision."""
+
+    def __init__(self) -> None:
+        self.remaining = 64
+        observer = self
+
+        class ObservedSSLObject(ssl.SSLObject):
+            probe_id: str | None = None
+            hello_seen: bool = False
+
+            def do_handshake(self) -> None:
+                try:
+                    super().do_handshake()
+                except ssl.SSLError as error:
+                    try:
+                        observer.record(self, error)
+                    finally:
+                        # Telemetry must never replace or suppress the TLS failure.
+                        raise error
+
+        self.sslobject_class = ObservedSSLObject
+
+    def client_hello(
+        self, connection: ssl.SSLSocket | ssl.SSLObject, name: str | None
+    ) -> None:
+        if isinstance(connection, self.sslobject_class):
+            if connection.hello_seen:
+                # Ambiguous/repeated ClientHello is not usable correlation evidence.
+                connection.probe_id = None
+                return
+            connection.hello_seen = True
+            connection.probe_id = None
+            if name is not None and re.fullmatch(r"aud373-[0-9a-f]{32}\.invalid", name):
+                connection.probe_id = name[7:-8]
+
+    def record(self, connection: ssl.SSLObject, error: ssl.SSLError) -> None:
+        if (
+            not isinstance(connection, self.sslobject_class)
+            or connection.probe_id is None
+            or error.reason != "PEER_DID_NOT_RETURN_A_CERTIFICATE"
+            or self.remaining == 0
+        ):
+            return
+        probe_id = connection.probe_id
+        connection.probe_id = None
+        self.remaining -= 1
+        logger.warning(
+            "internal_mtls_handshake_rejected",
+            probe_id=probe_id,
+            reason="PEER_DID_NOT_RETURN_A_CERTIFICATE",
+        )
 
 
 def _stream_transport(transport: asyncio.BaseTransport) -> asyncio.Transport | None:
@@ -89,7 +144,10 @@ class TransportGuard:
         source: WorkloadContexts,
         allowed: frozenset[str],
         loop: asyncio.AbstractEventLoop,
+        *,
+        handshake_diagnostics: bool = False,
     ) -> None:
+        self.diagnostics = HandshakeDiagnostics() if handshake_diagnostics else None
         self.source = source
         self.allowed = allowed
         self.loop = loop
@@ -109,6 +167,8 @@ class TransportGuard:
         if generation.context is not self._armed:
             # A newly built context has not served a connection yet. Configure
             # its callback once, before publication, including TLS1.3 retries.
+            if self.diagnostics is not None:
+                generation.context.sslobject_class = self.diagnostics.sslobject_class
             generation.context.sni_callback = self._client_hello
             self._armed = generation.context
         return generation
@@ -123,6 +183,8 @@ class TransportGuard:
             return ssl.ALERT_DESCRIPTION_INTERNAL_ERROR
         try:
             connection.context = self.context().context
+            if self.diagnostics is not None:
+                self.diagnostics.client_hello(connection, _server_name)
         except _FAILURES:
             return ssl.ALERT_DESCRIPTION_ACCESS_DENIED
         return None

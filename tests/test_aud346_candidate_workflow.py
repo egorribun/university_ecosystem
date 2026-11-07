@@ -123,7 +123,7 @@ def test_candidate_manifests_select_only_one_aud346_target() -> None:
             (ROOT / "k8s/chaos/fixtures/aud346-target.yaml").read_text(encoding="utf-8")
         )
     )
-    namespace, deployment, service = documents
+    namespace, deployment, service, policy = documents
     assert namespace["metadata"]["name"] == "aud346"
     assert namespace["metadata"]["annotations"] == {"chaos-mesh.org/inject": "enabled"}
     assert deployment["metadata"]["namespace"] == "aud346"
@@ -131,6 +131,7 @@ def test_candidate_manifests_select_only_one_aud346_target() -> None:
     image = deployment["spec"]["template"]["spec"]["containers"][0]["image"]
     assert image == _canonical_backend_python_image()
     assert service["metadata"]["namespace"] == "aud346"
+    assert policy["kind"] == "NetworkPolicy"
 
     chaos_doc = yaml.safe_load(
         (ROOT / "k8s/chaos/aud346-pod-failure.yaml").read_text(encoding="utf-8")
@@ -143,4 +144,67 @@ def test_candidate_manifests_select_only_one_aud346_target() -> None:
     assert chaos_doc["spec"]["selector"]["namespaces"] == ["aud346"]
     assert chaos_doc["spec"]["selector"]["labelSelectors"] == {
         "app.kubernetes.io/name": "aud346-chaos-target"
+    }
+
+
+def test_fixture_liveness_does_not_mask_the_bounded_chaos_fault() -> None:
+    documents = list(
+        yaml.safe_load_all((ROOT / "k8s/chaos/fixtures/aud346-target.yaml").read_text())
+    )
+    deployment = next(
+        document for document in documents if document["kind"] == "Deployment"
+    )
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    readiness = container["readinessProbe"]
+    liveness = container["livenessProbe"]
+    assert liveness == {
+        "httpGet": {"path": "/health", "port": "http"},
+        "periodSeconds": 10,
+        "timeoutSeconds": 1,
+        "failureThreshold": 7,
+    }
+    assert readiness == {
+        "httpGet": {"path": "/health", "port": "http"},
+        "periodSeconds": 1,
+        "timeoutSeconds": 1,
+        "failureThreshold": 2,
+    }
+    assert container["ports"] == [{"name": "http", "containerPort": 8080}]
+    chaos = yaml.safe_load((ROOT / "k8s/chaos/aud346-pod-failure.yaml").read_text())
+    duration = int(chaos["spec"]["duration"].removesuffix("s"))
+    # A first failed probe may coincide with injection; the seventh must still
+    # be after the entire declared fault plus a bounded recovery margin.
+    assert (liveness["failureThreshold"] - 1) * liveness[
+        "periodSeconds"
+    ] >= duration + 15
+    assert readiness["periodSeconds"] * readiness["failureThreshold"] < duration
+
+
+def test_fixture_network_policy_is_exact_and_default_deny() -> None:
+    documents = list(
+        yaml.safe_load_all((ROOT / "k8s/chaos/fixtures/aud346-target.yaml").read_text())
+    )
+    deployment = next(
+        document for document in documents if document["kind"] == "Deployment"
+    )
+    service = next(document for document in documents if document["kind"] == "Service")
+    policies = [
+        document for document in documents if document["kind"] == "NetworkPolicy"
+    ]
+    assert len(policies) == 1
+    policy = policies[0]
+    assert policy["apiVersion"] == "networking.k8s.io/v1"
+    assert (
+        policy["metadata"]["namespace"]
+        == deployment["metadata"]["namespace"]
+        == "aud346"
+    )
+    labels = {"app.kubernetes.io/name": "aud346-chaos-target"}
+    assert deployment["spec"]["template"]["metadata"]["labels"] == labels
+    assert service["spec"]["selector"] == labels
+    assert policy["spec"] == {
+        "podSelector": {"matchLabels": labels},
+        "policyTypes": ["Ingress", "Egress"],
+        "ingress": [],
+        "egress": [],
     }

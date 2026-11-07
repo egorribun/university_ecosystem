@@ -11,12 +11,17 @@ from tests.test_internal_http_mtls import environment
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("started", [True, False])
+@pytest.mark.parametrize("diagnostic_flag", [None, "1", "true", "0"])
 async def test_worker_binds_guarded_protocols_after_config_load(
     monkeypatch: pytest.MonkeyPatch,
     started: bool,
+    diagnostic_flag: str | None,
 ) -> None:
     for key, value in environment().items():
         monkeypatch.setenv(key, value)
+    monkeypatch.delenv("AUD373_TLS_DIAGNOSTICS", raising=False)
+    if diagnostic_flag is not None:
+        monkeypatch.setenv("AUD373_TLS_DIAGNOSTICS", diagnostic_flag)
     worker = object.__new__(BackendWorker)
     worker.config = Mock()
     worker.wsgi = Mock()
@@ -43,6 +48,9 @@ async def test_worker_binds_guarded_protocols_after_config_load(
         with pytest.raises(SystemExit) as caught:
             await worker._serve()
         assert caught.value.code == spiffe_worker.Arbiter.WORKER_BOOT_ERROR
+    assert spiffe_worker.TransportGuard.call_args.kwargs["handshake_diagnostics"] is (
+        diagnostic_flag == "1"
+    )
     assert worker.config.http is http_protocol
     assert worker.config.ws is ws_protocol
     assert worker.config.ssl is guard.start.return_value

@@ -175,7 +175,7 @@ async def test_exact_images_mounts_and_negative_controls(tmp_path: Path) -> None
         for mount in service.get("volumes", []):
             if mount.get("type") == "bind":
                 mount["bind"] = {}
-    assert not await validate(omitted_defaults)
+    assert await validate(omitted_defaults, expected=True)
     token_path.unlink()
     assert not await validate(good)
     token_path.write_text("synthetic-worker-token", encoding="ascii")
@@ -985,3 +985,37 @@ catch { Write-Output 'REJECTED'; exit 2 }
     assert not await accepts(malformed)
     malformed["mounts"][peer] = {}
     assert not await accepts(malformed)
+
+
+@pytest.mark.asyncio
+async def test_normalized_compose_host_path_creation_flag(tmp_path: Path) -> None:
+    # compose-go uses json omitempty for its boolean CreateHostPath field:
+    # real Compose renders explicit false as bind:{}, but short syntax and
+    # explicit true retain create_host_path:true. Missing bind stays rejected.
+    cases = [
+        ({"bind": {}}, True),
+        ({"bind": {"create_host_path": False}}, True),
+        ({}, False),
+        ({"bind": None}, False),
+        ({"bind": False}, False),
+        ({"bind": []}, False),
+        ({"bind": {"create_host_path": True}}, False),
+        ({"bind": {"create_host_path": None}}, False),
+        ({"bind": {"create_host_path": "false"}}, False),
+        ({"bind": {"create_host_path": 0}}, False),
+        ({"bind": {"create_host_path": []}}, False),
+        ({"bind": {"create_host_path": {}}}, False),
+    ]
+    input_path = tmp_path / "normalized-mounts.json"
+    input_path.write_text(json.dumps([mount for mount, _ in cases]))
+    runner = tmp_path / "host-path-flag.ps1"
+    runner.write_text(
+        "param($Helper,$InputPath)\n"
+        "$ErrorActionPreference='Stop'\n. $Helper\n"
+        "$mounts=Get-Content -Raw -LiteralPath $InputPath | ConvertFrom-Json\n"
+        "$results=@(foreach($mount in $mounts) { Test-TemporalBootstrapNoHostPathCreation -Mount $mount })\n"
+        "ConvertTo-Json -Compress -InputObject $results\n"
+    )
+    status, output = await _run_powershell(runner, str(HELPER), str(input_path))
+    assert status == 0, output
+    assert json.loads(output) == [expected for _, expected in cases]

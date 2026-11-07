@@ -583,3 +583,125 @@ async def test_websocket_revocation_while_receive_is_pending_discards_message(
     monkeypatch.setattr(transport_module.WebSocketsSansIOProtocol, "receive", receive)
     assert await protocol.receive() == {"type": "websocket.disconnect", "code": 1008}
     receive.assert_awaited_once()
+
+
+def _diagnostic_connection(
+    observer: transport_module.HandshakeDiagnostics,
+) -> ssl.SSLObject:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.sslobject_class = observer.sslobject_class
+    return context.wrap_bio(ssl.MemoryBIO(), ssl.MemoryBIO(), server_side=True)
+
+
+def _missing_certificate() -> ssl.SSLError:
+    error = ssl.SSLError("deliberately private error text")
+    error.reason = "PEER_DID_NOT_RETURN_A_CERTIFICATE"
+    return error
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        None,
+        "",
+        "localhost",
+        "aud373-short.invalid",
+        "aud373-" + "A" * 32 + ".invalid",
+        "aud373-" + "0" * 32 + ".invalid\nsecret",
+    ],
+)
+def test_handshake_diagnostics_reject_unbounded_or_unrelated_sni(monkeypatch, name):
+    observer = transport_module.HandshakeDiagnostics()
+    connection = _diagnostic_connection(observer)
+    logger = Mock()
+    monkeypatch.setattr(transport_module, "logger", logger)
+    observer.client_hello(connection, name)
+    observer.record(connection, _missing_certificate())
+    logger.warning.assert_not_called()
+    assert observer.remaining == 64
+
+
+def test_handshake_diagnostics_bound_and_deduplicate_events(monkeypatch):
+    observer = transport_module.HandshakeDiagnostics()
+    logger = Mock()
+    monkeypatch.setattr(transport_module, "logger", logger)
+    for index in range(70):
+        connection = _diagnostic_connection(observer)
+        nonce = f"{index:032x}"
+        observer.client_hello(connection, f"aud373-{nonce}.invalid")
+        observer.record(connection, _missing_certificate())
+        observer.record(connection, _missing_certificate())
+    assert observer.remaining == 0
+    assert logger.warning.call_count == 64
+    assert logger.warning.call_args_list[0] == call(
+        "internal_mtls_handshake_rejected",
+        probe_id=f"{0:032x}",
+        reason="PEER_DID_NOT_RETURN_A_CERTIFICATE",
+    )
+    assert "deliberately private" not in str(logger.mock_calls)
+
+
+def test_handshake_diagnostics_ignore_other_tls_reasons(monkeypatch):
+    observer = transport_module.HandshakeDiagnostics()
+    connection = _diagnostic_connection(observer)
+    logger = Mock()
+    monkeypatch.setattr(transport_module, "logger", logger)
+    observer.client_hello(connection, "aud373-" + "0" * 32 + ".invalid")
+    error = ssl.SSLError("private")
+    error.reason = "WRONG_VERSION_NUMBER"
+    observer.record(connection, error)
+    logger.warning.assert_not_called()
+
+
+def test_handshake_diagnostics_never_replace_original_tls_exception(monkeypatch):
+    observer = transport_module.HandshakeDiagnostics()
+    connection = _diagnostic_connection(observer)
+    original = _missing_certificate()
+
+    def reject(_self):
+        raise original
+
+    def broken_observer(*_args):
+        raise RuntimeError("telemetry unavailable")
+
+    monkeypatch.setattr(ssl.SSLObject, "do_handshake", reject)
+    monkeypatch.setattr(observer, "record", broken_observer)
+    with pytest.raises(ssl.SSLError) as caught:
+        connection.do_handshake()
+    assert caught.value is original
+
+
+@pytest.mark.parametrize("second", ["0", "1"])
+def test_repeated_client_hello_disables_correlation(monkeypatch, second):
+    observer = transport_module.HandshakeDiagnostics()
+    connection = _diagnostic_connection(observer)
+    logger = Mock()
+    monkeypatch.setattr(transport_module, "logger", logger)
+    observer.client_hello(connection, "aud373-" + "0" * 32 + ".invalid")
+    observer.client_hello(connection, "aud373-" + second * 32 + ".invalid")
+    observer.record(connection, _missing_certificate())
+    logger.warning.assert_not_called()
+
+
+def test_handshake_diagnostics_disabled_by_default(setup_guard):
+    guard, _source, _loop, _transport = setup_guard
+    assert guard.diagnostics is None
+    assert guard.start().sslobject_class is ssl.SSLObject
+
+
+def test_handshake_diagnostics_installed_on_new_context(setup_guard):
+    _guard, source, loop, _transport = setup_guard
+    diagnostic_guard = TransportGuard(
+        source, frozenset({IDENTITY}), loop, handshake_diagnostics=True
+    )
+    first = diagnostic_guard.start()
+    assert diagnostic_guard.diagnostics is not None
+    observer_class = diagnostic_guard.diagnostics.sslobject_class
+    assert first.sslobject_class is observer_class
+    replacement = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    replacement.verify_mode = ssl.CERT_REQUIRED
+    source.current.return_value = TLSGeneration(
+        replacement, b"rotated", NOW + timedelta(minutes=1)
+    )
+    assert diagnostic_guard.context().context.sslobject_class is observer_class
+    assert replacement.sni_callback == diagnostic_guard._client_hello

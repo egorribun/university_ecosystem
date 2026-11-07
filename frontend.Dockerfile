@@ -188,7 +188,10 @@ RUN zlib_arch="$(apk --print-arch)" \
     esac \
     && wget -q -O /tmp/zlib.apk "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/${zlib_arch}/zlib-1.3.2-r1.apk" \
     && printf '%s  %s\n' "$zlib_sha256" /tmp/zlib.apk | sha256sum -c - \
-    && apk add --no-cache zlib=1.3.2-r1 /tmp/zlib.apk \
+    && apk add --no-cache \
+      musl=1.2.6-r3 \
+      musl-utils=1.2.6-r3 \
+      zlib=1.3.2-r1 /tmp/zlib.apk \
     && rm /tmp/zlib.apk
 
 # npm is used in build/install stages only; the production entrypoint runs Node directly.

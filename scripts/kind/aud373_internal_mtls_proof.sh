@@ -180,7 +180,7 @@ write_values_file() {
   backend_fields="$(cat <<EOF
 backend:
   env:
-    # Explicit HTTP hosts for direct JWKS fetches and the gateway relay.
+    AUD373_TLS_DIAGNOSTICS: "1"  # Bounded, opt-in proof telemetry only.
     ALLOWED_HOSTS: "localhost,127.0.0.1,testserver,${BACKEND_SVC},${GATEWAY_SVC}"
   image:
     repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend"
@@ -1033,6 +1033,7 @@ run_probe() {
     --labels="university-ecosystem.io/aud373-probe=${RUN_SUFFIX}" \
     --restart=Never --rm --attach --quiet --pod-running-timeout=180s \
     --env="TARGET_BACKEND=${BACKEND_SVC}" --env="TARGET_GATEWAY=${GATEWAY_SVC}" \
+    --env="AUD373_TLS_DIAGNOSTICS=1" \
     --env="TARGET_BACKEND_PORT=${BACKEND_PORT}" --env="TARGET_GATEWAY_PORT=${GATEWAY_PORT}" \
     --command -- python -c "$script" 2>&1
 }
@@ -1053,9 +1054,11 @@ except Exception as error:
 '
 
 NO_SVID_TLS_PY='
-import os, socket, ssl
+import os, secrets, socket, ssl
 host = os.environ["TARGET_BACKEND"]
 port = int(os.environ["TARGET_BACKEND_PORT"])
+probe_id = secrets.token_hex(16) if os.environ.get("AUD373_TLS_DIAGNOSTICS") == "1" else None
+server_name = "aud373-%s.invalid" % probe_id if probe_id is not None else host
 context = ssl.create_default_context()
 context.check_hostname = False
 context.verify_mode = ssl.CERT_NONE
@@ -1084,7 +1087,7 @@ else:
     with raw:
         try:
             stage = "TLS_HANDSHAKE"
-            with context.wrap_socket(raw, server_hostname=host) as tls:
+            with context.wrap_socket(raw, server_hostname=server_name) as tls:
                 # TLS 1.3 may report a missing-certificate alert after the client
                 # handshake has returned. Read it before sending application data.
                 tls.settimeout(2)
@@ -1107,6 +1110,8 @@ else:
                 result = "REJECTED"
         except OSError as error:
             event = failure_event(error)
+if probe_id is not None:
+    print("NO_SVID_PROBE_ID=%s" % probe_id)
 print("NO_SVID_STAGE=%s" % stage)
 print("NO_SVID_EVENT=%s" % event)
 print("NO_SVID_TCP=%s" % ("CONNECTED" if connected else "ERROR"))
@@ -1177,6 +1182,7 @@ import re, sys
 allowed = {
     "gateway-hop": {"STATUS": r"[1-5][0-9]{2}", "BODY_HAS_KEYS": r"True|False", "ERROR": r"[A-Za-z]+"},
     "no-svid-tls": {
+        "NO_SVID_PROBE_ID": r"[0-9a-f]{32}",
         "NO_SVID_TCP": r"CONNECTED|ERROR", "NO_SVID_TLS": r"REJECTED|ANSWERED|ERROR",
         "NO_SVID_STAGE": r"TCP_CONNECT|TLS_HANDSHAKE|READ_ALERT|WRITE_REQUEST|READ_RESPONSE",
         "NO_SVID_EVENT": r"TIMEOUT|RESET|EOF|SSL_ERROR|OS_ERROR|DATA|CERTIFICATE_REQUIRED",

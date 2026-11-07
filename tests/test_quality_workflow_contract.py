@@ -3643,6 +3643,7 @@ def _assert_maplibre_budget_artifact_transport(workflow: dict[str, object]) -> N
     assert "permissions" not in analysis
     expected_outputs = {
         "bundle-artifact-id": "steps.upload-production-bundle.outputs.artifact-id",
+        "bundle-artifact-digest": "steps.upload-production-bundle.outputs.artifact-digest",
         "metadata-artifact-id": "steps.upload-maplibre-metadata.outputs.artifact-id",
         "html-artifact-id": "steps.upload-final-html-inventory.outputs.artifact-id",
         "metadata-sha256": "steps.capture-maplibre-metadata.outputs.metadata-sha256",
@@ -3762,6 +3763,10 @@ def _assert_maplibre_budget_artifact_transport(workflow: dict[str, object]) -> N
         "missing-id-guard",
         "unsafe-id-guard",
         "download-before-guard",
+        "missing-bundle-digest",
+        "empty-bundle-digest",
+        "wrong-bundle-digest-producer",
+        "unexpected-build-output",
     ),
 )
 def test_maplibre_budget_transport_rejects_wiring_near_misses(defect: str) -> None:
@@ -3774,7 +3779,17 @@ def test_maplibre_budget_transport_rejects_wiring_near_misses(defect: str) -> No
     download = by_name["Download MapLibre compiler metadata"]
     analyze = by_name["Analyze bundle size"]
     guard = by_name["Validate bundle artifact receipts"]
-    if defect == "name-fallback":
+    if defect == "missing-bundle-digest":
+        build["outputs"].pop("bundle-artifact-digest")
+    elif defect == "empty-bundle-digest":
+        build["outputs"]["bundle-artifact-digest"] = ""
+    elif defect == "wrong-bundle-digest-producer":
+        build["outputs"]["bundle-artifact-digest"] = (
+            "${{ steps.upload-maplibre-metadata.outputs.artifact-digest }}"
+        )
+    elif defect == "unexpected-build-output":
+        build["outputs"]["unreviewed-output"] = "${{ steps.other.outputs.value }}"
+    elif defect == "name-fallback":
         download["with"].pop("artifact-ids")
         download["with"]["name"] = "frontend-maplibre-metadata"
     elif defect == "empty-id":
