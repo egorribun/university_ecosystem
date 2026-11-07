@@ -2,11 +2,86 @@
 
 ## Current scoped supplement — 2026-11-07
 
-The current formal total is **484/512 (94.5%) accepted or resolved, 28 open**:
-**16S / 12P / 0U / 0N**. The six additional scoped decisions are AUD-208,
-AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The prior **478/34** and
-**476/36** checkpoints and their earlier current-status wording remain below
-as dated history; this supplement supersedes their totals.
+The current formal total is **485/512 (94.7%) accepted or resolved, 27 open**:
+**15S / 12P / 0U / 0N**. This update adds the scoped AUD-272 claim-ledger and
+sender-replay acceptance to the prior 484/28 overlay. The prior 484/28, 478/34
+and 476/36 checkpoints remain dated history. This finding-specific decision
+does not establish overall CI GREEN or release readiness.
+
+### AUD-272 notification replay — hosted case-level evidence
+
+GitHub Actions [CI - Matrix Expansion run 42376272093](https://github.com/egorribun/university_ecosystem/actions/runs/42376272093)
+checked out synthetic PR merge commit `6a981e24` with tree `a981e0e2` in both
+relevant jobs. A complete, untruncated tree comparison matched all **19/19**
+frozen v13 source/test path-and-blob pins to that hosted tree and the local
+candidate `2db3439d`. Key pinned inputs include criterion document
+`docs/audits/AUDIT-2026-10.md` (`9b6a42896c5f`), notification model
+(`630d7f513cd3`), delivery implementation (`39f0e548f5e0`), baseline migration
+(`e4e0679260e8`), SQLite tests (`5f2e0373cefb`), PostgreSQL tests
+(`73523124b49c`), owned fixture (`1aad89f07652`) and integration runner
+(`574667077817`). The cited document blob is the original criterion input at
+the hosted run; this later status update is not part of that run's source
+binding.
+
+The successful [unit job 128416270068](https://github.com/egorribun/university_ecosystem/actions/runs/42376272093/job/128416270068)
+produced JUnit artifact `backend-pytest-report-All-Python 3.14-shard-0`
+(artifact ID `13575994102`; ZIP SHA-256 prefix `57723b4975fa`). It records each
+of these exact selectors once, with no skip, failure, error or teardown error:
+
+- `tests/test_notification_delivery_once_claims.py::test_pair_already_claimed_by_another_attempt_is_not_sent`
+- `tests/test_notification_delivery_once_claims.py::test_successful_send_keeps_its_claim`
+- `tests/test_notification_delivery_once_claims.py::test_failed_send_releases_its_claim_so_the_retry_sends`
+
+The last selector proves the failed first send releases its claim, the replay
+sends once, exactly two sender attempts occur, and one final claim remains.
+
+The hosted [owned-PostgreSQL integration job 128416269970](https://github.com/egorribun/university_ecosystem/actions/runs/42376272093/job/128416269970)
+records all three exact selectors as `PASSED`:
+
+- `tests/integration/test_aud262_receipt_schema_postgres.py::test_receipt_owned_fixture_never_uses_default_database`
+- `tests/integration/test_aud262_receipt_schema_postgres.py::test_notification_pair_claims_commit_conflict_and_rollback_on_owned_postgres`
+- `tests/integration/test_aud262_receipt_schema_postgres.py::test_notification_pair_ledger_is_unique_without_attempt_constraint`
+
+The two database-backed selectors share one module-scoped owned PostgreSQL
+container. The final selector completed without a pytest teardown error. This
+establishes one hosted owned-fixture lifecycle for these functional cases; it
+does not reproduce the private local scratch-database receipts, exact
+post-removal volume reinspection, or Windows port-release witness.
+
+The integration job itself failed later in its separate AUD-277 tenant-RLS
+cohort validator: the runner expected 11 node IDs and observed 14; all 14
+logged cases passed. The three extra passing cases were
+`test_news_service_producer_is_stamped_and_rls_scoped`,
+`test_transaction_local_bypass_guc_is_cleared_by_rollback_on_same_backend`
+and `test_permissive_true_causality_depends_on_restrictive_tenant_policy`.
+No AUD-272 selector failed or skipped. This is case-level AUD-272 evidence,
+not a passing integration job or green CI result.
+
+The owner-authorized local v13 runtime receipt (SHA-256 prefix
+`8a0edc79…634f34`) remains independently **incomplete-or-failed**. Its three
+SQLite cases and three PostgreSQL test bodies passed, but the strict exclusive
+bind at `127.0.0.1:5433` failed during teardown with WSA10048 in both child and
+outer cleanup. Exact container and volume absence and both pre-removal
+scratch-database drop receipts were verified; no retry occurred. The failed
+Windows bind remains unresolved and is not converted to success by the hosted
+Linux run.
+
+AUD-272 is accepted here only for the notification-pair claim-ledger and
+sender-replay criterion. Provider/database crash-window atomic exactly-once
+delivery, Windows port-release success, full CI success, deployment and
+release readiness are not established.
+
+---
+
+<a id="dated-484-28-scoped-supplement--2026-11-07"></a>
+
+## Dated 484/28 supplement — 2026-11-07 UTC (superseded)
+
+At this dated checkpoint, the formal total was **484/512 (94.5%) accepted or resolved, 28 open**:
+**16S / 12P / 0U / 0N**. The six scope additions at this checkpoint were
+AUD-208, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The prior **478/34**
+and **476/36** checkpoints remain dated history. The newer 485/27 supplement
+above supersedes this checkpoint.
 
 [Decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
 The reviewed supplemental evidence is bound to its individual source pins,
@@ -37,7 +112,7 @@ AUD-454 remains open for the browser-frame evidence from backend removal
 through JetStream revocation to ws-hub eviction.
 [Hosted proof step](https://github.com/egorribun/university_ecosystem/actions/runs/42349344099/job/128336267666).
 
-### AUD-272 notification replay evidence
+### AUD-272 local v13 evidence at the 484/28 checkpoint
 
 The owner-authorized v13 run on local source `2db3439d` passed the three
 named SQLite cases and the test bodies of all three owned PostgreSQL cases.
@@ -46,7 +121,7 @@ failed teardown because Windows returned WSA10048 on the exclusive
 loopback bind after container removal. The parent independently confirmed
 the exact container and volume were absent and validated both
 pre-removal scratch-database receipts. The private run receipt has SHA-256
-`8a0edc79...634f34`. The full run was incomplete and AUD-272 remains open.
+`8a0edc79...634f34`. At this dated checkpoint the local run was incomplete and AUD-272 remained open; the later hosted case-level acceptance is recorded in the current supplement above.
 
 ### Six additional scoped decisions
 
@@ -115,7 +190,7 @@ That dated checkpoint accepted AUD-422 for its configuration-documentation/inven
 
 ## Complete 60-row reassessment matrix (478/34 baseline with 484 overlay)
 
-The Nov 6 class and primary-proof columns preserve the dated baseline. Current outcome reflects the 484/512 overlay. For AUD-208, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480, the prior Open status is labelled as such and the original remaining-action text is retained only as the historical 478/34 action. Historical migration paths are not asserted as current files.
+The Nov 6 class and primary-proof columns preserve the dated baseline. This matrix records the 484/512 overlay; the later AUD-272 decision is in the current supplement above. For AUD-208, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480, the prior Open status is labelled as such and the original remaining-action text is retained only as the historical 478/34 action. Historical migration paths are not asserted as current files.
 
 | ID | Original criterion | Nov 6 class | Primary implementation / proof | Current outcome | Current source pointer | Remaining action |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -498,6 +573,6 @@ The hosted AUD-373 Kind job is bound to source 1f532f3577d3 (worker/transport/lo
 
 ## Current scope and continuation
 
-The current decision set contains 31 criterion-specific scoped acceptances plus the separate AUD-384 false-positive retraction: **484 / 512 (94.5%) accepted or resolved, with 28 open**. The 16S / 12P / 0U / 0N complement is listed in the current reconciliation. The 478/34 and 476/36 checkpoints remain dated history. The six new scopes are limited to the explicit evidence and boundaries in the current supplement; they do not establish full behavior beyond those cases.
+The current decision set contains 32 criterion-specific scoped acceptances plus the separate AUD-384 false-positive retraction: **485 / 512 (94.7%) accepted or resolved, with 27 open**. The 15S / 12P / 0U / 0N complement is listed in the current reconciliation. The prior 484/28, 478/34 and 476/36 checkpoints remain dated history. The seven scope additions after 478/34 are limited to the explicit evidence and boundaries recorded in their supplements; they do not establish behavior beyond those cases.
 
 AUD-269's current schema/HNSW results do not establish query performance or a deployed catalog; the expanded candidate flags are not actual execution. AUD-474's synthetic browser oracle does not establish a real backend or full live stand. Git object IDs and SHA-256 public prefixes are shown as abbreviated identifiers; exact bindings remain in private evidence inputs. The package retains the existing 78 required context/app pairs, blocking CodeQL, hooks, quality thresholds, active baselines and disposition matching rules. No passing scanner, full-source check set, hosted all-green run, merge, deployment, or release readiness is claimed.

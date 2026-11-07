@@ -2,11 +2,44 @@
 
 ## Current reconciliation — 2026-11-07
 
-The current formal total is **484/512 (94.5%) accepted or resolved, 28 open**:
-**16S / 12P / 0U / 0N**. The six additional scoped decisions are AUD-208,
-AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The prior **478/34** and
-**476/36** checkpoints and their earlier current-status wording remain below
-as dated history; this supplement supersedes their totals.
+The current formal total is **485/512 (94.7%) accepted or resolved, 27 open**:
+**15S / 12P / 0U / 0N**. Seven scope additions since 478/34 are AUD-208,
+AUD-272, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The former 484/28
+complement is retained below as dated history.
+
+[Current decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
+The 19 frozen AUD-272 source/test pins match the hosted merge tree documented
+in that supplement. Current policy inventory remains **506 dispositions /
+242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**; this is
+inventory, not scan or required-check evidence. All 78 required context/app
+pairs, blocking CodeQL, hooks and quality floors remain in force.
+
+<a id="current-27-finding-reconciliation--2026-11-07"></a>
+
+### Current 27-finding complement
+
+- **S (15):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-226, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-429, AUD-438, AUD-454, AUD-501.
+- **P (12):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-428, AUD-432, AUD-483, AUD-484.
+- **U (0):** none.
+- **N (0):** none.
+
+AUD-154 and AUD-321 retain their explicit non-skipped browser acceptance
+requirements. AUD-272 is accepted only for its claim-ledger/replay criterion;
+the local Windows teardown bind remains failed as recorded in the current
+supplement. AUD-322's separate live NATS outage pass is not the required
+CRUD/auth and five-case chaos proof. The unrelated AUD-277 hosted validator
+mismatch does not change the individually recorded AUD-272 case results or
+make the overall integration job green.
+
+<a id="dated-484-28-finding-reconciliation--2026-11-07"></a>
+
+## Dated 484/28 reconciliation — 2026-11-07 UTC (superseded)
+
+At this dated checkpoint, the formal total was **484/512 (94.5%) accepted or resolved, 28 open**:
+**16S / 12P / 0U / 0N**. The six scope additions at this checkpoint were
+AUD-208, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. This 484/28
+reconciliation is preserved as history and superseded by the 485/27 section
+above.
 
 [Decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
 The reviewed supplemental evidence is bound to its individual source pins,
@@ -21,16 +54,16 @@ Inventory remains **497 dispositions / 242 baseline identities / 27 Gitleaks
 fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
 pairs, blocking CodeQL, hooks and quality floors remain in force.
 
-<a id="current-28-finding-reconciliation--2026-11-07"></a>
+<a id="previous-28-finding-reconciliation--2026-11-07"></a>
 
-### Current 28-finding complement
+### Dated 28-finding complement (484/28)
 
 - **S (16):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-226, AUD-272, AUD-321, AUD-346, AUD-347, AUD-375, AUD-378, AUD-429, AUD-438, AUD-454, AUD-501.
 - **P (12):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-428, AUD-432, AUD-483, AUD-484.
 - **U (0):** none.
 - **N (0):** none.
 
-AUD-154 and AUD-321 retain their explicit non-skipped browser acceptance requirements. AUD-272's later attempt stopped before PostgreSQL. AUD-322's separate live NATS outage pass is not the required CRUD/auth and five-case chaos proof. None of these leaves the open set.
+AUD-154 and AUD-321 retain their explicit non-skipped browser acceptance requirements. The local v13 AUD-272 attempt passed the PostgreSQL test bodies but failed its strict-bind teardown; see the hosted case-level acceptance above. AUD-322's separate live NATS outage pass is not the required CRUD/auth and five-case chaos proof. None of these leaves the open set.
 
 ---
 
@@ -40,7 +73,7 @@ AUD-154 and AUD-321 retain their explicit non-skipped browser acceptance require
 
 ## Dated public 34-finding checkpoint — 2026-11-07 UTC (478/34)
 
-At this dated public checkpoint, the [60-row reassessment](AUDIT-2026-11-06-full-reassessment.md) preserved the 476/36 history, added the root-adjudicated AUD-422 and AUD-423 scoped acceptances, and updated AUD-346 from U to S after source integration. The recorded total was **478 / 512 (93.4%), with 34 open**. AUD-384 remained a separate false-positive retraction; the newer 484/28 supplement above supersedes this checkpoint.
+At this dated public checkpoint, the [60-row reassessment](AUDIT-2026-11-06-full-reassessment.md) preserved the 476/36 history, added the root-adjudicated AUD-422 and AUD-423 scoped acceptances, and updated AUD-346 from U to S after source integration. The recorded total was **478 / 512 (93.4%), with 34 open**. AUD-384 remained a separate false-positive retraction; the newer 484/28 and 485/27 overlays above supersede this checkpoint.
 
 The classifications at this 478/34 checkpoint were **20S / 13P / 0U / 1N = 34**. S means source fixed with finding-specific proof still pending; P partial; U unfixed; N unproven. These are explicit current-tree classifications, not an automatic projection from primary implementation fields. The reviewed source/index tree at that checkpoint was `ea381c19bda1`. AUD-346 remains open pending the owner-authorized live Kind proof; AUD-208 PostgreSQL/Squawk proof remains unproven; AUD-484 remains P on partial alert inventory evidence.
 
@@ -56,7 +89,7 @@ AUD-269 remains accepted only for its reconciled schema/index endpoint and nativ
 
 ## Dated 36-finding cohort snapshot — 2026-11-06 23:59 UTC
 
-This preserved checkpoint recorded **476 / 512 (93.0%), with 36 open**, and classes **19S / 15P / 1U / 1N**. Relative to this snapshot, AUD-422 and AUD-423 are now accepted only for their documented source-alignment criteria, and AUD-346 moves U→S because its source fix is integrated while the live Kind proof is pending.
+This preserved checkpoint recorded **476 / 512 (93.0%), with 36 open**, and classes **19S / 15P / 1U / 1N**. Relative to this snapshot, AUD-422 and AUD-423 are accepted only for their documented source-alignment criteria, AUD-346 moves U→S because its source fix is integrated while live Kind proof is pending, and the later 484/28 then 485/27 overlays are recorded above.
 
 - **S (19):** AUD-154, AUD-164, AUD-169, AUD-178, AUD-188, AUD-208, AUD-226, AUD-272, AUD-321, AUD-334, AUD-347, AUD-375, AUD-378, AUD-416, AUD-429, AUD-438, AUD-454, AUD-478, AUD-501.
 - **P (15):** AUD-167, AUD-189, AUD-251, AUD-313, AUD-322, AUD-360, AUD-373, AUD-381, AUD-422, AUD-423, AUD-428, AUD-432, AUD-480, AUD-483, AUD-484.

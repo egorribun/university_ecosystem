@@ -2,11 +2,11 @@
 
 ## Current reconciliation — 2026-11-07
 
-The current formal total is **484/512 (94.5%) accepted or resolved, 28 open**:
-**16S / 12P / 0U / 0N**. The six additional scoped decisions are AUD-208,
-AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The prior **478/34** and
-**476/36** checkpoints and their earlier current-status wording remain below
-as dated history; this supplement supersedes their totals.
+The current formal total is **485/512 (94.7%) accepted or resolved, 27 open**:
+**15S / 12P / 0U / 0N**. Seven scope additions since the **478/34** checkpoint
+are AUD-208, AUD-272, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The
+prior **484/28**, **478/34** and **476/36** checkpoints remain below as dated
+history; this supplement supersedes their totals.
 
 [Decision scopes and evidence limits](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
 The reviewed supplemental evidence is bound to its individual source pins,
@@ -54,9 +54,10 @@ files or authorize routine backup, copying, publication, or distribution.
 
 ## Current quality-closure roadmap
 
-- [Current accepted audit lower bound: 484 / 512 (94.5%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07) — preserves the prior 452 decisions, adds 31 scoped acceptances and retains the AUD-384 false-positive retraction. [Current 28-ID complement](AUDIT-2026-10-30-reconciliation.md#current-28-finding-reconciliation--2026-11-07): 16S / 12P / 0U / 0N. Evidence is bound to its source snapshots, not the later current index; overall CI and release readiness are not accepted.
+- [Current accepted audit lower bound: 485 / 512 (94.7%)](AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07) — preserves the prior 452 decisions, adds 32 scoped acceptances and retains the AUD-384 false-positive retraction. [Current 27-ID complement](AUDIT-2026-10-30-reconciliation.md#current-27-finding-reconciliation--2026-11-07): 15S / 12P / 0U / 0N. Evidence is bound to its source snapshots, not the later current index; overall CI and release readiness are not accepted.
+- [Dated accepted audit checkpoint: 484 / 512 (94.5%)](AUDIT-2026-11-06-full-reassessment.md#dated-484-28-scoped-supplement--2026-11-07) — 28 open (16S / 12P / 0U / 0N), retained as history.
 - [Dated prior public checkpoint: 478 / 512 (93.4%), 34 open](AUDIT-2026-11-06-full-reassessment.md#previous-public-checkpoint--2026-11-07) — 25 scoped acceptances plus the AUD-384 false-positive retraction; retained as dated history.
-- [Dated previous cohort checkpoint: 476 / 512 (93.0%), 36 open](AUDIT-2026-11-06-full-reassessment.md#previous-cohort-checkpoint--2026-11-06-2359-utc) — class counts 19S / 15P / 1U / 1N; superseded by the 478/34 and then 484/28 overlays.
+- [Dated previous cohort checkpoint: 476 / 512 (93.0%), 36 open](AUDIT-2026-11-06-full-reassessment.md#previous-cohort-checkpoint--2026-11-06-2359-utc) — class counts 19S / 15P / 1U / 1N; superseded by the 478/34, 484/28 and 485/27 overlays.
 - [Historical accepted audit lower bound: 452 / 512 (88.3%)](AUDIT-2026-10.md#scoped-aud-449-acceptance-for-caddy-and-gunicorn-access-log-redaction--2026-11-06) — preserves all 450 IDs at the dated AUD-426 checkpoint and adds only AUD-231 and AUD-449 afterward. [Dated 60-ID complement](AUDIT-2026-10-30-reconciliation.md#current-60-finding-reconciliation--2026-11-06): 13 source-fixed/proof-pending, 35 partial, 9 unfixed, and 3 unverified. [Cumulative Nov 6 review](AUDIT-2026-11-06-review.md) records separate source-bound AUD-426, Chromium AUD-231, and Caddy/Gunicorn AUD-449 evidence; it does not claim overall CI or release acceptance.
 
 - [Historical accepted audit lower bound: 450 / 512 (87.9%)](AUDIT-2026-10.md#scoped-aud-426-acceptance-after-hosted-postgresql-proof--2026-11-06) — preserves all 449 earlier IDs and adds only AUD-426 at that dated checkpoint. [Dated 62-ID complement](AUDIT-2026-10-30-reconciliation.md#current-62-finding-reconciliation--2026-11-06): 15 source-fixed/proof-pending, 35 partial, 9 unfixed, and 3 unverified. The PostgreSQL job later failed on a separate AUD-447 test; its XML validator did not run.

@@ -1328,8 +1328,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 WORK_DIR="$work"
 LOCAL_REGISTRY_ADDRESS=127.0.0.1:32768
-IMAGE_TAG=ue-r9-aud373-0123456789ab
-BACKEND_IMAGE_DIGEST={shlex.quote(backend_digest)}
+IMAGE_TAG=ue-r9-aud373-0123456789ab BACKEND_IMAGE_DIGEST={shlex.quote(backend_digest)}
 RELEASE=ue
 BACKEND_SVC=ue-university-ecosystem-backend
 GATEWAY_SVC=ue-university-ecosystem-gateway

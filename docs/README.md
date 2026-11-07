@@ -2,11 +2,11 @@
 
 ## Current reconciliation — 2026-11-07
 
-The current formal total is **484/512 (94.5%) accepted or resolved, 28 open**:
-**16S / 12P / 0U / 0N**. The six additional scoped decisions are AUD-208,
-AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The prior **478/34** and
-**476/36** checkpoints and their earlier current-status wording remain below
-as dated history; this supplement supersedes their totals.
+The current formal total is **485/512 (94.7%) accepted or resolved, 27 open**:
+**15S / 12P / 0U / 0N**. Seven scope additions since the **478/34** checkpoint
+are AUD-208, AUD-272, AUD-334, AUD-416, AUD-420, AUD-478 and AUD-480. The
+prior **484/28**, **478/34** and **476/36** checkpoints remain below as dated
+history; this supplement supersedes their totals.
 
 [Decision scopes and evidence limits](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07).
 The reviewed supplemental evidence is bound to its individual source pins,
@@ -87,7 +87,8 @@ handoffs are intentionally not part of the canonical index.
 - [Flaky-test audit runbook](testing/flaky-test-audit-runbook.md)
 - [Performance regression baseline](testing/performance-regression-baseline.md)
 - [Canonical audit index and retention policy](audits/INDEX.md)
-- [Current full audit reassessment, 2026-11-07 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07) — 484 / 512 accepted or resolved (94.5%), 28 open; 31 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Current full audit reassessment, 2026-11-07 UTC](audits/AUDIT-2026-11-06-full-reassessment.md#current-scoped-supplement--2026-11-07) — 485 / 512 accepted or resolved (94.7%), 27 open; 32 scoped acceptances plus the AUD-384 false-positive retraction. No overall CI GREEN or release acceptance is implied.
+- [Dated 484 / 512 audit checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#dated-484-28-scoped-supplement--2026-11-07) — 28 open (16S / 12P / 0U / 0N), retained as history.
 - [Dated prior public checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#previous-public-checkpoint--2026-11-07) — 478 / 512, 34 open (20S / 13P / 0U / 1N); superseded and retained as history.
 - [Dated previous cohort checkpoint](audits/AUDIT-2026-11-06-full-reassessment.md#previous-cohort-checkpoint--2026-11-06-2359-utc) — 476 / 512, 36 open (19S / 15P / 1U / 1N), retained as history.
 - [Dated cumulative scoped audit review, 2026-11-06](audits/AUDIT-2026-11-06-review.md) — AUD-426 PostgreSQL, AUD-231 compiled SSR CSP/nonce, and AUD-449 log-redaction acceptances for Caddy and the Python application server with separate evidence limits; overall CI and release readiness are not accepted.
@@ -148,7 +149,7 @@ implementation guidance.
 | Enforced quality and check inventory          | [Quality contract](../quality/quality-contract.json), [testing guide](../TESTING.md) and [CI catalog](../quality/ci-check-catalog.json) |
 | Operator procedures                           | [Deployment](DEPLOY.en.md) and [runbooks](runbooks/)                                                                                    |
 | Finding traceability and historical retention | [Audit index](audits/INDEX.md)                                                                                                          |
-| Current open findings                         | [Current 28-finding complement, 2026-11-07 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-28-finding-reconciliation--2026-11-07)                 |
+| Current open findings                         | [Current 27-finding complement, 2026-11-07 UTC](audits/AUDIT-2026-10-30-reconciliation.md#current-27-finding-reconciliation--2026-11-07)                 |
 
 Update the canonical source before adjusting summaries or translations. Keep
 commands, versions and configuration descriptions aligned with executable

@@ -2346,6 +2346,12 @@ accepting the event. The original client-observed certificate-required
 alert remains an open audit evidence item. Required checks still need to
 pass on the final source SHA.
 
+The hosted Kind proof on `9410f03f` passed A, B, C and D. For B, the
+client recorded EOF during READ_ALERT and the verifier found one matching
+server missing-certificate event. The run proves the approved alternate
+case for that source. The client alert remains outstanding.
+[Hosted Kind job](https://github.com/egorribun/university_ecosystem/actions/runs/42378979206/job/128422376885).
+
 ## Owner-approved AUD-373 Kind chart image bindings (2026-11-07 UTC)
 
 The owner approved the two exact source bindings in the Kind Helm repair.
@@ -2361,3 +2367,17 @@ required `Always` pull policy. The contract test passes the digest explicitly
 to the values generator and checks the helper image binding. The proof
 criteria and scanner inventories retain their existing scope. A hosted Kind
 run on the final source is still required.
+
+## Owner-approved AUD-373 line-preserving Kind bindings (2026-11-07 UTC)
+
+The owner approved the two exact v3 source bindings for the same Kind Helm
+repair. The proof script SHA-256 moves from `849665fe...e0943` to
+`dab34a65...d3af9`, and the contract test SHA-256 moves from
+`9263fe04...b11e54` to `ed3f3335...d1aad`. The private decision receipt
+retains the full source and patch digests.
+
+The previously approved layout moved protected source coordinates. The
+flow mapping and explicit test fixture now preserve all protected line and
+context bindings. The shared backend/init image digest, pull policy and
+mTLS proof criteria are unchanged from the approved repair. The full
+source still needs its own scanner and hosted Kind results.
