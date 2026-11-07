@@ -28255,6 +28255,42 @@ _AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
 }
 _AUD380_N3_SOURCE_SHA256 = {
     **_AUD380_N3_SOURCE_SHA256,
+    "tests/test_seed_demo_data.py": bytes(
+        (
+            51,
+            162,
+            170,
+            251,
+            40,
+            87,
+            106,
+            24,
+            116,
+            30,
+            104,
+            145,
+            67,
+            66,
+            125,
+            221,
+            26,
+            91,
+            85,
+            148,
+            163,
+            166,
+            71,
+            250,
+            150,
+            71,
+            193,
+            195,
+            227,
+            163,
+            101,
+            42,
+        )
+    ),
     "tests/test_temporal_namespace_init_fake_cli.py": bytes(
         (
             215,
