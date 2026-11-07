@@ -50,7 +50,7 @@ function docker {
     if ($f.dockerOutputShapeFailure -eq $true) { $global:LASTEXITCODE = 0; return @('synthetic stdout one', 'synthetic stdout two') }
     $global:LASTEXITCODE = 0
     if ($a[0] -ceq 'image' -and $a[1] -ceq 'inspect') {
-        if ($a[2] -cne '--format' -or $a[3] -cne '{"Id":{{json .Id}},"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}}}}') { Fail-Fixture }
+        if ($a[2] -cne '--format' -or $a[3] -cne '{"Id":{{json .ID}},"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}}}}') { Fail-Fixture }
         if ($a[-1] -ceq $f.model.services.temporal.image) { return ($f.serverImage | ConvertTo-Json -Depth 30 -Compress) }
         if ($a[-1] -ceq $f.model.services.'temporal-namespace-init'.image) { return ($f.initImage | ConvertTo-Json -Depth 30 -Compress) }
     } elseif ($a[0] -ceq 'compose' -and $a -ccontains 'ps' -and $a -ccontains '--no-trunc') {
@@ -98,12 +98,12 @@ function docker {
             if ($entry.Value -is [string]) { return [string]$entry.Value }
             return (ConvertTo-Json -InputObject @($entry.Value) -Depth 30 -Compress)
         }
-        if ($a[3] -ceq '{{json .Id}}') {
+        if ($a[3] -ceq '{{json .ID}}') {
             $entry = $f.peerTargets.PSObject.Properties[$a[-1]]
             if ($null -eq $entry) { $global:LASTEXITCODE = 1; return }
             return (ConvertTo-Json -InputObject ([string]$entry.Value) -Compress)
         }
-        $allowed = @('.Id','.Image','.Config.User','.Config.Env','.Config.Labels','.Config.Entrypoint','.Config.Cmd',
+        $allowed = @('.ID','.Image','.Config.User','.Config.Env','.Config.Labels','.Config.Entrypoint','.Config.Cmd',
             '.Config.Healthcheck','.State.Status','.State.Running','.State.Health.Status','.HostConfig.NetworkMode',
             '.HostConfig.ReadonlyRootfs','.HostConfig.Privileged','.HostConfig.CapDrop','.HostConfig.CapAdd',
             '.HostConfig.SecurityOpt','.HostConfig.PidMode','.HostConfig.UsernsMode','.HostConfig.Devices',

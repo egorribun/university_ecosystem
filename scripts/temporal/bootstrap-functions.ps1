@@ -760,7 +760,7 @@ function Test-TemporalBootstrapSharedNamespace {
         $reference = $Mode.Substring('container:'.Length)
         if ($reference -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$') { throw 'A running network namespace reference is invalid.' }
         $targetPhase = if ($Field -ceq 'NetworkMode') { 'network-namespace-target' } else { 'pid-namespace-target' }
-        $targetId = [string](Get-TemporalBootstrapDockerObject -Phase $targetPhase -Arguments @('container', 'inspect', '--format', '{{json .Id}}', $reference))
+        $targetId = [string](Get-TemporalBootstrapDockerObject -Phase $targetPhase -Arguments @('container', 'inspect', '--format', '{{json .ID}}', $reference))
         if ($targetId -cnotmatch '^[0-9a-f]{64}$' -or -not $seen.Add($targetId)) { throw 'A running network namespace chain is invalid.' }
         if ($targetId -ceq $ServerId -or $targetId -ceq $InitId) { return $true }
         $format = if ($Field -ceq 'NetworkMode') { '{{json .HostConfig.NetworkMode}}' } else { '{{json .HostConfig.PidMode}}' }
@@ -883,7 +883,7 @@ function Assert-InPlaceTemporalBootstrapRuntime {
     }
     $serverModel = $ComposeModel.services.PSObject.Properties['temporal'].Value
     $initModel = $ComposeModel.services.PSObject.Properties['temporal-namespace-init'].Value
-    $imageFormat = '{"Id":{{json .Id}},"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}}}}'
+    $imageFormat = '{"Id":{{json .ID}},"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}}}}'
     $serverImage = Get-TemporalBootstrapDockerObject -Phase 'temporal-server-image' -Arguments @('image', 'inspect', '--format', $imageFormat, [string]$serverModel.image)
     $initImage = Get-TemporalBootstrapDockerObject -Phase 'temporal-init-image' -Arguments @('image', 'inspect', '--format', $imageFormat, [string]$initModel.image)
     if ([string]$serverImage.Id -cnotmatch '^sha256:[0-9a-f]{64}$' -or
@@ -893,7 +893,7 @@ function Assert-InPlaceTemporalBootstrapRuntime {
     $initId = Get-TemporalBootstrapContainerId -Service 'temporal-namespace-init'
     # Select only the owned containers' fields required for identity. In
     # particular, never request State.Health.Log or raw container diagnostics.
-    $format = '{"Id":{{json .Id}},"Image":{{json .Image}},' +
+    $format = '{"Id":{{json .ID}},"Image":{{json .Image}},' +
         '"Config":{"User":{{json .Config.User}},"Env":{{json .Config.Env}},"Labels":{{json .Config.Labels}},' +
         '"Entrypoint":{{json .Config.Entrypoint}},"Cmd":{{json .Config.Cmd}},"Healthcheck":{{json .Config.Healthcheck}}},' +
         '"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},' +

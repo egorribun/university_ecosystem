@@ -853,7 +853,7 @@ function docker {
     }
     if ($a[0] -cne 'container' -or $a[1] -cne 'inspect') { throw 'unexpected Docker operation' }
     $format=$a[3]; $key=$a[-1]
-    if ($format -ceq '{{json .Id}}') {
+    if ($format -ceq '{{json .ID}}') {
         $entry=$f.ids.PSObject.Properties[$key]
     } elseif ($format -ceq '{{json .HostConfig.NetworkMode}}') {
         $entry=$f.modes.PSObject.Properties[$key]
