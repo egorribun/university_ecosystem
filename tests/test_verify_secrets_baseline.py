@@ -1072,9 +1072,9 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     for path in _RETIRED_DISPOSITION_PATHS:
         assert not (root / path).exists(), "retired approval source is live again"
     validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
-        repository_root=root, today=verifier.date(2026, 11, 6)
+        repository_root=root, today=verifier.date(2026, 11, 7)
     )
-    assert len(validated) == 505
+    assert len(validated) == 506
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
 
 
@@ -17979,15 +17979,27 @@ def _aud380_read_live_policy() -> dict[str, Any]:
         Path(__file__).resolve().parents[1]
         / "quality/security-false-positive-dispositions.json"
     )
-    return json.loads(policy_path.read_text(encoding="utf-8"))
+    policy_bytes = policy_path.read_bytes()
+    policy = json.loads(policy_bytes.decode("utf-8"))
+    records = policy.get("records")
+    if isinstance(records, list) and len(records) == 506:
+        assert len(policy_bytes) == 495832, "live disposition bytes changed"
+        assert hashlib.sha256(policy_bytes).digest() == (
+            _AUD428_ROW13_ACTIVE_POLICY_SHA256
+        ), "live disposition policy digest changed"
+        assert hashlib.sha256(policy_bytes[:494895]).digest() == (
+            _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
+        ), "prior 505 policy bytes changed"
+    return policy
 
 
 def _aud380_assert_live_policy_is_exact_505(
     live_policy: dict[str, Any], historical_490: dict[str, Any]
 ) -> None:
+    """Validate the exact 505-record prefix as of the 2026-11-06 snapshot."""
     live_records = live_policy.get("records")
     assert isinstance(live_records, list), "live disposition records changed"
-    assert len(live_records) == 505, "live disposition row count changed"
+    assert len(live_records) == 505, "historical 505-row prefix changed"
     expected_header = {
         key: value for key, value in historical_490.items() if key != "records"
     }
@@ -18004,12 +18016,16 @@ def _aud380_assert_live_policy_is_exact_505(
     live_495 = copy.deepcopy(live_494)
     live_495["records"] = copy.deepcopy(live_records[:495])
     _assert_aud380_n5_conditional_policy(live_495, live_494)
-    live_497 = _nov6_zlib_historical_497_from_live_policy(live_policy)
+    live_497 = copy.deepcopy(live_495)
+    live_497["records"] = copy.deepcopy(live_records[:497])
     _assert_aud380_n6_conditional_policy(live_497, live_495)
-    accepted = verifier.validate_false_positive_dispositions(
-        live_policy, today=verifier.date(2026, 11, 7)
+    assert live_records[497:505] == _NOV6_ZLIB_EXPECTED_RECORDS, (
+        "approved zlib APK suffix changed"
     )
-    assert len(accepted) == 505, "live approved disposition count changed"
+    accepted = verifier.validate_false_positive_dispositions(
+        live_policy, today=verifier.date(2026, 11, 6)
+    )
+    assert len(accepted) == 505, "historical approved disposition count changed"
 
 
 def _aud380_historical_490_from_live_policy(
@@ -18017,7 +18033,7 @@ def _aud380_historical_490_from_live_policy(
 ) -> dict[str, Any]:
     live_records = live_policy.get("records")
     assert isinstance(live_records, list), "live disposition records changed"
-    assert len(live_records) == 505, "live disposition row count changed"
+    assert len(live_records) == 506, "live disposition row count changed"
 
     history = _reviewed_pre_retirement_dispositions()
     expected_base_records = _aud380_expected_active_363(history)
@@ -18026,12 +18042,12 @@ def _aud380_historical_490_from_live_policy(
     }
     historical_490["records"] = copy.deepcopy(live_records[:490])
     _assert_aud380_conditional_policy(historical_490, expected_base_records)
-    _aud380_assert_live_policy_is_exact_505(live_policy, historical_490)
+    _aud428_assert_live_policy_is_exact_506(live_policy, historical_490)
     return historical_490
 
 
 def _aud380_conditional_policy() -> dict[str, Any]:
-    """Return the exact historical 490 prefix after validating live 505 bytes."""
+    """Return the exact historical 490 prefix after validating live 506 bytes."""
     return _aud380_historical_490_from_live_policy(_aud380_read_live_policy())
 
 
@@ -19508,39 +19524,39 @@ _AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
     ),
     "app/core/logging.py": bytes(
         (
-            165,
-            18,
-            118,
-            183,
-            250,
-            120,
-            114,
-            35,
-            227,
-            15,
-            83,
+            42,
+            8,
+            144,
+            201,
+            24,
             248,
-            182,
-            27,
-            35,
-            50,
-            72,
-            0,
-            228,
-            88,
-            182,
-            104,
-            134,
-            178,
-            220,
-            79,
-            208,
-            234,
-            198,
-            252,
-            75,
-            170,
-        ),
+            51,
+            102,
+            213,
+            213,
+            55,
+            119,
+            146,
+            205,
+            206,
+            130,
+            137,
+            190,
+            137,
+            167,
+            107,
+            82,
+            187,
+            163,
+            33,
+            92,
+            172,
+            29,
+            144,
+            141,
+            26,
+            119,
+        )
     ),
     "app/core/observability.py": bytes(
         (
@@ -26149,32 +26165,35 @@ def _assert_aud380_n4_conditional_policy(
     [
         "extra_row",
         "changed_prefix",
-        "changed_suffix",
-        "changed_suffix_digest",
+        "changed_n6_suffix",
+        "changed_zlib_suffix",
+        "changed_row13",
         "header",
     ],
 )
-def test_aud380_live_approved_policy_requires_exact_505_projection(
+def test_aud380_live_approved_policy_requires_exact_506_projection(
     mutation: str,
 ) -> None:
     live_policy = _aud380_read_live_policy()
     historical_490 = _aud380_conditional_policy()
-    _aud380_assert_live_policy_is_exact_505(live_policy, historical_490)
+    _aud428_assert_live_policy_is_exact_506(live_policy, historical_490)
 
     changed = copy.deepcopy(live_policy)
     if mutation == "extra_row":
         changed["records"].append(copy.deepcopy(changed["records"][495]))
     elif mutation == "changed_prefix":
         changed["records"][0]["owner"] = "unreviewed-owner"
-    elif mutation == "changed_suffix":
+    elif mutation == "changed_n6_suffix":
         changed["records"][495]["approval_status"] = "NOT_APPROVED"
-    elif mutation == "changed_suffix_digest":
-        changed["records"][495]["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "changed_zlib_suffix":
+        changed["records"][497]["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "changed_row13":
+        changed["records"][505]["identity"]["hashed_secret_bytes"][0] ^= 1
     else:
         changed["schema_version"] = 2
 
     with pytest.raises(AssertionError):
-        _aud380_assert_live_policy_is_exact_505(changed, historical_490)
+        _aud428_assert_live_policy_is_exact_506(changed, historical_490)
 
 
 def test_aud380_n4_conditional_494_projection_is_exact_append() -> None:
@@ -28566,38 +28585,38 @@ _AUD380_N6_FINAL_SOURCE_SHA256 = {
     ),
     "scripts/kind/aud373_internal_mtls_proof.sh": bytes(
         (
-            92,
-            37,
-            87,
-            120,
-            205,
-            29,
-            246,
-            41,
-            37,
-            118,
-            73,
-            50,
-            49,
-            220,
-            18,
-            52,
-            103,
-            133,
-            215,
-            160,
-            253,
-            143,
-            146,
-            213,
-            125,
-            63,
-            25,
-            2,
-            91,
             132,
-            236,
+            150,
+            101,
+            254,
+            170,
+            95,
+            223,
+            37,
+            148,
+            29,
+            13,
+            16,
+            70,
+            120,
+            145,
+            166,
+            10,
+            86,
+            91,
+            125,
+            139,
             182,
+            46,
+            105,
+            231,
+            206,
+            11,
+            4,
+            183,
+            14,
+            9,
+            67,
         )
     ),
     "scripts/live_stand.py": bytes(
@@ -28638,38 +28657,38 @@ _AUD380_N6_FINAL_SOURCE_SHA256 = {
     ),
     "tests/test_internal_mtls_kind_contract.py": bytes(
         (
-            6,
-            209,
-            138,
+            146,
+            99,
+            254,
+            4,
+            179,
+            66,
+            124,
+            130,
+            194,
+            126,
+            243,
+            142,
+            58,
+            16,
+            17,
             41,
-            217,
-            119,
-            148,
-            173,
-            168,
-            138,
-            79,
-            238,
-            175,
-            52,
-            251,
-            111,
-            162,
+            187,
+            89,
+            223,
+            209,
+            27,
+            49,
             77,
-            79,
-            208,
-            208,
-            53,
-            72,
-            85,
-            240,
-            239,
-            72,
-            192,
-            141,
-            248,
-            235,
-            174,
+            230,
+            135,
+            241,
+            180,
+            199,
+            18,
+            177,
+            30,
+            84,
         )
     ),
 }
@@ -30013,9 +30032,10 @@ def _assert_aud380_n6_conditional_policy(
 def _aud380_assert_live_policy_is_exact_505(
     live_policy: dict[str, Any], historical_490: dict[str, Any]
 ) -> None:
+    """Validate the exact 505-record prefix as of the 2026-11-06 snapshot."""
     live_records = live_policy.get("records")
     assert isinstance(live_records, list), "live disposition records changed"
-    assert len(live_records) == 505, "live disposition row count changed"
+    assert len(live_records) == 505, "historical 505-row prefix changed"
     expected_header = {
         key: value for key, value in historical_490.items() if key != "records"
     }
@@ -30032,12 +30052,16 @@ def _aud380_assert_live_policy_is_exact_505(
     live_495 = copy.deepcopy(live_494)
     live_495["records"] = copy.deepcopy(live_records[:495])
     _assert_aud380_n5_conditional_policy(live_495, live_494)
-    live_497 = _nov6_zlib_historical_497_from_live_policy(live_policy)
+    live_497 = copy.deepcopy(live_495)
+    live_497["records"] = copy.deepcopy(live_records[:497])
     _assert_aud380_n6_conditional_policy(live_497, live_495)
-    accepted = verifier.validate_false_positive_dispositions(
-        live_policy, today=verifier.date(2026, 11, 7)
+    assert live_records[497:505] == _NOV6_ZLIB_EXPECTED_RECORDS, (
+        "approved zlib APK suffix changed"
     )
-    assert len(accepted) == 505, "live approved disposition count changed"
+    accepted = verifier.validate_false_positive_dispositions(
+        live_policy, today=verifier.date(2026, 11, 6)
+    )
+    assert len(accepted) == 505, "historical approved disposition count changed"
 
 
 def _aud380_assert_n4_historical_row7_observation(
@@ -30549,17 +30573,25 @@ def _nov6_zlib_historical_497_from_live_policy(
 ) -> dict[str, Any]:
     records = policy.get("records")
     assert isinstance(records, list), "live disposition records changed"
-    assert len(records) == 505, "live disposition row count changed"
-    assert records[497:] == _NOV6_ZLIB_EXPECTED_RECORDS, (
+    assert len(records) == 506, "live disposition row count changed"
+    assert records[497:505] == _NOV6_ZLIB_EXPECTED_RECORDS, (
         "approved zlib APK suffix changed"
     )
+    assert records[505] == _AUD428_ROW13_APPROVED_RECORD, (
+        "approved row13 record changed"
+    )
+    historical_505 = {**policy, "records": copy.deepcopy(records[:505])}
     try:
-        accepted = verifier.validate_false_positive_dispositions(
-            policy, today=verifier.date(2026, 11, 6)
+        accepted_505 = verifier.validate_false_positive_dispositions(
+            historical_505, today=verifier.date(2026, 11, 6)
+        )
+        accepted_live = verifier.validate_false_positive_dispositions(
+            policy, today=verifier.date(2026, 11, 7)
         )
     except verifier.BaselineArtifactError as error:
         raise AssertionError("live approved disposition metadata changed") from error
-    assert len(accepted) == 505, "live approved disposition count changed"
+    assert len(accepted_505) == 505, "historical approved disposition count changed"
+    assert len(accepted_live) == 506, "live approved disposition count changed"
     return {**policy, "records": copy.deepcopy(records[:497])}
 
 
@@ -30568,7 +30600,8 @@ def test_nov6_zlib_policy_exact_append_and_inclusive_expiry() -> None:
     historical = _nov6_zlib_historical_497_from_live_policy(live)
     prior = _aud380_n6_conditional_policy()
     assert historical == prior, "current497 approvals or dates changed"
-    assert live["records"][497:] == _NOV6_ZLIB_EXPECTED_RECORDS
+    assert live["records"][497:505] == _NOV6_ZLIB_EXPECTED_RECORDS
+    assert live["records"][505] == _AUD428_ROW13_APPROVED_RECORD
     document = _disposition_document(*copy.deepcopy(_NOV6_ZLIB_EXPECTED_RECORDS))
     assert (
         len(
@@ -30762,3 +30795,225 @@ def test_aud380_each_current_source_pin_rejects_file_mutation(
         match=rf"(?m)^conditional disposition source file SHA-256 changed: {re.escape(relative_path)}$",
     ):
         _assert_conditional_owner_source_bindings(tmp_path)
+
+
+# Owner-approved row13 companion rebind for the exact MapLibre/RLS source postimage.
+_AUD428_ROW13_BASE_LEDGER_SHA256 = b"\xf3?+O\x08\xc1\xc5\xe0\x05\xe7gR\xa4\r@\xd9l\xb0\x7f\xe4\xf4\xf2#!$\xa6\xe1\x1b\xaet\xbf\x12"
+_AUD428_ROW13_CANDIDATE_LEDGER_SHA256 = (
+    b"Gep\x88\xad\x86\xed0\xebR0,\xeck\x91\xddF\xab\xfd\x1fFk\xe35d\xb2Q\x880\nZ)"
+)
+_AUD428_ROW13_COMPANION_SHA256 = b"\xf3\x19<C\xaa}s?\x9c\xdc=Q\x0b\x0e\x96^\xe0\xd1\x08e\x05\x91\x9e\x8e\xd7=\xbf\xfbT\xf1\x8bA"
+_AUD428_ROW13_OLD_COMPANION_SHA256 = b"\x1bl\xcd\xc6\x7f\x10\xfb\x93\x8bT \x84c[\xb0\xb0\xf8\x9a_\xb9M\xe9E\x90\x95\x13\x90\xb0\xc6\x98\xd3\x80"
+_AUD428_ROW13_LINE_SHA256 = b"\x87p\x88+\x17!\x12k\x02h\xeex\xd2ke\x19\r\xb1e|\xd35\xb6/\x9f\x06\xd1J\xf0\xe1\x88y"
+_AUD428_ROW13_CONTEXT_SHA256 = b"@KnX\xa8\x9d\xe1\x99\xe1\xca=z\x83\xdd\xa2>\x98d-\x80\xfd\xf2\xe0\xa4\xf6\x8e\x92\x14\x11uV\xa3"
+_AUD428_ROW13_ACTIVE_505_PREFIX_CANONICAL_SHA256 = b"D\xd3\xcc\x1a\x93\xa9\x8b}\x18\x9e\xe9\xb5\xb1\xdd\xf3+\xf4\xfc\xbb\xba\xdf\n\xdf\xech\xb5B#*\xfe\xd97"
+_AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256 = b"\xfc9\xfc\xce\xd3\xf5\xd9\x80E\x06\xa1[\x03\x92[\x94\xbe\x83&f\xfes\xba\xd2\xc5\x95AN\xf7\xe0\xc6\xe0"
+_AUD428_ROW13_ACTIVE_POLICY_SHA256 = (
+    b"$\x04\xa3k\x9en*/\xea\xe4h#m\x16\x1c\xc5\tOU\x89\x8e\xaen\xadHbT\x01\x8f4\r\x0f"
+)
+_AUD428_ROW13_APPROVED_RECORDSET_SHA256 = b"\x16<\x96\xf2\xb1\xc4.c\x83\xb8\x9e=+\x93\x16\x96\x18RY\xb4\xcb\x94\xbf\t\x8fv\x08\x9a:\xd6\x17\xf9"
+_AUD428_ROW13_APPROVED_RECORD = json.loads(r"""
+{
+  "approval_status": "approved",
+  "category": "public_integrity_digest",
+  "evidence": "Public SHA-256 companion digest for tests/test_quality_workflow_contract.py in Semgrep disposition row 13 at quality/semgrep-dispositions.json:381. Verified by the pinned detect-secrets preview of the exact MapLibre/RLS contract postimage.",
+  "expires_on": "2027-01-10",
+  "identity": {
+    "hashed_secret_bytes": [
+      40,
+      217,
+      222,
+      45,
+      73,
+      107,
+      246,
+      97,
+      229,
+      46,
+      27,
+      22,
+      226,
+      8,
+      117,
+      51,
+      164,
+      75,
+      70,
+      136
+    ],
+    "path": "quality/semgrep-dispositions.json",
+    "type": "Hex High Entropy String"
+  },
+  "owner": "egorribun",
+  "reviewed_on": "2026-11-07"
+}
+""")
+
+_AUD380_N6_FINAL_SOURCE_SHA256 = {
+    **_AUD380_N6_FINAL_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
+}
+_AUD380_CURRENT_DELTA_SOURCE_SHA256 = {
+    **_AUD380_CURRENT_DELTA_SOURCE_SHA256,
+    "quality/semgrep-dispositions.json": _AUD428_ROW13_CANDIDATE_LEDGER_SHA256,
+}
+
+
+def _aud428_assert_row13_source_binding(repository_root: Path) -> None:
+    ledger_path = repository_root / "quality/semgrep-dispositions.json"
+    companion_path = repository_root / "tests/test_quality_workflow_contract.py"
+    policy_path = repository_root / "quality/security-false-positive-dispositions.json"
+    ledger_bytes = ledger_path.read_bytes()
+    companion_bytes = companion_path.read_bytes()
+    policy_bytes = policy_path.read_bytes()
+    companion_sha = hashlib.sha256(companion_bytes).digest()
+    assert companion_sha == _AUD428_ROW13_COMPANION_SHA256
+    assert (
+        hashlib.sha256(ledger_bytes).digest() == _AUD428_ROW13_CANDIDATE_LEDGER_SHA256
+    )
+    assert hashlib.sha256(policy_bytes).digest() == _AUD428_ROW13_ACTIVE_POLICY_SHA256
+    assert len(policy_bytes) == 495832
+    assert hashlib.sha256(policy_bytes[:494895]).digest() == (
+        _AUD428_ROW13_ACTIVE_505_PREFIX_BYTES_SHA256
+    )
+    reconstructed = ledger_bytes.replace(
+        hashlib.sha256(companion_bytes).hexdigest().encode("ascii"),
+        _AUD428_ROW13_OLD_COMPANION_SHA256.hex().encode("ascii"),
+        1,
+    )
+    assert hashlib.sha256(reconstructed).digest() == _AUD428_ROW13_BASE_LEDGER_SHA256
+    document = json.loads(ledger_bytes.decode("utf-8"))
+    assert len(document["dispositions"]) == 15
+    companions = [
+        item
+        for item in document["dispositions"][12]["companions"]
+        if item["path"] == "tests/test_quality_workflow_contract.py"
+    ]
+    assert len(companions) == 1
+    assert companions[0]["sha256"] == hashlib.sha256(companion_bytes).hexdigest()
+    assert (
+        document["dispositions"][13]
+        == json.loads(reconstructed.decode("utf-8"))["dispositions"][13]
+    )
+    lines = ledger_bytes.splitlines(keepends=True)
+    assert hashlib.sha256(lines[380]).digest() == _AUD428_ROW13_LINE_SHA256
+    context = b"".join(lines[378:383])
+    assert hashlib.sha256(context).digest() == _AUD428_ROW13_CONTEXT_SHA256
+    assert hashlib.sha1(
+        hashlib.sha256(companion_bytes).hexdigest().encode("ascii"),
+        usedforsecurity=False,
+    ).digest() == bytes(
+        _AUD428_ROW13_APPROVED_RECORD["identity"]["hashed_secret_bytes"]
+    )
+    assert _aud380_canonical_records_digest([_AUD428_ROW13_APPROVED_RECORD]) == (
+        _AUD428_ROW13_APPROVED_RECORDSET_SHA256
+    )
+
+
+def _aud428_assert_live_policy_is_exact_506(
+    live_policy: dict[str, Any], historical_490: dict[str, Any]
+) -> None:
+    records = live_policy.get("records")
+    assert isinstance(records, list), "live disposition records changed"
+    assert len(records) == 506, "live disposition row count changed"
+    expected_header = {
+        key: value for key, value in historical_490.items() if key != "records"
+    }
+    actual_header = {
+        key: value for key, value in live_policy.items() if key != "records"
+    }
+    assert actual_header == expected_header, "live disposition header changed"
+    assert records[:490] == historical_490["records"], (
+        "live approved 490-row prefix changed"
+    )
+    assert _aud380_canonical_records_digest(records[:505]) == (
+        _AUD428_ROW13_ACTIVE_505_PREFIX_CANONICAL_SHA256
+    ), "prior 505 approved records changed"
+    prefix_505 = {**live_policy, "records": copy.deepcopy(records[:505])}
+    _aud380_assert_live_policy_is_exact_505(prefix_505, historical_490)
+    assert records[497:505] == _NOV6_ZLIB_EXPECTED_RECORDS, (
+        "approved zlib APK suffix changed"
+    )
+    assert records[505] == _AUD428_ROW13_APPROVED_RECORD, (
+        "approved row13 record changed"
+    )
+    assert records[505]["category"] == "public_integrity_digest"
+    assert records[505]["reviewed_on"] == "2026-11-07"
+    assert records[505]["expires_on"] == "2027-01-10"
+    assert _aud380_identity_key(records[505]) not in {
+        _aud380_identity_key(item) for item in records[:505]
+    }
+    expected_counts = Counter(row["category"] for row in records[:505]) + Counter(
+        {"public_integrity_digest": 1}
+    )
+    assert Counter(row["category"] for row in records) == expected_counts
+    accepted = verifier.validate_false_positive_dispositions(
+        live_policy, today=verifier.date(2026, 11, 7)
+    )
+    assert len(accepted) == 506, "live approved disposition count changed"
+
+
+def test_aud428_row13_approved_506_binding_preserves_505_prefix_and_zlib_suffix() -> (
+    None
+):
+    repository_root = Path(__file__).resolve().parents[1]
+    _aud428_assert_row13_source_binding(repository_root)
+    active = _aud380_read_live_policy()
+    historical_490 = _aud380_historical_490_from_live_policy(active)
+    _aud428_assert_live_policy_is_exact_506(active, historical_490)
+    assert len(active["records"]) == 506
+    assert active["records"][497:505] == _NOV6_ZLIB_EXPECTED_RECORDS
+    assert active["records"][505] == _AUD428_ROW13_APPROVED_RECORD
+    baseline = json.loads(
+        (repository_root / ".secrets.baseline").read_text(encoding="utf-8")
+    )
+    assert sum(len(records) for records in baseline["results"].values()) == 242
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "digest",
+        "status",
+        "category",
+        "evidence",
+        "owner",
+        "reviewed",
+        "expiry",
+        "prefix",
+        "missing",
+        "extra",
+        "reordered_zlib",
+    ),
+)
+def test_aud428_row13_approved_506_rejects_scope_drift(mutation: str) -> None:
+    active = _aud380_read_live_policy()
+    historical_490 = _aud380_historical_490_from_live_policy(active)
+    changed = copy.deepcopy(active)
+    if mutation == "digest":
+        changed["records"][505]["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "status":
+        changed["records"][505]["approval_status"] = "NOT_APPROVED"
+    elif mutation == "category":
+        changed["records"][505]["category"] = "source_contract_identifier"
+    elif mutation == "evidence":
+        changed["records"][505]["evidence"] += " changed"
+    elif mutation == "owner":
+        changed["records"][505]["owner"] = "unreviewed-owner"
+    elif mutation == "reviewed":
+        changed["records"][505]["reviewed_on"] = "2026-11-06"
+    elif mutation == "expiry":
+        changed["records"][505]["expires_on"] = "2027-01-11"
+    elif mutation == "prefix":
+        changed["records"][0]["owner"] = "changed"
+    elif mutation == "missing":
+        changed["records"].pop()
+    elif mutation == "extra":
+        changed["records"].append(copy.deepcopy(changed["records"][505]))
+    else:
+        changed["records"][497], changed["records"][498] = (
+            changed["records"][498],
+            changed["records"][497],
+        )
+    with pytest.raises(AssertionError):
+        _aud428_assert_live_policy_is_exact_506(changed, historical_490)

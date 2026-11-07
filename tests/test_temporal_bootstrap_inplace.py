@@ -874,12 +874,22 @@ catch { Write-Output 'REJECTED'; exit 2 }
     )
     fixture_path = tmp_path / "running.json"
 
-    async def accepts(fixture: dict) -> bool:
+    async def accepts(
+        fixture: dict, *, failed_inspect_phase: str | None = None
+    ) -> bool:
         fixture_path.write_text(json.dumps(fixture), encoding="utf-8")
         code, output = await _run_powershell(
             runner, str(HELPER), str(fixture_path), str(state), server, init, project
         )
-        assert output.strip() in {"ACCEPTED", "REJECTED"}
+        verdict = "ACCEPTED" if code == 0 else "REJECTED"
+        expected = [verdict]
+        if failed_inspect_phase is not None:
+            assert verdict == "REJECTED"
+            expected.append(
+                f"TEMPORAL_BOOTSTRAP_RUNTIME_INSPECT phase={failed_inspect_phase} "
+                "result=command-failed"
+            )
+        assert output.splitlines() == expected
         return code == 0
 
     good = {
@@ -1053,10 +1063,10 @@ catch { Write-Output 'REJECTED'; exit 2 }
     assert not await accepts(chained_pid)
     missing_pid = copy.deepcopy(good)
     del missing_pid["pids"][peer]
-    assert not await accepts(missing_pid)
+    assert not await accepts(missing_pid, failed_inspect_phase="peer-pid-mode")
     missing = copy.deepcopy(good)
     del missing["mounts"][peer]
-    assert not await accepts(missing)
+    assert not await accepts(missing, failed_inspect_phase="peer-mount-metadata")
     malformed = copy.deepcopy(good)
     malformed["mounts"][peer] = [None]
     assert not await accepts(malformed)

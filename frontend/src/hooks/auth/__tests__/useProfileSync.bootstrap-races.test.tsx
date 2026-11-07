@@ -268,7 +268,9 @@ describe("profile bootstrap ownership races", () => {
   it("rejects a completed key result replaced before profile bootstrap consumes it", async () => {
     const view = renderBootstrap({ holdResult: true })
     await waitFor(() => expect(view.acquired()).toBe(true))
-    expect(view.result.current.crypto.sessionSigningKey).toBe("fetched-old-key")
+    await waitFor(() =>
+      expect(view.result.current.crypto.sessionSigningKey).toBe("fetched-old-key")
+    )
     await act(() =>
       view.track(view.result.current.crypto.updateSessionSigningKey("manual-new-key"))
     )

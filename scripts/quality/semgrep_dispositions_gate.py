@@ -312,6 +312,86 @@ def _matches_reviewed_semgrep_ignore(repository_path: str) -> bool:
     return False
 
 
+_MAX_FIXPOINT_TIMEOUT_FIELD_LENGTH = 512
+
+
+def _fixpoint_timeout_field_id(raw: object, field: str) -> str:
+    """Return a domain-separated hash or a fixed marker, never the raw value."""
+    if field not in {"rule", "path"}:
+        return "invalid"
+    if (
+        not isinstance(raw, str)
+        or not raw
+        or len(raw) > _MAX_FIXPOINT_TIMEOUT_FIELD_LENGTH
+        or not raw.isprintable()
+        or raw != raw.strip()
+    ):
+        return "invalid"
+
+    if field == "rule":
+        normalized = raw
+    else:
+        try:
+            normalized = normalize_path(raw)
+        except GateError:
+            return "invalid"
+        if (
+            normalized in {"", "."}
+            or len(normalized) > _MAX_FIXPOINT_TIMEOUT_FIELD_LENGTH
+            or not normalized.isprintable()
+        ):
+            return "invalid"
+
+    payload = f"semgrep-fixpoint-timeout/v1\0{field}\0{normalized}".encode()
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+def _fixpoint_rule_summary(message: object) -> dict[str, str | int]:
+    """Read bounded rule metadata without returning its raw identifier or location."""
+    if not isinstance(message, str) or len(message) > 1024:
+        return {}
+    match = re.fullmatch(
+        r"Fixpoint timeout while performing(?: inter-file)? taint analysis at "
+        r"[^\x00-\x1f\x7f]{1,512} \[rules: ([1-9][0-9]{0,5}), "
+        r"first: ([A-Za-z0-9_.-]{1,200})\]",
+        message,
+    )
+    if match is None:
+        return {}
+    return {
+        "rule_count": int(match[1]),
+        "first_rule_id_sha256": _fixpoint_timeout_field_id(match[2], "rule"),
+    }
+
+
+def _fixpoint_timeout_details(timeouts: list[Any]) -> str:
+    """Expose bounded source coordinates, never scanner messages or source text."""
+    details: list[dict[str, str | int]] = []
+    for entry in timeouts[:8]:
+        detail: dict[str, str | int] = {}
+        if isinstance(entry, dict):
+            detail.update(_fixpoint_rule_summary(entry.get("message")))
+            rule_id = entry.get("rule_id")
+            if isinstance(rule_id, str) and re.fullmatch(
+                r"[A-Za-z0-9_.-]{1,200}", rule_id
+            ):
+                rule_hash = _fixpoint_timeout_field_id(rule_id, "rule")
+                if rule_hash.startswith("sha256:"):
+                    detail["rule_id_sha256"] = rule_hash
+            location = entry.get("location")
+            if isinstance(location, dict):
+                path = location.get("path")
+                if isinstance(path, str) and re.fullmatch(
+                    r"[A-Za-z0-9_./-]{1,240}", path
+                ):
+                    path_hash = _fixpoint_timeout_field_id(path, "path")
+                    if path_hash.startswith("sha256:"):
+                        detail["path_sha256"] = path_hash
+        details.append(detail)
+    summary = {"details": details, "omitted": max(0, len(timeouts) - len(details))}
+    return json.dumps(summary, ensure_ascii=True, separators=(",", ":"))
+
+
 def load_findings(
     path: Path, repository_root: Path | None = None
 ) -> list[dict[str, Any]]:
@@ -344,7 +424,8 @@ def load_findings(
     if fixpoint_timeouts:
         raise GateError(
             f"Semgrep reported {len(fixpoint_timeouts)} fixpoint timeout(s); "
-            "results are not authoritative"
+            "results are not authoritative; "
+            + _fixpoint_timeout_details(fixpoint_timeouts)
         )
     paths = loaded.get("paths")
     scanned = paths.get("scanned") if isinstance(paths, dict) else None

@@ -2295,3 +2295,69 @@ before running the probes. It retains the exact TLS certificate-required
 criterion for B. The decision covers these two bindings and leaves
 Semgrep dispositions, scanner inventories, required checks and ADR-052
 under their existing decision scopes.
+
+
+### 2026-11-07: AUD-428 row13 MapLibre and RLS receipt companion rebind
+
+Status: OWNER APPROVED 2026-11-07; exact source and policy activation is pending normal integration.
+
+This owner-approved change binds Semgrep row 13 to the exact MapLibre workflow
+contract postimage, including the current RLS PostgreSQL receipt contract. The
+receipt contract names the 14 existing cohort tests and 41 total tests; this
+change does not include the separate AUD-360 fifteenth test. The Semgrep ledger
+changes only the row13 companion SHA-256 field for
+`tests/test_quality_workflow_contract.py`; row14 and its companions remain
+byte-exact. The separate N7/HIBP work is not included.
+
+The companion source SHA-256 is `f3193c43...f18b41` and the candidate Semgrep
+ledger SHA-256 is `47657088...5a29`. A pinned detect-secrets 1.5.0 preview
+of the five frozen row 13 and RLS candidate inputs exited 0. It found one
+unmatched row 13 `public_integrity_digest` identity, 99 active-policy matches
+and zero baseline matches. The sanitized receipt SHA-256 is
+`7fecbd75...8d513`. The private packet retains the full digests. The approved
+identity is the finite public SHA-256 companion-digest fingerprint
+bound to `quality/semgrep-dispositions.json:381`; the record expires
+2027-01-10.
+
+The approved policy appends this one record after the exact prior 505 records.
+All previous record bytes and expiry values remain unchanged, including the
+eight zlib APK integrity records at indexes 497–504; the row13 record is at
+index 505. The policy inventory is 506, the detect-secrets baseline remains
+242, Gitleaks remains 27, and the Semgrep ledger remains at 15 rows. These
+inventory counts do not establish current whole-source scan results or passing
+required checks. Every final source SHA still requires its own validation.
+
+## Owner-approved AUD-373 server-correlated evidence (2026-11-07 UTC)
+
+The owner approved published commit `47da3ae6` as disclosed, including the
+alternate server-correlated case B in the Kind proof. The current-source
+SHA-256 bindings for the proof script, its contract test and
+`app/core/logging.py` move respectively from `a2721732...3973ddf1`,
+`4bef0e32...939d2a7e` and `a51276b7...6fc4baa` to
+`f6d26624...7c5fc872`, `1b0092f7...891f495c` and
+`2a0890c9...908d1a77`. The private decision receipt and published source
+retain the full bindings.
+
+The original client TLS alert still satisfies case B. The approved alternate
+path requires a valid client TLS error capture at READ_ALERT with EOF and
+exactly one correlated server missing-certificate event. It also verifies
+the source-bound workload, identity, endpoint and evidence window before
+accepting the event. The original client-observed certificate-required
+alert remains an open audit evidence item. Required checks still need to
+pass on the final source SHA.
+
+## Owner-approved AUD-373 Kind chart image bindings (2026-11-07 UTC)
+
+The owner approved the two exact source bindings in the Kind Helm repair.
+The proof script SHA-256 moves from `f6d26624...7c5fc872` to
+`849665fe...e0943`, and the proof contract test SHA-256 moves from
+`1b0092f7...891f495c` to `9263fe04...b11e54`. The private decision
+receipt retains the full source and patch digests.
+
+The hosted Kind job on `47da3ae6` stopped before the mTLS probes because
+the Redis metrics password-file init image differed from the backend image.
+The generated values now use the same backend manifest digest and the chart's
+required `Always` pull policy. The contract test passes the digest explicitly
+to the values generator and checks the helper image binding. The proof
+criteria and scanner inventories retain their existing scope. A hosted Kind
+run on the final source is still required.

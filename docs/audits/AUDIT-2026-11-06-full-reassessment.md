@@ -19,11 +19,12 @@ updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
 remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
 At the 74c0c0c38f94 checkpoint, the policy-file inventory was **497 dispositions /
 242 baseline identities / 27 Gitleaks fingerprints / 15 Semgrep rows**. The
-current policy-file inventory is **505 dispositions / 242 baseline identities /
-27 Gitleaks fingerprints / 15 Semgrep rows**. The difference is the eight
+current policy-file inventory is **506 dispositions / 242 baseline identities /
+27 Gitleaks fingerprints / 15 Semgrep rows**. The 506 total preserves all previous 505 records, including the eight
 previously approved zlib APK integrity identities restored under the 2026-11-07
-ADR-047 addendum; their 2027-01-10 expiry is unchanged. These are inventory
-counts only and do not establish passing scanner results or required checks.
+ADR-047 addendum, and appends the owner-approved AUD-428 row13 public-integrity
+identity. The new row expires 2027-01-10. These are inventory counts only and do
+not establish passing scanner results or required checks.
 All 78 required context/app pairs, blocking CodeQL, hooks and quality floors
 remain in force.
 
@@ -35,6 +36,17 @@ overall integration job failed later at a separate cohort receipt check.
 AUD-454 remains open for the browser-frame evidence from backend removal
 through JetStream revocation to ws-hub eviction.
 [Hosted proof step](https://github.com/egorribun/university_ecosystem/actions/runs/42349344099/job/128336267666).
+
+### AUD-272 notification replay evidence
+
+The owner-authorized v13 run on local source `2db3439d` passed the three
+named SQLite cases and the test bodies of all three owned PostgreSQL cases.
+The 19 selected source pins also matched `47da3ae6`. The PostgreSQL phase
+failed teardown because Windows returned WSA10048 on the exclusive
+loopback bind after container removal. The parent independently confirmed
+the exact container and volume were absent and validated both
+pre-removal scratch-database receipts. The private run receipt has SHA-256
+`8a0edc79...634f34`. The full run was incomplete and AUD-272 remains open.
 
 ### Six additional scoped decisions
 
@@ -118,7 +130,7 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. Current o
 | AUD-208 | The Squawk gate must not pass guard migrations with no lintable SQL and must not be weakened by rule exclusions. | P | partial / partial | Scoped acceptance at 484/512 (was Open at 478/512) | `.github/workflows/ci.yml:1553` (snapshot, blob `f6ecac56cbf6`); `scripts/quality/render_live_alembic_sql.py:234` (snapshot, blob `27febaf0f99c`) | Historical 478/512 remaining action: Run a named PostgreSQL+Squawk guard case bound to this tree that proves DO/SELECT guard SQL is retained or causes a fail-closed result when no lintable DDL is captured; include an empty/no-op negative control and confirm only the exact documented baseline exclusions apply. Current evidence and its scope limits are in the supplement above. |
 | AUD-226 | Tier-0 migration sources under alembic/versions/** must participate in the 100% coverage requirement; each tracked Tier-0 migration must be evidenced and meet 100% line, statement, branch, and function coverage. | P | fixed / missing | Open (S) | `docs/audits/AUDIT-2026-10.md:313` (snapshot, blob `ce20147fdbee`); `quality/quality-contract.json:268` (snapshot, blob `93d57cd21d2e`) | Run the source-bound Coverage & Quality Policy Gate for snapshot tree 20d4/current source after the Python and PostgreSQL migration coverage artifacts are produced; retain its valid merged manifest and per-file Tier-0 output showing every tracked alembic/versions migration at 100% for all four metrics with no exception. |
 | AUD-245 | The KSV Trivy ignore entries reported at .trivyignore:17-26 were global, lacked manifest path scope, and had an expired review period. | U | fixed / sufficient | Scoped acceptance; see decision section | `.trivyignore:7` (snapshot, blob `03c6c6fad623`); `.trivyignore.yaml:6` (snapshot, blob `9c12f93dbdca`) | No additional action for this finding-specific scope; limitations below remain. |
-| AUD-251 | The SPIRE agent receives cluster-wide nodes/proxy get/list/watch permissions. | P | partial / partial | Open (P) | `k8s/spire/spire-rbac.yaml:91` (snapshot, blob `5d871c81f229`); `k8s/spire/README.md:62` (snapshot, blob `8b730d4fa69f`) | Obtain an explicit owner decision on the SPIRE kubelet compatibility/profile and lifecycle policy; the narrow-role patch and ADR-054 remain private proposals. If least-privilege closure is chosen, integrate the approved nodes/pods-only role and fail-closed all-node gate, then capture a target-cluster effective-RBAC matrix (including nodes/proxy get/list/watch) plus real agent/workload SVID and mTLS success and negative controls. |
+| AUD-251 | The SPIRE agent receives cluster-wide nodes/proxy get/list/watch permissions. | P | partial / partial | Open (P) | `k8s/spire/spire-rbac.yaml:91` (snapshot, blob `5d871c81f229`); `k8s/spire/README.md:62` (snapshot, blob `8b730d4fa69f`) | Owner confirmed 2026-11-07 that no target Kubernetes profile is selected and no deployment is authorized. The isolated Kind profile remains reference-only and establishes no target-cluster settings or closure; AUD-251 stays Open (P). No acceptance, count, or policy changes. Next obtain owner selection of the kubelet profile and node lifecycle; then consider the nodes/pods-only role and fail-closed all-node gate, followed by target-cluster effective-RBAC evidence (including nodes/proxy get/list/watch) and real agent/workload SVID plus mTLS success and negative controls. |
 | AUD-269 | Reconcile 202603280001 removes approximately 15 hot-path indexes without restoring them. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/audits/AUDIT-2026-10.md:465` (snapshot, blob `ce20147fdbee`); `alembic/versions/202611020000_mvp_baseline.py:2060` (snapshot, blob `e4e0679260e8`) | No additional action for this finding-specific scope; limitations below remain. |
 | AUD-272 | UNIQUE «delivery once» включает attempted_at и не препятствует повторным пушам | U | fixed / missing | Open (S) | `app/models/notifications.py:269` (snapshot, blob `630d7f513cd3`); `app/services/notifications/delivery.py:367` (snapshot, blob `39f0e548f5e0`) | Run the named owned-PostgreSQL cases and the sender-count replay case against this snapshot, capturing per-case results and source/test blob identities; do not infer success from the aggregate hosted shard. |
 | AUD-275 | The historical migration builds indexes on messages and users without CONCURRENTLY while its docstring promises concurrent creation. | P | fixed / sufficient | Scoped acceptance; see decision section | `docs/adr/ADR-051-mvp-migration-baseline-squash.md:185` (snapshot, blob `905f99cd4ff5`); `alembic/versions/202611020000_mvp_baseline.py:30` (snapshot, blob `e4e0679260e8`) | No additional action for this finding-specific scope; limitations below remain. |
@@ -167,6 +179,10 @@ The Nov 6 class and primary-proof columns preserve the dated baseline. Current o
 | AUD-484 | Stale open code-scanning and Dependabot alerts do not reflect current lock files (AUDIT-2026-10 reports 8 Trivy alerts on code-scanning, refs/heads/egorribun). | N | partial / partial | Open (P) | `docs/audits/AUDIT-2026-10.md:568` (snapshot, blob `ce20147fdbee`); `uv.lock:111` (snapshot, blob `8e1296d8b407`) | Obtain a Trivy analysis bound to the exact reviewed source SHA/tree and record whether each of IDs 2995-3002 becomes fixed or needs another explicit disposition; preserve the gap that the original audit row omitted IDs unless its original CI artifact supplies them. Requery the current Dependabot alert inventory and compare every relevant open advisory/package version to the exact reviewed lockfiles, then record an item-by-item disposition. The 2026-11-05 Dependabot inventory is historical, not current proof. |
 | AUD-501 | The hidden-tab pause live test must assert that story progress stays frozen during the hidden interval, not merely check the story after returning to the visible tab (AUD-501; frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:84, 90-100). | S | fixed / partial | Open (S) | `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:97` (snapshot, blob `4aebb26ff391`); `frontend/tests/e2e-live/story-viewer-keyboard.live.spec.ts:114` (snapshot, blob `4aebb26ff391`) | Run the clock-controlled hidden-tab Playwright case against the owned full live stand on the frozen source in both desktop and mobile projects; capture each named result and verify the hidden-visibility negative control executes. |
 | AUD-506 | Temporal used HTTP for JWKS key discovery and the noop authorizer, allowing forged or unauthorized JWTs to reach Temporal operations (services/temporal/config.yaml:100-107). | P | fixed / sufficient | Scoped acceptance; see decision section | `services/temporal/config.yaml:104` (snapshot, blob `f8e130aba3aa`); `services/temporal/entrypoint.sh:36` (snapshot, blob `4c1c5e552e7f`) | No additional action for this finding-specific scope; limitations below remain. |
+
+### AUD-373 — source-bound 1f hosted result
+
+The hosted AUD-373 Kind job is bound to source 1f532f3577d3 (worker/transport/lock Git-blob prefixes 534569d485a1/d50b74517439/8e1296d8b407), proof-script SHA-256 prefix a2721732d7fa, and contract-test SHA-256 prefix 4bef0e32f4bd. A/C/D passed; B failed with sanitized client fields TCP=CONNECTED, STAGE=READ_ALERT, EVENT=EOF, TLS=ERROR. One backend internal_mtls_handshake_rejected event correlated to the same probe and recorded PEER_DID_NOT_RETURN_A_CERTIFICATE, proving server-side rejection telemetry and correlation while the client did not observe the required TLSV13_ALERT_CERTIFICATE_REQUIRED. The diagnostic artifact is 13574360531 (SHA-256 prefix cc6821c2ccd8); the private receipt retains its full digest. B remains unmet and AUD-373 remains Open (P); this evidence changes no finding counts. [Hosted AUD-373 Kind job](https://github.com/egorribun/university_ecosystem/actions/runs/42370761376/job/128398210334).
 
 ## 25 prior scoped acceptance decisions at the 478/34 checkpoint
 

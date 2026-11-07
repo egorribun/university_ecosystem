@@ -27,7 +27,10 @@ class BackendWorker(UvicornWorker):
         guard: TransportGuard | None = None
         try:
             guard = TransportGuard(
-                source, policy.allowed_clients, asyncio.get_running_loop()
+                source,
+                policy.allowed_clients,
+                asyncio.get_running_loop(),
+                handshake_diagnostics=os.environ.get("AUD373_TLS_DIAGNOSTICS") == "1",
             )
             context = guard.start()
             http_protocol, ws_protocol = guarded_protocols(guard)

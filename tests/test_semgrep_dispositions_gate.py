@@ -1687,3 +1687,310 @@ def test_main_accepts_the_strip_prefix_option(
         "out.",
     ]
     assert gate.main(args) == 0
+
+
+def _expected_fixpoint_timeout_hash(field: str, value: str) -> str:
+    payload = f"semgrep-fixpoint-timeout/v1\0{field}\0{value}".encode()
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
+def test_fixpoint_diagnostics_hash_identifiers_and_expose_only_rule_count() -> None:
+    direct_rule_id = "synthetic.private.rule_token_12345"
+    first_rule_id = "out.synthetic.private.rule_token_12345"
+    raw_path = "./secrets/SYNTHETIC_PRIVATE_PATH_TOKEN.key"
+    normalized_path = "secrets/SYNTHETIC_PRIVATE_PATH_TOKEN.key"
+    message = (
+        "Fixpoint timeout while performing taint analysis at "
+        f"private/customer@example.invalid:12:4 [rules: 3, first: {first_rule_id}]"
+    )
+    details = "SYNTHETIC_PRIVATE_DETAILS"
+    source = "SYNTHETIC_PRIVATE_SOURCE"
+    report = gate._fixpoint_timeout_details(
+        [
+            {
+                "rule_id": direct_rule_id,
+                "message": message,
+                "details": details,
+                "source": source,
+                "location": {"path": raw_path, "start": {"line": 12}},
+            }
+        ]
+    )
+    parsed = json.loads(report)
+    assert parsed == {
+        "details": [
+            {
+                "rule_count": 3,
+                "first_rule_id_sha256": _expected_fixpoint_timeout_hash(
+                    "rule", first_rule_id
+                ),
+                "rule_id_sha256": _expected_fixpoint_timeout_hash(
+                    "rule", direct_rule_id
+                ),
+                "path_sha256": _expected_fixpoint_timeout_hash("path", normalized_path),
+            }
+        ],
+        "omitted": 0,
+    }
+    assert "line" not in parsed["details"][0]
+    for raw_value in (
+        direct_rule_id,
+        first_rule_id,
+        raw_path,
+        normalized_path,
+        message,
+        details,
+        source,
+        "customer@example.invalid",
+    ):
+        assert raw_value not in report
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["../outside.py", "/absolute.py", "app/file\n::error::text", "a\x1bb", "x" * 241],
+)
+def test_fixpoint_diagnostics_omit_unsafe_paths(path: str) -> None:
+    report = gate._fixpoint_timeout_details([{"location": {"path": path}}])
+    assert json.loads(report) == {"details": [{}], "omitted": 0}
+
+
+@pytest.mark.parametrize("rule_id", [None, 1, "bad\nrule", "a" * 201])
+def test_fixpoint_diagnostics_omit_unsafe_rule_ids(rule_id: object) -> None:
+    report = gate._fixpoint_timeout_details([{"rule_id": rule_id}])
+    assert json.loads(report) == {"details": [{}], "omitted": 0}
+
+
+@pytest.mark.parametrize("line", [None, True, 0, -1, "12", 1_000_000_001])
+def test_fixpoint_diagnostics_omit_invalid_lines(line: object) -> None:
+    report = gate._fixpoint_timeout_details(
+        [{"location": {"path": PATH, "start": {"line": line}}}]
+    )
+    parsed = json.loads(report)
+    assert parsed == {
+        "details": [{"path_sha256": _expected_fixpoint_timeout_hash("path", PATH)}],
+        "omitted": 0,
+    }
+    assert "line" not in parsed["details"][0]
+
+
+def test_fixpoint_diagnostics_bound_entries_and_tolerate_unknown_shapes() -> None:
+    report = gate._fixpoint_timeout_details(
+        [None, {}, "unknown", {"location": None}, {"location": {"start": None}}] * 20
+    )
+    assert json.loads(report) == {"details": [{}] * 8, "omitted": 92}
+
+
+def test_fixpoint_diagnostics_cap_valid_rule_summaries_without_raw_fields() -> None:
+    timeouts = [
+        {
+            "rule_id": f"synthetic.private.direct_rule_token_{index}",
+            "message": (
+                "Fixpoint timeout while performing taint analysis at "
+                f"synthetic-location-{index} [rules: {index + 1}, "
+                f"first: synthetic.private.first_rule_token_{index}]"
+            ),
+            "details": f"SYNTHETIC_PRIVATE_DETAILS_{index}",
+            "source": f"SYNTHETIC_PRIVATE_SOURCE_{index}",
+            "location": {
+                "path": f"app/synthetic_private_path_token_{index}.py",
+                "start": {"line": index + 1},
+            },
+        }
+        for index in range(10)
+    ]
+    report = gate._fixpoint_timeout_details(timeouts)
+    parsed = json.loads(report)
+
+    assert len(parsed["details"]) == 8
+    assert parsed["omitted"] == 2
+    assert parsed["details"][0] == {
+        "rule_count": 1,
+        "first_rule_id_sha256": _expected_fixpoint_timeout_hash(
+            "rule", "synthetic.private.first_rule_token_0"
+        ),
+        "rule_id_sha256": _expected_fixpoint_timeout_hash(
+            "rule", "synthetic.private.direct_rule_token_0"
+        ),
+        "path_sha256": _expected_fixpoint_timeout_hash(
+            "path", "app/synthetic_private_path_token_0.py"
+        ),
+    }
+    assert all("line" not in entry for entry in parsed["details"])
+    assert len(report) < 3000
+    for timeout in timeouts:
+        for raw_value in (
+            timeout["rule_id"],
+            timeout["message"],
+            timeout["details"],
+            timeout["source"],
+            timeout["location"]["path"],
+        ):
+            assert raw_value not in report
+
+
+def test_fixpoint_failure_retains_count_and_hashes_without_becoming_a_pass(
+    tmp_path: Path,
+) -> None:
+    raw_rule_id = "synthetic.private.rule_token_12345"
+    message_text = "SYNTHETIC_PRIVATE_SCANNER_MESSAGE"
+    details_text = "SYNTHETIC_PRIVATE_SCANNER_DETAILS"
+    source_text = "SYNTHETIC_PRIVATE_SOURCE_TEXT"
+    report = {
+        "results": [],
+        "errors": [],
+        "skipped_rules": [],
+        "paths": {"scanned": [PATH], "skipped": []},
+        "time": {
+            "fixpoint_timeouts": [
+                {
+                    "rule_id": raw_rule_id,
+                    "message": message_text,
+                    "details": details_text,
+                    "source": source_text,
+                    "location": {"path": PATH, "start": {"line": 7}},
+                }
+            ]
+        },
+    }
+    with pytest.raises(gate.GateError) as caught:
+        gate.load_findings(_write(tmp_path / "timed-out.json", report))
+    message = str(caught.value)
+    rule_hash = _expected_fixpoint_timeout_hash("rule", raw_rule_id)
+    path_hash = _expected_fixpoint_timeout_hash("path", PATH)
+    assert "1 fixpoint timeout(s); results are not authoritative" in message
+    assert f'"rule_id_sha256":"{rule_hash}"' in message
+    assert f'"path_sha256":"{path_hash}"' in message
+    for raw_value in (
+        raw_rule_id,
+        PATH,
+        message_text,
+        details_text,
+        source_text,
+        '"line":7',
+    ):
+        assert raw_value not in message
+
+
+@pytest.mark.parametrize("mode", ["", " inter-file"])
+def test_fixpoint_pinned_message_exposes_only_rule_summary(mode: str) -> None:
+    # Semgrep 1.179.0 Taint_rule_inst.check_timeouts_and_warn aggregates rules
+    # per function and stores this summary in message, not error.rule_id.
+    first_rule_id = "synthetic.private.rule_token_12345"
+    raw_path = "./secrets/SYNTHETIC_PRIVATE_PATH_TOKEN.key"
+    normalized_path = "secrets/SYNTHETIC_PRIVATE_PATH_TOKEN.key"
+    message = (
+        f"Fixpoint timeout while performing{mode} taint analysis at "
+        f"private/customer@example.invalid:12:4 [rules: 3, first: {first_rule_id}]"
+    )
+    report = gate._fixpoint_timeout_details(
+        [{"message": message, "location": {"path": raw_path, "start": {"line": 12}}}]
+    )
+    parsed = json.loads(report)
+    assert parsed == {
+        "details": [
+            {
+                "rule_count": 3,
+                "first_rule_id_sha256": _expected_fixpoint_timeout_hash(
+                    "rule", first_rule_id
+                ),
+                "path_sha256": _expected_fixpoint_timeout_hash("path", normalized_path),
+            }
+        ],
+        "omitted": 0,
+    }
+    assert "line" not in parsed["details"][0]
+    for raw_value in (
+        first_rule_id,
+        raw_path,
+        normalized_path,
+        "private/customer@example.invalid:12:4",
+        message,
+    ):
+        assert raw_value not in report
+
+
+def test_fixpoint_valid_rule_summary_is_hashed() -> None:
+    first_rule_id = "synthetic.private.rule_token_12345"
+    result = gate._fixpoint_rule_summary(
+        "Fixpoint timeout while performing taint analysis at x "
+        f"[rules: 999999, first: {first_rule_id}]"
+    )
+    assert result == {
+        "rule_count": 999999,
+        "first_rule_id_sha256": _expected_fixpoint_timeout_hash("rule", first_rule_id),
+    }
+    assert first_rule_id not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        None,
+        {},
+        1,
+        "private text [rules: 1, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 0, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: -1, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1000000, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1, first: ]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1, first: user@example.invalid]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1, first: safe.rule] suffix",
+        "Fixpoint timeout while performing taint analysis at x\n::error::payload [rules: 1, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x\x1b[31m [rules: 1, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1, first: safe\nrule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1, first: "
+        + "r" * 201
+        + "]",
+        "Fixpoint timeout while performing taint analysis at "
+        + "p" * 513
+        + " [rules: 1, first: safe.rule]",
+        "x" * 1025,
+    ],
+)
+def test_fixpoint_rule_summary_omits_unrecognized_or_unsafe_messages(
+    message: object,
+) -> None:
+    assert gate._fixpoint_rule_summary(message) == {}
+    assert json.loads(gate._fixpoint_timeout_details([{"message": message}])) == {
+        "details": [{}],
+        "omitted": 0,
+    }
+
+
+def test_fixpoint_rule_summary_does_not_reinterpret_first_rule_as_all_rules() -> None:
+    first_rule_id = "synthetic.private.rule_token_12345"
+    result = gate._fixpoint_rule_summary(
+        "Fixpoint timeout while performing taint analysis at x "
+        f"[rules: 999999, first: {first_rule_id}]"
+    )
+    assert result == {
+        "rule_count": 999999,
+        "first_rule_id_sha256": _expected_fixpoint_timeout_hash("rule", first_rule_id),
+    }
+    assert "rule_id" not in result
+    assert first_rule_id not in json.dumps(result)
+
+
+def test_fixpoint_message_summary_remains_a_fatal_scan_error(tmp_path: Path) -> None:
+    first_rule_id = "synthetic.private.rule_token_12345"
+    message = (
+        "Fixpoint timeout while performing taint analysis at private-location "
+        f"[rules: 2, first: {first_rule_id}]"
+    )
+    report = {
+        "results": [],
+        "errors": [],
+        "skipped_rules": [],
+        "paths": {"scanned": [PATH], "skipped": []},
+        "time": {"fixpoint_timeouts": [{"message": message}]},
+    }
+    with pytest.raises(gate.GateError) as caught:
+        gate.load_findings(_write(tmp_path / "message-timeout.json", report))
+    failure = str(caught.value)
+    assert "1 fixpoint timeout(s); results are not authoritative" in failure
+    assert '"rule_count":2' in failure
+    rule_hash = _expected_fixpoint_timeout_hash("rule", first_rule_id)
+    assert f'"first_rule_id_sha256":"{rule_hash}"' in failure
+    assert first_rule_id not in failure
+    assert "private-location" not in failure

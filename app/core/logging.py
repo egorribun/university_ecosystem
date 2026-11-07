@@ -721,6 +721,9 @@ def configure_logging(
                     if key in event_dict
                 }
             )
+        handshake = _handshake_diagnostic_event(event_dict)
+        if handshake is not None:
+            return _orjson_serializer(handshake)
         exception = event_dict.get("exception")
         if type(exception) is _ExceptionSnapshot:
             event_dict["exception"] = _render_safe_exception(exception)
@@ -824,3 +827,24 @@ __all__ = [
     "get_stdlib_logger",
     "is_logger_enabled",
 ]
+
+
+def _handshake_diagnostic_event(event_dict: EventDict) -> dict[str, str] | None:
+    """Project one finite proof event after normal redaction, never raw context."""
+    if (
+        event_dict.get("logger") != "app.server.spiffe_transport"
+        or event_dict.get("message") != "internal_mtls_handshake_rejected"
+        or event_dict.get("reason") != "PEER_DID_NOT_RETURN_A_CERTIFICATE"
+    ):
+        return None
+    probe_id = event_dict.get("probe_id")
+    if not isinstance(probe_id, str) or not re.fullmatch(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", probe_id
+    ):
+        return None
+    return {
+        "event": "internal_mtls_handshake_rejected",
+        "logger": "app.server.spiffe_transport",
+        "probe_id": probe_id,
+        "reason": "PEER_DID_NOT_RETURN_A_CERTIFICATE",
+    }

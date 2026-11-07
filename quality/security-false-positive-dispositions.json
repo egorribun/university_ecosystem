@@ -17169,6 +17169,40 @@
       },
       "owner": "egorribun",
       "reviewed_on": "2026-11-06"
+    },
+    {
+      "approval_status": "approved",
+      "category": "public_integrity_digest",
+      "evidence": "Public SHA-256 companion digest for tests/test_quality_workflow_contract.py in Semgrep disposition row 13 at quality/semgrep-dispositions.json:381. Verified by the pinned detect-secrets preview of the exact MapLibre/RLS contract postimage.",
+      "expires_on": "2027-01-10",
+      "identity": {
+        "hashed_secret_bytes": [
+          40,
+          217,
+          222,
+          45,
+          73,
+          107,
+          246,
+          97,
+          229,
+          46,
+          27,
+          22,
+          226,
+          8,
+          117,
+          51,
+          164,
+          75,
+          70,
+          136
+        ],
+        "path": "quality/semgrep-dispositions.json",
+        "type": "Hex High Entropy String"
+      },
+      "owner": "egorribun",
+      "reviewed_on": "2026-11-07"
     }
   ],
   "schema_version": 1

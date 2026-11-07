@@ -180,10 +180,10 @@ write_values_file() {
   backend_fields="$(cat <<EOF
 backend:
   env:
-    # Explicit HTTP hosts for direct JWKS fetches and the gateway relay.
+    AUD373_TLS_DIAGNOSTICS: "1"  # Bounded, opt-in proof telemetry only.
     ALLOWED_HOSTS: "localhost,127.0.0.1,testserver,${BACKEND_SVC},${GATEWAY_SVC}"
-  image:
-    repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend"
+  image: {repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend",
+    digest: "${BACKEND_IMAGE_DIGEST:-}"}
   config:
     internalHMACSecret: "$(random_hex)"
     wsHubInternalSecret: "$(random_hex)"
@@ -255,6 +255,8 @@ redis:
   metrics:
     passwordFileInitImage:
       repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend"
+      digest: "${BACKEND_IMAGE_DIGEST:-}"
+      pullPolicy: Always
 ${backend_fields}
 EOF
 }
@@ -969,6 +971,9 @@ EOF
     --set-file "backend.config.jwtPrivateKeyPEM=${WORK_DIR}/jwt-private.pem" \
     --set-file "gateway.config.jwtSecret=${WORK_DIR}/secret-files/gateway-jwt" \
     --set-file "fileProcessor.config.rsaPublicKeyPEM=${WORK_DIR}/jwt-public.pem"
+  # The second upgrade also changes the backend Pod template. Finish that
+  # rollout before probes so a retiring replica cannot lose handshake evidence.
+  kubectl -n "$NAMESPACE" rollout status "deployment/${BACKEND_SVC}" --timeout=600s || return 1
   kubectl -n "$NAMESPACE" rollout status \
     "deployment/${FILE_PROCESSOR_SVC}" --timeout=600s
   # Gateway readiness performs the existing authenticated FileProcessingService
@@ -1033,6 +1038,7 @@ run_probe() {
     --labels="university-ecosystem.io/aud373-probe=${RUN_SUFFIX}" \
     --restart=Never --rm --attach --quiet --pod-running-timeout=180s \
     --env="TARGET_BACKEND=${BACKEND_SVC}" --env="TARGET_GATEWAY=${GATEWAY_SVC}" \
+    --env="AUD373_TLS_DIAGNOSTICS=1" \
     --env="TARGET_BACKEND_PORT=${BACKEND_PORT}" --env="TARGET_GATEWAY_PORT=${GATEWAY_PORT}" \
     --command -- python -c "$script" 2>&1
 }
@@ -1053,9 +1059,11 @@ except Exception as error:
 '
 
 NO_SVID_TLS_PY='
-import os, socket, ssl
+import os, secrets, socket, ssl
 host = os.environ["TARGET_BACKEND"]
 port = int(os.environ["TARGET_BACKEND_PORT"])
+probe_id = secrets.token_hex(16) if os.environ.get("AUD373_TLS_DIAGNOSTICS") == "1" else None
+server_name = "aud373-%s.invalid" % probe_id if probe_id is not None else host
 context = ssl.create_default_context()
 context.check_hostname = False
 context.verify_mode = ssl.CERT_NONE
@@ -1084,7 +1092,7 @@ else:
     with raw:
         try:
             stage = "TLS_HANDSHAKE"
-            with context.wrap_socket(raw, server_hostname=host) as tls:
+            with context.wrap_socket(raw, server_hostname=server_name) as tls:
                 # TLS 1.3 may report a missing-certificate alert after the client
                 # handshake has returned. Read it before sending application data.
                 tls.settimeout(2)
@@ -1107,6 +1115,8 @@ else:
                 result = "REJECTED"
         except OSError as error:
             event = failure_event(error)
+if probe_id is not None:
+    print("NO_SVID_PROBE_ID=%s" % probe_id)
 print("NO_SVID_STAGE=%s" % stage)
 print("NO_SVID_EVENT=%s" % event)
 print("NO_SVID_TCP=%s" % ("CONNECTED" if connected else "ERROR"))
@@ -1177,6 +1187,7 @@ import re, sys
 allowed = {
     "gateway-hop": {"STATUS": r"[1-5][0-9]{2}", "BODY_HAS_KEYS": r"True|False", "ERROR": r"[A-Za-z]+"},
     "no-svid-tls": {
+        "NO_SVID_PROBE_ID": r"[0-9a-f]{32}",
         "NO_SVID_TCP": r"CONNECTED|ERROR", "NO_SVID_TLS": r"REJECTED|ANSWERED|ERROR",
         "NO_SVID_STAGE": r"TCP_CONNECT|TLS_HANDSHAKE|READ_ALERT|WRITE_REQUEST|READ_RESPONSE",
         "NO_SVID_EVENT": r"TIMEOUT|RESET|EOF|SSL_ERROR|OS_ERROR|DATA|CERTIFICATE_REQUIRED",
@@ -1234,8 +1245,22 @@ capture_probe() {
   return "$status"
 }
 
+prepare_no_svid_evidence() {
+  python3 "${ROOT_DIR}/scripts/kind/mtls_rejection_evidence.py" prepare \
+    --namespace "$NAMESPACE" --deployment "$BACKEND_SVC" --service "$BACKEND_SVC" \
+    --image "${LOCAL_REGISTRY_ADDRESS}/university-backend@${BACKEND_IMAGE_DIGEST}" \
+    --state "${WORK_DIR}/no-svid-server-state.json"
+}
+
+verify_no_svid_evidence() {
+  python3 "${ROOT_DIR}/scripts/kind/mtls_rejection_evidence.py" verify \
+    --state "${WORK_DIR}/no-svid-server-state.json" \
+    --probe "${DIAG_DIR}/probe-no-svid-tls.txt" \
+    --output "${DIAG_DIR}/no-svid-server-evidence.txt"
+}
+
 run_proofs() {
-  local output
+  local output server_evidence_prepared=no
   if output="$(capture_probe gateway-hop "$GATEWAY_HOP_PY")" &&
     grep -qx 'STATUS=200' <<<"$output" && grep -qx 'BODY_HAS_KEYS=True' <<<"$output"; then
     record "a-gateway-to-backend-mtls-hop" yes
@@ -1249,10 +1274,17 @@ run_proofs() {
     record "d-backend-logs-gateway-peer-spiffe-id" no
   fi
 
-  if output="$(capture_probe no-svid-tls "$NO_SVID_TLS_PY")" &&
-    grep -qx 'NO_SVID_TCP=CONNECTED' <<<"$output" &&
-    grep -qx 'NO_SVID_TLS=REJECTED' <<<"$output"; then
-    record "b-no-svid-tls-client-rejected" yes
+  if prepare_no_svid_evidence; then server_evidence_prepared=yes; fi
+  if output="$(capture_probe no-svid-tls "$NO_SVID_TLS_PY")"; then
+    if grep -qx 'NO_SVID_TCP=CONNECTED' <<<"$output" &&
+      grep -qx 'NO_SVID_TLS=REJECTED' <<<"$output"; then
+      record "b-no-svid-tls-client-rejected" yes
+    elif [[ "$server_evidence_prepared" == yes ]] && verify_no_svid_evidence; then
+      # This is a server-correlated fatal rejection, not a synthetic client alert.
+      record "b-no-svid-tls-client-rejected" yes
+    else
+      record "b-no-svid-tls-client-rejected" no
+    fi
   else
     record "b-no-svid-tls-client-rejected" no
   fi

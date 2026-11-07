@@ -1319,7 +1319,7 @@ def test_script_proves_spire_installation_and_registration_from_repo_manifests()
     assert "k8s:sa:${service_account}" in script
 
 
-def _generated_proof_values() -> dict[str, Any]:
+def _generated_proof_values(backend_digest: str = "") -> dict[str, Any]:
     command = f"""set -euo pipefail
 {_shell_function("random_hex")}
 {_shell_function("random_fernet")}
@@ -1329,6 +1329,7 @@ trap 'rm -rf "$work"' EXIT
 WORK_DIR="$work"
 LOCAL_REGISTRY_ADDRESS=127.0.0.1:32768
 IMAGE_TAG=ue-r9-aud373-0123456789ab
+BACKEND_IMAGE_DIGEST={shlex.quote(backend_digest)}
 RELEASE=ue
 BACKEND_SVC=ue-university-ecosystem-backend
 GATEWAY_SVC=ue-university-ecosystem-gateway
@@ -2553,3 +2554,186 @@ def test_real_uvloop_no_svid_eof_remains_error_with_stage_diagnostics(
         import uvloop
 
         uvloop.run(exercise())
+
+
+@pytest.mark.parametrize("require_certificate", [True, False])
+def test_public_sslobject_handshake_observer(
+    tmp_path, require_certificate, monkeypatch
+):
+    from unittest.mock import Mock
+
+    from app.server import spiffe_transport as transport_module
+
+    monkeypatch.setenv("AUD373_TLS_DIAGNOSTICS", "1")
+    log = Mock()
+    monkeypatch.setattr(transport_module, "logger", log)
+    observer = transport_module.HandshakeDiagnostics()
+    hellos = []
+    admitted = []
+
+    context = _server_tls_context(tmp_path)
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    context.maximum_version = ssl.TLSVersion.TLSv1_3
+    context.verify_mode = ssl.CERT_REQUIRED if require_certificate else ssl.CERT_NONE
+    context.sslobject_class = observer.sslobject_class
+
+    def client_hello(connection, name, initial):
+        hellos.append((connection, name))
+        observer.client_hello(connection, name)
+
+    context.sni_callback = client_hello
+
+    async def exercise():
+        class Respond(asyncio.Protocol):
+            def connection_made(self, transport):
+                admitted.append(True)
+                self.transport = transport
+
+            def data_received(self, data):
+                self.transport.write(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                self.transport.close()
+
+        loop = asyncio.get_running_loop()
+        server = await loop.create_server(Respond, "127.0.0.1", 0, ssl=context)
+        try:
+            result = await asyncio.to_thread(
+                _probe_result,
+                "NO_SVID_TLS_PY",
+                "localhost",
+                server.sockets[0].getsockname()[1],
+            )
+            assert result.returncode == 0
+            assert len(hellos) == 1
+            assert re.fullmatch(r"aud373-[0-9a-f]{32}\.invalid", hellos[0][1])
+            assert "NO_SVID_PROBE_ID=" + hellos[0][1][7:-8] in result.stdout
+            if require_certificate:
+                log.warning.assert_called_once_with(
+                    "internal_mtls_handshake_rejected",
+                    probe_id=str(__import__("uuid").UUID(hex=hellos[0][1][7:-8])),
+                    reason="PEER_DID_NOT_RETURN_A_CERTIFICATE",
+                )
+                assert not admitted
+                if (
+                    sys.platform == "win32"
+                    and "NO_SVID_EVENT=CERTIFICATE_REQUIRED" in result.stdout
+                ):
+                    assert "NO_SVID_TLS=REJECTED" in result.stdout
+                else:
+                    assert "NO_SVID_EVENT=EOF" in result.stdout
+                    assert "NO_SVID_TLS=ERROR" in result.stdout
+            else:
+                log.warning.assert_not_called()
+                assert admitted == [True]
+                assert "NO_SVID_TLS=ANSWERED" in result.stdout
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    if sys.platform == "win32":
+        asyncio.run(exercise())
+    else:
+        import uvloop
+
+        uvloop.run(exercise())
+
+
+@pytest.mark.parametrize("rollout_status", [0, 1, 124])
+def test_final_backend_rollout_precedes_probes_and_fails_closed(
+    rollout_status: int,
+) -> None:
+    deploy = _shell_function("deploy_stack")
+    final_upgrade = deploy.rsplit('  helm upgrade --install "$RELEASE"', 1)[1]
+    tail = final_upgrade.split('  kubectl -n "$NAMESPACE" rollout status', 1)[1]
+    rollout_tail = '  kubectl -n "$NAMESPACE" rollout status' + tail
+    assert rollout_tail.index('"deployment/${BACKEND_SVC}"') < rollout_tail.index(
+        '"deployment/${FILE_PROCESSOR_SVC}"'
+    )
+    command = f"""set -euo pipefail
+NAMESPACE=fixture
+BACKEND_SVC=backend
+FILE_PROCESSOR_SVC=file-processor
+GATEWAY_SVC=gateway
+kubectl() {{
+  printf '%s\\n' "$*"
+  case "$*" in *deployment/backend*) return {rollout_status} ;; esac
+}}
+finish_deploy() {{
+{rollout_tail}
+if finish_deploy; then printf 'PROBES_ALLOWED\\n'; else printf 'PROBES_BLOCKED\\n'; fi
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    output = result.stdout.decode("utf-8")
+    assert "rollout status deployment/backend --timeout=600s" in output
+    if rollout_status == 0:
+        assert "PROBES_ALLOWED" in output
+        assert "deployment/file-processor" in output
+        assert "deployment/gateway" in output
+    else:
+        assert "PROBES_BLOCKED" in output
+        assert "PROBES_ALLOWED" not in output
+        assert "deployment/file-processor" not in output
+        assert "deployment/gateway" not in output
+
+
+@pytest.mark.parametrize("prepared", [True, False])
+@pytest.mark.parametrize("captured", [True, False])
+@pytest.mark.parametrize("verified", [True, False])
+def test_server_proof_requires_prepared_successful_capture_and_verified_evidence(
+    prepared, captured, verified
+):
+    command = f"""set -euo pipefail
+{_shell_function("record")}
+{_shell_function("run_proofs")}
+FAILURES=0
+GATEWAY_HOP_PY=; NO_SVID_TLS_PY=; PLAINTEXT_PY=
+backend_logged_gateway_peer() {{ return 0; }}
+prepare_no_svid_evidence() {{ return {0 if prepared else 1}; }}
+verify_no_svid_evidence() {{ printf 'VERIFIER_CALLED\\n'; return {0 if verified else 1}; }}
+capture_probe() {{
+  case "$1" in
+    gateway-hop) printf 'STATUS=200\\nBODY_HAS_KEYS=True\\n' ;;
+    no-svid-tls) printf 'NO_SVID_TCP=CONNECTED\\nNO_SVID_TLS=ERROR\\n'; return {0 if captured else 1} ;;
+    plaintext) printf 'PLAINTEXT_TCP=CONNECTED\\nPLAINTEXT=REJECTED\\n' ;;
+  esac
+}}
+run_proofs
+"""
+    result = _bash_command(command)
+    assert result.returncode == 0, result.stderr
+    output = result.stdout.decode()
+    assert ("VERIFIER_CALLED" in output) is (prepared and captured)
+    expected = "PASS" if prepared and captured and verified else "FAIL"
+    assert f"{expected} b-no-svid-tls-client-rejected" in output
+
+
+def test_server_evidence_helpers_use_owned_pinned_backend_and_private_state():
+    prepare = _shell_function("prepare_no_svid_evidence")
+    verify = _shell_function("verify_no_svid_evidence")
+    assert '--deployment "$BACKEND_SVC" --service "$BACKEND_SVC"' in prepare
+    assert (
+        "${LOCAL_REGISTRY_ADDRESS}/university-backend@${BACKEND_IMAGE_DIGEST}"
+        in prepare
+    )
+    assert "${WORK_DIR}/no-svid-server-state.json" in prepare
+    assert "${WORK_DIR}/no-svid-server-state.json" in verify
+    assert "${DIAG_DIR}/probe-no-svid-tls.txt" in verify
+    assert "${DIAG_DIR}/no-svid-server-evidence.txt" in verify
+    assert 'digest: "${BACKEND_IMAGE_DIGEST:-}"' in _script()
+
+
+def test_generated_proof_backend_uses_the_built_manifest_digest():
+    import hashlib
+
+    digest = "sha256:" + hashlib.sha256(b"owned source image fixture").hexdigest()
+    values = _generated_proof_values(digest)
+    assert values["backend"]["image"] == {
+        "repository": "127.0.0.1:32768/university-backend",
+        "digest": digest,
+    }
+    helper = values["redis"]["metrics"]["passwordFileInitImage"]
+    assert helper == {
+        "repository": values["backend"]["image"]["repository"],
+        "digest": digest,
+        "pullPolicy": "Always",
+    }
