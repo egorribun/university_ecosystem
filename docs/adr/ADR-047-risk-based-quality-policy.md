@@ -2262,3 +2262,20 @@ categories, expiry dates and gates retain their existing values. Later Kind
 revisions and the Seed, Temporal and zlib 1.4 proposals require separate
 decisions. The hosted A/B/C/D Kind proof still requires passing evidence from
 the reviewed source.
+
+## Owner-approved AUD-373 diagnostics source bindings (2026-11-07 UTC)
+
+The owner approved two exact current-source bindings for published
+commit `31da75db`. The SHA-256 of
+`scripts/kind/aud373_internal_mtls_proof.sh` moved from
+`5c255778...b84ecb6` to `84878536...78d5226`. The SHA-256 of
+`tests/test_internal_mtls_kind_contract.py` moved from
+`06d18a29...f8ebae` to `071d3336...fd2c12`. The private decision
+receipt retains the full digests and the corresponding guard.
+
+The revisions add bounded, opt-in no-SVID diagnostics and keep the exact
+client-side certificate-required criterion. The associated hosted proof
+passed A, C and D. B received EOF without a correlated server event and
+remains open. This decision covers only the two bindings. Scanner
+inventories, expiries, required checks and the separate Temporal and
+ADR-052 decisions retain their existing scope.

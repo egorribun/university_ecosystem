@@ -69,6 +69,21 @@ def test_agents_guide_states_the_workspace_baseline_and_disposition_counts() -> 
     ) in guide
 
 
+def test_audit_summaries_state_the_current_policy_inventory() -> None:
+    inventory = (
+        "The current policy-file inventory is **"
+        f"{_disposition_records()} dispositions / "
+        f"{_baseline_identities()} baseline identities / 27 Gitleaks fingerprints / "
+        "15 Semgrep rows**."
+    )
+    for relative in (
+        "docs/audits/INDEX.md",
+        "docs/superpowers/plans/STATUS.md",
+        "docs/audits/AUDIT-2026-11-06-full-reassessment.md",
+    ):
+        assert inventory in _text(relative), relative
+
+
 def test_count_census_detects_a_stale_claim() -> None:
     stale = "The current baseline contains 319 identities."
     current = f"The current baseline contains {_baseline_identities()} identities."
