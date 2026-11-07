@@ -9,6 +9,7 @@ import json
 import os
 import secrets
 import shutil
+import sys
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -887,7 +888,20 @@ catch { Write-Output 'REJECTED'; exit 2 }
             assert verdict == "REJECTED"
             expected.append(
                 f"TEMPORAL_BOOTSTRAP_RUNTIME_INSPECT phase={failed_inspect_phase} "
-                "result=command-failed"
+                "result=command-failed error_class=none error_present=False "
+                "error_capped=False command_threw=False exit=nonzero "
+                f"platform={'windows' if os.name == 'nt' else 'macos' if sys.platform == 'darwin' else 'linux'} "
+                "edition=core native_errors=disabled error_action=stop docker_command=function "
+                + " ".join(
+                    f"{variable.lower()}_set={bool(os.environ.get(variable))}"
+                    for variable in (
+                        "DOCKER_HOST",
+                        "DOCKER_CONTEXT",
+                        "DOCKER_CONFIG",
+                        "DOCKER_TLS_VERIFY",
+                        "DOCKER_API_VERSION",
+                    )
+                )
             )
         assert output.splitlines() == expected
         return code == 0
