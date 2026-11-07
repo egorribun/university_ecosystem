@@ -1758,3 +1758,94 @@ def test_fixpoint_failure_retains_count_and_source_without_becoming_a_pass(
     assert f'"rule_id":"{CHECK}"' in message
     assert f'"path":"{PATH}"' in message
     assert '"line":7' in message
+
+
+@pytest.mark.parametrize("mode", ["", " inter-file"])
+def test_fixpoint_pinned_message_exposes_only_rule_summary(mode: str) -> None:
+    # Semgrep 1.179.0 Taint_rule_inst.check_timeouts_and_warn aggregates rules
+    # per function and stores this summary in message, not error.rule_id.
+    message = (
+        f"Fixpoint timeout while performing{mode} taint analysis at "
+        "private/customer@example.invalid:12:4 [rules: 3, first: out.python.security.example]"
+    )
+    report = gate._fixpoint_timeout_details(
+        [{"message": message, "location": {"path": PATH, "start": {"line": 12}}}]
+    )
+    assert json.loads(report) == {
+        "details": [
+            {
+                "rule_count": 3,
+                "first_rule_id": "out.python.security.example",
+                "path": PATH,
+                "line": 12,
+            }
+        ],
+        "omitted": 0,
+    }
+    assert "private" not in report
+    assert "customer" not in report
+    assert "@" not in report
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        None,
+        {},
+        1,
+        "private text [rules: 1, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 0, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: -1, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1000000, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1, first: ]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1, first: user@example.invalid]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1, first: safe.rule] suffix",
+        "Fixpoint timeout while performing taint analysis at x\n::error::payload [rules: 1, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x\x1b[31m [rules: 1, first: safe.rule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1, first: safe\nrule]",
+        "Fixpoint timeout while performing taint analysis at x [rules: 1, first: "
+        + "r" * 201
+        + "]",
+        "Fixpoint timeout while performing taint analysis at "
+        + "p" * 513
+        + " [rules: 1, first: safe.rule]",
+        "x" * 1025,
+    ],
+)
+def test_fixpoint_rule_summary_omits_unrecognized_or_unsafe_messages(
+    message: object,
+) -> None:
+    assert gate._fixpoint_rule_summary(message) == {}
+    assert json.loads(gate._fixpoint_timeout_details([{"message": message}])) == {
+        "details": [{}],
+        "omitted": 0,
+    }
+
+
+def test_fixpoint_rule_summary_does_not_reinterpret_first_rule_as_all_rules() -> None:
+    result = gate._fixpoint_rule_summary(
+        "Fixpoint timeout while performing taint analysis at x [rules: 999999, first: a]"
+    )
+    assert result == {"rule_count": 999999, "first_rule_id": "a"}
+    assert "rule_id" not in result
+
+
+def test_fixpoint_message_summary_remains_a_fatal_scan_error(tmp_path: Path) -> None:
+    message = (
+        "Fixpoint timeout while performing taint analysis at private-location "
+        "[rules: 2, first: out.python.security.example]"
+    )
+    report = {
+        "results": [],
+        "errors": [],
+        "skipped_rules": [],
+        "paths": {"scanned": [PATH], "skipped": []},
+        "time": {"fixpoint_timeouts": [{"message": message}]},
+    }
+    with pytest.raises(gate.GateError) as caught:
+        gate.load_findings(_write(tmp_path / "message-timeout.json", report))
+    failure = str(caught.value)
+    assert "1 fixpoint timeout(s); results are not authoritative" in failure
+    assert '"rule_count":2' in failure
+    assert '"first_rule_id":"out.python.security.example"' in failure
+    assert "private-location" not in failure

@@ -312,12 +312,28 @@ def _matches_reviewed_semgrep_ignore(repository_path: str) -> bool:
     return False
 
 
+def _fixpoint_rule_summary(message: object) -> dict[str, str | int]:
+    """Read only the pinned engine's bounded rule summary, not its location text."""
+    if not isinstance(message, str) or len(message) > 1024:
+        return {}
+    match = re.fullmatch(
+        r"Fixpoint timeout while performing(?: inter-file)? taint analysis at "
+        r"[^\x00-\x1f\x7f]{1,512} \[rules: ([1-9][0-9]{0,5}), "
+        r"first: ([A-Za-z0-9_.-]{1,200})\]",
+        message,
+    )
+    if match is None:
+        return {}
+    return {"rule_count": int(match[1]), "first_rule_id": match[2]}
+
+
 def _fixpoint_timeout_details(timeouts: list[Any]) -> str:
     """Expose bounded source coordinates, never scanner messages or source text."""
     details: list[dict[str, str | int]] = []
     for entry in timeouts[:8]:
         detail: dict[str, str | int] = {}
         if isinstance(entry, dict):
+            detail.update(_fixpoint_rule_summary(entry.get("message")))
             rule_id = entry.get("rule_id")
             if isinstance(rule_id, str) and re.fullmatch(
                 r"[A-Za-z0-9_.-]{1,200}", rule_id
