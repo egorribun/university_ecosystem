@@ -1074,7 +1074,7 @@ def test_live_dispositions_retire_only_exact_deleted_sources() -> None:
     validated = verifier.load_owner_authored_candidate_false_positive_dispositions(
         repository_root=root, today=verifier.date(2026, 11, 6)
     )
-    assert len(validated) == 497
+    assert len(validated) == 505
     assert all(finding.path not in _RETIRED_DISPOSITION_PATHS for finding in validated)
 
 
@@ -17982,12 +17982,12 @@ def _aud380_read_live_policy() -> dict[str, Any]:
     return json.loads(policy_path.read_text(encoding="utf-8"))
 
 
-def _aud380_assert_live_policy_is_exact_497(
+def _aud380_assert_live_policy_is_exact_505(
     live_policy: dict[str, Any], historical_490: dict[str, Any]
 ) -> None:
     live_records = live_policy.get("records")
     assert isinstance(live_records, list), "live disposition records changed"
-    assert len(live_records) == 497, "live disposition row count changed"
+    assert len(live_records) == 505, "live disposition row count changed"
     expected_header = {
         key: value for key, value in historical_490.items() if key != "records"
     }
@@ -18004,11 +18004,12 @@ def _aud380_assert_live_policy_is_exact_497(
     live_495 = copy.deepcopy(live_494)
     live_495["records"] = copy.deepcopy(live_records[:495])
     _assert_aud380_n5_conditional_policy(live_495, live_494)
-    _assert_aud380_n6_conditional_policy(live_policy, live_495)
+    live_497 = _nov6_zlib_historical_497_from_live_policy(live_policy)
+    _assert_aud380_n6_conditional_policy(live_497, live_495)
     accepted = verifier.validate_false_positive_dispositions(
         live_policy, today=verifier.date(2026, 11, 7)
     )
-    assert len(accepted) == 497, "live approved disposition count changed"
+    assert len(accepted) == 505, "live approved disposition count changed"
 
 
 def _aud380_historical_490_from_live_policy(
@@ -18016,7 +18017,7 @@ def _aud380_historical_490_from_live_policy(
 ) -> dict[str, Any]:
     live_records = live_policy.get("records")
     assert isinstance(live_records, list), "live disposition records changed"
-    assert len(live_records) == 497, "live disposition row count changed"
+    assert len(live_records) == 505, "live disposition row count changed"
 
     history = _reviewed_pre_retirement_dispositions()
     expected_base_records = _aud380_expected_active_363(history)
@@ -18025,12 +18026,12 @@ def _aud380_historical_490_from_live_policy(
     }
     historical_490["records"] = copy.deepcopy(live_records[:490])
     _assert_aud380_conditional_policy(historical_490, expected_base_records)
-    _aud380_assert_live_policy_is_exact_497(live_policy, historical_490)
+    _aud380_assert_live_policy_is_exact_505(live_policy, historical_490)
     return historical_490
 
 
 def _aud380_conditional_policy() -> dict[str, Any]:
-    """Return the exact historical 490 prefix after validating live 497 bytes."""
+    """Return the exact historical 490 prefix after validating live 505 bytes."""
     return _aud380_historical_490_from_live_policy(_aud380_read_live_policy())
 
 
@@ -26153,12 +26154,12 @@ def _assert_aud380_n4_conditional_policy(
         "header",
     ],
 )
-def test_aud380_live_approved_policy_requires_exact_497_projection(
+def test_aud380_live_approved_policy_requires_exact_505_projection(
     mutation: str,
 ) -> None:
     live_policy = _aud380_read_live_policy()
     historical_490 = _aud380_conditional_policy()
-    _aud380_assert_live_policy_is_exact_497(live_policy, historical_490)
+    _aud380_assert_live_policy_is_exact_505(live_policy, historical_490)
 
     changed = copy.deepcopy(live_policy)
     if mutation == "extra_row":
@@ -26173,7 +26174,7 @@ def test_aud380_live_approved_policy_requires_exact_497_projection(
         changed["schema_version"] = 2
 
     with pytest.raises(AssertionError):
-        _aud380_assert_live_policy_is_exact_497(changed, historical_490)
+        _aud380_assert_live_policy_is_exact_505(changed, historical_490)
 
 
 def test_aud380_n4_conditional_494_projection_is_exact_append() -> None:
@@ -28565,38 +28566,38 @@ _AUD380_N6_FINAL_SOURCE_SHA256 = {
     ),
     "scripts/kind/aud373_internal_mtls_proof.sh": bytes(
         (
-            153,
-            219,
-            90,
-            61,
-            137,
-            188,
-            116,
-            236,
-            132,
-            113,
-            68,
-            4,
-            178,
-            10,
-            209,
-            238,
-            135,
-            248,
-            242,
-            45,
-            119,
-            48,
-            38,
-            175,
+            92,
+            37,
+            87,
+            120,
+            205,
+            29,
+            246,
+            41,
+            37,
+            118,
+            73,
+            50,
+            49,
+            220,
+            18,
+            52,
+            103,
+            133,
+            215,
+            160,
             253,
-            6,
-            200,
-            47,
-            223,
-            136,
-            169,
-            111,
+            143,
+            146,
+            213,
+            125,
+            63,
+            25,
+            2,
+            91,
+            132,
+            236,
+            182,
         )
     ),
     "scripts/live_stand.py": bytes(
@@ -30009,12 +30010,12 @@ def _assert_aud380_n6_conditional_policy(
     assert Counter(row["category"] for row in records) == expected_counts
 
 
-def _aud380_assert_live_policy_is_exact_497(
+def _aud380_assert_live_policy_is_exact_505(
     live_policy: dict[str, Any], historical_490: dict[str, Any]
 ) -> None:
     live_records = live_policy.get("records")
     assert isinstance(live_records, list), "live disposition records changed"
-    assert len(live_records) == 497, "live disposition row count changed"
+    assert len(live_records) == 505, "live disposition row count changed"
     expected_header = {
         key: value for key, value in historical_490.items() if key != "records"
     }
@@ -30031,11 +30032,12 @@ def _aud380_assert_live_policy_is_exact_497(
     live_495 = copy.deepcopy(live_494)
     live_495["records"] = copy.deepcopy(live_records[:495])
     _assert_aud380_n5_conditional_policy(live_495, live_494)
-    _assert_aud380_n6_conditional_policy(live_policy, live_495)
+    live_497 = _nov6_zlib_historical_497_from_live_policy(live_policy)
+    _assert_aud380_n6_conditional_policy(live_497, live_495)
     accepted = verifier.validate_false_positive_dispositions(
         live_policy, today=verifier.date(2026, 11, 7)
     )
-    assert len(accepted) == 497, "live approved disposition count changed"
+    assert len(accepted) == 505, "live approved disposition count changed"
 
 
 def _aud380_assert_n4_historical_row7_observation(
@@ -30236,3 +30238,527 @@ def test_aud380_n6_pending_rows_keep_exact_expiry_and_reject_digest_mutations() 
         _AUD380_N6_EXPECTED_IDENTITIES
     )
     _assert_conditional_owner_source_bindings(Path(__file__).resolve().parents[1])
+
+
+_NOV6_ZLIB_EXPECTED_RECORDS = [
+    {
+        "approval_status": "approved",
+        "category": "public_integrity_digest",
+        "evidence": "Official signed Alpine 3.24 x86_64 zlib 1.3.2-r1 APK integrity; source "
+        "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/zlib-1.3.2-r1.apk; "
+        "exact source reference frontend.Dockerfile:185; owner approved this "
+        "finite identity on 2026-11-06; not credential material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                193,
+                17,
+                144,
+                74,
+                56,
+                88,
+                63,
+                135,
+                99,
+                90,
+                200,
+                86,
+                241,
+                248,
+                116,
+                247,
+                144,
+                228,
+                8,
+                249,
+            ],
+            "path": "frontend.Dockerfile",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    },
+    {
+        "approval_status": "approved",
+        "category": "public_integrity_digest",
+        "evidence": "Official signed Alpine 3.24 aarch64 zlib 1.3.2-r1 APK integrity; source "
+        "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/zlib-1.3.2-r1.apk; "
+        "exact source reference frontend.Dockerfile:186; owner approved this "
+        "finite identity on 2026-11-06; not credential material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                114,
+                208,
+                53,
+                130,
+                231,
+                183,
+                59,
+                88,
+                149,
+                209,
+                33,
+                59,
+                79,
+                235,
+                228,
+                244,
+                37,
+                75,
+                162,
+                215,
+            ],
+            "path": "frontend.Dockerfile",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    },
+    {
+        "approval_status": "approved",
+        "category": "public_integrity_digest",
+        "evidence": "Official signed Alpine 3.23 x86_64 zlib 1.3.2-r1 APK integrity; source "
+        "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk; "
+        "exact source reference services/caddy/Dockerfile:49; owner approved "
+        "this finite identity on 2026-11-06; not credential material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                227,
+                185,
+                225,
+                87,
+                12,
+                234,
+                38,
+                70,
+                87,
+                199,
+                47,
+                232,
+                113,
+                127,
+                191,
+                25,
+                200,
+                254,
+                173,
+                173,
+            ],
+            "path": "services/caddy/Dockerfile",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    },
+    {
+        "approval_status": "approved",
+        "category": "public_integrity_digest",
+        "evidence": "Official signed Alpine 3.23 aarch64 zlib 1.3.2-r1 APK integrity; source "
+        "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/zlib-1.3.2-r1.apk; "
+        "exact source reference services/caddy/Dockerfile:50; owner approved "
+        "this finite identity on 2026-11-06; not credential material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                22,
+                234,
+                158,
+                97,
+                197,
+                161,
+                232,
+                152,
+                125,
+                171,
+                3,
+                143,
+                19,
+                133,
+                41,
+                99,
+                162,
+                12,
+                228,
+                229,
+            ],
+            "path": "services/caddy/Dockerfile",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    },
+    {
+        "approval_status": "approved",
+        "category": "public_integrity_digest",
+        "evidence": "Official signed Alpine 3.23 x86_64 zlib 1.3.2-r1 APK integrity; source "
+        "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/zlib-1.3.2-r1.apk; "
+        "exact source reference tests/test_runtime_zlib_security_pin.py:17; "
+        "owner approved this finite identity on 2026-11-06; not credential "
+        "material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                227,
+                185,
+                225,
+                87,
+                12,
+                234,
+                38,
+                70,
+                87,
+                199,
+                47,
+                232,
+                113,
+                127,
+                191,
+                25,
+                200,
+                254,
+                173,
+                173,
+            ],
+            "path": "tests/test_runtime_zlib_security_pin.py",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    },
+    {
+        "approval_status": "approved",
+        "category": "public_integrity_digest",
+        "evidence": "Official signed Alpine 3.23 aarch64 zlib 1.3.2-r1 APK integrity; source "
+        "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/aarch64/zlib-1.3.2-r1.apk; "
+        "exact source reference tests/test_runtime_zlib_security_pin.py:18; "
+        "owner approved this finite identity on 2026-11-06; not credential "
+        "material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                22,
+                234,
+                158,
+                97,
+                197,
+                161,
+                232,
+                152,
+                125,
+                171,
+                3,
+                143,
+                19,
+                133,
+                41,
+                99,
+                162,
+                12,
+                228,
+                229,
+            ],
+            "path": "tests/test_runtime_zlib_security_pin.py",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    },
+    {
+        "approval_status": "approved",
+        "category": "public_integrity_digest",
+        "evidence": "Official signed Alpine 3.24 x86_64 zlib 1.3.2-r1 APK integrity; source "
+        "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/zlib-1.3.2-r1.apk; "
+        "exact source reference tests/test_runtime_zlib_security_pin.py:21; "
+        "owner approved this finite identity on 2026-11-06; not credential "
+        "material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                193,
+                17,
+                144,
+                74,
+                56,
+                88,
+                63,
+                135,
+                99,
+                90,
+                200,
+                86,
+                241,
+                248,
+                116,
+                247,
+                144,
+                228,
+                8,
+                249,
+            ],
+            "path": "tests/test_runtime_zlib_security_pin.py",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    },
+    {
+        "approval_status": "approved",
+        "category": "public_integrity_digest",
+        "evidence": "Official signed Alpine 3.24 aarch64 zlib 1.3.2-r1 APK integrity; source "
+        "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/aarch64/zlib-1.3.2-r1.apk; "
+        "exact source reference tests/test_runtime_zlib_security_pin.py:22; "
+        "owner approved this finite identity on 2026-11-06; not credential "
+        "material.",
+        "expires_on": "2027-01-10",
+        "identity": {
+            "hashed_secret_bytes": [
+                114,
+                208,
+                53,
+                130,
+                231,
+                183,
+                59,
+                88,
+                149,
+                209,
+                33,
+                59,
+                79,
+                235,
+                228,
+                244,
+                37,
+                75,
+                162,
+                215,
+            ],
+            "path": "tests/test_runtime_zlib_security_pin.py",
+            "type": "Hex High Entropy String",
+        },
+        "owner": "egorribun",
+        "reviewed_on": "2026-11-06",
+    },
+]
+
+
+def _nov6_zlib_historical_497_from_live_policy(
+    policy: dict[str, Any],
+) -> dict[str, Any]:
+    records = policy.get("records")
+    assert isinstance(records, list), "live disposition records changed"
+    assert len(records) == 505, "live disposition row count changed"
+    assert records[497:] == _NOV6_ZLIB_EXPECTED_RECORDS, (
+        "approved zlib APK suffix changed"
+    )
+    try:
+        accepted = verifier.validate_false_positive_dispositions(
+            policy, today=verifier.date(2026, 11, 6)
+        )
+    except verifier.BaselineArtifactError as error:
+        raise AssertionError("live approved disposition metadata changed") from error
+    assert len(accepted) == 505, "live approved disposition count changed"
+    return {**policy, "records": copy.deepcopy(records[:497])}
+
+
+def test_nov6_zlib_policy_exact_append_and_inclusive_expiry() -> None:
+    live = _aud380_read_live_policy()
+    historical = _nov6_zlib_historical_497_from_live_policy(live)
+    prior = _aud380_n6_conditional_policy()
+    assert historical == prior, "current497 approvals or dates changed"
+    assert live["records"][497:] == _NOV6_ZLIB_EXPECTED_RECORDS
+    document = _disposition_document(*copy.deepcopy(_NOV6_ZLIB_EXPECTED_RECORDS))
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                document, today=verifier.date(2027, 1, 10)
+            )
+        )
+        == 8
+    )
+    with pytest.raises(verifier.BaselineArtifactError, match="date range"):
+        verifier.validate_false_positive_dispositions(
+            document, today=verifier.date(2027, 1, 11)
+        )
+
+
+@pytest.mark.parametrize("index", range(8))
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "path",
+        "digest",
+        "type",
+        "category",
+        "evidence",
+        "owner",
+        "reviewed",
+        "expiry",
+        "status",
+    ],
+)
+def test_nov6_zlib_validator_refuses_approval_drift(index: int, mutation: str) -> None:
+    record = copy.deepcopy(_NOV6_ZLIB_EXPECTED_RECORDS[index])
+    assert (
+        len(
+            verifier.validate_false_positive_dispositions(
+                _disposition_document(record), today=verifier.date(2026, 11, 6)
+            )
+        )
+        == 1
+    )
+    if mutation == "path":
+        record["identity"]["path"] = "other/changed-source.py"
+    elif mutation == "digest":
+        record["identity"]["hashed_secret_bytes"][0] ^= 1
+    elif mutation == "type":
+        record["identity"]["type"] = "Secret Keyword"
+    elif mutation == "category":
+        record["category"] = "documented_crypto_test_vector"
+    elif mutation == "evidence":
+        record["evidence"] += " altered"
+    elif mutation == "owner":
+        record["owner"] = "other-owner"
+    elif mutation == "reviewed":
+        record["reviewed_on"] = "2026-11-05"
+    elif mutation == "expiry":
+        record["expires_on"] = "2027-01-11"
+    else:
+        record["approval_status"] = "NOT_APPROVED"
+    with pytest.raises(verifier.BaselineArtifactError):
+        verifier.validate_false_positive_dispositions(
+            _disposition_document(record), today=verifier.date(2026, 11, 6)
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation", ["missing", "extra", "reordered", "changed", "old-date"]
+)
+def test_nov6_zlib_live_projection_refuses_scope_drift(mutation: str) -> None:
+    policy = _aud380_read_live_policy()
+    if mutation == "missing":
+        del policy["records"][497]
+    elif mutation == "extra":
+        policy["records"].append(copy.deepcopy(policy["records"][-1]))
+    elif mutation == "reordered":
+        policy["records"][497], policy["records"][498] = (
+            policy["records"][498],
+            policy["records"][497],
+        )
+    elif mutation == "changed":
+        policy["records"][497]["identity"]["hashed_secret_bytes"][0] ^= 1
+    else:
+        policy["records"][0]["expires_on"] = "2027-01-11"
+    with pytest.raises((AssertionError, verifier.BaselineArtifactError)):
+        projected = _nov6_zlib_historical_497_from_live_policy(policy)
+        prior = _aud380_n6_conditional_policy()
+        assert projected == prior, "current497 approvals changed"
+
+
+def _nov6_zlib_source_identities(root: Path) -> set[tuple[str, str, tuple[int, ...]]]:
+    identities = set()
+    test_path = "tests/test_runtime_zlib_security_pin.py"
+    source = (root / test_path).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    hashes = next(
+        ast.literal_eval(node.value)
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "ARCHIVE_SHA256"
+            for target in node.targets
+        )
+    )
+    assert set(hashes) == {"3.23", "3.24"}
+    for branch, dockerfile in (
+        ("3.23", "services/caddy/Dockerfile"),
+        ("3.24", "frontend.Dockerfile"),
+    ):
+        assert set(hashes[branch]) == {"x86_64", "aarch64"}
+        docker_source = (root / dockerfile).read_text(encoding="utf-8")
+        runtime = docker_source.rsplit("FROM ", 1)[1]
+        for arch in ("x86_64", "aarch64"):
+            checksum = hashes[branch][arch]
+            assert re.fullmatch(r"[0-9a-f]{64}", checksum)
+            assert runtime.count(f'{arch}) zlib_sha256="{checksum}" ;;') == 1
+            for path in (dockerfile, test_path):
+                identities.add(
+                    (
+                        path,
+                        "Hex High Entropy String",
+                        tuple(
+                            hashlib.sha1(
+                                checksum.encode(), usedforsecurity=False
+                            ).digest()
+                        ),
+                    )
+                )
+    return identities
+
+
+def test_nov6_zlib_integrity_records_bind_exact_source_values() -> None:
+    root = Path(__file__).resolve().parents[1]
+    expected = {_aud380_identity_key(record) for record in _NOV6_ZLIB_EXPECTED_RECORDS}
+    assert _nov6_zlib_source_identities(root) == expected
+
+
+@pytest.mark.parametrize(
+    "mutation", ["docker-digest", "test-digest", "architecture", "branch"]
+)
+def test_nov6_zlib_source_bindings_reject_drift(tmp_path: Path, mutation: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    for path in (
+        "frontend.Dockerfile",
+        "services/caddy/Dockerfile",
+        "tests/test_runtime_zlib_security_pin.py",
+    ):
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((root / path).read_bytes())
+    path = tmp_path / (
+        "tests/test_runtime_zlib_security_pin.py"
+        if mutation in {"test-digest", "branch"}
+        else "frontend.Dockerfile"
+    )
+    source = path.read_text(encoding="utf-8")
+    if mutation in {"docker-digest", "test-digest"}:
+        pattern = (
+            r'(?<=zlib_sha256=")[0-9a-f]{64}'
+            if mutation == "docker-digest"
+            else r'(?<=["\'])[0-9a-f]{64}(?=["\'])'
+        )
+        match = re.search(pattern, source)
+        assert match is not None
+        source = source[: match.start()] + "0" * 64 + source[match.end() :]
+    elif mutation == "architecture":
+        source = source.replace("aarch64) zlib_sha256", "armv7) zlib_sha256")
+    else:
+        source = source.replace('"3.24": {', '"edge": {')
+    path.write_text(source, encoding="utf-8")
+    with pytest.raises(AssertionError):
+        actual = _nov6_zlib_source_identities(tmp_path)
+        assert actual == {
+            _aud380_identity_key(record) for record in _NOV6_ZLIB_EXPECTED_RECORDS
+        }
+
+
+@pytest.mark.parametrize("relative_path", sorted(_AUD380_CURRENT_DELTA_SOURCE_SHA256))
+def test_aud380_each_current_source_pin_rejects_file_mutation(
+    tmp_path: Path, relative_path: str
+) -> None:
+    source_root = Path(__file__).resolve().parents[1]
+    _assert_conditional_owner_source_bindings(source_root)
+    for bound_path in _AUD380_CURRENT_DELTA_SOURCE_SHA256:
+        target = tmp_path / bound_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((source_root / bound_path).read_bytes())
+
+    mutated_path = tmp_path / relative_path
+    mutated_path.write_bytes(mutated_path.read_bytes() + b"\n# source drift control\n")
+    with pytest.raises(
+        AssertionError,
+        match=rf"(?m)^conditional disposition source file SHA-256 changed: {re.escape(relative_path)}$",
+    ):
+        _assert_conditional_owner_source_bindings(tmp_path)

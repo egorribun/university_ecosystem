@@ -722,7 +722,7 @@ def test_public_git_blob_orchestrator_rebind_appends_one_exact_identity() -> Non
         )
     )
     record = _approved_historical_orchestrator_pin_record()
-    assert len(policy["records"]) == 497
+    assert len(policy["records"]) == 505
     assert policy["records"].count(record) == 1
     assert (
         record["identity"]["path"]

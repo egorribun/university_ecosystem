@@ -42,17 +42,28 @@ COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 # runtime account. Upgrade only the fixed, explicitly versioned security
 # packages so repeated builds cannot silently resolve different inputs, then
 # create the account used by Docker Compose and Kubernetes deployments.
-RUN apk update \
+# Keep the mature zlib backport available after the moving APKINDEX replaces it.
+# The checksum and Alpine's APK signature independently bind the downloaded bytes.
+RUN zlib_arch="$(apk --print-arch)" \
+    && case "$zlib_arch" in \
+      x86_64) zlib_sha256="ee62e1864c235901e2aa4d1868c7ae8f7cc5d0740a98c48a2525332eb4bfda73" ;; \
+      aarch64) zlib_sha256="82d52fa82a46c73aae8b9f95d7f31a196137f3ce4a000980cdbbfc05c245e7bf" ;; \
+      *) echo "Unsupported zlib architecture: $zlib_arch" >&2; exit 1 ;; \
+    esac \
+    && wget -q -O /tmp/zlib.apk "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/${zlib_arch}/zlib-1.3.2-r1.apk" \
+    && printf '%s  %s\n' "$zlib_sha256" /tmp/zlib.apk | sha256sum -c - \
+    && apk update \
     && apk add --no-cache \
       libapk=3.0.8-r0 \
       apk-tools=3.0.8-r0 \
       libcrypto3=3.5.9-r0 \
       libssl3=3.5.9-r0 \
-      c-ares=1.34.8-r0 \
+      c-ares=1.34.9-r0 \
       brotli-libs=1.2.1-r0 \
       libcurl=8.23.0-r0 \
       curl=8.23.0-r0 \
-      zlib=1.3.2-r1 \
+      zlib=1.3.2-r1 /tmp/zlib.apk \
+    && rm /tmp/zlib.apk \
     && addgroup -S caddy \
     && adduser -S -D -H -G caddy caddy \
     && chown -R caddy:caddy /data /config /etc/caddy

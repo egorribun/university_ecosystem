@@ -2242,3 +2242,8 @@ receipts are retained privately by the owner. No archive content was printed,
 extracted, or published, and no source, index, ref, or worktree was changed by
 the recovery operation. This decision does not change scanner dispositions,
 required checks, coverage floors, or mutation-stage policy.
+
+
+### 2026-11-07: restore the previously approved zlib integrity suffix
+
+Merge fbddf32 omitted the eight exact zlib APK integrity dispositions published in 2cfa54cc. Reintegration preserves all 497 current records in order and appends those same eight records, for 505 total and 309 public_integrity_digest records. The paths, detector types, finding digests, owner egorribun, reviewed date 2026-11-06 and expiry 2027-01-10 remain unchanged. This restores the existing finite approval, not new identities or an expiry extension. The baseline remains 242 and Gitleaks remains 27. Signed Alpine archives preserve zlib 1.3.2-r1 after moving indexes stop listing it; SHA-256 and ordinary APK signature verification remain mandatory, with no allow-untrusted or mutable fallback. Source-line evidence is updated only to the exact restored locations. Every new source SHA still requires its own checks.

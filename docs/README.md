@@ -17,7 +17,7 @@ historical, not a current-index or coverage assertion; the working index has
 since advanced, and no checks are claimed for the later index or these doc
 updates. At draft capture, local HEAD was 9c566fa906a6 and the observed
 remote-tracking ref was 067b922f10cb; local and remote were not synchronized. A later 2026-11-07 UTC observation recorded normal merge commit fbddf32f04f0 and tree 74c0c0c38f94, pushed at 04:43:56 UTC with local and remote refs matching then; applicable hooks, full SAST, and pre-push typecheck passed. A final-source guard run on that tree reported 1,180 PASS and 5 FAIL across 1,185 nodes, with no errors, skips, or warnings; the five failures remain tied to the known whole-file guard-pin approval issue. The later terminal snapshot on the same source recorded 98 successful, 23 failed, and 25 skipped checks. Full CI GREEN, all required checks passing, and release readiness are not established.
-Inventory remains **497 dispositions / 242 baseline identities / 27 Gitleaks
+Inventory remains **505 dispositions / 242 baseline identities / 27 Gitleaks
 fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
 pairs, blocking CodeQL, hooks and quality floors remain in force.
 
@@ -122,7 +122,7 @@ handoffs are intentionally not part of the canonical index.
   The separate finite Gitleaks approval covers 27 historical fingerprints.
   The subsequent N6 decisions approve four Semgrep companion-hash refreshes
   for rows #7–#10 and exactly two `public_integrity_digest` identities. After
-  atomic integration, the working tree contains 497 approved disposition records;
+  atomic integration, the working tree contains 505 approved disposition records;
   expiry values remain unchanged, and the two additions expire 2027-01-10. The
   baseline remains at 242 identities and Gitleaks at 27 historical fingerprints.
   See [current status](superpowers/plans/STATUS.md) and the [Gitleaks decision](adr/ADR-047-risk-based-quality-policy.md#one-exact-historical-public-test-password-hash-fingerprint-2026-11-01).
@@ -158,3 +158,5 @@ historical pass does not certify a later checkout. Retain useful procedures
 and decisions while removing superseded handoffs and duplicate snapshots.
 The vendored skill catalog under `.agents/skills/` retains upstream guidance;
 current task and repository instructions determine how it applies here.
+
+The current inventory includes the eight unchanged, previously approved zlib APK integrity identities restored after the merge omission. Their owner, exact scope and 2027-01-10 expiry are unchanged; the preceding 497 records are preserved.

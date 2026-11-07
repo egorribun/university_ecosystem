@@ -3050,13 +3050,13 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     assert "google.golang.org/grpc => google.golang.org/grpc v1.83.2" in go_mod
     assert "go build" in dockerfile
     assert "-mod=readonly" in dockerfile
-    assert re.search(r"RUN apk update \\\s+&& apk add --no-cache", dockerfile)
+    assert re.search(r"&& apk update \\\s+&& apk add --no-cache", runtime_stage)
     for package in (
         "libapk=3.0.8-r0",
         "apk-tools=3.0.8-r0",
         "libcrypto3=3.5.9-r0",
         "libssl3=3.5.9-r0",
-        "c-ares=1.34.8-r0",
+        "c-ares=1.34.9-r0",
         "brotli-libs=1.2.1-r0",
         "libcurl=8.23.0-r0",
         "curl=8.23.0-r0",
