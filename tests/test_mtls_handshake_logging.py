@@ -98,3 +98,51 @@ def test_phone_redaction_is_not_bypassed_for_compact_nonce():
     redacted = _redact_pii(None, "warning", payload)
     assert redacted["probe_id"] != nonce
     assert _handshake_diagnostic_event(redacted) is None
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+@pytest.mark.parametrize("nonce", ["0" * 32, "9161234567" + "a" * 22])
+def test_configured_renderer_projects_only_canonical_handshake_fields(
+    json_output, nonce
+):
+    import logging
+    from unittest.mock import patch
+
+    from app.core import logging as logging_module
+
+    previous_logger_class = logging.getLoggerClass()
+    handlers = [
+        (handler, handler.formatter) for handler in logging.getLogger().handlers
+    ]
+    try:
+        with (
+            patch.object(logging_module, "_configured", False),
+            patch("structlog.configure"),
+            patch("logging.basicConfig"),
+            patch.object(
+                logging_module,
+                "_RedactingProcessorFormatter",
+                wraps=logging_module._RedactingProcessorFormatter,
+            ) as formatter,
+        ):
+            logging_module.configure_logging(json_output=json_output)
+        render = formatter.call_args.kwargs["processor"]
+        payload = event(nonce)
+        payload.update(
+            email="private@example.test",
+            token="private-token",
+            exception="private-exception",
+        )
+        redacted = _redact_pii(None, "warning", payload)
+        rendered = render(None, "warning", redacted)
+        assert json.loads(rendered) == {
+            "event": "internal_mtls_handshake_rejected",
+            "logger": "app.server.spiffe_transport",
+            "probe_id": str(UUID(hex=nonce)),
+            "reason": "PEER_DID_NOT_RETURN_A_CERTIFICATE",
+        }
+        assert "private" not in rendered
+    finally:
+        logging.setLoggerClass(previous_logger_class)
+        for handler, previous_formatter in handlers:
+            handler.setFormatter(previous_formatter)

@@ -186,6 +186,70 @@ async def test_aud447_quarantine_reports_a_lost_compare_and_set() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("final_state", ["absent", "non_auth", "protectable"])
+async def test_aud447_quarantine_final_read_accepts_concurrent_resolution(
+    final_state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(auth_module, "_token_hmac_secret", lambda: uuid.uuid4().hex)
+    incoming = {
+        "args": [
+            "student@example.test",
+            f"https://portal.example.test/x#token={_LINK_MARKER}",
+        ],
+        "kwargs": {},
+    }
+    job_hash = hashlib.sha256(
+        json.dumps({"type": _AUTH_TASK, "payload": incoming}, sort_keys=True).encode()
+    ).hexdigest()
+    malformed = json.dumps(incoming)[:-1]
+    final_row = {
+        "absent": None,
+        "non_auth": _retained_row(
+            "not json", job_hash=job_hash, job_type="app.tasks.other"
+        ),
+        "protectable": _retained_row(json.dumps(incoming), job_hash=job_hash),
+    }[final_state]
+
+    class ConcurrentResolutionSession(_RecordingSession):
+        async def execute(self, statement: Any) -> _Result:
+            if (
+                isinstance(statement, Select)
+                and sum(isinstance(previous, Update) for previous in self.statements)
+                == 3
+            ):
+                self.row = final_row
+            return await super().execute(statement)
+
+    session = ConcurrentResolutionSession(update_rowcount=0)
+    session.row = _retained_row(malformed, job_hash=job_hash)
+
+    assert await DeadLetterQueue(session).quarantine_auth_payload(job_hash) is False
+
+    assert [type(statement) for statement in session.statements] == [
+        Select,
+        Update,
+        Select,
+        Update,
+        Select,
+        Update,
+        Select,
+    ]
+    # All failed writes are fenced to the old bytes; the final current row
+    # must be accepted without an extra write or a false contention failure.
+    for statement in session.statements:
+        if isinstance(statement, Update):
+            params = statement.compile().params
+            assert params["payload_1"] == malformed
+            assert params["job_hash_1"] == job_hash
+            assert params["job_type_1"] == _AUTH_TASK
+    assert session.row is final_row
+    if final_row is not None:
+        assert final_row.payload == (
+            json.dumps(incoming) if final_state == "protectable" else "not json"
+        )
+
+
+@pytest.mark.asyncio
 async def test_aud447_quarantine_scrubs_the_error_field_in_the_same_statement() -> None:
     malformed = json.dumps({"args": ["x"]})[:-1]
     session = _RecordingSession()

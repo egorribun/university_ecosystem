@@ -705,3 +705,44 @@ def test_handshake_diagnostics_installed_on_new_context(setup_guard):
     )
     assert diagnostic_guard.context().context.sslobject_class is observer_class
     assert replacement.sni_callback == diagnostic_guard._client_hello
+
+
+def test_diagnostic_sni_callback_correlates_without_changing_tls_authority(
+    setup_guard, monkeypatch
+):
+    _guard, source, loop, _transport = setup_guard
+    guard = TransportGuard(
+        source, frozenset({IDENTITY}), loop, handshake_diagnostics=True
+    )
+    try:
+        initial = guard.start()
+        observer = guard.diagnostics
+        assert observer is not None
+        connection = initial.wrap_bio(
+            ssl.MemoryBIO(), ssl.MemoryBIO(), server_side=True
+        )
+        replacement = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        replacement.verify_mode = ssl.CERT_REQUIRED
+        source.current.return_value = TLSGeneration(
+            replacement, b"rotated", NOW + timedelta(minutes=1)
+        )
+        callback = initial.sni_callback
+        assert callback is not None
+        assert callback(connection, "aud373-" + "0" * 32 + ".invalid", initial) is None
+        assert connection.context is replacement
+        assert connection.context.verify_mode == ssl.CERT_REQUIRED
+        assert connection.probe_id == "0" * 32
+        assert connection.hello_seen
+        emit = Mock()
+        monkeypatch.setattr(transport_module.logger, "warning", emit)
+        error = ssl.SSLError("private TLS failure")
+        error.reason = "PEER_DID_NOT_RETURN_A_CERTIFICATE"
+        observer.record(connection, error)
+        emit.assert_called_once_with(
+            "internal_mtls_handshake_rejected",
+            probe_id="00000000-0000-0000-0000-000000000000",
+            reason="PEER_DID_NOT_RETURN_A_CERTIFICATE",
+        )
+        assert connection.probe_id is None
+    finally:
+        guard.close()
