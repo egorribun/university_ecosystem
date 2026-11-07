@@ -21,6 +21,15 @@ Inventory remains **497 dispositions / 242 baseline identities / 27 Gitleaks
 fingerprints / 15 Semgrep rows**, not a passing scan. All 78 required context/app
 pairs, blocking CodeQL, hooks and quality floors remain in force.
 
+### AUD-454 PostgreSQL evidence
+
+GitHub job 128336267666 on source `3b8b817e9` retained six named
+borrowed-session PostgreSQL results. All six passed without skips. The
+overall integration job failed later at a separate cohort receipt check.
+AUD-454 remains open for the browser-frame evidence from backend removal
+through JetStream revocation to ws-hub eviction.
+[Hosted proof step](https://github.com/egorribun/university_ecosystem/actions/runs/42349344099/job/128336267666).
+
 ### Six additional scoped decisions
 
 These decisions extend the dated 478/34 public checkpoint. The original

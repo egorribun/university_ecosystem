@@ -1,11 +1,5 @@
 from __future__ import annotations
 
-# Configure uvloop before any other asyncio usage for optimal async performance
-from app.core.uvloop_setup import configure_uvloop
-
-configure_uvloop()
-
-
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
