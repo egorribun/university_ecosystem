@@ -15,14 +15,50 @@ ADMIN_SMOKE_WORKFLOW = "Admin Smoke Monitoring (Linux Periodic)"
 ADMIN_SMOKE_TARGET = "admin-smoke"
 ADMIN_SMOKE_PROJECT = "ci-admin-smoke"
 
-# AUD-313: the owned-stand identity must not come from environment variables alone.
-# live_stand writes an owner-issued record for the exact project and mounts it
-# read-only at this fixed container path; environment flags are only cross-checked.
+# AUD-313: seed authorization never comes from environment variables alone.
+# The record is intentionally unsigned. Trust in its origin rests on the operator
+# invoking live_stand, which verifies the signed owner marker and bind-mounts the
+# generated file read-only here; environment values are only cross-checked.
 OWNED_STAND_RECORD_PATH = Path("/run/live-stand/owned-stand.json")
 OWNED_STAND_RECORD_SCHEMA_VERSION = 1
 OWNED_STAND_RECORD_MAX_BYTES = 4096
 OWNED_STAND_RECORD_KEYS = frozenset({"schema_version", "project_name", "database_host"})
 OWNED_STAND_DATABASE_HOST = "postgres"
+
+
+def _read_mountinfo_text() -> str:
+    """Read kernel mount evidence; unavailable mount data fails closed."""
+    try:
+        return Path("/proc/self/mountinfo").read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return ""
+
+
+def _unescape_mountinfo_path(value: str) -> str:
+    """Decode the four octal escapes used for path fields in mountinfo."""
+    return re.sub(
+        r"\\(040|011|012|134)",
+        lambda match: chr(int(match.group(1), 8)),
+        value,
+    )
+
+
+def _has_exact_readonly_mount(path: Path) -> bool:
+    """Require one exact mountpoint for the record with per-mount ``ro``."""
+    matches: list[bool] = []
+    for line in _read_mountinfo_text().splitlines():
+        fields = line.split()
+        try:
+            separator = fields.index("-")
+        except ValueError:
+            continue
+        if separator < 6 or len(fields) < separator + 4:
+            continue
+        if _unescape_mountinfo_path(fields[4]) == str(path):
+            matches.append("ro" in fields[5].split(","))
+    # A regular file in a read-only parent directory has no mountpoint at its
+    # own path. Requiring exactly one entry also rejects stacked mount overlays.
+    return matches == [True]
 
 
 def _configured_database_url() -> str:
@@ -138,7 +174,13 @@ def require_owned_live_stand_target() -> str:
             "seed database must be the postgres service in the owned live stand project"
         )
 
-    record = _load_owned_stand_record(OWNED_STAND_RECORD_PATH)
+    record_path = OWNED_STAND_RECORD_PATH
+    if not _has_exact_readonly_mount(record_path):
+        raise RuntimeError(
+            "seed requires the owner-issued live stand record at an "
+            "exact read-only mount"
+        )
+    record = _load_owned_stand_record(record_path)
     if (
         type(record["schema_version"]) is not int
         or record["schema_version"] != OWNED_STAND_RECORD_SCHEMA_VERSION

@@ -122,6 +122,18 @@ def owner_issued_stand_record(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setattr(seed_target, "OWNED_STAND_RECORD_PATH", record)
+    escaped_path = (
+        str(record)
+        .replace("\\", r"\134")
+        .replace(" ", r"\040")
+        .replace("\t", r"\011")
+        .replace("\n", r"\012")
+    )
+    monkeypatch.setattr(
+        seed_target,
+        "_read_mountinfo_text",
+        lambda: f"42 1 8:1 /source {escaped_path} ro,relatime - ext4 /dev/root rw",
+    )
     return record
 
 

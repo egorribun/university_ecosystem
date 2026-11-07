@@ -62,6 +62,17 @@ def test_restrictive_umask_still_yields_a_readable_owner_record(
         assert stat.S_IMODE(mode) == 0o644
 
 
+def _mountinfo_line(path: Path, options: str = "ro,relatime") -> str:
+    escaped_path = (
+        str(path)
+        .replace("\\", r"\134")
+        .replace(" ", r"\040")
+        .replace("\t", r"\011")
+        .replace("\n", r"\012")
+    )
+    return f"42 1 8:1 /source {escaped_path} {options} - ext4 /dev/root rw"
+
+
 def _record(**overrides: object) -> dict[str, object]:
     record: dict[str, object] = {
         "schema_version": 1,
@@ -82,6 +93,11 @@ def stand_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setattr(seed_target, "_configured_database_url", lambda: DATABASE_URL)
     record_path = tmp_path / "owned-stand.json"
     monkeypatch.setattr(seed_target, "OWNED_STAND_RECORD_PATH", record_path)
+    monkeypatch.setattr(
+        seed_target,
+        "_read_mountinfo_text",
+        lambda: _mountinfo_line(record_path),
+    )
     return record_path
 
 
@@ -104,6 +120,37 @@ def test_matching_owner_record_accepts_the_owned_stand(
     _write_record(stand_environment, _record())
 
     assert seed_target.require_owned_live_stand_target() == PROJECT
+
+
+def test_matching_ordinary_file_is_refused_without_exact_readonly_mount(
+    stand_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_record(stand_environment, _record())
+    monkeypatch.setattr(seed_target, "_read_mountinfo_text", lambda: "")
+
+    with pytest.raises(RuntimeError, match="owner-issued live stand record"):
+        seed_target.require_owned_live_stand_target()
+
+
+def test_record_mount_must_be_exact_unique_and_read_only(
+    stand_environment: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exact_readonly = _mountinfo_line(stand_environment)
+    parent_readonly = _mountinfo_line(stand_environment.parent)
+    exact_writable = _mountinfo_line(stand_environment, "rw,relatime")
+
+    monkeypatch.setattr(seed_target, "_read_mountinfo_text", lambda: exact_readonly)
+    assert seed_target._has_exact_readonly_mount(stand_environment)
+
+    for mountinfo in (
+        parent_readonly,
+        exact_writable,
+        f"{exact_readonly}\n{exact_writable}",
+    ):
+        monkeypatch.setattr(
+            seed_target, "_read_mountinfo_text", lambda text=mountinfo: text
+        )
+        assert not seed_target._has_exact_readonly_mount(stand_environment)
 
 
 @pytest.mark.parametrize(
@@ -272,6 +319,11 @@ def test_seed_rechecks_signed_owner_before_issuing_or_reusing_unsigned_record(
                     name, value = command[index + 1].split("=", 1)
                     seed.setenv(name, value)
             seed.setattr(seed_target, "OWNED_STAND_RECORD_PATH", record_path)
+            seed.setattr(
+                seed_target,
+                "_read_mountinfo_text",
+                lambda: _mountinfo_line(record_path),
+            )
             seed.setattr(seed_target, "_configured_database_url", lambda: DATABASE_URL)
             assert seed_target.require_owned_live_stand_target() == owner.project_name
         tamper_with_signed_project()
