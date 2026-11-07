@@ -52,12 +52,14 @@ def _certificate(result: dict[str, Any]) -> dict[str, Any]:
     return result["verificationResult"]["signature"]["certificate"]
 
 
-def test_accepts_multiple_complete_results_for_the_current_invocation() -> None:
-    # Duplicate bundles for one run must not be rejected solely due to count.
+def test_rejects_ambiguous_duplicate_results_for_the_current_invocation() -> None:
+    # Two valid results claiming this invocation are ambiguous; the gate must
+    # select exactly one current-run attestation.
     result = _fixture()
     result.append(copy.deepcopy(result[0]))
 
-    assert (provenance.validate_verified_output(result, _binding())) is None
+    with pytest.raises(provenance.ProvenanceError, match="exactly one"):
+        provenance.validate_verified_output(result, _binding())
 
 
 def test_accepts_a_prior_run_result_only_alongside_the_current_run() -> None:

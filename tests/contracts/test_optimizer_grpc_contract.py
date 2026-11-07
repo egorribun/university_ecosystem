@@ -48,6 +48,11 @@ def pact() -> Pact:
 
 def test_detect_conflicts_grpc_contract(pact: Pact) -> None:
     """Contract: Backend expects DetectConflicts to return conflicts list."""
+
+    def parse_body(contents: str | bytes | None) -> object:
+        assert isinstance(contents, (str, bytes))
+        return json.loads(contents)
+
     (
         pact.upon_receiving("a gRPC request for DetectConflicts", "Sync")
         .with_body(
@@ -91,14 +96,22 @@ def test_detect_conflicts_grpc_contract(pact: Pact) -> None:
         )
     )
 
-    interactions = list(pact.interactions(kind="Sync"))
-    assert len(interactions) == 1
-    [interaction] = interactions
-    assert interaction.description == "a gRPC request for DetectConflicts"
-
-    request_contents = interaction.request_contents.contents
-    assert isinstance(request_contents, (str, bytes))
-    assert json.loads(request_contents) == {
+    # Pact owns each native message until the iterator is exhausted.
+    interaction_snapshots = [
+        (
+            str(interaction.description),
+            parse_body(interaction.request_contents.contents),
+            [
+                parse_body(response.contents)
+                for response in interaction.response_contents
+            ],
+        )
+        for interaction in pact.interactions(kind="Sync")
+    ]
+    assert len(interaction_snapshots) == 1
+    [(description, request, responses)] = interaction_snapshots
+    assert description == "a gRPC request for DetectConflicts"
+    assert request == {
         "target": {
             "weekday": "Monday",
             "start_time": {"seconds": 1710000000, "nanos": 0},
@@ -118,11 +131,8 @@ def test_detect_conflicts_grpc_contract(pact: Pact) -> None:
             }
         ],
     }
-    responses = list(interaction.response_contents)
     assert len(responses) == 1
-    response_contents = responses[0].contents
-    assert isinstance(response_contents, (str, bytes))
-    assert json.loads(response_contents) == {
+    assert responses[0] == {
         "conflicts": [
             {
                 "weekday": "Monday",

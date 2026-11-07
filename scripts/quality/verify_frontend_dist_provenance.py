@@ -333,7 +333,7 @@ def validate_verified_output(document: Any, binding: Binding) -> None:
         isinstance(document, list) and bool(document),
         "expected a non-empty list of cryptographically verified attestations",
     )
-    current_invocation_verified = False
+    current_invocation_matches = 0
 
     # runInvocationURI is allowed to differ across independently verified
     # attestations for the same reproducible artifact. Every other binding is
@@ -375,9 +375,8 @@ def validate_verified_output(document: Any, binding: Binding) -> None:
             _is_actions_run_uri_for_repository(invocation_uri, binding.repository),
             "certificate run invocation URI is invalid",
         )
-        current_invocation_verified = (
-            current_invocation_verified or invocation_uri == binding.run_invocation_uri
-        )
+        if invocation_uri == binding.run_invocation_uri:
+            current_invocation_matches += 1
 
         statement = result.get("statement")
         _require(isinstance(statement, dict), "verified statement is missing")
@@ -405,8 +404,9 @@ def validate_verified_output(document: Any, binding: Binding) -> None:
         )
 
     _require(
-        current_invocation_verified,
-        "no cryptographically verified attestation matches the current run and attempt",
+        current_invocation_matches == 1,
+        "expected exactly one verified attestation matching "
+        "the current run and attempt",
     )
 
 
