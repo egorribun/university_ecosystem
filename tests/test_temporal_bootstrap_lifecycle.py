@@ -222,12 +222,26 @@ try {
             $n.Extent.Text.StartsWith('if ($LiveStateMode)') -and
             $n.Extent.Text.Contains('$prepareManagedFull')
         }, $true)
-        $prepareLease = $ast.Find({
-            param($n)
-            $n -is [System.Management.Automation.Language.IfStatementAst] -and
-            $n.Extent.Text.StartsWith('if ($script:TemporalBootstrapRequested)')
-        }, $true)
-        if ($null -eq $selection -or $null -eq $prepareLease) { throw 'managed prepare selection or lease guard missing' }
+        # Ignore unrelated prepare-only validation blocks and nested guards.
+        # Require one owning prepare branch, then one direct lease guard.
+        $prepareBlocks = @($ast.EndBlock.Statements | Where-Object {
+            $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+            $_.Extent.Text.StartsWith('if ($PrepareOnly)')
+        })
+        $leaseOwners = @($prepareBlocks | Where-Object {
+            $directGuards = @($_.Clauses[0].Item2.Statements | Where-Object {
+                $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+                $_.Extent.Text.StartsWith('if ($script:TemporalBootstrapRequested)')
+            })
+            $directGuards.Count -gt 0
+        })
+        if ($leaseOwners.Count -ne 1) { throw 'expected one prepare-only lease owner' }
+        $prepareLeases = @($leaseOwners[0].Clauses[0].Item2.Statements | Where-Object {
+            $_ -is [System.Management.Automation.Language.IfStatementAst] -and
+            $_.Extent.Text.StartsWith('if ($script:TemporalBootstrapRequested)')
+        })
+        if ($null -eq $selection -or $prepareLeases.Count -ne 1) { throw 'managed prepare selection or unique lease guard missing' }
+        $prepareLease = $prepareLeases[0]
         Invoke-Expression $selection.Extent.Text
         Invoke-Expression $bootstrapAssignment.Extent.Text
         function Enter-TemporalBootstrapLease {
@@ -313,7 +327,9 @@ class LauncherLifecycle(unittest.TestCase):
         self.receipt = self.root / "receipt.json"
         self.profile = self.root / ".temporal-bootstrap" / "profile.toml"
 
-    def run_block(self, scenario: str):
+    def run_block(self, scenario: str, launcher: Path | None = None):
+        launcher = PROPOSED if launcher is None else launcher
+        launcher_hash = hashlib.sha256(launcher.read_bytes()).hexdigest()
         code, stdout, stderr = asyncio.run(
             run_powershell(
                 [
@@ -322,7 +338,7 @@ class LauncherLifecycle(unittest.TestCase):
                     "-NonInteractive",
                     "-File",
                     str(self.runner),
-                    str(PROPOSED),
+                    str(launcher),
                     str(HELPER),
                     str(self.root),
                     scenario,
@@ -338,6 +354,9 @@ class LauncherLifecycle(unittest.TestCase):
         )
         self.assertEqual(
             hashlib.sha256(HELPER.read_bytes()).hexdigest(), self.helper_hash
+        )
+        self.assertEqual(
+            hashlib.sha256(launcher.read_bytes()).hexdigest(), launcher_hash
         )
         return data
 
@@ -670,6 +689,39 @@ class LauncherLifecycle(unittest.TestCase):
         self.assertFalse(data["failed"], data)
         self.assertEqual(data["events"], [])
         self.assertFalse(self.profile.exists())
+
+    def test_prepare_lease_selector_rejects_missing_nested_or_ambiguous_guards(self):
+        source = PROPOSED.read_text(encoding="utf-8")
+        owner = "if ($PrepareOnly) {\n    if ($script:TemporalBootstrapRequested) {"
+        self.assertEqual(source.count(owner), 1)
+        mutations = {
+            "missing": source.replace(owner, "if ($PrepareOnly) {\n    if ($false) {"),
+            "nested": source.replace(
+                owner,
+                "if ($PrepareOnly) {\n    if ($true) { if ($script:TemporalBootstrapRequested) { } }\n    if ($false) {",
+            ),
+            "duplicate-guard": source.replace(
+                owner,
+                "if ($PrepareOnly) {\n    if ($script:TemporalBootstrapRequested) { }\n    if ($script:TemporalBootstrapRequested) {",
+            ),
+            "duplicate-owner": source
+            + "\nif ($PrepareOnly) { if ($script:TemporalBootstrapRequested) { } }\n",
+        }
+        for name, changed in mutations.items():
+            with self.subTest(mutation=name):
+                launcher = self.root / f"{name}.ps1"
+                launcher.write_text(changed, encoding="utf-8")
+                data = self.run_block("prepare_full", launcher)
+                self.assertTrue(data["failed"], data)
+                self.assertIn(
+                    data["reason"],
+                    (
+                        "expected one prepare-only lease owner",
+                        "managed prepare selection or unique lease guard missing",
+                    ),
+                )
+                self.assertEqual(data["events"], [])
+                self.assertFalse(self.profile.exists())
 
 
 if __name__ == "__main__":
