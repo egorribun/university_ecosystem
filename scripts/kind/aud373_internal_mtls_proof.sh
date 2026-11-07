@@ -253,8 +253,8 @@ gateway:
     grpcUseTLS: true
 redis:
   metrics:
-    passwordFileInitImage:
-      repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend"
+    passwordFileInitImage: {repository: "${LOCAL_REGISTRY_ADDRESS}/university-backend",
+      digest: "${BACKEND_IMAGE_DIGEST:-}"}
 ${backend_fields}
 EOF
 }

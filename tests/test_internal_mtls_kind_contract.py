@@ -2731,3 +2731,16 @@ def test_generated_proof_backend_uses_the_built_manifest_digest(monkeypatch):
         "repository": "127.0.0.1:32768/university-backend",
         "digest": digest,
     }
+
+
+def test_generated_proof_redis_init_uses_exact_backend_manifest(monkeypatch):
+    import hashlib
+
+    digest = "sha256:" + hashlib.sha256(b"owned source image fixture").hexdigest()
+    monkeypatch.setenv("BACKEND_IMAGE_DIGEST", digest)
+    values = _generated_proof_values()
+    assert (
+        values["redis"]["metrics"]["passwordFileInitImage"]
+        == values["backend"]["image"]
+    )
+    assert values["redis"]["metrics"]["passwordFileInitImage"]["digest"] == digest
